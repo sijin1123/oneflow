@@ -19,6 +19,9 @@ export function Topbar() {
       : projectId
         ? 'Work Packages'
         : '프로젝트'
+  // Search (?q=) and inline creation (?new=1) are consumed by the list view
+  // only — showing them on Board/Timeline would be dead controls (finding #6).
+  const onListView = Boolean(projectId) && location.pathname.endsWith('/work-packages')
 
   const onSearch = (value: string) => {
     setSearchParams(
@@ -45,7 +48,7 @@ export function Topbar() {
       </nav>
 
       <div className="ml-auto flex items-center gap-2">
-        {projectId ? (
+        {onListView ? (
           <div className="relative">
             <Search
               size={14}
@@ -62,7 +65,7 @@ export function Topbar() {
             />
           </div>
         ) : null}
-        {projectId ? (
+        {onListView ? (
           <Button
             size="sm"
             onClick={() =>

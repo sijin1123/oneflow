@@ -85,8 +85,10 @@ class WorkPackagePatch(BaseModel):
     @field_validator("expected_version")
     @classmethod
     def _version(cls, v: int) -> int:
-        if v < 0:
-            raise ValueError("expected_version must be >= 0")
+        # int4 column bounds: out-of-range tokens are a client error (422),
+        # never an asyncpg bind failure surfacing as 500 (review finding #7).
+        if not 0 <= v <= 2_147_483_647:
+            raise ValueError("expected_version must be between 0 and 2147483647")
         return v
 
     @field_validator("subject")

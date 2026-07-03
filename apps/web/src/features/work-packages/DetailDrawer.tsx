@@ -1,3 +1,4 @@
+import { useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 
@@ -58,16 +59,30 @@ function DrawerBody({ wpId, projectId }: { wpId: string; projectId: string }) {
 function DrawerForm({ wp, projectId }: { wp: WorkPackage; projectId: string }) {
   const patch = usePatchWorkPackage(projectId)
   const relations = useRelations(wp.id)
+  const queryClient = useQueryClient()
 
+  // All editable fields are controlled and resynced from server data, so a 409
+  // invalidate+refetch really does reload every field (review finding #2).
   const [subject, setSubject] = useState(wp.subject)
   const [description, setDescription] = useState(wp.description ?? '')
+  const [startDate, setStartDate] = useState(wp.start_date ?? '')
+  const [dueDate, setDueDate] = useState(wp.due_date ?? '')
   useEffect(() => {
     setSubject(wp.subject)
     setDescription(wp.description ?? '')
-  }, [wp.subject, wp.description])
+    setStartDate(wp.start_date ?? '')
+    setDueDate(wp.due_date ?? '')
+  }, [wp.subject, wp.description, wp.start_date, wp.due_date])
 
   const send = (fields: Partial<Record<string, unknown>>) => {
-    patch.mutate({ wpId: wp.id, patch: { expected_version: wp.version, ...fields } })
+    // Token from the query cache, not the render snapshot: two quick edits in a
+    // row must carry the bumped version, not a stale one that would trigger a
+    // false self-conflict 409 (review finding #3).
+    const cached = queryClient.getQueryData<WorkPackage>(['work-package', wp.id])
+    patch.mutate({
+      wpId: wp.id,
+      patch: { expected_version: cached?.version ?? wp.version, ...fields },
+    })
   }
 
   return (
@@ -133,9 +148,10 @@ function DrawerForm({ wp, projectId }: { wp: WorkPackage; projectId: string }) {
           <Input
             id="wp-start"
             type="date"
-            defaultValue={wp.start_date ?? ''}
-            onBlur={(e) => {
-              const v = e.target.value || null
+            value={startDate}
+            onChange={(e) => setStartDate(e.target.value)}
+            onBlur={() => {
+              const v = startDate || null
               if (v !== wp.start_date) send({ start_date: v })
             }}
           />
@@ -147,9 +163,10 @@ function DrawerForm({ wp, projectId }: { wp: WorkPackage; projectId: string }) {
           <Input
             id="wp-due"
             type="date"
-            defaultValue={wp.due_date ?? ''}
-            onBlur={(e) => {
-              const v = e.target.value || null
+            value={dueDate}
+            onChange={(e) => setDueDate(e.target.value)}
+            onBlur={() => {
+              const v = dueDate || null
               if (v !== wp.due_date) send({ due_date: v })
             }}
           />

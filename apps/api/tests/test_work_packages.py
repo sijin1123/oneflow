@@ -85,6 +85,21 @@ async def test_concurrent_patch_exactly_one_wins(client, project):
         ),
     )
     assert sorted([r1.status_code, r2.status_code]) == [200, 409]
+    # The loser's 409 `current` must carry the WINNER's committed row, not the
+    # loser's pre-race identity-map snapshot (review finding #1).
+    winner, loser = (r1, r2) if r1.status_code == 200 else (r2, r1)
+    conflict = loser.json()["current"]
+    assert conflict["version"] == 1
+    assert conflict["status"] == winner.json()["status"]
+
+
+async def test_expected_version_int4_bounds(client, project):
+    wp = await create_wp(client, project["id"])
+    res = await client.patch(
+        f"/api/v1/work-packages/{wp['id']}",
+        json={"expected_version": 2_147_483_648, "status": "todo"},
+    )
+    assert res.status_code == 422  # out-of-int4-range token is a client error, not a 500
 
 
 async def test_empty_body_no_bump(client, project):

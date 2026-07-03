@@ -283,6 +283,10 @@ async def run(reset: bool, yes: bool) -> int:
                 if not yes:
                     print("[seed --reset] dry-run only. Re-run with --yes to execute.")
                     return 0
+                # The preview SELECTs autobegan a transaction on this session;
+                # close it or session.begin() below raises InvalidRequestError
+                # (review finding #4).
+                await session.rollback()
                 async with session.begin():
                     await _truncate_all(session)
                 print("[seed --reset] truncated all tables")

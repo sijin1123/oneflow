@@ -30,6 +30,20 @@ async def test_seed_idempotent(app):
     assert await _counts(app) == first
 
 
+async def test_seed_reset_end_to_end(app, _clean_tables, monkeypatch):
+    # Full `python -m app.seed --reset --yes` flow via run() — regression for the
+    # preview-autobegin vs session.begin() crash (review finding #4).
+    from tests.conftest import make_test_settings
+
+    monkeypatch.setattr(seed_module, "get_settings", lambda: make_test_settings())
+    async with app.state.sessionmaker() as session:
+        assert await seed_data(session) is True  # pre-existing data to truncate
+    exit_code = await seed_module.run(reset=True, yes=True)
+    assert exit_code == 0
+    counts = await _counts(app)
+    assert counts["projects"] == 1 and counts["work_packages"] == 12
+
+
 async def test_seed_failure_injection_rolls_back_everything(app, monkeypatch):
     def boom():
         raise RuntimeError("injected failure before final insert")

@@ -5,6 +5,7 @@ guard can return a deterministic 500 response without re-raising — required fo
 both production behavior and in-process test transports (PLAN §5).
 """
 
+import ipaddress
 import json
 import logging
 import re
@@ -17,7 +18,22 @@ from app.core.logging import request_id_var
 logger = logging.getLogger("oneflow.request")
 
 _REQUEST_ID_RE = re.compile(r"^[A-Za-z0-9._-]{8,128}$")
-LOOPBACK_HOSTS = {"127.0.0.1", "::1"}
+
+
+def is_loopback_host(host: str) -> bool:
+    """True for genuine loopback client addresses, including the IPv4-mapped
+    form ::ffff:127.0.0.1 that dual-stack binds report (review finding #10).
+    Unparseable values are treated as non-loopback (fail-closed)."""
+    try:
+        ip = ipaddress.ip_address(host)
+    except ValueError:
+        return False
+    if ip.is_loopback:
+        return True
+    mapped = getattr(ip, "ipv4_mapped", None)
+    return mapped is not None and mapped.is_loopback
+
+
 # Probe paths are exempt from the dev loopback guard: they are unauthenticated,
 # return no data, and container/orchestrator probes legitimately arrive non-loopback.
 GUARD_EXEMPT_PATHS = {"/api/v1/healthz", "/api/v1/health"}
@@ -114,15 +130,22 @@ class RequestLogMiddleware:
                 status_holder["status"] = message["status"]
             await send(message)
 
-        await self.app(scope, receive, send_logged)
-        duration_ms = (time.perf_counter() - start) * 1000
-        logger.info(
-            "%s %s -> %d (%.1fms)",
-            scope.get("method"),
-            scope.get("path"),
-            status_holder["status"],
-            duration_ms,
-        )
+        try:
+            await self.app(scope, receive, send_logged)
+        except Exception:
+            # The outer ExceptionGuard converts this into a 500 — record the
+            # access-log line here so 500s are countable (review finding #9).
+            status_holder["status"] = status_holder["status"] or 500
+            raise
+        finally:
+            duration_ms = (time.perf_counter() - start) * 1000
+            logger.info(
+                "%s %s -> %d (%.1fms)",
+                scope.get("method"),
+                scope.get("path"),
+                status_holder["status"],
+                duration_ms,
+            )
 
 
 class DevLoopbackGuardMiddleware:
@@ -150,7 +173,7 @@ class DevLoopbackGuardMiddleware:
             client = scope.get("client")
             host = client[0] if client else None
             # host is None for some in-process transports — treat as local.
-            if host is not None and host not in LOOPBACK_HOSTS:
+            if host is not None and not is_loopback_host(host):
                 request_id = scope.get("state", {}).get("request_id")
                 await _send_json(
                     send, 403, {"detail": "dev auth is loopback-only"}, request_id=request_id

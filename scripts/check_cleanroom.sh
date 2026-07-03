@@ -12,11 +12,14 @@ cd "$(dirname "$0")/.."
 FAIL=0
 
 echo "== [1/4] @plane/* reference scan =="
-if grep -rn --include='package.json' --include='package-lock.json' '"@plane/' apps packages 2>/dev/null; then
+# All TRACKED manifests repo-wide (root and any future dir — review finding #8),
+# without descending into node_modules/.venv.
+MANIFESTS=$(git ls-files -- '*package.json' '*package-lock.json')
+if [ -n "$MANIFESTS" ] && echo "$MANIFESTS" | xargs grep -n '"@plane/' 2>/dev/null; then
   echo "ERROR: @plane/* dependency reference detected — clean-room violation"
   FAIL=1
 else
-  echo "OK: no @plane/* references"
+  echo "OK: no @plane/* references in $(echo "$MANIFESTS" | wc -l | tr -d ' ') tracked manifests"
 fi
 
 # License policy, applied to both ecosystems:

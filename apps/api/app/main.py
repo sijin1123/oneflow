@@ -49,6 +49,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             yield session
 
     app.dependency_overrides[get_session] = _get_session
+    # The explicit Settings must win everywhere: without this override,
+    # Depends(get_settings) would resolve the lru-cached process-env Settings
+    # and could split-brain against the middleware/engine (review finding #5).
+    app.dependency_overrides[get_settings] = lambda: settings
 
     app.add_middleware(
         CORSMiddleware,

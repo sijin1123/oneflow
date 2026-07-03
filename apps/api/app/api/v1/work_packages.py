@@ -197,9 +197,7 @@ async def patch_work_package(
 
     # Empty body: no write occurs — conditional token compare only, no version bump (§6.2).
     if not changes:
-        fresh = (
-            await session.execute(select(WorkPackage).where(WorkPackage.id == wp_id))
-        ).scalar_one_or_none()
+        fresh = await _reselect_fresh(session, wp_id)
         if fresh is None:
             raise HTTPException(status_code=404, detail="not found")
         if fresh.version != body.expected_version:
@@ -251,12 +249,27 @@ async def patch_work_package(
         return WorkPackageRead.model_validate(updated)
 
     # 0 rows affected: distinguish 404 vs 409 by re-select.
-    fresh = (
-        await session.execute(select(WorkPackage).where(WorkPackage.id == wp_id))
-    ).scalar_one_or_none()
+    fresh = await _reselect_fresh(session, wp_id)
     if fresh is None:
         raise HTTPException(status_code=404, detail="not found")
     return _conflict_response(fresh)
+
+
+async def _reselect_fresh(session: AsyncSession, wp_id: uuid.UUID) -> WorkPackage | None:
+    """Re-select bypassing the identity-map snapshot (review finding #1).
+
+    The request loaded this row earlier in _get_wp_scoped; with
+    expire_on_commit=False a plain select would return that stale instance,
+    so a concurrent writer's committed changes would be invisible in the
+    409 `current` payload / empty-body compare. populate_existing forces the
+    fresh DB row onto the identity-mapped instance."""
+    return (
+        await session.execute(
+            select(WorkPackage)
+            .where(WorkPackage.id == wp_id)
+            .execution_options(populate_existing=True)
+        )
+    ).scalar_one_or_none()
 
 
 def _conflict_response(current: WorkPackage) -> JSONResponse:

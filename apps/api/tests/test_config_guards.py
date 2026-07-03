@@ -71,6 +71,16 @@ async def test_nonlocal_probe_paths_exempt(nonlocal_client):
     assert (await nonlocal_client.get("/api/v1/health")).status_code == 200
 
 
+async def test_ipv4_mapped_loopback_allowed(app):
+    # Dual-stack binds report IPv4 clients as ::ffff:127.0.0.1 — genuine
+    # loopback must not be rejected (review finding #10).
+    from httpx import ASGITransport, AsyncClient
+
+    transport = ASGITransport(app=app, client=("::ffff:127.0.0.1", 40000))
+    async with AsyncClient(transport=transport, base_url="http://test") as c:
+        assert (await c.get("/api/v1/projects")).status_code == 200
+
+
 async def test_nonlocal_allowed_with_escape_hatch():
     from httpx import ASGITransport, AsyncClient
 
