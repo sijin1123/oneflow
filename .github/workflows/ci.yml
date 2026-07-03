@@ -1,10 +1,5 @@
-# OneFlow CI — bootstrap placeholder.
-#
-# This minimal workflow exists in the bootstrap commit so the check names
-# (backend / frontend / cleanroom) pre-exist on the default branch and can be
-# registered as required status checks before PR #1 is opened
-# (docs/ONEFLOW_PLAN.md §1.1, v5.1). The real jobs replace these placeholders
-# in the first feature PR — job names must stay identical.
+# OneFlow CI (PLAN §13). Job names backend/frontend/cleanroom are stable —
+# they are registered as required status checks on main.
 name: ci
 
 on:
@@ -12,43 +7,107 @@ on:
     branches: [main]
   pull_request:
 
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   backend:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: oneflow
+          POSTGRES_USER: oneflow
+          POSTGRES_PASSWORD: oneflow
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U oneflow -d oneflow"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    defaults:
+      run:
+        working-directory: apps/api
+    env:
+      ONEFLOW_ENV: test
+      ONEFLOW_DATABASE_URL: postgresql+asyncpg://oneflow:oneflow@localhost:5432/oneflow
+      ONEFLOW_TEST_DATABASE_URL: postgresql+asyncpg://oneflow:oneflow@localhost:5432/oneflow_test
     steps:
       - uses: actions/checkout@v4
-      - name: Placeholder (real backend checks arrive with PR #1)
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: apps/api/uv.lock
+      - name: Install dependencies
+        run: uv sync --frozen
+      - name: Lint (ruff)
+        run: uv run ruff check . && uv run ruff format --check .
+      - name: Migration smoke (up/down/up) with connect retry
         run: |
-          if [ -f apps/api/pyproject.toml ]; then
-            echo "::error::apps/api exists but backend CI is still a placeholder — replace ci.yml"
-            exit 1
-          fi
-          echo "bootstrap placeholder — no backend sources yet"
+          for i in $(seq 1 10); do
+            if uv run alembic upgrade head; then break; fi
+            echo "DB not ready yet — retry $i"; sleep 2
+          done
+          uv run alembic downgrade base
+          uv run alembic upgrade head
+      - name: Tests (pytest, real PostgreSQL)
+        run: uv run pytest -q
 
   frontend:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: apps/web
     steps:
       - uses: actions/checkout@v4
-      - name: Placeholder (real frontend checks arrive with PR #1)
-        run: |
-          if [ -f apps/web/package.json ]; then
-            echo "::error::apps/web exists but frontend CI is still a placeholder — replace ci.yml"
-            exit 1
-          fi
-          echo "bootstrap placeholder — no frontend sources yet"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Lint
+        run: npm run lint
+      - name: Unit (node --test, 409 conflict pure function)
+        run: npm run test:unit
+      - name: Build
+        run: npm run build
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('apps/web/package-lock.json') }}
+      - name: Install Playwright chromium
+        run: npx playwright install --with-deps chromium
+      - name: UI smoke (Playwright, mocked API)
+        run: npm run test:e2e
+        env:
+          CI: "true"
 
   cleanroom:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
-      - name: Clean-room guard (works from bootstrap onward)
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: apps/api/uv.lock
+      - name: Install dependencies
         run: |
-          set -euo pipefail
-          if grep -rn --include='package.json' --include='package-lock.json' '"@plane/' . ; then
-            echo "::error::@plane/* dependency detected — clean-room violation"
-            exit 1
-          fi
-          echo "no @plane/* references — OK"
+          (cd apps/web && npm ci)
+          (cd apps/api && uv sync --frozen)
+      - name: Clean-room gate
+        run: bash scripts/check_cleanroom.sh
