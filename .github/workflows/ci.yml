@@ -1,0 +1,54 @@
+# OneFlow CI — bootstrap placeholder.
+#
+# This minimal workflow exists in the bootstrap commit so the check names
+# (backend / frontend / cleanroom) pre-exist on the default branch and can be
+# registered as required status checks before PR #1 is opened
+# (docs/ONEFLOW_PLAN.md §1.1, v5.1). The real jobs replace these placeholders
+# in the first feature PR — job names must stay identical.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Placeholder (real backend checks arrive with PR #1)
+        run: |
+          if [ -f apps/api/pyproject.toml ]; then
+            echo "::error::apps/api exists but backend CI is still a placeholder — replace ci.yml"
+            exit 1
+          fi
+          echo "bootstrap placeholder — no backend sources yet"
+
+  frontend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Placeholder (real frontend checks arrive with PR #1)
+        run: |
+          if [ -f apps/web/package.json ]; then
+            echo "::error::apps/web exists but frontend CI is still a placeholder — replace ci.yml"
+            exit 1
+          fi
+          echo "bootstrap placeholder — no frontend sources yet"
+
+  cleanroom:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Clean-room guard (works from bootstrap onward)
+        run: |
+          set -euo pipefail
+          if grep -rn --include='package.json' --include='package-lock.json' '"@plane/' . ; then
+            echo "::error::@plane/* dependency detected — clean-room violation"
+            exit 1
+          fi
+          echo "no @plane/* references — OK"

@@ -1,0 +1,33 @@
+# --- Python (apps/api) ---
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+*.egg-info/
+
+# --- Node (apps/web) ---
+node_modules/
+dist/
+*.local
+.playwright/
+playwright-report/
+test-results/
+blob-report/
+
+# --- Environment / secrets ---
+.env
+.env.*
+!.env.example
+
+# --- OS / editor ---
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+
+# --- Logs / temp ---
+*.log
+tmp/
