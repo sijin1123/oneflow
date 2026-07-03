@@ -1,0 +1,73 @@
+"""OneFlow API application factory."""
+
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
+from app.api.v1 import health, projects, work_packages
+from app.core.config import Settings, get_settings
+from app.core.logging import setup_logging
+from app.core.middleware import (
+    DevLoopbackGuardMiddleware,
+    ExceptionGuardMiddleware,
+    RequestIdMiddleware,
+    RequestLogMiddleware,
+)
+from app.db.session import build_engine, build_sessionmaker, get_session
+
+
+def create_app(settings: Settings | None = None) -> FastAPI:
+    settings = settings or get_settings()
+    setup_logging(settings.log_level)
+
+    engine = build_engine(settings)
+    sessionmaker = build_sessionmaker(engine)
+
+    @asynccontextmanager
+    async def lifespan(_: FastAPI):
+        yield
+        await engine.dispose()
+
+    is_production = settings.env == "production"
+    app = FastAPI(
+        title="OneFlow API",
+        version="0.1.0",
+        lifespan=lifespan,
+        # Production exposure reduction (§5): no interactive docs surface.
+        docs_url=None if is_production else "/docs",
+        redoc_url=None if is_production else "/redoc",
+        openapi_url=None if is_production else "/openapi.json",
+    )
+    app.state.settings = settings
+    app.state.engine = engine
+    app.state.sessionmaker = sessionmaker
+
+    async def _get_session():
+        # Fresh AsyncSession per request — never shared across requests (§5).
+        async with sessionmaker() as session:
+            yield session
+
+    app.dependency_overrides[get_session] = _get_session
+
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.cors_origin_list,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+    # add_middleware: last added = outermost. Order (outer→inner):
+    # RequestId → ExceptionGuard → RequestLog → DevLoopbackGuard → CORS → app
+    app.add_middleware(DevLoopbackGuardMiddleware, settings=settings)
+    app.add_middleware(RequestLogMiddleware)
+    app.add_middleware(ExceptionGuardMiddleware)
+    app.add_middleware(RequestIdMiddleware)
+
+    app.include_router(health.router, prefix="/api/v1", tags=["health"])
+    app.include_router(projects.router, prefix="/api/v1/projects", tags=["projects"])
+    app.include_router(work_packages.router, prefix="/api/v1", tags=["work-packages"])
+    return app
+
+
+app = create_app()
