@@ -3,6 +3,7 @@ import { useParams, useSearchParams } from 'react-router-dom'
 
 import { EmptyState, ErrorState, ListSkeleton } from '@/components/shell/states'
 import { Button } from '@/components/ui/button'
+import { Select } from '@/components/ui/select'
 
 import { DetailDrawer } from './DetailDrawer'
 import { Filters } from './Filters'
@@ -21,6 +22,19 @@ export function ListPage() {
     priority: searchParams.get('priority') ?? undefined,
     type: searchParams.get('type') ?? undefined,
     q: searchParams.get('q') ?? undefined,
+    sort: searchParams.get('sort') ?? undefined,
+  }
+  const sort = searchParams.get('sort') ?? 'created'
+  const setSort = (value: string) => {
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev)
+        if (value && value !== 'created') next.set('sort', value)
+        else next.delete('sort')
+        return next
+      },
+      { replace: true },
+    )
   }
   const { data, isPending, isError, error, refetch } = useWorkPackages(projectId, filters)
   const exportCsv = useExportCsv(projectId)
@@ -39,6 +53,15 @@ export function ListPage() {
         <Filters />
         <div className="flex items-center gap-2">
           {data ? <span className="text-xs text-of-muted">{data.total}건</span> : null}
+          <Select
+            aria-label="정렬"
+            className="h-7 w-28 text-xs"
+            value={sort}
+            onChange={(e) => setSort(e.target.value)}
+          >
+            <option value="created">생성순</option>
+            <option value="subject">제목순 (가나다)</option>
+          </Select>
           <Button
             variant="outline"
             size="sm"

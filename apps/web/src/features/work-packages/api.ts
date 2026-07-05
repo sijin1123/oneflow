@@ -16,7 +16,13 @@ import type {
   WorkPackagePatch,
 } from './types'
 
-export type WpFilters = { status?: string; priority?: string; type?: string; q?: string }
+export type WpFilters = {
+  status?: string
+  priority?: string
+  type?: string
+  q?: string
+  sort?: string
+}
 
 export function useWorkPackages(projectId: string, filters: WpFilters) {
   const params = new URLSearchParams()

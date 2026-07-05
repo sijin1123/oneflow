@@ -651,6 +651,16 @@ test('드로어 설명이 리치 텍스트 에디터(툴바 포함)로 표시된
   await expect(drawer.getByLabel('설명')).toBeVisible()
 })
 
+test('제목순 정렬 선택이 목록 쿼리에 sort=subject를 반영한다', async ({ page }) => {
+  await mockApi(page)
+  await page.goto(`/projects/${project.id}/work-packages`)
+  const req = page.waitForRequest(
+    (r) => r.url().includes('/work-packages') && r.url().includes('sort=subject'),
+  )
+  await page.getByLabel('정렬').selectOption('subject')
+  await req
+})
+
 test('빈 목록은 빈 상태를 보여준다', async ({ page }) => {
   await page.route('**/api/v1/projects', (route) =>
     route.fulfill({ json: { items: [project], total: 1 } satisfies ProjectList }),
