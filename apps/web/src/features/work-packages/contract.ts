@@ -12,7 +12,15 @@
 import type { components } from '@shared/api-types'
 
 import type { Project } from '../projects/types'
-import type { Activity, Comment, ConflictBody, Relation, WorkPackage } from './types'
+import type {
+  Activity,
+  Comment,
+  ConflictBody,
+  CsvImportResult,
+  CsvRowError,
+  Relation,
+  WorkPackage,
+} from './types'
 
 type Schemas = components['schemas']
 
@@ -26,3 +34,5 @@ export type _CommentMatches = Assert<Extends<Comment, Schemas['CommentRead']>>
 export type _ActivityMatches = Assert<Extends<Activity, Schemas['ActivityRead']>>
 export type _RelationMatches = Assert<Extends<Relation, Schemas['RelationRead']>>
 export type _ConflictMatches = Assert<Extends<ConflictBody, Schemas['ConflictResponse']>>
+export type _CsvImportMatches = Assert<Extends<CsvImportResult, Schemas['CsvImportResult']>>
+export type _CsvRowErrorMatches = Assert<Extends<CsvRowError, Schemas['CsvRowError']>>

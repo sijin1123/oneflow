@@ -3,7 +3,8 @@
    - Date-only fields travel as 'YYYY-MM-DD' strings — no JS Date round-trip.
    - version is echoed as the integer the server returned (§6.2). */
 
-const BASE_URL: string = import.meta.env.VITE_ONEFLOW_API_BASE_URL ?? 'http://localhost:8000'
+export const BASE_URL: string =
+  import.meta.env.VITE_ONEFLOW_API_BASE_URL ?? 'http://localhost:8000'
 
 export class ApiError extends Error {
   status: number

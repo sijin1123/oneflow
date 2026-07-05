@@ -226,6 +226,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{project_id}/work-packages/export.csv": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Export Work Packages Csv */
+        get: operations["export_work_packages_csv_api_v1_projects__project_id__work_packages_export_csv_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/work-packages/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Import Work Packages Csv */
+        post: operations["import_work_packages_csv_api_v1_projects__project_id__work_packages_import_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/work-packages/{wp_id}": {
         parameters: {
             query?: never;
@@ -531,6 +565,48 @@ export interface components {
              * Format: uuid
              */
             work_package_id: string;
+        };
+        /** CsvImportRequest */
+        CsvImportRequest: {
+            /** Content */
+            content: string;
+            /**
+             * Dry Run
+             * @default true
+             */
+            dry_run: boolean;
+        };
+        /** CsvImportResult */
+        CsvImportResult: {
+            /** Checksum */
+            checksum: string;
+            /** Dry Run */
+            dry_run: boolean;
+            /** Errors */
+            errors: components["schemas"]["CsvRowError"][];
+            /** Inserted */
+            inserted: number;
+            /** Invalid */
+            invalid: number;
+            /** Total Rows */
+            total_rows: number;
+            /** Valid */
+            valid: number;
+        };
+        /**
+         * CsvRowError
+         * @description One rejected row, isolated so the rest of the batch still commits.
+         *
+         *     `raw` is the row re-serialized as a single CSV line so the operator can fix it
+         *     and resubmit only the failed rows (재처리 정책).
+         */
+        CsvRowError: {
+            /** Message */
+            message: string;
+            /** Raw */
+            raw: string;
+            /** Row */
+            row: number;
         };
         /** DashboardRead */
         DashboardRead: {
@@ -1565,6 +1641,72 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["WorkPackageRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_work_packages_csv_api_v1_projects__project_id__work_packages_export_csv_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    import_work_packages_csv_api_v1_projects__project_id__work_packages_import_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CsvImportRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CsvImportResult"];
                 };
             };
             /** @description Validation Error */
