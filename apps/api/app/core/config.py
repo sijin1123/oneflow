@@ -31,6 +31,9 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     # Strict parse: exactly "true" enables it, everything else stays locked (PLAN §9 table).
     dev_allow_nonlocal: str = "false"
+    # AI summary feature flag (PLAN §3 Phase 3 AI/RAG). Default OFF; exactly "true"
+    # enables the work-package summary endpoint. Uses a local, no-secret provider.
+    ai_summary: str = "false"
     # Seed --reset unlock token; valid only when it equals DESTRUCTIVE_RESET_TOKEN.
     allow_destructive_reset: str | None = None
     db_pool_size: int = 10
@@ -43,6 +46,10 @@ class Settings(BaseSettings):
     @property
     def dev_allow_nonlocal_enabled(self) -> bool:
         return self.dev_allow_nonlocal == "true"
+
+    @property
+    def ai_summary_enabled(self) -> bool:
+        return self.ai_summary == "true"
 
     @property
     def destructive_reset_enabled(self) -> bool:
@@ -84,6 +91,8 @@ class Settings(BaseSettings):
             )
         if self.dev_allow_nonlocal not in {"true", "false"}:
             raise ValueError("ONEFLOW_DEV_ALLOW_NONLOCAL accepts exactly 'true' or 'false'")
+        if self.ai_summary not in {"true", "false"}:
+            raise ValueError("ONEFLOW_AI_SUMMARY accepts exactly 'true' or 'false'")
         # Guard (4) companion: the non-local escape hatch is dev/test-only (v5.1).
         if self.dev_allow_nonlocal_enabled and self.env not in {"development", "test"}:
             raise ValueError(

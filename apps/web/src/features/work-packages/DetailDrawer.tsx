@@ -4,6 +4,7 @@ import { useSearchParams } from 'react-router-dom'
 
 import { ErrorState, ListSkeleton } from '@/components/shell/states'
 import { Input } from '@/components/ui/input'
+import { AiSummarySection } from '@/features/ai/AiSummarySection'
 import { useMilestones } from '@/features/milestones/api'
 import { Select } from '@/components/ui/select'
 import { Sheet, SheetContent } from '@/components/ui/sheet'
@@ -238,6 +239,8 @@ function DrawerForm({ wp, projectId }: { wp: WorkPackage; projectId: string }) {
         <PriorityChip priority={wp.priority} />
         <span className="ml-auto">v{wp.version}</span>
       </div>
+
+      <AiSummarySection wpId={wp.id} />
 
       <TimeTrackingSection wp={wp} />
 
