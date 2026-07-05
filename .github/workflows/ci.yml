@@ -75,8 +75,10 @@ jobs:
         run: npm run typecheck
       - name: Lint
         run: npm run lint
-      - name: Unit (node --test, 409 conflict pure function)
+      - name: Unit (node --test, pure functions)
         run: npm run test:unit
+      - name: Component (vitest + Testing Library)
+        run: npm run test:component
       - name: Build
         run: npm run build
       - name: Cache Playwright browsers
