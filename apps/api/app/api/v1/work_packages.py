@@ -30,6 +30,7 @@ from app.schemas.work_package import (
 from app.services.activity import record_created, record_field_changes
 from app.services.automation import extra_changes_for_status
 from app.services.notification import record_assignment
+from app.services.sanitize import sanitize_html
 
 logger = logging.getLogger("oneflow.work_packages")
 
@@ -152,7 +153,10 @@ async def create_work_package(
         ).scalar_one_or_none()
         if parent is None or parent.project_id != project_id:
             raise HTTPException(status_code=422, detail="parent must exist in the same project")
-    wp = WorkPackage(project_id=project_id, **body.model_dump())
+    data = body.model_dump()
+    # Rich-text description is sanitized at the write boundary (§ Tiptap XSS).
+    data["description"] = sanitize_html(data["description"])
+    wp = WorkPackage(project_id=project_id, **data)
     session.add(wp)
     await session.flush()  # assigns wp.id for the activity FK
     record_created(session, wp.id, user.id)
@@ -230,6 +234,9 @@ async def patch_work_package(
             raise HTTPException(status_code=422, detail=f"{field} cannot be null")
 
     changes = {f: getattr(body, f) for f in PATCH_DATA_FIELDS if f in provided}
+    if "description" in changes:
+        # Sanitize rich text on write (server is the authoritative XSS boundary).
+        changes["description"] = sanitize_html(changes["description"])
 
     # Empty body: no write occurs — conditional token compare only, no version bump (§6.2).
     if not changes:

@@ -5,7 +5,11 @@ behind a single function seam. A real LLM/RAG provider can replace
 `summarize_work_package` later without changing the endpoint or the feature flag.
 """
 
+import re
+
 from app.models.work_package import WorkPackage
+
+_TAG_RE = re.compile(r"<[^>]+>")
 
 _STATUS_KO = {
     "backlog": "백로그",
@@ -44,9 +48,11 @@ def summarize_work_package(wp: WorkPackage, comment_count: int, activity_count: 
         parts.append(f"예상 소요 시간은 {wp.estimated_hours}시간입니다.")
     parts.append(f"코멘트 {comment_count}건과 활동 이력 {activity_count}건이 기록되어 있습니다.")
     if wp.description:
-        desc = " ".join(wp.description.split())
-        if len(desc) > 200:
-            desc = desc[:200] + "…"
-        parts.append(f"설명 요약: {desc}")
+        # Description may be sanitized rich-text HTML — strip tags for the summary.
+        desc = " ".join(_TAG_RE.sub(" ", wp.description).split())
+        if desc:
+            if len(desc) > 200:
+                desc = desc[:200] + "…"
+            parts.append(f"설명 요약: {desc}")
 
     return " ".join(parts)

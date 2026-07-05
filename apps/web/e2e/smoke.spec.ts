@@ -641,6 +641,16 @@ test('AI 요약 플래그가 켜지면 드로어에서 요약을 생성한다', 
   await expect(drawer.getByText(/유형 '작업', 상태 '할 일'/)).toBeVisible()
 })
 
+test('드로어 설명이 리치 텍스트 에디터(툴바 포함)로 표시된다', async ({ page }) => {
+  await mockApi(page)
+  await page.goto(`/projects/${project.id}/work-packages`)
+  await page.getByRole('button', { name: '워크패키지 API 구현' }).click()
+  const drawer = page.getByRole('dialog')
+  // lazy-loaded Tiptap editor: toolbar button + editable region
+  await expect(drawer.getByRole('button', { name: '굵게' })).toBeVisible()
+  await expect(drawer.getByLabel('설명')).toBeVisible()
+})
+
 test('빈 목록은 빈 상태를 보여준다', async ({ page }) => {
   await page.route('**/api/v1/projects', (route) =>
     route.fulfill({ json: { items: [project], total: 1 } satisfies ProjectList }),
