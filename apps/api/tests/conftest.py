@@ -140,6 +140,27 @@ async def foreign_project(app, _clean_tables):
         return {"project_id": project.id, "wp_id": wp.id, "user_id": stranger.id}
 
 
+@pytest.fixture
+async def member_project(app, _clean_tables):
+    """A project owned by someone else where the dev user is a plain MEMBER.
+
+    For 403 (member-but-not-owner) and shared-project cross-user/foreign-resource
+    checks — distinct from `foreign_project`, where the dev user is not a member."""
+    async with app.state.sessionmaker() as session, session.begin():
+        owner = User(email="owner@oneflow.local", display_name="Owner")
+        project = Project(key="SHR", name="공유 프로젝트")
+        session.add_all([owner, project])
+        await session.flush()
+        dev = (await session.execute(select(User).where(User.email == DEV_USER_EMAIL))).scalar_one()
+        session.add_all(
+            [
+                ProjectMember(project_id=project.id, user_id=owner.id, role="owner"),
+                ProjectMember(project_id=project.id, user_id=dev.id, role="member"),
+            ]
+        )
+        return {"project_id": project.id, "owner_id": owner.id, "dev_id": dev.id}
+
+
 async def create_project(client, key="ONE", name="테스트 프로젝트") -> dict:
     res = await client.post("/api/v1/projects", json={"key": key, "name": name})
     assert res.status_code == 201, res.text

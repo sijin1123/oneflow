@@ -67,3 +67,31 @@ async def test_delete_missing_filter_404(client, project):
     assert (
         await client.delete(f"/api/v1/projects/{pid}/saved-filters/{missing}")
     ).status_code == 404
+
+
+async def test_saved_filters_are_per_user_within_a_shared_project(app, client, project):
+    """A member cannot see or delete another member's saved filters in the same
+    project (fable5 audit: cross-user saved-filter isolation was untested)."""
+    from sqlalchemy import select
+
+    from app.models import ProjectMember, SavedFilter, User
+
+    pid = project["id"]
+    async with app.state.sessionmaker() as session, session.begin():
+        other = User(email="mallory@oneflow.local", display_name="Mallory")
+        session.add(other)
+        await session.flush()
+        session.add(ProjectMember(project_id=pid, user_id=other.id, role="member"))
+        session.add(SavedFilter(project_id=pid, user_id=other.id, name="남의 필터", params={}))
+        await session.flush()
+        others_filter_id = (
+            await session.execute(select(SavedFilter.id).where(SavedFilter.user_id == other.id))
+        ).scalar_one()
+
+    # dev (the acting user) is also a member but must not see other's filter…
+    listed = (await client.get(f"/api/v1/projects/{pid}/saved-filters")).json()
+    assert all(f["name"] != "남의 필터" for f in listed["items"])
+    # …nor delete it (existence hiding → 404, never someone else's row).
+    assert (
+        await client.delete(f"/api/v1/projects/{pid}/saved-filters/{others_filter_id}")
+    ).status_code == 404
