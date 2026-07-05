@@ -52,8 +52,10 @@ export type WorkPackagePatch = Partial<{
   priority: WpPriority
   assignee_id: string | null
   parent_id: string | null
+  milestone_id: string | null
   start_date: string | null
   due_date: string | null
+  estimated_hours: number | null
 }> & { expected_version: number }
 
 export type Relation = {

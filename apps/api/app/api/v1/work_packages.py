@@ -102,6 +102,7 @@ async def list_work_packages(
     status: StatusFilter | None = Query(default=None),
     priority: PriorityFilter | None = Query(default=None),
     type: TypeFilter | None = Query(default=None),
+    assignee_id: uuid.UUID | None = Query(default=None),
     q: str | None = Query(default=None, max_length=255),
     sort: SortField = Query(default="created"),
     limit: int = Query(default=200, ge=1, le=500),
@@ -117,6 +118,8 @@ async def list_work_packages(
         stmt = stmt.where(WorkPackage.priority == priority)
     if type is not None:
         stmt = stmt.where(WorkPackage.type == type)
+    if assignee_id is not None:
+        stmt = stmt.where(WorkPackage.assignee_id == assignee_id)
     if q:
         # Case-insensitive substring; % and _ wildcards are autoescaped (§6.1).
         stmt = stmt.where(WorkPackage.subject.icontains(q, autoescape=True))

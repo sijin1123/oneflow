@@ -4,6 +4,7 @@ import { useParams, useSearchParams } from 'react-router-dom'
 import { EmptyState, ErrorState, ListSkeleton } from '@/components/shell/states'
 import { Button } from '@/components/ui/button'
 import { Select } from '@/components/ui/select'
+import { useMemberNames } from '@/features/members/api'
 
 import { DetailDrawer } from './DetailDrawer'
 import { Filters } from './Filters'
@@ -22,6 +23,7 @@ export function ListPage() {
     status: searchParams.get('status') ?? undefined,
     priority: searchParams.get('priority') ?? undefined,
     type: searchParams.get('type') ?? undefined,
+    assignee_id: searchParams.get('assignee_id') ?? undefined,
     q: searchParams.get('q') ?? undefined,
     sort: searchParams.get('sort') ?? undefined,
   }
@@ -40,6 +42,7 @@ export function ListPage() {
   const { data, isPending, isError, error, refetch } = useWorkPackages(projectId, filters)
   const exportCsv = useExportCsv(projectId)
   const statusLabel = useStatusLabels(projectId)
+  const memberName = useMemberNames(projectId)
 
   const openDrawer = (id: string) => {
     setSearchParams((prev) => {
@@ -95,6 +98,7 @@ export function ListPage() {
                 <th className="w-24 px-2 py-2 font-medium">타입</th>
                 <th className="w-28 px-2 py-2 font-medium">상태</th>
                 <th className="w-24 px-2 py-2 font-medium">우선순위</th>
+                <th className="w-28 px-2 py-2 font-medium">담당자</th>
                 <th className="w-28 px-2 py-2 font-medium">기한</th>
               </tr>
             </thead>
@@ -125,6 +129,9 @@ export function ListPage() {
                   </td>
                   <td className="px-2 py-2">
                     <PriorityChip priority={wp.priority} />
+                  </td>
+                  <td className="px-2 py-2 text-xs text-of-muted">
+                    {memberName(wp.assignee_id)}
                   </td>
                   <td className="px-2 py-2 text-xs text-of-muted">{wp.due_date ?? '—'}</td>
                 </tr>

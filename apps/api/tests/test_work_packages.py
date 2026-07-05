@@ -46,6 +46,18 @@ async def test_list_filters_and_envelope(client, project):
     assert bad.status_code == 422
 
 
+async def test_list_filter_by_assignee(client, project, dev_user):
+    # the dev user is the project owner/member; assign one WP to them, leave one open
+    mine = await create_wp(client, project["id"], subject="내 작업", assignee_id=str(dev_user.id))
+    await create_wp(client, project["id"], subject="미배정 작업")
+    res = await client.get(
+        f"/api/v1/projects/{project['id']}/work-packages",
+        params={"assignee_id": str(dev_user.id)},
+    )
+    body = res.json()
+    assert body["total"] == 1 and body["items"][0]["id"] == mine["id"]
+
+
 async def test_search_ilike_and_autoescape(client, project):
     await create_wp(client, project["id"], subject="100% 완료 보고")
     await create_wp(client, project["id"], subject="100x 완료 보고")
