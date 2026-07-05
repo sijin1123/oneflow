@@ -6,6 +6,7 @@ import { ErrorState, ListSkeleton } from '@/components/shell/states'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { ApiError } from '@/lib/api'
+import { confirmDestructive, useUnsavedChangesPrompt } from '@/lib/guards'
 
 import {
   conflictOf,
@@ -44,6 +45,16 @@ export function MeetingDetailPage() {
       setMinutes(mtg.minutes ?? '')
     }
   }, [mtg])
+
+  const dirty =
+    !!mtg &&
+    !update.isPending &&
+    !del.isPending &&
+    (title !== mtg.title ||
+      scheduledOn !== (mtg.scheduled_on ?? '') ||
+      agenda !== (mtg.agenda ?? '') ||
+      minutes !== (mtg.minutes ?? ''))
+  useUnsavedChangesPrompt(dirty, '저장되지 않은 변경이 있습니다. 나가시겠습니까?')
 
   if (isPending) return <ListSkeleton />
   if (isError) return <ErrorState error={error} onRetry={() => refetch()} />
@@ -99,11 +110,12 @@ export function MeetingDetailPage() {
           type="button"
           aria-label="회의 삭제"
           className="rounded-of p-1.5 text-of-muted hover:bg-of-surface-2 hover:text-of-danger"
-          onClick={() =>
+          onClick={() => {
+            if (!confirmDestructive('이 회의를 삭제할까요? 되돌릴 수 없습니다.')) return
             del.mutate(mtg.id, {
               onSuccess: () => navigate(`/projects/${projectId}/meetings`),
             })
-          }
+          }}
         >
           <Trash2 size={15} />
         </button>

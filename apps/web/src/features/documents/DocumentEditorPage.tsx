@@ -6,6 +6,7 @@ import { ErrorState, ListSkeleton } from '@/components/shell/states'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { ApiError } from '@/lib/api'
+import { confirmDestructive, useUnsavedChangesPrompt } from '@/lib/guards'
 
 import { conflictOf, useDeleteDocument, useDocument, useUpdateDocument } from './api'
 
@@ -32,6 +33,14 @@ export function DocumentEditorPage() {
     }
   }, [doc])
 
+  // Warn before navigating away with an unsaved draft (save-on-click editor).
+  const dirty =
+    !!doc &&
+    !update.isPending &&
+    !del.isPending &&
+    (title !== doc.title || body !== (doc.body ?? ''))
+  useUnsavedChangesPrompt(dirty, '저장되지 않은 변경이 있습니다. 나가시겠습니까?')
+
   if (isPending) return <ListSkeleton />
   if (isError) return <ErrorState error={error} onRetry={() => refetch()} />
 
@@ -51,6 +60,7 @@ export function DocumentEditorPage() {
   }
 
   const remove = () => {
+    if (!confirmDestructive('이 문서를 삭제할까요? 되돌릴 수 없습니다.')) return
     del.mutate(doc.id, {
       onSuccess: () => navigate(`/projects/${projectId}/documents`),
     })

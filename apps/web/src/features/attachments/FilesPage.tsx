@@ -6,8 +6,13 @@ import { EmptyState, ErrorState, ListSkeleton } from '@/components/shell/states'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { ApiError } from '@/lib/api'
+import { confirmDestructive } from '@/lib/guards'
 
 import { useAttachments, useCreateAttachment, useDeleteAttachment } from './api'
+
+// Client-side scheme allowlist mirrors the server's http(s)-only rule, so a
+// javascript:/data: link is rejected before it can be stored and rendered.
+const HTTP_URL_RE = /^https?:\/\/.+/i
 
 function fmtSize(bytes: number | null): string {
   if (bytes === null) return ''
@@ -26,9 +31,13 @@ export function FilesPage() {
   const [url, setUrl] = useState('')
   const err = create.error instanceof ApiError ? create.error.message : null
 
+  const urlTrimmed = url.trim()
+  const urlValid = urlTrimmed === '' || HTTP_URL_RE.test(urlTrimmed)
+
   const add = () => {
+    if (!filename.trim() || !urlValid || urlTrimmed === '' || create.isPending) return
     create.mutate(
-      { filename: filename.trim(), url: url.trim() },
+      { filename: filename.trim(), url: urlTrimmed },
       {
         onSuccess: () => {
           setFilename('')
@@ -36,6 +45,10 @@ export function FilesPage() {
         },
       },
     )
+  }
+
+  const remove = (id: string, name: string) => {
+    if (confirmDestructive(`'${name}' 파일 링크를 삭제할까요?`)) del.mutate(id)
   }
 
   return (
@@ -60,16 +73,20 @@ export function FilesPage() {
             onChange={(e) => setUrl(e.target.value)}
             placeholder="https://…"
             aria-label="파일 URL"
+            aria-invalid={!urlValid}
             className="min-w-48 flex-[2]"
           />
           <Button
             size="sm"
-            disabled={!filename.trim() || !url.trim() || create.isPending}
+            disabled={!filename.trim() || urlTrimmed === '' || !urlValid || create.isPending}
             onClick={add}
           >
             추가
           </Button>
         </div>
+        {!urlValid ? (
+          <p className="text-xs text-of-danger">URL은 http:// 또는 https:// 로 시작해야 합니다.</p>
+        ) : null}
         {err ? <p className="text-xs text-of-danger">{err}</p> : null}
       </div>
 
@@ -100,7 +117,7 @@ export function FilesPage() {
                 type="button"
                 aria-label={`${att.filename} 삭제`}
                 className="shrink-0 rounded-of p-1 text-of-muted hover:bg-of-surface-2 hover:text-of-danger"
-                onClick={() => del.mutate(att.id)}
+                onClick={() => remove(att.id, att.filename)}
               >
                 <Trash2 size={14} />
               </button>
