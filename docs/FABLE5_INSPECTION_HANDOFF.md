@@ -5,7 +5,7 @@
 
 ## 0. 이 문서의 성격 (반드시 먼저 읽기)
 
-- OneFlow 그린필드 목표(`docs/goals/ONEFLOW_GREENFIELD_GOAL.md`)의 **모든 개발 항목**(Phase 1/2/3 + Phase 1 후속 + 후속 협업 모듈)이 Opus 4.8에 의해 구현·검증·머지 완료되었다(개발 PR #1~#26, 핸드오프/검증 문서 PR #27~#28).
+- OneFlow 그린필드 목표(`docs/goals/ONEFLOW_GREENFIELD_GOAL.md`)의 **모든 개발 항목**(Phase 1/2/3 + Phase 1 후속 + 후속 협업 모듈)이 Opus 4.8에 의해 구현·검증·머지 완료되었다(개발 PR #1~#26, 이후 핸드오프/검증/정책 문서 PR 포함). 정확한 baseline은 검사 착수 시 `main` HEAD와 PR 목록으로 재측정한다.
 - 목표 규약상 **전수 검사는 실제 fable5 세션에서만** 수행한다. Opus 4.8을 포함한 다른 모델은 검사를 수행·흉내 내지 않는다.
 - 전수 검사는 **릴리스 차단(release-blocking) 마무리 패스**이다. fable5가 전체 코드베이스를 검사하고, 명시 후속 2개를 제외한 부족분을 필수 지적으로 분류해 수정·재검증하기 전에는 목표를 최종 완료로 보고하지 않는다.
 - **시작 조건**: (1) 사용자가 `Phase 3 개발과 검증/머지가 완료되었습니다. fable5 전수 검사를 시작할까요?`에 명시 승인, (2) active model = fable5 확인. 둘 중 하나라도 미충족 시 검사 착수 금지.
@@ -16,7 +16,7 @@
 |---|---|
 | Repo | `https://github.com/sijin1123/oneflow.git` |
 | 기본 브랜치 | `main` (검사 착수 시점 HEAD 재측정 필수) |
-| 누적 PR | #1 ~ #28 (전부 CI green 머지; #1~#26 개발, #27 fable5 핸드오프, #28 검증 문서) |
+| 누적 PR | 개발 PR #1~#26 + 이후 핸드오프/검증/정책 문서 PR(검사 착수 시 `main` HEAD와 PR 목록 재측정 필수) |
 | 마이그레이션 | `alembic/versions/0001` ~ `0013` (13개) |
 | 백엔드 | FastAPI + SQLAlchemy 2 async + asyncpg + Alembic + Pydantic v2 (uv, Python 3.13) |
 | 프론트 | React 19 + Vite 8 + React Router v7 + TanStack Query v5 + Tailwind v4 + Tiptap + oxlint (Node 24) |
@@ -117,7 +117,7 @@ cd ../.. && bash scripts/check_cleanroom.sh
 ## 6. fable5 세션 착수 프롬프트 (복사용)
 
 ```text
-당신은 fable5 세션입니다. OneFlow 그린필드 목표(docs/goals/ONEFLOW_GREENFIELD_GOAL.md)의 전 개발 항목이 Opus 4.8에 의해 구현·머지 완료되었습니다(main, 개발 PR #1~#26, 문서/검증 PR #27~#28, 마이그레이션 0001~0013). 이제 릴리스 차단 전수 검사와 부족분 마무리 구현 패스를 수행하세요.
+당신은 fable5 세션입니다. OneFlow 그린필드 목표(docs/goals/ONEFLOW_GREENFIELD_GOAL.md)의 전 개발 항목이 Opus 4.8에 의해 구현·머지 완료되었습니다(main, 개발 PR #1~#26, 이후 문서/검증/정책 PR, 마이그레이션 0001~0013). 이제 릴리스 차단 전수 검사와 부족분 마무리 구현 패스를 수행하세요.
 
 0. 먼저 active model이 fable5임을 확인하고, main HEAD·CI·PR 상태를 재측정하세요. fable5가 아니면 검사를 수행하지 말고 그 사실을 보고하세요.
 1. docs/FABLE5_INSPECTION_HANDOFF.md의 §2 전 영역(backend, frontend, DB/migrations, auth/permissions, workflow, timeline/Gantt, time/cost, dashboard/report, settings, API contract, tests, CI, env/secrets, security, accessibility, performance, clean-room/license, docs, worklog)을 검사하세요.
