@@ -6,34 +6,36 @@ import { formatDateTime } from '@/lib/datetime'
 
 import { FIELD_LABELS } from './activityLabels'
 import { useActivities, useComments, useCreateComment } from './api'
-import { PRIORITY_LABELS, STATUS_LABELS, TYPE_LABELS } from './types'
+import { PRIORITY_LABELS, TYPE_LABELS } from './types'
 import type { Activity, Comment } from './types'
-
-function labelValue(field: string | null, value: string | null): string {
-  if (value === null) return '없음'
-  if (field === 'status') return STATUS_LABELS[value as keyof typeof STATUS_LABELS] ?? value
-  if (field === 'priority') return PRIORITY_LABELS[value as keyof typeof PRIORITY_LABELS] ?? value
-  if (field === 'type') return TYPE_LABELS[value as keyof typeof TYPE_LABELS] ?? value
-  return value
-}
-
-function activityText(a: Activity): string {
-  if (a.action === 'created') return '작업을 생성했습니다'
-  if (a.action === 'commented') return '댓글을 남겼습니다'
-  const field = a.field ? (FIELD_LABELS[a.field] ?? a.field) : '필드'
-  return `${field}: ${labelValue(a.field, a.old_value)} → ${labelValue(a.field, a.new_value)}`
-}
+import { useStatusLabels } from './useStatusLabels'
 
 /** Merge activities and comments into one chronological feed. */
 type FeedItem =
   | { kind: 'activity'; at: string; activity: Activity }
   | { kind: 'comment'; at: string; comment: Comment }
 
-export function HistorySection({ wpId }: { wpId: string }) {
+export function HistorySection({ wpId, projectId }: { wpId: string; projectId: string }) {
   const activities = useActivities(wpId)
   const comments = useComments(wpId)
   const createComment = useCreateComment(wpId)
+  const statusLabel = useStatusLabels(projectId)
   const [draft, setDraft] = useState('')
+
+  const labelValue = (field: string | null, value: string | null): string => {
+    if (value === null) return '없음'
+    if (field === 'status') return statusLabel(value)
+    if (field === 'priority') return PRIORITY_LABELS[value as keyof typeof PRIORITY_LABELS] ?? value
+    if (field === 'type') return TYPE_LABELS[value as keyof typeof TYPE_LABELS] ?? value
+    return value
+  }
+
+  const activityText = (a: Activity): string => {
+    if (a.action === 'created') return '작업을 생성했습니다'
+    if (a.action === 'commented') return '댓글을 남겼습니다'
+    const field = a.field ? (FIELD_LABELS[a.field] ?? a.field) : '필드'
+    return `${field}: ${labelValue(a.field, a.old_value)} → ${labelValue(a.field, a.new_value)}`
+  }
 
   const feed: FeedItem[] = [
     ...(activities.data?.items ?? []).map(

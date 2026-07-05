@@ -22,11 +22,11 @@ const STATUS_DOT: Record<WpStatus, string> = {
   cancelled: 'bg-gray-300',
 }
 
-export function StatusChip({ status }: { status: WpStatus }) {
+export function StatusChip({ status, label }: { status: WpStatus; label?: string }) {
   return (
     <Badge variant="neutral" className="whitespace-nowrap">
       <span className={cn('h-1.5 w-1.5 rounded-full', STATUS_DOT[status])} aria-hidden />
-      {STATUS_LABELS[status]}
+      {label ?? STATUS_LABELS[status]}
     </Badge>
   )
 }

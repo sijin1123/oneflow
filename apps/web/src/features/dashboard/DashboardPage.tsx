@@ -2,8 +2,9 @@ import { useParams } from 'react-router-dom'
 
 import { ErrorState, ListSkeleton } from '@/components/shell/states'
 import { cn } from '@/lib/utils'
-import { PRIORITY_LABELS, STATUS_LABELS } from '@/features/work-packages/types'
+import { PRIORITY_LABELS, WP_STATUSES } from '@/features/work-packages/types'
 import type { WpPriority, WpStatus } from '@/features/work-packages/types'
+import { useStatusLabels } from '@/features/work-packages/useStatusLabels'
 
 import { RecentActivity } from './RecentActivity'
 import { useDashboard, type Bucket } from './api'
@@ -74,6 +75,12 @@ function Distribution({
 export function DashboardPage() {
   const { projectId } = useParams() as { projectId: string }
   const { data, isPending, isError, error, refetch } = useDashboard(projectId)
+  const statusLabel = useStatusLabels(projectId)
+  const statusLabels = Object.fromEntries(WP_STATUSES.map((s) => [s, statusLabel(s)])) as Record<
+    WpStatus,
+    string
+  >
+
 
   if (isPending) return <ListSkeleton />
   if (isError) return <ErrorState error={error} onRetry={() => refetch()} />
@@ -142,7 +149,7 @@ export function DashboardPage() {
           title="상태별"
           buckets={data.status_counts}
           colors={STATUS_COLOR}
-          labels={STATUS_LABELS as Record<WpStatus, string>}
+          labels={statusLabels}
         />
         <Distribution
           title="우선순위별"

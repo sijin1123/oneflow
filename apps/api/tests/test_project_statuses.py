@@ -44,6 +44,39 @@ async def test_owner_can_rename_and_reorder(client, project):
     assert qa["name"] == "QA 검수"
 
 
+async def test_atomic_reorder_rewrites_all_positions(client, project):
+    pid = project["id"]
+    items = (await client.get(f"/api/v1/projects/{pid}/statuses")).json()["items"]
+    # reverse the order and PUT the full id list
+    reversed_ids = [s["id"] for s in reversed(items)]
+    res = await client.put(
+        f"/api/v1/projects/{pid}/statuses/order", json={"ordered_ids": reversed_ids}
+    )
+    assert res.status_code == 200
+    out = res.json()["items"]
+    assert [s["key"] for s in out] == list(reversed([s["key"] for s in items]))
+    # positions are a clean 0..n-1 with no duplicates
+    assert [s["position"] for s in out] == list(range(len(out)))
+
+
+async def test_reorder_rejects_wrong_id_set(client, project):
+    pid = project["id"]
+    items = (await client.get(f"/api/v1/projects/{pid}/statuses")).json()["items"]
+    partial = [s["id"] for s in items[:3]]  # not the full set
+    res = await client.put(f"/api/v1/projects/{pid}/statuses/order", json={"ordered_ids": partial})
+    assert res.status_code == 422
+
+
+async def test_reorder_requires_owner(client, member_project):
+    pid = member_project["project_id"]
+    # dev is a member, not owner; needs a valid id set but must be refused first
+    res = await client.put(
+        f"/api/v1/projects/{pid}/statuses/order",
+        json={"ordered_ids": [str(uuid.uuid4())]},
+    )
+    assert res.status_code == 403
+
+
 async def test_rename_requires_owner_role(client, app, project):
     pid = project["id"]
     statuses = (await client.get(f"/api/v1/projects/{pid}/statuses")).json()["items"]

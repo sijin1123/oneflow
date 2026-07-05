@@ -13,6 +13,7 @@ import { NewWorkPackageInline } from './NewWorkPackageInline'
 import { PriorityChip, StatusChip, TypeChip } from './chips'
 import { useWorkPackages } from './api'
 import { useExportCsv } from './csv'
+import { useStatusLabels } from './useStatusLabels'
 
 export function ListPage() {
   const { projectId } = useParams() as { projectId: string }
@@ -38,6 +39,7 @@ export function ListPage() {
   }
   const { data, isPending, isError, error, refetch } = useWorkPackages(projectId, filters)
   const exportCsv = useExportCsv(projectId)
+  const statusLabel = useStatusLabels(projectId)
 
   const openDrawer = (id: string) => {
     setSearchParams((prev) => {
@@ -50,7 +52,7 @@ export function ListPage() {
   return (
     <div className="flex h-full flex-col">
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-of-border px-4 py-2">
-        <Filters />
+        <Filters projectId={projectId} />
         <div className="flex items-center gap-2">
           {data ? <span className="text-xs text-of-muted">{data.total}건</span> : null}
           <Select
@@ -119,7 +121,7 @@ export function ListPage() {
                     <TypeChip type={wp.type} />
                   </td>
                   <td className="px-2 py-2">
-                    <StatusChip status={wp.status} />
+                    <StatusChip status={wp.status} label={statusLabel(wp.status)} />
                   </td>
                   <td className="px-2 py-2">
                     <PriorityChip priority={wp.priority} />

@@ -18,6 +18,23 @@ class ProjectStatusList(BaseModel):
     total: int
 
 
+class ProjectStatusReorder(BaseModel):
+    """Atomic reorder: the full list of status ids in the desired order. Applying
+    all positions in one transaction avoids the corrupt duplicate-position state a
+    two-independent-PATCH swap could leave behind (fable5 audit)."""
+
+    ordered_ids: list[uuid.UUID]
+
+    @field_validator("ordered_ids")
+    @classmethod
+    def _non_empty(cls, v: list[uuid.UUID]) -> list[uuid.UUID]:
+        if not v:
+            raise ValueError("ordered_ids must not be empty")
+        if len(v) != len(set(v)):
+            raise ValueError("ordered_ids must not contain duplicates")
+        return v
+
+
 class ProjectStatusUpdate(BaseModel):
     """Rename and/or reorder a status. Keys are fixed (they identify stored work
     package statuses), so only the label and position are editable."""

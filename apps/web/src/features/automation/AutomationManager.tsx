@@ -5,12 +5,12 @@ import { Button } from '@/components/ui/button'
 import { Select } from '@/components/ui/select'
 import {
   PRIORITY_LABELS,
-  STATUS_LABELS,
   WP_PRIORITIES,
   WP_STATUSES,
   type WpPriority,
   type WpStatus,
 } from '@/features/work-packages/types'
+import { useStatusLabels } from '@/features/work-packages/useStatusLabels'
 
 import {
   type AutomationRule,
@@ -20,12 +20,6 @@ import {
   useSetAutomationRuleActive,
 } from './api'
 
-function ruleText(rule: AutomationRule): string {
-  const status = STATUS_LABELS[rule.trigger_value as WpStatus] ?? rule.trigger_value
-  const priority = PRIORITY_LABELS[rule.action_value as WpPriority] ?? rule.action_value
-  return `상태가 '${status}'(으)로 바뀌면 → 우선순위를 '${priority}'(으)로 설정`
-}
-
 /* Automation rules (PLAN §3 Phase 3 자동화): owners define status→priority rules
    the backend applies inside the work-package PATCH transaction. */
 export function AutomationManager({ projectId, isOwner }: { projectId: string; isOwner: boolean }) {
@@ -33,13 +27,20 @@ export function AutomationManager({ projectId, isOwner }: { projectId: string; i
   const create = useCreateAutomationRule(projectId)
   const setActive = useSetAutomationRuleActive(projectId)
   const del = useDeleteAutomationRule(projectId)
+  const statusLabel = useStatusLabels(projectId)
+
+  const ruleText = (rule: AutomationRule): string => {
+    const status = statusLabel(rule.trigger_value)
+    const priority = PRIORITY_LABELS[rule.action_value as WpPriority] ?? rule.action_value
+    return `상태가 '${status}'(으)로 바뀌면 → 우선순위를 '${priority}'(으)로 설정`
+  }
 
   const [triggerValue, setTriggerValue] = useState<WpStatus>('in_review')
   const [actionValue, setActionValue] = useState<WpPriority>('high')
 
   const add = () => {
     create.mutate({
-      name: `${STATUS_LABELS[triggerValue]} → ${PRIORITY_LABELS[actionValue]}`,
+      name: `${statusLabel(triggerValue)} → ${PRIORITY_LABELS[actionValue]}`,
       trigger_type: 'status_changed_to',
       trigger_value: triggerValue,
       action_type: 'set_priority',
@@ -110,7 +111,7 @@ export function AutomationManager({ projectId, isOwner }: { projectId: string; i
           >
             {WP_STATUSES.map((s) => (
               <option key={s} value={s}>
-                {STATUS_LABELS[s]}
+                {statusLabel(s)}
               </option>
             ))}
           </Select>
