@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom'
 
 import { Button } from '@/components/ui/button'
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet'
+import { formatDateTime } from '@/lib/datetime'
 import { cn } from '@/lib/utils'
 
 import {
@@ -18,12 +19,6 @@ function message(n: Notification): string {
   const subject = n.work_package_subject ?? '삭제된 작업'
   if (n.kind === 'assigned') return `${who}님이 '${subject}' 작업에 회원님을 배정했습니다.`
   return `${who}: ${subject}`
-}
-
-function formatTime(iso: string): string {
-  // created_at is a full timestamp (not a date-only field), so localized
-  // formatting here is fine — the §6.1 no-JS-Date rule targets DATE fields.
-  return new Date(iso).toLocaleString('ko-KR', { dateStyle: 'short', timeStyle: 'short' })
 }
 
 export function NotificationBell() {
@@ -95,7 +90,7 @@ export function NotificationBell() {
                     />
                     <div className="min-w-0">
                       <p className="break-words">{message(n)}</p>
-                      <p className="mt-0.5 text-xs text-of-muted">{formatTime(n.created_at)}</p>
+                      <p className="mt-0.5 text-xs text-of-muted">{formatDateTime(n.created_at)}</p>
                     </div>
                   </div>
                 </button>
