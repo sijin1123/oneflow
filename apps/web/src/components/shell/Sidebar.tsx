@@ -5,6 +5,7 @@ import {
   LayoutDashboard,
   List,
   ListTree,
+  Search,
   Settings,
   SquareKanban,
 } from 'lucide-react'
@@ -39,6 +40,9 @@ export function Sidebar() {
           </p>
           <NavLink to="/projects" end className={navLinkClass}>
             <FolderKanban /> 프로젝트
+          </NavLink>
+          <NavLink to="/search" className={navLinkClass}>
+            <Search /> 검색
           </NavLink>
         </div>
 
