@@ -8,6 +8,8 @@ import { AiSummarySection } from '@/features/ai/AiSummarySection'
 import { useMilestones } from '@/features/milestones/api'
 import { Select } from '@/components/ui/select'
 import { Sheet, SheetContent } from '@/components/ui/sheet'
+import { ApiError } from '@/lib/api'
+import { decideOnPatchError } from '@/lib/conflict'
 
 // Tiptap is heavy — load it only when a drawer actually renders (code-split).
 const RichTextEditor = lazy(() =>
@@ -94,8 +96,23 @@ function DrawerForm({ wp, projectId }: { wp: WorkPackage; projectId: string }) {
     })
   }
 
+  // A failed save must never be silent: 409 reloads the latest server values and
+  // says so; any other error (422/403/5xx/network) shows its message while the
+  // typed value stays on screen so nothing is lost.
+  const saveError =
+    patch.isError && patch.error instanceof ApiError
+      ? patch.error.status === 409
+        ? decideOnPatchError(409).message
+        : patch.error.message
+      : null
+
   return (
     <div className="space-y-5">
+      {saveError ? (
+        <p role="alert" className="rounded-of bg-of-danger/10 px-3 py-2 text-xs text-of-danger">
+          저장하지 못했습니다: {saveError}
+        </p>
+      ) : null}
       <div className="space-y-1.5">
         <label htmlFor="wp-subject" className="text-xs font-medium text-of-muted">
           제목
@@ -103,6 +120,7 @@ function DrawerForm({ wp, projectId }: { wp: WorkPackage; projectId: string }) {
         <Input
           id="wp-subject"
           value={subject}
+          disabled={patch.isPending}
           onChange={(e) => setSubject(e.target.value)}
           onBlur={() => {
             const trimmed = subject.trim()
@@ -158,6 +176,7 @@ function DrawerForm({ wp, projectId }: { wp: WorkPackage; projectId: string }) {
             id="wp-start"
             type="date"
             value={startDate}
+            disabled={patch.isPending}
             onChange={(e) => setStartDate(e.target.value)}
             onBlur={() => {
               const v = startDate || null
@@ -173,6 +192,7 @@ function DrawerForm({ wp, projectId }: { wp: WorkPackage; projectId: string }) {
             id="wp-due"
             type="date"
             value={dueDate}
+            disabled={patch.isPending}
             onChange={(e) => setDueDate(e.target.value)}
             onBlur={() => {
               const v = dueDate || null
@@ -193,6 +213,7 @@ function DrawerForm({ wp, projectId }: { wp: WorkPackage; projectId: string }) {
             step="0.5"
             min="0"
             value={estimate}
+            disabled={patch.isPending}
             onChange={(e) => setEstimate(e.target.value)}
             onBlur={() => {
               const v = estimate.trim() === '' ? null : Number(estimate)

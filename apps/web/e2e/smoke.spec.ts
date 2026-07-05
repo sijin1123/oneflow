@@ -218,22 +218,14 @@ test('드로어에서 활동 이력을 보여주고 댓글을 추가한다', asy
   expect((req.postDataJSON() as { body: string }).body).toBe('검토 완료했습니다')
 })
 
-test('409 충돌 시 알림 후 최신 데이터로 재로드한다', async ({ page }) => {
+test('409 충돌 시 드로어 내 경고를 보여주고 최신 데이터로 재로드한다', async ({ page }) => {
   await mockApi(page, { conflictOnPatch: true })
-  const dialogPromise = new Promise<string>((resolve) => {
-    page.once('dialog', (dialog) => {
-      resolve(dialog.message())
-      void dialog.accept()
-    })
-  })
   await page.goto(`/projects/${project.id}/work-packages`)
   await page.getByRole('button', { name: '워크패키지 API 구현' }).click()
-  await page
-    .getByRole('dialog')
-    .getByLabel('상태', { exact: true })
-    .selectOption('in_progress')
-  const message = await dialogPromise
-  expect(message).toContain('먼저 수정했습니다')
+  const drawer = page.getByRole('dialog')
+  await drawer.getByLabel('상태', { exact: true }).selectOption('in_progress')
+  // The failure is surfaced inline (role="alert"), not via a blocking window.alert.
+  await expect(drawer.getByRole('alert')).toContainText('먼저 수정했습니다')
 })
 
 test('대시보드가 집계 타일과 분포를 보여준다', async ({ page }) => {

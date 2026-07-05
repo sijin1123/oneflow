@@ -66,14 +66,18 @@ export function useUpdateDocument(projectId: string) {
       queryClient.setQueryData(['document', doc.id], doc)
       void queryClient.invalidateQueries({ queryKey: ['documents', projectId] })
     },
-    onError: (error) => {
-      // On a 409 the server returns the current doc — refresh so the editor reloads.
-      if (error instanceof ApiError && error.status === 409) {
-        const current = (error.payload as DocumentConflict | null)?.current
-        if (current) queryClient.setQueryData(['document', current.id], current)
-      }
-    },
+    // On a 409 we deliberately do NOT overwrite the cached document: that would
+    // trip the editor's resync effect and destroy the user's unsaved draft. The
+    // page reads the conflict's current version from update.error and lets the
+    // user retry the save (overwriting the server) without losing their edits.
   })
+}
+
+export function conflictOf(error: unknown): DocumentConflict | null {
+  if (error instanceof ApiError && error.status === 409) {
+    return (error.payload as DocumentConflict | null) ?? null
+  }
+  return null
 }
 
 export function useDeleteDocument(projectId: string) {
