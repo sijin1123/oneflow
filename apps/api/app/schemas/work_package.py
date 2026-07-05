@@ -154,6 +154,20 @@ class WorkPackageList(BaseModel):
     total: int
 
 
+class RelationCreate(BaseModel):
+    target_id: uuid.UUID
+    relation_type: str
+
+    @field_validator("relation_type")
+    @classmethod
+    def _rt(cls, v: str) -> str:
+        from app.models.relation import RELATION_TYPES
+
+        if v not in RELATION_TYPES:
+            raise ValueError(f"relation_type must be one of {RELATION_TYPES}")
+        return v
+
+
 class RelationRead(BaseModel):
     id: uuid.UUID
     source_id: uuid.UUID

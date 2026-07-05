@@ -71,3 +71,73 @@ async def test_cross_project_relation_insert_rejected(app, rel_setup, foreign_pr
 async def test_nonmember_relations_hidden(client, foreign_project):
     res = await client.get(f"/api/v1/work-packages/{foreign_project['wp_id']}/relations")
     assert res.status_code == 404  # membership hiding (same-project relation, non-member caller)
+
+
+async def test_relation_create_and_delete(client):
+    project = await create_project(client, key="RW", name="관계 쓰기")
+    a = await create_wp(client, project["id"], subject="A")
+    b = await create_wp(client, project["id"], subject="B")
+
+    res = await client.post(
+        f"/api/v1/work-packages/{a['id']}/relations",
+        json={"target_id": b["id"], "relation_type": "blocks"},
+    )
+    assert res.status_code == 201
+    rel = res.json()
+    assert rel["direction"] == "outgoing" and rel["relation_type"] == "blocks"
+
+    # visible from both endpoints
+    assert (await client.get(f"/api/v1/work-packages/{a['id']}/relations")).json()["total"] == 1
+    b_rels = (await client.get(f"/api/v1/work-packages/{b['id']}/relations")).json()
+    assert b_rels["items"][0]["direction"] == "incoming"
+
+    # delete from the target's view too (relation touches b)
+    deleted = await client.delete(f"/api/v1/work-packages/{b['id']}/relations/{rel['id']}")
+    assert deleted.status_code == 204
+    assert (await client.get(f"/api/v1/work-packages/{a['id']}/relations")).json()["total"] == 0
+
+
+async def test_relation_create_guards(client, foreign_project):
+    project = await create_project(client, key="RG", name="관계 가드")
+    a = await create_wp(client, project["id"], subject="A")
+
+    # self relation → 422
+    self_rel = await client.post(
+        f"/api/v1/work-packages/{a['id']}/relations",
+        json={"target_id": a["id"], "relation_type": "relates"},
+    )
+    assert self_rel.status_code == 422
+
+    # cross-project target → 422
+    cross = await client.post(
+        f"/api/v1/work-packages/{a['id']}/relations",
+        json={"target_id": str(foreign_project["wp_id"]), "relation_type": "relates"},
+    )
+    assert cross.status_code == 422
+
+    # invalid relation_type → 422
+    bad = await client.post(
+        f"/api/v1/work-packages/{a['id']}/relations",
+        json={"target_id": a["id"], "relation_type": "supersedes"},
+    )
+    assert bad.status_code == 422
+
+
+async def test_relation_duplicate_409(client):
+    project = await create_project(client, key="RD", name="관계 중복")
+    a = await create_wp(client, project["id"], subject="A")
+    b = await create_wp(client, project["id"], subject="B")
+    payload = {"target_id": b["id"], "relation_type": "relates"}
+    assert (
+        await client.post(f"/api/v1/work-packages/{a['id']}/relations", json=payload)
+    ).status_code == 201
+    dup = await client.post(f"/api/v1/work-packages/{a['id']}/relations", json=payload)
+    assert dup.status_code == 409
+
+
+async def test_relation_write_nonmember_hidden(client, foreign_project):
+    res = await client.post(
+        f"/api/v1/work-packages/{foreign_project['wp_id']}/relations",
+        json={"target_id": str(foreign_project["wp_id"]), "relation_type": "relates"},
+    )
+    assert res.status_code == 404
