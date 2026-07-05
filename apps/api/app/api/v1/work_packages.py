@@ -28,6 +28,7 @@ from app.schemas.work_package import (
     WorkPackageRead,
 )
 from app.services.activity import record_created, record_field_changes
+from app.services.automation import extra_changes_for_status
 from app.services.notification import record_assignment
 
 logger = logging.getLogger("oneflow.work_packages")
@@ -244,6 +245,15 @@ async def patch_work_package(
         await _require_assignee_member(session, wp.project_id, changes["assignee_id"])
     if changes.get("milestone_id") is not None:
         await _require_milestone_in_project(session, wp.project_id, changes["milestone_id"])
+
+    # Automation (§3 Phase 3): a real status change can imply further field writes
+    # from active project rules. Single-pass and only fills fields the user did not
+    # set explicitly, so it never overrides user input or re-triggers itself.
+    if changes.get("status") is not None and changes["status"] != wp.status:
+        for field, value in (
+            await extra_changes_for_status(session, wp.project_id, changes["status"])
+        ).items():
+            changes.setdefault(field, value)
 
     # Capture pre-update values for the activity log BEFORE the UPDATE (the
     # populate_existing UPDATE below refreshes the identity-mapped wp in place).
