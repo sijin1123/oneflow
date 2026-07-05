@@ -2,12 +2,12 @@ import logging
 import uuid
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
 from sqlalchemy import func, select, text
 from sqlalchemy import update as sa_update
-from sqlalchemy.exc import DBAPIError
+from sqlalchemy.exc import DBAPIError, IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import get_current_user
@@ -18,6 +18,7 @@ from app.models.user import User
 from app.models.work_package import WorkPackage
 from app.schemas.work_package import (
     ConflictResponse,
+    RelationCreate,
     RelationList,
     RelationRead,
     WorkPackageCreate,
@@ -333,3 +334,66 @@ async def list_relations(
         for r in rows
     ]
     return RelationList(items=items, total=len(items))
+
+
+@router.post("/work-packages/{wp_id}/relations", response_model=RelationRead, status_code=201)
+async def create_relation(
+    wp_id: uuid.UUID,
+    body: RelationCreate,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+) -> RelationRead:
+    wp = await _get_wp_scoped(session, wp_id, user)
+    if body.target_id == wp_id:
+        raise HTTPException(status_code=422, detail="a work package cannot relate to itself")
+    target = (
+        await session.execute(select(WorkPackage).where(WorkPackage.id == body.target_id))
+    ).scalar_one_or_none()
+    if target is None or target.project_id != wp.project_id:
+        raise HTTPException(status_code=422, detail="target must exist in the same project")
+    relation = WorkPackageRelation(
+        project_id=wp.project_id,
+        source_id=wp_id,
+        target_id=body.target_id,
+        relation_type=body.relation_type,
+    )
+    try:
+        session.add(relation)
+        await session.flush()
+        await session.commit()
+    except IntegrityError as exc:
+        await session.rollback()
+        # unique(source, target, type) violation
+        raise HTTPException(status_code=409, detail="relation already exists") from exc
+    return RelationRead(
+        id=relation.id,
+        source_id=relation.source_id,
+        target_id=relation.target_id,
+        relation_type=relation.relation_type,
+        direction="outgoing",
+    )
+
+
+@router.delete("/work-packages/{wp_id}/relations/{relation_id}", status_code=204)
+async def delete_relation(
+    wp_id: uuid.UUID,
+    relation_id: uuid.UUID,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+) -> Response:
+    wp = await _get_wp_scoped(session, wp_id, user)
+    relation = (
+        await session.execute(
+            select(WorkPackageRelation).where(WorkPackageRelation.id == relation_id)
+        )
+    ).scalar_one_or_none()
+    # The relation must touch this work package (its view) and be same-project.
+    if (
+        relation is None
+        or relation.project_id != wp.project_id
+        or wp_id not in (relation.source_id, relation.target_id)
+    ):
+        raise HTTPException(status_code=404, detail="not found")
+    await session.delete(relation)
+    await session.commit()
+    return Response(status_code=204)

@@ -157,8 +157,26 @@ export interface paths {
         /** List Relations */
         get: operations["list_relations_api_v1_work_packages__wp_id__relations_get"];
         put?: never;
-        post?: never;
+        /** Create Relation */
+        post: operations["create_relation_api_v1_work_packages__wp_id__relations_post"];
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/work-packages/{wp_id}/relations/{relation_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Relation */
+        delete: operations["delete_relation_api_v1_work_packages__wp_id__relations__relation_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -295,6 +313,16 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
+        };
+        /** RelationCreate */
+        RelationCreate: {
+            /** Relation Type */
+            relation_type: string;
+            /**
+             * Target Id
+             * Format: uuid
+             */
+            target_id: string;
         };
         /** RelationList */
         RelationList: {
@@ -863,6 +891,71 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["RelationList"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_relation_api_v1_work_packages__wp_id__relations_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                wp_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RelationCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RelationRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_relation_api_v1_work_packages__wp_id__relations__relation_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                wp_id: string;
+                relation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
