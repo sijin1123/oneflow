@@ -1,6 +1,7 @@
 import { Navigate, createBrowserRouter } from 'react-router-dom'
 
 import { AppShell } from '@/components/shell/AppShell'
+import { NotFound, RouteError } from '@/components/shell/RouteError'
 import { FilesPage } from '@/features/attachments/FilesPage'
 import { DashboardPage } from '@/features/dashboard/DashboardPage'
 import { DocumentEditorPage } from '@/features/documents/DocumentEditorPage'
@@ -20,6 +21,9 @@ export const router = createBrowserRouter([
   {
     path: '/',
     element: <AppShell />,
+    // Styled Korean fallback for render errors AND unmatched URLs, instead of
+    // React Router's default unstyled English error screen.
+    errorElement: <RouteError />,
     children: [
       { index: true, element: <Navigate to="/projects" replace /> },
       { path: 'projects', element: <ProjectsPage /> },
@@ -36,6 +40,7 @@ export const router = createBrowserRouter([
       { path: 'projects/:projectId/meetings/:meetingId', element: <MeetingDetailPage /> },
       { path: 'projects/:projectId/files', element: <FilesPage /> },
       { path: 'projects/:projectId/settings', element: <SettingsPage /> },
+      { path: '*', element: <NotFound /> },
     ],
   },
 ])
