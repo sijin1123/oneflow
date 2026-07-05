@@ -1,12 +1,16 @@
+import { Download } from 'lucide-react'
 import { useParams, useSearchParams } from 'react-router-dom'
 
 import { EmptyState, ErrorState, ListSkeleton } from '@/components/shell/states'
+import { Button } from '@/components/ui/button'
 
 import { DetailDrawer } from './DetailDrawer'
 import { Filters } from './Filters'
+import { ImportDialog } from './ImportDialog'
 import { NewWorkPackageInline } from './NewWorkPackageInline'
 import { PriorityChip, StatusChip, TypeChip } from './chips'
 import { useWorkPackages } from './api'
+import { useExportCsv } from './csv'
 
 export function ListPage() {
   const { projectId } = useParams() as { projectId: string }
@@ -18,6 +22,7 @@ export function ListPage() {
     q: searchParams.get('q') ?? undefined,
   }
   const { data, isPending, isError, error, refetch } = useWorkPackages(projectId, filters)
+  const exportCsv = useExportCsv(projectId)
 
   const openDrawer = (id: string) => {
     setSearchParams((prev) => {
@@ -31,7 +36,18 @@ export function ListPage() {
     <div className="flex h-full flex-col">
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-of-border px-4 py-2">
         <Filters />
-        {data ? <span className="text-xs text-of-muted">{data.total}건</span> : null}
+        <div className="flex items-center gap-2">
+          {data ? <span className="text-xs text-of-muted">{data.total}건</span> : null}
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={exportCsv.isPending}
+            onClick={() => exportCsv.mutate()}
+          >
+            <Download size={14} /> 내보내기
+          </Button>
+          <ImportDialog projectId={projectId} />
+        </div>
       </div>
 
       <NewWorkPackageInline projectId={projectId} />

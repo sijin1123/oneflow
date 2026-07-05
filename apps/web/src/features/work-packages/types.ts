@@ -137,6 +137,25 @@ export type ActivityList = {
   total: number
 }
 
+export type CsvRowError = {
+  /** 1-based data row (header excluded) */
+  row: number
+  message: string
+  /** the row re-serialized as one CSV line, for targeted resubmission (재처리) */
+  raw: string
+}
+
+export type CsvImportResult = {
+  dry_run: boolean
+  total_rows: number
+  valid: number
+  invalid: number
+  inserted: number
+  /** sha256 of the valid rows — reconcile a dry-run preview against the commit (대사) */
+  checksum: string
+  errors: CsvRowError[]
+}
+
 export const STATUS_LABELS: Record<WpStatus, string> = {
   backlog: '백로그',
   todo: '할 일',
