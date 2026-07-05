@@ -1,0 +1,25 @@
+OneFlow — Proprietary License
+
+Copyright (c) 2026 OneFlow (company-internal project management system).
+All rights reserved.
+
+This software and its source code are the confidential and proprietary property
+of the company. They are provided for internal company use only.
+
+You may NOT, without prior written permission of the company:
+  - copy, reproduce, or distribute this software or its source code, in whole or
+    in part, outside the company;
+  - publish, sublicense, sell, or otherwise make it available to third parties;
+  - remove or alter this notice.
+
+Permitted internal use includes running, modifying, and building the software for
+the company's own operations.
+
+Third-party open-source dependencies are licensed under their own terms; see
+THIRD-PARTY-NOTICES.md.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE COPYRIGHT
+HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY ARISING FROM THE USE
+OF THE SOFTWARE.
