@@ -31,6 +31,7 @@ from app.models import (
     Activity,
     Project,
     ProjectMember,
+    TimeEntry,
     User,
     WorkPackage,
     WorkPackageComment,
@@ -156,6 +157,7 @@ async def seed_data(session: AsyncSession) -> bool:
             due=None,
             parent=None,
             description=None,
+            est=None,
         ) -> WorkPackage:
             item = WorkPackage(
                 id=uuid.uuid4(),
@@ -169,6 +171,7 @@ async def seed_data(session: AsyncSession) -> bool:
                 start_date=start,
                 due_date=due,
                 parent_id=parent,
+                estimated_hours=est,
             )
             session.add(item)
             return item
@@ -201,6 +204,7 @@ async def seed_data(session: AsyncSession) -> bool:
             start=today - dt.timedelta(days=4),
             due=today + dt.timedelta(days=2),
             parent=epic.id,
+            est=16,
         )
         ui_wp = wp(
             "Plane-like UI 셸",
@@ -291,6 +295,20 @@ async def seed_data(session: AsyncSession) -> bool:
                     body="계약 테스트까지 통과 확인했습니다. 리뷰 부탁드려요.",
                 ),
                 Activity(work_package_id=api_wp.id, actor_id=mate.id, action="commented"),
+                TimeEntry(
+                    work_package_id=api_wp.id,
+                    user_id=dev.id,
+                    hours=6,
+                    spent_on=today - dt.timedelta(days=3),
+                    comment="설계 및 모델링",
+                ),
+                TimeEntry(
+                    work_package_id=api_wp.id,
+                    user_id=dev.id,
+                    hours=4.5,
+                    spent_on=today - dt.timedelta(days=1),
+                    comment="엔드포인트 구현",
+                ),
             ]
         )
 

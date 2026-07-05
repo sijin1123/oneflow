@@ -13,6 +13,12 @@ def _check_dates(start: date | None, due: date | None) -> None:
         raise ValueError("start_date must be <= due_date")
 
 
+def _check_hours(v: float | None) -> float | None:
+    if v is not None and not 0 <= v <= 1000:
+        raise ValueError("estimated_hours must be between 0 and 1000")
+    return v
+
+
 class WorkPackageCreate(BaseModel):
     subject: str
     description: str | None = None
@@ -23,6 +29,12 @@ class WorkPackageCreate(BaseModel):
     parent_id: uuid.UUID | None = None
     start_date: date | None = None
     due_date: date | None = None
+    estimated_hours: float | None = None
+
+    @field_validator("estimated_hours")
+    @classmethod
+    def _est(cls, v: float | None) -> float | None:
+        return _check_hours(v)
 
     @field_validator("subject")
     @classmethod
@@ -81,6 +93,12 @@ class WorkPackagePatch(BaseModel):
     parent_id: uuid.UUID | None = None
     start_date: date | None = None
     due_date: date | None = None
+    estimated_hours: float | None = None
+
+    @field_validator("estimated_hours")
+    @classmethod
+    def _est(cls, v: float | None) -> float | None:
+        return _check_hours(v)
 
     @field_validator("expected_version")
     @classmethod
@@ -144,6 +162,7 @@ class WorkPackageRead(BaseModel):
     parent_id: uuid.UUID | None
     start_date: date | None
     due_date: date | None
+    estimated_hours: float | None
     version: int
     created_at: datetime
     updated_at: datetime

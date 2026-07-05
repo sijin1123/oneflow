@@ -239,6 +239,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/work-packages/{wp_id}/time-entries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Time Entries */
+        get: operations["list_time_entries_api_v1_work_packages__wp_id__time_entries_get"];
+        put?: never;
+        /** Log Time */
+        post: operations["log_time_api_v1_work_packages__wp_id__time_entries_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/work-packages/{wp_id}/time-entries/{entry_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Time Entry */
+        delete: operations["delete_time_entry_api_v1_work_packages__wp_id__time_entries__entry_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -446,6 +481,53 @@ export interface components {
              */
             target_id: string;
         };
+        /** TimeEntryCreate */
+        TimeEntryCreate: {
+            /** Comment */
+            comment?: string | null;
+            /** Hours */
+            hours: number;
+            /** Spent On */
+            spent_on?: string | null;
+        };
+        /** TimeEntryList */
+        TimeEntryList: {
+            /** Items */
+            items: components["schemas"]["TimeEntryRead"][];
+            /** Total */
+            total: number;
+            /** Total Hours */
+            total_hours: number;
+        };
+        /** TimeEntryRead */
+        TimeEntryRead: {
+            /** Comment */
+            comment: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Hours */
+            hours: number;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Spent On
+             * Format: date
+             */
+            spent_on: string;
+            /** User Id */
+            user_id: string | null;
+            /**
+             * Work Package Id
+             * Format: uuid
+             */
+            work_package_id: string;
+        };
         /** UserRead */
         UserRead: {
             /** Display Name */
@@ -481,6 +563,8 @@ export interface components {
             description?: string | null;
             /** Due Date */
             due_date?: string | null;
+            /** Estimated Hours */
+            estimated_hours?: number | null;
             /** Parent Id */
             parent_id?: string | null;
             /**
@@ -523,6 +607,8 @@ export interface components {
             description?: string | null;
             /** Due Date */
             due_date?: string | null;
+            /** Estimated Hours */
+            estimated_hours?: number | null;
             /** Expected Version */
             expected_version: number;
             /** Parent Id */
@@ -551,6 +637,8 @@ export interface components {
             description: string | null;
             /** Due Date */
             due_date: string | null;
+            /** Estimated Hours */
+            estimated_hours: number | null;
             /**
              * Id
              * Format: uuid
@@ -1204,6 +1292,102 @@ export interface operations {
             path: {
                 wp_id: string;
                 relation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_time_entries_api_v1_work_packages__wp_id__time_entries_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                wp_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TimeEntryList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    log_time_api_v1_work_packages__wp_id__time_entries_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                wp_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TimeEntryCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TimeEntryRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_time_entry_api_v1_work_packages__wp_id__time_entries__entry_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                wp_id: string;
+                entry_id: string;
             };
             cookie?: never;
         };
