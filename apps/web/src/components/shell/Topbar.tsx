@@ -3,6 +3,7 @@ import { useLocation, useParams, useSearchParams } from 'react-router-dom'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { NotificationBell } from '@/features/notifications/NotificationBell'
 import { useProjects } from '@/features/projects/api'
 
 export function Topbar() {
@@ -83,6 +84,7 @@ export function Topbar() {
             <Plus /> 새 작업
           </Button>
         ) : null}
+        <NotificationBell />
       </div>
     </header>
   )
