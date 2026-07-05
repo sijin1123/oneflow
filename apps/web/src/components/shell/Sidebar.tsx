@@ -3,6 +3,7 @@ import {
   FolderKanban,
   LayoutDashboard,
   List,
+  ListTree,
   Settings,
   SquareKanban,
 } from 'lucide-react'
@@ -51,6 +52,9 @@ export function Sidebar() {
               </NavLink>
               <NavLink to={`/projects/${p.id}/board`} className={navLinkClass}>
                 <SquareKanban /> Board
+              </NavLink>
+              <NavLink to={`/projects/${p.id}/tree`} className={navLinkClass}>
+                <ListTree /> Hierarchy
               </NavLink>
               <NavLink to={`/projects/${p.id}/timeline`} className={navLinkClass}>
                 <CalendarRange /> Timeline
