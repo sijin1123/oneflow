@@ -1,6 +1,7 @@
 import { useSearchParams } from 'react-router-dom'
 
 import { Select } from '@/components/ui/select'
+import { useMembers } from '@/features/members/api'
 
 import { PRIORITY_LABELS, TYPE_LABELS, WP_PRIORITIES, WP_STATUSES, WP_TYPES } from './types'
 import { useStatusLabels } from './useStatusLabels'
@@ -9,6 +10,7 @@ import { useStatusLabels } from './useStatusLabels'
 export function Filters({ projectId }: { projectId: string }) {
   const [searchParams, setSearchParams] = useSearchParams()
   const statusLabel = useStatusLabels(projectId)
+  const members = useMembers(projectId)
 
   const set = (key: string, value: string) => {
     setSearchParams(
@@ -68,6 +70,22 @@ export function Filters({ projectId }: { projectId: string }) {
           {WP_TYPES.map((t) => (
             <option key={t} value={t}>
               {TYPE_LABELS[t]}
+            </option>
+          ))}
+        </Select>
+      </label>
+      <label className="flex items-center gap-1.5 text-xs text-of-muted">
+        담당자
+        <Select
+          aria-label="담당자 필터"
+          className="h-7 w-28 text-xs"
+          value={searchParams.get('assignee_id') ?? ''}
+          onChange={(e) => set('assignee_id', e.target.value)}
+        >
+          <option value="">전체</option>
+          {members.data?.items.map((m) => (
+            <option key={m.user_id} value={m.user_id}>
+              {m.display_name}
             </option>
           ))}
         </Select>

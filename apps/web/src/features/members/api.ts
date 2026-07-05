@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMemo } from 'react'
 
 import { api } from '@/lib/api'
 
@@ -17,6 +18,18 @@ export function useMembers(projectId: string) {
     queryKey: ['members', projectId],
     queryFn: () => api<MemberList>(`/api/v1/projects/${projectId}/members`),
   })
+}
+
+/** Resolve an assignee user id to a display name (falls back to a short id).
+ *  Lets the list/drawer render "누구에게" without each caller re-deriving the map. */
+export function useMemberNames(projectId: string): (userId: string | null) => string {
+  const { data } = useMembers(projectId)
+  const map = useMemo(() => {
+    const m: Record<string, string> = {}
+    for (const mem of data?.items ?? []) m[mem.user_id] = mem.display_name
+    return m
+  }, [data])
+  return (userId: string | null) => (userId ? (map[userId] ?? '알 수 없음') : '미배정')
 }
 
 export function useAddMember(projectId: string) {

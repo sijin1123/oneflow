@@ -5,6 +5,7 @@ import { useSearchParams } from 'react-router-dom'
 import { ErrorState, ListSkeleton } from '@/components/shell/states'
 import { Input } from '@/components/ui/input'
 import { AiSummarySection } from '@/features/ai/AiSummarySection'
+import { useMembers } from '@/features/members/api'
 import { useMilestones } from '@/features/milestones/api'
 import { Select } from '@/components/ui/select'
 import { Sheet, SheetContent } from '@/components/ui/sheet'
@@ -71,6 +72,7 @@ function DrawerForm({ wp, projectId }: { wp: WorkPackage; projectId: string }) {
   const patch = usePatchWorkPackage(projectId)
   const queryClient = useQueryClient()
   const milestones = useMilestones(projectId)
+  const members = useMembers(projectId)
   const statusLabel = useStatusLabels(projectId)
 
   // All editable fields are controlled and resynced from server data, so a 409
@@ -240,6 +242,25 @@ function DrawerForm({ wp, projectId }: { wp: WorkPackage; projectId: string }) {
             ))}
           </Select>
         </div>
+      </div>
+
+      <div className="space-y-1.5">
+        <label htmlFor="wp-assignee" className="text-xs font-medium text-of-muted">
+          담당자
+        </label>
+        <Select
+          id="wp-assignee"
+          value={wp.assignee_id ?? ''}
+          disabled={patch.isPending}
+          onChange={(e) => send({ assignee_id: e.target.value || null })}
+        >
+          <option value="">미배정</option>
+          {members.data?.items.map((m) => (
+            <option key={m.user_id} value={m.user_id}>
+              {m.display_name}
+            </option>
+          ))}
+        </Select>
       </div>
 
       <div className="space-y-1.5">

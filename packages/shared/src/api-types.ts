@@ -3454,6 +3454,7 @@ export interface operations {
                 status?: ("backlog" | "todo" | "in_progress" | "in_review" | "done" | "cancelled") | null;
                 priority?: ("none" | "low" | "medium" | "high" | "urgent") | null;
                 type?: ("task" | "bug" | "feature" | "milestone") | null;
+                assignee_id?: string | null;
                 q?: string | null;
                 sort?: "created" | "subject";
                 limit?: number;

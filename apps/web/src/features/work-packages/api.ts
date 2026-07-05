@@ -20,6 +20,7 @@ export type WpFilters = {
   status?: string
   priority?: string
   type?: string
+  assignee_id?: string
   q?: string
   sort?: string
 }
