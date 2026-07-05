@@ -400,6 +400,20 @@ test('계층 트리가 상/하위 관계를 보여주고 접기가 동작한다'
   await expect(page.getByRole('button', { name: '보드 뷰 구현' })).toBeHidden()
 })
 
+test('캘린더가 기한이 있는 작업을 해당 날짜에 표시하고 월 이동이 된다', async ({ page }) => {
+  await mockApi(page)
+  // Pin the clock so the initial month is deterministic across CI runners.
+  await page.clock.install({ time: new Date('2026-07-05T12:00:00Z') })
+  await page.goto(`/projects/${project.id}/calendar`)
+  await expect(page.getByText('2026.07')).toBeVisible()
+  // wpA is due 2026-07-15 → shown in July
+  await expect(page.getByRole('button', { name: '워크패키지 API 구현' })).toBeVisible()
+  // next month → the due chip is gone
+  await page.getByRole('button', { name: '다음 달' }).click()
+  await expect(page.getByText('2026.08')).toBeVisible()
+  await expect(page.getByRole('button', { name: '워크패키지 API 구현' })).toBeHidden()
+})
+
 test('빈 목록은 빈 상태를 보여준다', async ({ page }) => {
   await page.route('**/api/v1/projects', (route) =>
     route.fulfill({ json: { items: [project], total: 1 } satisfies ProjectList }),
