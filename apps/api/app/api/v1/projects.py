@@ -10,6 +10,7 @@ from app.core.authz import authorize, require_member, require_role
 from app.db.session import get_session
 from app.models.member import ProjectMember
 from app.models.project import Project
+from app.models.project_status import DEFAULT_STATUSES, ProjectStatus
 from app.models.user import User
 from app.schemas.project import ProjectCreate, ProjectList, ProjectRead, ProjectUpdate
 
@@ -62,6 +63,12 @@ async def create_project(
         session.add(project)
         await session.flush()
         session.add(ProjectMember(project_id=project.id, user_id=user.id, role="owner"))
+        # Seed the default workflow (label + order per status key) so every project
+        # has an editable status configuration from creation (PLAN §3 Phase 3).
+        session.add_all(
+            ProjectStatus(project_id=project.id, key=key, name=name, position=pos)
+            for key, name, pos in DEFAULT_STATUSES
+        )
         await session.flush()
         await session.commit()
     except IntegrityError as exc:

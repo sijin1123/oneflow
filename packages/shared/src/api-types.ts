@@ -299,6 +299,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{project_id}/statuses": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Project Statuses */
+        get: operations["list_project_statuses_api_v1_projects__project_id__statuses_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/statuses/{status_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update Project Status */
+        patch: operations["update_project_status_api_v1_projects__project_id__statuses__status_id__patch"];
+        trace?: never;
+    };
     "/api/v1/projects/{project_id}/work-packages": {
         parameters: {
             query?: never;
@@ -953,6 +987,43 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
+        };
+        /** ProjectStatusList */
+        ProjectStatusList: {
+            /** Items */
+            items: components["schemas"]["ProjectStatusRead"][];
+            /** Total */
+            total: number;
+        };
+        /** ProjectStatusRead */
+        ProjectStatusRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Key */
+            key: string;
+            /** Name */
+            name: string;
+            /** Position */
+            position: number;
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+        };
+        /**
+         * ProjectStatusUpdate
+         * @description Rename and/or reorder a status. Keys are fixed (they identify stored work
+         *     package statuses), so only the label and position are editable.
+         */
+        ProjectStatusUpdate: {
+            /** Name */
+            name?: string | null;
+            /** Position */
+            position?: number | null;
         };
         /** ProjectUpdate */
         ProjectUpdate: {
@@ -1975,6 +2046,73 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_project_statuses_api_v1_projects__project_id__statuses_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectStatusList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_project_status_api_v1_projects__project_id__statuses__status_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                status_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProjectStatusUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectStatusRead"];
+                };
             };
             /** @description Validation Error */
             422: {
