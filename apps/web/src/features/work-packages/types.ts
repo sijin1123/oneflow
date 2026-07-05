@@ -114,6 +114,23 @@ export type TimeEntryList = {
   total_hours: number
 }
 
+export type CostEntry = {
+  id: string
+  work_package_id: string
+  user_id: string | null
+  amount: number
+  kind: 'labor' | 'material' | 'other'
+  spent_on: string
+  comment: string | null
+  created_at: string
+}
+
+export type CostEntryList = {
+  items: CostEntry[]
+  total: number
+  total_amount: number
+}
+
 export type ActivityList = {
   items: Activity[]
   total: number

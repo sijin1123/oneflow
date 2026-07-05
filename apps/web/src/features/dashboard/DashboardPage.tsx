@@ -97,6 +97,31 @@ export function DashboardPage() {
         />
       </div>
 
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <Tile label="비용 합계" value={`₩${data.total_cost.toLocaleString('ko-KR')}`} />
+        <Tile
+          label="예산"
+          value={data.budget !== null ? `₩${data.budget.toLocaleString('ko-KR')}` : '미설정'}
+        />
+        <Tile
+          label="예산 잔액"
+          value={
+            data.budget !== null
+              ? `₩${(data.budget - data.total_cost).toLocaleString('ko-KR')}`
+              : '—'
+          }
+          accent={data.budget !== null && data.budget - data.total_cost < 0}
+        />
+        <Tile
+          label="예산 소진율"
+          value={
+            data.budget && data.budget > 0
+              ? `${Math.round((data.total_cost / data.budget) * 100)}%`
+              : '—'
+          }
+        />
+      </div>
+
       {progress !== null ? (
         <div className="rounded-of border border-of-border bg-of-surface p-4">
           <div className="mb-1.5 flex items-center justify-between text-xs">

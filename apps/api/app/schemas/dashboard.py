@@ -15,3 +15,5 @@ class DashboardRead(BaseModel):
     type_counts: list[Bucket]
     total_estimated_hours: float
     total_spent_hours: float
+    budget: float | None
+    total_cost: float

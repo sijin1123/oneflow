@@ -7,6 +7,7 @@ export type Project = {
   key: string
   name: string
   description: string | null
+  budget: number | null
   created_at: string
   updated_at: string
 }

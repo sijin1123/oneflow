@@ -23,6 +23,7 @@ const project: Project = {
   key: 'ONE',
   name: 'OneFlow 도입',
   description: '데모 프로젝트',
+  budget: null,
   created_at: '2026-07-01T00:00:00Z',
   updated_at: '2026-07-01T00:00:00Z',
 }
@@ -90,6 +91,13 @@ async function mockApi(page: Page, opts: { conflictOnPatch?: boolean } = {}) {
       return
     }
     await route.fulfill({ json: { items: [], total: 0, total_hours: 0 } })
+  })
+  await page.route(`**/api/v1/work-packages/${wpA.id}/cost-entries`, async (route) => {
+    if (route.request().method() === 'POST') {
+      await route.fulfill({ status: 201, json: { id: 'ce-1' } })
+      return
+    }
+    await route.fulfill({ json: { items: [], total: 0, total_amount: 0 } })
   })
   await page.route(`**/api/v1/work-packages/${wpA.id}/activities`, (route) =>
     route.fulfill({ json: activities }),
@@ -233,6 +241,8 @@ test('대시보드가 집계 타일과 분포를 보여준다', async ({ page })
         type_counts: [],
         total_estimated_hours: 40,
         total_spent_hours: 10.5,
+        budget: 1000000,
+        total_cost: 250000,
       },
     }),
   )
@@ -284,6 +294,9 @@ test('설정 화면에서 멤버를 보여주고 소유자가 멤버를 추가�
         is_active: true,
       },
     }),
+  )
+  await page.route(`**/api/v1/projects/${project.id}`, (route) =>
+    route.fulfill({ json: project }),
   )
   await page.route(`**/api/v1/projects/${project.id}/members`, async (route) => {
     if (route.request().method() === 'POST') {

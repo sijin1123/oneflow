@@ -1,5 +1,6 @@
 from app.models.activity import Activity
 from app.models.comment import WorkPackageComment
+from app.models.cost_entry import CostEntry
 from app.models.member import ProjectMember
 from app.models.project import Project
 from app.models.relation import WorkPackageRelation
@@ -16,4 +17,5 @@ __all__ = [
     "WorkPackageComment",
     "Activity",
     "TimeEntry",
+    "CostEntry",
 ]

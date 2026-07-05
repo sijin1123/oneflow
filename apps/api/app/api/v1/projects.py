@@ -6,12 +6,12 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import get_current_user
-from app.core.authz import authorize, require_member
+from app.core.authz import authorize, require_member, require_role
 from app.db.session import get_session
 from app.models.member import ProjectMember
 from app.models.project import Project
 from app.models.user import User
-from app.schemas.project import ProjectCreate, ProjectList, ProjectRead
+from app.schemas.project import ProjectCreate, ProjectList, ProjectRead, ProjectUpdate
 
 router = APIRouter()
 
@@ -82,4 +82,24 @@ async def get_project(
     ).scalar_one_or_none()
     if project is None:
         raise HTTPException(status_code=404, detail="not found")
+    return ProjectRead.model_validate(project)
+
+
+@router.patch("/{project_id}", response_model=ProjectRead)
+async def update_project(
+    project_id: uuid.UUID,
+    body: ProjectUpdate,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+) -> ProjectRead:
+    # Project settings (name/description/budget) are owner-only (404 non-member).
+    await require_role(session, project_id, user, {"owner"})
+    project = (await session.execute(select(Project).where(Project.id == project_id))).scalar_one()
+    fields = body.model_dump(exclude_unset=True)
+    for key, value in fields.items():
+        setattr(project, key, value)
+    await session.commit()
+    # UPDATE's onupdate=now() leaves updated_at server-computed and expired;
+    # refresh within the async context so sync serialization won't lazy-load.
+    await session.refresh(project)
     return ProjectRead.model_validate(project)

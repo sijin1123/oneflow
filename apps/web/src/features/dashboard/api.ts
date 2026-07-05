@@ -13,6 +13,8 @@ export type Dashboard = {
   type_counts: Bucket[]
   total_estimated_hours: number
   total_spent_hours: number
+  budget: number | null
+  total_cost: number
 }
 
 export function useDashboard(projectId: string) {

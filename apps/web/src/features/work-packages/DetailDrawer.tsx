@@ -8,6 +8,7 @@ import { Select } from '@/components/ui/select'
 import { Sheet, SheetContent } from '@/components/ui/sheet'
 import { Textarea } from '@/components/ui/textarea'
 
+import { CostSection } from './CostSection'
 import { HistorySection } from './HistorySection'
 import { RelationsSection } from './RelationsSection'
 import { TimeTrackingSection } from './TimeTrackingSection'
@@ -217,6 +218,8 @@ function DrawerForm({ wp, projectId }: { wp: WorkPackage; projectId: string }) {
       </div>
 
       <TimeTrackingSection wp={wp} />
+
+      <CostSection wpId={wp.id} />
 
       <RelationsSection wpId={wp.id} projectId={projectId} />
 
