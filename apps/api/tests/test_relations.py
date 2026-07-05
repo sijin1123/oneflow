@@ -92,9 +92,7 @@ async def test_relation_create_and_delete(client):
     assert b_rels["items"][0]["direction"] == "incoming"
 
     # delete from the target's view too (relation touches b)
-    deleted = await client.delete(
-        f"/api/v1/work-packages/{b['id']}/relations/{rel['id']}"
-    )
+    deleted = await client.delete(f"/api/v1/work-packages/{b['id']}/relations/{rel['id']}")
     assert deleted.status_code == 204
     assert (await client.get(f"/api/v1/work-packages/{a['id']}/relations")).json()["total"] == 0
 
