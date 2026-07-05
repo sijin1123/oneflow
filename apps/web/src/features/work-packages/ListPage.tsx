@@ -57,7 +57,13 @@ export function ListPage() {
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-of-border px-4 py-2">
         <Filters projectId={projectId} />
         <div className="flex items-center gap-2">
-          {data ? <span className="text-xs text-of-muted">{data.total}건</span> : null}
+          {data ? (
+            <span className="text-xs text-of-muted">
+              {data.items.length < data.total
+                ? `${data.total}건 중 ${data.items.length}건 표시 (검색·필터로 좁혀 주세요)`
+                : `${data.total}건`}
+            </span>
+          ) : null}
           <Select
             aria-label="정렬"
             className="h-7 w-28 text-xs"

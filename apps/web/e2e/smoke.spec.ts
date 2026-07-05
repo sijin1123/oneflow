@@ -861,6 +861,41 @@ test('빈 목록은 빈 상태를 보여준다', async ({ page }) => {
   await page.screenshot({ path: '../../docs/screenshots/web-empty.png', fullPage: true })
 })
 
+test('목록이 여러 페이지를 모두 불러온다 (200건 무성 절단 없음)', async ({ page }) => {
+  // Page 0 returns a full 500-item page with total 501, forcing a second fetch;
+  // the item that only exists on page 2 must appear, proving no truncation.
+  const firstPage: WorkPackage[] = Array.from({ length: 500 }, (_, i) => ({
+    ...wpA,
+    id: `g-${i}`,
+    subject: `대량 작업 ${i}`,
+  }))
+  const pageTwoItem: WorkPackage = { ...wpA, id: 'g-500', subject: '두 번째 페이지 작업' }
+  await page.route('**/api/v1/projects', (route) =>
+    route.fulfill({ json: projects }),
+  )
+  await page.route('**/api/v1/me/notifications', (route) =>
+    route.fulfill({ json: { items: [], total: 0, unread: 0 } }),
+  )
+  await page.route('**/api/v1/projects/*/saved-filters', (route) =>
+    route.fulfill({ json: { items: [], total: 0 } }),
+  )
+  await page.route('**/api/v1/projects/*/statuses', (route) =>
+    route.fulfill({ json: { items: [], total: 0 } }),
+  )
+  await page.route(`**/api/v1/projects/${project.id}/members`, (route) =>
+    route.fulfill({ json: { items: [], total: 0 } }),
+  )
+  await page.route('**/api/v1/projects/*/work-packages**', (route) => {
+    const url = new URL(route.request().url())
+    const offset = Number(url.searchParams.get('offset') ?? '0')
+    const items = offset >= 500 ? [pageTwoItem] : firstPage
+    return route.fulfill({ json: { items, total: 501 } satisfies WorkPackageList })
+  })
+  await page.goto(`/projects/${project.id}/work-packages`)
+  await expect(page.getByText('두 번째 페이지 작업')).toBeVisible()
+  await expect(page.getByText('501건', { exact: true })).toBeVisible()
+})
+
 test('빈 프로젝트 목록에서 새 프로젝트를 만들면 생성 요청 후 이동한다', async ({ page }) => {
   await page.route('**/api/v1/projects', (route) => {
     if (route.request().method() === 'POST') {

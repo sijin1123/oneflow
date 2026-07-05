@@ -15,8 +15,8 @@ export function TreePage() {
   const { projectId } = useParams() as { projectId: string }
   const [, setSearchParams] = useSearchParams()
   const statusLabel = useStatusLabels(projectId)
-  // Reuses the standard list (capped at the API default); deep hierarchies beyond
-  // that page fall back to root rows — recursive-CTE fetching is a later step.
+  // useWorkPackages now pages through the full set, so the tree no longer orphans
+  // children whose parents fell past the first page.
   const { data, isPending, isError, error, refetch } = useWorkPackages(projectId, {})
 
   const tree = useMemo(() => (data ? buildTree(data.items) : []), [data])

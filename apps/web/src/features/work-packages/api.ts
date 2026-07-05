@@ -25,16 +25,41 @@ export type WpFilters = {
   sort?: string
 }
 
-export function useWorkPackages(projectId: string, filters: WpFilters) {
-  const params = new URLSearchParams()
-  for (const [key, value] of Object.entries(filters)) {
-    if (value) params.set(key, value)
+// The server caps a single page at 500. Fetch every page so no view silently
+// truncates at the old 200-item default (fable5 audit: board/tree/calendar/timeline
+// dropped items past the first page while the list still showed the true total).
+// Bounded so a pathological project can't loop forever; the cap is well past the
+// 5000-row CSV import limit.
+const PAGE_SIZE = 500
+const MAX_PAGES = 20
+
+async function fetchAllWorkPackages(
+  projectId: string,
+  filters: WpFilters,
+): Promise<WorkPackageList> {
+  const items: WorkPackage[] = []
+  let total = 0
+  for (let page = 0; page < MAX_PAGES; page++) {
+    const params = new URLSearchParams()
+    for (const [key, value] of Object.entries(filters)) {
+      if (value) params.set(key, value)
+    }
+    params.set('limit', String(PAGE_SIZE))
+    params.set('offset', String(page * PAGE_SIZE))
+    const res = await api<WorkPackageList>(
+      `/api/v1/projects/${projectId}/work-packages?${params.toString()}`,
+    )
+    items.push(...res.items)
+    total = res.total
+    if (items.length >= total || res.items.length < PAGE_SIZE) break
   }
-  const qs = params.toString()
+  return { items, total }
+}
+
+export function useWorkPackages(projectId: string, filters: WpFilters) {
   return useQuery({
     queryKey: ['work-packages', projectId, filters],
-    queryFn: () =>
-      api<WorkPackageList>(`/api/v1/projects/${projectId}/work-packages${qs ? `?${qs}` : ''}`),
+    queryFn: () => fetchAllWorkPackages(projectId, filters),
   })
 }
 
