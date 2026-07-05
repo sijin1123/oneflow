@@ -463,6 +463,36 @@ test('알림 벨이 미확인 개수를 보여주고 모두 읽음을 보낸다'
   await readAll
 })
 
+test('전체 검색이 여러 프로젝트의 결과를 보여준다', async ({ page }) => {
+  await mockApi(page)
+  await page.route('**/api/v1/search/work-packages**', (route) =>
+    route.fulfill({
+      json: {
+        items: [
+          {
+            id: wpA.id,
+            project_id: project.id,
+            project_key: 'ONE',
+            project_name: 'OneFlow 도입',
+            subject: '워크패키지 API 구현',
+            status: 'todo',
+            priority: 'high',
+            type: 'task',
+            due_date: '2026-07-15',
+          },
+        ],
+        total: 1,
+        query: '구현',
+      },
+    }),
+  )
+  await page.goto('/search')
+  await page.getByLabel('전체 검색어').fill('구현')
+  await page.getByRole('button', { name: '검색' }).click()
+  await expect(page.getByText('1건')).toBeVisible()
+  await expect(page.getByRole('button', { name: /워크패키지 API 구현/ })).toBeVisible()
+})
+
 test('빈 목록은 빈 상태를 보여준다', async ({ page }) => {
   await page.route('**/api/v1/projects', (route) =>
     route.fulfill({ json: { items: [project], total: 1 } satisfies ProjectList }),
