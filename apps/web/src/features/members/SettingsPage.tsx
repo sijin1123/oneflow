@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { ApiError } from '@/lib/api'
 
+import { AutomationManager } from '@/features/automation/AutomationManager'
 import { useCreateMilestone, useDeleteMilestone, useMilestones } from '@/features/milestones/api'
 import { StatusManager } from '@/features/project-statuses/StatusManager'
 import { useProject, useUpdateProject } from '@/features/projects/api'
@@ -155,6 +156,8 @@ export function SettingsPage() {
       </div>
 
       <StatusManager projectId={projectId} isOwner={isOwner} />
+
+      <AutomationManager projectId={projectId} isOwner={isOwner} />
 
       <h2 className="mb-2 text-sm font-semibold">멤버</h2>
 
