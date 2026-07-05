@@ -1,4 +1,5 @@
 from app.models.activity import Activity
+from app.models.automation_rule import AutomationRule
 from app.models.comment import WorkPackageComment
 from app.models.cost_entry import CostEntry
 from app.models.member import ProjectMember
@@ -26,4 +27,5 @@ __all__ = [
     "Notification",
     "SavedFilter",
     "ProjectStatus",
+    "AutomationRule",
 ]

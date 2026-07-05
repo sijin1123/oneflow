@@ -175,6 +175,42 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{project_id}/automation-rules": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Automation Rules */
+        get: operations["list_automation_rules_api_v1_projects__project_id__automation_rules_get"];
+        put?: never;
+        /** Create Automation Rule */
+        post: operations["create_automation_rule_api_v1_projects__project_id__automation_rules_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/automation-rules/{rule_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Automation Rule */
+        delete: operations["delete_automation_rule_api_v1_projects__project_id__automation_rules__rule_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Automation Rule */
+        patch: operations["update_automation_rule_api_v1_projects__project_id__automation_rules__rule_id__patch"];
+        trace?: never;
+    };
     "/api/v1/projects/{project_id}/dashboard": {
         parameters: {
             query?: never;
@@ -598,6 +634,72 @@ export interface components {
              * Format: uuid
              */
             work_package_id: string;
+        };
+        /** AutomationRuleCreate */
+        AutomationRuleCreate: {
+            /**
+             * Action Type
+             * @default set_priority
+             */
+            action_type: string;
+            /** Action Value */
+            action_value: string;
+            /**
+             * Is Active
+             * @default true
+             */
+            is_active: boolean;
+            /** Name */
+            name: string;
+            /**
+             * Trigger Type
+             * @default status_changed_to
+             */
+            trigger_type: string;
+            /** Trigger Value */
+            trigger_value: string;
+        };
+        /** AutomationRuleList */
+        AutomationRuleList: {
+            /** Items */
+            items: components["schemas"]["AutomationRuleRead"][];
+            /** Total */
+            total: number;
+        };
+        /** AutomationRuleRead */
+        AutomationRuleRead: {
+            /** Action Type */
+            action_type: string;
+            /** Action Value */
+            action_value: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Is Active */
+            is_active: boolean;
+            /** Name */
+            name: string;
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            /** Trigger Type */
+            trigger_type: string;
+            /** Trigger Value */
+            trigger_value: string;
+        };
+        /** AutomationRuleUpdate */
+        AutomationRuleUpdate: {
+            /** Is Active */
+            is_active: boolean;
         };
         /** Bucket */
         Bucket: {
@@ -1654,6 +1756,138 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ProjectActivityList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_automation_rules_api_v1_projects__project_id__automation_rules_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AutomationRuleList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_automation_rule_api_v1_projects__project_id__automation_rules_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AutomationRuleCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AutomationRuleRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_automation_rule_api_v1_projects__project_id__automation_rules__rule_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                rule_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_automation_rule_api_v1_projects__project_id__automation_rules__rule_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                rule_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AutomationRuleUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AutomationRuleRead"];
                 };
             };
             /** @description Validation Error */

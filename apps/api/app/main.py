@@ -6,6 +6,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.v1 import (
+    automation_rules,
     comments,
     cost_entries,
     csv_io,
@@ -97,6 +98,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(search.router, prefix="/api/v1", tags=["search"])
     app.include_router(saved_filters.router, prefix="/api/v1", tags=["saved-filters"])
     app.include_router(project_statuses.router, prefix="/api/v1", tags=["project-statuses"])
+    app.include_router(automation_rules.router, prefix="/api/v1", tags=["automation-rules"])
     return app
 
 
