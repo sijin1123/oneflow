@@ -12,6 +12,7 @@
 import type { components } from '@shared/api-types'
 
 import type { Project } from '../projects/types'
+import type { SavedFilter } from './savedFiltersApi'
 import type {
   Activity,
   Comment,
@@ -36,3 +37,4 @@ export type _RelationMatches = Assert<Extends<Relation, Schemas['RelationRead']>
 export type _ConflictMatches = Assert<Extends<ConflictBody, Schemas['ConflictResponse']>>
 export type _CsvImportMatches = Assert<Extends<CsvImportResult, Schemas['CsvImportResult']>>
 export type _CsvRowErrorMatches = Assert<Extends<CsvRowError, Schemas['CsvRowError']>>
+export type _SavedFilterMatches = Assert<Extends<SavedFilter, Schemas['SavedFilterRead']>>
