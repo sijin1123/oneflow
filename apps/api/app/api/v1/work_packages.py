@@ -28,6 +28,7 @@ from app.schemas.work_package import (
     WorkPackageRead,
 )
 from app.services.activity import record_created, record_field_changes
+from app.services.notification import record_assignment
 
 logger = logging.getLogger("oneflow.work_packages")
 
@@ -154,6 +155,14 @@ async def create_work_package(
     session.add(wp)
     await session.flush()  # assigns wp.id for the activity FK
     record_created(session, wp.id, user.id)
+    if body.assignee_id is not None:
+        record_assignment(
+            session,
+            recipient_id=body.assignee_id,
+            actor_id=user.id,
+            project_id=project_id,
+            wp_id=wp.id,
+        )
     await session.flush()
     await session.commit()
     return WorkPackageRead.model_validate(wp)
@@ -267,6 +276,16 @@ async def patch_work_package(
         if updated is not None:
             # Record field changes in the same transaction as the update.
             record_field_changes(session, wp_id, user.id, old_values, changes)
+            # Notify on a real (re)assignment to a new user.
+            new_assignee = changes.get("assignee_id")
+            if new_assignee is not None and old_values.get("assignee_id") != new_assignee:
+                record_assignment(
+                    session,
+                    recipient_id=new_assignee,
+                    actor_id=user.id,
+                    project_id=wp.project_id,
+                    wp_id=wp_id,
+                )
             await session.flush()
         await session.commit()
     except HTTPException:

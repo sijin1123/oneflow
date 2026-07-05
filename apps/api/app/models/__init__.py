@@ -3,6 +3,7 @@ from app.models.comment import WorkPackageComment
 from app.models.cost_entry import CostEntry
 from app.models.member import ProjectMember
 from app.models.milestone import Milestone
+from app.models.notification import Notification
 from app.models.project import Project
 from app.models.relation import WorkPackageRelation
 from app.models.time_entry import TimeEntry
@@ -20,4 +21,5 @@ __all__ = [
     "TimeEntry",
     "CostEntry",
     "Milestone",
+    "Notification",
 ]
