@@ -861,6 +861,55 @@ test('빈 목록은 빈 상태를 보여준다', async ({ page }) => {
   await page.screenshot({ path: '../../docs/screenshots/web-empty.png', fullPage: true })
 })
 
+test('빈 프로젝트 목록에서 새 프로젝트를 만들면 생성 요청 후 이동한다', async ({ page }) => {
+  await page.route('**/api/v1/projects', (route) => {
+    if (route.request().method() === 'POST') {
+      const sent = route.request().postDataJSON() as { key: string; name: string }
+      return route.fulfill({
+        status: 201,
+        json: {
+          id: 'p-new',
+          key: sent.key,
+          name: sent.name,
+          description: null,
+          budget: null,
+          created_at: '2026-07-05T00:00:00Z',
+          updated_at: '2026-07-05T00:00:00Z',
+        },
+      })
+    }
+    return route.fulfill({ json: { items: [], total: 0 } satisfies ProjectList })
+  })
+  await page.route('**/api/v1/me/notifications', (route) =>
+    route.fulfill({ json: { items: [], total: 0, unread: 0 } }),
+  )
+  // Minimal mocks for the create-then-navigate target page.
+  await page.route('**/api/v1/projects/p-new/work-packages**', (route) =>
+    route.fulfill({ json: { items: [], total: 0 } satisfies WorkPackageList }),
+  )
+  await page.route('**/api/v1/projects/p-new/saved-filters', (route) =>
+    route.fulfill({ json: { items: [], total: 0 } }),
+  )
+  await page.route('**/api/v1/projects/p-new/statuses', (route) =>
+    route.fulfill({ json: { items: [], total: 0 } }),
+  )
+  await page.route('**/api/v1/projects/p-new/members', (route) =>
+    route.fulfill({ json: { items: [], total: 0 } }),
+  )
+
+  await page.goto('/projects')
+  await page.getByRole('button', { name: '새 프로젝트' }).first().click()
+  await page.getByLabel('이름').fill('신규 프로젝트')
+  await page.getByLabel(/키/).fill('NEW')
+  const post = page.waitForRequest(
+    (r) => r.method() === 'POST' && r.url().endsWith('/api/v1/projects'),
+  )
+  await page.getByRole('button', { name: '만들기' }).click()
+  const req = await post
+  expect(req.postDataJSON()).toMatchObject({ key: 'NEW', name: '신규 프로젝트' })
+  await expect(page).toHaveURL(/\/projects\/p-new\/work-packages/)
+})
+
 test('알 수 없는 주소는 스타일된 404 페이지를 보여준다', async ({ page }) => {
   await page.route('**/api/v1/projects', (route) =>
     route.fulfill({ json: { items: [project], total: 1 } satisfies ProjectList }),

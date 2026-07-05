@@ -1,5 +1,5 @@
 import { Trash2 } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 
 import { EmptyState, ErrorState, ListSkeleton } from '@/components/shell/states'
@@ -35,6 +35,15 @@ export function SettingsPage() {
   const [budget, setBudget] = useState('')
   const [msName, setMsName] = useState('')
   const [msDue, setMsDue] = useState('')
+  const [pName, setPName] = useState('')
+  const [pDesc, setPDesc] = useState('')
+  // Seed/resync the editable project fields from the loaded (or refetched) project.
+  useEffect(() => {
+    if (project.data) {
+      setPName(project.data.name)
+      setPDesc(project.data.description ?? '')
+    }
+  }, [project.data])
 
   if (members.isPending || me.isPending) return <ListSkeleton />
   if (members.isError) return <ErrorState error={members.error} onRetry={() => members.refetch()} />
@@ -52,6 +61,51 @@ export function SettingsPage() {
       <p className="mb-4 text-xs text-of-muted">
         {isOwner ? '소유자는 예산·멤버를 관리할 수 있습니다.' : '읽기 전용 — 관리는 소유자만 가능합니다.'}
       </p>
+
+      {isOwner && project.data ? (
+        <div className="mb-4 space-y-2 rounded-of border border-of-border bg-of-surface p-3">
+          <p className="text-xs font-medium">프로젝트 정보</p>
+          <div className="space-y-1">
+            <label htmlFor="p-name" className="text-xs text-of-muted">
+              이름
+            </label>
+            <Input
+              id="p-name"
+              value={pName}
+              onChange={(e) => setPName(e.target.value)}
+              aria-label="프로젝트 이름"
+            />
+          </div>
+          <div className="space-y-1">
+            <label htmlFor="p-desc" className="text-xs text-of-muted">
+              설명
+            </label>
+            <Input
+              id="p-desc"
+              value={pDesc}
+              onChange={(e) => setPDesc(e.target.value)}
+              aria-label="프로젝트 설명"
+            />
+          </div>
+          <Button
+            size="sm"
+            disabled={updateProject.isPending || pName.trim() === ''}
+            onClick={() =>
+              updateProject.mutate({
+                name: pName.trim(),
+                description: pDesc.trim() === '' ? null : pDesc.trim(),
+              })
+            }
+          >
+            저장
+          </Button>
+          {updateProject.isError ? (
+            <p role="alert" className="text-xs text-of-danger">
+              저장하지 못했습니다.
+            </p>
+          ) : null}
+        </div>
+      ) : null}
 
       {isOwner ? (
         <div className="mb-4 space-y-2 rounded-of border border-of-border bg-of-surface p-3">
