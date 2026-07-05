@@ -21,6 +21,7 @@ TRACKED_FIELDS = (
     "parent_id",
     "start_date",
     "due_date",
+    "estimated_hours",
 )
 
 

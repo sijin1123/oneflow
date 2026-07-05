@@ -1,5 +1,6 @@
 import uuid
 from datetime import date, datetime
+from decimal import Decimal
 
 from sqlalchemy import (
     CheckConstraint,
@@ -9,6 +10,7 @@ from sqlalchemy import (
     ForeignKeyConstraint,
     Index,
     Integer,
+    Numeric,
     String,
     Text,
     UniqueConstraint,
@@ -79,6 +81,9 @@ class WorkPackage(Base):
     start_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     due_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     parent_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    # Planned effort in hours (Phase 3 time tracking). Spent/remaining are derived
+    # from time_entries, not stored.
+    estimated_hours: Mapped[Decimal | None] = mapped_column(Numeric(6, 2), nullable=True)
     # Optimistic-concurrency token (v5.1): +1 on every successful write.
     version: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     created_at: Mapped[datetime] = mapped_column(

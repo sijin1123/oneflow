@@ -31,6 +31,7 @@ export type WorkPackage = {
   /** date-only 'YYYY-MM-DD' strings — never converted through JS Date (§6.1) */
   start_date: string | null
   due_date: string | null
+  estimated_hours: number | null
   /** optimistic-concurrency token: echo the integer exactly (§6.2) */
   version: number
   created_at: string
@@ -95,6 +96,22 @@ export type Activity = {
   old_value: string | null
   new_value: string | null
   created_at: string
+}
+
+export type TimeEntry = {
+  id: string
+  work_package_id: string
+  user_id: string | null
+  hours: number
+  spent_on: string
+  comment: string | null
+  created_at: string
+}
+
+export type TimeEntryList = {
+  items: TimeEntry[]
+  total: number
+  total_hours: number
 }
 
 export type ActivityList = {
