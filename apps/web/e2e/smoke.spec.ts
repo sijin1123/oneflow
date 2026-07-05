@@ -199,6 +199,52 @@ test('409 충돌 시 알림 후 최신 데이터로 재로드한다', async ({ p
   expect(message).toContain('먼저 수정했습니다')
 })
 
+test('설정 화면에서 멤버를 보여주고 소유자가 멤버를 추가한다', async ({ page }) => {
+  await page.route('**/api/v1/projects', (route) =>
+    route.fulfill({ json: projects }),
+  )
+  await page.route('**/api/v1/me', (route) =>
+    route.fulfill({
+      json: {
+        id: 'me-1',
+        email: 'dev@oneflow.local',
+        display_name: 'Dev User',
+        is_active: true,
+      },
+    }),
+  )
+  await page.route(`**/api/v1/projects/${project.id}/members`, async (route) => {
+    if (route.request().method() === 'POST') {
+      const sent = route.request().postDataJSON() as { email: string; role: string }
+      await route.fulfill({
+        status: 201,
+        json: { user_id: 'u2', email: sent.email, display_name: 'New', role: sent.role },
+      })
+      return
+    }
+    await route.fulfill({
+      json: {
+        items: [
+          { user_id: 'me-1', email: 'dev@oneflow.local', display_name: 'Dev User', role: 'owner' },
+        ],
+        total: 1,
+      },
+    })
+  })
+
+  await page.goto(`/projects/${project.id}/settings`)
+  await expect(page.getByText('dev@oneflow.local')).toBeVisible()
+  await expect(page.getByText('(나)')).toBeVisible()
+
+  const addPost = page.waitForRequest(
+    (req) => req.method() === 'POST' && req.url().includes(`/projects/${project.id}/members`),
+  )
+  await page.getByLabel('추가할 멤버 이메일').fill('alex@oneflow.local')
+  await page.getByRole('button', { name: '추가' }).click()
+  const req = await addPost
+  expect((req.postDataJSON() as { email: string }).email).toBe('alex@oneflow.local')
+})
+
 test('빈 목록은 빈 상태를 보여준다', async ({ page }) => {
   await page.route('**/api/v1/projects', (route) =>
     route.fulfill({ json: { items: [project], total: 1 } satisfies ProjectList }),

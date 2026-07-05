@@ -1,6 +1,7 @@
 import { Navigate, createBrowserRouter } from 'react-router-dom'
 
 import { AppShell } from '@/components/shell/AppShell'
+import { SettingsPage } from '@/features/members/SettingsPage'
 import { ProjectsPage } from '@/features/projects/ProjectsPage'
 import { BoardPage } from '@/features/work-packages/BoardPage'
 import { ListPage } from '@/features/work-packages/ListPage'
@@ -16,6 +17,7 @@ export const router = createBrowserRouter([
       { path: 'projects/:projectId/work-packages', element: <ListPage /> },
       { path: 'projects/:projectId/board', element: <BoardPage /> },
       { path: 'projects/:projectId/timeline', element: <TimelinePage /> },
+      { path: 'projects/:projectId/settings', element: <SettingsPage /> },
     ],
   },
 ])

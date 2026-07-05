@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.v1 import comments, health, projects, work_packages
+from app.api.v1 import comments, health, me, members, projects, work_packages
 from app.core.config import Settings, get_settings
 from app.core.logging import setup_logging
 from app.core.middleware import (
@@ -72,6 +72,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(projects.router, prefix="/api/v1/projects", tags=["projects"])
     app.include_router(work_packages.router, prefix="/api/v1", tags=["work-packages"])
     app.include_router(comments.router, prefix="/api/v1", tags=["comments"])
+    app.include_router(members.router, prefix="/api/v1", tags=["members"])
+    app.include_router(me.router, prefix="/api/v1", tags=["me"])
     return app
 
 
