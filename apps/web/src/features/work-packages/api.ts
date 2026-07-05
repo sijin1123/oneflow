@@ -45,6 +45,31 @@ export function useRelations(wpId: string | null) {
   })
 }
 
+export function useCreateRelation(wpId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (body: { target_id: string; relation_type: string }) =>
+      api(`/api/v1/work-packages/${wpId}/relations`, {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['work-package-relations', wpId] })
+    },
+  })
+}
+
+export function useDeleteRelation(wpId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (relationId: string) =>
+      api<void>(`/api/v1/work-packages/${wpId}/relations/${relationId}`, { method: 'DELETE' }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['work-package-relations', wpId] })
+    },
+  })
+}
+
 export function useComments(wpId: string | null) {
   return useQuery({
     queryKey: ['work-package-comments', wpId],

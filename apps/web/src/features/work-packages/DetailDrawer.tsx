@@ -9,8 +9,9 @@ import { Sheet, SheetContent } from '@/components/ui/sheet'
 import { Textarea } from '@/components/ui/textarea'
 
 import { HistorySection } from './HistorySection'
+import { RelationsSection } from './RelationsSection'
 import { PriorityChip, StatusChip } from './chips'
-import { usePatchWorkPackage, useRelations, useWorkPackage } from './api'
+import { usePatchWorkPackage, useWorkPackage } from './api'
 import {
   PRIORITY_LABELS,
   STATUS_LABELS,
@@ -58,7 +59,6 @@ function DrawerBody({ wpId, projectId }: { wpId: string; projectId: string }) {
 
 function DrawerForm({ wp, projectId }: { wp: WorkPackage; projectId: string }) {
   const patch = usePatchWorkPackage(projectId)
-  const relations = useRelations(wp.id)
   const queryClient = useQueryClient()
 
   // All editable fields are controlled and resynced from server data, so a 409
@@ -195,31 +195,7 @@ function DrawerForm({ wp, projectId }: { wp: WorkPackage; projectId: string }) {
         <span className="ml-auto">v{wp.version}</span>
       </div>
 
-      <section aria-label="관계" className="space-y-2">
-        <h3 className="text-xs font-semibold text-of-muted">관계</h3>
-        {relations.isPending ? (
-          <p className="text-xs text-of-muted">불러오는 중…</p>
-        ) : relations.isError ? (
-          <p className="text-xs text-of-danger">관계를 불러오지 못했습니다.</p>
-        ) : relations.data.total === 0 ? (
-          <p className="text-xs text-of-muted">연결된 관계가 없습니다.</p>
-        ) : (
-          <ul className="space-y-1">
-            {relations.data.items.map((r) => (
-              <li
-                key={r.id}
-                className="flex items-center gap-2 rounded-of border border-of-border px-2 py-1.5 text-xs"
-              >
-                <span className="font-medium">{r.relation_type}</span>
-                <span className="text-of-muted">
-                  {r.direction === 'outgoing' ? '→ 대상' : '← 출발'}:{' '}
-                  {r.direction === 'outgoing' ? r.target_id : r.source_id}
-                </span>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
+      <RelationsSection wpId={wp.id} projectId={projectId} />
 
       {patch.isPending ? <p className="text-xs text-of-muted">저장 중…</p> : null}
 

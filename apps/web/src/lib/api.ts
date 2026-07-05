@@ -36,5 +36,9 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
     }
     throw new ApiError(res.status, detail, requestId, payload)
   }
+  // 204 No Content (e.g. DELETE) has no body to parse.
+  if (res.status === 204 || res.headers.get('content-length') === '0') {
+    return undefined as T
+  }
   return (await res.json()) as T
 }
