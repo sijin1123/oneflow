@@ -16,9 +16,11 @@ export function Topbar() {
     ? 'Board'
     : location.pathname.endsWith('/timeline')
       ? 'Timeline'
-      : projectId
-        ? 'Work Packages'
-        : '프로젝트'
+      : location.pathname.endsWith('/settings')
+        ? 'Settings'
+        : projectId
+          ? 'Work Packages'
+          : '프로젝트'
   // Search (?q=) and inline creation (?new=1) are consumed by the list view
   // only — showing them on Board/Timeline would be dead controls (finding #6).
   const onListView = Boolean(projectId) && location.pathname.endsWith('/work-packages')
