@@ -2,6 +2,8 @@ import { Navigate, createBrowserRouter } from 'react-router-dom'
 
 import { AppShell } from '@/components/shell/AppShell'
 import { DashboardPage } from '@/features/dashboard/DashboardPage'
+import { DocumentEditorPage } from '@/features/documents/DocumentEditorPage'
+import { DocumentsPage } from '@/features/documents/DocumentsPage'
 import { SettingsPage } from '@/features/members/SettingsPage'
 import { ProjectsPage } from '@/features/projects/ProjectsPage'
 import { SearchPage } from '@/features/search/SearchPage'
@@ -25,6 +27,8 @@ export const router = createBrowserRouter([
       { path: 'projects/:projectId/timeline', element: <TimelinePage /> },
       { path: 'projects/:projectId/calendar', element: <CalendarPage /> },
       { path: 'projects/:projectId/dashboard', element: <DashboardPage /> },
+      { path: 'projects/:projectId/documents', element: <DocumentsPage /> },
+      { path: 'projects/:projectId/documents/:docId', element: <DocumentEditorPage /> },
       { path: 'projects/:projectId/settings', element: <SettingsPage /> },
     ],
   },

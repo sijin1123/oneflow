@@ -661,6 +661,34 @@ test('제목순 정렬 선택이 목록 쿼리에 sort=subject를 반영한다',
   await req
 })
 
+test('문서 목록에서 문서를 열면 편집기가 제목과 본문을 보여준다', async ({ page }) => {
+  await mockApi(page)
+  const doc = {
+    id: 'd1',
+    project_id: project.id,
+    title: '팀 위키',
+    author_id: null,
+    version: 2,
+    created_at: '2026-07-01T00:00:00Z',
+    updated_at: '2026-07-03T00:00:00Z',
+  }
+  await page.route(`**/api/v1/projects/${project.id}/documents`, (route) =>
+    route.fulfill({ json: { items: [doc], total: 1 } }),
+  )
+  await page.route('**/api/v1/documents/d1', (route) =>
+    route.fulfill({ json: { ...doc, body: '<p>온보딩 가이드</p>' } }),
+  )
+
+  await page.goto(`/projects/${project.id}/documents`)
+  const row = page.getByRole('button', { name: /팀 위키/ })
+  await expect(row).toBeVisible()
+  await row.click()
+
+  // editor page: title input prefilled, lazy Tiptap body editor visible
+  await expect(page.getByLabel('문서 제목')).toHaveValue('팀 위키')
+  await expect(page.getByLabel('문서 본문')).toBeVisible()
+})
+
 test('빈 목록은 빈 상태를 보여준다', async ({ page }) => {
   await page.route('**/api/v1/projects', (route) =>
     route.fulfill({ json: { items: [project], total: 1 } satisfies ProjectList }),
