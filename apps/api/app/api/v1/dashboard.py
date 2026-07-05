@@ -1,13 +1,14 @@
 import uuid
 from datetime import date
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import get_current_user
 from app.core.authz import require_member
 from app.db.session import get_session
+from app.models.activity import Activity
 from app.models.time_entry import TimeEntry
 from app.models.user import User
 from app.models.work_package import (
@@ -16,6 +17,7 @@ from app.models.work_package import (
     WP_TYPES,
     WorkPackage,
 )
+from app.schemas.comment import ProjectActivityList, ProjectActivityRead
 from app.schemas.dashboard import Bucket, DashboardRead
 
 router = APIRouter()
@@ -91,3 +93,40 @@ async def project_dashboard(
         total_estimated_hours=round(float(estimated), 2),
         total_spent_hours=round(float(spent), 2),
     )
+
+
+@router.get("/projects/{project_id}/activities", response_model=ProjectActivityList)
+async def project_activities(
+    project_id: uuid.UUID,
+    limit: int = Query(default=50, ge=1, le=200),
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+) -> ProjectActivityList:
+    """Project-wide audit feed: every work-package activity in the project, newest
+    first, enriched with the work package subject and actor name (member-scoped)."""
+    await require_member(session, project_id, user)
+    rows = (
+        await session.execute(
+            select(Activity, WorkPackage.subject, User.display_name)
+            .join(WorkPackage, Activity.work_package_id == WorkPackage.id)
+            .outerjoin(User, Activity.actor_id == User.id)
+            .where(WorkPackage.project_id == project_id)
+            .order_by(Activity.created_at.desc())
+            .limit(limit)
+        )
+    ).all()
+    items = [
+        ProjectActivityRead(
+            id=a.id,
+            work_package_id=a.work_package_id,
+            work_package_subject=subject,
+            actor_name=actor_name,
+            action=a.action,
+            field=a.field,
+            old_value=a.old_value,
+            new_value=a.new_value,
+            created_at=a.created_at,
+        )
+        for (a, subject, actor_name) in rows
+    ]
+    return ProjectActivityList(items=items, total=len(items))

@@ -56,3 +56,22 @@ async def test_dashboard_empty_project(client, project):
 async def test_dashboard_nonmember_404(client, foreign_project):
     res = await client.get(f"/api/v1/projects/{foreign_project['project_id']}/dashboard")
     assert res.status_code == 404
+
+
+async def test_project_audit_feed(client, project):
+    pid = project["id"]
+    wp = await create_wp(client, pid, subject="감사 대상")
+    await client.patch(
+        f"/api/v1/work-packages/{wp['id']}",
+        json={"expected_version": 0, "status": "in_progress"},
+    )
+    feed = (await client.get(f"/api/v1/projects/{pid}/activities")).json()
+    assert feed["total"] >= 2  # created + field_changed
+    top = feed["items"][0]  # newest first
+    assert top["work_package_subject"] == "감사 대상"
+    assert top["action"] == "field_changed" and top["field"] == "status"
+
+
+async def test_project_audit_nonmember_404(client, foreign_project):
+    res = await client.get(f"/api/v1/projects/{foreign_project['project_id']}/activities")
+    assert res.status_code == 404

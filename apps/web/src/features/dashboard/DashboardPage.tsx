@@ -5,6 +5,7 @@ import { cn } from '@/lib/utils'
 import { PRIORITY_LABELS, STATUS_LABELS } from '@/features/work-packages/types'
 import type { WpPriority, WpStatus } from '@/features/work-packages/types'
 
+import { RecentActivity } from './RecentActivity'
 import { useDashboard, type Bucket } from './api'
 
 const STATUS_COLOR: Record<string, string> = {
@@ -125,6 +126,8 @@ export function DashboardPage() {
           labels={PRIORITY_LABELS as Record<WpPriority, string>}
         />
       </div>
+
+      <RecentActivity projectId={projectId} />
     </div>
   )
 }

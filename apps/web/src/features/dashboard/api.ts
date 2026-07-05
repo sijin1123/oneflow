@@ -21,3 +21,27 @@ export function useDashboard(projectId: string) {
     queryFn: () => api<Dashboard>(`/api/v1/projects/${projectId}/dashboard`),
   })
 }
+
+export type ProjectActivity = {
+  id: string
+  work_package_id: string
+  work_package_subject: string
+  actor_name: string | null
+  action: 'created' | 'field_changed' | 'commented'
+  field: string | null
+  old_value: string | null
+  new_value: string | null
+  created_at: string
+}
+
+export type ProjectActivityList = {
+  items: ProjectActivity[]
+  total: number
+}
+
+export function useProjectActivities(projectId: string) {
+  return useQuery({
+    queryKey: ['project-activities', projectId],
+    queryFn: () => api<ProjectActivityList>(`/api/v1/projects/${projectId}/activities`),
+  })
+}
