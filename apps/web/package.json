@@ -9,7 +9,7 @@
     "lint": "oxlint",
     "preview": "vite preview",
     "typecheck": "tsc -b --noEmit",
-    "test:unit": "node --test src/lib/conflict.test.ts",
+    "test:unit": "node --test 'src/**/*.test.ts'",
     "test:e2e": "playwright test"
   },
   "dependencies": {

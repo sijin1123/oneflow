@@ -199,6 +199,13 @@ test('409 충돌 시 알림 후 최신 데이터로 재로드한다', async ({ p
   expect(message).toContain('먼저 수정했습니다')
 })
 
+test('타임라인이 일정이 있는 작업을 막대로 그린다', async ({ page }) => {
+  await mockApi(page)
+  await page.goto(`/projects/${project.id}/timeline`)
+  await expect(page.getByRole('button', { name: '워크패키지 API 구현 일정' })).toBeVisible()
+  await expect(page.getByText('2026.07')).toBeVisible() // month header from start/due dates
+})
+
 test('설정 화면에서 멤버를 보여주고 소유자가 멤버를 추가한다', async ({ page }) => {
   await page.route('**/api/v1/projects', (route) =>
     route.fulfill({ json: projects }),
