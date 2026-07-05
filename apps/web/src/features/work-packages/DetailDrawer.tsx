@@ -293,7 +293,11 @@ function DrawerForm({ wp, projectId }: { wp: WorkPackage; projectId: string }) {
 
       <RelationsSection wpId={wp.id} projectId={projectId} />
 
-      {patch.isPending ? <p className="text-xs text-of-muted">저장 중…</p> : null}
+      {patch.isPending ? (
+        <p role="status" aria-live="polite" className="text-xs text-of-muted">
+          저장 중…
+        </p>
+      ) : null}
 
       <HistorySection wpId={wp.id} projectId={projectId} />
     </div>

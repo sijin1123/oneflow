@@ -6,7 +6,7 @@ import { ApiError } from '@/lib/api'
 
 export function ListSkeleton({ rows = 6 }: { rows?: number }) {
   return (
-    <div className="space-y-2 p-4" aria-label="불러오는 중">
+    <div className="space-y-2 p-4" role="status" aria-live="polite" aria-label="불러오는 중">
       {Array.from({ length: rows }, (_, i) => (
         <Skeleton key={i} className="h-9 w-full" />
       ))}
