@@ -5,6 +5,7 @@ from app.models.member import ProjectMember
 from app.models.milestone import Milestone
 from app.models.notification import Notification
 from app.models.project import Project
+from app.models.project_status import ProjectStatus
 from app.models.relation import WorkPackageRelation
 from app.models.saved_filter import SavedFilter
 from app.models.time_entry import TimeEntry
@@ -24,4 +25,5 @@ __all__ = [
     "Milestone",
     "Notification",
     "SavedFilter",
+    "ProjectStatus",
 ]
