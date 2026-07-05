@@ -207,6 +207,42 @@ test('409 충돌 시 알림 후 최신 데이터로 재로드한다', async ({ p
   expect(message).toContain('먼저 수정했습니다')
 })
 
+test('대시보드가 집계 타일과 분포를 보여준다', async ({ page }) => {
+  await page.route('**/api/v1/projects', (route) => route.fulfill({ json: projects }))
+  await page.route(`**/api/v1/projects/${project.id}/dashboard`, (route) =>
+    route.fulfill({
+      json: {
+        total_work_packages: 5,
+        open_work_packages: 3,
+        overdue_count: 1,
+        status_counts: [
+          { key: 'backlog', count: 1 },
+          { key: 'todo', count: 1 },
+          { key: 'in_progress', count: 1 },
+          { key: 'in_review', count: 0 },
+          { key: 'done', count: 2 },
+          { key: 'cancelled', count: 0 },
+        ],
+        priority_counts: [
+          { key: 'none', count: 2 },
+          { key: 'low', count: 0 },
+          { key: 'medium', count: 1 },
+          { key: 'high', count: 2 },
+          { key: 'urgent', count: 0 },
+        ],
+        type_counts: [],
+        total_estimated_hours: 40,
+        total_spent_hours: 10.5,
+      },
+    }),
+  )
+  await page.goto(`/projects/${project.id}/dashboard`)
+  await expect(page.getByText('전체 작업')).toBeVisible()
+  await expect(page.getByText('기한 초과')).toBeVisible()
+  await expect(page.getByText('10.5 / 40h')).toBeVisible()
+  await expect(page.getByText('상태별')).toBeVisible()
+})
+
 test('타임라인이 일정이 있는 작업을 막대로 그린다', async ({ page }) => {
   await mockApi(page)
   await page.goto(`/projects/${project.id}/timeline`)

@@ -97,6 +97,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{project_id}/dashboard": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Project Dashboard */
+        get: operations["project_dashboard_api_v1_projects__project_id__dashboard_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{project_id}/members": {
         parameters: {
             query?: never;
@@ -313,6 +330,13 @@ export interface components {
              */
             work_package_id: string;
         };
+        /** Bucket */
+        Bucket: {
+            /** Count */
+            count: number;
+            /** Key */
+            key: string;
+        };
         /** CommentCreate */
         CommentCreate: {
             /** Body */
@@ -360,6 +384,25 @@ export interface components {
             current: components["schemas"]["WorkPackageRead"];
             /** Detail */
             detail: string;
+        };
+        /** DashboardRead */
+        DashboardRead: {
+            /** Open Work Packages */
+            open_work_packages: number;
+            /** Overdue Count */
+            overdue_count: number;
+            /** Priority Counts */
+            priority_counts: components["schemas"]["Bucket"][];
+            /** Status Counts */
+            status_counts: components["schemas"]["Bucket"][];
+            /** Total Estimated Hours */
+            total_estimated_hours: number;
+            /** Total Spent Hours */
+            total_spent_hours: number;
+            /** Total Work Packages */
+            total_work_packages: number;
+            /** Type Counts */
+            type_counts: components["schemas"]["Bucket"][];
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -823,6 +866,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ProjectRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    project_dashboard_api_v1_projects__project_id__dashboard_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DashboardRead"];
                 };
             };
             /** @description Validation Error */

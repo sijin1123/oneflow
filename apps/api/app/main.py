@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.v1 import (
     comments,
+    dashboard,
     health,
     me,
     members,
@@ -83,6 +84,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(members.router, prefix="/api/v1", tags=["members"])
     app.include_router(me.router, prefix="/api/v1", tags=["me"])
     app.include_router(time_entries.router, prefix="/api/v1", tags=["time-entries"])
+    app.include_router(dashboard.router, prefix="/api/v1", tags=["dashboard"])
     return app
 
 

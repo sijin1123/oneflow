@@ -1,4 +1,11 @@
-import { CalendarRange, FolderKanban, List, Settings, SquareKanban } from 'lucide-react'
+import {
+  CalendarRange,
+  FolderKanban,
+  LayoutDashboard,
+  List,
+  Settings,
+  SquareKanban,
+} from 'lucide-react'
 import { NavLink, useParams } from 'react-router-dom'
 
 import { cn } from '@/lib/utils'
@@ -47,6 +54,9 @@ export function Sidebar() {
               </NavLink>
               <NavLink to={`/projects/${p.id}/timeline`} className={navLinkClass}>
                 <CalendarRange /> Timeline
+              </NavLink>
+              <NavLink to={`/projects/${p.id}/dashboard`} className={navLinkClass}>
+                <LayoutDashboard /> Dashboard
               </NavLink>
               <NavLink to={`/projects/${p.id}/settings`} className={navLinkClass}>
                 <Settings /> Settings
