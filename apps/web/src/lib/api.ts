@@ -3,6 +3,10 @@
    - Date-only fields travel as 'YYYY-MM-DD' strings — no JS Date round-trip.
    - version is echoed as the integer the server returned (§6.2). */
 
+import { detailFromPayload } from '@/lib/errors'
+
+export { detailFromPayload }
+
 export const BASE_URL: string =
   import.meta.env.VITE_ONEFLOW_API_BASE_URL ?? 'http://localhost:8000'
 
@@ -30,8 +34,7 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
     let detail = `HTTP ${res.status}`
     try {
       payload = await res.json()
-      const d = (payload as { detail?: unknown })?.detail
-      if (typeof d === 'string') detail = d
+      detail = detailFromPayload(payload) ?? detail
     } catch {
       /* non-JSON error body — keep generic detail */
     }

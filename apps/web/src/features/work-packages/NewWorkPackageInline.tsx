@@ -25,7 +25,9 @@ export function NewWorkPackageInline({ projectId }: { projectId: string }) {
 
   const submit = () => {
     const trimmed = subject.trim()
-    if (!trimmed) return
+    // Guard the Enter-key path too (the button is disabled while pending, but the
+    // keydown handler is not) so a double Enter can't create duplicate work packages.
+    if (!trimmed || create.isPending) return
     create.mutate(
       { subject: trimmed },
       {

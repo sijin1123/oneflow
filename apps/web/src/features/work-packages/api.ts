@@ -96,6 +96,8 @@ export function useLogTime(wpId: string) {
       }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['time-entries', wpId] })
+      // Dashboard rolls up spent hours — refresh it too.
+      void queryClient.invalidateQueries({ queryKey: ['dashboard'] })
     },
   })
 }
@@ -134,6 +136,8 @@ export function useLogCost(wpId: string) {
       }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['cost-entries', wpId] })
+      // Dashboard rolls up cost — refresh it too.
+      void queryClient.invalidateQueries({ queryKey: ['dashboard'] })
     },
   })
 }
@@ -191,6 +195,8 @@ export function useCreateWorkPackage(projectId: string) {
       }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['work-packages', projectId] })
+      void queryClient.invalidateQueries({ queryKey: ['dashboard', projectId] })
+      void queryClient.invalidateQueries({ queryKey: ['project-activities', projectId] })
     },
   })
 }
@@ -209,14 +215,18 @@ export function usePatchWorkPackage(projectId: string) {
     onSuccess: (updated) => {
       queryClient.setQueryData(['work-package', updated.id], updated)
       void queryClient.invalidateQueries({ queryKey: ['work-packages', projectId] })
+      // A field change (status/priority/dates/assignee) also moves dashboard rollups,
+      // the project activity feed, and the drawer's own history — refresh them all.
+      void queryClient.invalidateQueries({ queryKey: ['dashboard', projectId] })
+      void queryClient.invalidateQueries({ queryKey: ['project-activities', projectId] })
+      void queryClient.invalidateQueries({ queryKey: ['work-package-activities', updated.id] })
     },
     onError: (error, { wpId }) => {
+      // The drawer surfaces the failure inline via patch.isError; here we only handle
+      // the 409 reload so the editor shows the latest server state (non-409 errors
+      // keep the user's input on screen so nothing is silently lost).
       if (!(error instanceof ApiError)) return
       const decision = decideOnPatchError(error.status)
-      if (decision.notify && decision.message) {
-        // Slice-level notice; a toast system is a follow-up.
-        window.alert(decision.message)
-      }
       if (decision.invalidate) {
         const conflict = error.payload as ConflictBody | null
         if (conflict?.current) {

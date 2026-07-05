@@ -85,13 +85,17 @@ export function useUpdateMeeting(projectId: string) {
       queryClient.setQueryData(['meeting', m.id], m)
       void queryClient.invalidateQueries({ queryKey: ['meetings', projectId] })
     },
-    onError: (error) => {
-      if (error instanceof ApiError && error.status === 409) {
-        const current = (error.payload as MeetingConflict | null)?.current
-        if (current) queryClient.setQueryData(['meeting', current.id], current)
-      }
-    },
+    // On a 409 we intentionally do NOT overwrite the cached meeting: that would
+    // trip the detail page's resync effect and discard the user's unsaved edits.
+    // The page reads the conflict version and lets the user retry without loss.
   })
+}
+
+export function conflictOf(error: unknown): MeetingConflict | null {
+  if (error instanceof ApiError && error.status === 409) {
+    return (error.payload as MeetingConflict | null) ?? null
+  }
+  return null
 }
 
 export function useDeleteMeeting(projectId: string) {
