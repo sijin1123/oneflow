@@ -5,9 +5,9 @@
 
 ## 0. 이 문서의 성격 (반드시 먼저 읽기)
 
-- OneFlow 그린필드 목표(`docs/goals/ONEFLOW_GREENFIELD_GOAL.md`)의 **모든 개발 항목**(Phase 1/2/3 + Phase 1 후속 + 후속 협업 모듈)이 Opus 4.8에 의해 구현·검증·머지 완료되었다(총 26 PR).
+- OneFlow 그린필드 목표(`docs/goals/ONEFLOW_GREENFIELD_GOAL.md`)의 **모든 개발 항목**(Phase 1/2/3 + Phase 1 후속 + 후속 협업 모듈)이 Opus 4.8에 의해 구현·검증·머지 완료되었다(개발 PR #1~#26, 핸드오프/검증 문서 PR #27~#28).
 - 목표 규약상 **전수 검사는 실제 fable5 세션에서만** 수행한다. Opus 4.8을 포함한 다른 모델은 검사를 수행·흉내 내지 않는다.
-- 전수 검사는 **릴리스 차단(release-blocking)** 이다. fable5가 전체 코드베이스를 검사하고 필수 지적을 모두 수정·재검증하기 전에는 목표를 최종 완료로 보고하지 않는다.
+- 전수 검사는 **릴리스 차단(release-blocking) 마무리 패스**이다. fable5가 전체 코드베이스를 검사하고, 명시 후속 2개를 제외한 부족분을 필수 지적으로 분류해 수정·재검증하기 전에는 목표를 최종 완료로 보고하지 않는다.
 - **시작 조건**: (1) 사용자가 `Phase 3 개발과 검증/머지가 완료되었습니다. fable5 전수 검사를 시작할까요?`에 명시 승인, (2) active model = fable5 확인. 둘 중 하나라도 미충족 시 검사 착수 금지.
 
 ## 1. 현재 상태 스냅샷 (검사 대상 baseline)
@@ -16,7 +16,7 @@
 |---|---|
 | Repo | `https://github.com/sijin1123/oneflow.git` |
 | 기본 브랜치 | `main` (검사 착수 시점 HEAD 재측정 필수) |
-| 누적 PR | #1 ~ #26 (전부 CI 3잡 green 머지) |
+| 누적 PR | #1 ~ #28 (전부 CI green 머지; #1~#26 개발, #27 fable5 핸드오프, #28 검증 문서) |
 | 마이그레이션 | `alembic/versions/0001` ~ `0013` (13개) |
 | 백엔드 | FastAPI + SQLAlchemy 2 async + asyncpg + Alembic + Pydantic v2 (uv, Python 3.13) |
 | 프론트 | React 19 + Vite 8 + React Router v7 + TanStack Query v5 + Tailwind v4 + Tiptap + oxlint (Node 24) |
@@ -48,15 +48,34 @@ backend · frontend · database/migrations · auth/permissions · workflow rules
 7. **클린룸/라이선스**: `@plane/*` 미사용, GPL/AGPL 미상속, 신규 의존성(nh3·Tiptap·vitest·RTL·jsdom) 라이선스, 브랜딩/트레이드드레스.
 8. **문서/워크로그**: `docs/PROJECT_WORKLOG.md`·`oneflow/docs/VERIFICATION.md`·`ONEFLOW_CLEANROOM_NOTES.md` 일치성.
 
-## 3. 이미 알려진 이연/후속 (누락 아님 — 지적 대상 제외)
+## 3. 명시 후속과 마무리 구현 정책
 
-- 실 바이너리 업로드/다운로드(스토리지 백엔드·서명 URL·바이러스 스캔) — 인프라/비밀 필요.
-- 실 LLM/RAG 배선(API 키·비용·프롬프트 정책) — AI는 로컬 provider + feature flag로 아키텍처만 준비.
-- 간트 드래그/의존성 편집 — 라이선스 리스크로 경량 타임라인 대체.
-- 커스텀 상태 KEY 추가/삭제·전이 규칙 — 현재는 라벨/순서 커스터마이징(키 고정).
-- 실시간 협업(Yjs/WebSocket), UUIDv7 전환, 레거시 import 실행.
+fable5는 단순 리뷰가 아니라 **전수 검사 + 부족분 마무리 구현 패스**를 수행한다.
 
-이들은 코드 결함이 아니라 **의도된 범위 밖 이연**이다. fable5는 "미구현"으로 지적하지 말고, 이연 근거의 타당성만 검토한다.
+### 3.1 명시 후속으로 남기는 항목 (미구현 자체를 결함으로 보지 않음)
+
+| 항목 | 처리 |
+|---|---|
+| 실시간 협업(Yjs/WebSocket) | 최종 후속. 현재 문서/회의/위키의 일반 CRUD·낙관적 동시성·XSS 경계는 검사하되, Google Docs/Notion식 실시간 다중 편집 미구현 자체는 결함으로 지적하지 않는다. |
+| UUIDv7 전환 | 최종 후속. 현재 UUID/FK/인덱스/마이그레이션 무결성은 검사하되, UUIDv7 미전환 자체는 결함으로 지적하지 않는다. |
+
+위 2개를 제외한 나머지는 "이미 알려진 이연"으로 면제하지 않는다.
+
+### 3.2 fable5가 부족하면 마무리해야 하는 항목
+
+아래 항목은 현재 기초 구현 또는 대체 구현이 있으므로, fable5가 실사용 기준으로 부족하다고 판단하면 **필수 지적 → 보완 구현 → 테스트 추가/갱신 → 재검증 → PR → CI 확인 → 머지**까지 진행한다.
+
+| 영역 | 현재 상태 | fable5 마무리 기준 |
+|---|---|---|
+| 파일 저장소 | 첨부 메타데이터와 외부 URL 기반 파일 페이지 구현 | URL 검증·권한·삭제·연결성이 부족하면 보완. 실 바이너리 업로드/다운로드까지 제품 완성에 필수라고 판단되면 최소 안전 구현 또는 명확한 스토리지 인터페이스/설정/테스트까지 구현한다. |
+| AI/RAG | `ONEFLOW_AI_SUMMARY` feature flag와 로컬 provider 기반 요약 구현 | provider abstraction, flag OFF/ON, 실패 처리, 비밀값 분리, 설정 문서, 테스트가 부족하면 보완한다. 실 외부 LLM 연결이 필요하다고 판단되면 비밀값 노출 없이 env 기반 안전 배선과 테스트 더블을 구현한다. |
+| Gantt/Timeline | 경량 타임라인, 관계, 마일스톤, 캘린더 구현 | 실사용 기준으로 일정/의존성/마일스톤 표시가 부족하면 안전한 범위에서 보완한다. 라이선스 불명/GPL/AGPL 의존성은 금지한다. |
+| 워크플로우 | 구성형 상태 라벨/순서와 동적 보드 구현 | 상태 추가/비활성화/전이 규칙 등 최소 운영 기능이 필요하다고 판단되면 스키마·API·UI·테스트를 보완한다. |
+| 레거시/CSV import | CSV import/export(dry-run·대사·실패행 격리) 구현 | 실제 전환 리허설에 필요한 매핑, 검증, 오류 보고, 재처리 문서/코드가 부족하면 보완한다. |
+| 문서/회의/파일 업무 흐름 | 문서, 회의, 액션 아이템, 파일 메타데이터 구현 | 검색, 권한, 워크패키지 연결, 사용성, XSS/권한 경계가 부족하면 보완한다. |
+| 운영/설정/보고 | 설정, 대시보드, 리포트, 감사로그, 자동화 구현 | 관리자가 실제로 운영하기에 부족한 표시/검증/설정 저장/감사 추적이 있으면 보완한다. |
+
+정리: fable5는 위 3.1의 두 항목만 "명시 후속"으로 인정하고, 나머지는 검사 중 부족하면 마무리 구현 대상이다.
 
 ## 4. fable5 운영 규칙 (필수 지적 처리)
 
@@ -98,12 +117,12 @@ cd ../.. && bash scripts/check_cleanroom.sh
 ## 6. fable5 세션 착수 프롬프트 (복사용)
 
 ```text
-당신은 fable5 세션입니다. OneFlow 그린필드 목표(docs/goals/ONEFLOW_GREENFIELD_GOAL.md)의 전 개발 항목이 Opus 4.8에 의해 구현·머지 완료되었습니다(main, PR #1~#26, 마이그레이션 0001~0013). 이제 릴리스 차단 전수 검사를 수행하세요.
+당신은 fable5 세션입니다. OneFlow 그린필드 목표(docs/goals/ONEFLOW_GREENFIELD_GOAL.md)의 전 개발 항목이 Opus 4.8에 의해 구현·머지 완료되었습니다(main, 개발 PR #1~#26, 문서/검증 PR #27~#28, 마이그레이션 0001~0013). 이제 릴리스 차단 전수 검사와 부족분 마무리 구현 패스를 수행하세요.
 
 0. 먼저 active model이 fable5임을 확인하고, main HEAD·CI·PR 상태를 재측정하세요. fable5가 아니면 검사를 수행하지 말고 그 사실을 보고하세요.
 1. docs/FABLE5_INSPECTION_HANDOFF.md의 §2 전 영역(backend, frontend, DB/migrations, auth/permissions, workflow, timeline/Gantt, time/cost, dashboard/report, settings, API contract, tests, CI, env/secrets, security, accessibility, performance, clean-room/license, docs, worklog)을 검사하세요.
-2. §3의 알려진 이연 항목은 '미구현'으로 지적하지 말고 이연 근거만 검토하세요.
-3. 필수 지적은 수정 → 테스트 추가/갱신 → 재검증 → 커밋 → PR → CI green 확인 → 머지까지 진행하세요(§4). 기본 브랜치 직접 커밋 금지, 작은 PR 유지, 검증 실패 상태 PR 금지.
+2. §3.1의 명시 후속 2개(실시간 협업, UUIDv7 전환)만 미구현 자체를 결함으로 보지 마세요. 그 외 부족분은 제외하지 말고 §3.2 기준으로 필수 지적 또는 마무리 구현 대상으로 분류하세요.
+3. 필수 지적과 마무리 구현 대상은 수정 → 테스트 추가/갱신 → 재검증 → 커밋 → PR → CI green 확인 → 머지까지 진행하세요(§4). 기본 브랜치 직접 커밋 금지, 작은 PR 유지, 검증 실패 상태 PR 금지.
 4. §5 명령으로 재현·재검증하세요. 신규/변경 로직은 반드시 테스트를 동반하세요.
 5. 감사 리포트와 수정 로그를 oneflow/docs/FABLE5_AUDIT_REPORT.md에 기록하고, docs/PROJECT_WORKLOG.md(B-018)를 갱신하세요(재검증 결과·머지 PR 링크 포함).
 6. 모든 필수 수정 머지·재검증 green 후에만 목표 최종 완료를 보고하세요.
@@ -114,5 +133,5 @@ cd ../.. && bash scripts/check_cleanroom.sh
 - Phase 1/2/3 + 후속 모듈 구현·머지 완료 ✅ (본 시점 충족)
 - 사용자 fable5 승인 ⬜
 - active model = fable5 확인 ⬜
-- fable5 전수 검사 리포트 + 필수 수정 머지·재검증 green ⬜
+- fable5 전수 검사 리포트 + 실시간 협업/UUIDv7 외 필수 수정·마무리 구현 머지·재검증 green ⬜
 - `docs/PROJECT_WORKLOG.md`(B-018) 최종 완료 갱신 ⬜
