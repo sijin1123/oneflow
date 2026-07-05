@@ -50,3 +50,23 @@ class ActivityRead(BaseModel):
 class ActivityList(BaseModel):
     items: list[ActivityRead]
     total: int
+
+
+class ProjectActivityRead(BaseModel):
+    """Activity enriched with the work package subject and actor name, for the
+    project-wide audit feed."""
+
+    id: uuid.UUID
+    work_package_id: uuid.UUID
+    work_package_subject: str
+    actor_name: str | None
+    action: str
+    field: str | None
+    old_value: str | None
+    new_value: str | None
+    created_at: datetime
+
+
+class ProjectActivityList(BaseModel):
+    items: list[ProjectActivityRead]
+    total: int

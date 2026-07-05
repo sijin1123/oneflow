@@ -236,8 +236,29 @@ test('대시보드가 집계 타일과 분포를 보여준다', async ({ page })
       },
     }),
   )
+  await page.route(`**/api/v1/projects/${project.id}/activities`, (route) =>
+    route.fulfill({
+      json: {
+        items: [
+          {
+            id: 'pa1',
+            work_package_id: wpA.id,
+            work_package_subject: '워크패키지 API 구현',
+            actor_name: 'Dev User',
+            action: 'field_changed',
+            field: 'status',
+            old_value: 'todo',
+            new_value: 'in_progress',
+            created_at: '2026-07-05T00:00:00Z',
+          },
+        ],
+        total: 1,
+      },
+    }),
+  )
   await page.goto(`/projects/${project.id}/dashboard`)
   await expect(page.getByText('전체 작업')).toBeVisible()
+  await expect(page.getByText('최근 활동')).toBeVisible()
   await expect(page.getByText('기한 초과')).toBeVisible()
   await expect(page.getByText('10.5 / 40h')).toBeVisible()
   await expect(page.getByText('상태별')).toBeVisible()

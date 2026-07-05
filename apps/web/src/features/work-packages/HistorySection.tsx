@@ -3,20 +3,10 @@ import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 
+import { FIELD_LABELS } from './activityLabels'
 import { useActivities, useComments, useCreateComment } from './api'
 import { PRIORITY_LABELS, STATUS_LABELS, TYPE_LABELS } from './types'
 import type { Activity, Comment } from './types'
-
-const FIELD_LABELS: Record<string, string> = {
-  subject: '제목',
-  status: '상태',
-  priority: '우선순위',
-  type: '타입',
-  assignee_id: '담당자',
-  parent_id: '상위 작업',
-  start_date: '시작일',
-  due_date: '기한',
-}
 
 function labelValue(field: string | null, value: string | null): string {
   if (value === null) return '없음'

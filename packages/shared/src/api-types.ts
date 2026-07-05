@@ -97,6 +97,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{project_id}/activities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Project Activities
+         * @description Project-wide audit feed: every work-package activity in the project, newest
+         *     first, enriched with the work package subject and actor name (member-scoped).
+         */
+        get: operations["project_activities_api_v1_projects__project_id__activities_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{project_id}/dashboard": {
         parameters: {
             query?: never;
@@ -444,6 +465,47 @@ export interface components {
         MemberRoleUpdate: {
             /** Role */
             role: string;
+        };
+        /** ProjectActivityList */
+        ProjectActivityList: {
+            /** Items */
+            items: components["schemas"]["ProjectActivityRead"][];
+            /** Total */
+            total: number;
+        };
+        /**
+         * ProjectActivityRead
+         * @description Activity enriched with the work package subject and actor name, for the
+         *     project-wide audit feed.
+         */
+        ProjectActivityRead: {
+            /** Action */
+            action: string;
+            /** Actor Name */
+            actor_name: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Field */
+            field: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** New Value */
+            new_value: string | null;
+            /** Old Value */
+            old_value: string | null;
+            /**
+             * Work Package Id
+             * Format: uuid
+             */
+            work_package_id: string;
+            /** Work Package Subject */
+            work_package_subject: string;
         };
         /** ProjectCreate */
         ProjectCreate: {
@@ -866,6 +928,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ProjectRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    project_activities_api_v1_projects__project_id__activities_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectActivityList"];
                 };
             };
             /** @description Validation Error */
