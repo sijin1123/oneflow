@@ -18,6 +18,17 @@ export function useProject(projectId: string) {
   })
 }
 
+export function useCreateProject() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (input: { key: string; name: string; description?: string | null }) =>
+      api<Project>('/api/v1/projects', { method: 'POST', body: JSON.stringify(input) }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['projects'] })
+    },
+  })
+}
+
 export function useUpdateProject(projectId: string) {
   const queryClient = useQueryClient()
   return useMutation({
