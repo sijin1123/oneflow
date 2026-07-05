@@ -99,8 +99,20 @@ UI direction follows `../docs/ONEFLOW_PLANE_LIKE_UI_DIRECTION.md`: Plane is the 
 
 ## OneFlow Base-Specific Verification
 
-Run the checks appropriate to the OneFlow greenfield stack:
+Run the checks appropriate to the OneFlow greenfield stack (all runnable from
+the repo root via Makefile):
 
-- FastAPI backend tests, lint/type checks, and migration smoke tests as applicable.
-- React/Vite frontend typecheck, lint, build, and route smoke checks as applicable.
-- Documentation, clean-room, environment, and worklog checks for planning-only changes.
+| Check | Command |
+|---|---|
+| Backend lint/format | `make api-lint` |
+| Migration smoke (up/down/up) | `make api-migrate-smoke` |
+| Backend tests (real PostgreSQL) | `make api-test` |
+| Frontend typecheck+lint+build | `make web-build` |
+| Frontend unit (node --test) | `make web-unit` |
+| UI smoke (Playwright, mocked API) | `make web-e2e` |
+| Clean-room gate | `make cleanroom-check` |
+
+Prereqs: `make db-up` (Docker Desktop), `uv sync` in `apps/api`, `npm ci` in
+`apps/web`. CI mirrors these as the `backend`/`frontend`/`cleanroom` jobs.
+For planning-only changes: documentation, clean-room, environment, and worklog
+consistency checks.

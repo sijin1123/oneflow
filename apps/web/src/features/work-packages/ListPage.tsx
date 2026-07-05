@@ -1,0 +1,96 @@
+import { useParams, useSearchParams } from 'react-router-dom'
+
+import { EmptyState, ErrorState, ListSkeleton } from '@/components/shell/states'
+
+import { DetailDrawer } from './DetailDrawer'
+import { Filters } from './Filters'
+import { NewWorkPackageInline } from './NewWorkPackageInline'
+import { PriorityChip, StatusChip, TypeChip } from './chips'
+import { useWorkPackages } from './api'
+
+export function ListPage() {
+  const { projectId } = useParams() as { projectId: string }
+  const [searchParams, setSearchParams] = useSearchParams()
+  const filters = {
+    status: searchParams.get('status') ?? undefined,
+    priority: searchParams.get('priority') ?? undefined,
+    type: searchParams.get('type') ?? undefined,
+    q: searchParams.get('q') ?? undefined,
+  }
+  const { data, isPending, isError, error, refetch } = useWorkPackages(projectId, filters)
+
+  const openDrawer = (id: string) => {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev)
+      next.set('wp', id)
+      return next
+    })
+  }
+
+  return (
+    <div className="flex h-full flex-col">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-of-border px-4 py-2">
+        <Filters />
+        {data ? <span className="text-xs text-of-muted">{data.total}건</span> : null}
+      </div>
+
+      <NewWorkPackageInline projectId={projectId} />
+
+      {isPending ? (
+        <ListSkeleton />
+      ) : isError ? (
+        <ErrorState error={error} onRetry={() => refetch()} />
+      ) : data.total === 0 ? (
+        <EmptyState title="조건에 맞는 작업이 없습니다" hint="필터를 조정하거나 새 작업을 만들어 보세요." />
+      ) : (
+        <div className="min-w-0 overflow-x-auto">
+          <table className="w-full min-w-[720px] border-collapse text-sm">
+            <thead>
+              <tr className="border-b border-of-border text-left text-xs text-of-muted">
+                <th className="px-4 py-2 font-medium">제목</th>
+                <th className="w-24 px-2 py-2 font-medium">타입</th>
+                <th className="w-28 px-2 py-2 font-medium">상태</th>
+                <th className="w-24 px-2 py-2 font-medium">우선순위</th>
+                <th className="w-28 px-2 py-2 font-medium">기한</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.items.map((wp) => (
+                <tr
+                  key={wp.id}
+                  className="cursor-pointer border-b border-of-border hover:bg-of-surface-2"
+                  onClick={() => openDrawer(wp.id)}
+                >
+                  <td className="px-4 py-2">
+                    <button
+                      type="button"
+                      className="w-full truncate text-left font-medium hover:text-of-accent"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        openDrawer(wp.id)
+                      }}
+                    >
+                      {wp.subject}
+                    </button>
+                  </td>
+                  <td className="px-2 py-2">
+                    <TypeChip type={wp.type} />
+                  </td>
+                  <td className="px-2 py-2">
+                    <StatusChip status={wp.status} />
+                  </td>
+                  <td className="px-2 py-2">
+                    <PriorityChip priority={wp.priority} />
+                  </td>
+                  <td className="px-2 py-2 text-xs text-of-muted">{wp.due_date ?? '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      <DetailDrawer projectId={projectId} />
+    </div>
+  )
+}
