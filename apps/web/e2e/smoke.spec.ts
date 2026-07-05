@@ -39,6 +39,7 @@ const wpA: WorkPackage = {
   parent_id: null,
   start_date: '2026-07-01',
   due_date: '2026-07-15',
+  estimated_hours: 16,
   version: 0,
   created_at: '2026-07-01T00:00:00Z',
   updated_at: '2026-07-01T00:00:00Z',
@@ -83,6 +84,13 @@ async function mockApi(page: Page, opts: { conflictOnPatch?: boolean } = {}) {
   await page.route(`**/api/v1/work-packages/${wpA.id}/relations`, (route) =>
     route.fulfill({ json: relations }),
   )
+  await page.route(`**/api/v1/work-packages/${wpA.id}/time-entries`, async (route) => {
+    if (route.request().method() === 'POST') {
+      await route.fulfill({ status: 201, json: { id: 'te-1' } })
+      return
+    }
+    await route.fulfill({ json: { items: [], total: 0, total_hours: 0 } })
+  })
   await page.route(`**/api/v1/work-packages/${wpA.id}/activities`, (route) =>
     route.fulfill({ json: activities }),
   )

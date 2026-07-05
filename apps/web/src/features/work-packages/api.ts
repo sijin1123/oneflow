@@ -9,6 +9,7 @@ import type {
   CommentList,
   ConflictBody,
   RelationList,
+  TimeEntryList,
   WorkPackage,
   WorkPackageList,
   WorkPackagePatch,
@@ -66,6 +67,39 @@ export function useDeleteRelation(wpId: string) {
       api<void>(`/api/v1/work-packages/${wpId}/relations/${relationId}`, { method: 'DELETE' }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['work-package-relations', wpId] })
+    },
+  })
+}
+
+export function useTimeEntries(wpId: string | null) {
+  return useQuery({
+    queryKey: ['time-entries', wpId],
+    queryFn: () => api<TimeEntryList>(`/api/v1/work-packages/${wpId}/time-entries`),
+    enabled: wpId !== null,
+  })
+}
+
+export function useLogTime(wpId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (input: { hours: number; spent_on: string; comment: string | null }) =>
+      api(`/api/v1/work-packages/${wpId}/time-entries`, {
+        method: 'POST',
+        body: JSON.stringify(input),
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['time-entries', wpId] })
+    },
+  })
+}
+
+export function useDeleteTimeEntry(wpId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (entryId: string) =>
+      api<void>(`/api/v1/work-packages/${wpId}/time-entries/${entryId}`, { method: 'DELETE' }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['time-entries', wpId] })
     },
   })
 }

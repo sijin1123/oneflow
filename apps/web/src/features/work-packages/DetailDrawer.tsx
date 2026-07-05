@@ -10,6 +10,7 @@ import { Textarea } from '@/components/ui/textarea'
 
 import { HistorySection } from './HistorySection'
 import { RelationsSection } from './RelationsSection'
+import { TimeTrackingSection } from './TimeTrackingSection'
 import { PriorityChip, StatusChip } from './chips'
 import { usePatchWorkPackage, useWorkPackage } from './api'
 import {
@@ -67,12 +68,14 @@ function DrawerForm({ wp, projectId }: { wp: WorkPackage; projectId: string }) {
   const [description, setDescription] = useState(wp.description ?? '')
   const [startDate, setStartDate] = useState(wp.start_date ?? '')
   const [dueDate, setDueDate] = useState(wp.due_date ?? '')
+  const [estimate, setEstimate] = useState(wp.estimated_hours?.toString() ?? '')
   useEffect(() => {
     setSubject(wp.subject)
     setDescription(wp.description ?? '')
     setStartDate(wp.start_date ?? '')
     setDueDate(wp.due_date ?? '')
-  }, [wp.subject, wp.description, wp.start_date, wp.due_date])
+    setEstimate(wp.estimated_hours?.toString() ?? '')
+  }, [wp.subject, wp.description, wp.start_date, wp.due_date, wp.estimated_hours])
 
   const send = (fields: Partial<Record<string, unknown>>) => {
     // Token from the query cache, not the render snapshot: two quick edits in a
@@ -173,6 +176,24 @@ function DrawerForm({ wp, projectId }: { wp: WorkPackage; projectId: string }) {
         </div>
       </div>
 
+      <div className="w-1/2 space-y-1.5 pr-1.5">
+        <label htmlFor="wp-estimate" className="text-xs font-medium text-of-muted">
+          예상 시간(h)
+        </label>
+        <Input
+          id="wp-estimate"
+          type="number"
+          step="0.5"
+          min="0"
+          value={estimate}
+          onChange={(e) => setEstimate(e.target.value)}
+          onBlur={() => {
+            const v = estimate.trim() === '' ? null : Number(estimate)
+            if (v !== (wp.estimated_hours ?? null)) send({ estimated_hours: v })
+          }}
+        />
+      </div>
+
       <div className="space-y-1.5">
         <label htmlFor="wp-desc" className="text-xs font-medium text-of-muted">
           설명
@@ -194,6 +215,8 @@ function DrawerForm({ wp, projectId }: { wp: WorkPackage; projectId: string }) {
         <PriorityChip priority={wp.priority} />
         <span className="ml-auto">v{wp.version}</span>
       </div>
+
+      <TimeTrackingSection wp={wp} />
 
       <RelationsSection wpId={wp.id} projectId={projectId} />
 
