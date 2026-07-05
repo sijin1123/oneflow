@@ -23,9 +23,10 @@
     "erasableSyntaxOnly": true,
     "noFallthroughCasesInSwitch": true,
 
-    /* Path alias — mirrored in vite.config.ts resolve.alias */
+    /* Path aliases — mirrored in vite.config.ts resolve.alias */
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@shared/*": ["../../packages/shared/src/*"]
     }
   },
   "include": ["src", "e2e"]
