@@ -2440,6 +2440,7 @@ export interface operations {
                 priority?: ("none" | "low" | "medium" | "high" | "urgent") | null;
                 type?: ("task" | "bug" | "feature" | "milestone") | null;
                 q?: string | null;
+                sort?: "created" | "subject";
                 limit?: number;
                 offset?: number;
             };

@@ -45,6 +45,7 @@ PARENT_LOCK_CLASSID = 427001
 StatusFilter = Literal["backlog", "todo", "in_progress", "in_review", "done", "cancelled"]
 PriorityFilter = Literal["none", "low", "medium", "high", "urgent"]
 TypeFilter = Literal["task", "bug", "feature", "milestone"]
+SortField = Literal["created", "subject"]
 
 NON_NULLABLE_PATCH_FIELDS = {"subject", "type", "status", "priority"}
 PATCH_DATA_FIELDS = (
@@ -102,6 +103,7 @@ async def list_work_packages(
     priority: PriorityFilter | None = Query(default=None),
     type: TypeFilter | None = Query(default=None),
     q: str | None = Query(default=None, max_length=255),
+    sort: SortField = Query(default="created"),
     limit: int = Query(default=200, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
     session: AsyncSession = Depends(get_session),
@@ -119,16 +121,14 @@ async def list_work_packages(
         # Case-insensitive substring; % and _ wildcards are autoescaped (§6.1).
         stmt = stmt.where(WorkPackage.subject.icontains(q, autoescape=True))
     total = (await session.execute(select(func.count()).select_from(stmt.subquery()))).scalar_one()
+    if sort == "subject":
+        # Korean dictionary order via the ICU collation (migration 0010). Used only
+        # here in ORDER BY, so the subject ILIKE filter above is unaffected.
+        order = (WorkPackage.subject.collate("oneflow_korean").asc(), WorkPackage.id.asc())
+    else:
+        order = (WorkPackage.created_at.asc(), WorkPackage.id.asc())
     rows = (
-        (
-            await session.execute(
-                stmt.order_by(WorkPackage.created_at.asc(), WorkPackage.id.asc())
-                .limit(limit)
-                .offset(offset)
-            )
-        )
-        .scalars()
-        .all()
+        (await session.execute(stmt.order_by(*order).limit(limit).offset(offset))).scalars().all()
     )
     return WorkPackageList(items=[WorkPackageRead.model_validate(w) for w in rows], total=total)
 
