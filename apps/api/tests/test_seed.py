@@ -30,6 +30,18 @@ async def test_seed_idempotent(app):
     assert await _counts(app) == first
 
 
+async def test_seed_creates_project_statuses(app):
+    from app.models import ProjectStatus
+
+    async with app.state.sessionmaker() as session:
+        assert await seed_data(session) is True
+        count = (
+            await session.execute(select(func.count()).select_from(ProjectStatus))
+        ).scalar_one()
+    # the seeded project gets the full default workflow, like the API create path
+    assert count == 6
+
+
 async def test_seed_reset_end_to_end(app, _clean_tables, monkeypatch):
     # Full `python -m app.seed --reset --yes` flow via run() — regression for the
     # preview-autobegin vs session.begin() crash (review finding #4).

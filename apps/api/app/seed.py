@@ -33,12 +33,14 @@ from app.models import (
     Milestone,
     Project,
     ProjectMember,
+    ProjectStatus,
     TimeEntry,
     User,
     WorkPackage,
     WorkPackageComment,
     WorkPackageRelation,
 )
+from app.models.project_status import DEFAULT_STATUSES
 
 DEV_USER_EMAIL = "dev@oneflow.local"
 ALLOWED_RESET_HOSTS = {"localhost", "127.0.0.1", "::1", "postgres"}
@@ -147,6 +149,12 @@ async def seed_data(session: AsyncSession) -> bool:
                 ProjectMember(project_id=project.id, user_id=dev.id, role="owner"),
                 ProjectMember(project_id=project.id, user_id=mate.id, role="member"),
             ]
+        )
+        # Seed the default workflow so the demo project has an editable status
+        # config, matching the API create path (fable5 audit: seed skipped this).
+        session.add_all(
+            ProjectStatus(project_id=project.id, key=key, name=name, position=pos)
+            for key, name, pos in DEFAULT_STATUSES
         )
         milestone = Milestone(
             project_id=project.id,
