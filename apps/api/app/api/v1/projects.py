@@ -103,6 +103,10 @@ async def update_project(
     await require_role(session, project_id, user, {"owner"})
     project = (await session.execute(select(Project).where(Project.id == project_id))).scalar_one()
     fields = body.model_dump(exclude_unset=True)
+    # `name` is NOT NULL: an explicit null is a client error (422), never an
+    # unhandled IntegrityError → 500 (fable5 audit: PATCH null-semantics).
+    if "name" in fields and fields["name"] is None:
+        raise HTTPException(status_code=422, detail="name cannot be null")
     for key, value in fields.items():
         setattr(project, key, value)
     await session.commit()

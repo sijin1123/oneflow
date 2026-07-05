@@ -25,12 +25,17 @@ async def extra_changes_for_status(
     rules = (
         (
             await session.execute(
-                select(AutomationRule).where(
+                select(AutomationRule)
+                .where(
                     AutomationRule.project_id == project_id,
                     AutomationRule.is_active.is_(True),
                     AutomationRule.trigger_type == "status_changed_to",
                     AutomationRule.trigger_value == new_status,
                 )
+                # Deterministic precedence: with several rules on the same status the
+                # most recently created one wins. Without ORDER BY the winner depended
+                # on physical row order (fable5 audit: nondeterministic automation).
+                .order_by(AutomationRule.created_at.asc(), AutomationRule.id.asc())
             )
         )
         .scalars()

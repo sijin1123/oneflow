@@ -97,6 +97,21 @@ async def test_rule_only_fires_on_actual_change(client, project):
     assert patched.json()["priority"] == "low"
 
 
+async def test_multiple_rules_resolve_deterministically(client, project):
+    # Two active rules on the same status: the most recently created one wins,
+    # every time (fable5 audit: nondeterministic multi-rule precedence).
+    pid = project["id"]
+    await _make_rule(client, pid, trigger="in_review", action="low")
+    await _make_rule(client, pid, trigger="in_review", action="urgent")  # newer → wins
+    for _ in range(3):
+        wp = await create_wp(client, pid, subject="다중 규칙", priority="none")
+        patched = await client.patch(
+            f"/api/v1/work-packages/{wp['id']}",
+            json={"expected_version": wp["version"], "status": "in_review"},
+        )
+        assert patched.json()["priority"] == "urgent"
+
+
 async def test_create_requires_owner_and_valid_values(client, project, foreign_project):
     pid = project["id"]
     # invalid action value → 422

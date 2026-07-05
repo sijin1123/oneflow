@@ -27,7 +27,8 @@ async def test_log_and_list_cost(client, project):
 
 async def test_cost_validation(client, project):
     wp = await create_wp(client, project["id"])
-    for bad in [{"amount": 0}, {"amount": -5}, {"amount": 10, "kind": "bribe"}]:
+    # 0.004 rounds to 0.00 at Numeric(12,2): must be a 422, not a DB CHECK → 500.
+    for bad in [{"amount": 0}, {"amount": -5}, {"amount": 0.004}, {"amount": 10, "kind": "bribe"}]:
         res = await client.post(
             f"/api/v1/work-packages/{wp['id']}/cost-entries",
             json={"spent_on": "2026-07-01", **bad},

@@ -78,7 +78,12 @@ async def update_milestone(
 ) -> MilestoneRead:
     await require_member(session, project_id, user)
     m = await _get_scoped(session, project_id, milestone_id)
-    for key, value in body.model_dump(exclude_unset=True).items():
+    fields = body.model_dump(exclude_unset=True)
+    # `name` is NOT NULL: an explicit null is a client error (422), never an
+    # unhandled IntegrityError → 500 (fable5 audit: PATCH null-semantics).
+    if "name" in fields and fields["name"] is None:
+        raise HTTPException(status_code=422, detail="name cannot be null")
+    for key, value in fields.items():
         setattr(m, key, value)
     await session.commit()
     await session.refresh(m)  # onupdate updated_at is server-computed

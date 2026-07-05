@@ -24,6 +24,24 @@ async def test_duplicate_key_409(client):
     assert res.status_code == 409
 
 
+async def test_patch_project_null_name_rejected(client):
+    # Explicit null on the NOT NULL name is a 422, never an unhandled 500.
+    project = await create_project(client, key="PN", name="이름 있음")
+    res = await client.patch(f"/api/v1/projects/{project['id']}", json={"name": None})
+    assert res.status_code == 422
+
+
+async def test_patch_project_name_and_description(client):
+    project = await create_project(client, key="PE", name="원래 이름")
+    res = await client.patch(
+        f"/api/v1/projects/{project['id']}",
+        json={"name": "새 이름", "description": "설명 추가"},
+    )
+    assert res.status_code == 200
+    body = res.json()
+    assert body["name"] == "새 이름" and body["description"] == "설명 추가"
+
+
 async def test_double_post_second_409(client):
     payload = {"key": "TWICE", "name": "더블클릭"}
     first = await client.post("/api/v1/projects", json=payload)

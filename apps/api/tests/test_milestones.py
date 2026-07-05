@@ -10,6 +10,14 @@ async def project(client):
     return await create_project(client, key="MS", name="마일스톤")
 
 
+async def test_patch_milestone_null_name_rejected(client, project):
+    # Explicit null on the NOT NULL name is a 422, never an unhandled 500.
+    pid = project["id"]
+    m = (await client.post(f"/api/v1/projects/{pid}/milestones", json={"name": "M1"})).json()
+    res = await client.patch(f"/api/v1/projects/{pid}/milestones/{m['id']}", json={"name": None})
+    assert res.status_code == 422
+
+
 async def test_milestone_crud(client, project):
     pid = project["id"]
     created = await client.post(
