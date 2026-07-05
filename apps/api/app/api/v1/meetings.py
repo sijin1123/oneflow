@@ -1,0 +1,254 @@
+"""Project meetings — agenda, minutes, action items (follow-up collaboration module).
+
+Member-scoped. Agenda/minutes are sanitized rich-text HTML; meeting edits use the
+integer-version optimistic-concurrency contract (§6.2). Action items are a small
+child resource with plain CRUD.
+"""
+
+import uuid
+
+from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi.encoders import jsonable_encoder
+from fastapi.responses import JSONResponse
+from sqlalchemy import func, select
+from sqlalchemy import update as sa_update
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.auth import get_current_user
+from app.core.authz import is_member, require_member
+from app.db.session import get_session
+from app.models.meeting import Meeting, MeetingActionItem
+from app.models.user import User
+from app.schemas.meeting import (
+    ActionItemCreate,
+    ActionItemRead,
+    ActionItemUpdate,
+    MeetingConflict,
+    MeetingCreate,
+    MeetingList,
+    MeetingListItem,
+    MeetingRead,
+    MeetingUpdate,
+)
+from app.services.sanitize import sanitize_html
+
+router = APIRouter()
+
+
+async def _get_meeting_scoped(session: AsyncSession, meeting_id: uuid.UUID, user: User) -> Meeting:
+    m = (
+        await session.execute(select(Meeting).where(Meeting.id == meeting_id))
+    ).scalar_one_or_none()
+    if m is None or not await is_member(session, m.project_id, user.id):
+        raise HTTPException(status_code=404, detail="not found")
+    return m
+
+
+async def _action_items(session: AsyncSession, meeting_id: uuid.UUID) -> list[ActionItemRead]:
+    rows = (
+        (
+            await session.execute(
+                select(MeetingActionItem)
+                .where(MeetingActionItem.meeting_id == meeting_id)
+                .order_by(MeetingActionItem.created_at.asc(), MeetingActionItem.id.asc())
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return [ActionItemRead.model_validate(r) for r in rows]
+
+
+async def _read(session: AsyncSession, m: Meeting) -> MeetingRead:
+    out = MeetingRead.model_validate(m)
+    out.action_items = await _action_items(session, m.id)
+    return out
+
+
+@router.get("/projects/{project_id}/meetings", response_model=MeetingList)
+async def list_meetings(
+    project_id: uuid.UUID,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+) -> MeetingList:
+    await require_member(session, project_id, user)
+    rows = (
+        (
+            await session.execute(
+                select(Meeting)
+                .where(Meeting.project_id == project_id)
+                .order_by(Meeting.scheduled_on.desc().nullslast(), Meeting.created_at.desc())
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return MeetingList(items=[MeetingListItem.model_validate(r) for r in rows], total=len(rows))
+
+
+@router.post("/projects/{project_id}/meetings", response_model=MeetingRead, status_code=201)
+async def create_meeting(
+    project_id: uuid.UUID,
+    body: MeetingCreate,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+) -> MeetingRead:
+    await require_member(session, project_id, user)
+    m = Meeting(
+        project_id=project_id,
+        title=body.title,
+        scheduled_on=body.scheduled_on,
+        author_id=user.id,
+    )
+    session.add(m)
+    await session.flush()
+    await session.commit()
+    return await _read(session, m)
+
+
+@router.get("/meetings/{meeting_id}", response_model=MeetingRead)
+async def get_meeting(
+    meeting_id: uuid.UUID,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+) -> MeetingRead:
+    return await _read(session, await _get_meeting_scoped(session, meeting_id, user))
+
+
+@router.patch(
+    "/meetings/{meeting_id}",
+    response_model=MeetingRead,
+    responses={409: {"model": MeetingConflict}},
+)
+async def update_meeting(
+    meeting_id: uuid.UUID,
+    body: MeetingUpdate,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+):
+    await _get_meeting_scoped(session, meeting_id, user)
+
+    changes: dict = {}
+    provided = body.model_fields_set
+    if "title" in provided and body.title is not None:
+        changes["title"] = body.title
+    if "scheduled_on" in provided:
+        changes["scheduled_on"] = body.scheduled_on
+    if "agenda" in provided:
+        changes["agenda"] = sanitize_html(body.agenda)
+    if "minutes" in provided:
+        changes["minutes"] = sanitize_html(body.minutes)
+
+    if not changes:
+        fresh = await _reselect(session, meeting_id)
+        if fresh is None:
+            raise HTTPException(status_code=404, detail="not found")
+        if fresh.version != body.expected_version:
+            return _conflict(await _read(session, fresh))
+        return await _read(session, fresh)
+
+    stmt = (
+        sa_update(Meeting)
+        .where(Meeting.id == meeting_id, Meeting.version == body.expected_version)
+        .values(**changes, version=Meeting.version + 1, updated_at=func.now())
+        .returning(Meeting)
+        .execution_options(synchronize_session=False, populate_existing=True)
+    )
+    updated = (await session.execute(stmt)).scalar_one_or_none()
+    await session.commit()
+    if updated is not None:
+        return await _read(session, updated)
+
+    fresh = await _reselect(session, meeting_id)
+    if fresh is None:
+        raise HTTPException(status_code=404, detail="not found")
+    return _conflict(await _read(session, fresh))
+
+
+@router.delete("/meetings/{meeting_id}", status_code=204)
+async def delete_meeting(
+    meeting_id: uuid.UUID,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+) -> Response:
+    m = await _get_meeting_scoped(session, meeting_id, user)
+    await session.delete(m)
+    await session.commit()
+    return Response(status_code=204)
+
+
+@router.post("/meetings/{meeting_id}/action-items", response_model=ActionItemRead, status_code=201)
+async def create_action_item(
+    meeting_id: uuid.UUID,
+    body: ActionItemCreate,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+) -> ActionItemRead:
+    m = await _get_meeting_scoped(session, meeting_id, user)
+    if body.assignee_id is not None and not await is_member(
+        session, m.project_id, body.assignee_id
+    ):
+        raise HTTPException(status_code=422, detail="assignee must be a member of the project")
+    item = MeetingActionItem(
+        meeting_id=meeting_id, description=body.description, assignee_id=body.assignee_id
+    )
+    session.add(item)
+    await session.flush()
+    await session.commit()
+    return ActionItemRead.model_validate(item)
+
+
+async def _get_action_item_scoped(
+    session: AsyncSession, item_id: uuid.UUID, user: User
+) -> MeetingActionItem:
+    item = (
+        await session.execute(select(MeetingActionItem).where(MeetingActionItem.id == item_id))
+    ).scalar_one_or_none()
+    if item is None:
+        raise HTTPException(status_code=404, detail="not found")
+    # Membership is checked via the parent meeting's project.
+    await _get_meeting_scoped(session, item.meeting_id, user)
+    return item
+
+
+@router.patch("/action-items/{item_id}", response_model=ActionItemRead)
+async def update_action_item(
+    item_id: uuid.UUID,
+    body: ActionItemUpdate,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+) -> ActionItemRead:
+    item = await _get_action_item_scoped(session, item_id, user)
+    item.done = body.done
+    await session.commit()
+    await session.refresh(item)
+    return ActionItemRead.model_validate(item)
+
+
+@router.delete("/action-items/{item_id}", status_code=204)
+async def delete_action_item(
+    item_id: uuid.UUID,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+) -> Response:
+    item = await _get_action_item_scoped(session, item_id, user)
+    await session.delete(item)
+    await session.commit()
+    return Response(status_code=204)
+
+
+async def _reselect(session: AsyncSession, meeting_id: uuid.UUID) -> Meeting | None:
+    return (
+        await session.execute(
+            select(Meeting)
+            .where(Meeting.id == meeting_id)
+            .execution_options(populate_existing=True)
+        )
+    ).scalar_one_or_none()
+
+
+def _conflict(current: MeetingRead) -> JSONResponse:
+    payload = MeetingConflict(
+        detail="version conflict — meeting was modified by someone else", current=current
+    )
+    return JSONResponse(status_code=409, content=jsonable_encoder(payload))
