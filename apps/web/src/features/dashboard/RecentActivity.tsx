@@ -1,4 +1,5 @@
 import { FIELD_LABELS } from '@/features/work-packages/activityLabels'
+import { formatDateTime } from '@/lib/datetime'
 
 import { useProjectActivities, type ProjectActivity } from './api'
 
@@ -32,7 +33,7 @@ export function RecentActivity({ projectId }: { projectId: string }) {
                 <span className="text-of-muted">{a.work_package_subject}</span> · {actionText(a)}
               </span>
               <span className="shrink-0 text-[11px] text-of-muted">
-                {a.created_at.slice(5, 16).replace('T', ' ')}
+                {formatDateTime(a.created_at)}
               </span>
             </li>
           ))}

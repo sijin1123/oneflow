@@ -4,6 +4,7 @@ import { useParams, useSearchParams } from 'react-router-dom'
 
 import { ErrorState, ListSkeleton } from '@/components/shell/states'
 import { Button } from '@/components/ui/button'
+import { localYearMonth, todayISO } from '@/lib/datetime'
 import { cn } from '@/lib/utils'
 
 import { DetailDrawer } from './DetailDrawer'
@@ -12,11 +13,9 @@ import { buildCalendar, shiftMonth } from './calendar'
 
 const WEEKDAYS = ['일', '월', '화', '수', '목', '금', '토']
 
-function currentMonth(): { year: number; month: number } {
-  // UTC "now" for the initial month; day cells match WP dates by string, not Date.
-  const now = new Date()
-  return { year: now.getUTCFullYear(), month: now.getUTCMonth() + 1 }
-}
+// Local "now": day cells match WP dates by string, so the highlighted "today" and
+// the initial month must use the viewer's local date, not UTC.
+const currentMonth = () => localYearMonth()
 
 export function CalendarPage() {
   const { projectId } = useParams() as { projectId: string }
@@ -28,7 +27,7 @@ export function CalendarPage() {
     () => buildCalendar(cursor.year, cursor.month, data?.items ?? []),
     [cursor, data],
   )
-  const todayIso = new Date().toISOString().slice(0, 10)
+  const todayIso = todayISO()
 
   const openDrawer = (id: string) => {
     setSearchParams((prev) => {

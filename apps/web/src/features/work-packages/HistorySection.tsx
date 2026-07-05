@@ -2,6 +2,7 @@ import { useState } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
+import { formatDateTime } from '@/lib/datetime'
 
 import { FIELD_LABELS } from './activityLabels'
 import { useActivities, useComments, useCreateComment } from './api'
@@ -68,16 +69,14 @@ export function HistorySection({ wpId }: { wpId: string }) {
                 className="rounded-of border border-of-border bg-of-surface-2/40 px-2.5 py-2"
               >
                 <p className="whitespace-pre-wrap text-[13px]">{item.comment.body}</p>
-                <p className="mt-1 text-[11px] text-of-muted">{item.comment.created_at.slice(0, 16).replace('T', ' ')}</p>
+                <p className="mt-1 text-[11px] text-of-muted">{formatDateTime(item.comment.created_at)}</p>
               </li>
             ) : (
               <li key={`a-${item.activity.id}`} className="flex gap-2 px-1 text-xs text-of-muted">
                 <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-of-border" aria-hidden />
                 <span>
                   {activityText(item.activity)}
-                  <span className="ml-1.5 text-[11px]">
-                    · {item.activity.created_at.slice(0, 16).replace('T', ' ')}
-                  </span>
+                  <span className="ml-1.5 text-[11px]">· {formatDateTime(item.activity.created_at)}</span>
                 </span>
               </li>
             ),
