@@ -30,6 +30,7 @@ from app.db.session import build_engine, build_sessionmaker
 from app.models import (
     Activity,
     CostEntry,
+    Milestone,
     Project,
     ProjectMember,
     TimeEntry,
@@ -147,6 +148,13 @@ async def seed_data(session: AsyncSession) -> bool:
                 ProjectMember(project_id=project.id, user_id=mate.id, role="member"),
             ]
         )
+        milestone = Milestone(
+            project_id=project.id,
+            name="v1.0 사내 릴리스",
+            due_date=today + dt.timedelta(days=30),
+        )
+        session.add(milestone)
+        await session.flush()
 
         def wp(
             subject,

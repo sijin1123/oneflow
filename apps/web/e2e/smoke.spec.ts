@@ -38,6 +38,7 @@ const wpA: WorkPackage = {
   priority: 'high',
   assignee_id: null,
   parent_id: null,
+  milestone_id: null,
   start_date: '2026-07-01',
   due_date: '2026-07-15',
   estimated_hours: 16,
@@ -99,6 +100,9 @@ async function mockApi(page: Page, opts: { conflictOnPatch?: boolean } = {}) {
     }
     await route.fulfill({ json: { items: [], total: 0, total_amount: 0 } })
   })
+  await page.route(`**/api/v1/projects/${project.id}/milestones`, (route) =>
+    route.fulfill({ json: { items: [], total: 0 } }),
+  )
   await page.route(`**/api/v1/work-packages/${wpA.id}/activities`, (route) =>
     route.fulfill({ json: activities }),
   )
@@ -298,6 +302,9 @@ test('설정 화면에서 멤버를 보여주고 소유자가 멤버를 추가�
   await page.route(`**/api/v1/projects/${project.id}`, (route) =>
     route.fulfill({ json: project }),
   )
+  await page.route(`**/api/v1/projects/${project.id}/milestones`, (route) =>
+    route.fulfill({ json: { items: [], total: 0 } }),
+  )
   await page.route(`**/api/v1/projects/${project.id}/members`, async (route) => {
     if (route.request().method() === 'POST') {
       const sent = route.request().postDataJSON() as { email: string; role: string }
@@ -325,7 +332,8 @@ test('설정 화면에서 멤버를 보여주고 소유자가 멤버를 추가�
     (req) => req.method() === 'POST' && req.url().includes(`/projects/${project.id}/members`),
   )
   await page.getByLabel('추가할 멤버 이메일').fill('alex@oneflow.local')
-  await page.getByRole('button', { name: '추가' }).click()
+  // The member add button is the last '추가' (a milestone add button precedes it).
+  await page.getByRole('button', { name: '추가' }).last().click()
   const req = await addPost
   expect((req.postDataJSON() as { email: string }).email).toBe('alex@oneflow.local')
 })

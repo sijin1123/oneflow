@@ -64,6 +64,7 @@ class WorkPackage(Base):
         ),
         Index("ix_work_packages_parent", "parent_id"),
         Index("ix_work_packages_assignee", "assignee_id"),
+        Index("ix_work_packages_milestone", "milestone_id"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -81,6 +82,10 @@ class WorkPackage(Base):
     start_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     due_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     parent_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    # Optional milestone assignment (Phase 2). SET NULL on milestone delete.
+    milestone_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("milestones.id", ondelete="SET NULL"), nullable=True
+    )
     # Planned effort in hours (Phase 3 time tracking). Spent/remaining are derived
     # from time_entries, not stored.
     estimated_hours: Mapped[Decimal | None] = mapped_column(Numeric(6, 2), nullable=True)

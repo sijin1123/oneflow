@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.auth import get_current_user
 from app.core.authz import is_member, require_member
 from app.db.session import get_session
+from app.models.milestone import Milestone
 from app.models.relation import WorkPackageRelation
 from app.models.user import User
 from app.models.work_package import WorkPackage
@@ -51,6 +52,7 @@ PATCH_DATA_FIELDS = (
     "priority",
     "assignee_id",
     "parent_id",
+    "milestone_id",
     "start_date",
     "due_date",
     "estimated_hours",
@@ -78,6 +80,16 @@ async def _require_assignee_member(
 ) -> None:
     if not await is_member(session, project_id, assignee_id):
         raise HTTPException(status_code=422, detail="assignee must be a member of the project")
+
+
+async def _require_milestone_in_project(
+    session: AsyncSession, project_id: uuid.UUID, milestone_id: uuid.UUID
+) -> None:
+    m = (
+        await session.execute(select(Milestone).where(Milestone.id == milestone_id))
+    ).scalar_one_or_none()
+    if m is None or m.project_id != project_id:
+        raise HTTPException(status_code=422, detail="milestone must belong to the same project")
 
 
 @router.get("/projects/{project_id}/work-packages", response_model=WorkPackageList)
@@ -130,6 +142,8 @@ async def create_work_package(
     await require_member(session, project_id, user)
     if body.assignee_id is not None:
         await _require_assignee_member(session, project_id, body.assignee_id)
+    if body.milestone_id is not None:
+        await _require_milestone_in_project(session, project_id, body.milestone_id)
     if body.parent_id is not None:
         parent = (
             await session.execute(select(WorkPackage).where(WorkPackage.id == body.parent_id))
@@ -219,6 +233,8 @@ async def patch_work_package(
     _effective_dates(wp, changes)
     if changes.get("assignee_id") is not None:
         await _require_assignee_member(session, wp.project_id, changes["assignee_id"])
+    if changes.get("milestone_id") is not None:
+        await _require_milestone_in_project(session, wp.project_id, changes["milestone_id"])
 
     # Capture pre-update values for the activity log BEFORE the UPDATE (the
     # populate_existing UPDATE below refreshes the identity-mapped wp in place).
