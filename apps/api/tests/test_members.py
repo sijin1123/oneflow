@@ -1,7 +1,9 @@
 """Project members and role-based authorization (PLAN §5 Phase 2)."""
 
+import asyncio
+
 import pytest
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.models import ProjectMember, User
 from tests.conftest import create_project
@@ -79,6 +81,36 @@ async def test_cannot_demote_last_owner(client, dev_user):
         json={"role": "member"},
     )
     assert res.status_code == 422
+
+
+async def test_concurrent_owner_demotions_keep_one_owner(app, client, dev_user, other_user):
+    # Two owners; fire both demotions concurrently. The per-project advisory lock
+    # serializes the count-then-write so the project never drops to zero owners
+    # (fable5 audit: last-owner check-then-write race).
+    project = await create_project(client, key="RACE2")
+    pid = project["id"]
+    await client.post(
+        f"/api/v1/projects/{pid}/members",
+        json={"email": other_user["email"], "role": "owner"},
+    )
+    r1, r2 = await asyncio.gather(
+        client.patch(f"/api/v1/projects/{pid}/members/{dev_user.id}", json={"role": "member"}),
+        client.patch(f"/api/v1/projects/{pid}/members/{other_user['id']}", json={"role": "member"}),
+    )
+    statuses = sorted([r1.status_code, r2.status_code])
+    # Exactly one demotion succeeds; the other is refused — either 422 (last-owner
+    # guard) or 403 (the acting owner demoted itself first, losing the owner role).
+    # The invariant that matters: the project never drops below one owner.
+    assert statuses[0] == 200 and statuses[1] in (403, 422)
+    async with app.state.sessionmaker() as session:
+        owners = (
+            await session.execute(
+                select(func.count())
+                .select_from(ProjectMember)
+                .where(ProjectMember.project_id == pid, ProjectMember.role == "owner")
+            )
+        ).scalar_one()
+    assert owners == 1
 
 
 async def test_member_cannot_manage_members_403(app, client, other_user):

@@ -1,5 +1,6 @@
 import uuid
 from datetime import date, datetime
+from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -11,6 +12,15 @@ class CostEntryCreate(BaseModel):
     kind: str = "labor"
     spent_on: date | None = None  # defaults to today in the endpoint
     comment: str | None = None
+
+    @field_validator("amount")
+    @classmethod
+    def _amount_scale(cls, v: float) -> float:
+        # amount is Numeric(12,2): a value in (0, 0.005) rounds to 0.00 and would trip
+        # the DB `amount > 0` CHECK as an unhandled 500. Reject it as a 422 up front.
+        if Decimal(str(v)).quantize(Decimal("0.01")) <= 0:
+            raise ValueError("amount must be at least 0.01")
+        return v
 
     @field_validator("kind")
     @classmethod

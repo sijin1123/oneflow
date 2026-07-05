@@ -49,7 +49,8 @@ async def test_log_and_list_time_entries(client, project):
 
 async def test_log_time_validation(client, project):
     wp = await create_wp(client, project["id"])
-    for bad in [0, -1, 1001]:
+    # 0.004 rounds to 0.00 at Numeric(6,2): must be a 422, not a DB CHECK → 500.
+    for bad in [0, -1, 1001, 0.004]:
         res = await client.post(
             f"/api/v1/work-packages/{wp['id']}/time-entries",
             json={"hours": bad, "spent_on": "2026-07-01"},

@@ -1,7 +1,8 @@
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Response
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import get_current_user
@@ -12,6 +13,19 @@ from app.models.user import User
 from app.schemas.member import MemberCreate, MemberList, MemberRead, MemberRoleUpdate
 
 router = APIRouter()
+
+# Advisory-lock classid serializing membership mutations per project, so the
+# "keep at least one owner" count-then-write cannot race two concurrent demotions
+# into a zero-owner (unadministrable) project (fable5 audit: last-owner race).
+MEMBER_LOCK_CLASSID = 427002
+
+
+async def _lock_project_members(session: AsyncSession, project_id: uuid.UUID) -> None:
+    await session.execute(
+        text("SELECT pg_advisory_xact_lock(:classid, hashtext(:pid))").bindparams(
+            classid=MEMBER_LOCK_CLASSID, pid=str(project_id)
+        )
+    )
 
 
 async def _owner_count(session: AsyncSession, project_id: uuid.UUID) -> int:
@@ -69,7 +83,13 @@ async def add_member(
     if existing is not None:
         raise HTTPException(status_code=409, detail="user is already a member")
     session.add(ProjectMember(project_id=project_id, user_id=target.id, role=body.role))
-    await session.commit()
+    try:
+        await session.commit()
+    except IntegrityError as exc:
+        # Two concurrent adds race past the SELECT check; the uniqueness violation
+        # is a clean 409, never a leaked 500 (fable5 audit: residual IntegrityError).
+        await session.rollback()
+        raise HTTPException(status_code=409, detail="user is already a member") from exc
     return MemberRead(
         user_id=target.id, email=target.email, display_name=target.display_name, role=body.role
     )
@@ -84,6 +104,8 @@ async def update_member_role(
     user: User = Depends(get_current_user),
 ) -> MemberRead:
     await require_role(session, project_id, user, {"owner"})
+    # Serialize membership mutations per project before the count-then-write.
+    await _lock_project_members(session, project_id)
     membership = (
         await session.execute(
             select(ProjectMember).where(
@@ -93,7 +115,7 @@ async def update_member_role(
     ).scalar_one_or_none()
     if membership is None:
         raise HTTPException(status_code=404, detail="not found")
-    # Never leave a project without an owner.
+    # Never leave a project without an owner (guard now race-free under the lock).
     demoting_owner = membership.role == "owner" and body.role != "owner"
     if demoting_owner and await _owner_count(session, project_id) <= 1:
         raise HTTPException(status_code=422, detail="a project must keep at least one owner")
@@ -113,6 +135,8 @@ async def remove_member(
     user: User = Depends(get_current_user),
 ) -> Response:
     await require_role(session, project_id, user, {"owner"})
+    # Serialize membership mutations per project before the count-then-write.
+    await _lock_project_members(session, project_id)
     membership = (
         await session.execute(
             select(ProjectMember).where(
