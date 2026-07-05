@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.v1 import (
     comments,
     cost_entries,
+    csv_io,
     dashboard,
     health,
     me,
@@ -82,6 +83,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(health.router, prefix="/api/v1", tags=["health"])
     app.include_router(projects.router, prefix="/api/v1/projects", tags=["projects"])
     app.include_router(work_packages.router, prefix="/api/v1", tags=["work-packages"])
+    app.include_router(csv_io.router, prefix="/api/v1", tags=["csv"])
     app.include_router(comments.router, prefix="/api/v1", tags=["comments"])
     app.include_router(members.router, prefix="/api/v1", tags=["members"])
     app.include_router(me.router, prefix="/api/v1", tags=["me"])
