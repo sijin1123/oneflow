@@ -89,6 +89,10 @@ async function mockApi(page: Page, opts: { conflictOnPatch?: boolean } = {}) {
   await page.route('**/api/v1/projects/*/saved-filters', (route) =>
     route.fulfill({ json: { items: [], total: 0 } }),
   )
+  // Board/settings read the workflow config — empty → board falls back to built-ins.
+  await page.route('**/api/v1/projects/*/statuses', (route) =>
+    route.fulfill({ json: { items: [], total: 0 } }),
+  )
   await page.route('**/api/v1/projects/*/work-packages**', (route) =>
     route.fulfill({ json: workPackages }),
   )
@@ -320,6 +324,9 @@ test('설정 화면에서 멤버를 보여주고 소유자가 멤버를 추가�
   await page.route(`**/api/v1/projects/${project.id}/milestones`, (route) =>
     route.fulfill({ json: { items: [], total: 0 } }),
   )
+  await page.route(`**/api/v1/projects/${project.id}/statuses`, (route) =>
+    route.fulfill({ json: { items: [], total: 0 } }),
+  )
   await page.route(`**/api/v1/projects/${project.id}/members`, async (route) => {
     if (route.request().method() === 'POST') {
       const sent = route.request().postDataJSON() as { email: string; role: string }
@@ -519,6 +526,25 @@ test('저장된 필터를 적용하면 목록 쿼리에 반영된다', async ({ 
   )
   await chip.click()
   await req
+})
+
+test('보드가 프로젝트 워크플로우 설정의 라벨과 순서를 반영한다', async ({ page }) => {
+  await mockApi(page)
+  // custom labels for the two statuses the fixtures use (after mockApi → precedence)
+  await page.route(`**/api/v1/projects/${project.id}/statuses`, (route) =>
+    route.fulfill({
+      json: {
+        items: [
+          { id: 's1', project_id: project.id, key: 'todo', name: '해야 할 일', position: 0 },
+          { id: 's2', project_id: project.id, key: 'in_progress', name: '작업 중', position: 1 },
+        ],
+        total: 2,
+      },
+    }),
+  )
+  await page.goto(`/projects/${project.id}/board`)
+  await expect(page.getByLabel('해야 할 일 컬럼')).toBeVisible()
+  await expect(page.getByLabel('작업 중 컬럼')).toBeVisible()
 })
 
 test('빈 목록은 빈 상태를 보여준다', async ({ page }) => {
