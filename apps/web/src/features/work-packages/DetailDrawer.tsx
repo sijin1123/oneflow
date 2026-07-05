@@ -1,5 +1,5 @@
 import { useQueryClient } from '@tanstack/react-query'
-import { useEffect, useState } from 'react'
+import { Suspense, lazy, useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 
 import { ErrorState, ListSkeleton } from '@/components/shell/states'
@@ -8,7 +8,11 @@ import { AiSummarySection } from '@/features/ai/AiSummarySection'
 import { useMilestones } from '@/features/milestones/api'
 import { Select } from '@/components/ui/select'
 import { Sheet, SheetContent } from '@/components/ui/sheet'
-import { Textarea } from '@/components/ui/textarea'
+
+// Tiptap is heavy — load it only when a drawer actually renders (code-split).
+const RichTextEditor = lazy(() =>
+  import('@/components/ui/rich-text-editor').then((m) => ({ default: m.RichTextEditor })),
+)
 
 import { CostSection } from './CostSection'
 import { HistorySection } from './HistorySection'
@@ -69,17 +73,15 @@ function DrawerForm({ wp, projectId }: { wp: WorkPackage; projectId: string }) {
   // All editable fields are controlled and resynced from server data, so a 409
   // invalidate+refetch really does reload every field (review finding #2).
   const [subject, setSubject] = useState(wp.subject)
-  const [description, setDescription] = useState(wp.description ?? '')
   const [startDate, setStartDate] = useState(wp.start_date ?? '')
   const [dueDate, setDueDate] = useState(wp.due_date ?? '')
   const [estimate, setEstimate] = useState(wp.estimated_hours?.toString() ?? '')
   useEffect(() => {
     setSubject(wp.subject)
-    setDescription(wp.description ?? '')
     setStartDate(wp.start_date ?? '')
     setDueDate(wp.due_date ?? '')
     setEstimate(wp.estimated_hours?.toString() ?? '')
-  }, [wp.subject, wp.description, wp.start_date, wp.due_date, wp.estimated_hours])
+  }, [wp.subject, wp.start_date, wp.due_date, wp.estimated_hours])
 
   const send = (fields: Partial<Record<string, unknown>>) => {
     // Token from the query cache, not the render snapshot: two quick edits in a
@@ -219,19 +221,19 @@ function DrawerForm({ wp, projectId }: { wp: WorkPackage; projectId: string }) {
       </div>
 
       <div className="space-y-1.5">
-        <label htmlFor="wp-desc" className="text-xs font-medium text-of-muted">
-          설명
-        </label>
-        <Textarea
-          id="wp-desc"
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-          onBlur={() => {
-            const next = description.trim() === '' ? null : description
-            if (next !== wp.description) send({ description: next })
-          }}
-          placeholder="설명을 입력하세요 (리치 텍스트는 후속 단계에서 지원)"
-        />
+        <span className="text-xs font-medium text-of-muted">설명</span>
+        <Suspense
+          fallback={<div className="h-24 rounded-of border border-of-border bg-of-surface-2/40" />}
+        >
+          <RichTextEditor
+            value={wp.description ?? ''}
+            ariaLabel="설명"
+            onSave={(html) => {
+              const next = html === '' ? null : html
+              if (next !== (wp.description ?? null)) send({ description: next })
+            }}
+          />
+        </Suspense>
       </div>
 
       <div className="flex items-center gap-2 border-t border-of-border pt-3 text-xs text-of-muted">
