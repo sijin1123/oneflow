@@ -1,4 +1,5 @@
 import {
+  CalendarDays,
   CalendarRange,
   FolderKanban,
   LayoutDashboard,
@@ -58,6 +59,9 @@ export function Sidebar() {
               </NavLink>
               <NavLink to={`/projects/${p.id}/timeline`} className={navLinkClass}>
                 <CalendarRange /> Timeline
+              </NavLink>
+              <NavLink to={`/projects/${p.id}/calendar`} className={navLinkClass}>
+                <CalendarDays /> Calendar
               </NavLink>
               <NavLink to={`/projects/${p.id}/dashboard`} className={navLinkClass}>
                 <LayoutDashboard /> Dashboard
