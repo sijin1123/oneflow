@@ -28,6 +28,7 @@ export type WorkPackage = {
   priority: WpPriority
   assignee_id: string | null
   parent_id: string | null
+  milestone_id: string | null
   /** date-only 'YYYY-MM-DD' strings — never converted through JS Date (§6.1) */
   start_date: string | null
   due_date: string | null

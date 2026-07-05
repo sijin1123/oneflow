@@ -19,6 +19,7 @@ TRACKED_FIELDS = (
     "type",
     "assignee_id",
     "parent_id",
+    "milestone_id",
     "start_date",
     "due_date",
     "estimated_hours",

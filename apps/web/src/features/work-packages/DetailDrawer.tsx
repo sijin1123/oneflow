@@ -4,6 +4,7 @@ import { useSearchParams } from 'react-router-dom'
 
 import { ErrorState, ListSkeleton } from '@/components/shell/states'
 import { Input } from '@/components/ui/input'
+import { useMilestones } from '@/features/milestones/api'
 import { Select } from '@/components/ui/select'
 import { Sheet, SheetContent } from '@/components/ui/sheet'
 import { Textarea } from '@/components/ui/textarea'
@@ -62,6 +63,7 @@ function DrawerBody({ wpId, projectId }: { wpId: string; projectId: string }) {
 function DrawerForm({ wp, projectId }: { wp: WorkPackage; projectId: string }) {
   const patch = usePatchWorkPackage(projectId)
   const queryClient = useQueryClient()
+  const milestones = useMilestones(projectId)
 
   // All editable fields are controlled and resynced from server data, so a 409
   // invalidate+refetch really does reload every field (review finding #2).
@@ -177,22 +179,42 @@ function DrawerForm({ wp, projectId }: { wp: WorkPackage; projectId: string }) {
         </div>
       </div>
 
-      <div className="w-1/2 space-y-1.5 pr-1.5">
-        <label htmlFor="wp-estimate" className="text-xs font-medium text-of-muted">
-          예상 시간(h)
-        </label>
-        <Input
-          id="wp-estimate"
-          type="number"
-          step="0.5"
-          min="0"
-          value={estimate}
-          onChange={(e) => setEstimate(e.target.value)}
-          onBlur={() => {
-            const v = estimate.trim() === '' ? null : Number(estimate)
-            if (v !== (wp.estimated_hours ?? null)) send({ estimated_hours: v })
-          }}
-        />
+      <div className="grid grid-cols-2 gap-3">
+        <div className="space-y-1.5">
+          <label htmlFor="wp-estimate" className="text-xs font-medium text-of-muted">
+            예상 시간(h)
+          </label>
+          <Input
+            id="wp-estimate"
+            type="number"
+            step="0.5"
+            min="0"
+            value={estimate}
+            onChange={(e) => setEstimate(e.target.value)}
+            onBlur={() => {
+              const v = estimate.trim() === '' ? null : Number(estimate)
+              if (v !== (wp.estimated_hours ?? null)) send({ estimated_hours: v })
+            }}
+          />
+        </div>
+        <div className="space-y-1.5">
+          <label htmlFor="wp-milestone" className="text-xs font-medium text-of-muted">
+            마일스톤
+          </label>
+          <Select
+            id="wp-milestone"
+            value={wp.milestone_id ?? ''}
+            disabled={patch.isPending}
+            onChange={(e) => send({ milestone_id: e.target.value || null })}
+          >
+            <option value="">없음</option>
+            {milestones.data?.items.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.name}
+              </option>
+            ))}
+          </Select>
+        </div>
       </div>
 
       <div className="space-y-1.5">

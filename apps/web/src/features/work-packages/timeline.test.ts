@@ -15,6 +15,7 @@ function wp(id: string, start: string | null, due: string | null): WorkPackage {
     priority: 'none',
     assignee_id: null,
     parent_id: null,
+    milestone_id: null,
     start_date: start,
     due_date: due,
     estimated_hours: null,
