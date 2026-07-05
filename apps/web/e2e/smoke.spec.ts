@@ -93,6 +93,10 @@ async function mockApi(page: Page, opts: { conflictOnPatch?: boolean } = {}) {
   await page.route('**/api/v1/projects/*/statuses', (route) =>
     route.fulfill({ json: { items: [], total: 0 } }),
   )
+  // The drawer reads AI capabilities — default the feature OFF (section hidden).
+  await page.route('**/api/v1/capabilities', (route) =>
+    route.fulfill({ json: { ai_summary_enabled: false } }),
+  )
   await page.route('**/api/v1/projects/*/work-packages**', (route) =>
     route.fulfill({ json: workPackages }),
   )
@@ -611,6 +615,30 @@ test('설정에서 자동화 규칙을 보여주고 새 규칙을 추가한다',
   )
   await page.getByRole('button', { name: '규칙 추가' }).click()
   await post
+})
+
+test('AI 요약 플래그가 켜지면 드로어에서 요약을 생성한다', async ({ page }) => {
+  await mockApi(page)
+  // flag ON (registered after mockApi → precedence over the default OFF)
+  await page.route('**/api/v1/capabilities', (route) =>
+    route.fulfill({ json: { ai_summary_enabled: true } }),
+  )
+  await page.route(`**/api/v1/work-packages/${wpA.id}/summary`, (route) =>
+    route.fulfill({
+      json: {
+        work_package_id: wpA.id,
+        summary: "'워크패키지 API 구현'은(는) 유형 '작업', 상태 '할 일'인 작업입니다.",
+        provider: 'local-extractive',
+      },
+    }),
+  )
+  await page.goto(`/projects/${project.id}/work-packages`)
+  await page.getByRole('button', { name: '워크패키지 API 구현' }).click()
+  const drawer = page.getByRole('dialog')
+  await expect(drawer.getByText('AI 요약')).toBeVisible()
+
+  await drawer.getByRole('button', { name: '요약 생성' }).click()
+  await expect(drawer.getByText(/유형 '작업', 상태 '할 일'/)).toBeVisible()
 })
 
 test('빈 목록은 빈 상태를 보여준다', async ({ page }) => {
