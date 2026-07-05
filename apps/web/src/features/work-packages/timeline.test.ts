@@ -55,6 +55,18 @@ test('buildTimeline separates dated bars from undated and pads the range', () =>
   assert.equal(model!.rangeEnd, dayIndex('2026-07-10')! + 2)
 })
 
+test('buildTimeline widens the range to include extra days (milestones/today)', () => {
+  const base = [wp('a', '2026-07-01', '2026-07-10')]
+  const future = dayIndex('2026-08-15')! // a milestone well after the WP due date
+  const model = buildTimeline(base, [future])
+  assert.ok(model)
+  // the range now extends to (and pads past) the milestone day
+  assert.equal(model!.rangeEnd, future + 2)
+  // an extra day inside the existing span doesn't shrink or move the start
+  const inside = buildTimeline(base, [dayIndex('2026-07-05')!])
+  assert.equal(inside!.rangeStart, dayIndex('2026-07-01')! - 2)
+})
+
 test('monthLabel formats a UTC day index', () => {
   assert.equal(monthLabel(dayIndex('2026-07-01')!), '2026.07')
 })

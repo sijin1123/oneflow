@@ -1,12 +1,14 @@
-import { CalendarRange } from 'lucide-react'
+import { CalendarRange, Flag } from 'lucide-react'
 import { useParams, useSearchParams } from 'react-router-dom'
 
 import { EmptyState, ErrorState, ListSkeleton } from '@/components/shell/states'
+import { useMilestones } from '@/features/milestones/api'
+import { todayISO } from '@/lib/datetime'
 import { cn } from '@/lib/utils'
 
 import { DetailDrawer } from './DetailDrawer'
 import { useWorkPackages } from './api'
-import { buildTimeline, monthLabel, pct, type TimelineBar } from './timeline'
+import { buildTimeline, dayIndex, monthLabel, pct, type TimelineBar } from './timeline'
 import type { WpStatus } from './types'
 
 const STATUS_BAR: Record<WpStatus, string> = {
@@ -27,11 +29,19 @@ export function TimelinePage() {
   const { projectId } = useParams() as { projectId: string }
   const [, setSearchParams] = useSearchParams()
   const { data, isPending, isError, error, refetch } = useWorkPackages(projectId, {})
+  const milestones = useMilestones(projectId)
 
   if (isPending) return <ListSkeleton />
   if (isError) return <ErrorState error={error} onRetry={() => refetch()} />
 
-  const model = buildTimeline(data.items)
+  const dated = (milestones.data?.items ?? [])
+    .map((m) => ({ ...m, idx: dayIndex(m.due_date) }))
+    .filter((m): m is typeof m & { idx: number } => m.idx !== null)
+  const todayIdx = dayIndex(todayISO())
+  // Keep today + milestone markers inside the visible range so nothing is clipped.
+  const extraDays = [...dated.map((m) => m.idx), ...(todayIdx !== null ? [todayIdx] : [])]
+
+  const model = buildTimeline(data.items, extraDays)
   if (!model) {
     return (
       <EmptyState
@@ -55,6 +65,11 @@ export function TimelinePage() {
     return { left: `${left}%`, width: `${width}%` }
   }
 
+  const inRange = (idx: number) => idx >= model.rangeStart && idx <= model.rangeEnd
+  const posLeft = (idx: number) => `${pct(idx - model.rangeStart, model.totalDays)}%`
+  const todayLeft = todayIdx !== null && inRange(todayIdx) ? posLeft(todayIdx) : null
+  const visibleMilestones = dated.filter((m) => inRange(m.idx))
+
   return (
     <div className="flex h-full flex-col">
       <div className="min-w-0 flex-1 overflow-auto">
@@ -74,6 +89,26 @@ export function TimelinePage() {
                   {monthLabel(idx)}
                 </div>
               ))}
+              {/* milestone markers (diamonds) at their due dates */}
+              {visibleMilestones.map((m) => (
+                <div
+                  key={m.id}
+                  className="absolute top-1.5 -translate-x-1/2 text-of-accent"
+                  style={{ left: posLeft(m.idx) }}
+                  title={`마일스톤: ${m.name} (${m.due_date})`}
+                  aria-label={`마일스톤 ${m.name} ${m.due_date}`}
+                >
+                  <Flag size={13} fill="currentColor" />
+                </div>
+              ))}
+              {todayLeft ? (
+                <div
+                  className="absolute top-0 h-full border-l-2 border-of-danger"
+                  style={{ left: todayLeft }}
+                  title="오늘"
+                  aria-label="오늘"
+                />
+              ) : null}
             </div>
           </div>
 
@@ -98,6 +133,14 @@ export function TimelinePage() {
                     aria-hidden
                   />
                 ))}
+                {/* today line spans every row for a continuous marker */}
+                {todayLeft ? (
+                  <div
+                    className="absolute top-0 h-full border-l-2 border-of-danger/70"
+                    style={{ left: todayLeft }}
+                    aria-hidden
+                  />
+                ) : null}
                 <button
                   type="button"
                   onClick={() => openDrawer(b.wp.id)}

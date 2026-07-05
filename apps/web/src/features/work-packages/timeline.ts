@@ -36,7 +36,12 @@ export type TimelineModel = {
   monthMarks: number[]
 }
 
-export function buildTimeline(items: WorkPackage[]): TimelineModel | null {
+export function buildTimeline(
+  items: WorkPackage[],
+  /** extra day indices (milestone due dates, today) that must stay inside the
+      visible range so their markers are never clipped off the edge */
+  extraDays: number[] = [],
+): TimelineModel | null {
   const bars: TimelineBar[] = []
   const undated: WorkPackage[] = []
 
@@ -59,6 +64,10 @@ export function buildTimeline(items: WorkPackage[]): TimelineModel | null {
   for (const b of bars) {
     rangeStart = Math.min(rangeStart, b.startIdx)
     rangeEnd = Math.max(rangeEnd, b.endIdx)
+  }
+  for (const d of extraDays) {
+    rangeStart = Math.min(rangeStart, d)
+    rangeEnd = Math.max(rangeEnd, d)
   }
   // Pad a few days on each side for breathing room.
   rangeStart -= 2
