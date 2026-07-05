@@ -32,3 +32,19 @@ export function useUpdateProjectStatus(projectId: string) {
     },
   })
 }
+
+/** Atomic reorder: send the full ordered id list in one request so a failed swap
+ *  can never leave two statuses sharing a position (fable5 audit). */
+export function useReorderProjectStatuses(projectId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (orderedIds: string[]) =>
+      api<ProjectStatusList>(`/api/v1/projects/${projectId}/statuses/order`, {
+        method: 'PUT',
+        body: JSON.stringify({ ordered_ids: orderedIds }),
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['project-statuses', projectId] })
+    },
+  })
+}

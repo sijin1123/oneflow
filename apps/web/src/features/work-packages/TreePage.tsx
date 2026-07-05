@@ -9,10 +9,12 @@ import { DetailDrawer } from './DetailDrawer'
 import { PriorityChip, StatusChip, TypeChip } from './chips'
 import { useWorkPackages } from './api'
 import { branchIds, buildTree, type TreeNode } from './tree'
+import { useStatusLabels } from './useStatusLabels'
 
 export function TreePage() {
   const { projectId } = useParams() as { projectId: string }
   const [, setSearchParams] = useSearchParams()
+  const statusLabel = useStatusLabels(projectId)
   // Reuses the standard list (capped at the API default); deep hierarchies beyond
   // that page fall back to root rows — recursive-CTE fetching is a later step.
   const { data, isPending, isError, error, refetch } = useWorkPackages(projectId, {})
@@ -71,6 +73,7 @@ export function TreePage() {
               collapsed={collapsed}
               onToggle={toggle}
               onOpen={openDrawer}
+              statusLabel={statusLabel}
             />
           ))}
         </div>
@@ -86,11 +89,13 @@ function TreeRow({
   collapsed,
   onToggle,
   onOpen,
+  statusLabel,
 }: {
   node: TreeNode
   collapsed: Set<string>
   onToggle: (id: string) => void
   onOpen: (id: string) => void
+  statusLabel: (key: string) => string
 }) {
   const hasChildren = node.children.length > 0
   const isCollapsed = collapsed.has(node.wp.id)
@@ -121,7 +126,7 @@ function TreeRow({
         >
           {node.wp.subject}
         </button>
-        <StatusChip status={node.wp.status} />
+        <StatusChip status={node.wp.status} label={statusLabel(node.wp.status)} />
         <PriorityChip priority={node.wp.priority} />
       </div>
 
@@ -134,6 +139,7 @@ function TreeRow({
               collapsed={collapsed}
               onToggle={onToggle}
               onOpen={onOpen}
+              statusLabel={statusLabel}
             />
           ))}
         </div>

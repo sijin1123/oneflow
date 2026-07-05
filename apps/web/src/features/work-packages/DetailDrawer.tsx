@@ -22,9 +22,9 @@ import { RelationsSection } from './RelationsSection'
 import { TimeTrackingSection } from './TimeTrackingSection'
 import { PriorityChip, StatusChip } from './chips'
 import { usePatchWorkPackage, useWorkPackage } from './api'
+import { useStatusLabels } from './useStatusLabels'
 import {
   PRIORITY_LABELS,
-  STATUS_LABELS,
   WP_PRIORITIES,
   WP_STATUSES,
   type WorkPackage,
@@ -71,6 +71,7 @@ function DrawerForm({ wp, projectId }: { wp: WorkPackage; projectId: string }) {
   const patch = usePatchWorkPackage(projectId)
   const queryClient = useQueryClient()
   const milestones = useMilestones(projectId)
+  const statusLabel = useStatusLabels(projectId)
 
   // All editable fields are controlled and resynced from server data, so a 409
   // invalidate+refetch really does reload every field (review finding #2).
@@ -142,7 +143,7 @@ function DrawerForm({ wp, projectId }: { wp: WorkPackage; projectId: string }) {
           >
             {WP_STATUSES.map((s) => (
               <option key={s} value={s}>
-                {STATUS_LABELS[s]}
+                {statusLabel(s)}
               </option>
             ))}
           </Select>
@@ -258,7 +259,7 @@ function DrawerForm({ wp, projectId }: { wp: WorkPackage; projectId: string }) {
       </div>
 
       <div className="flex items-center gap-2 border-t border-of-border pt-3 text-xs text-of-muted">
-        <StatusChip status={wp.status} />
+        <StatusChip status={wp.status} label={statusLabel(wp.status)} />
         <PriorityChip priority={wp.priority} />
         <span className="ml-auto">v{wp.version}</span>
       </div>
@@ -273,7 +274,7 @@ function DrawerForm({ wp, projectId }: { wp: WorkPackage; projectId: string }) {
 
       {patch.isPending ? <p className="text-xs text-of-muted">저장 중…</p> : null}
 
-      <HistorySection wpId={wp.id} />
+      <HistorySection wpId={wp.id} projectId={projectId} />
     </div>
   )
 }

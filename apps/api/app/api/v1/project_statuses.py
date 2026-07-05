@@ -19,6 +19,7 @@ from app.models.user import User
 from app.schemas.project_status import (
     ProjectStatusList,
     ProjectStatusRead,
+    ProjectStatusReorder,
     ProjectStatusUpdate,
 )
 
@@ -45,6 +46,35 @@ async def list_project_statuses(
     )
     return ProjectStatusList(
         items=[ProjectStatusRead.model_validate(r) for r in rows], total=len(rows)
+    )
+
+
+@router.put("/projects/{project_id}/statuses/order", response_model=ProjectStatusList)
+async def reorder_project_statuses(
+    project_id: uuid.UUID,
+    body: ProjectStatusReorder,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+) -> ProjectStatusList:
+    """Owner-only atomic reorder. The body must list exactly the project's status
+    ids; positions are rewritten 0..n-1 in one transaction."""
+    await require_role(session, project_id, user, {"owner"})
+    rows = (
+        (await session.execute(select(ProjectStatus).where(ProjectStatus.project_id == project_id)))
+        .scalars()
+        .all()
+    )
+    by_id = {r.id: r for r in rows}
+    if set(body.ordered_ids) != set(by_id):
+        raise HTTPException(
+            status_code=422, detail="ordered_ids must list exactly this project's statuses"
+        )
+    for position, status_id in enumerate(body.ordered_ids):
+        by_id[status_id].position = position
+    await session.commit()
+    ordered = sorted(rows, key=lambda r: r.position)
+    return ProjectStatusList(
+        items=[ProjectStatusRead.model_validate(r) for r in ordered], total=len(ordered)
     )
 
 

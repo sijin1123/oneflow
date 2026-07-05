@@ -516,6 +516,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{project_id}/statuses/order": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Reorder Project Statuses
+         * @description Owner-only atomic reorder. The body must list exactly the project's status
+         *     ids; positions are rewritten 0..n-1 in one transaction.
+         */
+        put: operations["reorder_project_statuses_api_v1_projects__project_id__statuses_order_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{project_id}/statuses/{status_id}": {
         parameters: {
             query?: never;
@@ -1584,6 +1605,16 @@ export interface components {
              * Format: uuid
              */
             project_id: string;
+        };
+        /**
+         * ProjectStatusReorder
+         * @description Atomic reorder: the full list of status ids in the desired order. Applying
+         *     all positions in one transaction avoids the corrupt duplicate-position state a
+         *     two-independent-PATCH swap could leave behind (fable5 audit).
+         */
+        ProjectStatusReorder: {
+            /** Ordered Ids */
+            ordered_ids: string[];
         };
         /**
          * ProjectStatusUpdate
@@ -3325,6 +3356,41 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectStatusList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reorder_project_statuses_api_v1_projects__project_id__statuses_order_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProjectStatusReorder"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {

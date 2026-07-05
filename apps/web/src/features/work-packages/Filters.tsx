@@ -2,18 +2,13 @@ import { useSearchParams } from 'react-router-dom'
 
 import { Select } from '@/components/ui/select'
 
-import {
-  PRIORITY_LABELS,
-  STATUS_LABELS,
-  TYPE_LABELS,
-  WP_PRIORITIES,
-  WP_STATUSES,
-  WP_TYPES,
-} from './types'
+import { PRIORITY_LABELS, TYPE_LABELS, WP_PRIORITIES, WP_STATUSES, WP_TYPES } from './types'
+import { useStatusLabels } from './useStatusLabels'
 
 /* URL-backed filters (client state lives in search params — PLAN §8). */
-export function Filters() {
+export function Filters({ projectId }: { projectId: string }) {
   const [searchParams, setSearchParams] = useSearchParams()
+  const statusLabel = useStatusLabels(projectId)
 
   const set = (key: string, value: string) => {
     setSearchParams(
@@ -40,7 +35,7 @@ export function Filters() {
           <option value="">전체</option>
           {WP_STATUSES.map((s) => (
             <option key={s} value={s}>
-              {STATUS_LABELS[s]}
+              {statusLabel(s)}
             </option>
           ))}
         </Select>
