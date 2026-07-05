@@ -1,6 +1,6 @@
 # OneFlow local development infrastructure.
 #
-# Docker Desktop + Compose is LOCAL DEVELOPMENT ONLY (docs/ONEFLOW_POSTGRESQL_DEPLOYMENT_POLICY.md).
+# Docker Desktop + Compose is LOCAL DEVELOPMENT ONLY (../docs/ONEFLOW_POSTGRESQL_DEPLOYMENT_POLICY.md).
 # Production PostgreSQL must be externalized (managed or dedicated server) and the app
 # connects only through ONEFLOW_DATABASE_URL. A future compose.production.yaml will
 # intentionally omit this postgres service (see infra/README.md).

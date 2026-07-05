@@ -1,0 +1,27 @@
+# Dependabot drives dependency-security remediation (the security-audit CI job is
+# advisory/non-blocking; this opens PRs when a dependency has a fix). Referenced by
+# .github/workflows/ci.yml.
+version: 2
+updates:
+  - package-ecosystem: "pip"
+    directory: "/apps/api"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: "npm"
+    directory: "/apps/web"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: "npm"
+    directory: "/packages/shared"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"

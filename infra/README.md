@@ -4,7 +4,7 @@
 
 - `compose.yaml` provides PostgreSQL 17 only. Docker Desktop + Compose is
   **local development only** — never a production platform
-  (docs/ONEFLOW_POSTGRESQL_DEPLOYMENT_POLICY.md).
+  (../docs/ONEFLOW_POSTGRESQL_DEPLOYMENT_POLICY.md).
 - The API connects exclusively through `ONEFLOW_DATABASE_URL`.
 
 ## Probe contract

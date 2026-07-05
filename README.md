@@ -12,7 +12,7 @@
 |---|---|
 | Backend | FastAPI · Python 3.13(uv) · SQLAlchemy 2 async(asyncpg) · Alembic |
 | Frontend | React 19 · TypeScript · Vite · React Router · TanStack Query · Tailwind v4 · 자체 shadcn 스타일 컴포넌트 |
-| DB | PostgreSQL 17 (로컬: Docker Compose · 운영: 외부 managed/전용 DB — `docs/../docs/ONEFLOW_POSTGRESQL_DEPLOYMENT_POLICY.md`) |
+| DB | PostgreSQL 17 (로컬: Docker Compose · 운영: 외부 managed/전용 DB — `../docs/ONEFLOW_POSTGRESQL_DEPLOYMENT_POLICY.md`) |
 | 인증 | dev 모드(로컬 전용, 루프백 가드) → OIDC-ready 구조 |
 
 ## Quickstart (local dev)
@@ -47,18 +47,19 @@ cd ../.. && make web-dev
 | 마이그레이션 스모크 | `make api-migrate-smoke` |
 | 백엔드 테스트(실 PG) | `make api-test` |
 | 프론트 typecheck/lint/build | `make web-build` |
-| 프론트 unit(409 순수함수) | `make web-unit` |
+| 프론트 unit(순수함수 node --test) | `make web-unit` |
 | UI 스모크(Playwright·목킹) | `make web-e2e` |
+| OpenAPI 타입 생성/드리프트 | `make gen-types` / `make check-types` |
 | 클린룸 게이트 | `make cleanroom-check` |
 
-CI(`.github/workflows/ci.yml`)는 `backend`/`frontend`/`cleanroom` 3개 잡으로 같은 검증을 수행하며, main 브랜치의 required status checks로 등록하는 것을 권장합니다.
+CI(`.github/workflows/ci.yml`)는 `backend`/`frontend`/`cleanroom`/`security-audit` 4개 잡으로 검증합니다. 앞의 3개(`backend`/`frontend`/`cleanroom`)를 main 브랜치의 required status checks로 등록하며, `security-audit`(pip-audit·npm audit)는 자문용 비차단 잡입니다.
 
 ## Layout
 
 ```
 apps/api      FastAPI 백엔드 (app/, alembic/, tests/)
 apps/web      React 프론트 (src/, e2e/)
-packages/shared  OpenAPI 타입 생성(후속 PR) 자리
+packages/shared  OpenAPI 생성 타입(@oneflow/shared) — 드리프트 게이트로 강제
 scripts/      클린룸 게이트
 infra/        배포 방향 문서
 docs/         클린룸 노트 · 검증 기록 · 스크린샷

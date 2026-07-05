@@ -6,6 +6,11 @@ on:
   push:
     branches: [main]
   pull_request:
+  # Weekly run so the advisory security-audit re-evaluates published advisories
+  # against the pinned lockfiles even without a code change (Dependabot handles
+  # remediation PRs — see .github/dependabot.yml).
+  schedule:
+    - cron: "0 6 * * 1"
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -117,9 +122,10 @@ jobs:
       - name: OpenAPI contract drift gate
         run: bash scripts/check-openapi-types.sh
 
-  # Advisory dependency audit: surfaces known CVEs (lockfiles pin versions AND
-  # their advisories, so a scheduled trigger is needed). Non-blocking — Dependabot
-  # drives remediation (PLAN §3). Not a required merge check.
+  # Advisory dependency audit: surfaces known CVEs. Runs on PRs/pushes AND on the
+  # weekly `schedule` above so pinned lockfiles are re-checked against newly
+  # published advisories. Non-blocking — remediation PRs come from Dependabot
+  # (.github/dependabot.yml). Not a required merge check.
   security-audit:
     runs-on: ubuntu-latest
     timeout-minutes: 10

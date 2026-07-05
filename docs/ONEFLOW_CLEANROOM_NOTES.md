@@ -21,6 +21,7 @@
 | 워크스페이스 셸/사이드바/목록/보드/드로어 | Plane 실행 화면(UI 흐름 관찰) | `plane/apps/web/**`, `plane/packages/**` | 좌측 컴팩트 네비 + 목록/보드 + 우측 상세 패널 패턴 | React Router+TanStack Query+자체 8종 컴포넌트로 신규 작성. 레이아웃 치수·색·아이콘은 자체 토큰 |
 | 상태 칩/우선순위 표기 | Plane/Linear 화면 관찰 | 상동 | 상태를 점+라벨 칩으로 표기하는 관례 | 자체 팔레트(oklch)와 라벨(한국어) 정의 |
 | 옵티미스틱 동시성 UX(409 → 알림+재로드) | 일반 웹 관례 | — | 편집 충돌 시 사용자 통지 후 최신화 | 순수 함수 `decideOnPatchError` + node --test 유닛 |
+| 시간/비용 기록의 `spent_on` 컬럼명(time_entries·cost_entries) | OpenProject/Redmine 공개 스키마·API v3 관찰 | `openproject/app/models/**` | 일자 컬럼에 `_on` 접미사를 쓰는 관례(Rails/Redmine 유래) | 개별 식별자는 저작권 대상이 아니며 공개 API에서 관찰 가능. 컬럼 의미·타입·제약은 본 저장소에서 독자 설계(Numeric 스케일·CHECK·인덱스 자체 정의) — attested-independent-derivation |
 
 ## 게이트 실행 증적
 
@@ -31,3 +32,5 @@
 ## 자동 게이트의 한계(PLAN §10)
 
 리터럴 `@plane/` 문자열·라이선스 텍스트·파일명 수준만 자동 탐지된다. 소스를 보며 변수명만 바꿔 옮기는 이식은 자동으로 잡히지 않으므로, PR 설명의 수동 확인 체크박스("소스 파일을 열어 보며 옮겨 적지 않았음")가 이중 방어선이다.
+
+라이선스 스캔의 범위: 게이트 2번은 `apps/web`의 production 의존성만, 3번은 `apps/api` 백엔드만 자동 스캔한다. 프론트 devDependencies(vitest·playwright·oxlint·typescript 등)와 `packages/shared`(openapi-typescript)는 자동 스캔 대상에서 제외되지만, 전수 수동 확인 결과 모두 MIT/Apache-2.0(카피레프트 0건)임을 확인했다(THIRD-PARTY-NOTICES.md). GPL/AGPL/SSPL·`@plane/*`·`@tiptap-pro`는 전 트리에서 0건.
