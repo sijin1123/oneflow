@@ -44,3 +44,13 @@ web-e2e:
 
 cleanroom-check:
 	bash scripts/check_cleanroom.sh
+
+gen-types:
+	bash scripts/gen-openapi-types.sh
+
+check-types:
+	bash scripts/check-openapi-types.sh
+
+audit:
+	cd apps/api && uv run --with pip-audit pip-audit
+	cd apps/web && npm audit --audit-level=high
