@@ -750,6 +750,44 @@ test('회의 상세가 안건·액션 아이템을 보여주고 액션 아이템
   await post
 })
 
+test('파일 페이지가 링크를 보여주고 새 파일 링크를 추가한다', async ({ page }) => {
+  await mockApi(page)
+  await page.route(`**/api/v1/projects/${project.id}/attachments`, async (route) => {
+    if (route.request().method() === 'POST') {
+      await route.fulfill({ status: 201, json: { id: 'f-new' } })
+      return
+    }
+    await route.fulfill({
+      json: {
+        items: [
+          {
+            id: 'f1',
+            project_id: project.id,
+            filename: '설계서.pdf',
+            url: 'https://files.example.com/a.pdf',
+            content_type: 'application/pdf',
+            size_bytes: 20480,
+            uploaded_by: null,
+            created_at: '2026-07-01T00:00:00Z',
+          },
+        ],
+        total: 1,
+      },
+    })
+  })
+
+  await page.goto(`/projects/${project.id}/files`)
+  await expect(page.getByRole('link', { name: /설계서\.pdf/ })).toBeVisible()
+
+  const post = page.waitForRequest(
+    (r) => r.method() === 'POST' && r.url().includes('/attachments'),
+  )
+  await page.getByLabel('파일 이름').fill('회의자료.pptx')
+  await page.getByLabel('파일 URL').fill('https://files.example.com/b.pptx')
+  await page.getByRole('button', { name: '추가' }).click()
+  await post
+})
+
 test('빈 목록은 빈 상태를 보여준다', async ({ page }) => {
   await page.route('**/api/v1/projects', (route) =>
     route.fulfill({ json: { items: [project], total: 1 } satisfies ProjectList }),

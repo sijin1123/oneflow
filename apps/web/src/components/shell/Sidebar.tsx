@@ -7,6 +7,7 @@ import {
   LayoutDashboard,
   List,
   ListTree,
+  Paperclip,
   Search,
   Settings,
   SquareKanban,
@@ -77,6 +78,9 @@ export function Sidebar() {
               </NavLink>
               <NavLink to={`/projects/${p.id}/meetings`} className={navLinkClass}>
                 <CalendarClock /> Meetings
+              </NavLink>
+              <NavLink to={`/projects/${p.id}/files`} className={navLinkClass}>
+                <Paperclip /> Files
               </NavLink>
               <NavLink to={`/projects/${p.id}/settings`} className={navLinkClass}>
                 <Settings /> Settings
