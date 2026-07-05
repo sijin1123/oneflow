@@ -3,12 +3,12 @@ import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 
 import { ErrorState, ListSkeleton } from '@/components/shell/states'
-import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { Sheet, SheetContent } from '@/components/ui/sheet'
 import { Textarea } from '@/components/ui/textarea'
 
+import { HistorySection } from './HistorySection'
 import { PriorityChip, StatusChip } from './chips'
 import { usePatchWorkPackage, useRelations, useWorkPackage } from './api'
 import {
@@ -222,11 +222,8 @@ function DrawerForm({ wp, projectId }: { wp: WorkPackage; projectId: string }) {
       </section>
 
       {patch.isPending ? <p className="text-xs text-of-muted">저장 중…</p> : null}
-      <div className="pt-1">
-        <Button variant="outline" size="sm" onClick={() => relations.refetch()}>
-          관계 새로고침
-        </Button>
-      </div>
+
+      <HistorySection wpId={wp.id} />
     </div>
   )
 }
