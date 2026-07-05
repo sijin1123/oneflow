@@ -797,3 +797,16 @@ test('빈 목록은 빈 상태를 보여준다', async ({ page }) => {
   await expect(page.getByText('조건에 맞는 작업이 없습니다')).toBeVisible()
   await page.screenshot({ path: '../../docs/screenshots/web-empty.png', fullPage: true })
 })
+
+test('알 수 없는 주소는 스타일된 404 페이지를 보여준다', async ({ page }) => {
+  await page.route('**/api/v1/projects', (route) =>
+    route.fulfill({ json: { items: [project], total: 1 } satisfies ProjectList }),
+  )
+  await page.route('**/api/v1/me/notifications', (route) =>
+    route.fulfill({ json: { items: [], total: 0, unread: 0 } }),
+  )
+  await page.goto('/this/route/does/not/exist')
+  await expect(page.getByText('페이지를 찾을 수 없습니다')).toBeVisible()
+  await page.getByRole('button', { name: '프로젝트 목록으로' }).click()
+  await expect(page).toHaveURL(/\/projects$/)
+})
