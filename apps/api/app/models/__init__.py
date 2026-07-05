@@ -1,4 +1,5 @@
 from app.models.activity import Activity
+from app.models.attachment import Attachment
 from app.models.automation_rule import AutomationRule
 from app.models.comment import WorkPackageComment
 from app.models.cost_entry import CostEntry
@@ -33,4 +34,5 @@ __all__ = [
     "ProjectDocument",
     "Meeting",
     "MeetingActionItem",
+    "Attachment",
 ]

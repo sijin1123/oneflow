@@ -25,6 +25,23 @@ export interface paths {
         patch: operations["update_action_item_api_v1_action_items__item_id__patch"];
         trace?: never;
     };
+    "/api/v1/attachments/{attachment_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Attachment */
+        delete: operations["delete_attachment_api_v1_attachments__attachment_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/capabilities": {
         parameters: {
             query?: never;
@@ -262,6 +279,24 @@ export interface paths {
         get: operations["project_activities_api_v1_projects__project_id__activities_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/attachments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Attachments */
+        get: operations["list_attachments_api_v1_projects__project_id__attachments_get"];
+        put?: never;
+        /** Create Attachment */
+        post: operations["create_attachment_api_v1_projects__project_id__attachments_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -833,6 +868,52 @@ export interface components {
              * Format: uuid
              */
             work_package_id: string;
+        };
+        /** AttachmentCreate */
+        AttachmentCreate: {
+            /** Content Type */
+            content_type?: string | null;
+            /** Filename */
+            filename: string;
+            /** Size Bytes */
+            size_bytes?: number | null;
+            /** Url */
+            url: string;
+        };
+        /** AttachmentList */
+        AttachmentList: {
+            /** Items */
+            items: components["schemas"]["AttachmentRead"][];
+            /** Total */
+            total: number;
+        };
+        /** AttachmentRead */
+        AttachmentRead: {
+            /** Content Type */
+            content_type: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Filename */
+            filename: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            /** Size Bytes */
+            size_bytes: number | null;
+            /** Uploaded By */
+            uploaded_by: string | null;
+            /** Url */
+            url: string;
         };
         /** AutomationRuleCreate */
         AutomationRuleCreate: {
@@ -1916,6 +1997,35 @@ export interface operations {
             };
         };
     };
+    delete_attachment_api_v1_attachments__attachment_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                attachment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     capabilities_api_v1_capabilities_get: {
         parameters: {
             query?: never;
@@ -2471,6 +2581,72 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ProjectActivityList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_attachments_api_v1_projects__project_id__attachments_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AttachmentList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_attachment_api_v1_projects__project_id__attachments_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AttachmentCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AttachmentRead"];
                 };
             };
             /** @description Validation Error */

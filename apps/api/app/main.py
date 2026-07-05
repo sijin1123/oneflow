@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.v1 import (
     ai,
+    attachments,
     automation_rules,
     comments,
     cost_entries,
@@ -105,6 +106,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(ai.router, prefix="/api/v1", tags=["ai"])
     app.include_router(documents.router, prefix="/api/v1", tags=["documents"])
     app.include_router(meetings.router, prefix="/api/v1", tags=["meetings"])
+    app.include_router(attachments.router, prefix="/api/v1", tags=["attachments"])
     return app
 
 
