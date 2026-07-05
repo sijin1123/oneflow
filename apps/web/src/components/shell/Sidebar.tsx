@@ -1,4 +1,5 @@
 import {
+  CalendarClock,
   CalendarDays,
   CalendarRange,
   FileText,
@@ -73,6 +74,9 @@ export function Sidebar() {
               </NavLink>
               <NavLink to={`/projects/${p.id}/documents`} className={navLinkClass}>
                 <FileText /> Documents
+              </NavLink>
+              <NavLink to={`/projects/${p.id}/meetings`} className={navLinkClass}>
+                <CalendarClock /> Meetings
               </NavLink>
               <NavLink to={`/projects/${p.id}/settings`} className={navLinkClass}>
                 <Settings /> Settings
