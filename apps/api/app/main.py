@@ -15,6 +15,7 @@ from app.api.v1 import (
     members,
     milestones,
     projects,
+    saved_filters,
     search,
     time_entries,
     work_packages,
@@ -93,6 +94,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(cost_entries.router, prefix="/api/v1", tags=["cost-entries"])
     app.include_router(milestones.router, prefix="/api/v1", tags=["milestones"])
     app.include_router(search.router, prefix="/api/v1", tags=["search"])
+    app.include_router(saved_filters.router, prefix="/api/v1", tags=["saved-filters"])
     return app
 
 

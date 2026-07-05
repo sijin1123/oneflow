@@ -264,6 +264,41 @@ export interface paths {
         patch: operations["update_milestone_api_v1_projects__project_id__milestones__milestone_id__patch"];
         trace?: never;
     };
+    "/api/v1/projects/{project_id}/saved-filters": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Saved Filters */
+        get: operations["list_saved_filters_api_v1_projects__project_id__saved_filters_get"];
+        put?: never;
+        /** Create Saved Filter */
+        post: operations["create_saved_filter_api_v1_projects__project_id__saved_filters_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/saved-filters/{filter_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Saved Filter */
+        delete: operations["delete_saved_filter_api_v1_projects__project_id__saved_filters__filter_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{project_id}/work-packages": {
         parameters: {
             query?: never;
@@ -966,6 +1001,56 @@ export interface components {
              * Format: uuid
              */
             target_id: string;
+        };
+        /** SavedFilterCreate */
+        SavedFilterCreate: {
+            /** Name */
+            name: string;
+            /** @default {} */
+            params: components["schemas"]["SavedFilterParams"];
+        };
+        /** SavedFilterList */
+        SavedFilterList: {
+            /** Items */
+            items: components["schemas"]["SavedFilterRead"][];
+            /** Total */
+            total: number;
+        };
+        /**
+         * SavedFilterParams
+         * @description The subset of the list query a filter can capture. Enum values are validated
+         *     so a saved filter can never carry a status the list endpoint would 422 on.
+         */
+        SavedFilterParams: {
+            /** Priority */
+            priority?: string | null;
+            /** Q */
+            q?: string | null;
+            /** Status */
+            status?: string | null;
+            /** Type */
+            type?: string | null;
+        };
+        /** SavedFilterRead */
+        SavedFilterRead: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            params: components["schemas"]["SavedFilterParams"];
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
         };
         /** SearchResultItem */
         SearchResultItem: {
@@ -1794,6 +1879,102 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["MilestoneRead"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_saved_filters_api_v1_projects__project_id__saved_filters_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SavedFilterList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_saved_filter_api_v1_projects__project_id__saved_filters_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SavedFilterCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SavedFilterRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_saved_filter_api_v1_projects__project_id__saved_filters__filter_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                filter_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
