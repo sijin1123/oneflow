@@ -9,6 +9,9 @@ import { expect, test, type Page } from '@playwright/test'
 
 import type { Project, ProjectList } from '../src/features/projects/types'
 import type {
+  ActivityList,
+  Comment,
+  CommentList,
   ConflictBody,
   RelationList,
   WorkPackage,
@@ -53,6 +56,22 @@ const wpB: WorkPackage = {
 const projects: ProjectList = { items: [project], total: 1 }
 const workPackages: WorkPackageList = { items: [wpA, wpB], total: 2 }
 const relations: RelationList = { items: [], total: 0 }
+const activities: ActivityList = {
+  items: [
+    {
+      id: 'a1',
+      work_package_id: wpA.id,
+      actor_id: null,
+      action: 'created',
+      field: null,
+      old_value: null,
+      new_value: null,
+      created_at: '2026-07-01T00:00:00Z',
+    },
+  ],
+  total: 1,
+}
+const noComments: CommentList = { items: [], total: 0 }
 
 async function mockApi(page: Page, opts: { conflictOnPatch?: boolean } = {}) {
   await page.route('**/api/v1/projects', (route) =>
@@ -64,6 +83,25 @@ async function mockApi(page: Page, opts: { conflictOnPatch?: boolean } = {}) {
   await page.route(`**/api/v1/work-packages/${wpA.id}/relations`, (route) =>
     route.fulfill({ json: relations }),
   )
+  await page.route(`**/api/v1/work-packages/${wpA.id}/activities`, (route) =>
+    route.fulfill({ json: activities }),
+  )
+  await page.route(`**/api/v1/work-packages/${wpA.id}/comments`, async (route) => {
+    if (route.request().method() === 'POST') {
+      const sent = route.request().postDataJSON() as { body: string }
+      const created: Comment = {
+        id: 'c-new',
+        work_package_id: wpA.id,
+        author_id: null,
+        body: sent.body,
+        created_at: '2026-07-02T00:00:00Z',
+        updated_at: '2026-07-02T00:00:00Z',
+      }
+      await route.fulfill({ status: 201, json: created })
+      return
+    }
+    await route.fulfill({ json: noComments })
+  })
   await page.route(`**/api/v1/work-packages/${wpA.id}`, async (route) => {
     const request = route.request()
     if (request.method() === 'PATCH') {
@@ -125,6 +163,22 @@ test('드로어에서 상태 변경 PATCH가 expected_version을 동봉한다', 
   const body = req.postDataJSON() as { expected_version: number; status: string }
   expect(body.expected_version).toBe(0) // integer token echoed exactly (§6.2)
   expect(body.status).toBe('in_progress')
+})
+
+test('드로어에서 활동 이력을 보여주고 댓글을 추가한다', async ({ page }) => {
+  await mockApi(page)
+  await page.goto(`/projects/${project.id}/work-packages`)
+  await page.getByRole('button', { name: '워크패키지 API 구현' }).click()
+  const drawer = page.getByRole('dialog')
+  await expect(drawer.getByText('작업을 생성했습니다')).toBeVisible() // activity feed
+
+  const commentPost = page.waitForRequest(
+    (req) => req.method() === 'POST' && req.url().includes(`/work-packages/${wpA.id}/comments`),
+  )
+  await drawer.getByLabel('댓글 입력').fill('검토 완료했습니다')
+  await drawer.getByRole('button', { name: '댓글 추가' }).click()
+  const req = await commentPost
+  expect((req.postDataJSON() as { body: string }).body).toBe('검토 완료했습니다')
 })
 
 test('409 충돌 시 알림 후 최신 데이터로 재로드한다', async ({ page }) => {

@@ -3,7 +3,16 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiError, api } from '@/lib/api'
 import { decideOnPatchError } from '@/lib/conflict'
 
-import type { ConflictBody, RelationList, WorkPackage, WorkPackageList, WorkPackagePatch } from './types'
+import type {
+  ActivityList,
+  Comment,
+  CommentList,
+  ConflictBody,
+  RelationList,
+  WorkPackage,
+  WorkPackageList,
+  WorkPackagePatch,
+} from './types'
 
 export type WpFilters = { status?: string; priority?: string; type?: string; q?: string }
 
@@ -33,6 +42,38 @@ export function useRelations(wpId: string | null) {
     queryKey: ['work-package-relations', wpId],
     queryFn: () => api<RelationList>(`/api/v1/work-packages/${wpId}/relations`),
     enabled: wpId !== null,
+  })
+}
+
+export function useComments(wpId: string | null) {
+  return useQuery({
+    queryKey: ['work-package-comments', wpId],
+    queryFn: () => api<CommentList>(`/api/v1/work-packages/${wpId}/comments`),
+    enabled: wpId !== null,
+  })
+}
+
+export function useActivities(wpId: string | null) {
+  return useQuery({
+    queryKey: ['work-package-activities', wpId],
+    queryFn: () => api<ActivityList>(`/api/v1/work-packages/${wpId}/activities`),
+    enabled: wpId !== null,
+  })
+}
+
+export function useCreateComment(wpId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (body: string) =>
+      api<Comment>(`/api/v1/work-packages/${wpId}/comments`, {
+        method: 'POST',
+        body: JSON.stringify({ body }),
+      }),
+    onSuccess: () => {
+      // A comment also appends a 'commented' activity — refresh both.
+      void queryClient.invalidateQueries({ queryKey: ['work-package-comments', wpId] })
+      void queryClient.invalidateQueries({ queryKey: ['work-package-activities', wpId] })
+    },
   })
 }
 

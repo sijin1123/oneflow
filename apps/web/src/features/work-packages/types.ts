@@ -72,6 +72,36 @@ export type ConflictBody = {
   current: WorkPackage
 }
 
+export type Comment = {
+  id: string
+  work_package_id: string
+  author_id: string | null
+  body: string
+  created_at: string
+  updated_at: string
+}
+
+export type CommentList = {
+  items: Comment[]
+  total: number
+}
+
+export type Activity = {
+  id: string
+  work_package_id: string
+  actor_id: string | null
+  action: 'created' | 'field_changed' | 'commented'
+  field: string | null
+  old_value: string | null
+  new_value: string | null
+  created_at: string
+}
+
+export type ActivityList = {
+  items: Activity[]
+  total: number
+}
+
 export const STATUS_LABELS: Record<WpStatus, string> = {
   backlog: '백로그',
   todo: '할 일',
