@@ -85,6 +85,10 @@ async function mockApi(page: Page, opts: { conflictOnPatch?: boolean } = {}) {
   await page.route('**/api/v1/me/notifications', (route) =>
     route.fulfill({ json: { items: [], total: 0, unread: 0 } }),
   )
+  // The list page's saved-filters bar fetches on mount — default to none.
+  await page.route('**/api/v1/projects/*/saved-filters', (route) =>
+    route.fulfill({ json: { items: [], total: 0 } }),
+  )
   await page.route('**/api/v1/projects/*/work-packages**', (route) =>
     route.fulfill({ json: workPackages }),
   )
@@ -493,12 +497,42 @@ test('전체 검색이 여러 프로젝트의 결과를 보여준다', async ({ 
   await expect(page.getByRole('button', { name: /워크패키지 API 구현/ })).toBeVisible()
 })
 
+test('저장된 필터를 적용하면 목록 쿼리에 반영된다', async ({ page }) => {
+  await mockApi(page)
+  // one saved filter (registered after mockApi → precedence over the empty default)
+  await page.route(`**/api/v1/projects/${project.id}/saved-filters`, (route) =>
+    route.fulfill({
+      json: {
+        items: [{ id: 'sf1', project_id: project.id, name: '긴급 작업', params: { status: 'todo' } }],
+        total: 1,
+      },
+    }),
+  )
+  await page.goto(`/projects/${project.id}/work-packages`)
+  // exact: avoid matching the '긴급 작업 삭제' delete button
+  const chip = page.getByRole('button', { name: '긴급 작업', exact: true })
+  await expect(chip).toBeVisible()
+
+  // applying the filter writes ?status=todo → the list refetches with it
+  const req = page.waitForRequest(
+    (r) => r.url().includes('/work-packages') && r.url().includes('status=todo'),
+  )
+  await chip.click()
+  await req
+})
+
 test('빈 목록은 빈 상태를 보여준다', async ({ page }) => {
   await page.route('**/api/v1/projects', (route) =>
     route.fulfill({ json: { items: [project], total: 1 } satisfies ProjectList }),
   )
   await page.route('**/api/v1/projects/*/work-packages**', (route) =>
     route.fulfill({ json: { items: [], total: 0 } satisfies WorkPackageList }),
+  )
+  await page.route('**/api/v1/projects/*/saved-filters', (route) =>
+    route.fulfill({ json: { items: [], total: 0 } }),
+  )
+  await page.route('**/api/v1/me/notifications', (route) =>
+    route.fulfill({ json: { items: [], total: 0, unread: 0 } }),
   )
   await page.goto(`/projects/${project.id}/work-packages`)
   await expect(page.getByText('조건에 맞는 작업이 없습니다')).toBeVisible()

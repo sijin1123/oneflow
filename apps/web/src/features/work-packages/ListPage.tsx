@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { DetailDrawer } from './DetailDrawer'
 import { Filters } from './Filters'
 import { ImportDialog } from './ImportDialog'
+import { SavedFilters } from './SavedFilters'
 import { NewWorkPackageInline } from './NewWorkPackageInline'
 import { PriorityChip, StatusChip, TypeChip } from './chips'
 import { useWorkPackages } from './api'
@@ -49,6 +50,8 @@ export function ListPage() {
           <ImportDialog projectId={projectId} />
         </div>
       </div>
+
+      <SavedFilters projectId={projectId} />
 
       <NewWorkPackageInline projectId={projectId} />
 
