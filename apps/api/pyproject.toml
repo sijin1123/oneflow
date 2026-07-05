@@ -13,6 +13,7 @@ dependencies = [
     "pydantic>=2.7",
     "pydantic-settings>=2.3",
     "greenlet>=3.0",
+    "nh3>=0.3.6",
 ]
 
 [dependency-groups]
