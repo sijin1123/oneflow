@@ -11,6 +11,7 @@ import csv
 import hashlib
 import io
 import uuid
+from decimal import Decimal, InvalidOperation
 
 from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import ValidationError
@@ -31,8 +32,17 @@ from app.schemas.csv_io import (
 )
 from app.schemas.work_package import WorkPackageCreate
 from app.services.activity import record_created
+from app.services.sanitize import sanitize_html
 
 router = APIRouter()
+
+# Excel/LibreOffice read a leading U+FEFF as a BOM and open UTF-8 correctly; without
+# it, Korean text opens mojibake'd on Windows Excel (the tool a real migration uses).
+BOM = "﻿"
+
+# Spreadsheet formula-injection (CWE-1236): a cell beginning with any of these is
+# evaluated as a formula/DDE when the CSV is opened in Excel/Sheets/LibreOffice.
+_FORMULA_TRIGGERS = ("=", "+", "-", "@", "\t", "\r")
 
 # Fields carried by CSV, in the fixed IMPORT_COLUMNS order. Optional fields become
 # None on an empty cell; a validator on WorkPackageCreate rejects anything malformed.
@@ -52,6 +62,37 @@ def _cell(value: object) -> str:
     return "" if value is None else str(value)
 
 
+def _guard_formula(text: str) -> str:
+    """Neutralize spreadsheet formula injection on export by prefixing a single
+    quote when the cell would otherwise be evaluated. Reversed by _unguard_formula
+    on import so an export→import round-trip stays lossless."""
+    if text and text[0] in _FORMULA_TRIGGERS:
+        return "'" + text
+    return text
+
+
+def _unguard_formula(text: str) -> str:
+    """Inverse of _guard_formula: strip a single leading quote that guards a
+    formula-trigger character, so a re-imported export recovers the true value."""
+    if len(text) >= 2 and text[0] == "'" and text[1] in _FORMULA_TRIGGERS:
+        return text[1:]
+    return text
+
+
+def _canonical_cell(value: object) -> str:
+    """Render a cell for the checksum in a numeric-normalized form.
+
+    estimated_hours reaches export as a scale-2 Decimal ('3.00') but import as a
+    float (3.0); normalizing both to the same canonical numeric string keeps the
+    round-trip 건수/체크섬 대사 accurate (review: Decimal↔float checksum drift)."""
+    if isinstance(value, (int, float, Decimal)) and not isinstance(value, bool):
+        try:
+            return format(Decimal(str(value)).normalize(), "f")
+        except (InvalidOperation, ValueError):
+            return str(value)
+    return "" if value is None else str(value)
+
+
 def _canonical(rows: list[dict]) -> str:
     """Deterministic serialization of the importable columns for checksum/대사.
 
@@ -60,7 +101,7 @@ def _canonical(rows: list[dict]) -> str:
     yields the same checksum."""
     lines = []
     for r in rows:
-        lines.append("\x1f".join(_cell(r.get(c)) for c in IMPORT_COLUMNS))
+        lines.append("\x1f".join(_canonical_cell(r.get(c)) for c in IMPORT_COLUMNS))
     return "\n".join(lines)
 
 
@@ -89,10 +130,11 @@ async def export_work_packages_csv(
     dict_rows = [{c: getattr(wp, c) for c in IMPORT_COLUMNS} for wp in rows]
 
     buf = io.StringIO()
+    buf.write(BOM)  # Excel-on-Windows UTF-8 hint (stripped again on import)
     writer = csv.writer(buf, lineterminator="\n")
     writer.writerow(IMPORT_COLUMNS)
     for r in dict_rows:
-        writer.writerow([_cell(r[c]) for c in IMPORT_COLUMNS])
+        writer.writerow([_guard_formula(_cell(r[c])) for c in IMPORT_COLUMNS])
 
     return Response(
         content=buf.getvalue(),
@@ -110,7 +152,9 @@ def _parse_header(header: list[str]) -> dict[str, int]:
     """Map each known importable column to its cell index. `subject` is required."""
     index: dict[str, int] = {}
     for i, name in enumerate(header):
-        key = name.strip().lower()
+        # Strip a UTF-8 BOM (present when re-importing our own Excel-friendly export
+        # or an Excel-saved file) so the first header cell still matches 'subject'.
+        key = name.lstrip(BOM).strip().lower()
         if key in IMPORT_COLUMNS and key not in index:
             index[key] = i
     if "subject" not in index:
@@ -125,7 +169,9 @@ def _row_to_payload(row: list[str], index: dict[str, int]) -> dict:
     """Extract importable cells from a physical row (missing cells → empty)."""
     payload: dict[str, object] = {}
     for col, i in index.items():
-        raw = row[i].strip() if i < len(row) else ""
+        # Reverse the export-side formula guard before trimming so a re-imported
+        # export recovers the exact stored value (round-trip 대사 stays lossless).
+        raw = _unguard_formula(row[i]).strip() if i < len(row) else ""
         if col in _OPTIONAL_CELLS and raw == "":
             payload[col] = None
         else:
@@ -190,7 +236,11 @@ async def import_work_packages_csv(
     inserted = 0
     if not body.dry_run and valid_models:
         for model in valid_models:
-            wp = WorkPackage(project_id=project_id, **model.model_dump())
+            data = model.model_dump()
+            # The server is the authoritative XSS boundary: sanitize rich-text HTML
+            # on this write path too, exactly like the create/patch endpoints.
+            data["description"] = sanitize_html(data["description"])
+            wp = WorkPackage(project_id=project_id, **data)
             session.add(wp)
             await session.flush()  # assign wp.id for the activity FK
             record_created(session, wp.id, user.id)
