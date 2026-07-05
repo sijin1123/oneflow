@@ -1,0 +1,64 @@
+import uuid
+from datetime import datetime
+from urllib.parse import urlsplit
+
+from pydantic import BaseModel, ConfigDict, field_validator
+
+
+class AttachmentCreate(BaseModel):
+    filename: str
+    url: str
+    content_type: str | None = None
+    size_bytes: int | None = None
+
+    @field_validator("filename")
+    @classmethod
+    def _filename(cls, v: str) -> str:
+        v = v.strip()
+        if not 1 <= len(v) <= 255:
+            raise ValueError("filename must be 1-255 chars after trim")
+        return v
+
+    @field_validator("url")
+    @classmethod
+    def _url(cls, v: str) -> str:
+        v = v.strip()
+        parts = urlsplit(v)
+        # Only http(s) references — no javascript:/data:/file: links.
+        if parts.scheme not in {"http", "https"} or not parts.netloc:
+            raise ValueError("url must be a valid http(s) URL")
+        if len(v) > 2000:
+            raise ValueError("url must be <= 2000 chars")
+        return v
+
+    @field_validator("content_type")
+    @classmethod
+    def _ct(cls, v: str | None) -> str | None:
+        if v is not None and len(v) > 120:
+            raise ValueError("content_type must be <= 120 chars")
+        return v
+
+    @field_validator("size_bytes")
+    @classmethod
+    def _size(cls, v: int | None) -> int | None:
+        if v is not None and not 0 <= v <= 1_099_511_627_776:  # 0 .. 1 TiB
+            raise ValueError("size_bytes must be between 0 and 1 TiB")
+        return v
+
+
+class AttachmentRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    project_id: uuid.UUID
+    filename: str
+    content_type: str | None
+    size_bytes: int | None
+    url: str
+    uploaded_by: uuid.UUID | None
+    created_at: datetime
+
+
+class AttachmentList(BaseModel):
+    items: list[AttachmentRead]
+    total: int
