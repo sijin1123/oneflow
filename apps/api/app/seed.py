@@ -27,7 +27,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings, get_settings
 from app.db.session import build_engine, build_sessionmaker
-from app.models import Project, ProjectMember, User, WorkPackage, WorkPackageRelation
+from app.models import (
+    Activity,
+    Project,
+    ProjectMember,
+    User,
+    WorkPackage,
+    WorkPackageComment,
+    WorkPackageRelation,
+)
 
 DEV_USER_EMAIL = "dev@oneflow.local"
 ALLOWED_RESET_HOSTS = {"localhost", "127.0.0.1", "::1", "postgres"}
@@ -265,7 +273,28 @@ async def seed_data(session: AsyncSession) -> bool:
             ]
         )
 
-    print("[seed] demo data inserted (1 project, 2 users, 12 work packages, 2 relations)")
+        # A little history so the drawer's activity/comment section isn't empty.
+        session.add_all(
+            [
+                Activity(work_package_id=api_wp.id, actor_id=dev.id, action="created"),
+                Activity(
+                    work_package_id=api_wp.id,
+                    actor_id=dev.id,
+                    action="field_changed",
+                    field="status",
+                    old_value="todo",
+                    new_value="in_review",
+                ),
+                WorkPackageComment(
+                    work_package_id=api_wp.id,
+                    author_id=mate.id,
+                    body="계약 테스트까지 통과 확인했습니다. 리뷰 부탁드려요.",
+                ),
+                Activity(work_package_id=api_wp.id, actor_id=mate.id, action="commented"),
+            ]
+        )
+
+    print("[seed] demo data inserted (1 project, 2 users, 12 work packages, 2 relations, history)")
     return True
 
 

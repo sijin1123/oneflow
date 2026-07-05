@@ -25,6 +25,7 @@ from app.schemas.work_package import (
     WorkPackagePatch,
     WorkPackageRead,
 )
+from app.services.activity import record_created, record_field_changes
 
 logger = logging.getLogger("oneflow.work_packages")
 
@@ -61,6 +62,13 @@ async def _get_wp_scoped(session: AsyncSession, wp_id: uuid.UUID, user: User) ->
     if wp is None or not await is_member(session, wp.project_id, user.id):
         raise HTTPException(status_code=404, detail="not found")
     return wp
+
+
+async def require_wp_member(session: AsyncSession, wp_id: uuid.UUID, user: User) -> WorkPackage:
+    """Public membership guard for work-package sub-resources (comments/activities).
+
+    Returns the work package or raises 404 (existence hiding for non-members)."""
+    return await _get_wp_scoped(session, wp_id, user)
 
 
 async def _require_assignee_member(
@@ -128,6 +136,8 @@ async def create_work_package(
             raise HTTPException(status_code=422, detail="parent must exist in the same project")
     wp = WorkPackage(project_id=project_id, **body.model_dump())
     session.add(wp)
+    await session.flush()  # assigns wp.id for the activity FK
+    record_created(session, wp.id, user.id)
     await session.flush()
     await session.commit()
     return WorkPackageRead.model_validate(wp)
@@ -208,6 +218,10 @@ async def patch_work_package(
     if changes.get("assignee_id") is not None:
         await _require_assignee_member(session, wp.project_id, changes["assignee_id"])
 
+    # Capture pre-update values for the activity log BEFORE the UPDATE (the
+    # populate_existing UPDATE below refreshes the identity-mapped wp in place).
+    old_values = {f: getattr(wp, f) for f in changes}
+
     parent_changing = "parent_id" in changes and changes["parent_id"] is not None
     # Single transaction (autobegin → commit): optional advisory lock + guards +
     # the single atomic conditional UPDATE (§6.2). read-compare-write is forbidden.
@@ -232,6 +246,10 @@ async def patch_work_package(
             .execution_options(synchronize_session=False, populate_existing=True)
         )
         updated = (await session.execute(stmt)).scalar_one_or_none()
+        if updated is not None:
+            # Record field changes in the same transaction as the update.
+            record_field_changes(session, wp_id, user.id, old_values, changes)
+            await session.flush()
         await session.commit()
     except HTTPException:
         await session.rollback()
