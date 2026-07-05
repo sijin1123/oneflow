@@ -9,18 +9,23 @@ import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { ApiError } from '@/lib/api'
 
+import { useProject, useUpdateProject } from '@/features/projects/api'
+
 import { useAddMember, useMe, useMembers, useRemoveMember, useUpdateMemberRole } from './api'
 
 export function SettingsPage() {
   const { projectId } = useParams() as { projectId: string }
   const me = useMe()
   const members = useMembers(projectId)
+  const project = useProject(projectId)
+  const updateProject = useUpdateProject(projectId)
   const addMember = useAddMember(projectId)
   const updateRole = useUpdateMemberRole(projectId)
   const removeMember = useRemoveMember(projectId)
 
   const [email, setEmail] = useState('')
   const [role, setRole] = useState('member')
+  const [budget, setBudget] = useState('')
 
   if (members.isPending || me.isPending) return <ListSkeleton />
   if (members.isError) return <ErrorState error={members.error} onRetry={() => members.refetch()} />
@@ -34,10 +39,50 @@ export function SettingsPage() {
 
   return (
     <div className="mx-auto max-w-2xl p-6">
-      <h1 className="mb-1 text-base font-semibold">프로젝트 설정 · 멤버</h1>
+      <h1 className="mb-1 text-base font-semibold">프로젝트 설정</h1>
       <p className="mb-4 text-xs text-of-muted">
-        {isOwner ? '소유자는 멤버를 추가·삭제하고 역할을 변경할 수 있습니다.' : '멤버 목록(읽기 전용) — 관리는 소유자만 가능합니다.'}
+        {isOwner ? '소유자는 예산·멤버를 관리할 수 있습니다.' : '읽기 전용 — 관리는 소유자만 가능합니다.'}
       </p>
+
+      {isOwner ? (
+        <div className="mb-4 space-y-2 rounded-of border border-of-border bg-of-surface p-3">
+          <p className="text-xs font-medium">예산 (₩)</p>
+          <div className="flex items-center gap-2">
+            <Input
+              type="number"
+              min="0"
+              value={budget}
+              onChange={(e) => setBudget(e.target.value)}
+              placeholder={
+                project.data?.budget !== null && project.data
+                  ? project.data.budget.toLocaleString('ko-KR')
+                  : '미설정'
+              }
+              aria-label="프로젝트 예산"
+              className="flex-1"
+            />
+            <Button
+              size="sm"
+              disabled={updateProject.isPending}
+              onClick={() =>
+                updateProject.mutate(
+                  { budget: budget.trim() === '' ? null : Number(budget) },
+                  { onSuccess: () => setBudget('') },
+                )
+              }
+            >
+              저장
+            </Button>
+          </div>
+          {project.data?.budget !== null && project.data ? (
+            <p className="text-xs text-of-muted">
+              현재 예산: ₩{project.data.budget.toLocaleString('ko-KR')}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+
+      <h2 className="mb-2 text-sm font-semibold">멤버</h2>
 
       {members.data.total === 0 ? (
         <EmptyState title="멤버가 없습니다" />

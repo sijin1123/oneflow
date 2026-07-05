@@ -36,6 +36,29 @@ class ProjectCreate(BaseModel):
         return v
 
 
+class ProjectUpdate(BaseModel):
+    name: str | None = None
+    description: str | None = None
+    budget: float | None = None
+
+    @field_validator("name")
+    @classmethod
+    def _name(cls, v: str | None) -> str | None:
+        if v is None:
+            return v
+        v = v.strip()
+        if not 1 <= len(v) <= 120:
+            raise ValueError("name must be 1-120 chars after trim")
+        return v
+
+    @field_validator("budget")
+    @classmethod
+    def _budget(cls, v: float | None) -> float | None:
+        if v is not None and not 0 <= v <= 1_000_000_000_000:
+            raise ValueError("budget out of range")
+        return v
+
+
 class ProjectRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -43,6 +66,7 @@ class ProjectRead(BaseModel):
     key: str
     name: str
     description: str | None
+    budget: float | None
     created_at: datetime
     updated_at: datetime
 

@@ -9,6 +9,8 @@ from app.core.auth import get_current_user
 from app.core.authz import require_member
 from app.db.session import get_session
 from app.models.activity import Activity
+from app.models.cost_entry import CostEntry
+from app.models.project import Project
 from app.models.time_entry import TimeEntry
 from app.models.user import User
 from app.models.work_package import (
@@ -83,6 +85,18 @@ async def project_dashboard(
         )
     ).scalar_one()
 
+    cost = (
+        await session.execute(
+            select(func.coalesce(func.sum(CostEntry.amount), 0))
+            .select_from(CostEntry)
+            .join(WorkPackage, CostEntry.work_package_id == WorkPackage.id)
+            .where(WorkPackage.project_id == project_id)
+        )
+    ).scalar_one()
+    budget = (
+        await session.execute(select(Project.budget).where(Project.id == project_id))
+    ).scalar_one_or_none()
+
     return DashboardRead(
         total_work_packages=total,
         open_work_packages=open_count,
@@ -92,6 +106,8 @@ async def project_dashboard(
         type_counts=_ordered_buckets(type_counts, WP_TYPES),
         total_estimated_hours=round(float(estimated), 2),
         total_spent_hours=round(float(spent), 2),
+        budget=round(float(budget), 2) if budget is not None else None,
+        total_cost=round(float(cost), 2),
     )
 
 

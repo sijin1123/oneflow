@@ -29,6 +29,7 @@ from app.core.config import Settings, get_settings
 from app.db.session import build_engine, build_sessionmaker
 from app.models import (
     Activity,
+    CostEntry,
     Project,
     ProjectMember,
     TimeEntry,
@@ -136,6 +137,7 @@ async def seed_data(session: AsyncSession) -> bool:
             key="ONE",
             name="OneFlow 도입",
             description="OneFlow 자체 도입 프로젝트 — 데모 데이터",
+            budget=20_000_000,
         )
         session.add(project)
         await session.flush()
@@ -308,6 +310,14 @@ async def seed_data(session: AsyncSession) -> bool:
                     hours=4.5,
                     spent_on=today - dt.timedelta(days=1),
                     comment="엔드포인트 구현",
+                ),
+                CostEntry(
+                    work_package_id=api_wp.id,
+                    user_id=dev.id,
+                    amount=1_260_000,
+                    kind="labor",
+                    spent_on=today - dt.timedelta(days=2),
+                    comment="개발 인건비",
                 ),
             ]
         )

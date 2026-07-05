@@ -94,7 +94,8 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        patch?: never;
+        /** Update Project */
+        patch: operations["update_project_api_v1_projects__project_id__patch"];
         trace?: never;
     };
     "/api/v1/projects/{project_id}/activities": {
@@ -237,6 +238,41 @@ export interface paths {
         /** Create Comment */
         post: operations["create_comment_api_v1_work_packages__wp_id__comments_post"];
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/work-packages/{wp_id}/cost-entries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Cost Entries */
+        get: operations["list_cost_entries_api_v1_work_packages__wp_id__cost_entries_get"];
+        put?: never;
+        /** Log Cost */
+        post: operations["log_cost_api_v1_work_packages__wp_id__cost_entries_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/work-packages/{wp_id}/cost-entries/{entry_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Cost Entry */
+        delete: operations["delete_cost_entry_api_v1_work_packages__wp_id__cost_entries__entry_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -406,8 +442,64 @@ export interface components {
             /** Detail */
             detail: string;
         };
+        /** CostEntryCreate */
+        CostEntryCreate: {
+            /** Amount */
+            amount: number;
+            /** Comment */
+            comment?: string | null;
+            /**
+             * Kind
+             * @default labor
+             */
+            kind: string;
+            /** Spent On */
+            spent_on?: string | null;
+        };
+        /** CostEntryList */
+        CostEntryList: {
+            /** Items */
+            items: components["schemas"]["CostEntryRead"][];
+            /** Total */
+            total: number;
+            /** Total Amount */
+            total_amount: number;
+        };
+        /** CostEntryRead */
+        CostEntryRead: {
+            /** Amount */
+            amount: number;
+            /** Comment */
+            comment: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Kind */
+            kind: string;
+            /**
+             * Spent On
+             * Format: date
+             */
+            spent_on: string;
+            /** User Id */
+            user_id: string | null;
+            /**
+             * Work Package Id
+             * Format: uuid
+             */
+            work_package_id: string;
+        };
         /** DashboardRead */
         DashboardRead: {
+            /** Budget */
+            budget: number | null;
             /** Open Work Packages */
             open_work_packages: number;
             /** Overdue Count */
@@ -416,6 +508,8 @@ export interface components {
             priority_counts: components["schemas"]["Bucket"][];
             /** Status Counts */
             status_counts: components["schemas"]["Bucket"][];
+            /** Total Cost */
+            total_cost: number;
             /** Total Estimated Hours */
             total_estimated_hours: number;
             /** Total Spent Hours */
@@ -525,6 +619,8 @@ export interface components {
         };
         /** ProjectRead */
         ProjectRead: {
+            /** Budget */
+            budget: number | null;
             /**
              * Created At
              * Format: date-time
@@ -546,6 +642,15 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
+        };
+        /** ProjectUpdate */
+        ProjectUpdate: {
+            /** Budget */
+            budget?: number | null;
+            /** Description */
+            description?: string | null;
+            /** Name */
+            name?: string | null;
         };
         /** RelationCreate */
         RelationCreate: {
@@ -920,6 +1025,41 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_project_api_v1_projects__project_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProjectUpdate"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {
@@ -1376,6 +1516,102 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["CommentRead"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_cost_entries_api_v1_work_packages__wp_id__cost_entries_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                wp_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CostEntryList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    log_cost_api_v1_work_packages__wp_id__cost_entries_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                wp_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CostEntryCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CostEntryRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_cost_entry_api_v1_work_packages__wp_id__cost_entries__entry_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                wp_id: string;
+                entry_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

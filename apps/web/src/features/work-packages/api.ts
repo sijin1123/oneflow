@@ -8,6 +8,7 @@ import type {
   Comment,
   CommentList,
   ConflictBody,
+  CostEntryList,
   RelationList,
   TimeEntryList,
   WorkPackage,
@@ -100,6 +101,44 @@ export function useDeleteTimeEntry(wpId: string) {
       api<void>(`/api/v1/work-packages/${wpId}/time-entries/${entryId}`, { method: 'DELETE' }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['time-entries', wpId] })
+    },
+  })
+}
+
+export function useCostEntries(wpId: string | null) {
+  return useQuery({
+    queryKey: ['cost-entries', wpId],
+    queryFn: () => api<CostEntryList>(`/api/v1/work-packages/${wpId}/cost-entries`),
+    enabled: wpId !== null,
+  })
+}
+
+export function useLogCost(wpId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (input: {
+      amount: number
+      kind: string
+      spent_on: string
+      comment: string | null
+    }) =>
+      api(`/api/v1/work-packages/${wpId}/cost-entries`, {
+        method: 'POST',
+        body: JSON.stringify(input),
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['cost-entries', wpId] })
+    },
+  })
+}
+
+export function useDeleteCostEntry(wpId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (entryId: string) =>
+      api<void>(`/api/v1/work-packages/${wpId}/cost-entries/${entryId}`, { method: 'DELETE' }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['cost-entries', wpId] })
     },
   })
 }
