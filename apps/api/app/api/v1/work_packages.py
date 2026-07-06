@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.auth import get_current_user
 from app.core.authz import is_member, require_member
 from app.db.session import get_session
+from app.models.cycle import Cycle
 from app.models.milestone import Milestone
 from app.models.relation import WorkPackageRelation
 from app.models.user import User
@@ -57,6 +58,7 @@ PATCH_DATA_FIELDS = (
     "assignee_id",
     "parent_id",
     "milestone_id",
+    "cycle_id",
     "start_date",
     "due_date",
     "estimated_hours",
@@ -96,6 +98,15 @@ async def _require_milestone_in_project(
         raise HTTPException(status_code=422, detail="milestone must belong to the same project")
 
 
+async def _require_cycle_in_project(
+    session: AsyncSession, project_id: uuid.UUID, cycle_id: uuid.UUID
+) -> None:
+    # Clean 422 for the UI; the composite FK is the authoritative DB-level guard.
+    c = (await session.execute(select(Cycle).where(Cycle.id == cycle_id))).scalar_one_or_none()
+    if c is None or c.project_id != project_id:
+        raise HTTPException(status_code=422, detail="cycle must belong to the same project")
+
+
 @router.get("/projects/{project_id}/work-packages", response_model=WorkPackageList)
 async def list_work_packages(
     project_id: uuid.UUID,
@@ -103,6 +114,7 @@ async def list_work_packages(
     priority: PriorityFilter | None = Query(default=None),
     type: TypeFilter | None = Query(default=None),
     assignee_id: uuid.UUID | None = Query(default=None),
+    cycle_id: uuid.UUID | None = Query(default=None),
     q: str | None = Query(default=None, max_length=255),
     sort: SortField = Query(default="created"),
     limit: int = Query(default=200, ge=1, le=500),
@@ -120,6 +132,8 @@ async def list_work_packages(
         stmt = stmt.where(WorkPackage.type == type)
     if assignee_id is not None:
         stmt = stmt.where(WorkPackage.assignee_id == assignee_id)
+    if cycle_id is not None:
+        stmt = stmt.where(WorkPackage.cycle_id == cycle_id)
     if q:
         # Case-insensitive substring; % and _ wildcards are autoescaped (§6.1).
         stmt = stmt.where(WorkPackage.subject.icontains(q, autoescape=True))
@@ -150,6 +164,8 @@ async def create_work_package(
         await _require_assignee_member(session, project_id, body.assignee_id)
     if body.milestone_id is not None:
         await _require_milestone_in_project(session, project_id, body.milestone_id)
+    if body.cycle_id is not None:
+        await _require_cycle_in_project(session, project_id, body.cycle_id)
     if body.parent_id is not None:
         parent = (
             await session.execute(select(WorkPackage).where(WorkPackage.id == body.parent_id))
@@ -255,6 +271,8 @@ async def patch_work_package(
         await _require_assignee_member(session, wp.project_id, changes["assignee_id"])
     if changes.get("milestone_id") is not None:
         await _require_milestone_in_project(session, wp.project_id, changes["milestone_id"])
+    if changes.get("cycle_id") is not None:
+        await _require_cycle_in_project(session, wp.project_id, changes["cycle_id"])
 
     # Automation (§3 Phase 3): a real status change can imply further field writes
     # from active project rules. Single-pass and only fills fields the user did not

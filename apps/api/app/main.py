@@ -12,6 +12,7 @@ from app.api.v1 import (
     comments,
     cost_entries,
     csv_io,
+    cycles,
     dashboard,
     documents,
     health,
@@ -99,6 +100,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(dashboard.router, prefix="/api/v1", tags=["dashboard"])
     app.include_router(cost_entries.router, prefix="/api/v1", tags=["cost-entries"])
     app.include_router(milestones.router, prefix="/api/v1", tags=["milestones"])
+    app.include_router(cycles.router, prefix="/api/v1", tags=["cycles"])
     app.include_router(search.router, prefix="/api/v1", tags=["search"])
     app.include_router(saved_filters.router, prefix="/api/v1", tags=["saved-filters"])
     app.include_router(project_statuses.router, prefix="/api/v1", tags=["project-statuses"])
