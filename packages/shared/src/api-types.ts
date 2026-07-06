@@ -407,6 +407,47 @@ export interface paths {
         patch: operations["update_automation_rule_api_v1_projects__project_id__automation_rules__rule_id__patch"];
         trace?: never;
     };
+    "/api/v1/projects/{project_id}/custom-fields": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Custom Fields */
+        get: operations["list_custom_fields_api_v1_projects__project_id__custom_fields_get"];
+        put?: never;
+        /** Create Custom Field */
+        post: operations["create_custom_field_api_v1_projects__project_id__custom_fields_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/custom-fields/{field_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Custom Field
+         * @description Hard delete only when no values reference the field — enforced by the
+         *     RESTRICT FK, so a concurrent value write makes THIS delete fail (409),
+         *     never the other way around. Operational removal is is_active=false.
+         */
+        delete: operations["delete_custom_field_api_v1_projects__project_id__custom_fields__field_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Custom Field */
+        patch: operations["update_custom_field_api_v1_projects__project_id__custom_fields__field_id__patch"];
+        trace?: never;
+    };
     "/api/v1/projects/{project_id}/cycles": {
         parameters: {
             query?: never;
@@ -916,6 +957,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/work-packages/{wp_id}/custom-values": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Custom Values */
+        get: operations["list_custom_values_api_v1_work_packages__wp_id__custom_values_get"];
+        /**
+         * Put Custom Values
+         * @description DELTA upsert in ONE transaction (all-or-nothing): only the listed
+         *     field_ids change; value=null deletes. Conflicts resolve per-field via
+         *     ON CONFLICT DO UPDATE — no read-modify-write race.
+         */
+        put: operations["put_custom_values_api_v1_work_packages__wp_id__custom_values_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/work-packages/{wp_id}/relations": {
         parameters: {
             query?: never;
@@ -1392,6 +1456,105 @@ export interface components {
             raw: string;
             /** Row */
             row: number;
+        };
+        /** CustomFieldCreate */
+        CustomFieldCreate: {
+            /** Field Type */
+            field_type: string;
+            /** Name */
+            name: string;
+            /** Options */
+            options?: string[] | null;
+        };
+        /** CustomFieldList */
+        CustomFieldList: {
+            /** Items */
+            items: components["schemas"]["CustomFieldRead"][];
+            /** Total */
+            total: number;
+        };
+        /** CustomFieldRead */
+        CustomFieldRead: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Field Type */
+            field_type: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Is Active */
+            is_active: boolean;
+            /** Name */
+            name: string;
+            /** Options */
+            options: string[] | null;
+            /** Position */
+            position: number;
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * CustomFieldUpdate
+         * @description field_type is immutable — changing it would corrupt stored values.
+         */
+        CustomFieldUpdate: {
+            /** Is Active */
+            is_active?: boolean | null;
+            /** Name */
+            name?: string | null;
+            /** Options */
+            options?: string[] | null;
+        };
+        /** CustomValueList */
+        CustomValueList: {
+            /** Items */
+            items: components["schemas"]["CustomValueRead"][];
+            /** Total */
+            total: number;
+        };
+        /** CustomValueRead */
+        CustomValueRead: {
+            /**
+             * Field Id
+             * Format: uuid
+             */
+            field_id: string;
+            /** Member Display Name */
+            member_display_name?: string | null;
+            /** Value */
+            value: unknown;
+        };
+        /** CustomValueWrite */
+        CustomValueWrite: {
+            /**
+             * Field Id
+             * Format: uuid
+             */
+            field_id: string;
+            /** Value */
+            value?: unknown;
+        };
+        /**
+         * CustomValuesPut
+         * @description DELTA semantics: only the listed field_ids are touched — other stored
+         *     values are never overwritten by a stale full-state payload.
+         */
+        CustomValuesPut: {
+            /** Values */
+            values: components["schemas"]["CustomValueWrite"][];
         };
         /** CycleCreate */
         CycleCreate: {
@@ -3573,6 +3736,140 @@ export interface operations {
             };
         };
     };
+    list_custom_fields_api_v1_projects__project_id__custom_fields_get: {
+        parameters: {
+            query?: {
+                include_inactive?: boolean;
+            };
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CustomFieldList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_custom_field_api_v1_projects__project_id__custom_fields_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CustomFieldCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CustomFieldRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_custom_field_api_v1_projects__project_id__custom_fields__field_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                field_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_custom_field_api_v1_projects__project_id__custom_fields__field_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                field_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CustomFieldUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CustomFieldRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_cycles_api_v1_projects__project_id__cycles_get: {
         parameters: {
             query?: never;
@@ -5068,6 +5365,72 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_custom_values_api_v1_work_packages__wp_id__custom_values_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                wp_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CustomValueList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_custom_values_api_v1_work_packages__wp_id__custom_values_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                wp_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CustomValuesPut"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CustomValueList"];
+                };
             };
             /** @description Validation Error */
             422: {
