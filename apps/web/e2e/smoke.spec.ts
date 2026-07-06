@@ -103,6 +103,10 @@ async function mockApi(page: Page, opts: { conflictOnPatch?: boolean } = {}) {
   await page.route('**/api/v1/projects/*/modules', (route) =>
     route.fulfill({ json: { items: [], total: 0 } }),
   )
+  // The drawer watch row reads the watcher list.
+  await page.route('**/api/v1/work-packages/*/watchers', (route) =>
+    route.fulfill({ json: { items: [], total: 0, me_watching: false } }),
+  )
   // The drawer reads AI capabilities — default the feature OFF (section hidden).
   await page.route('**/api/v1/capabilities', (route) =>
     route.fulfill({ json: { ai_summary_enabled: false } }),
@@ -662,6 +666,38 @@ test('모듈 페이지가 상태 그룹·리드·진행률을 보여주고 소�
   await page.getByRole('button', { name: '모듈 추가' }).click()
   const req = await post
   expect((req.postDataJSON() as { name: string }).name).toBe('결제 모듈')
+})
+
+test('드로어에서 워치 토글이 PUT/DELETE를 보낸다', async ({ page }) => {
+  await mockApi(page)
+  let watching = false
+  await page.route(`**/api/v1/work-packages/${wpA.id}/watchers/me`, async (route) => {
+    watching = route.request().method() === 'PUT'
+    await route.fulfill({ status: 204 })
+  })
+  await page.route(`**/api/v1/work-packages/${wpA.id}/watchers`, (route) =>
+    route.fulfill({
+      json: watching
+        ? { items: [{ user_id: 'u-dev', display_name: 'Dev User' }], total: 1, me_watching: true }
+        : { items: [], total: 0, me_watching: false },
+    }),
+  )
+
+  await page.goto(`/projects/${project.id}/work-packages`)
+  await page.getByRole('button', { name: '워크패키지 API 구현' }).click()
+
+  const put = page.waitForRequest(
+    (r) => r.method() === 'PUT' && r.url().includes(`/work-packages/${wpA.id}/watchers/me`),
+  )
+  await page.getByRole('button', { name: '워치', exact: true }).click()
+  await put
+  await expect(page.getByRole('button', { name: '워치 해제' })).toBeVisible()
+
+  const del = page.waitForRequest(
+    (r) => r.method() === 'DELETE' && r.url().includes(`/work-packages/${wpA.id}/watchers/me`),
+  )
+  await page.getByRole('button', { name: '워치 해제' }).click()
+  await del
 })
 
 test('CSV 가져오기: dry-run 미리보기 후 실행하고 실패 행을 격리한다', async ({ page }) => {

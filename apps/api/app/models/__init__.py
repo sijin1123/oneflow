@@ -16,6 +16,7 @@ from app.models.relation import WorkPackageRelation
 from app.models.saved_filter import SavedFilter
 from app.models.time_entry import TimeEntry
 from app.models.user import User
+from app.models.watcher import WpWatcher
 from app.models.work_package import WorkPackage
 
 __all__ = [
@@ -39,4 +40,5 @@ __all__ = [
     "Meeting",
     "MeetingActionItem",
     "Attachment",
+    "WpWatcher",
 ]

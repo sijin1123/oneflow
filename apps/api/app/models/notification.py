@@ -8,8 +8,8 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.db.base import Base
 
 # Notification kinds. Kept a closed set (CHECK-constrained) so the UI can render a
-# known message per kind. Currently only assignment; more triggers are additive.
-NOTIFICATION_KINDS = ("assigned",)
+# known message per kind. watch_* kinds go to work-package watchers (PR-E1).
+NOTIFICATION_KINDS = ("assigned", "watch_status", "watch_comment", "watch_assigned")
 
 
 class Notification(Base):
@@ -20,7 +20,10 @@ class Notification(Base):
 
     __tablename__ = "notifications"
     __table_args__ = (
-        CheckConstraint("kind IN ('assigned')", name="notification_kind_allowed"),
+        CheckConstraint(
+            "kind IN ('assigned', 'watch_status', 'watch_comment', 'watch_assigned')",
+            name="notification_kind_allowed",
+        ),
         # Feed query: a user's notifications newest-first.
         Index("ix_notifications_user_created", "user_id", "created_at"),
         # Unread-count query.
