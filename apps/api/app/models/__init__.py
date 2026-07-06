@@ -5,6 +5,7 @@ from app.models.comment import WorkPackageComment
 from app.models.cost_entry import CostEntry
 from app.models.cycle import Cycle
 from app.models.document import ProjectDocument
+from app.models.intake import IntakeItem
 from app.models.meeting import Meeting, MeetingActionItem
 from app.models.member import ProjectMember
 from app.models.milestone import Milestone
@@ -43,4 +44,5 @@ __all__ = [
     "Attachment",
     "WpWatcher",
     "UserNotificationSettings",
+    "IntakeItem",
 ]

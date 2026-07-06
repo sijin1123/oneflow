@@ -112,6 +112,10 @@ async function mockApi(page: Page, opts: { conflictOnPatch?: boolean } = {}) {
   await page.route('**/api/v1/work-packages/*/watchers', (route) =>
     route.fulfill({ json: { items: [], total: 0, me_watching: false } }),
   )
+  // The intake page reads the queue.
+  await page.route('**/api/v1/projects/*/intake', (route) =>
+    route.fulfill({ json: { items: [], total: 0 } }),
+  )
   // The drawer reads AI capabilities — default the feature OFF (section hidden).
   await page.route('**/api/v1/capabilities', (route) =>
     route.fulfill({ json: { ai_summary_enabled: false } }),
@@ -765,6 +769,66 @@ test('위험 구역에서 보관 확인 후 POST /archive를 보낸다', async (
   await page.getByRole('button', { name: '프로젝트 보관' }).click()
   await post
   expect(dialogs[0]).toContain('보관할까요')
+})
+
+test('인테이크 큐에서 소유자가 수락하면 triage POST가 간다', async ({ page }) => {
+  await mockApi(page)
+  await page.route('**/api/v1/me', (route) =>
+    route.fulfill({
+      json: { id: 'u-dev', email: 'dev@oneflow.local', display_name: 'Dev User', is_active: true },
+    }),
+  )
+  await page.route(`**/api/v1/projects/${project.id}/intake/it-1/triage`, (route) =>
+    route.fulfill({
+      json: {
+        id: 'it-1',
+        project_id: project.id,
+        title: '검색이 느려요',
+        body: null,
+        status: 'accepted',
+        submitted_by: 'u-alex',
+        submitter_name: 'Alex Kim',
+        snooze_until: null,
+        accepted_wp_id: wpA.id,
+        created_at: '2026-07-06T00:00:00Z',
+        updated_at: '2026-07-06T00:00:00Z',
+      },
+    }),
+  )
+  await page.route(`**/api/v1/projects/${project.id}/intake`, (route) =>
+    route.fulfill({
+      json: {
+        items: [
+          {
+            id: 'it-1',
+            project_id: project.id,
+            title: '검색이 느려요',
+            body: null,
+            status: 'pending',
+            submitted_by: 'u-alex',
+            submitter_name: 'Alex Kim',
+            snooze_until: null,
+            accepted_wp_id: null,
+            created_at: '2026-07-06T00:00:00Z',
+            updated_at: '2026-07-06T00:00:00Z',
+          },
+        ],
+        total: 1,
+      },
+    }),
+  )
+
+  await page.goto(`/projects/${project.id}/intake`)
+  const pending = page.getByRole('region', { name: '대기' })
+  await expect(pending.getByText('검색이 느려요')).toBeVisible()
+  await expect(pending.getByText('Alex Kim')).toBeVisible()
+
+  const post = page.waitForRequest(
+    (r) => r.method() === 'POST' && r.url().includes('/intake/it-1/triage'),
+  )
+  await pending.getByRole('button', { name: '수락' }).click()
+  const sent = (await post).postDataJSON() as { status: string }
+  expect(sent.status).toBe('accepted')
 })
 
 test('CSV 가져오기: dry-run 미리보기 후 실행하고 실패 행을 격리한다', async ({ page }) => {

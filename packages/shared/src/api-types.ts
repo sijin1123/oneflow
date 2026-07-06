@@ -478,6 +478,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{project_id}/intake": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Intake */
+        get: operations["list_intake_api_v1_projects__project_id__intake_get"];
+        put?: never;
+        /** Submit Intake */
+        post: operations["submit_intake_api_v1_projects__project_id__intake_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/intake/{item_id}/triage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Triage Intake
+         * @description Owner decision on an OPEN (pending/snoozed) item.
+         *
+         *     Accept order inside ONE transaction: ① insert the work package (flushed for
+         *     its id) → ② status-conditional UPDATE — rowcount 0 means someone else
+         *     already decided, so the whole transaction (including the WP) rolls back and
+         *     the caller gets 409. A concurrent accept therefore succeeds exactly once
+         *     and can never leave a duplicate work package (PLAN P2-5).
+         */
+        post: operations["triage_intake_api_v1_projects__project_id__intake__item_id__triage_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{project_id}/meetings": {
         parameters: {
             query?: never;
@@ -1550,6 +1594,68 @@ export interface components {
         HTTPValidationError: {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
+        };
+        /** IntakeCreate */
+        IntakeCreate: {
+            /** Body */
+            body?: string | null;
+            /** Title */
+            title: string;
+        };
+        /** IntakeList */
+        IntakeList: {
+            /** Items */
+            items: components["schemas"]["IntakeRead"][];
+            /** Total */
+            total: number;
+        };
+        /** IntakeRead */
+        IntakeRead: {
+            /** Accepted Wp Id */
+            accepted_wp_id: string | null;
+            /** Body */
+            body: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            /** Snooze Until */
+            snooze_until: string | null;
+            /** Status */
+            status: string;
+            /** Submitted By */
+            submitted_by: string | null;
+            /** Submitter Name */
+            submitter_name: string | null;
+            /** Title */
+            title: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * IntakeTriage
+         * @description Owner triage decision. `status` must be a decision (not 'pending');
+         *     `snooze_until` only pairs with 'snoozed'.
+         */
+        IntakeTriage: {
+            /** Snooze Until */
+            snooze_until?: string | null;
+            /** Status */
+            status: string;
         };
         /**
          * MeWorkRead
@@ -3683,6 +3789,108 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DocumentRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_intake_api_v1_projects__project_id__intake_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IntakeList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    submit_intake_api_v1_projects__project_id__intake_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IntakeCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IntakeRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    triage_intake_api_v1_projects__project_id__intake__item_id__triage_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IntakeTriage"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IntakeRead"];
                 };
             };
             /** @description Validation Error */

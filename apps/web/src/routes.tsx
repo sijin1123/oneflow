@@ -3,6 +3,7 @@ import { Navigate, createBrowserRouter } from 'react-router-dom'
 import { AppShell } from '@/components/shell/AppShell'
 import { NotFound, RouteError } from '@/components/shell/RouteError'
 import { FilesPage } from '@/features/attachments/FilesPage'
+import { IntakePage } from '@/features/intake/IntakePage'
 import { DashboardPage } from '@/features/dashboard/DashboardPage'
 import { DocumentEditorPage } from '@/features/documents/DocumentEditorPage'
 import { DocumentsPage } from '@/features/documents/DocumentsPage'
@@ -39,6 +40,7 @@ export const router = createBrowserRouter([
       { path: 'projects/:projectId/calendar', element: <CalendarPage /> },
       { path: 'projects/:projectId/cycles', element: <CyclesPage /> },
       { path: 'projects/:projectId/modules', element: <ModulesPage /> },
+      { path: 'projects/:projectId/intake', element: <IntakePage /> },
       { path: 'projects/:projectId/dashboard', element: <DashboardPage /> },
       { path: 'projects/:projectId/documents', element: <DocumentsPage /> },
       { path: 'projects/:projectId/documents/:docId', element: <DocumentEditorPage /> },
