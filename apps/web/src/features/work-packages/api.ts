@@ -65,6 +65,33 @@ export function useWorkPackages(projectId: string, filters: WpFilters) {
   })
 }
 
+export type WatcherList = {
+  items: Array<{ user_id: string; display_name: string }>
+  total: number
+  me_watching: boolean
+}
+
+export function useWatchers(wpId: string | null) {
+  return useQuery({
+    queryKey: ['wp-watchers', wpId],
+    queryFn: () => api<WatcherList>(`/api/v1/work-packages/${wpId}/watchers`),
+    enabled: wpId !== null,
+  })
+}
+
+export function useSetWatching(wpId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (watching: boolean) =>
+      api<void>(`/api/v1/work-packages/${wpId}/watchers/me`, {
+        method: watching ? 'PUT' : 'DELETE',
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['wp-watchers', wpId] })
+    },
+  })
+}
+
 export function useWorkPackage(wpId: string | null) {
   return useQuery({
     queryKey: ['work-package', wpId],

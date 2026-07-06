@@ -5,10 +5,15 @@ notification is committed atomically with the change that triggered it.
 """
 
 import uuid
+from collections.abc import Iterable
 
+from sqlalchemy import and_, false, func, insert, literal, select
+from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.member import ProjectMember
 from app.models.notification import Notification
+from app.models.watcher import WpWatcher
 
 
 def record_assignment(
@@ -29,5 +34,51 @@ def record_assignment(
             project_id=project_id,
             work_package_id=wp_id,
             kind="assigned",
+        )
+    )
+
+
+async def notify_watchers(
+    session: AsyncSession,
+    *,
+    wp_id: uuid.UUID,
+    project_id: uuid.UUID,
+    actor_id: uuid.UUID,
+    kind: str,
+    exclude: Iterable[uuid.UUID] = (),
+) -> None:
+    """Queue one notification per watcher of the work package — same transaction
+    as the triggering change (atomic commit/rollback together).
+
+    Single INSERT..SELECT: membership is joined at fan-out time so revoked
+    members receive nothing, the actor never notifies themselves, and `exclude`
+    prevents double-notifying users already covered by another kind (e.g. the
+    new assignee, who gets the richer 'assigned' notification)."""
+    excluded = {actor_id, *exclude}
+    uid = PGUUID(as_uuid=True)
+    sel = (
+        select(
+            func.gen_random_uuid(),
+            WpWatcher.user_id,
+            literal(project_id, type_=uid),
+            literal(wp_id, type_=uid),
+            literal(actor_id, type_=uid),
+            literal(kind),
+            false(),
+        )
+        .select_from(WpWatcher)
+        .join(
+            ProjectMember,
+            and_(
+                ProjectMember.project_id == literal(project_id, type_=uid),
+                ProjectMember.user_id == WpWatcher.user_id,
+            ),
+        )
+        .where(WpWatcher.work_package_id == wp_id, WpWatcher.user_id.notin_(excluded))
+    )
+    await session.execute(
+        insert(Notification).from_select(
+            ["id", "user_id", "project_id", "work_package_id", "actor_id", "kind", "read"],
+            sel,
         )
     )

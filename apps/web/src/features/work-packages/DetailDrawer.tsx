@@ -1,3 +1,4 @@
+import { Bell, BellOff } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
 import { Suspense, lazy, useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
@@ -24,7 +25,7 @@ import { HistorySection } from './HistorySection'
 import { RelationsSection } from './RelationsSection'
 import { TimeTrackingSection } from './TimeTrackingSection'
 import { PriorityChip, StatusChip } from './chips'
-import { usePatchWorkPackage, useWorkPackage } from './api'
+import { usePatchWorkPackage, useSetWatching, useWatchers, useWorkPackage } from './api'
 import { useStatusLabels } from './useStatusLabels'
 import {
   PRIORITY_LABELS,
@@ -120,6 +121,7 @@ function DrawerForm({ wp, projectId }: { wp: WorkPackage; projectId: string }) {
           저장하지 못했습니다: {saveError}
         </p>
       ) : null}
+      <WatchRow wpId={wp.id} />
       <div className="space-y-1.5">
         <label htmlFor="wp-subject" className="text-xs font-medium text-of-muted">
           제목
@@ -340,6 +342,29 @@ function DrawerForm({ wp, projectId }: { wp: WorkPackage; projectId: string }) {
       ) : null}
 
       <HistorySection wpId={wp.id} projectId={projectId} />
+    </div>
+  )
+}
+
+function WatchRow({ wpId }: { wpId: string }) {
+  const watchers = useWatchers(wpId)
+  const setWatching = useSetWatching(wpId)
+  const watching = watchers.data?.me_watching ?? false
+  return (
+    <div className="flex items-center justify-between rounded-of border border-of-border bg-of-surface px-3 py-2">
+      <span className="text-xs text-of-muted">
+        워처 {watchers.data?.total ?? 0}명 — 상태·댓글·담당자 변경 알림을 받습니다.
+      </span>
+      <button
+        type="button"
+        aria-pressed={watching}
+        disabled={setWatching.isPending || watchers.isPending}
+        className="flex items-center gap-1.5 rounded-of border border-of-border px-2 py-1 text-xs font-medium hover:bg-of-surface-2"
+        onClick={() => setWatching.mutate(!watching)}
+      >
+        {watching ? <BellOff size={13} /> : <Bell size={13} />}
+        {watching ? '워치 해제' : '워치'}
+      </button>
     </div>
   )
 }

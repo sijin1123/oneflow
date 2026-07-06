@@ -18,6 +18,7 @@ from app.schemas.comment import (
     CommentRead,
 )
 from app.services.activity import record_comment
+from app.services.notification import notify_watchers
 
 router = APIRouter()
 
@@ -52,10 +53,14 @@ async def create_comment(
     session: AsyncSession = Depends(get_session),
     user: User = Depends(get_current_user),
 ) -> CommentRead:
-    await require_wp_member(session, wp_id, user)
+    wp = await require_wp_member(session, wp_id, user)
     comment = WorkPackageComment(work_package_id=wp_id, author_id=user.id, body=body.body)
     session.add(comment)
     record_comment(session, wp_id, user.id)  # same transaction as the comment
+    # Watchers hear about new comments in the same transaction (PR-E1).
+    await notify_watchers(
+        session, wp_id=wp_id, project_id=wp.project_id, actor_id=user.id, kind="watch_comment"
+    )
     await session.flush()
     await session.commit()
     return CommentRead.model_validate(comment)

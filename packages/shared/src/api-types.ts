@@ -893,6 +893,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/work-packages/{wp_id}/watchers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Watchers */
+        get: operations["list_watchers_api_v1_work_packages__wp_id__watchers_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/work-packages/{wp_id}/watchers/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Watch */
+        put: operations["watch_api_v1_work_packages__wp_id__watchers_me_put"];
+        post?: never;
+        /** Unwatch */
+        delete: operations["unwatch_api_v1_work_packages__wp_id__watchers_me_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -2176,6 +2211,25 @@ export interface components {
             msg: string;
             /** Error Type */
             type: string;
+        };
+        /** WatcherList */
+        WatcherList: {
+            /** Items */
+            items: components["schemas"]["WatcherRead"][];
+            /** Me Watching */
+            me_watching: boolean;
+            /** Total */
+            total: number;
+        };
+        /** WatcherRead */
+        WatcherRead: {
+            /** Display Name */
+            display_name: string;
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
         };
         /** WorkPackageCreate */
         WorkPackageCreate: {
@@ -4735,6 +4789,95 @@ export interface operations {
             path: {
                 wp_id: string;
                 entry_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_watchers_api_v1_work_packages__wp_id__watchers_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                wp_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WatcherList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    watch_api_v1_work_packages__wp_id__watchers_me_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                wp_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    unwatch_api_v1_work_packages__wp_id__watchers_me_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                wp_id: string;
             };
             cookie?: never;
         };

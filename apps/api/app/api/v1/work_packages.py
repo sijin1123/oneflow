@@ -31,7 +31,7 @@ from app.schemas.work_package import (
 )
 from app.services.activity import record_created, record_field_changes
 from app.services.automation import extra_changes_for_status
-from app.services.notification import record_assignment
+from app.services.notification import notify_watchers, record_assignment
 from app.services.sanitize import sanitize_html
 
 logger = logging.getLogger("oneflow.work_packages")
@@ -334,13 +334,35 @@ async def patch_work_package(
             record_field_changes(session, wp_id, user.id, old_values, changes)
             # Notify on a real (re)assignment to a new user.
             new_assignee = changes.get("assignee_id")
-            if new_assignee is not None and old_values.get("assignee_id") != new_assignee:
+            assignee_changed = (
+                new_assignee is not None and old_values.get("assignee_id") != new_assignee
+            )
+            if assignee_changed:
                 record_assignment(
                     session,
                     recipient_id=new_assignee,
                     actor_id=user.id,
                     project_id=wp.project_id,
                     wp_id=wp_id,
+                )
+            # Watcher fan-out (same transaction; PR-E1). The new assignee already
+            # got the richer 'assigned' notification → excluded from watch_assigned.
+            if changes.get("status") is not None and changes["status"] != old_values.get("status"):
+                await notify_watchers(
+                    session,
+                    wp_id=wp_id,
+                    project_id=wp.project_id,
+                    actor_id=user.id,
+                    kind="watch_status",
+                )
+            if assignee_changed:
+                await notify_watchers(
+                    session,
+                    wp_id=wp_id,
+                    project_id=wp.project_id,
+                    actor_id=user.id,
+                    kind="watch_assigned",
+                    exclude=(new_assignee,),
                 )
             await session.flush()
         await session.commit()
