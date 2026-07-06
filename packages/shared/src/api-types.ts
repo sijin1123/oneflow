@@ -362,6 +362,42 @@ export interface paths {
         patch: operations["update_automation_rule_api_v1_projects__project_id__automation_rules__rule_id__patch"];
         trace?: never;
     };
+    "/api/v1/projects/{project_id}/cycles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Cycles */
+        get: operations["list_cycles_api_v1_projects__project_id__cycles_get"];
+        put?: never;
+        /** Create Cycle */
+        post: operations["create_cycle_api_v1_projects__project_id__cycles_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/cycles/{cycle_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Cycle */
+        delete: operations["delete_cycle_api_v1_projects__project_id__cycles__cycle_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Cycle */
+        patch: operations["update_cycle_api_v1_projects__project_id__cycles__cycle_id__patch"];
+        trace?: never;
+    };
     "/api/v1/projects/{project_id}/dashboard": {
         parameters: {
             query?: never;
@@ -1176,6 +1212,88 @@ export interface components {
             /** Row */
             row: number;
         };
+        /** CycleCreate */
+        CycleCreate: {
+            /** Description */
+            description?: string | null;
+            /**
+             * End Date
+             * Format: date
+             */
+            end_date: string;
+            /** Name */
+            name: string;
+            /**
+             * Start Date
+             * Format: date
+             */
+            start_date: string;
+        };
+        /** CycleList */
+        CycleList: {
+            /** Items */
+            items: components["schemas"]["CycleRead"][];
+            /** Total */
+            total: number;
+        };
+        /** CycleRead */
+        CycleRead: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Description */
+            description: string | null;
+            /** Done Work Package Count */
+            done_work_package_count: number;
+            /**
+             * End Date
+             * Format: date
+             */
+            end_date: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            /**
+             * Start Date
+             * Format: date
+             */
+            start_date: string;
+            /** Status */
+            status: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Work Package Count */
+            work_package_count: number;
+        };
+        /**
+         * CycleUpdate
+         * @description Partial update — the cross-field date check runs in the router against
+         *     the MERGED values, so changing one bound cannot invert the range.
+         */
+        CycleUpdate: {
+            /** Description */
+            description?: string | null;
+            /** End Date */
+            end_date?: string | null;
+            /** Name */
+            name?: string | null;
+            /** Start Date */
+            start_date?: string | null;
+        };
         /** DashboardRead */
         DashboardRead: {
             /** Budget */
@@ -1944,6 +2062,8 @@ export interface components {
         WorkPackageCreate: {
             /** Assignee Id */
             assignee_id?: string | null;
+            /** Cycle Id */
+            cycle_id?: string | null;
             /** Description */
             description?: string | null;
             /** Due Date */
@@ -1990,6 +2110,8 @@ export interface components {
         WorkPackagePatch: {
             /** Assignee Id */
             assignee_id?: string | null;
+            /** Cycle Id */
+            cycle_id?: string | null;
             /** Description */
             description?: string | null;
             /** Due Date */
@@ -2022,6 +2144,8 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+            /** Cycle Id */
+            cycle_id: string | null;
             /** Description */
             description: string | null;
             /** Due Date */
@@ -2948,6 +3072,138 @@ export interface operations {
             };
         };
     };
+    list_cycles_api_v1_projects__project_id__cycles_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CycleList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_cycle_api_v1_projects__project_id__cycles_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CycleCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CycleRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_cycle_api_v1_projects__project_id__cycles__cycle_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                cycle_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_cycle_api_v1_projects__project_id__cycles__cycle_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                cycle_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CycleUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CycleRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     project_dashboard_api_v1_projects__project_id__dashboard_get: {
         parameters: {
             query?: never;
@@ -3580,6 +3836,7 @@ export interface operations {
                 priority?: ("none" | "low" | "medium" | "high" | "urgent") | null;
                 type?: ("task" | "bug" | "feature" | "milestone") | null;
                 assignee_id?: string | null;
+                cycle_id?: string | null;
                 q?: string | null;
                 sort?: "created" | "subject";
                 limit?: number;

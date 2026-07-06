@@ -6,6 +6,7 @@ import { ErrorState, ListSkeleton } from '@/components/shell/states'
 import { Input } from '@/components/ui/input'
 import { AiSummarySection } from '@/features/ai/AiSummarySection'
 import { useMembers } from '@/features/members/api'
+import { useCycles } from '@/features/cycles/api'
 import { useMilestones } from '@/features/milestones/api'
 import { Select } from '@/components/ui/select'
 import { Sheet, SheetContent } from '@/components/ui/sheet'
@@ -72,6 +73,7 @@ function DrawerForm({ wp, projectId }: { wp: WorkPackage; projectId: string }) {
   const patch = usePatchWorkPackage(projectId)
   const queryClient = useQueryClient()
   const milestones = useMilestones(projectId)
+  const cycles = useCycles(projectId)
   const members = useMembers(projectId)
   const statusLabel = useStatusLabels(projectId)
 
@@ -238,6 +240,24 @@ function DrawerForm({ wp, projectId }: { wp: WorkPackage; projectId: string }) {
             {milestones.data?.items.map((m) => (
               <option key={m.id} value={m.id}>
                 {m.name}
+              </option>
+            ))}
+          </Select>
+        </div>
+        <div className="space-y-1.5">
+          <label htmlFor="wp-cycle" className="text-xs font-medium text-of-muted">
+            사이클
+          </label>
+          <Select
+            id="wp-cycle"
+            value={wp.cycle_id ?? ''}
+            disabled={patch.isPending}
+            onChange={(e) => send({ cycle_id: e.target.value || null })}
+          >
+            <option value="">없음</option>
+            {cycles.data?.items.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
               </option>
             ))}
           </Select>

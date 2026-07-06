@@ -40,6 +40,7 @@ const wpA: WorkPackage = {
   assignee_id: null,
   parent_id: null,
   milestone_id: null,
+  cycle_id: null,
   start_date: '2026-07-01',
   due_date: '2026-07-15',
   estimated_hours: 16,
@@ -91,6 +92,10 @@ async function mockApi(page: Page, opts: { conflictOnPatch?: boolean } = {}) {
   )
   // Board/settings read the workflow config — empty → board falls back to built-ins.
   await page.route('**/api/v1/projects/*/statuses', (route) =>
+    route.fulfill({ json: { items: [], total: 0 } }),
+  )
+  // The drawer cycle picker and the list cycle filter read the project cycles.
+  await page.route('**/api/v1/projects/*/cycles', (route) =>
     route.fulfill({ json: { items: [], total: 0 } }),
   )
   // The drawer reads AI capabilities — default the feature OFF (section hidden).
@@ -501,6 +506,89 @@ test('내 작업 홈이 배정·기한임박·활동을 모아 보여주고 딥�
     .getByRole('button', { name: new RegExp(wpA.subject) })
     .click()
   await expect(page).toHaveURL(new RegExp(`/projects/${project.id}/work-packages\\?wp=${wpA.id}`))
+})
+
+test('사이클 페이지가 상태 그룹·진행률을 보여주고 소유자가 생성한다', async ({ page }) => {
+  await mockApi(page)
+  await page.route('**/api/v1/me', (route) =>
+    route.fulfill({
+      json: { id: 'u-dev', email: 'dev@oneflow.local', display_name: 'Dev User', is_active: true },
+    }),
+  )
+  // Register AFTER mockApi so this takes precedence over the empty default.
+  await page.route(`**/api/v1/projects/${project.id}/cycles`, async (route) => {
+    if (route.request().method() === 'POST') {
+      const sent = route.request().postDataJSON() as { name: string }
+      await route.fulfill({
+        status: 201,
+        json: {
+          id: 'cy-new',
+          project_id: project.id,
+          name: sent.name,
+          description: null,
+          start_date: '2026-07-20',
+          end_date: '2026-08-02',
+          status: 'upcoming',
+          work_package_count: 0,
+          done_work_package_count: 0,
+          created_at: '2026-07-06T00:00:00Z',
+          updated_at: '2026-07-06T00:00:00Z',
+        },
+      })
+      return
+    }
+    await route.fulfill({
+      json: {
+        items: [
+          {
+            id: 'cy-1',
+            project_id: project.id,
+            name: '7월 스프린트',
+            description: null,
+            start_date: '2026-07-01',
+            end_date: '2026-07-14',
+            status: 'active',
+            work_package_count: 4,
+            done_work_package_count: 1,
+            created_at: '2026-07-01T00:00:00Z',
+            updated_at: '2026-07-01T00:00:00Z',
+          },
+          {
+            id: 'cy-2',
+            project_id: project.id,
+            name: '6월 스프린트',
+            description: null,
+            start_date: '2026-06-01',
+            end_date: '2026-06-14',
+            status: 'completed',
+            work_package_count: 5,
+            done_work_package_count: 5,
+            created_at: '2026-06-01T00:00:00Z',
+            updated_at: '2026-06-01T00:00:00Z',
+          },
+        ],
+        total: 2,
+      },
+    })
+  })
+
+  await page.goto(`/projects/${project.id}/cycles`)
+  // Grouped by derived status with progress counts.
+  const active = page.getByRole('region', { name: '진행 중' })
+  await expect(active.getByText('7월 스프린트')).toBeVisible()
+  await expect(active.getByText('1/4')).toBeVisible()
+  await expect(page.getByRole('region', { name: '완료' }).getByText('6월 스프린트')).toBeVisible()
+
+  // Owner creates a cycle.
+  const post = page.waitForRequest(
+    (r) => r.method() === 'POST' && r.url().includes(`/projects/${project.id}/cycles`),
+  )
+  await page.getByLabel('새 사이클 이름').fill('8월 스프린트')
+  await page.getByLabel('새 사이클 시작일').fill('2026-07-20')
+  await page.getByLabel('새 사이클 종료일').fill('2026-08-02')
+  await page.getByRole('button', { name: '사이클 추가' }).click()
+  const req = await post
+  expect((req.postDataJSON() as { name: string }).name).toBe('8월 스프린트')
 })
 
 test('CSV 가져오기: dry-run 미리보기 후 실행하고 실패 행을 격리한다', async ({ page }) => {

@@ -13,6 +13,7 @@ import { ProjectsPage } from '@/features/projects/ProjectsPage'
 import { SearchPage } from '@/features/search/SearchPage'
 import { SettingsPage } from '@/features/settings/SettingsPage'
 import { BoardPage } from '@/features/work-packages/BoardPage'
+import { CyclesPage } from '@/features/cycles/CyclesPage'
 import { CalendarPage } from '@/features/work-packages/CalendarPage'
 import { ListPage } from '@/features/work-packages/ListPage'
 import { TimelinePage } from '@/features/work-packages/TimelinePage'
@@ -35,6 +36,7 @@ export const router = createBrowserRouter([
       { path: 'projects/:projectId/tree', element: <TreePage /> },
       { path: 'projects/:projectId/timeline', element: <TimelinePage /> },
       { path: 'projects/:projectId/calendar', element: <CalendarPage /> },
+      { path: 'projects/:projectId/cycles', element: <CyclesPage /> },
       { path: 'projects/:projectId/dashboard', element: <DashboardPage /> },
       { path: 'projects/:projectId/documents', element: <DocumentsPage /> },
       { path: 'projects/:projectId/documents/:docId', element: <DocumentEditorPage /> },

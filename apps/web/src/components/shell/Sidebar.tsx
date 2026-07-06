@@ -1,5 +1,6 @@
 import {
   CalendarClock,
+  IterationCcw,
   CalendarDays,
   CalendarRange,
   FileText,
@@ -73,6 +74,9 @@ export function Sidebar() {
               </NavLink>
               <NavLink to={`/projects/${p.id}/calendar`} className={navLinkClass}>
                 <CalendarDays /> Calendar
+              </NavLink>
+              <NavLink to={`/projects/${p.id}/cycles`} className={navLinkClass}>
+                <IterationCcw /> Cycles
               </NavLink>
               <NavLink to={`/projects/${p.id}/dashboard`} className={navLinkClass}>
                 <LayoutDashboard /> Dashboard

@@ -3,6 +3,7 @@ from app.models.attachment import Attachment
 from app.models.automation_rule import AutomationRule
 from app.models.comment import WorkPackageComment
 from app.models.cost_entry import CostEntry
+from app.models.cycle import Cycle
 from app.models.document import ProjectDocument
 from app.models.meeting import Meeting, MeetingActionItem
 from app.models.member import ProjectMember
@@ -27,6 +28,7 @@ __all__ = [
     "TimeEntry",
     "CostEntry",
     "Milestone",
+    "Cycle",
     "Notification",
     "SavedFilter",
     "ProjectStatus",
