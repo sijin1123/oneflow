@@ -4,6 +4,7 @@ import {
   CalendarRange,
   FileText,
   FolderKanban,
+  Inbox,
   LayoutDashboard,
   List,
   ListTree,
@@ -41,6 +42,9 @@ export function Sidebar() {
           <p className="px-2 pb-1 text-[11px] font-medium uppercase tracking-wide text-of-muted">
             워크스페이스
           </p>
+          <NavLink to="/my" className={navLinkClass}>
+            <Inbox /> 내 작업
+          </NavLink>
           <NavLink to="/projects" end className={navLinkClass}>
             <FolderKanban /> 프로젝트
           </NavLink>

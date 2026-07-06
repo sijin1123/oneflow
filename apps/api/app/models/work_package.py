@@ -25,6 +25,9 @@ from app.db.base import Base
 WP_TYPES = ("task", "bug", "feature", "milestone")
 WP_STATUSES = ("backlog", "todo", "in_progress", "in_review", "done", "cancelled")
 WP_PRIORITIES = ("none", "low", "medium", "high", "urgent")
+# Single completion policy: every "open vs closed" aggregation (dashboard, my
+# work, cycle/module progress) must use this — never a local status list.
+WP_CLOSED_STATUSES = ("done", "cancelled")
 
 
 def _in_clause(column: str, values: tuple[str, ...]) -> str:

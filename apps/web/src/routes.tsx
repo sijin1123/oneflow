@@ -8,6 +8,7 @@ import { DocumentEditorPage } from '@/features/documents/DocumentEditorPage'
 import { DocumentsPage } from '@/features/documents/DocumentsPage'
 import { MeetingDetailPage } from '@/features/meetings/MeetingDetailPage'
 import { MeetingsPage } from '@/features/meetings/MeetingsPage'
+import { MyWorkPage } from '@/features/my-work/MyWorkPage'
 import { ProjectsPage } from '@/features/projects/ProjectsPage'
 import { SearchPage } from '@/features/search/SearchPage'
 import { SettingsPage } from '@/features/settings/SettingsPage'
@@ -26,6 +27,7 @@ export const router = createBrowserRouter([
     errorElement: <RouteError />,
     children: [
       { index: true, element: <Navigate to="/projects" replace /> },
+      { path: 'my', element: <MyWorkPage /> },
       { path: 'projects', element: <ProjectsPage /> },
       { path: 'search', element: <SearchPage /> },
       { path: 'projects/:projectId/work-packages', element: <ListPage /> },

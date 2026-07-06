@@ -192,6 +192,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/me/work": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * My Work
+         * @description Personal cross-project home: my open assignments, the slice due within
+         *     7 days, and recent activity across my projects. Membership is re-evaluated
+         *     inside each query (no caching), so leaving a project hides its work packages
+         *     and activity immediately — even for items still assigned to the caller.
+         */
+        get: operations["my_work_api_v1_me_work_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/meetings/{meeting_id}": {
         parameters: {
             query?: never;
@@ -1273,6 +1296,19 @@ export interface components {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
         };
+        /**
+         * MeWorkRead
+         * @description Personal home payload. Lists are hard-capped (no pagination yet):
+         *     assigned/due-soon at 50, activity at 20 — documented in the coverage ledger.
+         */
+        MeWorkRead: {
+            /** Assigned To Me */
+            assigned_to_me: components["schemas"]["MyWorkPackage"][];
+            /** Due Soon */
+            due_soon: components["schemas"]["MyWorkPackage"][];
+            /** Recent Activity */
+            recent_activity: components["schemas"]["MyActivityRead"][];
+        };
         /** MeetingConflict */
         MeetingConflict: {
             current: components["schemas"]["MeetingRead"];
@@ -1459,6 +1495,75 @@ export interface components {
             due_date?: string | null;
             /** Name */
             name?: string | null;
+        };
+        /**
+         * MyActivityRead
+         * @description Recent activity across the caller's projects, enriched for display.
+         */
+        MyActivityRead: {
+            /** Action */
+            action: string;
+            /** Actor Name */
+            actor_name: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Field */
+            field: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** New Value */
+            new_value: string | null;
+            /** Old Value */
+            old_value: string | null;
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            /** Project Name */
+            project_name: string;
+            /**
+             * Work Package Id
+             * Format: uuid
+             */
+            work_package_id: string;
+            /** Work Package Subject */
+            work_package_subject: string;
+        };
+        /**
+         * MyWorkPackage
+         * @description Slim cross-project work-package row for the personal home: enough to
+         *     render a list line and deep-link into the owning project's views.
+         */
+        MyWorkPackage: {
+            /** Due Date */
+            due_date: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Priority */
+            priority: string;
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            /** Project Name */
+            project_name: string;
+            /** Status */
+            status: string;
+            /** Subject */
+            subject: string;
+            /** Type */
+            type: string;
         };
         /** NotificationList */
         NotificationList: {
@@ -2318,6 +2423,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    my_work_api_v1_me_work_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MeWorkRead"];
                 };
             };
         };

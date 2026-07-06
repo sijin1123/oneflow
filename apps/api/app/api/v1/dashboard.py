@@ -14,6 +14,7 @@ from app.models.project import Project
 from app.models.time_entry import TimeEntry
 from app.models.user import User
 from app.models.work_package import (
+    WP_CLOSED_STATUSES,
     WP_PRIORITIES,
     WP_STATUSES,
     WP_TYPES,
@@ -24,7 +25,9 @@ from app.schemas.dashboard import Bucket, DashboardRead
 
 router = APIRouter()
 
-CLOSED_STATUSES = ("done", "cancelled")
+# The completion policy lives on the model (WP_CLOSED_STATUSES); local alias
+# only keeps the existing references short.
+CLOSED_STATUSES = WP_CLOSED_STATUSES
 
 
 def _ordered_buckets(counts: dict[str, int], order: tuple[str, ...]) -> list[Bucket]:
