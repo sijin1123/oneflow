@@ -614,7 +614,8 @@ export interface paths {
         delete: operations["delete_saved_filter_api_v1_projects__project_id__saved_filters__filter_id__delete"];
         options?: never;
         head?: never;
-        patch?: never;
+        /** Update Saved Filter */
+        patch: operations["update_saved_filter_api_v1_projects__project_id__saved_filters__filter_id__patch"];
         trace?: never;
     };
     "/api/v1/projects/{project_id}/statuses": {
@@ -2098,10 +2099,22 @@ export interface components {
         };
         /** SavedFilterCreate */
         SavedFilterCreate: {
+            /**
+             * Is Shared
+             * @default false
+             */
+            is_shared: boolean;
+            /**
+             * Layout
+             * @default list
+             */
+            layout: string;
             /** Name */
             name: string;
             /** @default {} */
             params: components["schemas"]["SavedFilterParams"];
+            /** Sort */
+            sort?: string | null;
         };
         /** SavedFilterList */
         SavedFilterList: {
@@ -2116,6 +2129,12 @@ export interface components {
          *     so a saved filter can never carry a status the list endpoint would 422 on.
          */
         SavedFilterParams: {
+            /** Assignee Id */
+            assignee_id?: string | null;
+            /** Cycle Id */
+            cycle_id?: string | null;
+            /** Module Id */
+            module_id?: string | null;
             /** Priority */
             priority?: string | null;
             /** Q */
@@ -2137,14 +2156,38 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            /** Is Mine */
+            is_mine: boolean;
+            /** Is Shared */
+            is_shared: boolean;
+            /** Layout */
+            layout: string;
             /** Name */
             name: string;
+            /** Owner Name */
+            owner_name: string;
             params: components["schemas"]["SavedFilterParams"];
             /**
              * Project Id
              * Format: uuid
              */
             project_id: string;
+            /** Sort */
+            sort: string | null;
+        };
+        /**
+         * SavedFilterUpdate
+         * @description Author-only partial update (rename, relayout, share toggle).
+         */
+        SavedFilterUpdate: {
+            /** Is Shared */
+            is_shared?: boolean | null;
+            /** Layout */
+            layout?: string | null;
+            /** Name */
+            name?: string | null;
+            /** Sort */
+            sort?: string | null;
         };
         /** SearchResultItem */
         SearchResultItem: {
@@ -4123,6 +4166,42 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_saved_filter_api_v1_projects__project_id__saved_filters__filter_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                filter_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SavedFilterUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SavedFilterRead"];
+                };
             };
             /** @description Validation Error */
             422: {
