@@ -41,6 +41,7 @@ const wpA: WorkPackage = {
   parent_id: null,
   milestone_id: null,
   cycle_id: null,
+  module_id: null,
   start_date: '2026-07-01',
   due_date: '2026-07-15',
   estimated_hours: 16,
@@ -96,6 +97,10 @@ async function mockApi(page: Page, opts: { conflictOnPatch?: boolean } = {}) {
   )
   // The drawer cycle picker and the list cycle filter read the project cycles.
   await page.route('**/api/v1/projects/*/cycles', (route) =>
+    route.fulfill({ json: { items: [], total: 0 } }),
+  )
+  // Same for the module picker/filter.
+  await page.route('**/api/v1/projects/*/modules', (route) =>
     route.fulfill({ json: { items: [], total: 0 } }),
   )
   // The drawer reads AI capabilities — default the feature OFF (section hidden).
@@ -589,6 +594,74 @@ test('사이클 페이지가 상태 그룹·진행률을 보여주고 소유자�
   await page.getByRole('button', { name: '사이클 추가' }).click()
   const req = await post
   expect((req.postDataJSON() as { name: string }).name).toBe('8월 스프린트')
+})
+
+test('모듈 페이지가 상태 그룹·리드·진행률을 보여주고 소유자가 생성한다', async ({ page }) => {
+  await mockApi(page)
+  await page.route('**/api/v1/me', (route) =>
+    route.fulfill({
+      json: { id: 'u-dev', email: 'dev@oneflow.local', display_name: 'Dev User', is_active: true },
+    }),
+  )
+  // Register AFTER mockApi so this takes precedence over the empty default.
+  await page.route(`**/api/v1/projects/${project.id}/modules`, async (route) => {
+    if (route.request().method() === 'POST') {
+      const sent = route.request().postDataJSON() as { name: string }
+      await route.fulfill({
+        status: 201,
+        json: {
+          id: 'md-new',
+          project_id: project.id,
+          name: sent.name,
+          description: null,
+          lead_id: null,
+          state: 'planned',
+          start_date: null,
+          target_date: null,
+          work_package_count: 0,
+          done_work_package_count: 0,
+          created_at: '2026-07-06T00:00:00Z',
+          updated_at: '2026-07-06T00:00:00Z',
+        },
+      })
+      return
+    }
+    await route.fulfill({
+      json: {
+        items: [
+          {
+            id: 'md-1',
+            project_id: project.id,
+            name: '인증 모듈',
+            description: null,
+            lead_id: 'u-alex',
+            state: 'in_progress',
+            start_date: '2026-07-01',
+            target_date: '2026-08-31',
+            work_package_count: 6,
+            done_work_package_count: 2,
+            created_at: '2026-07-01T00:00:00Z',
+            updated_at: '2026-07-01T00:00:00Z',
+          },
+        ],
+        total: 1,
+      },
+    })
+  })
+
+  await page.goto(`/projects/${project.id}/modules`)
+  const active = page.getByRole('region', { name: '진행 중' })
+  await expect(active.getByText('인증 모듈')).toBeVisible()
+  await expect(active.getByText('리드: Alex Kim')).toBeVisible()
+  await expect(active.getByText('2/6')).toBeVisible()
+
+  const post = page.waitForRequest(
+    (r) => r.method() === 'POST' && r.url().includes(`/projects/${project.id}/modules`),
+  )
+  await page.getByLabel('새 모듈 이름').fill('결제 모듈')
+  await page.getByRole('button', { name: '모듈 추가' }).click()
+  const req = await post
+  expect((req.postDataJSON() as { name: string }).name).toBe('결제 모듈')
 })
 
 test('CSV 가져오기: dry-run 미리보기 후 실행하고 실패 행을 격리한다', async ({ page }) => {

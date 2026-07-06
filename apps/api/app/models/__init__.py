@@ -8,6 +8,7 @@ from app.models.document import ProjectDocument
 from app.models.meeting import Meeting, MeetingActionItem
 from app.models.member import ProjectMember
 from app.models.milestone import Milestone
+from app.models.module import Module
 from app.models.notification import Notification
 from app.models.project import Project
 from app.models.project_status import ProjectStatus
@@ -29,6 +30,7 @@ __all__ = [
     "CostEntry",
     "Milestone",
     "Cycle",
+    "Module",
     "Notification",
     "SavedFilter",
     "ProjectStatus",

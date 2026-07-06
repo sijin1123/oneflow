@@ -22,6 +22,7 @@ export type WpFilters = {
   type?: string
   assignee_id?: string
   cycle_id?: string
+  module_id?: string
   q?: string
   sort?: string
 }
