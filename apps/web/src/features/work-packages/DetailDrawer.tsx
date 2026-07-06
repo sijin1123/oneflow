@@ -10,6 +10,8 @@ import { useMembers } from '@/features/members/api'
 import { useCycles } from '@/features/cycles/api'
 import { useMilestones } from '@/features/milestones/api'
 import { useModules } from '@/features/modules/api'
+
+import { CustomFieldsSection } from './CustomFieldsSection'
 import { Select } from '@/components/ui/select'
 import { Sheet, SheetContent } from '@/components/ui/sheet'
 import { ApiError } from '@/lib/api'
@@ -332,6 +334,8 @@ function DrawerForm({ wp, projectId }: { wp: WorkPackage; projectId: string }) {
       <TimeTrackingSection wp={wp} />
 
       <CostSection wpId={wp.id} />
+
+      <CustomFieldsSection wpId={wp.id} projectId={projectId} />
 
       <RelationsSection wpId={wp.id} projectId={projectId} />
 
