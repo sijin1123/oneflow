@@ -10,6 +10,7 @@ from app.models.member import ProjectMember
 from app.models.milestone import Milestone
 from app.models.module import Module
 from app.models.notification import Notification
+from app.models.notification_setting import UserNotificationSettings
 from app.models.project import Project
 from app.models.project_status import ProjectStatus
 from app.models.relation import WorkPackageRelation
@@ -41,4 +42,5 @@ __all__ = [
     "MeetingActionItem",
     "Attachment",
     "WpWatcher",
+    "UserNotificationSettings",
 ]

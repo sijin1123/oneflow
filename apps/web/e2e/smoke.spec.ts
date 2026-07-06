@@ -87,6 +87,10 @@ async function mockApi(page: Page, opts: { conflictOnPatch?: boolean } = {}) {
   await page.route('**/api/v1/me/notifications', (route) =>
     route.fulfill({ json: { items: [], total: 0, unread: 0 } }),
   )
+  // The settings notifications tab reads the caller's toggles.
+  await page.route('**/api/v1/me/notification-settings', (route) =>
+    route.fulfill({ json: { assigned: true, watched: true, commented: true } }),
+  )
   // The list page's saved-filters bar fetches on mount — default to none.
   await page.route('**/api/v1/projects/*/saved-filters', (route) =>
     route.fulfill({ json: { items: [], total: 0 } }),
@@ -698,6 +702,38 @@ test('드로어에서 워치 토글이 PUT/DELETE를 보낸다', async ({ page }
   )
   await page.getByRole('button', { name: '워치 해제' }).click()
   await del
+})
+
+test('설정 알림 탭에서 토글이 PUT을 보낸다', async ({ page }) => {
+  await mockApi(page)
+  await page.route('**/api/v1/me', (route) =>
+    route.fulfill({
+      json: { id: 'u-dev', email: 'dev@oneflow.local', display_name: 'Dev User', is_active: true },
+    }),
+  )
+  await page.route(`**/api/v1/projects/${project.id}`, (route) =>
+    route.fulfill({ json: project }),
+  )
+  // Override mockApi's GET-only default with a PUT-aware handler.
+  await page.route('**/api/v1/me/notification-settings', async (route) => {
+    if (route.request().method() === 'PUT') {
+      const sent = route.request().postDataJSON() as { watched?: boolean }
+      await route.fulfill({
+        json: { assigned: true, watched: sent.watched ?? true, commented: true },
+      })
+      return
+    }
+    await route.fulfill({ json: { assigned: true, watched: true, commented: true } })
+  })
+
+  await page.goto(`/projects/${project.id}/settings?tab=notifications`)
+  const put = page.waitForRequest(
+    (r) => r.method() === 'PUT' && r.url().includes('/me/notification-settings'),
+  )
+  await page.getByLabel(/워치 알림/).click()
+  const req = await put
+  expect((req.postDataJSON() as { watched: boolean }).watched).toBe(false)
+  await expect(page.getByLabel(/워치 알림/)).not.toBeChecked()
 })
 
 test('CSV 가져오기: dry-run 미리보기 후 실행하고 실패 행을 격리한다', async ({ page }) => {

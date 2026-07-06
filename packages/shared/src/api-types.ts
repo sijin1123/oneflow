@@ -136,6 +136,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/me/notification-settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Notification Settings
+         * @description The caller's own toggles; an absent row means all defaults (True).
+         *     Preferences apply at notification CREATION time only — existing inbox rows
+         *     and unread counts are never retro-affected.
+         */
+        get: operations["get_notification_settings_api_v1_me_notification_settings_get"];
+        /** Update Notification Settings */
+        put: operations["update_notification_settings_api_v1_me_notification_settings_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/me/notifications": {
         parameters: {
             query?: never;
@@ -1874,6 +1897,27 @@ export interface components {
             /** Work Package Subject */
             work_package_subject: string | null;
         };
+        /** NotificationSettingsRead */
+        NotificationSettingsRead: {
+            /** Assigned */
+            assigned: boolean;
+            /** Commented */
+            commented: boolean;
+            /** Watched */
+            watched: boolean;
+        };
+        /**
+         * NotificationSettingsUpdate
+         * @description Partial update — omitted fields keep their current (or default) value.
+         */
+        NotificationSettingsUpdate: {
+            /** Assigned */
+            assigned?: boolean | null;
+            /** Commented */
+            commented?: boolean | null;
+            /** Watched */
+            watched?: boolean | null;
+        };
         /** ProjectActivityList */
         ProjectActivityList: {
             /** Items */
@@ -2647,6 +2691,59 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["UserRead"];
+                };
+            };
+        };
+    };
+    get_notification_settings_api_v1_me_notification_settings_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationSettingsRead"];
+                };
+            };
+        };
+    };
+    update_notification_settings_api_v1_me_notification_settings_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NotificationSettingsUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationSettingsRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

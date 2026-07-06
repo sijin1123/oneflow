@@ -196,7 +196,7 @@ async def create_work_package(
     await session.flush()  # assigns wp.id for the activity FK
     record_created(session, wp.id, user.id)
     if body.assignee_id is not None:
-        record_assignment(
+        await record_assignment(
             session,
             recipient_id=body.assignee_id,
             actor_id=user.id,
@@ -338,7 +338,7 @@ async def patch_work_package(
                 new_assignee is not None and old_values.get("assignee_id") != new_assignee
             )
             if assignee_changed:
-                record_assignment(
+                await record_assignment(
                     session,
                     recipient_id=new_assignee,
                     actor_id=user.id,

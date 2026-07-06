@@ -7,16 +7,17 @@ notification is committed atomically with the change that triggered it.
 import uuid
 from collections.abc import Iterable
 
-from sqlalchemy import and_, false, func, insert, literal, select
+from sqlalchemy import and_, false, func, insert, literal, select, true
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.member import ProjectMember
 from app.models.notification import Notification
+from app.models.notification_setting import UserNotificationSettings
 from app.models.watcher import WpWatcher
 
 
-def record_assignment(
+async def record_assignment(
     session: AsyncSession,
     *,
     recipient_id: uuid.UUID,
@@ -24,8 +25,18 @@ def record_assignment(
     project_id: uuid.UUID,
     wp_id: uuid.UUID,
 ) -> None:
-    """Notify a work package's new assignee — never yourself."""
+    """Notify a work package's new assignee — never yourself, and only if their
+    'assigned' preference is on (evaluated at fan-out time; PR-E2)."""
     if recipient_id == actor_id:
+        return
+    pref = (
+        await session.execute(
+            select(UserNotificationSettings.assigned).where(
+                UserNotificationSettings.user_id == recipient_id
+            )
+        )
+    ).scalar_one_or_none()
+    if pref is False:  # absent row = default True
         return
     session.add(
         Notification(
@@ -74,7 +85,22 @@ async def notify_watchers(
                 ProjectMember.user_id == WpWatcher.user_id,
             ),
         )
-        .where(WpWatcher.work_package_id == wp_id, WpWatcher.user_id.notin_(excluded))
+        # Preference at fan-out time: watch_comment honors `commented`, the other
+        # watch kinds honor `watched`; an absent settings row means True (PR-E2).
+        .outerjoin(
+            UserNotificationSettings,
+            UserNotificationSettings.user_id == WpWatcher.user_id,
+        )
+        .where(
+            WpWatcher.work_package_id == wp_id,
+            WpWatcher.user_id.notin_(excluded),
+            func.coalesce(
+                UserNotificationSettings.commented
+                if kind == "watch_comment"
+                else UserNotificationSettings.watched,
+                true(),
+            ),
+        )
     )
     await session.execute(
         insert(Notification).from_select(
