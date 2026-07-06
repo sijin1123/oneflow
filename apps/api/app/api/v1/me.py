@@ -1,4 +1,5 @@
 import uuid
+from datetime import date, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy import func, select
@@ -7,13 +8,21 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import get_current_user
 from app.db.session import get_session
+from app.models.activity import Activity
+from app.models.member import ProjectMember
 from app.models.notification import Notification
+from app.models.project import Project
 from app.models.user import User
-from app.models.work_package import WorkPackage
+from app.models.work_package import WP_CLOSED_STATUSES, WorkPackage
+from app.schemas.me_work import MeWorkRead, MyActivityRead, MyWorkPackage
 from app.schemas.notification import NotificationList, NotificationRead
 from app.schemas.user import UserRead
 
 router = APIRouter()
+
+MY_WORK_LIMIT = 50
+MY_ACTIVITY_LIMIT = 20
+DUE_SOON_DAYS = 7
 
 
 @router.get("/me", response_model=UserRead)
@@ -21,6 +30,104 @@ async def me(user: User = Depends(get_current_user)) -> UserRead:
     """The authenticated user (dev user in dev mode). Lets the UI decide which
     per-project controls to show based on the caller's membership role."""
     return UserRead.model_validate(user)
+
+
+@router.get("/me/work", response_model=MeWorkRead)
+async def my_work(
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+) -> MeWorkRead:
+    """Personal cross-project home: my open assignments, the slice due within
+    7 days, and recent activity across my projects. Membership is re-evaluated
+    inside each query (no caching), so leaving a project hides its work packages
+    and activity immediately — even for items still assigned to the caller."""
+    membership = select(ProjectMember.project_id).where(ProjectMember.user_id == user.id)
+
+    def assigned_stmt():
+        return (
+            select(WorkPackage, Project.name)
+            .join(Project, WorkPackage.project_id == Project.id)
+            .where(
+                WorkPackage.assignee_id == user.id,
+                WorkPackage.status.not_in(WP_CLOSED_STATUSES),
+                WorkPackage.project_id.in_(membership),
+            )
+            .order_by(
+                WorkPackage.due_date.asc().nulls_last(),
+                WorkPackage.created_at,
+                WorkPackage.id,
+            )
+            .limit(MY_WORK_LIMIT)
+        )
+
+    def to_item(wp: WorkPackage, project_name: str) -> MyWorkPackage:
+        return MyWorkPackage(
+            id=wp.id,
+            project_id=wp.project_id,
+            project_name=project_name,
+            subject=wp.subject,
+            type=wp.type,
+            status=wp.status,
+            priority=wp.priority,
+            due_date=wp.due_date,
+        )
+
+    assigned_rows = (await session.execute(assigned_stmt())).all()
+
+    # Same convention as the dashboard's overdue computation: server-local date.
+    today = date.today()
+    due_rows = (
+        await session.execute(
+            assigned_stmt().where(
+                WorkPackage.due_date.is_not(None),
+                WorkPackage.due_date >= today,
+                WorkPackage.due_date <= today + timedelta(days=DUE_SOON_DAYS),
+            )
+        )
+    ).all()
+
+    actor = User.__table__.alias("actor")
+    activity_rows = (
+        await session.execute(
+            select(
+                Activity,
+                WorkPackage.subject,
+                Project.id.label("pid"),
+                Project.name.label("pname"),
+                actor.c.display_name,
+            )
+            .join(WorkPackage, Activity.work_package_id == WorkPackage.id)
+            .join(Project, WorkPackage.project_id == Project.id)
+            .join(
+                ProjectMember,
+                (ProjectMember.project_id == Project.id) & (ProjectMember.user_id == user.id),
+            )
+            .outerjoin(actor, Activity.actor_id == actor.c.id)
+            .order_by(Activity.created_at.desc(), Activity.id.desc())
+            .limit(MY_ACTIVITY_LIMIT)
+        )
+    ).all()
+
+    return MeWorkRead(
+        assigned_to_me=[to_item(wp, name) for (wp, name) in assigned_rows],
+        due_soon=[to_item(wp, name) for (wp, name) in due_rows],
+        recent_activity=[
+            MyActivityRead(
+                id=a.id,
+                project_id=pid,
+                project_name=pname,
+                work_package_id=a.work_package_id,
+                work_package_subject=subject,
+                actor_name=actor_name,
+                action=a.action,
+                field=a.field,
+                old_value=a.old_value,
+                new_value=a.new_value,
+                created_at=a.created_at,
+            )
+            for (a, subject, pid, pname, actor_name) in activity_rows
+        ],
+    )
 
 
 @router.get("/me/notifications", response_model=NotificationList)

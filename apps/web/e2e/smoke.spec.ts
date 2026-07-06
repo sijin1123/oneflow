@@ -441,6 +441,68 @@ test('설정 탭: 딥링크·미저장 가드·뒤로가기가 동작한다', as
   expect(dialogCount).toBe(2)
 })
 
+test('내 작업 홈이 배정·기한임박·활동을 모아 보여주고 딥링크한다', async ({ page }) => {
+  await mockApi(page)
+  await page.route('**/api/v1/me/work', (route) =>
+    route.fulfill({
+      json: {
+        assigned_to_me: [
+          {
+            id: wpA.id,
+            project_id: project.id,
+            project_name: project.name,
+            subject: wpA.subject,
+            type: wpA.type,
+            status: wpA.status,
+            priority: wpA.priority,
+            due_date: wpA.due_date,
+          },
+        ],
+        due_soon: [
+          {
+            id: wpA.id,
+            project_id: project.id,
+            project_name: project.name,
+            subject: wpA.subject,
+            type: wpA.type,
+            status: wpA.status,
+            priority: wpA.priority,
+            due_date: wpA.due_date,
+          },
+        ],
+        recent_activity: [
+          {
+            id: 'ma-1',
+            project_id: project.id,
+            project_name: project.name,
+            work_package_id: wpA.id,
+            work_package_subject: wpA.subject,
+            actor_name: 'Dev User',
+            action: 'created',
+            field: null,
+            old_value: null,
+            new_value: null,
+            created_at: '2026-07-05T09:00:00Z',
+          },
+        ],
+      },
+    }),
+  )
+
+  await page.goto('/my')
+  await expect(page.getByRole('heading', { name: '내 작업' })).toBeVisible()
+  const dueSoon = page.getByRole('region', { name: '기한 임박' })
+  await expect(dueSoon.getByText(wpA.subject)).toBeVisible()
+  await expect(page.getByRole('region', { name: '최근 활동' }).getByText(/생성/)).toBeVisible()
+
+  // An assigned item deep-links into the owning project's list with the drawer open.
+  await page
+    .getByRole('region', { name: '나에게 배정됨' })
+    .getByRole('button', { name: new RegExp(wpA.subject) })
+    .click()
+  await expect(page).toHaveURL(new RegExp(`/projects/${project.id}/work-packages\\?wp=${wpA.id}`))
+})
+
 test('CSV 가져오기: dry-run 미리보기 후 실행하고 실패 행을 격리한다', async ({ page }) => {
   await mockApi(page)
   // Registered after mockApi → takes precedence over the generic work-packages glob.
