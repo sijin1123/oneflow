@@ -116,6 +116,13 @@ async function mockApi(page: Page, opts: { conflictOnPatch?: boolean } = {}) {
   await page.route('**/api/v1/projects/*/intake', (route) =>
     route.fulfill({ json: { items: [], total: 0 } }),
   )
+  // The drawer custom-fields section reads definitions + values.
+  await page.route('**/api/v1/projects/*/custom-fields**', (route) =>
+    route.fulfill({ json: { items: [], total: 0 } }),
+  )
+  await page.route('**/api/v1/work-packages/*/custom-values', (route) =>
+    route.fulfill({ json: { items: [], total: 0 } }),
+  )
   // The drawer reads AI capabilities — default the feature OFF (section hidden).
   await page.route('**/api/v1/capabilities', (route) =>
     route.fulfill({ json: { ai_summary_enabled: false } }),
@@ -829,6 +836,99 @@ test('인테이크 큐에서 소유자가 수락하면 triage POST가 간다', a
   await pending.getByRole('button', { name: '수락' }).click()
   const sent = (await post).postDataJSON() as { status: string }
   expect(sent.status).toBe('accepted')
+})
+
+test('설정 필드 탭에서 드롭다운 필드를 정의한다', async ({ page }) => {
+  await mockApi(page)
+  await page.route('**/api/v1/me', (route) =>
+    route.fulfill({
+      json: { id: 'u-dev', email: 'dev@oneflow.local', display_name: 'Dev User', is_active: true },
+    }),
+  )
+  await page.route(`**/api/v1/projects/${project.id}`, (route) =>
+    route.fulfill({ json: project }),
+  )
+  await page.route(`**/api/v1/projects/${project.id}/custom-fields**`, async (route) => {
+    if (route.request().method() === 'POST') {
+      const sent = route.request().postDataJSON() as { name: string; options: string[] }
+      await route.fulfill({
+        status: 201,
+        json: {
+          id: 'cf-new',
+          project_id: project.id,
+          name: sent.name,
+          field_type: 'dropdown',
+          options: sent.options,
+          position: 0,
+          is_active: true,
+          created_at: '2026-07-06T00:00:00Z',
+          updated_at: '2026-07-06T00:00:00Z',
+        },
+      })
+      return
+    }
+    await route.fulfill({ json: { items: [], total: 0 } })
+  })
+
+  await page.goto(`/projects/${project.id}/settings?tab=fields`)
+  await page.getByLabel('새 필드 이름').fill('심각도')
+  await page.getByLabel('새 필드 타입').selectOption('dropdown')
+  await page.getByLabel('드롭다운 옵션').fill('낮음, 높음')
+
+  const post = page.waitForRequest(
+    (r) => r.method() === 'POST' && r.url().includes('/custom-fields'),
+  )
+  await page.getByRole('button', { name: '필드 추가' }).click()
+  const sent = (await post).postDataJSON() as { name: string; field_type: string; options: string[] }
+  expect(sent.name).toBe('심각도')
+  expect(sent.field_type).toBe('dropdown')
+  expect(sent.options).toEqual(['낮음', '높음'])
+})
+
+test('드로어 커스텀 필드에 값을 입력하면 델타 PUT이 간다', async ({ page }) => {
+  await mockApi(page)
+  await page.route(`**/api/v1/projects/${project.id}/custom-fields**`, (route) =>
+    route.fulfill({
+      json: {
+        items: [
+          {
+            id: 'cf-1',
+            project_id: project.id,
+            name: '심각도',
+            field_type: 'dropdown',
+            options: ['낮음', '높음'],
+            position: 0,
+            is_active: true,
+            created_at: '2026-07-06T00:00:00Z',
+            updated_at: '2026-07-06T00:00:00Z',
+          },
+        ],
+        total: 1,
+      },
+    }),
+  )
+  await page.route(`**/api/v1/work-packages/${wpA.id}/custom-values`, async (route) => {
+    if (route.request().method() === 'PUT') {
+      await route.fulfill({
+        json: {
+          items: [{ field_id: 'cf-1', value: '높음', member_display_name: null }],
+          total: 1,
+        },
+      })
+      return
+    }
+    await route.fulfill({ json: { items: [], total: 0 } })
+  })
+
+  await page.goto(`/projects/${project.id}/work-packages`)
+  await page.getByRole('button', { name: '워크패키지 API 구현' }).click()
+
+  const put = page.waitForRequest(
+    (r) => r.method() === 'PUT' && r.url().includes(`/work-packages/${wpA.id}/custom-values`),
+  )
+  await page.getByRole('dialog').getByLabel('심각도').selectOption('높음')
+  const sent = (await put).postDataJSON() as { values: Array<{ field_id: string; value: string }> }
+  expect(sent.values).toEqual([{ field_id: 'cf-1', value: '높음' }])
 })
 
 test('CSV 가져오기: dry-run 미리보기 후 실행하고 실패 행을 격리한다', async ({ page }) => {

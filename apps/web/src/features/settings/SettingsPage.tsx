@@ -8,6 +8,7 @@ import { StatusManager } from '@/features/project-statuses/StatusManager'
 import { useUnsavedLocationPrompt } from '@/lib/guards'
 
 import { DangerPanel } from './DangerPanel'
+import { FieldsPanel } from './FieldsPanel'
 import { GeneralPanel } from './GeneralPanel'
 import { NotificationsPanel } from './NotificationsPanel'
 import { MembersPanel } from './MembersPanel'
@@ -20,6 +21,7 @@ const TABS = [
   { key: 'members', label: '멤버' },
   { key: 'workflow', label: '워크플로우' },
   { key: 'milestones', label: '마일스톤' },
+  { key: 'fields', label: '필드' },
   { key: 'automation', label: '자동화' },
   { key: 'notifications', label: '알림' },
   { key: 'danger', label: '위험 구역' },
@@ -97,6 +99,9 @@ export function SettingsPage() {
           {tab === 'workflow' ? <StatusManager projectId={projectId} isOwner={isOwner} /> : null}
           {tab === 'milestones' ? (
             <MilestonesPanel projectId={projectId} isOwner={isOwner} onDirtyChange={onDirtyChange} />
+          ) : null}
+          {tab === 'fields' ? (
+            <FieldsPanel projectId={projectId} isOwner={isOwner} onDirtyChange={onDirtyChange} />
           ) : null}
           {tab === 'automation' ? (
             <AutomationManager projectId={projectId} isOwner={isOwner} />
