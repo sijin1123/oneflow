@@ -8,7 +8,7 @@ membership evaluation (revoked members receive nothing)."""
 import pytest
 from sqlalchemy import delete, select
 
-from app.models import Notification, ProjectMember, User, WpWatcher
+from app.models import Notification, ProjectMember, WpWatcher
 from tests.conftest import create_project, create_wp
 
 
