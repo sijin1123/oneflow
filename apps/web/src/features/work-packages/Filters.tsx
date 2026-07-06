@@ -2,6 +2,7 @@ import { useSearchParams } from 'react-router-dom'
 
 import { Select } from '@/components/ui/select'
 import { useCycles } from '@/features/cycles/api'
+import { useModules } from '@/features/modules/api'
 import { useMembers } from '@/features/members/api'
 
 import { PRIORITY_LABELS, TYPE_LABELS, WP_PRIORITIES, WP_STATUSES, WP_TYPES } from './types'
@@ -13,6 +14,7 @@ export function Filters({ projectId }: { projectId: string }) {
   const statusLabel = useStatusLabels(projectId)
   const members = useMembers(projectId)
   const cycles = useCycles(projectId)
+  const modules = useModules(projectId)
 
   const set = (key: string, value: string) => {
     setSearchParams(
@@ -104,6 +106,22 @@ export function Filters({ projectId }: { projectId: string }) {
           {cycles.data?.items.map((c) => (
             <option key={c.id} value={c.id}>
               {c.name}
+            </option>
+          ))}
+        </Select>
+      </label>
+      <label className="flex items-center gap-1.5 text-xs text-of-muted">
+        모듈
+        <Select
+          aria-label="모듈 필터"
+          className="h-7 w-28 text-xs"
+          value={searchParams.get('module_id') ?? ''}
+          onChange={(e) => set('module_id', e.target.value)}
+        >
+          <option value="">전체</option>
+          {modules.data?.items.map((m) => (
+            <option key={m.id} value={m.id}>
+              {m.name}
             </option>
           ))}
         </Select>

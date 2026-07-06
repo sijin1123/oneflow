@@ -67,6 +67,12 @@ class WorkPackage(Base):
             name="fk_work_packages_cycle_project",
             ondelete="SET NULL (cycle_id)",
         ),
+        ForeignKeyConstraint(
+            ["module_id", "project_id"],
+            ["modules.id", "modules.project_id"],
+            name="fk_work_packages_module_project",
+            ondelete="SET NULL (module_id)",
+        ),
         Index("ix_work_packages_project_status", "project_id", "status"),
         Index(
             "ix_work_packages_project_updated_desc",
@@ -77,6 +83,7 @@ class WorkPackage(Base):
         Index("ix_work_packages_assignee", "assignee_id"),
         Index("ix_work_packages_milestone", "milestone_id"),
         Index("ix_work_packages_cycle", "cycle_id"),
+        Index("ix_work_packages_module", "module_id"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -100,6 +107,8 @@ class WorkPackage(Base):
     )
     # Optional cycle/sprint assignment — constrained by the composite FK above.
     cycle_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    # Optional module assignment — same composite-FK pattern.
+    module_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     # Planned effort in hours (Phase 3 time tracking). Spent/remaining are derived
     # from time_entries, not stored.
     estimated_hours: Mapped[Decimal | None] = mapped_column(Numeric(6, 2), nullable=True)

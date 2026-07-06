@@ -8,6 +8,7 @@ import { DocumentEditorPage } from '@/features/documents/DocumentEditorPage'
 import { DocumentsPage } from '@/features/documents/DocumentsPage'
 import { MeetingDetailPage } from '@/features/meetings/MeetingDetailPage'
 import { MeetingsPage } from '@/features/meetings/MeetingsPage'
+import { ModulesPage } from '@/features/modules/ModulesPage'
 import { MyWorkPage } from '@/features/my-work/MyWorkPage'
 import { ProjectsPage } from '@/features/projects/ProjectsPage'
 import { SearchPage } from '@/features/search/SearchPage'
@@ -37,6 +38,7 @@ export const router = createBrowserRouter([
       { path: 'projects/:projectId/timeline', element: <TimelinePage /> },
       { path: 'projects/:projectId/calendar', element: <CalendarPage /> },
       { path: 'projects/:projectId/cycles', element: <CyclesPage /> },
+      { path: 'projects/:projectId/modules', element: <ModulesPage /> },
       { path: 'projects/:projectId/dashboard', element: <DashboardPage /> },
       { path: 'projects/:projectId/documents', element: <DocumentsPage /> },
       { path: 'projects/:projectId/documents/:docId', element: <DocumentEditorPage /> },

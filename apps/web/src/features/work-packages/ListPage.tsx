@@ -25,6 +25,7 @@ export function ListPage() {
     type: searchParams.get('type') ?? undefined,
     assignee_id: searchParams.get('assignee_id') ?? undefined,
     cycle_id: searchParams.get('cycle_id') ?? undefined,
+    module_id: searchParams.get('module_id') ?? undefined,
     q: searchParams.get('q') ?? undefined,
     sort: searchParams.get('sort') ?? undefined,
   }

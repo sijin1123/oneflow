@@ -8,6 +8,7 @@ import { AiSummarySection } from '@/features/ai/AiSummarySection'
 import { useMembers } from '@/features/members/api'
 import { useCycles } from '@/features/cycles/api'
 import { useMilestones } from '@/features/milestones/api'
+import { useModules } from '@/features/modules/api'
 import { Select } from '@/components/ui/select'
 import { Sheet, SheetContent } from '@/components/ui/sheet'
 import { ApiError } from '@/lib/api'
@@ -74,6 +75,7 @@ function DrawerForm({ wp, projectId }: { wp: WorkPackage; projectId: string }) {
   const queryClient = useQueryClient()
   const milestones = useMilestones(projectId)
   const cycles = useCycles(projectId)
+  const modules = useModules(projectId)
   const members = useMembers(projectId)
   const statusLabel = useStatusLabels(projectId)
 
@@ -258,6 +260,24 @@ function DrawerForm({ wp, projectId }: { wp: WorkPackage; projectId: string }) {
             {cycles.data?.items.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.name}
+              </option>
+            ))}
+          </Select>
+        </div>
+        <div className="space-y-1.5">
+          <label htmlFor="wp-module" className="text-xs font-medium text-of-muted">
+            모듈
+          </label>
+          <Select
+            id="wp-module"
+            value={wp.module_id ?? ''}
+            disabled={patch.isPending}
+            onChange={(e) => send({ module_id: e.target.value || null })}
+          >
+            <option value="">없음</option>
+            {modules.data?.items.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.name}
               </option>
             ))}
           </Select>

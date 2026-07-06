@@ -30,6 +30,7 @@ export type WorkPackage = {
   parent_id: string | null
   milestone_id: string | null
   cycle_id: string | null
+  module_id: string | null
   /** date-only 'YYYY-MM-DD' strings — never converted through JS Date (§6.1) */
   start_date: string | null
   due_date: string | null
@@ -55,6 +56,7 @@ export type WorkPackagePatch = Partial<{
   parent_id: string | null
   milestone_id: string | null
   cycle_id: string | null
+  module_id: string | null
   start_date: string | null
   due_date: string | null
   estimated_hours: number | null

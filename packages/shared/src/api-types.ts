@@ -523,6 +523,42 @@ export interface paths {
         patch: operations["update_milestone_api_v1_projects__project_id__milestones__milestone_id__patch"];
         trace?: never;
     };
+    "/api/v1/projects/{project_id}/modules": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Modules */
+        get: operations["list_modules_api_v1_projects__project_id__modules_get"];
+        put?: never;
+        /** Create Module */
+        post: operations["create_module_api_v1_projects__project_id__modules_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/modules/{module_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Module */
+        delete: operations["delete_module_api_v1_projects__project_id__modules__module_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Module */
+        patch: operations["update_module_api_v1_projects__project_id__modules__module_id__patch"];
+        trace?: never;
+    };
     "/api/v1/projects/{project_id}/saved-filters": {
         parameters: {
             query?: never;
@@ -1614,6 +1650,89 @@ export interface components {
             /** Name */
             name?: string | null;
         };
+        /** ModuleCreate */
+        ModuleCreate: {
+            /** Description */
+            description?: string | null;
+            /** Lead Id */
+            lead_id?: string | null;
+            /** Name */
+            name: string;
+            /** Start Date */
+            start_date?: string | null;
+            /**
+             * State
+             * @default planned
+             */
+            state: string;
+            /** Target Date */
+            target_date?: string | null;
+        };
+        /** ModuleList */
+        ModuleList: {
+            /** Items */
+            items: components["schemas"]["ModuleRead"][];
+            /** Total */
+            total: number;
+        };
+        /** ModuleRead */
+        ModuleRead: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Description */
+            description: string | null;
+            /** Done Work Package Count */
+            done_work_package_count: number;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Lead Id */
+            lead_id: string | null;
+            /** Name */
+            name: string;
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            /** Start Date */
+            start_date: string | null;
+            /** State */
+            state: string;
+            /** Target Date */
+            target_date: string | null;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Work Package Count */
+            work_package_count: number;
+        };
+        /**
+         * ModuleUpdate
+         * @description Partial update — the cross-field date check runs in the router against
+         *     the MERGED values (dates are optional here, unlike cycles).
+         */
+        ModuleUpdate: {
+            /** Description */
+            description?: string | null;
+            /** Lead Id */
+            lead_id?: string | null;
+            /** Name */
+            name?: string | null;
+            /** Start Date */
+            start_date?: string | null;
+            /** State */
+            state?: string | null;
+            /** Target Date */
+            target_date?: string | null;
+        };
         /**
          * MyActivityRead
          * @description Recent activity across the caller's projects, enriched for display.
@@ -2072,6 +2191,8 @@ export interface components {
             estimated_hours?: number | null;
             /** Milestone Id */
             milestone_id?: string | null;
+            /** Module Id */
+            module_id?: string | null;
             /** Parent Id */
             parent_id?: string | null;
             /**
@@ -2122,6 +2243,8 @@ export interface components {
             expected_version: number;
             /** Milestone Id */
             milestone_id?: string | null;
+            /** Module Id */
+            module_id?: string | null;
             /** Parent Id */
             parent_id?: string | null;
             /** Priority */
@@ -2159,6 +2282,8 @@ export interface components {
             id: string;
             /** Milestone Id */
             milestone_id: string | null;
+            /** Module Id */
+            module_id: string | null;
             /** Parent Id */
             parent_id: string | null;
             /** Priority */
@@ -3631,6 +3756,138 @@ export interface operations {
             };
         };
     };
+    list_modules_api_v1_projects__project_id__modules_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModuleList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_module_api_v1_projects__project_id__modules_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ModuleCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModuleRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_module_api_v1_projects__project_id__modules__module_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                module_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_module_api_v1_projects__project_id__modules__module_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                module_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ModuleUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModuleRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_saved_filters_api_v1_projects__project_id__saved_filters_get: {
         parameters: {
             query?: never;
@@ -3837,6 +4094,7 @@ export interface operations {
                 type?: ("task" | "bug" | "feature" | "milestone") | null;
                 assignee_id?: string | null;
                 cycle_id?: string | null;
+                module_id?: string | null;
                 q?: string | null;
                 sort?: "created" | "subject";
                 limit?: number;
