@@ -12,6 +12,7 @@ from app.api.v1 import (
     comments,
     cost_entries,
     csv_io,
+    custom_fields,
     cycles,
     dashboard,
     documents,
@@ -115,6 +116,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(attachments.router, prefix="/api/v1", tags=["attachments"])
     app.include_router(watchers.router, prefix="/api/v1", tags=["watchers"])
     app.include_router(intake.router, prefix="/api/v1", tags=["intake"])
+    app.include_router(custom_fields.router, prefix="/api/v1", tags=["custom-fields"])
     return app
 
 
