@@ -11,7 +11,7 @@ from sqlalchemy.exc import DBAPIError, IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import get_current_user
-from app.core.authz import is_member, require_member
+from app.core.authz import is_member, require_active_project, require_member
 from app.db.session import get_session
 from app.models.cycle import Cycle
 from app.models.milestone import Milestone
@@ -67,20 +67,27 @@ PATCH_DATA_FIELDS = (
 )
 
 
-async def _get_wp_scoped(session: AsyncSession, wp_id: uuid.UUID, user: User) -> WorkPackage:
+async def _get_wp_scoped(
+    session: AsyncSession, wp_id: uuid.UUID, user: User, *, write: bool = False
+) -> WorkPackage:
     wp = (
         await session.execute(select(WorkPackage).where(WorkPackage.id == wp_id))
     ).scalar_one_or_none()
     if wp is None or not await is_member(session, wp.project_id, user.id):
         raise HTTPException(status_code=404, detail="not found")
+    if write:
+        await require_active_project(session, wp.project_id)
     return wp
 
 
-async def require_wp_member(session: AsyncSession, wp_id: uuid.UUID, user: User) -> WorkPackage:
+async def require_wp_member(
+    session: AsyncSession, wp_id: uuid.UUID, user: User, *, write: bool = False
+) -> WorkPackage:
     """Public membership guard for work-package sub-resources (comments/activities).
 
-    Returns the work package or raises 404 (existence hiding for non-members)."""
-    return await _get_wp_scoped(session, wp_id, user)
+    Returns the work package or raises 404 (existence hiding for non-members);
+    write=True additionally rejects archived projects with 409."""
+    return await _get_wp_scoped(session, wp_id, user, write=write)
 
 
 async def _require_assignee_member(
@@ -173,7 +180,7 @@ async def create_work_package(
     session: AsyncSession = Depends(get_session),
     user: User = Depends(get_current_user),
 ) -> WorkPackageRead:
-    await require_member(session, project_id, user)
+    await require_member(session, project_id, user, write=True)
     if body.assignee_id is not None:
         await _require_assignee_member(session, project_id, body.assignee_id)
     if body.milestone_id is not None:
@@ -261,7 +268,7 @@ async def patch_work_package(
     session: AsyncSession = Depends(get_session),
     user: User = Depends(get_current_user),
 ):
-    wp = await _get_wp_scoped(session, wp_id, user)
+    wp = await _get_wp_scoped(session, wp_id, user, write=True)
 
     provided = body.model_fields_set - {"expected_version"}
     for field in provided & NON_NULLABLE_PATCH_FIELDS:
@@ -457,7 +464,7 @@ async def create_relation(
     session: AsyncSession = Depends(get_session),
     user: User = Depends(get_current_user),
 ) -> RelationRead:
-    wp = await _get_wp_scoped(session, wp_id, user)
+    wp = await _get_wp_scoped(session, wp_id, user, write=True)
     if body.target_id == wp_id:
         raise HTTPException(status_code=422, detail="a work package cannot relate to itself")
     target = (
@@ -495,7 +502,7 @@ async def delete_relation(
     session: AsyncSession = Depends(get_session),
     user: User = Depends(get_current_user),
 ) -> Response:
-    wp = await _get_wp_scoped(session, wp_id, user)
+    wp = await _get_wp_scoped(session, wp_id, user, write=True)
     relation = (
         await session.execute(
             select(WorkPackageRelation).where(WorkPackageRelation.id == relation_id)

@@ -25,10 +25,13 @@ def _member_project_ids(user: User):
 async def list_projects(
     limit: int = Query(default=200, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
+    include_archived: bool = Query(default=False),
     session: AsyncSession = Depends(get_session),
     user: User = Depends(get_current_user),
 ) -> ProjectList:
     base = select(Project).where(Project.id.in_(_member_project_ids(user)))
+    if not include_archived:
+        base = base.where(Project.archived_at.is_(None))
     total = (await session.execute(select(func.count()).select_from(base.subquery()))).scalar_one()
     rows = (
         (
@@ -100,7 +103,7 @@ async def update_project(
     user: User = Depends(get_current_user),
 ) -> ProjectRead:
     # Project settings (name/description/budget) are owner-only (404 non-member).
-    await require_role(session, project_id, user, {"owner"})
+    await require_role(session, project_id, user, {"owner"}, write=True)
     project = (await session.execute(select(Project).where(Project.id == project_id))).scalar_one()
     fields = body.model_dump(exclude_unset=True)
     # `name` is NOT NULL: an explicit null is a client error (422), never an
@@ -113,4 +116,38 @@ async def update_project(
     # UPDATE's onupdate=now() leaves updated_at server-computed and expired;
     # refresh within the async context so sync serialization won't lazy-load.
     await session.refresh(project)
+    return ProjectRead.model_validate(project)
+
+
+@router.post("/{project_id}/archive", response_model=ProjectRead)
+async def archive_project(
+    project_id: uuid.UUID,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+) -> ProjectRead:
+    """Owner-only, idempotent. An archived project becomes read-only: every
+    project-scoped write returns 409 until the owner restores it (PR-G).
+    Deliberately NOT write-gated — archiving twice is a no-op, not an error."""
+    await require_role(session, project_id, user, {"owner"})
+    project = (await session.execute(select(Project).where(Project.id == project_id))).scalar_one()
+    if project.archived_at is None:
+        project.archived_at = func.now()
+        await session.commit()
+        await session.refresh(project)
+    return ProjectRead.model_validate(project)
+
+
+@router.post("/{project_id}/unarchive", response_model=ProjectRead)
+async def unarchive_project(
+    project_id: uuid.UUID,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+) -> ProjectRead:
+    """Owner-only, idempotent restore — the one write an archived project accepts."""
+    await require_role(session, project_id, user, {"owner"})
+    project = (await session.execute(select(Project).where(Project.id == project_id))).scalar_one()
+    if project.archived_at is not None:
+        project.archived_at = None
+        await session.commit()
+        await session.refresh(project)
     return ProjectRead.model_validate(project)

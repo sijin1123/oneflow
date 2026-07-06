@@ -35,6 +35,7 @@ async def search_work_packages(
         select(WorkPackage, Project.key, Project.name)
         .join(Project, WorkPackage.project_id == Project.id)
         .where(WorkPackage.project_id.in_(member_projects))
+        .where(Project.archived_at.is_(None))
         # Case-insensitive substring; %/_ wildcards autoescaped (§6.1).
         .where(WorkPackage.subject.icontains(q, autoescape=True))
         .order_by(WorkPackage.updated_at.desc(), WorkPackage.id.asc())

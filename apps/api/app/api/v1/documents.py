@@ -15,7 +15,7 @@ from sqlalchemy import update as sa_update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import get_current_user
-from app.core.authz import is_member, require_member
+from app.core.authz import is_member, require_active_project, require_member
 from app.db.session import get_session
 from app.models.document import ProjectDocument
 from app.models.user import User
@@ -32,12 +32,16 @@ from app.services.sanitize import sanitize_html
 router = APIRouter()
 
 
-async def _get_doc_scoped(session: AsyncSession, doc_id: uuid.UUID, user: User) -> ProjectDocument:
+async def _get_doc_scoped(
+    session: AsyncSession, doc_id: uuid.UUID, user: User, *, write: bool = False
+) -> ProjectDocument:
     doc = (
         await session.execute(select(ProjectDocument).where(ProjectDocument.id == doc_id))
     ).scalar_one_or_none()
     if doc is None or not await is_member(session, doc.project_id, user.id):
         raise HTTPException(status_code=404, detail="not found")
+    if write:
+        await require_active_project(session, doc.project_id)
     return doc
 
 
@@ -69,7 +73,7 @@ async def create_document(
     session: AsyncSession = Depends(get_session),
     user: User = Depends(get_current_user),
 ) -> DocumentRead:
-    await require_member(session, project_id, user)
+    await require_member(session, project_id, user, write=True)
     doc = ProjectDocument(
         project_id=project_id,
         title=body.title,
@@ -102,7 +106,7 @@ async def update_document(
     session: AsyncSession = Depends(get_session),
     user: User = Depends(get_current_user),
 ):
-    await _get_doc_scoped(session, doc_id, user)
+    await _get_doc_scoped(session, doc_id, user, write=True)
 
     changes: dict = {}
     provided = body.model_fields_set
@@ -146,7 +150,7 @@ async def delete_document(
     session: AsyncSession = Depends(get_session),
     user: User = Depends(get_current_user),
 ) -> Response:
-    doc = await _get_doc_scoped(session, doc_id, user)
+    doc = await _get_doc_scoped(session, doc_id, user, write=True)
     await session.delete(doc)
     await session.commit()
     return Response(status_code=204)

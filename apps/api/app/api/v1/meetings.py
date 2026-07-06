@@ -15,7 +15,7 @@ from sqlalchemy import update as sa_update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import get_current_user
-from app.core.authz import is_member, require_member
+from app.core.authz import is_member, require_active_project, require_member
 from app.db.session import get_session
 from app.models.meeting import Meeting, MeetingActionItem
 from app.models.user import User
@@ -35,12 +35,16 @@ from app.services.sanitize import sanitize_html
 router = APIRouter()
 
 
-async def _get_meeting_scoped(session: AsyncSession, meeting_id: uuid.UUID, user: User) -> Meeting:
+async def _get_meeting_scoped(
+    session: AsyncSession, meeting_id: uuid.UUID, user: User, *, write: bool = False
+) -> Meeting:
     m = (
         await session.execute(select(Meeting).where(Meeting.id == meeting_id))
     ).scalar_one_or_none()
     if m is None or not await is_member(session, m.project_id, user.id):
         raise HTTPException(status_code=404, detail="not found")
+    if write:
+        await require_active_project(session, m.project_id)
     return m
 
 
@@ -93,7 +97,7 @@ async def create_meeting(
     session: AsyncSession = Depends(get_session),
     user: User = Depends(get_current_user),
 ) -> MeetingRead:
-    await require_member(session, project_id, user)
+    await require_member(session, project_id, user, write=True)
     m = Meeting(
         project_id=project_id,
         title=body.title,
@@ -126,7 +130,7 @@ async def update_meeting(
     session: AsyncSession = Depends(get_session),
     user: User = Depends(get_current_user),
 ):
-    await _get_meeting_scoped(session, meeting_id, user)
+    await _get_meeting_scoped(session, meeting_id, user, write=True)
 
     changes: dict = {}
     provided = body.model_fields_set
@@ -171,7 +175,7 @@ async def delete_meeting(
     session: AsyncSession = Depends(get_session),
     user: User = Depends(get_current_user),
 ) -> Response:
-    m = await _get_meeting_scoped(session, meeting_id, user)
+    m = await _get_meeting_scoped(session, meeting_id, user, write=True)
     await session.delete(m)
     await session.commit()
     return Response(status_code=204)
@@ -184,7 +188,7 @@ async def create_action_item(
     session: AsyncSession = Depends(get_session),
     user: User = Depends(get_current_user),
 ) -> ActionItemRead:
-    m = await _get_meeting_scoped(session, meeting_id, user)
+    m = await _get_meeting_scoped(session, meeting_id, user, write=True)
     if body.assignee_id is not None and not await is_member(
         session, m.project_id, body.assignee_id
     ):
@@ -199,15 +203,15 @@ async def create_action_item(
 
 
 async def _get_action_item_scoped(
-    session: AsyncSession, item_id: uuid.UUID, user: User
+    session: AsyncSession, item_id: uuid.UUID, user: User, *, write: bool = False
 ) -> MeetingActionItem:
     item = (
         await session.execute(select(MeetingActionItem).where(MeetingActionItem.id == item_id))
     ).scalar_one_or_none()
     if item is None:
         raise HTTPException(status_code=404, detail="not found")
-    # Membership is checked via the parent meeting's project.
-    await _get_meeting_scoped(session, item.meeting_id, user)
+    # Membership (and, for writes, the archive gate) via the parent meeting.
+    await _get_meeting_scoped(session, item.meeting_id, user, write=write)
     return item
 
 
@@ -218,7 +222,7 @@ async def update_action_item(
     session: AsyncSession = Depends(get_session),
     user: User = Depends(get_current_user),
 ) -> ActionItemRead:
-    item = await _get_action_item_scoped(session, item_id, user)
+    item = await _get_action_item_scoped(session, item_id, user, write=True)
     item.done = body.done
     await session.commit()
     await session.refresh(item)
@@ -231,7 +235,7 @@ async def delete_action_item(
     session: AsyncSession = Depends(get_session),
     user: User = Depends(get_current_user),
 ) -> Response:
-    item = await _get_action_item_scoped(session, item_id, user)
+    item = await _get_action_item_scoped(session, item_id, user, write=True)
     await session.delete(item)
     await session.commit()
     return Response(status_code=204)

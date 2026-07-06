@@ -56,6 +56,7 @@ async def my_work(
                 WorkPackage.assignee_id == user.id,
                 WorkPackage.status.not_in(WP_CLOSED_STATUSES),
                 WorkPackage.project_id.in_(membership),
+                Project.archived_at.is_(None),  # archived projects rest quietly
             )
             .order_by(
                 WorkPackage.due_date.asc().nulls_last(),
@@ -108,6 +109,7 @@ async def my_work(
                 (ProjectMember.project_id == Project.id) & (ProjectMember.user_id == user.id),
             )
             .outerjoin(actor, Activity.actor_id == actor.c.id)
+            .where(Project.archived_at.is_(None))
             .order_by(Activity.created_at.desc(), Activity.id.desc())
             .limit(MY_ACTIVITY_LIMIT)
         )

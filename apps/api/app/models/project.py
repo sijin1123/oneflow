@@ -19,6 +19,8 @@ class Project(Base):
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     # Optional project budget for cost roll-up comparison (Phase 3).
     budget: Mapped[Decimal | None] = mapped_column(Numeric(14, 2), nullable=True)
+    # Archive lifecycle (Pass 2 PR-G): set → project is read-only (writes 409).
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

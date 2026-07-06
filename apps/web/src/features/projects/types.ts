@@ -8,6 +8,7 @@ export type Project = {
   name: string
   description: string | null
   budget: number | null
+  archived_at: string | null
   created_at: string
   updated_at: string
 }

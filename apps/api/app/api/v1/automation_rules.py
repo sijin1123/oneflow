@@ -74,7 +74,7 @@ async def create_automation_rule(
     session: AsyncSession = Depends(get_session),
     user: User = Depends(get_current_user),
 ) -> AutomationRuleRead:
-    await require_role(session, project_id, user, {"owner"})
+    await require_role(session, project_id, user, {"owner"}, write=True)
     rule = AutomationRule(
         project_id=project_id,
         name=body.name,
@@ -100,7 +100,7 @@ async def update_automation_rule(
     session: AsyncSession = Depends(get_session),
     user: User = Depends(get_current_user),
 ) -> AutomationRuleRead:
-    await require_role(session, project_id, user, {"owner"})
+    await require_role(session, project_id, user, {"owner"}, write=True)
     rule = await _get_owned_rule(session, project_id, rule_id)
     rule.is_active = body.is_active
     await session.commit()
@@ -115,7 +115,7 @@ async def delete_automation_rule(
     session: AsyncSession = Depends(get_session),
     user: User = Depends(get_current_user),
 ) -> Response:
-    await require_role(session, project_id, user, {"owner"})
+    await require_role(session, project_id, user, {"owner"}, write=True)
     rule = await _get_owned_rule(session, project_id, rule_id)
     await session.delete(rule)
     await session.commit()

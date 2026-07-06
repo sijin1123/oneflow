@@ -49,7 +49,7 @@ async def log_time(
     session: AsyncSession = Depends(get_session),
     user: User = Depends(get_current_user),
 ) -> TimeEntryRead:
-    await require_wp_member(session, wp_id, user)
+    await require_wp_member(session, wp_id, user, write=True)
     entry = TimeEntry(
         work_package_id=wp_id,
         user_id=user.id,
@@ -69,7 +69,7 @@ async def delete_time_entry(
     session: AsyncSession = Depends(get_session),
     user: User = Depends(get_current_user),
 ) -> Response:
-    wp = await require_wp_member(session, wp_id, user)
+    wp = await require_wp_member(session, wp_id, user, write=True)
     entry = (
         await session.execute(
             select(TimeEntry).where(TimeEntry.id == entry_id, TimeEntry.work_package_id == wp_id)

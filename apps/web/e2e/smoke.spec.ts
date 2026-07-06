@@ -25,6 +25,7 @@ const project: Project = {
   name: 'OneFlow 도입',
   description: '데모 프로젝트',
   budget: null,
+  archived_at: null,
   created_at: '2026-07-01T00:00:00Z',
   updated_at: '2026-07-01T00:00:00Z',
 }
@@ -734,6 +735,36 @@ test('설정 알림 탭에서 토글이 PUT을 보낸다', async ({ page }) => {
   const req = await put
   expect((req.postDataJSON() as { watched: boolean }).watched).toBe(false)
   await expect(page.getByLabel(/워치 알림/)).not.toBeChecked()
+})
+
+test('위험 구역에서 보관 확인 후 POST /archive를 보낸다', async ({ page }) => {
+  await mockApi(page)
+  await page.route('**/api/v1/me', (route) =>
+    route.fulfill({
+      json: { id: 'u-dev', email: 'dev@oneflow.local', display_name: 'Dev User', is_active: true },
+    }),
+  )
+  await page.route(`**/api/v1/projects/${project.id}`, (route) =>
+    route.fulfill({ json: project }),
+  )
+  await page.route(`**/api/v1/projects/${project.id}/archive`, (route) =>
+    route.fulfill({ json: { ...project, archived_at: '2026-07-06T00:00:00Z' } }),
+  )
+
+  await page.goto(`/projects/${project.id}/settings?tab=danger`)
+  await expect(page.getByText('위험 구역')).toBeVisible()
+
+  const dialogs: string[] = []
+  page.once('dialog', (d) => {
+    dialogs.push(d.message())
+    void d.accept()
+  })
+  const post = page.waitForRequest(
+    (r) => r.method() === 'POST' && r.url().includes('/archive'),
+  )
+  await page.getByRole('button', { name: '프로젝트 보관' }).click()
+  await post
+  expect(dialogs[0]).toContain('보관할까요')
 })
 
 test('CSV 가져오기: dry-run 미리보기 후 실행하고 실패 행을 격리한다', async ({ page }) => {

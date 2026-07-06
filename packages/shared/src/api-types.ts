@@ -331,6 +331,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{project_id}/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Archive Project
+         * @description Owner-only, idempotent. An archived project becomes read-only: every
+         *     project-scoped write returns 409 until the owner restores it (PR-G).
+         *     Deliberately NOT write-gated — archiving twice is a no-op, not an error.
+         */
+        post: operations["archive_project_api_v1_projects__project_id__archive_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{project_id}/attachments": {
         parameters: {
             query?: never;
@@ -671,6 +693,26 @@ export interface paths {
         head?: never;
         /** Update Project Status */
         patch: operations["update_project_status_api_v1_projects__project_id__statuses__status_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/unarchive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Unarchive Project
+         * @description Owner-only, idempotent restore — the one write an archived project accepts.
+         */
+        post: operations["unarchive_project_api_v1_projects__project_id__unarchive_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/projects/{project_id}/work-packages": {
@@ -1978,6 +2020,8 @@ export interface components {
         };
         /** ProjectRead */
         ProjectRead: {
+            /** Archived At */
+            archived_at: string | null;
             /** Budget */
             budget: number | null;
             /**
@@ -3034,6 +3078,7 @@ export interface operations {
             query?: {
                 limit?: number;
                 offset?: number;
+                include_archived?: boolean;
             };
             header?: never;
             path?: never;
@@ -3180,6 +3225,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ProjectActivityList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    archive_project_api_v1_projects__project_id__archive_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectRead"];
                 };
             };
             /** @description Validation Error */
@@ -4303,6 +4379,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ProjectStatusRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    unarchive_project_api_v1_projects__project_id__unarchive_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectRead"];
                 };
             };
             /** @description Validation Error */
