@@ -11,11 +11,16 @@ from app.db.session import get_session
 from app.models.activity import Activity
 from app.models.member import ProjectMember
 from app.models.notification import Notification
+from app.models.notification_setting import UserNotificationSettings
 from app.models.project import Project
 from app.models.user import User
 from app.models.work_package import WP_CLOSED_STATUSES, WorkPackage
 from app.schemas.me_work import MeWorkRead, MyActivityRead, MyWorkPackage
 from app.schemas.notification import NotificationList, NotificationRead
+from app.schemas.notification_setting import (
+    NotificationSettingsRead,
+    NotificationSettingsUpdate,
+)
 from app.schemas.user import UserRead
 
 router = APIRouter()
@@ -127,6 +132,49 @@ async def my_work(
             )
             for (a, subject, pid, pname, actor_name) in activity_rows
         ],
+    )
+
+
+@router.get("/me/notification-settings", response_model=NotificationSettingsRead)
+async def get_notification_settings(
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+) -> NotificationSettingsRead:
+    """The caller's own toggles; an absent row means all defaults (True).
+    Preferences apply at notification CREATION time only — existing inbox rows
+    and unread counts are never retro-affected."""
+    row = (
+        await session.execute(
+            select(UserNotificationSettings).where(UserNotificationSettings.user_id == user.id)
+        )
+    ).scalar_one_or_none()
+    if row is None:
+        return NotificationSettingsRead(assigned=True, watched=True, commented=True)
+    return NotificationSettingsRead(
+        assigned=row.assigned, watched=row.watched, commented=row.commented
+    )
+
+
+@router.put("/me/notification-settings", response_model=NotificationSettingsRead)
+async def update_notification_settings(
+    body: NotificationSettingsUpdate,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+) -> NotificationSettingsRead:
+    row = (
+        await session.execute(
+            select(UserNotificationSettings).where(UserNotificationSettings.user_id == user.id)
+        )
+    ).scalar_one_or_none()
+    if row is None:
+        row = UserNotificationSettings(user_id=user.id)
+        session.add(row)
+    for key, value in body.model_dump(exclude_unset=True).items():
+        if value is not None:
+            setattr(row, key, value)
+    await session.commit()
+    return NotificationSettingsRead(
+        assigned=row.assigned, watched=row.watched, commented=row.commented
     )
 
 

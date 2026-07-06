@@ -8,6 +8,7 @@ import { StatusManager } from '@/features/project-statuses/StatusManager'
 import { useUnsavedLocationPrompt } from '@/lib/guards'
 
 import { GeneralPanel } from './GeneralPanel'
+import { NotificationsPanel } from './NotificationsPanel'
 import { MembersPanel } from './MembersPanel'
 import { MilestonesPanel } from './MilestonesPanel'
 
@@ -21,6 +22,7 @@ const TABS = [
   { key: 'workflow', label: '워크플로우' },
   { key: 'milestones', label: '마일스톤' },
   { key: 'automation', label: '자동화' },
+  { key: 'notifications', label: '알림' },
 ] as const
 
 type TabKey = (typeof TABS)[number]['key']
@@ -99,6 +101,7 @@ export function SettingsPage() {
           {tab === 'automation' ? (
             <AutomationManager projectId={projectId} isOwner={isOwner} />
           ) : null}
+          {tab === 'notifications' ? <NotificationsPanel /> : null}
         </div>
       </div>
     </div>

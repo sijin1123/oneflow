@@ -48,3 +48,30 @@ export function useMarkAllNotificationsRead() {
     },
   })
 }
+
+export type NotificationSettings = {
+  assigned: boolean
+  watched: boolean
+  commented: boolean
+}
+
+export function useNotificationSettings() {
+  return useQuery({
+    queryKey: ['notification-settings'],
+    queryFn: () => api<NotificationSettings>('/api/v1/me/notification-settings'),
+  })
+}
+
+export function useUpdateNotificationSettings() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (input: Partial<NotificationSettings>) =>
+      api<NotificationSettings>('/api/v1/me/notification-settings', {
+        method: 'PUT',
+        body: JSON.stringify(input),
+      }),
+    onSuccess: (data) => {
+      queryClient.setQueryData(['notification-settings'], data)
+    },
+  })
+}
