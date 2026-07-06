@@ -886,7 +886,20 @@ test('저장된 필터를 적용하면 목록 쿼리에 반영된다', async ({ 
   await page.route(`**/api/v1/projects/${project.id}/saved-filters`, (route) =>
     route.fulfill({
       json: {
-        items: [{ id: 'sf1', project_id: project.id, name: '긴급 작업', params: { status: 'todo' } }],
+        items: [
+          {
+            id: 'sf1',
+            project_id: project.id,
+            name: '긴급 작업',
+            params: { status: 'todo' },
+            layout: 'list',
+            sort: null,
+            is_shared: false,
+            is_mine: true,
+            owner_name: 'Dev User',
+            created_at: '2026-07-01T00:00:00Z',
+          },
+        ],
         total: 1,
       },
     }),
@@ -902,6 +915,31 @@ test('저장된 필터를 적용하면 목록 쿼리에 반영된다', async ({ 
   )
   await chip.click()
   await req
+})
+
+test('현재 필터를 보드 레이아웃 공유 뷰로 저장한다', async ({ page }) => {
+  await mockApi(page)
+  await page.goto(`/projects/${project.id}/work-packages?status=todo`)
+
+  await page.getByRole('button', { name: '현재 필터를 뷰로 저장' }).click()
+  await page.getByLabel('뷰 이름').fill('할 일 보드')
+  await page.getByLabel('뷰 레이아웃').selectOption('board')
+  await page.getByRole('checkbox', { name: '공유' }).check()
+
+  const post = page.waitForRequest(
+    (r) => r.method() === 'POST' && r.url().includes('/saved-filters'),
+  )
+  await page.getByRole('button', { name: '저장', exact: true }).click()
+  const sent = (await post).postDataJSON() as {
+    name: string
+    layout: string
+    is_shared: boolean
+    params: { status?: string }
+  }
+  expect(sent.name).toBe('할 일 보드')
+  expect(sent.layout).toBe('board')
+  expect(sent.is_shared).toBe(true)
+  expect(sent.params.status).toBe('todo')
 })
 
 test('보드가 프로젝트 워크플로우 설정의 라벨과 순서를 반영한다', async ({ page }) => {
