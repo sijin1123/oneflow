@@ -96,7 +96,8 @@ function NewProjectForm({ onClose }: { onClose: () => void }) {
 }
 
 export function ProjectsPage() {
-  const { data, isPending, isError, error, refetch } = useProjects()
+  const [includeArchived, setIncludeArchived] = useState(false)
+  const { data, isPending, isError, error, refetch } = useProjects(includeArchived)
   const [creating, setCreating] = useState(false)
 
   if (isPending) return <ListSkeleton />
@@ -106,6 +107,15 @@ export function ProjectsPage() {
     <div className="mx-auto max-w-3xl p-6">
       <div className="mb-4 flex items-center justify-between">
         <h1 className="text-base font-semibold">프로젝트</h1>
+        <label className="ml-3 mr-auto flex items-center gap-1.5 text-xs text-of-muted">
+          <input
+            type="checkbox"
+            checked={includeArchived}
+            onChange={(e) => setIncludeArchived(e.target.checked)}
+            className="h-3 w-3 accent-of-accent"
+          />
+          보관된 프로젝트 표시
+        </label>
         {!creating ? (
           <Button size="sm" onClick={() => setCreating(true)}>
             <Plus size={14} /> 새 프로젝트
@@ -137,6 +147,11 @@ export function ProjectsPage() {
                   <p className="truncate text-sm font-medium">
                     <span className="mr-1.5 text-of-muted">{p.key}</span>
                     {p.name}
+                    {p.archived_at ? (
+                      <span className="ml-1.5 rounded-of bg-of-surface-2 px-1.5 py-0.5 text-[10px] text-of-muted">
+                        보관됨
+                      </span>
+                    ) : null}
                   </p>
                   {p.description ? (
                     <p className="truncate text-xs text-of-muted">{p.description}</p>

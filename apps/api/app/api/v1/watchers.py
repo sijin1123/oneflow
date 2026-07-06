@@ -46,7 +46,7 @@ async def watch(
     session: AsyncSession = Depends(get_session),
     user: User = Depends(get_current_user),
 ) -> Response:
-    await require_wp_member(session, wp_id, user)
+    await require_wp_member(session, wp_id, user, write=True)
     # Idempotent: watching twice is a no-op, never a 409.
     await session.execute(
         pg_insert(WpWatcher)
@@ -63,7 +63,7 @@ async def unwatch(
     session: AsyncSession = Depends(get_session),
     user: User = Depends(get_current_user),
 ) -> Response:
-    await require_wp_member(session, wp_id, user)
+    await require_wp_member(session, wp_id, user, write=True)
     # Idempotent: unwatching when not watching is a no-op.
     await session.execute(
         delete(WpWatcher).where(WpWatcher.work_package_id == wp_id, WpWatcher.user_id == user.id)

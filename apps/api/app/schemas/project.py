@@ -67,6 +67,7 @@ class ProjectRead(BaseModel):
     name: str
     description: str | None
     budget: float | None
+    archived_at: datetime | None
     created_at: datetime
     updated_at: datetime
 

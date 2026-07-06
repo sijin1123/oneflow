@@ -53,7 +53,7 @@ async def create_comment(
     session: AsyncSession = Depends(get_session),
     user: User = Depends(get_current_user),
 ) -> CommentRead:
-    wp = await require_wp_member(session, wp_id, user)
+    wp = await require_wp_member(session, wp_id, user, write=True)
     comment = WorkPackageComment(work_package_id=wp_id, author_id=user.id, body=body.body)
     session.add(comment)
     record_comment(session, wp_id, user.id)  # same transaction as the comment

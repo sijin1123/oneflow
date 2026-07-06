@@ -83,7 +83,7 @@ async def create_saved_filter(
     session: AsyncSession = Depends(get_session),
     user: User = Depends(get_current_user),
 ) -> SavedFilterRead:
-    await require_member(session, project_id, user)
+    await require_member(session, project_id, user, write=True)
     row = SavedFilter(
         project_id=project_id,
         user_id=user.id,
@@ -130,7 +130,7 @@ async def update_saved_filter(
     session: AsyncSession = Depends(get_session),
     user: User = Depends(get_current_user),
 ) -> SavedFilterRead:
-    await require_member(session, project_id, user)
+    await require_member(session, project_id, user, write=True)
     row = await _get_own(session, project_id, filter_id, user)
     fields = body.model_dump(exclude_unset=True)
     for key in ("name", "layout", "is_shared"):
@@ -155,7 +155,7 @@ async def delete_saved_filter(
     session: AsyncSession = Depends(get_session),
     user: User = Depends(get_current_user),
 ) -> Response:
-    await require_member(session, project_id, user)
+    await require_member(session, project_id, user, write=True)
     row = await _get_own(session, project_id, filter_id, user)
     await session.delete(row)
     await session.commit()

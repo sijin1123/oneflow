@@ -11,7 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import get_current_user
-from app.core.authz import is_member, require_member
+from app.core.authz import is_member, require_active_project, require_member
 from app.db.session import get_session
 from app.models.attachment import Attachment
 from app.models.user import User
@@ -48,7 +48,7 @@ async def create_attachment(
     session: AsyncSession = Depends(get_session),
     user: User = Depends(get_current_user),
 ) -> AttachmentRead:
-    await require_member(session, project_id, user)
+    await require_member(session, project_id, user, write=True)
     att = Attachment(
         project_id=project_id,
         filename=body.filename,
@@ -75,6 +75,7 @@ async def delete_attachment(
     # Existence hiding: unknown id or a non-member's project both surface as 404.
     if att is None or not await is_member(session, att.project_id, user.id):
         raise HTTPException(status_code=404, detail="not found")
+    await require_active_project(session, att.project_id)
     await session.delete(att)
     await session.commit()
     return Response(status_code=204)

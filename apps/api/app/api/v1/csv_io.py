@@ -196,7 +196,7 @@ async def import_work_packages_csv(
     session: AsyncSession = Depends(get_session),
     user: User = Depends(get_current_user),
 ) -> CsvImportResult:
-    await require_member(session, project_id, user)
+    await require_member(session, project_id, user, write=True)
 
     reader = csv.reader(io.StringIO(body.content))
     try:

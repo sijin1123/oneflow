@@ -7,15 +7,14 @@ import { useMe, useMembers } from '@/features/members/api'
 import { StatusManager } from '@/features/project-statuses/StatusManager'
 import { useUnsavedLocationPrompt } from '@/lib/guards'
 
+import { DangerPanel } from './DangerPanel'
 import { GeneralPanel } from './GeneralPanel'
 import { NotificationsPanel } from './NotificationsPanel'
 import { MembersPanel } from './MembersPanel'
 import { MilestonesPanel } from './MilestonesPanel'
 
 /* Project settings as a tabbed control surface (expansion PLAN Pass 1 PR-A).
-   Tabs live in the `?tab=` query so deep links and refreshes keep the section.
-   The danger-zone tab is reserved for the pass that introduces destructive
-   project lifecycle actions (archive/delete) — no such API exists yet. */
+   Tabs live in the `?tab=` query so deep links and refreshes keep the section. */
 const TABS = [
   { key: 'general', label: '일반' },
   { key: 'members', label: '멤버' },
@@ -23,6 +22,7 @@ const TABS = [
   { key: 'milestones', label: '마일스톤' },
   { key: 'automation', label: '자동화' },
   { key: 'notifications', label: '알림' },
+  { key: 'danger', label: '위험 구역' },
 ] as const
 
 type TabKey = (typeof TABS)[number]['key']
@@ -102,6 +102,7 @@ export function SettingsPage() {
             <AutomationManager projectId={projectId} isOwner={isOwner} />
           ) : null}
           {tab === 'notifications' ? <NotificationsPanel /> : null}
+          {tab === 'danger' ? <DangerPanel isOwner={isOwner} /> : null}
         </div>
       </div>
     </div>

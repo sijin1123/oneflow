@@ -91,7 +91,7 @@ async def create_module(
     session: AsyncSession = Depends(get_session),
     user: User = Depends(get_current_user),
 ) -> ModuleRead:
-    await require_role(session, project_id, user, {"owner"})
+    await require_role(session, project_id, user, {"owner"}, write=True)
     if body.lead_id is not None:
         await _require_lead_member(session, project_id, body.lead_id)
     if body.start_date and body.target_date and body.start_date > body.target_date:
@@ -118,7 +118,7 @@ async def update_module(
     session: AsyncSession = Depends(get_session),
     user: User = Depends(get_current_user),
 ) -> ModuleRead:
-    await require_role(session, project_id, user, {"owner"})
+    await require_role(session, project_id, user, {"owner"}, write=True)
     m = await _get_scoped(session, project_id, module_id)
     fields = body.model_dump(exclude_unset=True)
     for key in ("name", "state"):
@@ -146,7 +146,7 @@ async def delete_module(
     session: AsyncSession = Depends(get_session),
     user: User = Depends(get_current_user),
 ) -> Response:
-    await require_role(session, project_id, user, {"owner"})
+    await require_role(session, project_id, user, {"owner"}, write=True)
     m = await _get_scoped(session, project_id, module_id)
     # The UI confirm shows work_package_count; the DB clears only module_id.
     await session.delete(m)

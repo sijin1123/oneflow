@@ -49,7 +49,7 @@ async def log_cost(
     session: AsyncSession = Depends(get_session),
     user: User = Depends(get_current_user),
 ) -> CostEntryRead:
-    await require_wp_member(session, wp_id, user)
+    await require_wp_member(session, wp_id, user, write=True)
     entry = CostEntry(
         work_package_id=wp_id,
         user_id=user.id,
@@ -70,7 +70,7 @@ async def delete_cost_entry(
     session: AsyncSession = Depends(get_session),
     user: User = Depends(get_current_user),
 ) -> Response:
-    wp = await require_wp_member(session, wp_id, user)
+    wp = await require_wp_member(session, wp_id, user, write=True)
     entry = (
         await session.execute(
             select(CostEntry).where(CostEntry.id == entry_id, CostEntry.work_package_id == wp_id)

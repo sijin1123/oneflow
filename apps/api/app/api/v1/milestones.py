@@ -56,7 +56,7 @@ async def create_milestone(
     session: AsyncSession = Depends(get_session),
     user: User = Depends(get_current_user),
 ) -> MilestoneRead:
-    await require_member(session, project_id, user)
+    await require_member(session, project_id, user, write=True)
     m = Milestone(
         project_id=project_id,
         name=body.name,
@@ -76,7 +76,7 @@ async def update_milestone(
     session: AsyncSession = Depends(get_session),
     user: User = Depends(get_current_user),
 ) -> MilestoneRead:
-    await require_member(session, project_id, user)
+    await require_member(session, project_id, user, write=True)
     m = await _get_scoped(session, project_id, milestone_id)
     fields = body.model_dump(exclude_unset=True)
     # `name` is NOT NULL: an explicit null is a client error (422), never an
@@ -97,7 +97,7 @@ async def delete_milestone(
     session: AsyncSession = Depends(get_session),
     user: User = Depends(get_current_user),
 ) -> Response:
-    await require_member(session, project_id, user)
+    await require_member(session, project_id, user, write=True)
     m = await _get_scoped(session, project_id, milestone_id)
     await session.delete(m)  # work_packages.milestone_id SET NULL via FK
     await session.commit()

@@ -95,7 +95,7 @@ async def create_cycle(
     session: AsyncSession = Depends(get_session),
     user: User = Depends(get_current_user),
 ) -> CycleRead:
-    await require_role(session, project_id, user, {"owner"})
+    await require_role(session, project_id, user, {"owner"}, write=True)
     c = Cycle(
         project_id=project_id,
         name=body.name,
@@ -116,7 +116,7 @@ async def update_cycle(
     session: AsyncSession = Depends(get_session),
     user: User = Depends(get_current_user),
 ) -> CycleRead:
-    await require_role(session, project_id, user, {"owner"})
+    await require_role(session, project_id, user, {"owner"}, write=True)
     c = await _get_scoped(session, project_id, cycle_id)
     fields = body.model_dump(exclude_unset=True)
     for key in ("name", "start_date", "end_date"):
@@ -143,7 +143,7 @@ async def delete_cycle(
     session: AsyncSession = Depends(get_session),
     user: User = Depends(get_current_user),
 ) -> Response:
-    await require_role(session, project_id, user, {"owner"})
+    await require_role(session, project_id, user, {"owner"}, write=True)
     c = await _get_scoped(session, project_id, cycle_id)
     # The UI shows work_package_count in its confirm dialog; the DB clears only
     # work_packages.cycle_id via the column-list SET NULL composite FK.

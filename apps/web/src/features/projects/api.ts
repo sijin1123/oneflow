@@ -4,10 +4,11 @@ import { api } from '@/lib/api'
 
 import type { Project, ProjectList } from './types'
 
-export function useProjects() {
+export function useProjects(includeArchived = false) {
   return useQuery({
-    queryKey: ['projects'],
-    queryFn: () => api<ProjectList>('/api/v1/projects'),
+    queryKey: ['projects', { includeArchived }],
+    queryFn: () =>
+      api<ProjectList>(`/api/v1/projects${includeArchived ? '?include_archived=true' : ''}`),
   })
 }
 
@@ -41,6 +42,20 @@ export function useUpdateProject(projectId: string) {
       void queryClient.invalidateQueries({ queryKey: ['project', projectId] })
       void queryClient.invalidateQueries({ queryKey: ['dashboard', projectId] })
       void queryClient.invalidateQueries({ queryKey: ['projects'] })
+    },
+  })
+}
+
+export function useArchiveProject(projectId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (archive: boolean) =>
+      api<Project>(`/api/v1/projects/${projectId}/${archive ? 'archive' : 'unarchive'}`, {
+        method: 'POST',
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['projects'] })
+      void queryClient.invalidateQueries({ queryKey: ['project', projectId] })
     },
   })
 }
