@@ -412,18 +412,33 @@ test('설정 탭: 딥링크·미저장 가드·뒤로가기가 동작한다', as
   await page.goBack()
   await expect(page.getByRole('tab', { name: '마일스톤' })).toHaveAttribute('aria-selected', 'true')
 
+  // One persistent handler + an action queue: `once` per click is racy on slow
+  // runners (a late dialog can consume the wrong handler → "already handled").
+  const dialogActions: Array<'dismiss' | 'accept'> = []
+  let dialogCount = 0
+  page.on('dialog', (d) => {
+    dialogCount += 1
+    const action = dialogActions.shift() ?? 'dismiss'
+    void (action === 'accept' ? d.accept() : d.dismiss())
+  })
+
   // A typed draft makes the section dirty → switching tabs must ask first.
   await page.getByLabel('마일스톤 이름').fill('임시 초안')
-  page.once('dialog', (d) => d.dismiss())
+  dialogActions.push('dismiss')
   await page.getByRole('tab', { name: '멤버' }).click()
-  // Dismissed → still on milestones, draft kept.
+  // Dismissed → still on milestones, draft kept. Poll until the dialog was
+  // actually consumed so the next push can't be stolen by a late dialog.
+  await expect.poll(() => dialogActions.length).toBe(0)
   await expect(page.getByRole('tab', { name: '마일스톤' })).toHaveAttribute('aria-selected', 'true')
   await expect(page.getByLabel('마일스톤 이름')).toHaveValue('임시 초안')
 
   // Accepted → switch proceeds and the draft is discarded with the panel.
-  page.once('dialog', (d) => d.accept())
+  dialogActions.push('accept')
   await page.getByRole('tab', { name: '멤버' }).click()
   await expect(page.getByText('alex@oneflow.local')).toBeVisible()
+  // Exactly one confirm per guarded switch — more means the guard double-fired,
+  // which is a product bug rather than flakiness.
+  expect(dialogCount).toBe(2)
 })
 
 test('CSV 가져오기: dry-run 미리보기 후 실행하고 실패 행을 격리한다', async ({ page }) => {
