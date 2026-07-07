@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.v1.work_packages import require_wp_member
 from app.core.auth import get_current_user
 from app.db.session import get_session
-from app.models.activity import Activity
+from app.models.activity import ACTIVITY_ACTIONS, Activity
 from app.models.comment import REACTION_KEYS, CommentReaction, WorkPackageComment
 from app.models.user import User
 from app.schemas.comment import (
@@ -198,16 +198,30 @@ async def list_activities(
     wp_id: uuid.UUID,
     limit: int = Query(default=200, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
+    action: str | None = Query(default=None),
+    field: str | None = Query(default=None, max_length=40),
+    order: str = Query(default="asc", pattern="^(asc|desc)$"),
     session: AsyncSession = Depends(get_session),
     user: User = Depends(get_current_user),
 ) -> ActivityList:
+    """Filters compose as independent ANDs (v19.1): `field` is an exact
+    internal key match (trimmed, ≤40) — combining it with action=created or
+    commented legitimately yields an empty page, never a 422."""
     await require_wp_member(session, wp_id, user)
+    if action is not None and action not in ACTIVITY_ACTIONS:
+        raise HTTPException(status_code=422, detail=f"action must be one of {ACTIVITY_ACTIONS}")
     base = select(Activity).where(Activity.work_package_id == wp_id)
+    if action is not None:
+        base = base.where(Activity.action == action)
+    if field is not None:
+        base = base.where(Activity.field == field.strip())
     total = (await session.execute(select(func.count()).select_from(base.subquery()))).scalar_one()
+    order_col = Activity.created_at.asc() if order == "asc" else Activity.created_at.desc()
     rows = (
         (
             await session.execute(
-                base.order_by(Activity.created_at.asc()).limit(limit).offset(offset)
+                # id ASC tie-breaker: equal timestamps must page deterministically.
+                base.order_by(order_col, Activity.id.asc()).limit(limit).offset(offset)
             )
         )
         .scalars()

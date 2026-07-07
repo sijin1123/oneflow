@@ -510,8 +510,12 @@ export interface paths {
         };
         /**
          * Project Activities
-         * @description Project-wide audit feed: every work-package activity in the project, newest
-         *     first, enriched with the work package subject and actor name (member-scoped).
+         * @description Project-wide audit feed, enriched with the work package subject and actor
+         *     name (member-scoped). Filters are independent ANDs (v19.1): exact-key
+         *     `field` with action=created/commented yields an empty page, never 422.
+         *     `total` stays the RETURNED count (legacy contract); `truncated` (limit+1
+         *     probe) says whether more rows exist. An actor filter is deliberately
+         *     absent — the read model does not expose actor ids (R1-④).
          */
         get: operations["project_activities_api_v1_projects__project_id__activities_get"];
         put?: never;
@@ -1337,7 +1341,12 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List Activities */
+        /**
+         * List Activities
+         * @description Filters compose as independent ANDs (v19.1): `field` is an exact
+         *     internal key match (trimmed, ≤40) — combining it with action=created or
+         *     commented legitimately yields an empty page, never a 422.
+         */
         get: operations["list_activities_api_v1_work_packages__wp_id__activities_get"];
         put?: never;
         post?: never;
@@ -3067,12 +3076,21 @@ export interface components {
             /** Watched */
             watched?: boolean | null;
         };
-        /** ProjectActivityList */
+        /**
+         * ProjectActivityList
+         * @description `total` is the RETURNED count (legacy contract — documented, v19.1);
+         *     `truncated` reports more rows beyond the limit (limit+1 probe).
+         */
         ProjectActivityList: {
             /** Items */
             items: components["schemas"]["ProjectActivityRead"][];
             /** Total */
             total: number;
+            /**
+             * Truncated
+             * @default false
+             */
+            truncated: boolean;
         };
         /**
          * ProjectActivityRead
@@ -4970,6 +4988,9 @@ export interface operations {
         parameters: {
             query?: {
                 limit?: number;
+                action?: string | null;
+                field?: string | null;
+                order?: string;
             };
             header?: never;
             path: {
@@ -7078,6 +7099,9 @@ export interface operations {
             query?: {
                 limit?: number;
                 offset?: number;
+                action?: string | null;
+                field?: string | null;
+                order?: string;
             };
             header?: never;
             path: {

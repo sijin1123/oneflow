@@ -466,26 +466,38 @@ test('대시보드가 집계 타일과 분포를 보여준다', async ({ page })
       },
     }),
   )
-  await page.route(`**/api/v1/projects/${project.id}/activities`, (route) =>
-    route.fulfill({
-      json: {
-        items: [
-          {
-            id: 'pa1',
-            work_package_id: wpA.id,
-            work_package_subject: '워크패키지 API 구현',
-            actor_name: 'Dev User',
-            action: 'field_changed',
-            field: 'status',
-            old_value: 'todo',
-            new_value: 'in_progress',
-            created_at: '2026-07-05T00:00:00Z',
-          },
-        ],
-        total: 1,
-      },
-    }),
-  )
+  const paChanged = {
+    id: 'pa1',
+    work_package_id: wpA.id,
+    work_package_subject: '워크패키지 API 구현',
+    actor_name: 'Dev User',
+    action: 'field_changed',
+    field: 'status',
+    old_value: 'todo',
+    new_value: 'in_progress',
+    created_at: '2026-07-05T00:00:00Z',
+  }
+  const paComment = {
+    ...paChanged,
+    id: 'pa2',
+    action: 'commented',
+    field: null,
+    old_value: null,
+    new_value: null,
+    created_at: '2026-07-06T00:00:00Z',
+  }
+  await page.route(`**/api/v1/projects/${project.id}/activities**`, (route) => {
+    const url = new URL(route.request().url())
+    const action = url.searchParams.get('action')
+    const order = url.searchParams.get('order') ?? 'desc'
+    let items = action ? [paComment, paChanged].filter((a) => a.action === action) : [paComment, paChanged]
+    items = [...items].sort((x, y) =>
+      order === 'asc'
+        ? x.created_at.localeCompare(y.created_at)
+        : y.created_at.localeCompare(x.created_at),
+    )
+    return route.fulfill({ json: { items, total: items.length, truncated: false } })
+  })
   let savedWidgets: string[] | null = null
   await page.route(`**/api/v1/projects/${project.id}/dashboard/layout`, async (route) => {
     if (route.request().method() === 'PUT') {
@@ -504,6 +516,16 @@ test('대시보드가 집계 타일과 분포를 보여준다', async ({ page })
   await expect(page.getByText('기한 초과')).toBeVisible()
   await expect(page.getByText('10.5 / 40h')).toBeVisible()
   await expect(page.getByText('상태별')).toBeVisible()
+
+  // activity filter: only comments remain; order flip puts the change first
+  await expect(page.getByText('· 댓글')).toBeVisible()
+  await page.getByLabel('활동 종류').selectOption('field_changed')
+  await expect(page.getByText('· 댓글')).toBeHidden()
+  await expect(page.getByText('todo → in_progress', { exact: false })).toBeVisible()
+  await page.getByLabel('활동 종류').selectOption('')
+  await page.getByLabel('활동 정렬').selectOption('asc')
+  const rows = page.locator('li', { hasText: 'Dev User' })
+  await expect(rows.first()).toContainText('todo → in_progress')
 
   // widget layout edit: hide the budget tiles, save → PUT carries the order
   await page.getByRole('button', { name: '위젯 편집' }).click()
