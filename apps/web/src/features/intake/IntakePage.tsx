@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 
 import { EmptyState, ErrorState, ListSkeleton } from '@/components/shell/states'
 import { Button } from '@/components/ui/button'
@@ -23,10 +23,12 @@ function ItemRow({
   item,
   isOwner,
   projectId,
+  highlighted = false,
 }: {
   item: IntakeItem
   isOwner: boolean
   projectId: string
+  highlighted?: boolean
 }) {
   const navigate = useNavigate()
   const memberName = useMemberNames(projectId)
@@ -35,7 +37,9 @@ function ItemRow({
   const open = item.status === 'pending' || item.status === 'snoozed'
 
   return (
-    <li className="space-y-1 px-3 py-2">
+    <li
+      className={`space-y-1 px-3 py-2${highlighted ? ' rounded-of ring-1 ring-of-accent bg-of-accent-soft/30' : ''}`}
+    >
       <div className="flex items-center gap-2">
         <span className="min-w-0 flex-1 truncate text-[13px] font-medium">{item.title}</span>
         <span className="shrink-0 text-[11px] text-of-muted">
@@ -120,6 +124,9 @@ function ItemRow({
    owners triage them; accepting turns the request into a work package. */
 export function IntakePage() {
   const { projectId } = useParams() as { projectId: string }
+  const [searchParams] = useSearchParams()
+  // Bell deep-link anchor (Pass 49): highlight the triaged item.
+  const highlightId = searchParams.get('item')
   const intake = useIntake(projectId)
   const me = useMe()
   const members = useMembers(projectId)
@@ -181,7 +188,13 @@ export function IntakePage() {
                 </h2>
                 <ul className="divide-y divide-of-border overflow-hidden rounded-of border border-of-border bg-of-surface">
                   {group.map((i) => (
-                    <ItemRow key={i.id} item={i} isOwner={isOwner} projectId={projectId} />
+                    <ItemRow
+                      key={i.id}
+                      item={i}
+                      isOwner={isOwner}
+                      projectId={projectId}
+                      highlighted={i.id === highlightId}
+                    />
                   ))}
                 </ul>
               </section>

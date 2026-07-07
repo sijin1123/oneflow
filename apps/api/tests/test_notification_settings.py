@@ -40,6 +40,7 @@ async def test_defaults_and_roundtrip(client):
         "commented": True,
         "mention": True,
         "due_alerts": True,
+        "intake": True,
     }
 
     res = await client.put("/api/v1/me/notification-settings", json={"watched": False})
@@ -50,6 +51,7 @@ async def test_defaults_and_roundtrip(client):
         "commented": True,
         "mention": True,
         "due_alerts": True,
+        "intake": True,
     }
 
     # Partial update keeps the other toggles.
@@ -60,6 +62,7 @@ async def test_defaults_and_roundtrip(client):
         "commented": False,
         "mention": True,
         "due_alerts": True,
+        "intake": True,
     }
 
 

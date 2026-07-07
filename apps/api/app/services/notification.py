@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.member import ProjectMember
 from app.models.notification import Notification
 from app.models.notification_setting import UserNotificationSettings
+from app.models.user import User
 from app.models.watcher import WpWatcher
 
 
@@ -184,3 +185,52 @@ async def notify_mentions(
             )
         )
     return accepted
+
+
+async def record_intake_triage(
+    session: AsyncSession,
+    *,
+    item,
+    actor_id: uuid.UUID,
+    accepted_wp_id: uuid.UUID | None,
+) -> None:
+    """Notify the submitter of a FINAL intake verdict (Pass 49, v49.1):
+    accepted carries the converted WP; declined/duplicate anchor to the item.
+    Triple recipient gate (the Pass-40 rule): submitter exists, is active,
+    and is STILL a project member — plus never-yourself and the intake
+    preference (creation-time only). Rides the triage transaction."""
+    recipient_id = item.submitted_by
+    if recipient_id is None or recipient_id == actor_id:
+        return
+    eligible = (
+        await session.execute(
+            select(ProjectMember.user_id)
+            .join(User, ProjectMember.user_id == User.id)
+            .where(
+                ProjectMember.project_id == item.project_id,
+                ProjectMember.user_id == recipient_id,
+                User.is_active.is_(True),
+            )
+        )
+    ).scalar_one_or_none()
+    if eligible is None:
+        return
+    pref = (
+        await session.execute(
+            select(UserNotificationSettings.intake).where(
+                UserNotificationSettings.user_id == recipient_id
+            )
+        )
+    ).scalar_one_or_none()
+    if pref is False:  # absent row = default True
+        return
+    session.add(
+        Notification(
+            user_id=recipient_id,
+            actor_id=actor_id,
+            project_id=item.project_id,
+            work_package_id=accepted_wp_id,
+            intake_item_id=item.id,
+            kind="intake_accepted" if accepted_wp_id is not None else "intake_declined",
+        )
+    )

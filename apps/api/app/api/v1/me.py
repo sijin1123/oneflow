@@ -175,7 +175,12 @@ async def get_notification_settings(
     ).scalar_one_or_none()
     if row is None:
         return NotificationSettingsRead(
-            assigned=True, watched=True, commented=True, mention=True, due_alerts=True
+            assigned=True,
+            watched=True,
+            commented=True,
+            mention=True,
+            due_alerts=True,
+            intake=True,
         )
     return NotificationSettingsRead(
         assigned=row.assigned,
@@ -183,6 +188,7 @@ async def get_notification_settings(
         commented=row.commented,
         mention=row.mention,
         due_alerts=row.due_alerts,
+        intake=row.intake,
     )
 
 
@@ -210,6 +216,7 @@ async def update_notification_settings(
         commented=row.commented,
         mention=row.mention,
         due_alerts=row.due_alerts,
+        intake=row.intake,
     )
 
 
@@ -246,6 +253,7 @@ async def list_notifications(
             kind=n.kind,
             project_id=n.project_id,
             work_package_id=n.work_package_id,
+            intake_item_id=n.intake_item_id,
             work_package_subject=wp_subject,
             actor_name=actor_name,
             read=n.read,

@@ -1823,9 +1823,20 @@ test('알림 벨이 미확인 개수를 보여주고 모두 읽음을 보낸다'
         read: false,
         created_at: '2026-07-05T09:00:00Z',
       },
+      {
+        id: 'n3',
+        kind: 'intake_declined',
+        project_id: project.id,
+        work_package_id: null,
+        intake_item_id: 'ii-1',
+        work_package_subject: null,
+        actor_name: 'Dev User',
+        read: false,
+        created_at: '2026-07-05T09:00:00Z',
+      },
     ],
-    total: 2,
-    unread: 2,
+    total: 3,
+    unread: 3,
   }
   // sub-actions (read / read-all) → 204; list → the unread inbox (both after mockApi)
   await page.route('**/api/v1/me/notifications/**', (route) =>
@@ -1834,7 +1845,7 @@ test('알림 벨이 미확인 개수를 보여주고 모두 읽음을 보낸다'
   await page.route('**/api/v1/me/notifications', (route) => route.fulfill({ json: inbox }))
 
   await page.goto(`/projects/${project.id}/work-packages`)
-  const bell = page.getByRole('button', { name: '알림 2건 읽지 않음' })
+  const bell = page.getByRole('button', { name: '알림 3건 읽지 않음' })
   await expect(bell).toBeVisible()
   await bell.click()
 
@@ -1842,6 +1853,13 @@ test('알림 벨이 미확인 개수를 보여주고 모두 읽음을 보낸다'
   await expect(drawer.getByText(/배정했습니다/)).toBeVisible()
   // System due alert (Pass 40): actor-less wording.
   await expect(drawer.getByText(/기한이 지났습니다/)).toBeVisible()
+
+  // Intake verdict (Pass 49): a WP-less declined notification routes to the
+  // intake page with the item anchor.
+  await drawer.getByText(/반영되지 않았습니다/).click()
+  await expect(page).toHaveURL(new RegExp(`/projects/${project.id}/intake\\?item=ii-1`))
+  await page.goBack()
+  await bell.click()
 
   const readAll = page.waitForRequest(
     (req) => req.method() === 'POST' && req.url().includes('/me/notifications/read-all'),
