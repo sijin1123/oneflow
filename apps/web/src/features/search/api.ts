@@ -13,6 +13,8 @@ export type SearchResultItem = {
   priority: WpPriority
   type: WpType
   due_date: string | null
+  matched_in: 'primary' | 'content'
+  snippet: string | null
 }
 
 export type SearchResults = {
@@ -37,6 +39,8 @@ export type SearchDocumentItem = {
   project_key: string
   project_name: string
   title: string
+  matched_in: 'primary' | 'content'
+  snippet: string | null
 }
 
 export type SearchMeetingItem = SearchDocumentItem & { scheduled_on: string | null }

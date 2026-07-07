@@ -97,3 +97,79 @@ async def test_wildcards_are_literal(client, project):
 
     body = (await search(client, "100%")).json()
     assert [d["title"] for d in body["documents"]["items"]] == ["백분율 100% 정리"]
+
+
+async def test_content_match_and_snippet(client, app):
+    """Pass 39 PR-BE (v39.1): content predicates stay INSIDE the member/
+    archive scope; primary wins over content (snippet null); markup-only
+    matches keep snippet null; non-member content never leaks."""
+
+    from tests.conftest import create_project, create_wp
+
+    project = await create_project(client, key="FTS", name="본문 검색")
+    pid = project["id"]
+    # WP: the query hits only the description.
+    wp = await create_wp(client, pid, subject="제목은 다름")
+    await client.patch(
+        f"/api/v1/work-packages/{wp['id']}",
+        json={"expected_version": 0, "description": "<p>배포 파이프라인 점검이 필요합니다</p>"},
+    )
+    # Document: body-only match + a markup-only match (href).
+    doc = (
+        await client.post(
+            f"/api/v1/projects/{pid}/documents",
+            json={"title": "가이드", "body": "<p>파이프라인 정리 문서</p>"},
+        )
+    ).json()
+    link_doc = (
+        await client.post(
+            f"/api/v1/projects/{pid}/documents",
+            json={
+                "title": "링크 모음",
+                "body": '<p><a href="https://x.test/pipeline-zzz">링크</a></p>',
+            },
+        )
+    ).json()
+    del doc
+
+    res = (await client.get("/api/v1/search?q=파이프라인")).json()
+    wp_hit = next(i for i in res["work_packages"]["items"] if i["id"] == wp["id"])
+    assert wp_hit["matched_in"] == "content"
+    assert "파이프라인" in wp_hit["snippet"]
+    doc_hits = {d["title"]: d for d in res["documents"]["items"]}
+    assert doc_hits["가이드"]["matched_in"] == "content"
+    assert "파이프라인" in doc_hits["가이드"]["snippet"]
+
+    # Markup-only match (URL inside href): item returns, snippet stays null
+    # (recorded limitation — R1-④).
+    res2 = (await client.get("/api/v1/search?q=pipeline-zzz")).json()
+    only = {d["title"]: d for d in res2["documents"]["items"]}
+    assert only["링크 모음"]["matched_in"] == "content"
+    assert only["링크 모음"]["snippet"] is None
+    assert link_doc["id"] == only["링크 모음"]["id"]
+
+    # Primary wins when both match: subject contains the query too.
+    wp2 = await create_wp(client, pid, subject="파이프라인 개편")
+    await client.patch(
+        f"/api/v1/work-packages/{wp2['id']}",
+        json={"expected_version": 0, "description": "<p>파이프라인 상세</p>"},
+    )
+    res3 = (await client.get("/api/v1/search?q=파이프라인")).json()
+    both = next(i for i in res3["work_packages"]["items"] if i["id"] == wp2["id"])
+    assert (both["matched_in"], both["snippet"]) == ("primary", None)
+
+
+async def test_content_never_leaks_foreign_projects(client, app, foreign_project):
+    """A query that exists ONLY in a non-member project's body stays hidden."""
+    from sqlalchemy import text as sa_text
+
+    async with app.state.sessionmaker() as session, session.begin():
+        await session.execute(
+            sa_text(
+                "UPDATE work_packages SET description = '<p>극비-본문-토큰</p>' "
+                "WHERE id = CAST(:id AS uuid)"
+            ).bindparams(id=str(foreign_project["wp_id"]))
+        )
+    res = (await client.get("/api/v1/search?q=극비-본문-토큰")).json()
+    assert res["work_packages"]["returned"] == 0
+    assert all(res[g]["returned"] == 0 for g in ("documents", "meetings", "cycles", "modules"))
