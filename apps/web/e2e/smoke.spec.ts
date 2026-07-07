@@ -2477,6 +2477,32 @@ test('빈 프로젝트 목록에서 새 프로젝트를 만들면 생성 요청 
   await expect(page).toHaveURL(/\/projects\/p-new\/work-packages/)
 })
 
+test('시스템 상태 페이지가 버전과 구성 카드를 보여준다', async ({ page }) => {
+  await mockApi(page)
+  await page.route('**/api/v1/ops/status', (route) =>
+    route.fulfill({
+      json: {
+        version: '0.1.0',
+        database: { status: 'ok', current_revision: '0039' },
+        counts: { projects: 3, work_packages: 42 },
+        config: {
+          auth_mode: 'dev',
+          ai_summary_enabled: false,
+          storage_backend: 'local',
+          upload_max_bytes: 10485760,
+          project_storage_quota_bytes: 1073741824,
+        },
+      },
+    }),
+  )
+  await page.goto('/status')
+  await expect(page.getByText('시스템 상태')).toBeVisible()
+  await expect(page.getByText('0.1.0')).toBeVisible()
+  await expect(page.getByText('0039')).toBeVisible()
+  await expect(page.getByText('42')).toBeVisible()
+  await expect(page.getByText('10 MiB')).toBeVisible()
+})
+
 test('알 수 없는 주소는 스타일된 404 페이지를 보여준다', async ({ page }) => {
   await page.route('**/api/v1/projects', (route) =>
     route.fulfill({ json: { items: [{ ...project, ...projectRollups }], total: 1 } satisfies ProjectList }),

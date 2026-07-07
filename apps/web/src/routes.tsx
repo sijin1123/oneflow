@@ -14,6 +14,7 @@ import { ModulesPage } from '@/features/modules/ModulesPage'
 import { MyWorkPage } from '@/features/my-work/MyWorkPage'
 import { ProjectsPage } from '@/features/projects/ProjectsPage'
 import { SearchPage } from '@/features/search/SearchPage'
+import { StatusPage } from '@/features/ops/StatusPage'
 import { SettingsPage } from '@/features/settings/SettingsPage'
 import { BoardPage } from '@/features/work-packages/BoardPage'
 import { CyclesPage } from '@/features/cycles/CyclesPage'
@@ -35,6 +36,7 @@ export const router = createBrowserRouter([
       { path: 'initiatives', element: <InitiativesPage /> },
       { path: 'projects', element: <ProjectsPage /> },
       { path: 'search', element: <SearchPage /> },
+      { path: 'status', element: <StatusPage /> },
       { path: 'projects/:projectId/work-packages', element: <ListPage /> },
       { path: 'projects/:projectId/board', element: <BoardPage /> },
       { path: 'projects/:projectId/tree', element: <TreePage /> },
