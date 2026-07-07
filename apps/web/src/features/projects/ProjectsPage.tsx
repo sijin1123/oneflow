@@ -5,6 +5,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { ErrorState, ListSkeleton } from '@/components/shell/states'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Select } from '@/components/ui/select'
 import { ApiError } from '@/lib/api'
 
 import { useCreateProject, useProjects } from './api'
@@ -14,9 +15,11 @@ const KEY_RE = /^[A-Z][A-Z0-9]{1,9}$/
 function NewProjectForm({ onClose }: { onClose: () => void }) {
   const navigate = useNavigate()
   const create = useCreateProject()
+  const { data: existing } = useProjects()
   const [name, setName] = useState('')
   const [key, setKey] = useState('')
   const [description, setDescription] = useState('')
+  const [templateId, setTemplateId] = useState('')
 
   const keyValid = KEY_RE.test(key)
   const canSubmit = name.trim().length > 0 && keyValid && !create.isPending
@@ -24,7 +27,12 @@ function NewProjectForm({ onClose }: { onClose: () => void }) {
   const submit = () => {
     if (!canSubmit) return
     create.mutate(
-      { name: name.trim(), key, description: description.trim() || null },
+      {
+        name: name.trim(),
+        key,
+        description: description.trim() || null,
+        template_project_id: templateId || null,
+      },
       { onSuccess: (p) => navigate(`/projects/${p.id}/work-packages`) },
     )
   }
@@ -71,6 +79,23 @@ function NewProjectForm({ onClose }: { onClose: () => void }) {
           onChange={(e) => setDescription(e.target.value)}
           placeholder="한 줄 설명"
         />
+      </div>
+      <div className="space-y-1">
+        <label htmlFor="np-template" className="text-xs text-of-muted">
+          템플릿으로 사용할 프로젝트 (선택 — 상태·타입·필드·자동화 설정을 복사)
+        </label>
+        <Select
+          id="np-template"
+          value={templateId}
+          onChange={(e) => setTemplateId(e.target.value)}
+        >
+          <option value="">사용 안 함</option>
+          {(existing?.items ?? []).map((p) => (
+            <option key={p.id} value={p.id}>
+              [{p.key}] {p.name}
+            </option>
+          ))}
+        </Select>
       </div>
       {key.length > 0 && !keyValid ? (
         <p className="text-xs text-of-danger">

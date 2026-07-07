@@ -12,6 +12,9 @@ class ProjectCreate(BaseModel):
     name: str
     key: str
     description: str | None = None
+    # Use an existing project as a settings template (Pass 15 — statuses/types/
+    # custom fields/automation copied; NO content, NO members).
+    template_project_id: uuid.UUID | None = None
 
     @field_validator("name")
     @classmethod
@@ -70,6 +73,22 @@ class ProjectRead(BaseModel):
     archived_at: datetime | None
     created_at: datetime
     updated_at: datetime
+
+
+class TemplateApplied(BaseModel):
+    """Copy counts when a project was created from a template (never silent)."""
+
+    statuses: int
+    types: int
+    custom_fields: int
+    automation_rules: int
+
+
+class ProjectCreateResponse(ProjectRead):
+    """POST /projects response — additive: template_applied is null unless a
+    template was used, so existing clients are unaffected (v15.1 R1-⑤)."""
+
+    template_applied: TemplateApplied | None = None
 
 
 class ProjectList(BaseModel):
