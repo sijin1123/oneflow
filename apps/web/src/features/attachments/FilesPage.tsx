@@ -9,6 +9,7 @@ import { ApiError } from '@/lib/api'
 import { confirmDestructive } from '@/lib/guards'
 import { Select } from '@/components/ui/select'
 import { useWorkPackages } from '@/features/work-packages/api'
+import { useDocuments } from '@/features/documents/api'
 
 import { downloadUrl, useAttachments, useCreateAttachment, useDeleteAttachment, useUploadAttachment } from './api'
 
@@ -33,8 +34,12 @@ export function FilesPage() {
 
   const [filename, setFilename] = useState('')
   const [url, setUrl] = useState('')
-  const [anchorWp, setAnchorWp] = useState('')
+  // anchor value encodes the kind: 'wp:<id>' | 'doc:<id>' | ''
+  const [anchor, setAnchor] = useState('')
   const { data: wps } = useWorkPackages(projectId, {})
+  const { data: docs } = useDocuments(projectId)
+  const anchorWp = anchor.startsWith('wp:') ? anchor.slice(3) : ''
+  const anchorDoc = anchor.startsWith('doc:') ? anchor.slice(4) : ''
   const err = create.error instanceof ApiError ? create.error.message : null
 
   const urlTrimmed = url.trim()
@@ -43,7 +48,12 @@ export function FilesPage() {
   const add = () => {
     if (!filename.trim() || !urlValid || urlTrimmed === '' || create.isPending) return
     create.mutate(
-      { filename: filename.trim(), url: urlTrimmed, work_package_id: anchorWp || null },
+      {
+        filename: filename.trim(),
+        url: urlTrimmed,
+        work_package_id: anchorWp || null,
+        document_id: anchorDoc || null,
+      },
       {
         onSuccess: () => {
           setFilename('')
@@ -72,7 +82,12 @@ export function FilesPage() {
           className="hidden"
           onChange={(e) => {
             const f = e.target.files?.[0]
-            if (f) uploadFile.mutate({ file: f, workPackageId: anchorWp || undefined })
+            if (f)
+              uploadFile.mutate({
+                file: f,
+                workPackageId: anchorWp || undefined,
+                documentId: anchorDoc || undefined,
+              })
             e.target.value = ''
           }}
         />
@@ -80,17 +95,26 @@ export function FilesPage() {
           <Upload size={13} /> 파일 업로드
         </Button>
         <Select
-          aria-label="연결 대상 작업"
-          className="h-7 w-40 text-xs"
-          value={anchorWp}
-          onChange={(e) => setAnchorWp(e.target.value)}
+          aria-label="연결 대상"
+          className="h-7 w-44 text-xs"
+          value={anchor}
+          onChange={(e) => setAnchor(e.target.value)}
         >
           <option value="">연결 안 함</option>
-          {(wps?.items ?? []).map((w) => (
-            <option key={w.id} value={w.id}>
-              {w.subject}
-            </option>
-          ))}
+          <optgroup label="작업">
+            {(wps?.items ?? []).map((w) => (
+              <option key={w.id} value={`wp:${w.id}`}>
+                {w.subject}
+              </option>
+            ))}
+          </optgroup>
+          <optgroup label="문서">
+            {(docs?.items ?? []).map((d) => (
+              <option key={d.id} value={`doc:${d.id}`}>
+                {d.title}
+              </option>
+            ))}
+          </optgroup>
         </Select>
         {uploadFile.isPending ? <span className="text-xs text-of-muted">업로드 중…</span> : null}
         {uploadFile.isError && uploadFile.error instanceof ApiError ? (

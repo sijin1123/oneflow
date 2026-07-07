@@ -16,6 +16,7 @@ import {
   useDocuments,
   useUpdateDocument,
 } from './api'
+import { DocumentAttachments } from './DocumentAttachments'
 import { LinkedWorkPackagesSection } from './LinkedWorkPackagesSection'
 import { subtreeIds } from './tree'
 
@@ -157,6 +158,8 @@ export function DocumentEditorPage() {
       <p className="mt-2 text-right text-[11px] text-of-muted">v{doc.version}</p>
 
       <LinkedWorkPackagesSection docId={doc.id} projectId={projectId} />
+
+      <DocumentAttachments docId={doc.id} projectId={projectId} />
     </div>
   )
 }
