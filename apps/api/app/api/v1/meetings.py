@@ -294,6 +294,7 @@ async def convert_action_item(
         subject=item.description[:255],
         description=f"회의 '{meeting.title}'의 액션 아이템에서 전환됨",
         assignee_id=assignee,
+        created_by=user.id,
     )
     session.add(wp)
     await session.flush()

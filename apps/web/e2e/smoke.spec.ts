@@ -46,6 +46,7 @@ const wpA: WorkPackage = {
   start_date: '2026-07-01',
   due_date: '2026-07-15',
   estimated_hours: 16,
+  created_by: 'u-dev',
   version: 0,
   created_at: '2026-07-01T00:00:00Z',
   updated_at: '2026-07-01T00:00:00Z',
@@ -276,6 +277,7 @@ test('드로어에서 활동 이력을 보여주고 댓글을 추가한다', asy
   await page.getByRole('button', { name: '워크패키지 API 구현' }).click()
   const drawer = page.getByRole('dialog')
   await expect(drawer.getByText('작업을 생성했습니다')).toBeVisible() // activity feed
+  await expect(drawer.getByText('만든 사람: Dev User', { exact: false })).toBeVisible()
 
   const commentPost = page.waitForRequest(
     (req) => req.method() === 'POST' && req.url().includes(`/work-packages/${wpA.id}/comments`),

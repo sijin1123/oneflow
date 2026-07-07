@@ -172,6 +172,7 @@ class WorkPackageRead(BaseModel):
     start_date: date | None
     due_date: date | None
     estimated_hours: float | None
+    created_by: uuid.UUID | None
     version: int
     created_at: datetime
     updated_at: datetime

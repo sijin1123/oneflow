@@ -35,6 +35,8 @@ export type WorkPackage = {
   start_date: string | null
   due_date: string | null
   estimated_hours: number | null
+  /** author user-id — null on rows created before the column existed */
+  created_by: string | null
   /** optimistic-concurrency token: echo the integer exactly (§6.2) */
   version: number
   created_at: string
