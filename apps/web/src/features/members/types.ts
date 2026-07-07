@@ -15,4 +15,5 @@ export type Me = {
   email: string
   display_name: string
   is_active: boolean
+  is_admin: boolean
 }

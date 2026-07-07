@@ -95,6 +95,19 @@ async function mockApi(page: Page, opts: { conflictOnPatch?: boolean } = {}) {
   await page.route('**/api/v1/me/notifications', (route) =>
     route.fulfill({ json: { items: [], total: 0, unread: 0 } }),
   )
+  // The sidebar gates the admin link on /me (tests re-mocking /me win —
+  // they register after mockApi).
+  await page.route('**/api/v1/me', (route) =>
+    route.fulfill({
+      json: {
+        id: 'me-1',
+        email: 'dev@oneflow.local',
+        display_name: 'Dev User',
+        is_active: true,
+        is_admin: true,
+      },
+    }),
+  )
   // The settings notifications tab reads the caller's toggles.
   await page.route('**/api/v1/me/notification-settings', (route) =>
     route.fulfill({ json: { assigned: true, watched: true, commented: true } }),
@@ -2617,4 +2630,70 @@ test('알 수 없는 주소는 스타일된 404 페이지를 보여준다', asyn
   await expect(page.getByText('페이지를 찾을 수 없습니다')).toBeVisible()
   await page.getByRole('button', { name: '프로젝트 목록으로' }).click()
   await expect(page).toHaveURL(/\/projects$/)
+})
+
+test('관리자가 사용자 디렉터리에서 추가·비활성화를 수행한다', async ({ page }) => {
+  await mockApi(page)
+  const admin = {
+    id: 'me-1',
+    email: 'dev@oneflow.local',
+    display_name: 'Dev User',
+    is_active: true,
+    is_admin: true,
+    created_at: '2026-07-01T00:00:00Z',
+  }
+  const rookie = {
+    id: 'u-b',
+    email: 'b@corp.com',
+    display_name: '신입',
+    is_active: true,
+    is_admin: false,
+    created_at: '2026-07-02T00:00:00Z',
+  }
+  let directory = { items: [admin], total: 1 }
+  await page.route('**/api/v1/users', (route) => {
+    if (route.request().method() === 'POST') {
+      directory = { items: [admin, rookie], total: 2 }
+      return route.fulfill({ status: 201, json: rookie })
+    }
+    return route.fulfill({ json: directory })
+  })
+  await page.route('**/api/v1/users/u-b', (route) => {
+    const body = route.request().postDataJSON() as Record<string, unknown>
+    const updated = { ...rookie, ...body }
+    directory = { items: [admin, updated], total: 2 }
+    return route.fulfill({ json: updated })
+  })
+
+  await page.goto('/projects')
+  // The admin link is gated on /me.is_admin.
+  await page.getByRole('link', { name: '사용자 관리' }).click()
+  await expect(page.getByRole('heading', { name: '사용자 관리' })).toBeVisible()
+  await expect(page.getByText('dev@oneflow.local')).toBeVisible()
+
+  // The last ACTIVE admin can be neither deactivated nor demoted.
+  const adminRow = page.getByRole('row', { name: /Dev User/ })
+  await expect(adminRow.getByRole('button', { name: '비활성화' })).toBeDisabled()
+  await expect(adminRow.getByLabel('Dev User 관리자 권한')).toBeDisabled()
+
+  await page.getByRole('button', { name: '새 사용자' }).click()
+  await page.getByLabel('새 사용자 이메일').fill('b@corp.com')
+  await page.getByLabel('새 사용자 이름').fill('신입')
+  const post = page.waitForRequest(
+    (r) => r.method() === 'POST' && r.url().endsWith('/api/v1/users'),
+  )
+  await page.getByRole('button', { name: '추가', exact: true }).click()
+  const sent = (await post).postDataJSON() as { email: string; display_name: string }
+  expect(sent).toEqual({ email: 'b@corp.com', display_name: '신입' })
+  await expect(page.getByText('b@corp.com')).toBeVisible()
+
+  // Deactivating the rookie sends is_active=false and the row flips state.
+  const rookieRow = page.getByRole('row', { name: /신입/ })
+  const patch = page.waitForRequest(
+    (r) => r.method() === 'PATCH' && r.url().includes('/api/v1/users/u-b'),
+  )
+  await rookieRow.getByRole('button', { name: '비활성화' }).click()
+  expect(((await patch).postDataJSON() as { is_active: boolean }).is_active).toBe(false)
+  await expect(rookieRow.getByText('비활성')).toBeVisible()
+  await expect(rookieRow.getByRole('button', { name: '활성화' })).toBeVisible()
 })

@@ -30,9 +30,12 @@ async def get_current_user(
         await session.execute(select(User).where(User.email == DEV_USER_EMAIL))
     ).scalar_one_or_none()
     if user is None:
+        # The dev user bootstraps as workspace admin — dev mode is the only
+        # login that exists today; the production bootstrap (env-designated
+        # first admin) arrives with the real OIDC pass (PLAN v33).
         stmt = (
             pg_insert(User)
-            .values(email=DEV_USER_EMAIL, display_name=DEV_USER_NAME, is_active=True)
+            .values(email=DEV_USER_EMAIL, display_name=DEV_USER_NAME, is_active=True, is_admin=True)
             .on_conflict_do_nothing(index_elements=[User.email])
         )
         await session.execute(stmt)
@@ -40,4 +43,8 @@ async def get_current_user(
         user = (
             await session.execute(select(User).where(User.email == DEV_USER_EMAIL))
         ).scalar_one()
+    # Deactivation blocks authentication only — memberships, assignments, and
+    # authored history stay intact (lock semantics, PLAN v33).
+    if not user.is_active:
+        raise HTTPException(status_code=403, detail="account disabled")
     return user

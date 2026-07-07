@@ -1,4 +1,5 @@
 import {Activity, Boxes,
+  UsersRound,
   Compass,
   ClipboardList,
   CalendarClock,
@@ -19,6 +20,7 @@ import { NavLink, useParams } from 'react-router-dom'
 
 import { cn } from '@/lib/utils'
 import { useAuthConfig } from '@/features/auth/api'
+import { useMe } from '@/features/members/api'
 import { useProjects } from '@/features/projects/api'
 
 const navLinkClass = ({ isActive }: { isActive: boolean }) =>
@@ -31,6 +33,7 @@ export function Sidebar() {
   const { projectId } = useParams()
   const { data } = useProjects()
   const auth = useAuthConfig()
+  const me = useMe()
 
   return (
     <aside className="flex w-56 shrink-0 flex-col border-r border-of-border bg-of-surface">
@@ -61,6 +64,11 @@ export function Sidebar() {
           <NavLink to="/status" className={navLinkClass}>
             <Activity /> 시스템 상태
           </NavLink>
+          {me.data?.is_admin ? (
+            <NavLink to="/admin/users" className={navLinkClass}>
+              <UsersRound /> 사용자 관리
+            </NavLink>
+          ) : null}
         </div>
 
         {data?.items.map((p) => (

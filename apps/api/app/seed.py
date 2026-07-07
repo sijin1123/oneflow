@@ -131,8 +131,10 @@ async def seed_data(session: AsyncSession) -> bool:
             await session.execute(select(User).where(User.email == DEV_USER_EMAIL))
         ).scalar_one_or_none()
         if dev is None:
-            dev = User(email=DEV_USER_EMAIL, display_name="Dev User")
+            dev = User(email=DEV_USER_EMAIL, display_name="Dev User", is_admin=True)
             session.add(dev)
+        else:
+            dev.is_admin = True  # keep re-seeded dev DBs administrable (v33.1 R1-(2))
         mate = User(email="alex@oneflow.local", display_name="Alex Kim")
         session.add(mate)
         await session.flush()
