@@ -201,7 +201,7 @@ async def create_work_package(
     data = body.model_dump()
     # Rich-text description is sanitized at the write boundary (§ Tiptap XSS).
     data["description"] = sanitize_html(data["description"])
-    wp = WorkPackage(project_id=project_id, **data)
+    wp = WorkPackage(project_id=project_id, created_by=user.id, **data)
     session.add(wp)
     await session.flush()  # assigns wp.id for the activity FK
     record_created(session, wp.id, user.id)

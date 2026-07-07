@@ -353,7 +353,15 @@ function DrawerForm({ wp, projectId }: { wp: WorkPackage; projectId: string }) {
       <div className="flex items-center gap-2 border-t border-of-border pt-3 text-xs text-of-muted">
         <StatusChip status={wp.status} label={statusLabel(wp.status)} />
         <PriorityChip priority={wp.priority} />
-        <span className="ml-auto">v{wp.version}</span>
+        <span className="ml-auto">
+          {wp.created_by
+            ? `만든 사람: ${
+                members.data?.items.find((m) => m.user_id === wp.created_by)?.display_name ??
+                '알 수 없음'
+              } · `
+            : ''}
+          v{wp.version}
+        </span>
       </div>
 
       <AiSummarySection wpId={wp.id} />

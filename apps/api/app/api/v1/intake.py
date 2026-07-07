@@ -103,7 +103,12 @@ async def triage_intake(
 
     accepted_wp_id: uuid.UUID | None = None
     if body.status == "accepted":
-        wp = WorkPackage(project_id=project_id, subject=item.title, description=item.body)
+        wp = WorkPackage(
+            project_id=project_id,
+            subject=item.title,
+            description=item.body,
+            created_by=user.id,
+        )
         session.add(wp)
         await session.flush()  # id for the conditional UPDATE + activity FK
         record_created(session, wp.id, user.id)

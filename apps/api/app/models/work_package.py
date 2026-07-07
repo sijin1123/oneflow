@@ -112,6 +112,11 @@ class WorkPackage(Base):
     # Planned effort in hours (Phase 3 time tracking). Spent/remaining are derived
     # from time_entries, not stored.
     estimated_hours: Mapped[Decimal | None] = mapped_column(Numeric(6, 2), nullable=True)
+    # Author (Pass 12 PR-Z): recorded by every creation path from 0033 on;
+    # pre-0033 rows stay NULL (no reliable history to backfill).
+    created_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
     # Optimistic-concurrency token (v5.1): +1 on every successful write.
     version: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     created_at: Mapped[datetime] = mapped_column(

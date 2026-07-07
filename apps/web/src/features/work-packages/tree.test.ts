@@ -21,6 +21,7 @@ function wp(id: string, parent_id: string | null): WorkPackage {
     start_date: null,
     due_date: null,
     estimated_hours: null,
+    created_by: null,
     version: 0,
     created_at: '2026-01-01T00:00:00Z',
     updated_at: '2026-01-01T00:00:00Z',

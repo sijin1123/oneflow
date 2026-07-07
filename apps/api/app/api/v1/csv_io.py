@@ -262,7 +262,7 @@ async def import_work_packages_csv(
             # The server is the authoritative XSS boundary: sanitize rich-text HTML
             # on this write path too, exactly like the create/patch endpoints.
             data["description"] = sanitize_html(data["description"])
-            wp = WorkPackage(project_id=project_id, **data)
+            wp = WorkPackage(project_id=project_id, created_by=user.id, **data)
             session.add(wp)
             await session.flush()  # assign wp.id for the activity FK
             record_created(session, wp.id, user.id)
@@ -376,7 +376,7 @@ async def import_jira_csv(
         for model in valid_models:
             data = model.model_dump()
             data["description"] = sanitize_html(data["description"])
-            wp = WorkPackage(project_id=project_id, **data)
+            wp = WorkPackage(project_id=project_id, created_by=user.id, **data)
             session.add(wp)
             await session.flush()
             record_created(session, wp.id, user.id)
