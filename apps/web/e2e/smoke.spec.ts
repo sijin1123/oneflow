@@ -116,6 +116,10 @@ async function mockApi(page: Page, opts: { conflictOnPatch?: boolean } = {}) {
   await page.route('**/api/v1/projects/*/intake', (route) =>
     route.fulfill({ json: { items: [], total: 0 } }),
   )
+  // The initiatives page reads the workspace list.
+  await page.route('**/api/v1/initiatives', (route) =>
+    route.fulfill({ json: { items: [], total: 0 } }),
+  )
   // The drawer custom-fields section reads definitions + values.
   await page.route('**/api/v1/projects/*/custom-fields**', (route) =>
     route.fulfill({ json: { items: [], total: 0 } }),
@@ -944,6 +948,62 @@ test('보드에서 카드를 드래그해 옮기면 상태 PATCH가 간다', asy
   const sent = (await patchReq).postDataJSON() as { status: string; expected_version: number }
   expect(sent.status).toBe('in_progress')
   expect(sent.expected_version).toBe(wpA.version)
+})
+
+test('이니셔티브에서 프로젝트를 연결하면 POST가 간다', async ({ page }) => {
+  await mockApi(page)
+  const ini = {
+    id: 'ini-1',
+    name: '플랫폼 개편',
+    description: null,
+    owner_id: 'u-dev',
+    owner_name: 'Dev User',
+    state: 'in_progress',
+    start_date: null,
+    target_date: null,
+    is_mine: true,
+    connected_project_count: 1,
+    projects: [
+      {
+        project_id: project.id,
+        project_name: project.name,
+        work_package_count: 4,
+        done_work_package_count: 1,
+      },
+    ],
+    created_at: '2026-07-07T00:00:00Z',
+    updated_at: '2026-07-07T00:00:00Z',
+  }
+  await page.route('**/api/v1/initiatives', (route) =>
+    route.fulfill({ json: { items: [ini], total: 1 } }),
+  )
+  await page.route('**/api/v1/initiatives/ini-1/projects', (route) =>
+    route.fulfill({ json: ini }),
+  )
+  // A second (unconnected) project so the connect select has a candidate.
+  await page.route('**/api/v1/projects', (route) =>
+    route.fulfill({
+      json: {
+        items: [
+          project,
+          { ...project, id: 'p-2', key: 'TWO', name: '두번째 프로젝트' },
+        ],
+        total: 2,
+      },
+    }),
+  )
+
+  await page.goto('/initiatives')
+  const active = page.getByRole('region', { name: '진행 중' })
+  await expect(active.getByText('플랫폼 개편')).toBeVisible()
+  await expect(active.getByText('1/4 (25%)')).toBeVisible()
+
+  const post = page.waitForRequest(
+    (r) => r.method() === 'POST' && r.url().includes('/initiatives/ini-1/projects'),
+  )
+  await page.getByLabel('플랫폼 개편에 프로젝트 연결').selectOption('p-2')
+  const sent = (await post).postDataJSON() as { project_id: string }
+  expect(sent.project_id).toBe('p-2')
 })
 
 test('CSV 가져오기: dry-run 미리보기 후 실행하고 실패 행을 격리한다', async ({ page }) => {
