@@ -1006,6 +1006,29 @@ export interface paths {
         patch: operations["update_module_api_v1_projects__project_id__modules__module_id__patch"];
         trace?: never;
     };
+    "/api/v1/projects/{project_id}/relations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Project Relations
+         * @description Every relation in the project (member read) — the timeline draws
+         *     dependency connectors from this. Deterministic order, limit+1 truncation
+         *     probe (v20.1 R1-① — relations are few per WP; a hard 1000 cap bounds the
+         *     payload, revisit with pagination if projects outgrow it).
+         */
+        get: operations["list_project_relations_api_v1_projects__project_id__relations_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{project_id}/saved-filters": {
         parameters: {
             query?: never;
@@ -3204,6 +3227,39 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
+        };
+        /** ProjectRelationList */
+        ProjectRelationList: {
+            /** Items */
+            items: components["schemas"]["ProjectRelationRead"][];
+            /** Total */
+            total: number;
+            /** Truncated */
+            truncated: boolean;
+        };
+        /**
+         * ProjectRelationRead
+         * @description Project-wide relation row — absolute source/target (no caller-relative
+         *     direction). Feeds the timeline dependency connectors (Pass 20).
+         */
+        ProjectRelationRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Relation Type */
+            relation_type: string;
+            /**
+             * Source Id
+             * Format: uuid
+             */
+            source_id: string;
+            /**
+             * Target Id
+             * Format: uuid
+             */
+            target_id: string;
         };
         /** ProjectStatusList */
         ProjectStatusList: {
@@ -6362,6 +6418,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ModuleRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_project_relations_api_v1_projects__project_id__relations_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectRelationList"];
                 };
             };
             /** @description Validation Error */

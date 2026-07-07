@@ -285,6 +285,19 @@ export function useBulkUpdate(projectId: string) {
   })
 }
 
+export type ProjectRelationList = {
+  items: { id: string; source_id: string; target_id: string; relation_type: string }[]
+  total: number
+  truncated: boolean
+}
+
+export function useProjectRelations(projectId: string) {
+  return useQuery({
+    queryKey: ['project-relations', projectId],
+    queryFn: () => api<ProjectRelationList>(`/api/v1/projects/${projectId}/relations`),
+  })
+}
+
 export function useToggleReaction(wpId: string) {
   const queryClient = useQueryClient()
   return useMutation({

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
-import { buildTimeline, dayIndex, monthLabel } from './timeline.ts'
+import { buildConnectors, buildTimeline, dayIndex, monthLabel } from './timeline.ts'
 import type { WorkPackage } from './types.ts'
 
 function wp(id: string, start: string | null, due: string | null): WorkPackage {
@@ -72,4 +72,29 @@ test('buildTimeline widens the range to include extra days (milestones/today)', 
 
 test('monthLabel formats a UTC day index', () => {
   assert.equal(monthLabel(dayIndex('2026-07-01')!), '2026.07')
+})
+
+test('buildConnectors normalizes follows, dedupes pairs, counts missing schedules', () => {
+  const model = buildTimeline([
+    wp('a', '2026-07-01', '2026-07-03'),
+    wp('b', '2026-07-05', '2026-07-08'),
+    wp('c', null, null), // undated → not a bar
+  ])
+  if (!model) throw new Error('model expected')
+  const { connectors, omittedMissingSchedule } = buildConnectors(model.bars, [
+    { id: 'r1', source_id: 'a', target_id: 'b', relation_type: 'precedes' },
+    // duplicate pair with blocks → blocks wins, still ONE connector
+    { id: 'r2', source_id: 'a', target_id: 'b', relation_type: 'blocks' },
+    // follows normalizes: b follows a == a precedes b — same pair, deduped too
+    { id: 'r3', source_id: 'b', target_id: 'a', relation_type: 'follows' },
+    // relates is not a dependency: never drawn, never counted
+    { id: 'r4', source_id: 'a', target_id: 'b', relation_type: 'relates' },
+    // an undated endpoint → omitted with a reason count
+    { id: 'r5', source_id: 'a', target_id: 'c', relation_type: 'blocks' },
+  ])
+  assert.equal(connectors.length, 1)
+  assert.equal(connectors[0].type, 'blocks')
+  assert.equal(connectors[0].fromRow, 0)
+  assert.equal(connectors[0].toRow, 1)
+  assert.equal(omittedMissingSchedule, 1)
 })

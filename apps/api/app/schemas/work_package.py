@@ -263,6 +263,24 @@ class RelationList(BaseModel):
     total: int
 
 
+class ProjectRelationRead(BaseModel):
+    """Project-wide relation row — absolute source/target (no caller-relative
+    direction). Feeds the timeline dependency connectors (Pass 20)."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    source_id: uuid.UUID
+    target_id: uuid.UUID
+    relation_type: str
+
+
+class ProjectRelationList(BaseModel):
+    items: list[ProjectRelationRead]
+    total: int
+    truncated: bool
+
+
 class ConflictResponse(BaseModel):
     """409 body for PATCH optimistic-concurrency conflicts (§6.1 single contract)."""
 
