@@ -266,6 +266,14 @@ test('보드 뷰가 상태 컬럼으로 그려진다', async ({ page }) => {
   await expect(page.getByLabel('할 일 컬럼')).toBeVisible()
   await expect(page.getByLabel('진행 중 컬럼')).toBeVisible()
   await page.screenshot({ path: '../../docs/screenshots/web-board.png', fullPage: true })
+
+  // swimlanes: priority grouping splits rows; lanes carry their own columns
+  await page.getByLabel('스윔레인 기준').selectOption('priority')
+  await expect(page.getByTestId('board-lane')).toHaveCount(2) // high + medium (wpA/wpB)
+  await expect(page.getByText('높음 (1)')).toBeVisible()
+  await expect(page.getByLabel('높음 할 일 컬럼')).toBeVisible()
+  await page.getByLabel('스윔레인 기준').selectOption('none')
+  await expect(page.getByTestId('board-lane')).toHaveCount(1)
 })
 
 test('드로어에서 상태 변경 PATCH가 expected_version을 동봉한다', async ({ page }) => {

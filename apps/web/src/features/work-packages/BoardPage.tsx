@@ -2,11 +2,14 @@ import { useState } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
 
 import { EmptyState, ErrorState, ListSkeleton } from '@/components/shell/states'
+import { Select } from '@/components/ui/select'
+import { useMemberNames } from '@/features/members/api'
 import { useProjectStatuses } from '@/features/project-statuses/api'
 
 import { DetailDrawer } from './DetailDrawer'
 import { PriorityChip, TypeChip } from './chips'
 import { usePatchWorkPackage, useWorkPackages } from './api'
+import { buildLanes, type LaneBy } from './lanes'
 import { useTypeLabels } from './useTypeLabels'
 import { STATUS_LABELS, WP_STATUSES, type WorkPackage, type WpStatus } from './types'
 
@@ -22,6 +25,8 @@ export function BoardPage() {
   const statuses = useProjectStatuses(projectId)
   const patch = usePatchWorkPackage(projectId)
   const typeLabel = useTypeLabels(projectId)
+  const memberName = useMemberNames(projectId)
+  const [laneBy, setLaneBy] = useState<LaneBy>('none')
 
   // wp.id → optimistic target status while its PATCH is in flight.
   const [pendingMoves, setPendingMoves] = useState<Map<string, string>>(new Map())
@@ -43,13 +48,9 @@ export function BoardPage() {
   if (data.total === 0)
     return <EmptyState title="작업이 없습니다" hint="목록 화면에서 새 작업을 만들어 보세요." />
 
-  const byStatus = new Map<string, WorkPackage[]>()
-  for (const wp of data.items) {
-    const effective = pendingMoves.get(wp.id) ?? wp.status
-    const bucket = byStatus.get(effective) ?? []
-    bucket.push(wp)
-    byStatus.set(effective, bucket)
-  }
+  const lanes = buildLanes(data.items, laneBy, memberName)
+
+  const effectiveStatus = (wp: WorkPackage) => pendingMoves.get(wp.id) ?? wp.status
 
   const openDrawer = (id: string) => {
     setSearchParams((prev) => {
@@ -84,26 +85,53 @@ export function BoardPage() {
 
   return (
     <div className="h-full overflow-x-auto p-4">
-      {moveError ? (
-        <p role="alert" aria-live="polite" className="mb-2 text-xs text-of-danger">
-          {moveError}
+      <div className="mb-2 flex items-center gap-2">
+        <Select
+          aria-label="스윔레인 기준"
+          className="h-7 w-32 text-xs"
+          value={laneBy}
+          onChange={(e) => setLaneBy(e.target.value as LaneBy)}
+        >
+          <option value="none">스윔레인 없음</option>
+          <option value="assignee">담당자별</option>
+          <option value="priority">우선순위별</option>
+        </Select>
+        {moveError ? (
+          <p role="alert" aria-live="polite" className="text-xs text-of-danger">
+            {moveError}
+          </p>
+        ) : null}
+      </div>
+      {lanes.map((lane) => {
+        const byStatus = new Map<string, WorkPackage[]>()
+        for (const wp of lane.items) {
+          const bucket = byStatus.get(effectiveStatus(wp)) ?? []
+          bucket.push(wp)
+          byStatus.set(effectiveStatus(wp), bucket)
+        }
+        return (
+      <div key={lane.key} className="mb-4" data-testid="board-lane">
+      {lane.label ? (
+        <p className="mb-1.5 text-xs font-semibold text-of-muted">
+          {lane.label} <span className="font-normal">({lane.items.length})</span>
         </p>
       ) : null}
-      <div className="flex h-full min-w-max gap-3">
+      <div className="flex min-w-max gap-3">
         {columns.map((column) => {
           const items = byStatus.get(column.key) ?? []
+          const targetKey = `${lane.key}:${column.key}`
           return (
             <section
               key={column.key}
-              aria-label={`${column.label} 컬럼`}
+              aria-label={`${lane.label ? `${lane.label} ` : ''}${column.label} 컬럼`}
               onDragOver={(e) => {
                 e.preventDefault()
-                setDropTarget(column.key)
+                setDropTarget(targetKey)
               }}
-              onDragLeave={() => setDropTarget((t) => (t === column.key ? null : t))}
+              onDragLeave={() => setDropTarget((t) => (t === targetKey ? null : t))}
               onDrop={(e) => drop(column.key, e)}
-              className={`flex h-full w-64 shrink-0 flex-col rounded-of border bg-of-surface-2/50 ${
-                dropTarget === column.key ? 'border-of-accent' : 'border-of-border'
+              className={`flex max-h-full w-64 shrink-0 flex-col rounded-of border bg-of-surface-2/50 ${
+                dropTarget === targetKey ? 'border-of-accent' : 'border-of-border'
               }`}
             >
               <header className="flex items-center justify-between px-3 py-2 text-xs font-medium">
@@ -140,6 +168,9 @@ export function BoardPage() {
           )
         })}
       </div>
+      </div>
+        )
+      })}
       <DetailDrawer projectId={projectId} />
     </div>
   )
