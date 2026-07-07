@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useCreateMilestone, useDeleteMilestone, useMilestones } from '@/features/milestones/api'
+import { confirmDestructive } from '@/lib/guards'
 
 export function MilestonesPanel({
   projectId,
@@ -38,13 +39,41 @@ export function MilestonesPanel({
               className="flex items-center gap-2 rounded-of border border-of-border px-2 py-1.5 text-xs"
             >
               <span className="min-w-0 flex-1 truncate font-medium">{m.name}</span>
+              {(m.work_package_count ?? 0) > 0 ? (
+                <span className="flex shrink-0 items-center gap-1.5">
+                  <span
+                    role="progressbar"
+                    aria-label={`${m.name} 진행률`}
+                    aria-valuenow={m.done_work_package_count ?? 0}
+                    aria-valuemax={m.work_package_count ?? 0}
+                    className="h-1.5 w-16 overflow-hidden rounded-full bg-of-surface-2"
+                  >
+                    <span
+                      className="block h-full rounded-full bg-of-accent"
+                      style={{
+                        width: `${Math.round(((m.done_work_package_count ?? 0) / (m.work_package_count ?? 1)) * 100)}%`,
+                      }}
+                    />
+                  </span>
+                  <span className="text-[11px] text-of-muted">
+                    {m.done_work_package_count ?? 0}/{m.work_package_count ?? 0}
+                  </span>
+                </span>
+              ) : null}
               <span className="shrink-0 text-of-muted">{m.due_date ?? '기한 없음'}</span>
               {isOwner ? (
                 <button
                   type="button"
                   aria-label={`${m.name} 삭제`}
                   className="shrink-0 rounded-of p-1 text-of-muted hover:bg-of-surface-2 hover:text-of-danger"
-                  onClick={() => deleteMilestone.mutate(m.id)}
+                  onClick={() => {
+                    if (
+                      confirmDestructive(
+                        `'${m.name}' 마일스톤을 삭제할까요?\n연결된 작업 ${m.work_package_count ?? 0}건은 삭제되지 않고 배정만 해제됩니다.`,
+                      )
+                    )
+                      deleteMilestone.mutate(m.id)
+                  }}
                 >
                   <Trash2 size={13} />
                 </button>
