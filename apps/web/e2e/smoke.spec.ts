@@ -2496,7 +2496,7 @@ test('시스템 상태 페이지가 버전과 구성 카드를 보여준다', as
     }),
   )
   await page.goto('/status')
-  await expect(page.getByText('시스템 상태')).toBeVisible()
+  await expect(page.getByRole('heading', { name: '시스템 상태' })).toBeVisible()
   await expect(page.getByText('0.1.0')).toBeVisible()
   await expect(page.getByText('0039')).toBeVisible()
   await expect(page.getByText('42')).toBeVisible()
