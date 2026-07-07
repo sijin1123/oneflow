@@ -135,3 +135,26 @@ async def test_disabled_type_rows_isolated(client, project):
     assert body["valid"] == 3
     assert body["invalid"] == 1
     assert any("disabled" in e["message"] for e in body["errors"])
+
+
+async def test_concurrent_identical_imports_create_once(client, project):
+    """Pass 42 PR-BH: the per-project import lock (427008) serializes the
+    read-then-write duplicate guard — two concurrent uploads of the SAME file
+    converge on one set of rows; the loser's rows all skip as duplicates."""
+    import asyncio
+
+    pid = project["id"]
+    r1, r2 = await asyncio.gather(
+        import_jira(client, pid, JIRA_CSV), import_jira(client, pid, JIRA_CSV)
+    )
+    assert r1.status_code == 200 and r2.status_code == 200
+    created = r1.json()["inserted"] + r2.json()["inserted"]
+    assert created == 4  # exactly one file's worth — no duplicates
+
+    listed = (await client.get(f"/api/v1/projects/{pid}/work-packages")).json()
+    assert listed["total"] == 4
+
+    # Dry-run takes no lock and never writes — safe alongside anything.
+    dry = await import_jira(client, pid, JIRA_CSV, dry_run=True)
+    assert dry.json()["inserted"] == 0
+    assert (await client.get(f"/api/v1/projects/{pid}/work-packages")).json()["total"] == 4

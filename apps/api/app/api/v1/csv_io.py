@@ -15,7 +15,7 @@ from decimal import Decimal, InvalidOperation
 
 from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import ValidationError
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import get_current_user
@@ -37,6 +37,10 @@ from app.services.importers import JiraMapResult, map_jira_csv, map_linear_csv
 from app.services.sanitize import sanitize_html
 
 router = APIRouter()
+
+# Advisory-lock classid serializing import WRITES per project (Pass 42 PR-BH;
+# 427003 belongs to project_types).
+IMPORT_LOCK_CLASSID = 427008
 
 # Excel/LibreOffice read a leading U+FEFF as a BOM and open UTF-8 correctly; without
 # it, Korean text opens mojibake'd on Windows Excel (the tool a real migration uses).
@@ -257,6 +261,13 @@ async def import_work_packages_csv(
 
     inserted = 0
     if not body.dry_run and valid_models:
+        # Same per-project import serialization as the adapter pipeline
+        # (Pass 42 PR-BH) — cheap, and keeps every import write path uniform.
+        await session.execute(
+            text("SELECT pg_advisory_xact_lock(:classid, hashtext(:pid))").bindparams(
+                classid=IMPORT_LOCK_CLASSID, pid=str(project_id)
+            )
+        )
         for model in valid_models:
             data = model.model_dump()
             # The server is the authoritative XSS boundary: sanitize rich-text HTML
@@ -306,6 +317,18 @@ async def _run_mapped_import(
     if len(mapped.rows) > MAX_IMPORT_ROWS:
         raise HTTPException(
             status_code=422, detail=f"import exceeds the {MAX_IMPORT_ROWS}-row limit"
+        )
+
+    # Serialize imports per project (Pass 42 PR-BH): the duplicate guard is
+    # read-then-write — without the lock, two concurrent uploads of the same
+    # file both pass the SELECT and insert duplicates. Blocking (not 409):
+    # the later request proceeds after the first commits and skips its rows
+    # as duplicates. Dry-run is read-only and takes no lock.
+    if not dry_run:
+        await session.execute(
+            text("SELECT pg_advisory_xact_lock(:classid, hashtext(:pid))").bindparams(
+                classid=IMPORT_LOCK_CLASSID, pid=str(project_id)
+            )
         )
 
     # Duplicate guard (idempotent re-upload): one query for existing subjects,
