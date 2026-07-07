@@ -22,11 +22,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.auth import get_current_user
 from app.core.authz import is_member, require_active_project, require_member
 from app.db.session import get_session
-from app.models.document import MAX_DOCUMENT_DEPTH, ProjectDocument
+from app.models.document import MAX_DOCUMENT_DEPTH, DocumentWorkPackageLink, ProjectDocument
 from app.models.user import User
+from app.models.work_package import WorkPackage
 from app.schemas.document import (
     DocumentConflict,
     DocumentCreate,
+    DocumentLinkCreate,
+    DocumentLinkList,
+    DocumentLinkRead,
     DocumentList,
     DocumentListItem,
     DocumentRead,
@@ -277,6 +281,134 @@ async def delete_document(
     await session.delete(doc)
     await session.commit()
     return Response(status_code=204)
+
+
+@router.get("/documents/{doc_id}/work-package-links", response_model=DocumentLinkList)
+async def list_document_links(
+    doc_id: uuid.UUID,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+) -> DocumentLinkList:
+    doc = await _get_doc_scoped(session, doc_id, user)
+    rows = (
+        (
+            await session.execute(
+                select(DocumentWorkPackageLink)
+                .where(
+                    DocumentWorkPackageLink.document_id == doc.id,
+                    DocumentWorkPackageLink.project_id == doc.project_id,
+                )
+                .order_by(
+                    DocumentWorkPackageLink.created_at.asc(), DocumentWorkPackageLink.id.asc()
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return DocumentLinkList(
+        items=[DocumentLinkRead.model_validate(r) for r in rows], total=len(rows)
+    )
+
+
+@router.post(
+    "/documents/{doc_id}/work-package-links", response_model=DocumentLinkRead, status_code=201
+)
+async def create_document_link(
+    doc_id: uuid.UUID,
+    body: DocumentLinkCreate,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+) -> DocumentLinkRead:
+    doc = await _get_doc_scoped(session, doc_id, user, write=True)
+    # Same-project pre-validation: a WP outside the document's project reads as
+    # 404 (existence hiding — the caller may not even be a member there). The
+    # composite FK stays as the last line of defense.
+    wp = (
+        await session.execute(
+            select(WorkPackage.id).where(
+                WorkPackage.id == body.work_package_id,
+                WorkPackage.project_id == doc.project_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if wp is None:
+        raise HTTPException(status_code=404, detail="not found")
+    exists = (
+        await session.execute(
+            select(DocumentWorkPackageLink.id).where(
+                DocumentWorkPackageLink.document_id == doc.id,
+                DocumentWorkPackageLink.work_package_id == body.work_package_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if exists is not None:
+        raise HTTPException(status_code=409, detail="link already exists")
+    link = DocumentWorkPackageLink(
+        project_id=doc.project_id, document_id=doc.id, work_package_id=body.work_package_id
+    )
+    session.add(link)
+    await session.flush()
+    await session.commit()
+    return DocumentLinkRead.model_validate(link)
+
+
+@router.delete("/documents/{doc_id}/work-package-links/{link_id}", status_code=204)
+async def delete_document_link(
+    doc_id: uuid.UUID,
+    link_id: uuid.UUID,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+) -> Response:
+    doc = await _get_doc_scoped(session, doc_id, user, write=True)
+    # Fully scoped delete (R1-①): a link id from another document or project
+    # never matches — 404, not a cross-scope delete.
+    link = (
+        await session.execute(
+            select(DocumentWorkPackageLink).where(
+                DocumentWorkPackageLink.id == link_id,
+                DocumentWorkPackageLink.document_id == doc.id,
+                DocumentWorkPackageLink.project_id == doc.project_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if link is None:
+        raise HTTPException(status_code=404, detail="not found")
+    await session.delete(link)
+    await session.commit()
+    return Response(status_code=204)
+
+
+@router.get("/work-packages/{wp_id}/documents", response_model=DocumentList)
+async def list_work_package_documents(
+    wp_id: uuid.UUID,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+) -> DocumentList:
+    wp = (
+        await session.execute(select(WorkPackage).where(WorkPackage.id == wp_id))
+    ).scalar_one_or_none()
+    if wp is None or not await is_member(session, wp.project_id, user.id):
+        raise HTTPException(status_code=404, detail="not found")
+    rows = (
+        (
+            await session.execute(
+                select(ProjectDocument)
+                .join(
+                    DocumentWorkPackageLink,
+                    DocumentWorkPackageLink.document_id == ProjectDocument.id,
+                )
+                .where(
+                    DocumentWorkPackageLink.work_package_id == wp_id,
+                    DocumentWorkPackageLink.project_id == wp.project_id,
+                )
+                .order_by(ProjectDocument.title.asc(), ProjectDocument.id.asc())
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return DocumentList(items=[DocumentListItem.model_validate(r) for r in rows], total=len(rows))
 
 
 async def _reselect(session: AsyncSession, doc_id: uuid.UUID) -> ProjectDocument | None:

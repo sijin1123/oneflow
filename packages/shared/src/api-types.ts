@@ -142,6 +142,41 @@ export interface paths {
         patch: operations["update_document_api_v1_documents__doc_id__patch"];
         trace?: never;
     };
+    "/api/v1/documents/{doc_id}/work-package-links": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Document Links */
+        get: operations["list_document_links_api_v1_documents__doc_id__work_package_links_get"];
+        put?: never;
+        /** Create Document Link */
+        post: operations["create_document_link_api_v1_documents__doc_id__work_package_links_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/documents/{doc_id}/work-package-links/{link_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Document Link */
+        delete: operations["delete_document_link_api_v1_documents__doc_id__work_package_links__link_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/health": {
         parameters: {
             query?: never;
@@ -1261,6 +1296,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/work-packages/{wp_id}/documents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Work Package Documents */
+        get: operations["list_work_package_documents_api_v1_work_packages__wp_id__documents_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/work-packages/{wp_id}/relations": {
         parameters: {
             query?: never;
@@ -1989,6 +2041,49 @@ export interface components {
             parent_id?: string | null;
             /** Title */
             title: string;
+        };
+        /** DocumentLinkCreate */
+        DocumentLinkCreate: {
+            /**
+             * Work Package Id
+             * Format: uuid
+             */
+            work_package_id: string;
+        };
+        /** DocumentLinkList */
+        DocumentLinkList: {
+            /** Items */
+            items: components["schemas"]["DocumentLinkRead"][];
+            /** Total */
+            total: number;
+        };
+        /** DocumentLinkRead */
+        DocumentLinkRead: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Document Id
+             * Format: uuid
+             */
+            document_id: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            /**
+             * Work Package Id
+             * Format: uuid
+             */
+            work_package_id: string;
         };
         /** DocumentList */
         DocumentList: {
@@ -3537,6 +3632,102 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["DocumentConflict"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_document_links_api_v1_documents__doc_id__work_package_links_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                doc_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentLinkList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_document_link_api_v1_documents__doc_id__work_package_links_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                doc_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DocumentLinkCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentLinkRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_document_link_api_v1_documents__doc_id__work_package_links__link_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                doc_id: string;
+                link_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -6411,6 +6602,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CustomValueList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_work_package_documents_api_v1_work_packages__wp_id__documents_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                wp_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentList"];
                 };
             };
             /** @description Validation Error */

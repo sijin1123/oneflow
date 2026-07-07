@@ -61,3 +61,37 @@ class ProjectDocument(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
     )
+
+
+class DocumentWorkPackageLink(Base):
+    """Page ↔ work-package association (expansion Pass 9 PR-V).
+
+    An association fact, not an owned resource — both sides CASCADE. Composite
+    same-project FKs make a cross-project link unrepresentable (relations
+    pattern). The wp-leading index serves the reverse drawer lookup."""
+
+    __tablename__ = "document_work_package_links"
+    __table_args__ = (
+        UniqueConstraint("document_id", "work_package_id", name="uq_document_wp_links_doc_wp"),
+        ForeignKeyConstraint(
+            ["document_id", "project_id"],
+            ["project_documents.id", "project_documents.project_id"],
+            name="fk_document_wp_links_document_same_project",
+            ondelete="CASCADE",
+        ),
+        ForeignKeyConstraint(
+            ["work_package_id", "project_id"],
+            ["work_packages.id", "work_packages.project_id"],
+            name="fk_document_wp_links_wp_same_project",
+            ondelete="CASCADE",
+        ),
+        Index("ix_document_wp_links_wp", "work_package_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    project_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    document_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    work_package_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )

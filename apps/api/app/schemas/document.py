@@ -99,3 +99,22 @@ class DocumentList(BaseModel):
 class DocumentConflict(BaseModel):
     detail: str
     current: DocumentRead
+
+
+class DocumentLinkCreate(BaseModel):
+    work_package_id: uuid.UUID
+
+
+class DocumentLinkRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    project_id: uuid.UUID
+    document_id: uuid.UUID
+    work_package_id: uuid.UUID
+    created_at: datetime
+
+
+class DocumentLinkList(BaseModel):
+    items: list[DocumentLinkRead]
+    total: int

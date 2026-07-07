@@ -16,6 +16,7 @@ import {
   useDocuments,
   useUpdateDocument,
 } from './api'
+import { LinkedWorkPackagesSection } from './LinkedWorkPackagesSection'
 import { subtreeIds } from './tree'
 
 const RichTextEditor = lazy(() =>
@@ -154,6 +155,8 @@ export function DocumentEditorPage() {
       </Suspense>
 
       <p className="mt-2 text-right text-[11px] text-of-muted">v{doc.version}</p>
+
+      <LinkedWorkPackagesSection docId={doc.id} projectId={projectId} />
     </div>
   )
 }
