@@ -19,6 +19,7 @@ from dataclasses import dataclass
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.authz import is_member
 from app.models.automation_rule import AutomationRule, AutomationRuleRun
 
 
@@ -27,7 +28,9 @@ class AutomationCandidate:
     rule_id: uuid.UUID
     rule_name: str
     field: str
-    value: str
+    # str for vocabulary fields (priority), uuid.UUID for assignee — typed so
+    # the caller's setdefault feeds the UPDATE the right bind type.
+    value: object
 
 
 async def status_change_candidates(
@@ -58,12 +61,26 @@ async def status_change_candidates(
     )
     candidates: dict[str, AutomationCandidate] = {}
     for rule in rules:
+        # Every action writes a field OTHER than status, so a rule can never
+        # re-trigger itself or another status rule.
         if rule.action_type == "set_priority":
-            # Trigger watches status, action writes priority — never the same
-            # field, so this can't re-trigger the same or another status rule.
             candidates["priority"] = AutomationCandidate(
                 rule_id=rule.id, rule_name=rule.name, field="priority", value=rule.action_value
             )
+        elif rule.action_type == "set_assignee":
+            candidates["assignee_id"] = AutomationCandidate(
+                rule_id=rule.id,
+                rule_name=rule.name,
+                field="assignee_id",
+                value=uuid.UUID(rule.action_value),
+            )
+    # Fire-time recheck (v16.1 R1-④): the WINNING assignee must still be a
+    # member — the same predicate the ordinary assignee fan-in uses. A stale
+    # rule (member left after the rule was saved) skips the FIELD, silently:
+    # no apply, no run, no fired (never assign an ex-member).
+    winner = candidates.get("assignee_id")
+    if winner is not None and not await is_member(session, project_id, winner.value):
+        del candidates["assignee_id"]
     return candidates
 
 

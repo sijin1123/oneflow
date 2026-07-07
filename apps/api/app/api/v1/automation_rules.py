@@ -12,7 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import get_current_user
-from app.core.authz import require_member, require_role
+from app.core.authz import is_member, require_member, require_role
 from app.db.session import get_session
 from app.models.automation_rule import AutomationRule, AutomationRuleRun
 from app.models.user import User
@@ -41,6 +41,17 @@ async def _get_owned_rule(
     if row is None:
         raise HTTPException(status_code=404, detail="not found")
     return row
+
+
+async def _require_assignee_value_member(
+    session: AsyncSession, project_id: uuid.UUID, body_like: AutomationRuleCreate
+) -> None:
+    """set_assignee's value must be a CURRENT project member (v16.1 R1-④ — the
+    same membership predicate the ordinary assignee fan-in uses)."""
+    if body_like.action_type != "set_assignee":
+        return
+    if not await is_member(session, project_id, uuid.UUID(body_like.action_value)):
+        raise HTTPException(status_code=422, detail="action_value must be a project member")
 
 
 @router.get("/projects/{project_id}/automation-rules", response_model=AutomationRuleList)
@@ -105,6 +116,7 @@ async def create_automation_rule(
     user: User = Depends(get_current_user),
 ) -> AutomationRuleRead:
     await require_role(session, project_id, user, {"owner"}, write=True)
+    await _require_assignee_value_member(session, project_id, body)
     rule = AutomationRule(
         project_id=project_id,
         name=body.name,
@@ -145,9 +157,10 @@ async def update_automation_rule(
         **provided,
     }
     try:
-        AutomationRuleCreate(**merged)
+        merged_rule = AutomationRuleCreate(**merged)
     except ValidationError as exc:
         raise HTTPException(status_code=422, detail=exc.errors()[0]["msg"]) from exc
+    await _require_assignee_value_member(session, project_id, merged_rule)
     for key, value in provided.items():
         setattr(rule, key, value)
     await session.commit()

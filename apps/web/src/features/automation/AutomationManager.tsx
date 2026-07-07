@@ -13,8 +13,11 @@ import {
 import { useStatusLabels } from '@/features/work-packages/useStatusLabels'
 import { formatDateTime } from '@/lib/datetime'
 
+import { useMembers } from '@/features/members/api'
+
 import {
   type AutomationRule,
+  useAutomationRuleRuns,
   useAutomationRules,
   useCreateAutomationRule,
   useDeleteAutomationRule,
@@ -29,22 +32,36 @@ export function AutomationManager({ projectId, isOwner }: { projectId: string; i
   const setActive = useSetAutomationRuleActive(projectId)
   const del = useDeleteAutomationRule(projectId)
   const statusLabel = useStatusLabels(projectId)
+  const members = useMembers(projectId)
+  const runs = useAutomationRuleRuns(projectId)
+
+  const memberName = (id: string | null) =>
+    members.data?.items.find((m) => m.user_id === id)?.display_name ?? '알 수 없음'
 
   const ruleText = (rule: AutomationRule): string => {
     const status = statusLabel(rule.trigger_value)
+    if (rule.action_type === 'set_assignee') {
+      return `상태가 '${status}'(으)로 바뀌면 → 담당자를 '${memberName(rule.action_value)}'(으)로 지정`
+    }
     const priority = PRIORITY_LABELS[rule.action_value as WpPriority] ?? rule.action_value
     return `상태가 '${status}'(으)로 바뀌면 → 우선순위를 '${priority}'(으)로 설정`
   }
 
   const [triggerValue, setTriggerValue] = useState<WpStatus>('in_review')
-  const [actionValue, setActionValue] = useState<WpPriority>('high')
+  const [actionType, setActionType] = useState<'set_priority' | 'set_assignee'>('set_priority')
+  const [actionValue, setActionValue] = useState<string>('high')
 
   const add = () => {
+    if (!actionValue) return
+    const target =
+      actionType === 'set_priority'
+        ? PRIORITY_LABELS[actionValue as WpPriority]
+        : memberName(actionValue)
     create.mutate({
-      name: `${statusLabel(triggerValue)} → ${PRIORITY_LABELS[actionValue]}`,
+      name: `${statusLabel(triggerValue)} → ${target}`,
       trigger_type: 'status_changed_to',
       trigger_value: triggerValue,
-      action_type: 'set_priority',
+      action_type: actionType,
       action_value: actionValue,
       is_active: true,
     })
@@ -86,18 +103,37 @@ export function AutomationManager({ projectId, isOwner }: { projectId: string; i
                       </option>
                     ))}
                   </Select>
-                  <Select
-                    aria-label={`${rule.name} 우선순위 값`}
-                    className="h-6 w-20 shrink-0 text-[11px]"
-                    value={rule.action_value}
-                    onChange={(e) => setActive.mutate({ id: rule.id, action_value: e.target.value })}
-                  >
-                    {WP_PRIORITIES.map((p) => (
-                      <option key={p} value={p}>
-                        {PRIORITY_LABELS[p]}
-                      </option>
-                    ))}
-                  </Select>
+                  {rule.action_type === 'set_priority' ? (
+                    <Select
+                      aria-label={`${rule.name} 우선순위 값`}
+                      className="h-6 w-20 shrink-0 text-[11px]"
+                      value={rule.action_value}
+                      onChange={(e) =>
+                        setActive.mutate({ id: rule.id, action_value: e.target.value })
+                      }
+                    >
+                      {WP_PRIORITIES.map((p) => (
+                        <option key={p} value={p}>
+                          {PRIORITY_LABELS[p]}
+                        </option>
+                      ))}
+                    </Select>
+                  ) : (
+                    <Select
+                      aria-label={`${rule.name} 담당자 값`}
+                      className="h-6 w-28 shrink-0 text-[11px]"
+                      value={rule.action_value}
+                      onChange={(e) =>
+                        setActive.mutate({ id: rule.id, action_value: e.target.value })
+                      }
+                    >
+                      {(members.data?.items ?? []).map((m) => (
+                        <option key={m.user_id} value={m.user_id}>
+                          {m.display_name}
+                        </option>
+                      ))}
+                    </Select>
+                  )}
                 </>
               ) : null}
               {isOwner ? (
@@ -149,24 +185,78 @@ export function AutomationManager({ projectId, isOwner }: { projectId: string; i
               </option>
             ))}
           </Select>
-          <span className="text-xs text-of-muted">→ 우선순위</span>
+          <span className="text-xs text-of-muted">→</span>
           <Select
-            aria-label="설정 우선순위"
-            className="h-7 w-24 text-xs"
-            value={actionValue}
-            onChange={(e) => setActionValue(e.target.value as WpPriority)}
+            aria-label="액션 종류"
+            className="h-7 w-28 text-xs"
+            value={actionType}
+            onChange={(e) => {
+              const next = e.target.value as 'set_priority' | 'set_assignee'
+              setActionType(next)
+              setActionValue(next === 'set_priority' ? 'high' : '')
+            }}
           >
-            {WP_PRIORITIES.map((p) => (
-              <option key={p} value={p}>
-                {PRIORITY_LABELS[p]}
-              </option>
-            ))}
+            <option value="set_priority">우선순위 설정</option>
+            <option value="set_assignee">담당자 지정</option>
           </Select>
+          {actionType === 'set_priority' ? (
+            <Select
+              aria-label="설정 우선순위"
+              className="h-7 w-24 text-xs"
+              value={actionValue}
+              onChange={(e) => setActionValue(e.target.value)}
+            >
+              {WP_PRIORITIES.map((p) => (
+                <option key={p} value={p}>
+                  {PRIORITY_LABELS[p]}
+                </option>
+              ))}
+            </Select>
+          ) : (
+            <Select
+              aria-label="지정할 담당자"
+              className="h-7 w-32 text-xs"
+              value={actionValue}
+              onChange={(e) => setActionValue(e.target.value)}
+            >
+              <option value="">멤버 선택…</option>
+              {(members.data?.items ?? []).map((m) => (
+                <option key={m.user_id} value={m.user_id}>
+                  {m.display_name}
+                </option>
+              ))}
+            </Select>
+          )}
           <Button size="sm" disabled={create.isPending} onClick={add}>
             규칙 추가
           </Button>
         </div>
       ) : null}
+
+      <details className="pt-1">
+        <summary className="cursor-pointer text-xs font-medium text-of-muted">
+          실행 로그{runs.data ? ` (${runs.data.total})` : ''}
+        </summary>
+        {runs.data && runs.data.total > 0 ? (
+          <ul className="mt-1.5 space-y-1">
+            {runs.data.items.map((run) => (
+              <li
+                key={run.id}
+                className="rounded-of border border-of-border px-2 py-1.5 text-[11px] text-of-muted"
+              >
+                <span className="font-medium text-of-fg">{run.rule_name}</span> · '
+                {run.work_package_subject}'의 {run.field === 'assignee_id' ? '담당자' : '우선순위'}{' '}
+                {run.field === 'assignee_id'
+                  ? `${memberName(run.old_value)} → ${memberName(run.new_value)}`
+                  : `${run.old_value ?? '없음'} → ${run.new_value ?? '없음'}`}
+                <span className="ml-1.5">{formatDateTime(run.created_at)}</span>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="mt-1.5 text-xs text-of-muted">아직 실행된 규칙이 없습니다.</p>
+        )}
+      </details>
     </div>
   )
 }

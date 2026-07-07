@@ -1836,6 +1836,27 @@ test('설정에서 자동화 규칙을 보여주고 새 규칙을 추가한다',
   await page.route(`**/api/v1/projects/${project.id}/automation-rules/r1`, (route) =>
     route.fulfill({ json: { id: 'r1' } }),
   )
+  await page.route(`**/api/v1/projects/${project.id}/automation-rules/runs**`, (route) =>
+    route.fulfill({
+      json: {
+        items: [
+          {
+            id: 'run-1',
+            rule_id: 'r1',
+            rule_name: '검수 시 긴급',
+            work_package_id: wpA.id,
+            work_package_subject: '워크패키지 API 구현',
+            field: 'priority',
+            old_value: 'none',
+            new_value: 'urgent',
+            actor_id: null,
+            created_at: '2026-07-07T09:00:00Z',
+          },
+        ],
+        total: 1,
+      },
+    }),
+  )
 
   await page.goto(`/projects/${project.id}/settings`)
   await page.getByRole('tab', { name: '자동화' }).click()
@@ -1851,11 +1872,21 @@ test('설정에서 자동화 규칙을 보여주고 새 규칙을 추가한다',
   await page.getByLabel('검수 시 긴급 우선순위 값').selectOption('high')
   expect(((await rulePatch).postDataJSON() as { action_value: string }).action_value).toBe('high')
 
+  // execution log renders behind the details toggle
+  await page.getByText('실행 로그', { exact: false }).click()
+  await expect(page.getByText("'워크패키지 API 구현'의 우선순위 none → urgent", { exact: false })).toBeVisible()
+
+  // set_assignee action: switching the kind swaps in the member select and
+  // the POST carries the member uuid
+  await page.getByLabel('액션 종류').selectOption('set_assignee')
+  await page.getByLabel('지정할 담당자').selectOption('me-1')
   const post = page.waitForRequest(
     (r) => r.method() === 'POST' && r.url().includes('/automation-rules'),
   )
   await page.getByRole('button', { name: '규칙 추가' }).click()
-  await post
+  const sent = (await post).postDataJSON() as { action_type: string; action_value: string }
+  expect(sent.action_type).toBe('set_assignee')
+  expect(sent.action_value).toBe('me-1')
 })
 
 test('AI 요약 플래그가 켜지면 드로어에서 요약을 생성한다', async ({ page }) => {
