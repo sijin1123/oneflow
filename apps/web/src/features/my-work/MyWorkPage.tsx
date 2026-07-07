@@ -16,7 +16,15 @@ function actionText(a: MyActivity): string {
   return `${field} ${a.old_value ?? '없음'} → ${a.new_value ?? '없음'}`
 }
 
-function WorkList({ items, emptyText }: { items: MyWorkPackage[]; emptyText: string }) {
+function WorkList({
+  items,
+  emptyText,
+  showAssignee = false,
+}: {
+  items: MyWorkPackage[]
+  emptyText: string
+  showAssignee?: boolean
+}) {
   const navigate = useNavigate()
   if (items.length === 0) return <p className="px-1 py-2 text-xs text-of-muted">{emptyText}</p>
   return (
@@ -34,6 +42,11 @@ function WorkList({ items, emptyText }: { items: MyWorkPackage[]; emptyText: str
             <span className="min-w-0 flex-1 truncate text-[13px]">{wp.subject}</span>
             <StatusChip status={wp.status} />
             <PriorityChip priority={wp.priority} />
+            {showAssignee ? (
+              <span className="w-20 shrink-0 truncate text-right text-[11px] text-of-muted">
+                {wp.assignee_name ?? '미배정'}
+              </span>
+            ) : null}
             <span className="w-20 shrink-0 text-right text-[11px] text-of-muted">
               {wp.due_date ?? '기한 없음'}
             </span>
@@ -54,7 +67,7 @@ export function MyWorkPage() {
   if (myWork.isPending) return <ListSkeleton />
   if (myWork.isError) return <ErrorState error={myWork.error} onRetry={() => myWork.refetch()} />
 
-  const { assigned_to_me, due_soon, recent_activity } = myWork.data
+  const { assigned_to_me, due_soon, created_by_me, recent_activity } = myWork.data
   const inbox = (notifications.data?.items ?? []).slice(0, 6)
 
   return (
@@ -64,7 +77,7 @@ export function MyWorkPage() {
         내가 속한 모든 프로젝트에서 나에게 배정된 일과 최근 흐름을 모아 봅니다.
       </p>
 
-      {assigned_to_me.length === 0 && recent_activity.length === 0 ? (
+      {assigned_to_me.length === 0 && created_by_me.length === 0 && recent_activity.length === 0 ? (
         <EmptyState
           title="아직 배정된 작업이 없습니다"
           hint="프로젝트에서 작업을 배정받으면 여기에 모입니다."
@@ -84,6 +97,20 @@ export function MyWorkPage() {
               <span className="text-xs font-normal text-of-muted">{assigned_to_me.length}건</span>
             </h2>
             <WorkList items={assigned_to_me} emptyText="배정된 미완료 작업이 없습니다." />
+          </section>
+
+          <section aria-label="내가 만든 작업">
+            <h2 className="mb-2 text-sm font-semibold">
+              내가 만든 작업{' '}
+              <span className="text-xs font-normal text-of-muted">
+                {created_by_me.length}건 · 내 담당 제외
+              </span>
+            </h2>
+            <WorkList
+              items={created_by_me}
+              emptyText="위임하거나 미배정으로 남긴 열린 작업이 없습니다."
+              showAssignee
+            />
           </section>
 
           <div className="grid gap-6 lg:grid-cols-2">
