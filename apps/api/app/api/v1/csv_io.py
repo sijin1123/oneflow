@@ -33,7 +33,7 @@ from app.schemas.csv_io import (
 )
 from app.schemas.work_package import WorkPackageCreate
 from app.services.activity import record_created
-from app.services.importers import map_jira_csv
+from app.services.importers import JiraMapResult, map_jira_csv, map_linear_csv
 from app.services.sanitize import sanitize_html
 
 router = APIRouter()
@@ -281,20 +281,16 @@ async def import_work_packages_csv(
     )
 
 
-@router.post("/projects/{project_id}/work-packages/import/jira", response_model=CsvImportResult)
-async def import_jira_csv(
+async def _run_mapped_import(
+    session: AsyncSession,
+    user: User,
     project_id: uuid.UUID,
-    body: CsvImportRequest,
-    session: AsyncSession = Depends(get_session),
-    user: User = Depends(get_current_user),
+    mapped: JiraMapResult,
+    dry_run: bool,
 ) -> CsvImportResult:
-    """Jira CSV export → work packages (Pass 8 PR-T, PLAN v8.1 contract).
-
-    The adapter maps columns/values deterministically; this endpoint reuses the
-    standard import semantics: row-level isolation, disabled-type rejection,
-    dry-run preview, and — for idempotent re-uploads — a duplicate guard that
-    isolates rows whose subject (usually "[KEY] Summary") already exists."""
-    await require_member(session, project_id, user, write=True)
+    """Shared adapter-import pipeline (Jira #77 / Linear Pass 25): row
+    isolation, duplicate guard, disabled-type rejection, dry-run — the
+    response shape is identical for every adapter (v25.1 R1-②)."""
     disabled_types = set(
         (
             await session.execute(
@@ -305,7 +301,6 @@ async def import_jira_csv(
         ).scalars()
     )
 
-    mapped = map_jira_csv(body.content)
     if mapped.header_error:
         raise HTTPException(status_code=422, detail=mapped.header_error)
     if len(mapped.rows) > MAX_IMPORT_ROWS:
@@ -372,7 +367,7 @@ async def import_jira_csv(
         valid_dicts.append({c: getattr(model, c) for c in IMPORT_COLUMNS})
 
     inserted = 0
-    if not body.dry_run and valid_models:
+    if not dry_run and valid_models:
         for model in valid_models:
             data = model.model_dump()
             data["description"] = sanitize_html(data["description"])
@@ -385,7 +380,7 @@ async def import_jira_csv(
         inserted = len(valid_models)
 
     return CsvImportResult(
-        dry_run=body.dry_run,
+        dry_run=dry_run,
         total_rows=total,
         valid=len(valid_models),
         invalid=len(errors),
@@ -393,4 +388,37 @@ async def import_jira_csv(
         checksum=_checksum(valid_dicts),
         errors=errors,
         notes=mapped.notes,
+    )
+
+
+@router.post("/projects/{project_id}/work-packages/import/jira", response_model=CsvImportResult)
+async def import_jira_csv(
+    project_id: uuid.UUID,
+    body: CsvImportRequest,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+) -> CsvImportResult:
+    """Jira CSV export → work packages (Pass 8 PR-T, PLAN v8.1 contract).
+
+    The adapter maps columns/values deterministically; the shared pipeline
+    applies row-level isolation, disabled-type rejection, dry-run preview and
+    the idempotent-re-upload duplicate guard ("[KEY] Summary" subjects)."""
+    await require_member(session, project_id, user, write=True)
+    return await _run_mapped_import(
+        session, user, project_id, map_jira_csv(body.content), body.dry_run
+    )
+
+
+@router.post("/projects/{project_id}/work-packages/import/linear", response_model=CsvImportResult)
+async def import_linear_csv(
+    project_id: uuid.UUID,
+    body: CsvImportRequest,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+) -> CsvImportResult:
+    """Linear CSV export → work packages (Pass 25 PR-AQ, PLAN v25.1 contract —
+    same pipeline and response shape as the Jira adapter)."""
+    await require_member(session, project_id, user, write=True)
+    return await _run_mapped_import(
+        session, user, project_id, map_linear_csv(body.content), body.dry_run
     )

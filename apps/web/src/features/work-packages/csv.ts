@@ -38,14 +38,14 @@ export function useExportCsv(projectId: string) {
   return useMutation({ mutationFn: () => downloadCsv(projectId) })
 }
 
-export type ImportSource = 'oneflow' | 'jira'
+export type ImportSource = 'oneflow' | 'jira' | 'linear'
 
 export function useImportCsv(projectId: string) {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: ({ source, ...input }: { content: string; dry_run: boolean; source: ImportSource }) =>
       api<CsvImportResult>(
-        `/api/v1/projects/${projectId}/work-packages/import${source === 'jira' ? '/jira' : ''}`,
+        `/api/v1/projects/${projectId}/work-packages/import${source === 'oneflow' ? '' : `/${source}`}`,
         {
           method: 'POST',
           body: JSON.stringify(input),

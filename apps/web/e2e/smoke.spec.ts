@@ -1604,6 +1604,18 @@ test('Jira CSV 가져오기: 소스 선택 시 jira 엔드포인트로 보내고
   await expect(drawer.getByText('미리보기 (저장 안 됨)')).toBeVisible()
   await expect(drawer.getByText('Assignee/Reporter 값 2건', { exact: false })).toBeVisible()
   await expect(drawer.getByText('무시된 열: Sprint', { exact: false })).toBeVisible()
+
+  // Linear source posts to /import/linear with the same request shape
+  await page.route(`**/api/v1/projects/${project.id}/work-packages/import/linear`, (route) =>
+    route.fulfill({ json: result }),
+  )
+  await drawer.getByLabel('가져오기 소스').selectOption('linear')
+  await drawer.getByLabel('CSV 붙여넣기').fill('ID,Title,Status\nABC-1,로그인,Todo\n')
+  const linearPost = page.waitForRequest(
+    (r) => r.method() === 'POST' && r.url().includes('/work-packages/import/linear'),
+  )
+  await drawer.getByRole('button', { name: /미리보기/ }).click()
+  await linearPost
 })
 
 test('계층 트리가 상/하위 관계를 보여주고 접기가 동작한다', async ({ page }) => {
