@@ -22,6 +22,7 @@ def _body(v: str | None) -> str | None:
 class DocumentCreate(BaseModel):
     title: str
     body: str | None = None
+    parent_id: uuid.UUID | None = None
 
     @field_validator("title")
     @classmethod
@@ -35,9 +36,13 @@ class DocumentCreate(BaseModel):
 
 
 class DocumentUpdate(BaseModel):
+    """`parent_id` is tri-state: omitted = keep, null = move to root, uuid = reparent
+    (same model_fields_set convention as title/body)."""
+
     expected_version: int
     title: str | None = None
     body: str | None = None
+    parent_id: uuid.UUID | None = None
 
     @field_validator("expected_version")
     @classmethod
@@ -62,6 +67,7 @@ class DocumentRead(BaseModel):
 
     id: uuid.UUID
     project_id: uuid.UUID
+    parent_id: uuid.UUID | None
     title: str
     body: str | None
     author_id: uuid.UUID | None
@@ -77,6 +83,7 @@ class DocumentListItem(BaseModel):
 
     id: uuid.UUID
     project_id: uuid.UUID
+    parent_id: uuid.UUID | None
     title: str
     author_id: uuid.UUID | None
     version: int

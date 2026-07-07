@@ -1985,6 +1985,8 @@ export interface components {
         DocumentCreate: {
             /** Body */
             body?: string | null;
+            /** Parent Id */
+            parent_id?: string | null;
             /** Title */
             title: string;
         };
@@ -2012,6 +2014,8 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            /** Parent Id */
+            parent_id: string | null;
             /**
              * Project Id
              * Format: uuid
@@ -2043,6 +2047,8 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            /** Parent Id */
+            parent_id: string | null;
             /**
              * Project Id
              * Format: uuid
@@ -2058,12 +2064,18 @@ export interface components {
             /** Version */
             version: number;
         };
-        /** DocumentUpdate */
+        /**
+         * DocumentUpdate
+         * @description `parent_id` is tri-state: omitted = keep, null = move to root, uuid = reparent
+         *     (same model_fields_set convention as title/body).
+         */
         DocumentUpdate: {
             /** Body */
             body?: string | null;
             /** Expected Version */
             expected_version: number;
+            /** Parent Id */
+            parent_id?: string | null;
             /** Title */
             title?: string | null;
         };
