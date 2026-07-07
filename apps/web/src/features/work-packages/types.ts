@@ -87,6 +87,8 @@ export type Comment = {
   parent_id: string | null
   author_id: string | null
   body: string
+  /** accepted mention user-ids (member-validated server-side); null = none */
+  mentions: string[] | null
   created_at: string
   updated_at: string
 }

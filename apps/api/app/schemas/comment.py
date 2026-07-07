@@ -6,10 +6,16 @@ from pydantic import BaseModel, ConfigDict, field_validator
 MAX_COMMENT = 20_000
 
 
+MAX_MENTIONS = 20
+
+
 class CommentCreate(BaseModel):
     body: str
     # Single-level threading: must reference a ROOT comment on the same WP.
     parent_id: uuid.UUID | None = None
+    # Mentions are structured data, not body @-parsing (PLAN v10.1 R1-②): the
+    # server keeps members only and persists the ACCEPTED set on the comment.
+    mentioned_user_ids: list[uuid.UUID] = []
 
     @field_validator("body")
     @classmethod
@@ -18,6 +24,14 @@ class CommentCreate(BaseModel):
         if not 1 <= len(v) <= MAX_COMMENT:
             raise ValueError(f"comment body must be 1-{MAX_COMMENT} chars after trim")
         return v
+
+    @field_validator("mentioned_user_ids")
+    @classmethod
+    def _mentions(cls, v: list[uuid.UUID]) -> list[uuid.UUID]:
+        deduped = list(dict.fromkeys(v))
+        if len(deduped) > MAX_MENTIONS:
+            raise ValueError(f"at most {MAX_MENTIONS} mentions per comment")
+        return deduped
 
 
 class CommentRead(BaseModel):
@@ -28,6 +42,8 @@ class CommentRead(BaseModel):
     parent_id: uuid.UUID | None
     author_id: uuid.UUID | None
     body: str
+    # Accepted mentions (member-validated at create time) — null means none.
+    mentions: list[uuid.UUID] | None
     created_at: datetime
     updated_at: datetime
 

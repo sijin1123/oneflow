@@ -15,7 +15,8 @@ class UserNotificationSettings(Base):
     evaluated ONLY at fan-out time: turning a kind off stops NEW notifications;
     already-created ones are never retro-hidden and unread counts keep their
     existing definition. Toggle→kind mapping: `assigned` → 'assigned',
-    `watched` → 'watch_status'+'watch_assigned', `commented` → 'watch_comment'."""
+    `watched` → 'watch_status'+'watch_assigned', `commented` → 'watch_comment',
+    `mention` → 'mention'."""
 
     __tablename__ = "user_notification_settings"
 
@@ -27,6 +28,7 @@ class UserNotificationSettings(Base):
     assigned: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     watched: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     commented: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    mention: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
     )

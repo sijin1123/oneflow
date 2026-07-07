@@ -21,6 +21,7 @@ function message(n: Notification): string {
   if (n.kind === 'watch_status') return `${who}님이 워치 중인 '${subject}' 상태를 변경했습니다.`
   if (n.kind === 'watch_comment') return `${who}님이 워치 중인 '${subject}'에 댓글을 남겼습니다.`
   if (n.kind === 'watch_assigned') return `${who}님이 워치 중인 '${subject}' 담당자를 변경했습니다.`
+  if (n.kind === 'mention') return `${who}님이 '${subject}' 댓글에서 회원님을 멘션했습니다.`
   return `${who}: ${subject}`
 }
 

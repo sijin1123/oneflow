@@ -193,6 +193,7 @@ async function mockApi(page: Page, opts: { conflictOnPatch?: boolean } = {}) {
         parent_id: sent.parent_id ?? null,
         author_id: null,
         body: sent.body,
+        mentions: null,
         created_at: '2026-07-02T00:00:00Z',
         updated_at: '2026-07-02T00:00:00Z',
       }
@@ -294,6 +295,7 @@ test('댓글 스레드: 답글이 루트 아래 들여쓰기로 붙고 parent_id
     parent_id: null,
     author_id: null,
     body: '루트 코멘트',
+    mentions: null,
     ...at('2026-07-01T00:00:00Z'),
   }
   const reply: Comment = {
@@ -302,6 +304,7 @@ test('댓글 스레드: 답글이 루트 아래 들여쓰기로 붙고 parent_id
     parent_id: 'c-root',
     author_id: null,
     body: '기존 답글',
+    mentions: null,
     ...at('2026-07-02T00:00:00Z'),
   }
   // Registered after mockApi → precedence over the empty default.
@@ -336,6 +339,22 @@ test('댓글 스레드: 답글이 루트 아래 들여쓰기로 붙고 parent_id
   )
   await drawer.getByRole('button', { name: '답글 추가' }).click()
   expect(((await post).postDataJSON() as { parent_id: string }).parent_id).toBe('c-root')
+})
+
+test('댓글 멘션: 멤버 체크 후 작성하면 mentioned_user_ids를 보낸다', async ({ page }) => {
+  await mockApi(page)
+  await page.goto(`/projects/${project.id}/work-packages`)
+  await page.getByRole('button', { name: '워크패키지 API 구현' }).click()
+  const drawer = page.getByRole('dialog')
+
+  await drawer.getByLabel('댓글 입력').fill('알렉스 확인 부탁합니다')
+  await drawer.getByLabel('Alex Kim 멘션').check()
+  const post = page.waitForRequest(
+    (r) => r.method() === 'POST' && r.url().includes(`/work-packages/${wpA.id}/comments`),
+  )
+  await drawer.getByRole('button', { name: '댓글 추가' }).click()
+  const sent = (await post).postDataJSON() as { mentioned_user_ids: string[] }
+  expect(sent.mentioned_user_ids).toEqual(['u-alex'])
 })
 
 test('409 충돌 시 드로어 내 경고를 보여주고 최신 데이터로 재로드한다', async ({ page }) => {

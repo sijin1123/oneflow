@@ -57,14 +57,18 @@ async def notify_watchers(
     actor_id: uuid.UUID,
     kind: str,
     exclude: Iterable[uuid.UUID] = (),
-) -> None:
+) -> set[uuid.UUID]:
     """Queue one notification per watcher of the work package — same transaction
     as the triggering change (atomic commit/rollback together).
 
     Single INSERT..SELECT: membership is joined at fan-out time so revoked
     members receive nothing, the actor never notifies themselves, and `exclude`
     prevents double-notifying users already covered by another kind (e.g. the
-    new assignee, who gets the richer 'assigned' notification)."""
+    new assignee, who gets the richer 'assigned' notification).
+
+    Returns the ACTUALLY notified user ids (RETURNING) so a later fan-out in
+    the same transaction — mentions — can exclude exactly them, not the raw
+    candidate set (PLAN v10.1 R1-①)."""
     excluded = {actor_id, *exclude}
     uid = PGUUID(as_uuid=True)
     sel = (
@@ -102,9 +106,81 @@ async def notify_watchers(
             ),
         )
     )
-    await session.execute(
-        insert(Notification).from_select(
+    created = await session.execute(
+        insert(Notification)
+        .from_select(
             ["id", "user_id", "project_id", "work_package_id", "actor_id", "kind", "read"],
             sel,
         )
+        .returning(Notification.user_id)
     )
+    return set(created.scalars().all())
+
+
+async def notify_mentions(
+    session: AsyncSession,
+    *,
+    wp_id: uuid.UUID,
+    project_id: uuid.UUID,
+    actor_id: uuid.UUID,
+    candidate_ids: Iterable[uuid.UUID],
+    exclude: Iterable[uuid.UUID] = (),
+) -> list[uuid.UUID]:
+    """Fan out 'mention' notifications inside the caller's transaction.
+
+    Ordering contract (PLAN v10.1 R1-①): call AFTER notify_watchers and pass its
+    RETURNING set as `exclude` — a user already notified via watch_comment never
+    gets a duplicate, while a watcher whose 'commented' toggle is off can still
+    receive the mention. Non-members and the actor are silently dropped (an
+    ex-member mention must not block the comment); the mention preference is
+    honored at fan-out time (absent row = True).
+
+    Returns the ACCEPTED mention ids (members, minus actor) — the canonical set
+    the comment persists, independent of notification suppression."""
+    candidates = [uid for uid in dict.fromkeys(candidate_ids) if uid != actor_id]
+    if not candidates:
+        return []
+    uid_t = PGUUID(as_uuid=True)
+    members = set(
+        (
+            await session.execute(
+                select(ProjectMember.user_id).where(
+                    ProjectMember.project_id == project_id,
+                    ProjectMember.user_id.in_(candidates),
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    accepted = [uid for uid in candidates if uid in members]
+    to_notify = [uid for uid in accepted if uid not in set(exclude)]
+    if to_notify:
+        sel = (
+            select(
+                func.gen_random_uuid(),
+                ProjectMember.user_id,
+                literal(project_id, type_=uid_t),
+                literal(wp_id, type_=uid_t),
+                literal(actor_id, type_=uid_t),
+                literal("mention"),
+                false(),
+            )
+            .select_from(ProjectMember)
+            .outerjoin(
+                UserNotificationSettings,
+                UserNotificationSettings.user_id == ProjectMember.user_id,
+            )
+            .where(
+                ProjectMember.project_id == project_id,
+                ProjectMember.user_id.in_(to_notify),
+                func.coalesce(UserNotificationSettings.mention, true()),
+            )
+        )
+        await session.execute(
+            insert(Notification).from_select(
+                ["id", "user_id", "project_id", "work_package_id", "actor_id", "kind", "read"],
+                sel,
+            )
+        )
+    return accepted

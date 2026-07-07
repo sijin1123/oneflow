@@ -227,7 +227,11 @@ export function useActivities(wpId: string | null) {
 export function useCreateComment(wpId: string) {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (input: { body: string; parent_id?: string | null }) =>
+    mutationFn: (input: {
+      body: string
+      parent_id?: string | null
+      mentioned_user_ids?: string[]
+    }) =>
       api<Comment>(`/api/v1/work-packages/${wpId}/comments`, {
         method: 'POST',
         body: JSON.stringify(input),

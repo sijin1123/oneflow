@@ -53,6 +53,7 @@ export type NotificationSettings = {
   assigned: boolean
   watched: boolean
   commented: boolean
+  mention: boolean
 }
 
 export function useNotificationSettings() {
