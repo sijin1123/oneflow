@@ -6,11 +6,12 @@ child resource with plain CRUD.
 """
 
 import uuid
+from datetime import timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Response
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy import update as sa_update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -19,6 +20,7 @@ from app.core.authz import is_member, require_active_project, require_member
 from app.core.authz import is_member as _is_member_check  # noqa: F401 (alias below)
 from app.db.session import get_session
 from app.models.meeting import Meeting, MeetingActionItem
+from app.models.member import ProjectMember
 from app.models.user import User
 from app.models.work_package import WorkPackage
 from app.schemas.meeting import (
@@ -27,6 +29,7 @@ from app.schemas.meeting import (
     ActionItemUpdate,
     MeetingConflict,
     MeetingCreate,
+    MeetingFollowUpCreate,
     MeetingList,
     MeetingListItem,
     MeetingRead,
@@ -37,6 +40,10 @@ from app.services.notification import record_assignment
 from app.services.sanitize import sanitize_html
 
 router = APIRouter()
+
+# Advisory-lock classid serializing follow-up creation per source meeting
+# (v34.1 R1-\u2460; 427002/427005 precedent).
+FOLLOW_UP_LOCK_CLASSID = 427006
 
 
 async def _get_meeting_scoped(
@@ -171,6 +178,97 @@ async def update_meeting(
     if fresh is None:
         raise HTTPException(status_code=404, detail="not found")
     return _conflict(await _read(session, fresh))
+
+
+@router.post("/meetings/{meeting_id}/follow-up", response_model=MeetingRead, status_code=201)
+async def create_follow_up(
+    meeting_id: uuid.UUID,
+    body: MeetingFollowUpCreate,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+) -> MeetingRead:
+    """Follow-up meeting (Pass 34 PR-AZ): same title (occurrences are told
+    apart by date), agenda carried, minutes empty, author = caller. Open
+    UNCONVERTED action items are COPIED — converted items are tracked by
+    their work package, and the source meeting keeps its full record."""
+    src = await _get_meeting_scoped(session, meeting_id, user, write=True)
+    # Serialize follow-up creation per source meeting: double-clicks, retries
+    # and concurrent users converge on ONE follow-up (v34.1 R1-①).
+    await session.execute(
+        text("SELECT pg_advisory_xact_lock(:classid, hashtext(:mid))").bindparams(
+            classid=FOLLOW_UP_LOCK_CLASSID, mid=str(src.id)
+        )
+    )
+    scheduled = body.scheduled_on
+    if scheduled is None and src.scheduled_on is not None:
+        scheduled = src.scheduled_on + timedelta(days=7)
+    duplicate = (
+        await session.execute(
+            select(Meeting.id).where(
+                Meeting.project_id == src.project_id,
+                Meeting.id != src.id,  # an undated source matches itself otherwise
+                Meeting.title == src.title,
+                # NULL-safe: two undated follow-ups also count as duplicates.
+                Meeting.scheduled_on.is_not_distinct_from(scheduled),
+            )
+        )
+    ).first()
+    if duplicate is not None:
+        raise HTTPException(
+            status_code=409, detail="a meeting with that title and date already exists"
+        )
+    m = Meeting(
+        project_id=src.project_id,
+        title=src.title,
+        scheduled_on=scheduled,
+        agenda=src.agenda,  # already sanitized at write time
+        author_id=user.id,
+    )
+    session.add(m)
+    await session.flush()
+    if body.carry_open_items:
+        open_items = (
+            (
+                await session.execute(
+                    select(MeetingActionItem)
+                    .where(
+                        MeetingActionItem.meeting_id == src.id,
+                        MeetingActionItem.done.is_(False),
+                        MeetingActionItem.converted_wp_id.is_(None),
+                    )
+                    .order_by(MeetingActionItem.created_at.asc(), MeetingActionItem.id.asc())
+                )
+            )
+            .scalars()
+            .all()
+        )
+        # A carried item is a NEW assignment: the assignee survives only as a
+        # current, ACTIVE project member — otherwise null (v34.1 R1-③,
+        # Pass 33 deactivation policy).
+        valid_assignees = {
+            row
+            for row in (
+                await session.execute(
+                    select(ProjectMember.user_id)
+                    .join(User, ProjectMember.user_id == User.id)
+                    .where(
+                        ProjectMember.project_id == src.project_id,
+                        User.is_active.is_(True),
+                    )
+                )
+            ).scalars()
+        }
+        for item in open_items:
+            session.add(
+                MeetingActionItem(
+                    meeting_id=m.id,
+                    description=item.description,
+                    assignee_id=item.assignee_id if item.assignee_id in valid_assignees else None,
+                    done=False,
+                )
+            )
+    await session.commit()
+    return await _read(session, m)
 
 
 @router.delete("/meetings/{meeting_id}", status_code=204)

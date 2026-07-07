@@ -465,6 +465,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/meetings/{meeting_id}/follow-up": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Follow Up
+         * @description Follow-up meeting (Pass 34 PR-AZ): same title (occurrences are told
+         *     apart by date), agenda carried, minutes empty, author = caller. Open
+         *     UNCONVERTED action items are COPIED — converted items are tracked by
+         *     their work package, and the source meeting keeps its full record.
+         */
+        post: operations["create_follow_up_api_v1_meetings__meeting_id__follow_up_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/ops/status": {
         parameters: {
             query?: never;
@@ -2842,6 +2865,21 @@ export interface components {
             /** Title */
             title: string;
         };
+        /**
+         * MeetingFollowUpCreate
+         * @description Follow-up meeting (Pass 34 PR-AZ): agenda carries over; open UNCONVERTED
+         *     action items are COPIED (never moved — the original meeting keeps its
+         *     record); scheduled_on defaults to the source date + 7 days.
+         */
+        MeetingFollowUpCreate: {
+            /**
+             * Carry Open Items
+             * @default true
+             */
+            carry_open_items: boolean;
+            /** Scheduled On */
+            scheduled_on?: string | null;
+        };
         /** MeetingGroup */
         MeetingGroup: {
             /** Items */
@@ -5209,6 +5247,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ActionItemRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_follow_up_api_v1_meetings__meeting_id__follow_up_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                meeting_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MeetingFollowUpCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MeetingRead"];
                 };
             };
             /** @description Validation Error */

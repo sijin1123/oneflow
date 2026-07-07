@@ -65,6 +65,18 @@ export function useCreateMeeting(projectId: string) {
   })
 }
 
+export function useCreateFollowUp(projectId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (meetingId: string) =>
+      api<Meeting>(`/api/v1/meetings/${meetingId}/follow-up`, {
+        method: 'POST',
+        body: JSON.stringify({}),
+      }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['meetings', projectId] }),
+  })
+}
+
 export function useUpdateMeeting(projectId: string) {
   const queryClient = useQueryClient()
   return useMutation({
