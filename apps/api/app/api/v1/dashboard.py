@@ -1,10 +1,13 @@
+import csv
+import io
 import uuid
 from datetime import date
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Response
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.v1.csv_io import BOM, _guard_formula
 from app.core.auth import get_current_user
 from app.core.authz import require_member
 from app.db.session import get_session
@@ -149,3 +152,43 @@ async def project_activities(
         for (a, subject, actor_name) in rows
     ]
     return ProjectActivityList(items=items, total=len(items))
+
+
+@router.get("/projects/{project_id}/dashboard/export.csv")
+async def export_dashboard_csv(
+    project_id: uuid.UUID,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+) -> Response:
+    """The dashboard roll-up as CSV (Pass 6 PR-Q). Reads stay open on archived
+    projects (same policy as the work-package export); the formula guard and
+    UTF-8 BOM follow the existing CSV conventions."""
+    data = await project_dashboard(project_id, session, user)  # membership inside
+
+    buf = io.StringIO()
+    buf.write(BOM)
+    writer = csv.writer(buf, lineterminator="\n")
+    writer.writerow(["section", "key", "value"])
+
+    def row(section: str, key: str, value: object) -> None:
+        writer.writerow([_guard_formula(section), _guard_formula(str(key)), value])
+
+    row("summary", "total_work_packages", data.total_work_packages)
+    row("summary", "open_work_packages", data.open_work_packages)
+    row("summary", "overdue_count", data.overdue_count)
+    row("summary", "total_estimated_hours", data.total_estimated_hours)
+    row("summary", "total_spent_hours", data.total_spent_hours)
+    row("summary", "budget", data.budget if data.budget is not None else "")
+    row("summary", "total_cost", data.total_cost)
+    for bucket in data.status_counts:
+        row("status", bucket.key, bucket.count)
+    for bucket in data.priority_counts:
+        row("priority", bucket.key, bucket.count)
+    for bucket in data.type_counts:
+        row("type", bucket.key, bucket.count)
+
+    return Response(
+        content=buf.getvalue(),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": 'attachment; filename="dashboard.csv"'},
+    )
