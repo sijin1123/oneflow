@@ -60,16 +60,34 @@ export function BoardPage() {
     })
   }
 
-  const drop = (statusKey: WpStatus, e: React.DragEvent) => {
+  const drop = (statusKey: WpStatus, laneKey: string, e: React.DragEvent) => {
     e.preventDefault()
     setDropTarget(null)
     const wpId = e.dataTransfer.getData('text/oneflow-wp')
     const wp = data.items.find((i) => i.id === wpId)
-    if (!wp || wp.status === statusKey) return
+    if (!wp) return
+    // Cross-lane drop also updates the LANE field (Pass 31 — same PATCH,
+    // same version-token contract; the unassigned lane clears the assignee).
+    const laneChanges: { assignee_id?: string | null; priority?: WorkPackage['priority'] } = {}
+    if (laneBy === 'assignee') {
+      const target = laneKey === 'unassigned' ? null : laneKey
+      if ((wp.assignee_id ?? null) !== target) laneChanges.assignee_id = target
+    } else if (laneBy === 'priority' && wp.priority !== laneKey) {
+      laneChanges.priority = laneKey as WorkPackage['priority']
+    }
+    const statusChanged = wp.status !== statusKey
+    if (!statusChanged && Object.keys(laneChanges).length === 0) return
     setMoveError(null)
-    setPendingMoves((prev) => new Map(prev).set(wpId, statusKey))
+    if (statusChanged) setPendingMoves((prev) => new Map(prev).set(wpId, statusKey))
     patch.mutate(
-      { wpId, patch: { expected_version: wp.version, status: statusKey } },
+      {
+        wpId,
+        patch: {
+          expected_version: wp.version,
+          ...(statusChanged ? { status: statusKey } : {}),
+          ...laneChanges,
+        },
+      },
       {
         onSettled: () =>
           // Success refetches the list with the new status; failure snaps back.
@@ -129,7 +147,7 @@ export function BoardPage() {
                 setDropTarget(targetKey)
               }}
               onDragLeave={() => setDropTarget((t) => (t === targetKey ? null : t))}
-              onDrop={(e) => drop(column.key, e)}
+              onDrop={(e) => drop(column.key, lane.key, e)}
               className={`flex max-h-full w-64 shrink-0 flex-col rounded-of border bg-of-surface-2/50 ${
                 dropTarget === targetKey ? 'border-of-accent' : 'border-of-border'
               }`}

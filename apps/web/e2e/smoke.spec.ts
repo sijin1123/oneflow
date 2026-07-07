@@ -1253,6 +1253,18 @@ test('보드에서 카드를 드래그해 옮기면 상태 PATCH가 간다', asy
   const sent = (await patchReq).postDataJSON() as { status: string; expected_version: number }
   expect(sent.status).toBe('in_progress')
   expect(sent.expected_version).toBe(wpA.version)
+
+  // cross-lane drop carries the LANE field too (Pass 31): wpA is priority
+  // 'high'; dropping it into the medium lane's column adds priority to the PATCH
+  await page.getByLabel('스윔레인 기준').selectOption('priority')
+  const laneCard = page.getByRole('button', { name: /워크패키지 API 구현/ })
+  const lanePatch = page.waitForRequest(
+    (r) => r.method() === 'PATCH' && r.url().includes(`/work-packages/${wpA.id}`),
+  )
+  await laneCard.dragTo(page.getByLabel('보통 할 일 컬럼'))
+  const laneSent = (await lanePatch).postDataJSON() as { priority?: string; status?: string }
+  expect(laneSent.priority).toBe('medium')
+  expect(laneSent.status).toBeUndefined() // same column — only the lane changed
 })
 
 test('이니셔티브에서 프로젝트를 연결하면 POST가 간다', async ({ page }) => {
