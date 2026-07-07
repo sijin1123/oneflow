@@ -2,22 +2,27 @@ import { Upload } from 'lucide-react'
 import { useState } from 'react'
 
 import { Button } from '@/components/ui/button'
+import { Select } from '@/components/ui/select'
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet'
 import { Textarea } from '@/components/ui/textarea'
 import { ApiError } from '@/lib/api'
 
 import { useImportCsv } from './csv'
+import type { ImportSource } from './csv'
 import type { CsvImportResult } from './types'
 
 const SAMPLE = 'subject,type,status,priority,start_date,due_date,estimated_hours'
+const JIRA_SAMPLE = 'Issue key,Summary,Issue Type,Status,Priority,Due date'
 
 export function ImportDialog({ projectId }: { projectId: string }) {
   const [open, setOpen] = useState(false)
+  const [source, setSource] = useState<ImportSource>('oneflow')
   const [content, setContent] = useState('')
   const [result, setResult] = useState<CsvImportResult | null>(null)
   const importCsv = useImportCsv(projectId)
 
   const reset = () => {
+    setSource('oneflow')
     setContent('')
     setResult(null)
     importCsv.reset()
@@ -29,7 +34,7 @@ export function ImportDialog({ projectId }: { projectId: string }) {
   }
 
   const run = (dry_run: boolean) => {
-    importCsv.mutate({ content, dry_run }, { onSuccess: setResult })
+    importCsv.mutate({ content, dry_run, source }, { onSuccess: setResult })
   }
 
   // Safe flow: a dry-run preview must succeed before the commit button unlocks.
@@ -47,13 +52,40 @@ export function ImportDialog({ projectId }: { projectId: string }) {
       <SheetContent title="CSV 가져오기">
         <div className="space-y-4">
           <div className="space-y-1.5">
+            <label htmlFor="import-source" className="text-xs font-medium text-of-muted">
+              가져오기 소스
+            </label>
+            <Select
+              id="import-source"
+              value={source}
+              onChange={(e) => {
+                setSource(e.target.value as ImportSource)
+                setResult(null) // a preview from one adapter must not unlock the other
+              }}
+            >
+              <option value="oneflow">OneFlow CSV</option>
+              <option value="jira">Jira CSV</option>
+            </Select>
+          </div>
+
+          <div className="space-y-1.5">
             <label htmlFor="csv-content" className="text-xs font-medium text-of-muted">
               CSV 붙여넣기
             </label>
-            <p className="text-xs text-of-muted">
-              첫 줄은 헤더입니다. <code className="rounded bg-of-surface-2 px-1">subject</code> 열은
-              필수이며, 인식하는 열: <code className="rounded bg-of-surface-2 px-1">{SAMPLE}</code>
-            </p>
+            {source === 'oneflow' ? (
+              <p className="text-xs text-of-muted">
+                첫 줄은 헤더입니다. <code className="rounded bg-of-surface-2 px-1">subject</code>{' '}
+                열은 필수이며, 인식하는 열:{' '}
+                <code className="rounded bg-of-surface-2 px-1">{SAMPLE}</code>
+              </p>
+            ) : (
+              <p className="text-xs text-of-muted">
+                Jira에서 내보낸 CSV를 붙여넣으세요.{' '}
+                <code className="rounded bg-of-surface-2 px-1">Summary</code> 열은 필수이며, 인식하는
+                열: <code className="rounded bg-of-surface-2 px-1">{JIRA_SAMPLE}</code>. 나머지 열은
+                무시되고 결과에 표시됩니다.
+              </p>
+            )}
             <Textarea
               id="csv-content"
               value={content}
@@ -63,7 +95,11 @@ export function ImportDialog({ projectId }: { projectId: string }) {
               }}
               rows={8}
               className="font-mono text-xs"
-              placeholder={`${SAMPLE}\n로그인 버그 수정,bug,todo,high,,,4`}
+              placeholder={
+                source === 'oneflow'
+                  ? `${SAMPLE}\n로그인 버그 수정,bug,todo,high,,,4`
+                  : `${JIRA_SAMPLE}\nPROJ-1,로그인 버그,Bug,In Progress,High,1/Jul/26`
+              }
             />
           </div>
 
@@ -124,6 +160,16 @@ function ImportSummary({
       <p className="truncate text-[11px] text-of-muted" title={result.checksum}>
         체크섬: <code>{result.checksum.slice(0, 16)}…</code>
       </p>
+
+      {result.notes.length > 0 ? (
+        <ul className="space-y-0.5 rounded border border-of-border bg-of-surface p-1.5">
+          {result.notes.map((note) => (
+            <li key={note} className="text-[11px] text-of-muted">
+              ⓘ {note}
+            </li>
+          ))}
+        </ul>
+      ) : null}
 
       {result.errors.length > 0 ? (
         <div className="space-y-1">

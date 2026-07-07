@@ -33,6 +33,7 @@ from app.schemas.csv_io import (
 )
 from app.schemas.work_package import WorkPackageCreate
 from app.services.activity import record_created
+from app.services.importers import map_jira_csv
 from app.services.sanitize import sanitize_html
 
 router = APIRouter()
@@ -277,4 +278,119 @@ async def import_work_packages_csv(
         inserted=inserted,
         checksum=_checksum(valid_dicts),
         errors=errors,
+    )
+
+
+@router.post("/projects/{project_id}/work-packages/import/jira", response_model=CsvImportResult)
+async def import_jira_csv(
+    project_id: uuid.UUID,
+    body: CsvImportRequest,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+) -> CsvImportResult:
+    """Jira CSV export → work packages (Pass 8 PR-T, PLAN v8.1 contract).
+
+    The adapter maps columns/values deterministically; this endpoint reuses the
+    standard import semantics: row-level isolation, disabled-type rejection,
+    dry-run preview, and — for idempotent re-uploads — a duplicate guard that
+    isolates rows whose subject (usually "[KEY] Summary") already exists."""
+    await require_member(session, project_id, user, write=True)
+    disabled_types = set(
+        (
+            await session.execute(
+                select(ProjectType.key).where(
+                    ProjectType.project_id == project_id, ProjectType.is_active.is_(False)
+                )
+            )
+        ).scalars()
+    )
+
+    mapped = map_jira_csv(body.content)
+    if mapped.header_error:
+        raise HTTPException(status_code=422, detail=mapped.header_error)
+    if len(mapped.rows) > MAX_IMPORT_ROWS:
+        raise HTTPException(
+            status_code=422, detail=f"import exceeds the {MAX_IMPORT_ROWS}-row limit"
+        )
+
+    # Duplicate guard (idempotent re-upload): one query for existing subjects,
+    # plus batch-internal dedupe.
+    candidate_subjects = [p["subject"] for (_, p, err, _) in mapped.rows if p and not err]
+    existing: set[str] = set()
+    if candidate_subjects:
+        existing = set(
+            (
+                await session.execute(
+                    select(WorkPackage.subject).where(
+                        WorkPackage.project_id == project_id,
+                        WorkPackage.subject.in_(candidate_subjects),
+                    )
+                )
+            ).scalars()
+        )
+    seen_in_batch: set[str] = set()
+
+    valid_models: list[WorkPackageCreate] = []
+    valid_dicts: list[dict] = []
+    errors: list[CsvRowError] = []
+    total = 0
+
+    for row_number, payload, map_error, raw in mapped.rows:
+        total += 1
+        if map_error:
+            errors.append(CsvRowError(row=row_number, message=map_error, raw=raw))
+            continue
+        assert payload is not None
+        subject = payload["subject"]
+        if subject in existing or subject in seen_in_batch:
+            errors.append(
+                CsvRowError(
+                    row=row_number,
+                    message="이미 가져온 이슈입니다(동일 제목 존재)",
+                    raw=raw,
+                )
+            )
+            continue
+        try:
+            model = WorkPackageCreate(**payload)
+        except ValidationError as exc:
+            first = exc.errors()[0]
+            loc = ".".join(str(p) for p in first.get("loc", ())) or "row"
+            errors.append(CsvRowError(row=row_number, message=f"{loc}: {first['msg']}", raw=raw))
+            continue
+        if model.type in disabled_types:
+            errors.append(
+                CsvRowError(
+                    row=row_number,
+                    message=f"type: '{model.type}' is disabled in this project",
+                    raw=raw,
+                )
+            )
+            continue
+        seen_in_batch.add(subject)
+        valid_models.append(model)
+        valid_dicts.append({c: getattr(model, c) for c in IMPORT_COLUMNS})
+
+    inserted = 0
+    if not body.dry_run and valid_models:
+        for model in valid_models:
+            data = model.model_dump()
+            data["description"] = sanitize_html(data["description"])
+            wp = WorkPackage(project_id=project_id, **data)
+            session.add(wp)
+            await session.flush()
+            record_created(session, wp.id, user.id)
+        await session.flush()
+        await session.commit()
+        inserted = len(valid_models)
+
+    return CsvImportResult(
+        dry_run=body.dry_run,
+        total_rows=total,
+        valid=len(valid_models),
+        invalid=len(errors),
+        inserted=inserted,
+        checksum=_checksum(valid_dicts),
+        errors=errors,
+        notes=mapped.notes,
     )

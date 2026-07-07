@@ -53,3 +53,6 @@ class CsvImportResult(BaseModel):
     # a preview against the committed import (건수/체크섬 대사).
     checksum: str
     errors: list[CsvRowError]
+    # Import-source notes (Jira adapter etc.): unmapped assignees, fallback
+    # counts, ignored columns — silent data loss is not allowed (PLAN v8.1).
+    notes: list[str] = []

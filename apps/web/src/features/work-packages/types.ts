@@ -160,6 +160,8 @@ export type CsvImportResult = {
   /** sha256 of the valid rows — reconcile a dry-run preview against the commit (대사) */
   checksum: string
   errors: CsvRowError[]
+  /** adapter advisories (Jira import: unmapped assignees, fallback counts, ignored columns) */
+  notes: string[]
 }
 
 export const STATUS_LABELS: Record<WpStatus, string> = {
