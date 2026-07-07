@@ -183,6 +183,14 @@ class WorkPackageList(BaseModel):
     total: int
 
 
+class WorkPackageDuplicateResult(BaseModel):
+    """Duplicate response: the new WP plus how many custom values did NOT copy
+    (inactive/unbound field, stale option or ex-member value — v12.1 R1-④)."""
+
+    work_package: WorkPackageRead
+    skipped_custom_values: int
+
+
 class RelationCreate(BaseModel):
     target_id: uuid.UUID
     relation_type: str

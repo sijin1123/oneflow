@@ -244,6 +244,23 @@ export function useCreateComment(wpId: string) {
   })
 }
 
+export type DuplicateResult = {
+  work_package: WorkPackage
+  /** custom values that failed today's write rules and were not copied */
+  skipped_custom_values: number
+}
+
+export function useDuplicateWorkPackage(projectId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (wpId: string) =>
+      api<DuplicateResult>(`/api/v1/work-packages/${wpId}/duplicate`, { method: 'POST' }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['work-packages', projectId] })
+    },
+  })
+}
+
 export function useCreateWorkPackage(projectId: string) {
   const queryClient = useQueryClient()
   return useMutation({

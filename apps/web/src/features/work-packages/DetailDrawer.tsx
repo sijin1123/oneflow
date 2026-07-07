@@ -29,7 +29,13 @@ import { PagesSection } from './PagesSection'
 import { RelationsSection } from './RelationsSection'
 import { TimeTrackingSection } from './TimeTrackingSection'
 import { PriorityChip, StatusChip } from './chips'
-import { usePatchWorkPackage, useSetWatching, useWatchers, useWorkPackage } from './api'
+import {
+  useDuplicateWorkPackage,
+  usePatchWorkPackage,
+  useSetWatching,
+  useWatchers,
+  useWorkPackage,
+} from './api'
 import { useStatusLabels } from './useStatusLabels'
 import {
   PRIORITY_LABELS,
@@ -84,6 +90,7 @@ function DrawerForm({ wp, projectId }: { wp: WorkPackage; projectId: string }) {
   const projectTypes = useProjectTypes(projectId)
   const members = useMembers(projectId)
   const statusLabel = useStatusLabels(projectId)
+  const duplicate = useDuplicateWorkPackage(projectId)
 
   // All editable fields are controlled and resynced from server data, so a 409
   // invalidate+refetch really does reload every field (review finding #2).
@@ -126,7 +133,28 @@ function DrawerForm({ wp, projectId }: { wp: WorkPackage; projectId: string }) {
           저장하지 못했습니다: {saveError}
         </p>
       ) : null}
-      <WatchRow wpId={wp.id} />
+      <div className="flex items-center justify-between">
+        <WatchRow wpId={wp.id} />
+        <button
+          type="button"
+          className="rounded-of border border-of-border px-2 py-1 text-xs text-of-muted hover:bg-of-surface-2"
+          disabled={duplicate.isPending}
+          onClick={() => duplicate.mutate(wp.id)}
+        >
+          복제
+        </button>
+      </div>
+      {duplicate.isSuccess ? (
+        <p role="status" className="text-xs text-of-muted">
+          '{duplicate.data.work_package.subject}' 생성됨
+          {duplicate.data.skipped_custom_values > 0
+            ? ` · 복사되지 않은 커스텀 값 ${duplicate.data.skipped_custom_values}건`
+            : ''}
+        </p>
+      ) : null}
+      {duplicate.isError ? (
+        <p role="alert" className="text-xs text-of-danger">복제하지 못했습니다.</p>
+      ) : null}
       <div className="space-y-1.5">
         <label htmlFor="wp-subject" className="text-xs font-medium text-of-muted">
           제목
