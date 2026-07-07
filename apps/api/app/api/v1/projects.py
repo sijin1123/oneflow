@@ -1,4 +1,5 @@
 import uuid
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select, text
@@ -15,10 +16,12 @@ from app.models.project import Project
 from app.models.project_status import DEFAULT_STATUSES, ProjectStatus
 from app.models.project_type import DEFAULT_TYPES, ProjectType
 from app.models.user import User
+from app.models.work_package import WP_CLOSED_STATUSES, WorkPackage
 from app.schemas.project import (
     ProjectCreate,
     ProjectCreateResponse,
     ProjectList,
+    ProjectListItem,
     ProjectRead,
     ProjectUpdate,
     TemplateApplied,
@@ -54,7 +57,49 @@ async def list_projects(
         .scalars()
         .all()
     )
-    return ProjectList(items=[ProjectRead.model_validate(p) for p in rows], total=total)
+    ids = [p.id for p in rows]
+    wp_agg: dict = {}
+    member_agg: dict = {}
+    if ids:
+        # Rollups share the visible scope by construction (project_id IN the
+        # returned ids). utc_today binds from the API layer — never the DB
+        # session timezone (v22.1 R1-②).
+        utc_today = datetime.now(UTC).date()
+        open_filter = WorkPackage.status.notin_(WP_CLOSED_STATUSES)
+        wp_rows = (
+            await session.execute(
+                select(
+                    WorkPackage.project_id,
+                    func.count().label("total"),
+                    func.count().filter(open_filter).label("open"),
+                    func.count()
+                    .filter(open_filter, WorkPackage.due_date < utc_today)
+                    .label("overdue"),
+                )
+                .where(WorkPackage.project_id.in_(ids))
+                .group_by(WorkPackage.project_id)
+            )
+        ).all()
+        wp_agg = {pid: (t, o, ov) for pid, t, o, ov in wp_rows}
+        member_rows = (
+            await session.execute(
+                select(ProjectMember.project_id, func.count())
+                .where(ProjectMember.project_id.in_(ids))
+                .group_by(ProjectMember.project_id)
+            )
+        ).all()
+        member_agg = dict(member_rows)
+
+    items = []
+    for p in rows:
+        item = ProjectListItem.model_validate(p)
+        t, o, ov = wp_agg.get(p.id, (0, 0, 0))
+        item.work_package_count = t
+        item.open_work_package_count = o
+        item.overdue_count = ov
+        item.member_count = member_agg.get(p.id, 0)
+        items.append(item)
+    return ProjectList(items=items, total=total)
 
 
 @router.post("", response_model=ProjectCreateResponse, status_code=201)
