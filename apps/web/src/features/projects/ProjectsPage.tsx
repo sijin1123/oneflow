@@ -120,8 +120,53 @@ function NewProjectForm({ onClose }: { onClose: () => void }) {
   )
 }
 
+const ROLLUP_COLUMNS = [
+  { key: 'work_package_count', label: '작업' },
+  { key: 'open_work_package_count', label: '진행 중' },
+  { key: 'overdue_count', label: '기한 초과' },
+  { key: 'member_count', label: '멤버' },
+] as const
+
+type RollupKey = (typeof ROLLUP_COLUMNS)[number]['key']
+const COLUMNS_STORAGE_KEY = 'oneflow.projects.columns.v1'
+const DEFAULT_COLUMNS: RollupKey[] = ROLLUP_COLUMNS.map((c) => c.key)
+
+/** Corrupted JSON / unknown keys / unavailable storage all fall back to the
+    defaults (v22.1 R1-④) — a broken preference must never break the list. */
+function loadColumns(): RollupKey[] {
+  try {
+    const raw = localStorage.getItem(COLUMNS_STORAGE_KEY)
+    if (!raw) return DEFAULT_COLUMNS
+    const parsed: unknown = JSON.parse(raw)
+    if (!Array.isArray(parsed)) return DEFAULT_COLUMNS
+    const known = parsed.filter((k): k is RollupKey =>
+      ROLLUP_COLUMNS.some((c) => c.key === k),
+    )
+    return known
+  } catch {
+    return DEFAULT_COLUMNS
+  }
+}
+
+function saveColumns(cols: RollupKey[]) {
+  try {
+    localStorage.setItem(COLUMNS_STORAGE_KEY, JSON.stringify(cols))
+  } catch {
+    // private mode / quota — keep the in-memory state only
+  }
+}
+
 export function ProjectsPage() {
   const [includeArchived, setIncludeArchived] = useState(false)
+  const [columns, setColumns] = useState<RollupKey[]>(loadColumns)
+
+  const toggleColumn = (key: RollupKey) => {
+    setColumns((prev) => {
+      const next = prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]
+      saveColumns(next)
+      return next
+    })
+  }
   const { data, isPending, isError, error, refetch } = useProjects(includeArchived)
   const [creating, setCreating] = useState(false)
 
@@ -141,6 +186,20 @@ export function ProjectsPage() {
           />
           보관된 프로젝트 표시
         </label>
+        <span className="flex items-center gap-2 text-xs text-of-muted">
+          {ROLLUP_COLUMNS.map((c) => (
+            <label key={c.key} className="flex items-center gap-1">
+              <input
+                type="checkbox"
+                checked={columns.includes(c.key)}
+                onChange={() => toggleColumn(c.key)}
+                aria-label={`${c.label} 열 표시`}
+                className="h-3 w-3 accent-of-accent"
+              />
+              {c.label}
+            </label>
+          ))}
+        </span>
         {!creating ? (
           <Button size="sm" onClick={() => setCreating(true)}>
             <Plus size={14} /> 새 프로젝트
@@ -182,6 +241,25 @@ export function ProjectsPage() {
                     <p className="truncate text-xs text-of-muted">{p.description}</p>
                   ) : null}
                 </div>
+                <span className="ml-auto flex shrink-0 items-center gap-3 text-xs tabular-nums text-of-muted">
+                  {columns.includes('work_package_count') ? (
+                    <span title="작업">{p.work_package_count}건</span>
+                  ) : null}
+                  {columns.includes('open_work_package_count') ? (
+                    <span title="진행 중">진행 {p.open_work_package_count}</span>
+                  ) : null}
+                  {columns.includes('overdue_count') ? (
+                    <span
+                      title="기한 초과"
+                      className={p.overdue_count > 0 ? 'font-medium text-of-danger' : ''}
+                    >
+                      초과 {p.overdue_count}
+                    </span>
+                  ) : null}
+                  {columns.includes('member_count') ? (
+                    <span title="멤버">멤버 {p.member_count}</span>
+                  ) : null}
+                </span>
               </Link>
             </li>
           ))}

@@ -13,7 +13,14 @@ export type Project = {
   updated_at: string
 }
 
+export type ProjectListItem = Project & {
+  work_package_count: number
+  open_work_package_count: number
+  overdue_count: number
+  member_count: number
+}
+
 export type ProjectList = {
-  items: Project[]
+  items: ProjectListItem[]
   total: number
 }

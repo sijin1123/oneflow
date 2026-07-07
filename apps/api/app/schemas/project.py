@@ -91,6 +91,17 @@ class ProjectCreateResponse(ProjectRead):
     template_applied: TemplateApplied | None = None
 
 
+class ProjectListItem(ProjectRead):
+    """List row with portfolio rollups (Pass 22, additive). member_count =
+    current project_members rows, any role (a deleted user cannot appear —
+    users FK CASCADE); overdue = due_date < UTC-today AND status open."""
+
+    work_package_count: int = 0
+    open_work_package_count: int = 0
+    overdue_count: int = 0
+    member_count: int = 0
+
+
 class ProjectList(BaseModel):
-    items: list[ProjectRead]
+    items: list[ProjectListItem]
     total: int

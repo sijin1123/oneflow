@@ -3251,9 +3251,62 @@ export interface components {
         /** ProjectList */
         ProjectList: {
             /** Items */
-            items: components["schemas"]["ProjectRead"][];
+            items: components["schemas"]["ProjectListItem"][];
             /** Total */
             total: number;
+        };
+        /**
+         * ProjectListItem
+         * @description List row with portfolio rollups (Pass 22, additive). member_count =
+         *     current project_members rows, any role (a deleted user cannot appear —
+         *     users FK CASCADE); overdue = due_date < UTC-today AND status open.
+         */
+        ProjectListItem: {
+            /** Archived At */
+            archived_at: string | null;
+            /** Budget */
+            budget: number | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Description */
+            description: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Key */
+            key: string;
+            /**
+             * Member Count
+             * @default 0
+             */
+            member_count: number;
+            /** Name */
+            name: string;
+            /**
+             * Open Work Package Count
+             * @default 0
+             */
+            open_work_package_count: number;
+            /**
+             * Overdue Count
+             * @default 0
+             */
+            overdue_count: number;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /**
+             * Work Package Count
+             * @default 0
+             */
+            work_package_count: number;
         };
         /** ProjectRead */
         ProjectRead: {
