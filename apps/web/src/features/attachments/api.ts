@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
-import { api } from '@/lib/api'
+import { ApiError, BASE_URL, api } from '@/lib/api'
 
 export type Attachment = {
   id: string
@@ -9,6 +9,7 @@ export type Attachment = {
   content_type: string | null
   size_bytes: number | null
   url: string
+  has_file: boolean
   uploaded_by: string | null
   created_at: string
 }
@@ -46,4 +47,40 @@ export function useDeleteAttachment(projectId: string) {
       api<void>(`/api/v1/attachments/${id}`, { method: 'DELETE' }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['attachments', projectId] }),
   })
+}
+
+export function useUploadAttachment(projectId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    // Raw body (no multipart): the filename travels in the query string and the
+    // file's own type in Content-Type — mirrors the server's streaming protocol.
+    mutationFn: async (file: File) => {
+      const res = await fetch(
+        `${BASE_URL}/api/v1/projects/${projectId}/attachments/upload?filename=${encodeURIComponent(file.name)}`,
+        {
+          method: 'POST',
+          headers: { 'content-type': file.type || 'application/octet-stream' },
+          body: file,
+        },
+      )
+      if (!res.ok) {
+        let detail = `HTTP ${res.status}`
+        try {
+          const payload = (await res.json()) as { detail?: string }
+          if (payload.detail) detail = payload.detail
+        } catch {
+          /* non-JSON error body */
+        }
+        throw new ApiError(res.status, detail, res.headers.get('x-request-id'), null)
+      }
+      return (await res.json()) as Attachment
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['attachments', projectId] })
+    },
+  })
+}
+
+export function downloadUrl(attachmentId: string): string {
+  return `${BASE_URL}/api/v1/attachments/${attachmentId}/download`
 }

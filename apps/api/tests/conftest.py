@@ -9,6 +9,7 @@
 import asyncio
 import os
 import pathlib
+import tempfile
 import uuid
 
 import asyncpg
@@ -47,6 +48,8 @@ def make_test_settings(**overrides) -> Settings:
         auth_mode="dev",
         cors_origins="http://localhost:5173",
         log_level="WARNING",
+        # Isolated per-run blob root — uploads never land in the repo tree.
+        storage_dir=tempfile.mkdtemp(prefix="oneflow-test-uploads-"),
     )
     base.update(overrides)
     return Settings(**base)

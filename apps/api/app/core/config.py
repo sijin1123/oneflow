@@ -38,6 +38,11 @@ class Settings(BaseSettings):
     allow_destructive_reset: str | None = None
     db_pool_size: int = 10
     db_max_overflow: int = 20
+    # File uploads (Pass 4 PR-M). Not secrets; restart required to change.
+    # Local-dev default — production should point at a dedicated volume.
+    storage_dir: str = "var/uploads"
+    upload_max_bytes: int = 10_485_760  # 10 MiB per file
+    project_storage_quota_bytes: int = 1_073_741_824  # 1 GiB per project
 
     @property
     def cors_origin_list(self) -> list[str]:

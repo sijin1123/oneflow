@@ -55,6 +55,9 @@ class AttachmentRead(BaseModel):
     content_type: str | None
     size_bytes: int | None
     url: str
+    # True for uploaded rows — the client renders a /download link instead of
+    # the sentinel url (URL-only rows keep the external link).
+    has_file: bool = False
     uploaded_by: uuid.UUID | None
     created_at: datetime
 
