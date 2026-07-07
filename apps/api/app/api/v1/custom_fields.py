@@ -41,6 +41,7 @@ def _read(f: CustomField) -> CustomFieldRead:
         options=f.options,
         position=f.position,
         is_active=f.is_active,
+        applies_to=f.applies_to,
         created_at=f.created_at,
         updated_at=f.updated_at,
     )
@@ -93,6 +94,7 @@ async def create_custom_field(
         name=body.name,
         field_type=body.field_type,
         options=body.options,
+        applies_to=body.applies_to,
         position=next_pos,
     )
     try:
@@ -319,6 +321,13 @@ async def put_custom_values(
             raise HTTPException(
                 status_code=422,
                 detail=f"field '{f.name}' is inactive — values can only be cleared",
+            )
+        if f.applies_to is not None and wp.type not in f.applies_to:
+            # Binding shapes the form: NEW values only for bound types; values
+            # stored before a type change stay readable and clearable.
+            raise HTTPException(
+                status_code=422,
+                detail=f"field '{f.name}' does not apply to type '{wp.type}'",
             )
         normalized = _validate_value(f, w.value, member_ids)
         await session.execute(

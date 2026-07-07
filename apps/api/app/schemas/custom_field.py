@@ -5,8 +5,23 @@ from typing import Any
 from pydantic import BaseModel, field_validator, model_validator
 
 from app.models.custom_field import CUSTOM_FIELD_TYPES
+from app.models.work_package import WP_TYPES
 
 MAX_OPTIONS = 50
+
+
+def _clean_applies_to(v: list[str] | None) -> list[str] | None:
+    if v is None:
+        return None
+    if not v:
+        # Explicitly rejected: [] would silently mean "no type" — use null for
+        # "all types" and a non-empty subset otherwise (validator R1 ④).
+        raise ValueError("applies_to must be null (all types) or a non-empty list")
+    cleaned = list(dict.fromkeys(v))  # de-dupe, keep order
+    for key in cleaned:
+        if key not in WP_TYPES:
+            raise ValueError(f"applies_to entries must be one of {WP_TYPES}")
+    return cleaned
 
 
 def _clean_name(v: str) -> str:
@@ -35,6 +50,12 @@ class CustomFieldCreate(BaseModel):
     name: str
     field_type: str
     options: list[str] | None = None
+    applies_to: list[str] | None = None
+
+    @field_validator("applies_to")
+    @classmethod
+    def _applies(cls, v: list[str] | None) -> list[str] | None:
+        return _clean_applies_to(v)
 
     @field_validator("name")
     @classmethod
@@ -60,11 +81,18 @@ class CustomFieldCreate(BaseModel):
 
 
 class CustomFieldUpdate(BaseModel):
-    """field_type is immutable — changing it would corrupt stored values."""
+    """field_type is immutable — changing it would corrupt stored values.
+    applies_to CAN be updated; send null to widen back to all types."""
 
     name: str | None = None
     options: list[str] | None = None
     is_active: bool | None = None
+    applies_to: list[str] | None = None
+
+    @field_validator("applies_to")
+    @classmethod
+    def _applies(cls, v: list[str] | None) -> list[str] | None:
+        return _clean_applies_to(v)
 
     @field_validator("name")
     @classmethod
@@ -85,6 +113,7 @@ class CustomFieldRead(BaseModel):
     options: list[str] | None
     position: int
     is_active: bool
+    applies_to: list[str] | None
     created_at: datetime
     updated_at: datetime
 

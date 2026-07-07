@@ -19,6 +19,7 @@ export type CustomField = {
   options: string[] | null
   position: number
   is_active: boolean
+  applies_to: string[] | null
   created_at: string
   updated_at: string
 }
@@ -56,7 +57,12 @@ export function useCustomFields(projectId: string, includeInactive = false) {
 export function useCreateCustomField(projectId: string) {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (input: { name: string; field_type: CustomFieldType; options?: string[] }) =>
+    mutationFn: (input: {
+      name: string
+      field_type: CustomFieldType
+      options?: string[]
+      applies_to?: string[] | null
+    }) =>
       api<CustomField>(`/api/v1/projects/${projectId}/custom-fields`, {
         method: 'POST',
         body: JSON.stringify(input),

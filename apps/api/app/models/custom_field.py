@@ -46,9 +46,16 @@ class CustomField(Base):
     field_type: Mapped[str] = mapped_column(String(20), nullable=False)
     # dropdown only: list of option strings. Removed options leave orphan values
     # (kept + displayed); validation applies at WRITE time only.
-    options: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    # none_as_null: Python None must become SQL NULL, not JSON 'null' — the
+    # applies_to CHECK (and any IS NULL comparison) distinguishes the two.
+    options: Mapped[list | None] = mapped_column(JSONB(none_as_null=True), nullable=True)
     position: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    # Per-type binding (Pass 7 PR-S): null = applies to EVERY type; otherwise a
+    # subset of the fixed type keys (DB CHECK). Binding shapes the FORM (input
+    # visibility + new-value validation), never read visibility — stored values
+    # remain data and stay readable after a type change (orphan precedent).
+    applies_to: Mapped[list | None] = mapped_column(JSONB(none_as_null=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

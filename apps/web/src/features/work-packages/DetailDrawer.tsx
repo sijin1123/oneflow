@@ -361,7 +361,7 @@ function DrawerForm({ wp, projectId }: { wp: WorkPackage; projectId: string }) {
 
       <CostSection wpId={wp.id} />
 
-      <CustomFieldsSection wpId={wp.id} projectId={projectId} />
+      <CustomFieldsSection wpId={wp.id} projectId={projectId} wpType={wp.type} />
 
       <RelationsSection wpId={wp.id} projectId={projectId} />
 
