@@ -5,6 +5,7 @@ import { ErrorState, ListSkeleton } from '@/components/shell/states'
 import { AutomationManager } from '@/features/automation/AutomationManager'
 import { useMe, useMembers } from '@/features/members/api'
 import { StatusManager } from '@/features/project-statuses/StatusManager'
+import { TypeManager } from '@/features/project-types/TypeManager'
 import { useUnsavedLocationPrompt } from '@/lib/guards'
 
 import { DangerPanel } from './DangerPanel'
@@ -96,7 +97,12 @@ export function SettingsPage() {
           {tab === 'members' ? (
             <MembersPanel projectId={projectId} isOwner={isOwner} onDirtyChange={onDirtyChange} />
           ) : null}
-          {tab === 'workflow' ? <StatusManager projectId={projectId} isOwner={isOwner} /> : null}
+          {tab === 'workflow' ? (
+            <>
+              <StatusManager projectId={projectId} isOwner={isOwner} />
+              <TypeManager projectId={projectId} isOwner={isOwner} />
+            </>
+          ) : null}
           {tab === 'milestones' ? (
             <MilestonesPanel projectId={projectId} isOwner={isOwner} onDirtyChange={onDirtyChange} />
           ) : null}

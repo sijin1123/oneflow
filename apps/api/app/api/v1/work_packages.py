@@ -10,6 +10,7 @@ from sqlalchemy import update as sa_update
 from sqlalchemy.exc import DBAPIError, IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.v1.project_types import require_type_enabled
 from app.core.auth import get_current_user
 from app.core.authz import is_member, require_active_project, require_member
 from app.db.session import get_session
@@ -181,6 +182,8 @@ async def create_work_package(
     user: User = Depends(get_current_user),
 ) -> WorkPackageRead:
     await require_member(session, project_id, user, write=True)
+    # New usage of a disabled work-item type is rejected (Pass 7 PR-R).
+    await require_type_enabled(session, project_id, body.type)
     if body.assignee_id is not None:
         await _require_assignee_member(session, project_id, body.assignee_id)
     if body.milestone_id is not None:
@@ -290,6 +293,10 @@ async def patch_work_package(
         return WorkPackageRead.model_validate(fresh)
 
     _effective_dates(wp, changes)
+    if changes.get("type") is not None and changes["type"] != wp.type:
+        # Enablement bites only on a REAL type change — a drawer echoing the
+        # current (possibly disabled) type back must not block other edits.
+        await require_type_enabled(session, wp.project_id, changes["type"])
     if changes.get("assignee_id") is not None:
         await _require_assignee_member(session, wp.project_id, changes["assignee_id"])
     if changes.get("milestone_id") is not None:

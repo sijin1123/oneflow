@@ -15,6 +15,7 @@ import { PriorityChip, StatusChip, TypeChip } from './chips'
 import { useWorkPackages } from './api'
 import { useExportCsv } from './csv'
 import { useStatusLabels } from './useStatusLabels'
+import { useTypeLabels } from './useTypeLabels'
 
 export function ListPage() {
   const { projectId } = useParams() as { projectId: string }
@@ -44,6 +45,7 @@ export function ListPage() {
   const { data, isPending, isError, error, refetch } = useWorkPackages(projectId, filters)
   const exportCsv = useExportCsv(projectId)
   const statusLabel = useStatusLabels(projectId)
+  const typeLabel = useTypeLabels(projectId)
   const memberName = useMemberNames(projectId)
 
   const openDrawer = (id: string) => {
@@ -130,7 +132,7 @@ export function ListPage() {
                     </button>
                   </td>
                   <td className="px-2 py-2">
-                    <TypeChip type={wp.type} />
+                    <TypeChip type={wp.type} label={typeLabel(wp.type)} />
                   </td>
                   <td className="px-2 py-2">
                     <StatusChip status={wp.status} label={statusLabel(wp.status)} />

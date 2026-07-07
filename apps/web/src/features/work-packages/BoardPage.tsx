@@ -7,6 +7,7 @@ import { useProjectStatuses } from '@/features/project-statuses/api'
 import { DetailDrawer } from './DetailDrawer'
 import { PriorityChip, TypeChip } from './chips'
 import { usePatchWorkPackage, useWorkPackages } from './api'
+import { useTypeLabels } from './useTypeLabels'
 import { STATUS_LABELS, WP_STATUSES, type WorkPackage, type WpStatus } from './types'
 
 /* Kanban board with native HTML5 drag & drop (Pass 3 PR-K, no library).
@@ -20,6 +21,7 @@ export function BoardPage() {
   const { data, isPending, isError, error, refetch } = useWorkPackages(projectId, {})
   const statuses = useProjectStatuses(projectId)
   const patch = usePatchWorkPackage(projectId)
+  const typeLabel = useTypeLabels(projectId)
 
   // wp.id → optimistic target status while its PATCH is in flight.
   const [pendingMoves, setPendingMoves] = useState<Map<string, string>>(new Map())
@@ -125,7 +127,7 @@ export function BoardPage() {
                   >
                     <p className="mb-1.5 line-clamp-2 text-[13px] font-medium">{wp.subject}</p>
                     <div className="flex items-center gap-2">
-                      <TypeChip type={wp.type} />
+                      <TypeChip type={wp.type} label={typeLabel(wp.type)} />
                       <PriorityChip priority={wp.priority} />
                       {wp.due_date ? (
                         <span className="ml-auto text-[11px] text-of-muted">{wp.due_date}</span>

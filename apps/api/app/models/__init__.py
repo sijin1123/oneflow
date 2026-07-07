@@ -16,6 +16,7 @@ from app.models.notification import Notification
 from app.models.notification_setting import UserNotificationSettings
 from app.models.project import Project
 from app.models.project_status import ProjectStatus
+from app.models.project_type import ProjectType
 from app.models.relation import WorkPackageRelation
 from app.models.saved_filter import SavedFilter
 from app.models.time_entry import TimeEntry
@@ -39,6 +40,7 @@ __all__ = [
     "Notification",
     "SavedFilter",
     "ProjectStatus",
+    "ProjectType",
     "AutomationRule",
     "ProjectDocument",
     "Meeting",
