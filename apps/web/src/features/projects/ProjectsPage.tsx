@@ -9,6 +9,7 @@ import { Select } from '@/components/ui/select'
 import { ApiError } from '@/lib/api'
 
 import { useCreateProject, useProjects } from './api'
+import { SORT_KEYS, SORT_LABELS, sortProjects, type ProjectSortKey, type SortDir } from './sort'
 import { HEALTH_LABELS, HEALTH_STYLES } from './types'
 
 const KEY_RE = /^[A-Z][A-Z0-9]{1,9}$/
@@ -149,6 +150,32 @@ function loadColumns(): RollupKey[] {
   }
 }
 
+const SORT_STORAGE_KEY = 'oneflow.projects.sort.v1'
+
+/** Broken values fall back to the server default (#97 contract). */
+function loadSort(): { key: ProjectSortKey; dir: SortDir } {
+  try {
+    const raw = localStorage.getItem(SORT_STORAGE_KEY)
+    if (!raw) return { key: 'default', dir: 'asc' }
+    const parsed = JSON.parse(raw) as { key?: unknown; dir?: unknown }
+    const key = SORT_KEYS.includes(parsed.key as ProjectSortKey)
+      ? (parsed.key as ProjectSortKey)
+      : 'default'
+    const dir = parsed.dir === 'desc' ? 'desc' : 'asc'
+    return { key, dir }
+  } catch {
+    return { key: 'default', dir: 'asc' }
+  }
+}
+
+function saveSort(sort: { key: ProjectSortKey; dir: SortDir }) {
+  try {
+    localStorage.setItem(SORT_STORAGE_KEY, JSON.stringify(sort))
+  } catch {
+    // private mode / quota — in-memory only
+  }
+}
+
 function saveColumns(cols: RollupKey[]) {
   try {
     localStorage.setItem(COLUMNS_STORAGE_KEY, JSON.stringify(cols))
@@ -160,6 +187,11 @@ function saveColumns(cols: RollupKey[]) {
 export function ProjectsPage() {
   const [includeArchived, setIncludeArchived] = useState(false)
   const [columns, setColumns] = useState<RollupKey[]>(loadColumns)
+  const [sort, setSort] = useState<{ key: ProjectSortKey; dir: SortDir }>(loadSort)
+  const changeSort = (next: { key: ProjectSortKey; dir: SortDir }) => {
+    setSort(next)
+    saveSort(next)
+  }
 
   const toggleColumn = (key: RollupKey) => {
     setColumns((prev) => {
@@ -187,6 +219,27 @@ export function ProjectsPage() {
           />
           보관된 프로젝트 표시
         </label>
+        <Select
+          aria-label="프로젝트 정렬"
+          className="h-7 w-32 text-xs"
+          value={sort.key}
+          onChange={(e) => changeSort({ ...sort, key: e.target.value as ProjectSortKey })}
+        >
+          {SORT_KEYS.map((k) => (
+            <option key={k} value={k}>
+              {SORT_LABELS[k]}
+            </option>
+          ))}
+        </Select>
+        <button
+          type="button"
+          aria-label={`정렬 방향 (${sort.dir === 'asc' ? '오름차순' : '내림차순'})`}
+          className="rounded-of border border-of-border px-1.5 py-1 text-xs text-of-muted hover:bg-of-surface-2 disabled:opacity-50"
+          disabled={sort.key === 'default'}
+          onClick={() => changeSort({ ...sort, dir: sort.dir === 'asc' ? 'desc' : 'asc' })}
+        >
+          {sort.dir === 'asc' ? '↑' : '↓'}
+        </button>
         <span className="flex items-center gap-2 text-xs text-of-muted">
           {ROLLUP_COLUMNS.map((c) => (
             <label key={c.key} className="flex items-center gap-1">
@@ -221,7 +274,7 @@ export function ProjectsPage() {
         </div>
       ) : (
         <ul className="divide-y divide-of-border overflow-hidden rounded-of border border-of-border bg-of-surface">
-          {data.items.map((p) => (
+          {sortProjects(data.items, sort.key, sort.dir).map((p) => (
             <li key={p.id}>
               <Link
                 to={`/projects/${p.id}/work-packages`}
