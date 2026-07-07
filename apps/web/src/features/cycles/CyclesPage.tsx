@@ -16,6 +16,7 @@ import {
   useDeleteCycle,
   useRolloverCycle,
   useUpdateCycle,
+  useCycleBurndown,
 } from './api'
 
 const GROUPS: Array<{ status: Cycle['status']; label: string }> = [
@@ -44,6 +45,38 @@ function ProgressBar({ done, total }: { done: number; total: number }) {
   )
 }
 
+function BurndownChart({ projectId, cycleId }: { projectId: string; cycleId: string }) {
+  const { data, isPending, isError } = useCycleBurndown(projectId, cycleId)
+  if (isPending) return <p className="px-3 pb-2 text-[11px] text-of-muted">불러오는 중…</p>
+  if (isError) return <p className="px-3 pb-2 text-[11px] text-of-danger">번다운을 불러오지 못했습니다.</p>
+  if (data.days.length === 0)
+    return <p className="px-3 pb-2 text-[11px] text-of-muted">표시할 기간 데이터가 없습니다.</p>
+
+  const W = 100
+  const H = 48
+  const maxY = Math.max(data.total_scope, 1)
+  const x = (i: number) => (data.days.length === 1 ? 0 : (i / (data.days.length - 1)) * W)
+  const y = (v: number) => H - (v / maxY) * H
+  const actual = data.days.map((d, i) => `${x(i)},${y(d.remaining)}`).join(' ')
+
+  return (
+    <div className="px-3 pb-2" data-testid="burndown-chart">
+      <p className="mb-1 text-[10px] text-of-muted">
+        번다운 (현재 배정 기준 · 전체 {data.total_scope}건)
+      </p>
+      <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" className="h-16 w-full">
+        {/* ideal: total scope on day 1 → 0 at the end */}
+        <line x1={0} y1={y(data.total_scope)} x2={W} y2={y(0)} strokeDasharray="3 2" className="stroke-of-border" strokeWidth="1" vectorEffect="non-scaling-stroke" />
+        <polyline points={actual} fill="none" className="stroke-of-accent" strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
+      </svg>
+      <div className="flex justify-between text-[10px] text-of-muted">
+        <span>{data.days[0].date}</span>
+        <span>{data.days[data.days.length - 1].date}</span>
+      </div>
+    </div>
+  )
+}
+
 function CycleRow({
   cycle,
   isOwner,
@@ -60,6 +93,7 @@ function CycleRow({
   const remove = useDeleteCycle(projectId)
   const rollover = useRolloverCycle(projectId)
   const [editing, setEditing] = useState(false)
+  const [showBurndown, setShowBurndown] = useState(false)
   const [name, setName] = useState(cycle.name)
   const [start, setStart] = useState(cycle.start_date)
   const [end, setEnd] = useState(cycle.end_date)
@@ -150,6 +184,14 @@ function CycleRow({
           ))}
         </Select>
       ) : null}
+      <button
+        type="button"
+        aria-label={`${cycle.name} 번다운`}
+        className="shrink-0 rounded-of border border-of-border px-1.5 py-0.5 text-[11px] text-of-muted hover:bg-of-surface-2"
+        onClick={() => setShowBurndown((v) => !v)}
+      >
+        번다운
+      </button>
       {isOwner ? (
         <>
           <button
@@ -177,6 +219,11 @@ function CycleRow({
             <Trash2 size={13} />
           </button>
         </>
+      ) : null}
+      {showBurndown ? (
+        <div className="w-full">
+          <BurndownChart projectId={projectId} cycleId={cycle.id} />
+        </div>
       ) : null}
     </li>
   )

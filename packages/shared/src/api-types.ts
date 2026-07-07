@@ -723,6 +723,37 @@ export interface paths {
         patch: operations["update_cycle_api_v1_projects__project_id__cycles__cycle_id__patch"];
         trace?: never;
     };
+    "/api/v1/projects/{project_id}/cycles/{cycle_id}/burndown": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Cycle Burndown
+         * @description Current-scope burndown-lite (Pass 21, v21.1) — derived from the status
+         *     activity history, no snapshots. Per WP the timeline is exact: before the
+         *     first status activity the status was that activity's old_value; after each
+         *     activity it is its new_value; with no activities it never changed. A day's
+         *     `remaining` counts scoped WPs created by that day whose end-of-day status
+         *     is outside the FIXED closed vocabulary (WP_CLOSED_STATUSES — label/enable
+         *     config never rewrites history, R1-④). All dates are UTC date-only; the
+         *     series stops at min(end_date, today) — the future is not fabricated.
+         *     Member read; archived projects stay readable (read-open); a foreign or
+         *     missing cycle is 404 (existence hiding). The two reads are sequential —
+         *     a mid-flight status change converges to the current state next fetch
+         *     (read-only visualization, R1-②).
+         */
+        get: operations["cycle_burndown_api_v1_projects__project_id__cycles__cycle_id__burndown_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{project_id}/cycles/{cycle_id}/rollover": {
         parameters: {
             query?: never;
@@ -1941,6 +1972,30 @@ export interface components {
             unchanged_ids: string[];
             /** Updated Ids */
             updated_ids: string[];
+        };
+        /** BurndownDay */
+        BurndownDay: {
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            /** Remaining */
+            remaining: number;
+        };
+        /**
+         * BurndownRead
+         * @description Current-scope burndown (v21.1 R1-①): the day series covers WPs assigned
+         *     to the cycle NOW — items moved out mid-cycle are absent (documented; a
+         *     cycle-assignment history rebuild is a follow-up).
+         */
+        BurndownRead: {
+            /** Days */
+            days: components["schemas"]["BurndownDay"][];
+            /** Scope */
+            scope: string;
+            /** Total Scope */
+            total_scope: number;
         };
         /** CommentCreate */
         CommentCreate: {
@@ -5624,6 +5679,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CycleRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cycle_burndown_api_v1_projects__project_id__cycles__cycle_id__burndown_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                cycle_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BurndownRead"];
                 };
             };
             /** @description Validation Error */
