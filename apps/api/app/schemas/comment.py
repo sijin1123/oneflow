@@ -97,6 +97,9 @@ class ProjectActivityRead(BaseModel):
     id: uuid.UUID
     work_package_id: uuid.UUID
     work_package_subject: str
+    # Exposed as stored (Pass 38) — identical to the WP activity read; the
+    # name is the display value, the id is the filter value.
+    actor_id: uuid.UUID | None
     actor_name: str | None
     action: str
     field: str | None

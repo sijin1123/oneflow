@@ -126,6 +126,7 @@ async def project_activities(
     limit: int = Query(default=50, ge=1, le=200),
     action: str | None = Query(default=None),
     field: str | None = Query(default=None, max_length=40),
+    actor_id: uuid.UUID | None = Query(default=None),
     order: str = Query(default="desc", pattern="^(asc|desc)$"),
     session: AsyncSession = Depends(get_session),
     user: User = Depends(get_current_user),
@@ -134,8 +135,12 @@ async def project_activities(
     name (member-scoped). Filters are independent ANDs (v19.1): exact-key
     `field` with action=created/commented yields an empty page, never 422.
     `total` stays the RETURNED count (legacy contract); `truncated` (limit+1
-    probe) says whether more rows exist. An actor filter is deliberately
-    absent — the read model does not expose actor ids (R1-④)."""
+    probe) says whether more rows exist.
+
+    `actor_id` (Pass 38, revising the Pass-19 exclusion): any uuid — an
+    unrelated one is a legitimately empty page. Members can already walk the
+    whole feed by pagination, so the filter opens no new information channel
+    (v38.1 R1-②); ids are exposed as stored, matching the WP activity read."""
     await require_member(session, project_id, user)
     if action is not None and action not in ACTIVITY_ACTIONS:
         raise HTTPException(status_code=422, detail=f"action must be one of {ACTIVITY_ACTIONS}")
@@ -149,6 +154,8 @@ async def project_activities(
         stmt = stmt.where(Activity.action == action)
     if field is not None:
         stmt = stmt.where(Activity.field == field.strip())
+    if actor_id is not None:
+        stmt = stmt.where(Activity.actor_id == actor_id)
     order_col = Activity.created_at.asc() if order == "asc" else Activity.created_at.desc()
     rows = (
         await session.execute(
@@ -163,6 +170,7 @@ async def project_activities(
             id=a.id,
             work_package_id=a.work_package_id,
             work_package_subject=subject,
+            actor_id=a.actor_id,
             actor_name=actor_name,
             action=a.action,
             field=a.field,

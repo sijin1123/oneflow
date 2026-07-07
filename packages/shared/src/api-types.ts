@@ -554,8 +554,12 @@ export interface paths {
          *     name (member-scoped). Filters are independent ANDs (v19.1): exact-key
          *     `field` with action=created/commented yields an empty page, never 422.
          *     `total` stays the RETURNED count (legacy contract); `truncated` (limit+1
-         *     probe) says whether more rows exist. An actor filter is deliberately
-         *     absent — the read model does not expose actor ids (R1-④).
+         *     probe) says whether more rows exist.
+         *
+         *     `actor_id` (Pass 38, revising the Pass-19 exclusion): any uuid — an
+         *     unrelated one is a legitimately empty page. Members can already walk the
+         *     whole feed by pagination, so the filter opens no new information channel
+         *     (v38.1 R1-②); ids are exposed as stored, matching the WP activity read.
          */
         get: operations["project_activities_api_v1_projects__project_id__activities_get"];
         put?: never;
@@ -3353,6 +3357,8 @@ export interface components {
         ProjectActivityRead: {
             /** Action */
             action: string;
+            /** Actor Id */
+            actor_id: string | null;
             /** Actor Name */
             actor_name: string | null;
             /**
@@ -5482,6 +5488,7 @@ export interface operations {
                 limit?: number;
                 action?: string | null;
                 field?: string | null;
+                actor_id?: string | null;
                 order?: string;
             };
             header?: never;
@@ -7786,6 +7793,7 @@ export interface operations {
                 offset?: number;
                 action?: string | null;
                 field?: string | null;
+                actor_id?: string | null;
                 order?: string;
             };
             header?: never;

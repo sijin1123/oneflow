@@ -1,6 +1,7 @@
 import { useState } from 'react'
 
 import { Select } from '@/components/ui/select'
+import { useMembers } from '@/features/members/api'
 import { FIELD_LABELS } from '@/features/work-packages/activityLabels'
 import { formatDateTime } from '@/lib/datetime'
 
@@ -16,9 +17,14 @@ function actionText(a: ProjectActivity): string {
 export function RecentActivity({ projectId }: { projectId: string }) {
   const [action, setAction] = useState('')
   const [order, setOrder] = useState<'asc' | 'desc'>('desc')
+  // Actor source = CURRENT member roster — filtering by former actors is a
+  // deliberate non-goal (v38.1 R1-⑤); their rows still render in '전체'.
+  const [actor, setActor] = useState('')
+  const members = useMembers(projectId)
   const activities = useProjectActivities(projectId, {
     action: action || undefined,
     order,
+    actor_id: actor || undefined,
   })
 
   return (
@@ -36,6 +42,19 @@ export function RecentActivity({ projectId }: { projectId: string }) {
             <option value="created">생성</option>
             <option value="field_changed">필드 변경</option>
             <option value="commented">댓글</option>
+          </Select>
+          <Select
+            aria-label="활동 멤버"
+            className="h-6 w-24 text-[11px]"
+            value={actor}
+            onChange={(e) => setActor(e.target.value)}
+          >
+            <option value="">전체 멤버</option>
+            {(members.data?.items ?? []).map((m) => (
+              <option key={m.user_id} value={m.user_id}>
+                {m.display_name}
+              </option>
+            ))}
           </Select>
           <Select
             aria-label="활동 정렬"
