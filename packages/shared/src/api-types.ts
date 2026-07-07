@@ -2946,11 +2946,14 @@ export interface components {
         /**
          * MeWorkRead
          * @description Personal home payload. Lists are hard-capped (no pagination yet):
-         *     assigned/due-soon at 50, activity at 20 — documented in the coverage ledger.
+         *     assigned/due-soon/created at 50, activity at 20 — documented in the
+         *     coverage ledger.
          */
         MeWorkRead: {
             /** Assigned To Me */
             assigned_to_me: components["schemas"]["MyWorkPackage"][];
+            /** Created By Me */
+            created_by_me: components["schemas"]["MyWorkPackage"][];
             /** Due Soon */
             due_soon: components["schemas"]["MyWorkPackage"][];
             /** Recent Activity */
@@ -3306,6 +3309,10 @@ export interface components {
          *     render a list line and deep-link into the owning project's views.
          */
         MyWorkPackage: {
+            /** Assignee Id */
+            assignee_id?: string | null;
+            /** Assignee Name */
+            assignee_name?: string | null;
             /** Due Date */
             due_date: string | null;
             /**

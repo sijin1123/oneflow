@@ -12,6 +12,8 @@ export type MyWorkPackage = {
   status: WorkPackage['status']
   priority: WorkPackage['priority']
   due_date: string | null
+  assignee_id: string | null
+  assignee_name: string | null
 }
 
 export type MyActivity = {
@@ -30,6 +32,7 @@ export type MyActivity = {
 
 export type MeWork = {
   assigned_to_me: MyWorkPackage[]
+  created_by_me: MyWorkPackage[]
   due_soon: MyWorkPackage[]
   recent_activity: MyActivity[]
 }

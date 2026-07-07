@@ -48,15 +48,20 @@ async def my_work(
     and activity immediately — even for items still assigned to the caller."""
     membership = select(ProjectMember.project_id).where(ProjectMember.user_id == user.id)
 
-    def assigned_stmt():
+    assignee = User.__table__.alias("assignee")
+
+    def open_work_stmt(*predicates):
+        """Common member-visible open-work base (v45.1 R1-②) — the section
+        predicates stay separate so they can't contaminate each other."""
         return (
-            select(WorkPackage, Project.name)
+            select(WorkPackage, Project.name, assignee.c.display_name)
             .join(Project, WorkPackage.project_id == Project.id)
+            .outerjoin(assignee, WorkPackage.assignee_id == assignee.c.id)
             .where(
-                WorkPackage.assignee_id == user.id,
                 WorkPackage.status.not_in(WP_CLOSED_STATUSES),
                 WorkPackage.project_id.in_(membership),
                 Project.archived_at.is_(None),  # archived projects rest quietly
+                *predicates,
             )
             .order_by(
                 WorkPackage.due_date.asc().nulls_last(),
@@ -66,7 +71,10 @@ async def my_work(
             .limit(MY_WORK_LIMIT)
         )
 
-    def to_item(wp: WorkPackage, project_name: str) -> MyWorkPackage:
+    def assigned_stmt():
+        return open_work_stmt(WorkPackage.assignee_id == user.id)
+
+    def to_item(wp: WorkPackage, project_name: str, assignee_name: str | None) -> MyWorkPackage:
         return MyWorkPackage(
             id=wp.id,
             project_id=wp.project_id,
@@ -76,9 +84,22 @@ async def my_work(
             status=wp.status,
             priority=wp.priority,
             due_date=wp.due_date,
+            assignee_id=wp.assignee_id,
+            assignee_name=assignee_name,
         )
 
     assigned_rows = (await session.execute(assigned_stmt())).all()
+
+    # Delegation view (Pass 45): items I created that are NOT mine to do.
+    # The explicit IS NULL keeps unassigned items in (SQL != drops NULLs).
+    created_rows = (
+        await session.execute(
+            open_work_stmt(
+                WorkPackage.created_by == user.id,
+                (WorkPackage.assignee_id.is_(None)) | (WorkPackage.assignee_id != user.id),
+            )
+        )
+    ).all()
 
     # Same convention as the dashboard's overdue computation: server-local date.
     today = date.today()
@@ -116,8 +137,9 @@ async def my_work(
     ).all()
 
     return MeWorkRead(
-        assigned_to_me=[to_item(wp, name) for (wp, name) in assigned_rows],
-        due_soon=[to_item(wp, name) for (wp, name) in due_rows],
+        assigned_to_me=[to_item(wp, name, an) for (wp, name, an) in assigned_rows],
+        due_soon=[to_item(wp, name, an) for (wp, name, an) in due_rows],
+        created_by_me=[to_item(wp, name, an) for (wp, name, an) in created_rows],
         recent_activity=[
             MyActivityRead(
                 id=a.id,

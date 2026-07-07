@@ -174,3 +174,54 @@ async def test_hard_limits_cap_the_lists(client, app):
     body = await _me_work(client)
     assert len(body["assigned_to_me"]) == 50
     assert len(body["recent_activity"]) <= 20
+
+
+async def test_created_by_me_delegation_view(client, app, member_project):
+    """Pass 45 PR-BK (v45.1): open items I created that are NOT mine to do —
+    unassigned included (explicit IS NULL), my own assignments excluded,
+    closed/archived/non-member excluded; assignee is server-enriched."""
+
+    from tests.conftest import create_project, create_wp
+
+    project = await create_project(client, key="CBM", name="위임 추적")
+    pid = project["id"]
+    me = (await client.get("/api/v1/me")).json()
+
+    await create_wp(client, pid, subject="미배정 위임")
+    to_other = await create_wp(client, pid, subject="타인 위임")
+    # Assign to another member (add one first).
+    other = (
+        await client.post(
+            "/api/v1/users", json={"email": "delegate@corp.com", "display_name": "위임 대상"}
+        )
+    ).json()
+    await client.post(
+        f"/api/v1/projects/{pid}/members", json={"email": "delegate@corp.com", "role": "member"}
+    )
+    await client.patch(
+        f"/api/v1/work-packages/{to_other['id']}",
+        json={"expected_version": 0, "assignee_id": other["id"]},
+    )
+    # My own assignment — excluded from created_by_me (it's in assigned_to_me).
+    mine = await create_wp(client, pid, subject="내 담당")
+    await client.patch(
+        f"/api/v1/work-packages/{mine['id']}", json={"expected_version": 0, "assignee_id": me["id"]}
+    )
+    # Closed — excluded.
+    closed = await create_wp(client, pid, subject="종결됨")
+    await client.patch(
+        f"/api/v1/work-packages/{closed['id']}", json={"expected_version": 0, "status": "done"}
+    )
+
+    body = (await client.get("/api/v1/me/work")).json()
+    created = {w["subject"]: w for w in body["created_by_me"]}
+    assert set(created) >= {"미배정 위임", "타인 위임"}
+    assert "내 담당" not in created and "종결됨" not in created
+    assert created["미배정 위임"]["assignee_id"] is None
+    assert created["타인 위임"]["assignee_name"] == "위임 대상"  # server-enriched
+    assert {w["subject"] for w in body["assigned_to_me"]} >= {"내 담당"}
+
+    # Archived project drops out entirely.
+    await client.post(f"/api/v1/projects/{pid}/archive")
+    body = (await client.get("/api/v1/me/work")).json()
+    assert all(w["project_id"] != pid for w in body["created_by_me"])

@@ -16,6 +16,10 @@ class MyWorkPackage(BaseModel):
     status: str
     priority: str
     due_date: date | None
+    # Server-enriched (cross-project screen — the web can't resolve rosters;
+    # the MyActivityRead actor_name precedent). Null id = unassigned.
+    assignee_id: uuid.UUID | None = None
+    assignee_name: str | None = None
 
 
 class MyActivityRead(BaseModel):
@@ -36,8 +40,12 @@ class MyActivityRead(BaseModel):
 
 class MeWorkRead(BaseModel):
     """Personal home payload. Lists are hard-capped (no pagination yet):
-    assigned/due-soon at 50, activity at 20 — documented in the coverage ledger."""
+    assigned/due-soon/created at 50, activity at 20 — documented in the
+    coverage ledger."""
 
     assigned_to_me: list[MyWorkPackage]
     due_soon: list[MyWorkPackage]
+    # Delegation view (Pass 45): open items I created that are NOT mine to do
+    # (unassigned or assigned to someone else).
+    created_by_me: list[MyWorkPackage]
     recent_activity: list[MyActivityRead]
