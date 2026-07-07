@@ -16,9 +16,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import get_current_user
 from app.core.authz import is_member, require_active_project, require_member
+from app.core.authz import is_member as _is_member_check  # noqa: F401 (alias below)
 from app.db.session import get_session
 from app.models.meeting import Meeting, MeetingActionItem
 from app.models.user import User
+from app.models.work_package import WorkPackage
 from app.schemas.meeting import (
     ActionItemCreate,
     ActionItemRead,
@@ -30,6 +32,8 @@ from app.schemas.meeting import (
     MeetingRead,
     MeetingUpdate,
 )
+from app.services.activity import record_created
+from app.services.notification import record_assignment
 from app.services.sanitize import sanitize_html
 
 router = APIRouter()
@@ -256,3 +260,61 @@ def _conflict(current: MeetingRead) -> JSONResponse:
         detail="version conflict — meeting was modified by someone else", current=current
     )
     return JSONResponse(status_code=409, content=jsonable_encoder(payload))
+
+
+@router.post("/action-items/{item_id}/convert", response_model=ActionItemRead)
+async def convert_action_item(
+    item_id: uuid.UUID,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+) -> ActionItemRead:
+    """Turn a meeting action item into a work package (Pass 6 PR-O).
+
+    Intake-accept pattern: WP insert+flush, then a status-conditional UPDATE
+    (`converted_wp_id IS NULL`) in the SAME transaction — a concurrent convert
+    succeeds exactly once and the loser's WP insert rolls back (409).
+    Assignee inheritance: only if the item's assignee is a CURRENT project
+    member; otherwise (null / left / deleted) the WP starts unassigned —
+    conversion is never refused over a stale assignee."""
+    item = await _get_action_item_scoped(session, item_id, user, write=True)
+    if item.converted_wp_id is not None:
+        raise HTTPException(status_code=409, detail="action item was already converted")
+    meeting = (
+        await session.execute(select(Meeting).where(Meeting.id == item.meeting_id))
+    ).scalar_one()
+
+    assignee = None
+    if item.assignee_id is not None and await is_member(
+        session, meeting.project_id, item.assignee_id
+    ):
+        assignee = item.assignee_id
+
+    wp = WorkPackage(
+        project_id=meeting.project_id,
+        subject=item.description[:255],
+        description=f"회의 '{meeting.title}'의 액션 아이템에서 전환됨",
+        assignee_id=assignee,
+    )
+    session.add(wp)
+    await session.flush()
+    record_created(session, wp.id, user.id)
+    if assignee is not None:
+        await record_assignment(
+            session,
+            recipient_id=assignee,
+            actor_id=user.id,
+            project_id=meeting.project_id,
+            wp_id=wp.id,
+        )
+
+    result = await session.execute(
+        sa_update(MeetingActionItem)
+        .where(MeetingActionItem.id == item_id, MeetingActionItem.converted_wp_id.is_(None))
+        .values(converted_wp_id=wp.id, done=True)
+    )
+    if result.rowcount == 0:
+        await session.rollback()  # the WP insert rolls back with the transaction
+        raise HTTPException(status_code=409, detail="action item was already converted")
+    await session.commit()
+    await session.refresh(item)
+    return ActionItemRead.model_validate(item)

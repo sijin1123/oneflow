@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiError, api } from '@/lib/api'
 
 export type ActionItem = {
+  converted_wp_id: string | null
   id: string
   meeting_id: string
   description: string
@@ -143,5 +144,16 @@ export function useDeleteActionItem(meetingId: string) {
     mutationFn: (id: string) =>
       api<void>(`/api/v1/action-items/${id}`, { method: 'DELETE' }),
     onSuccess: () => void invalidate(),
+  })
+}
+
+export function useConvertActionItem(meetingId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) =>
+      api<ActionItem>(`/api/v1/action-items/${id}/convert`, { method: 'POST' }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['meeting', meetingId] })
+    },
   })
 }
