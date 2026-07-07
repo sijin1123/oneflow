@@ -62,6 +62,45 @@ cd ../.. && make web-dev
 4. **보관/복구**: manifest를 백업 위치에 보관합니다. 오탐이면 manifest의 원경로대로 되돌리면 복구됩니다. 격리 영역은 이후 sweep이 건드리지 않으며, 최종 purge(영구 삭제)는 보존 기간 경과 후 운영자가 수동으로 수행합니다.
 5. **missing blob 행**: 리포트의 "rows with MISSING blobs"는 블롭이 사라진 attachment 행입니다 — 스크립트는 삭제하지 않으며, 데이터 복원 여부는 운영 판단입니다.
 
+## 백업/복구 런북
+
+백업 대상은 두 가지입니다: **PostgreSQL 데이터베이스**(메타데이터 전부)와 **업로드 스토리지 디렉터리**(`ONEFLOW_STORAGE_DIR`, 기본 `apps/api/var/uploads` — 블롭 본문). 반드시 **DB를 먼저, 블롭을 나중에** 백업합니다 — 행⇄블롭 계약상 "블롭만 남는" 고아는 무해하고 스윕 가능하지만, "행만 남는" 결손은 다운로드가 깨집니다.
+
+### 백업
+
+```bash
+# 1) DB 덤프 (로컬 개발 컨테이너 기준 — 운영은 관리형 DB의 스냅샷/pg_dump 사용)
+docker exec oneflow-postgres pg_dump -U oneflow -d oneflow -Fc   > backup/oneflow-$(date +%Y%m%dT%H%M%S).dump
+
+# 2) 스토리지 스냅샷 (.quarantine 포함 — 격리분도 복구 대상)
+tar czf backup/uploads-$(date +%Y%m%dT%H%M%S).tar.gz -C apps/api var/uploads
+```
+
+### 복구 (역순 아님 — DB부터)
+
+```bash
+# 1) DB 복원 (기존 데이터가 있으면 --clean 사용 여부를 먼저 판단)
+docker exec -i oneflow-postgres pg_restore -U oneflow -d oneflow --clean --if-exists   < backup/oneflow-<timestamp>.dump
+
+# 2) 마이그레이션 정합 확인 — 복원본 리비전이 코드 기대와 같아야 함
+cd apps/api && uv run alembic current   # 예: 0039 (head)
+
+# 3) 블롭 복원
+tar xzf backup/uploads-<timestamp>.tar.gz -C apps/api
+```
+
+### 복구 후 검증
+
+1. `/status` 페이지(또는 `GET /api/v1/ops/status`)에서 DB 상태·마이그레이션 리비전 확인.
+2. `make api-sweep-blobs`(dry-run)로 정합 점검 — **"rows with MISSING blobs"가 0이어야** DB·블롭 시점이 맞습니다(0이 아니면 블롭 백업이 DB보다 오래된 것 — 더 최신 블롭 백업으로 재복원).
+3. 임의 프로젝트에서 목록/문서/첨부 다운로드 스모크.
+
+### 주기/보존 권고
+
+- DB 일 1회 이상 + 마이그레이션 배포 직전 1회(0001–00NN 전환 경계 보존).
+- 블롭은 DB 백업 **직후** 촬영해 시점 차를 최소화. 보존 기간은 조직 정책에 따르되 최소 마지막 2세대.
+- 복구 리허설을 분기 1회 권고(위 검증 3단계 포함).
+
 CI(`.github/workflows/ci.yml`)는 `backend`/`frontend`/`cleanroom`/`security-audit` 4개 잡으로 검증합니다. 앞의 3개(`backend`/`frontend`/`cleanroom`)를 main 브랜치의 required status checks로 등록하며, `security-audit`(pip-audit·npm audit)는 자문용 비차단 잡입니다.
 
 ## Layout
