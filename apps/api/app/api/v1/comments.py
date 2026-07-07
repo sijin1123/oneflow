@@ -1,6 +1,6 @@
 import uuid
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -54,7 +54,23 @@ async def create_comment(
     user: User = Depends(get_current_user),
 ) -> CommentRead:
     wp = await require_wp_member(session, wp_id, user, write=True)
-    comment = WorkPackageComment(work_package_id=wp_id, author_id=user.id, body=body.body)
+    if body.parent_id is not None:
+        # Single entry point for the single-level invariant (PLAN v10.1 R1-④):
+        # the parent must be a ROOT comment on THIS work package.
+        parent = (
+            await session.execute(
+                select(WorkPackageComment).where(WorkPackageComment.id == body.parent_id)
+            )
+        ).scalar_one_or_none()
+        if parent is None or parent.work_package_id != wp_id:
+            raise HTTPException(
+                status_code=422, detail="parent comment must exist on the same work package"
+            )
+        if parent.parent_id is not None:
+            raise HTTPException(status_code=422, detail="replies to replies are not allowed")
+    comment = WorkPackageComment(
+        work_package_id=wp_id, parent_id=body.parent_id, author_id=user.id, body=body.body
+    )
     session.add(comment)
     record_comment(session, wp_id, user.id)  # same transaction as the comment
     # Watchers hear about new comments in the same transaction (PR-E1).

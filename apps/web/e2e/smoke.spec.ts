@@ -186,10 +186,11 @@ async function mockApi(page: Page, opts: { conflictOnPatch?: boolean } = {}) {
   )
   await page.route(`**/api/v1/work-packages/${wpA.id}/comments`, async (route) => {
     if (route.request().method() === 'POST') {
-      const sent = route.request().postDataJSON() as { body: string }
+      const sent = route.request().postDataJSON() as { body: string; parent_id?: string | null }
       const created: Comment = {
         id: 'c-new',
         work_package_id: wpA.id,
+        parent_id: sent.parent_id ?? null,
         author_id: null,
         body: sent.body,
         created_at: '2026-07-02T00:00:00Z',
@@ -282,6 +283,59 @@ test('드로어에서 활동 이력을 보여주고 댓글을 추가한다', asy
   await drawer.getByRole('button', { name: '댓글 추가' }).click()
   const req = await commentPost
   expect((req.postDataJSON() as { body: string }).body).toBe('검토 완료했습니다')
+})
+
+test('댓글 스레드: 답글이 루트 아래 들여쓰기로 붙고 parent_id를 보낸다', async ({ page }) => {
+  await mockApi(page)
+  const at = (d: string) => ({ created_at: d, updated_at: d })
+  const rootComment: Comment = {
+    id: 'c-root',
+    work_package_id: wpA.id,
+    parent_id: null,
+    author_id: null,
+    body: '루트 코멘트',
+    ...at('2026-07-01T00:00:00Z'),
+  }
+  const reply: Comment = {
+    id: 'c-reply',
+    work_package_id: wpA.id,
+    parent_id: 'c-root',
+    author_id: null,
+    body: '기존 답글',
+    ...at('2026-07-02T00:00:00Z'),
+  }
+  // Registered after mockApi → precedence over the empty default.
+  await page.route(`**/api/v1/work-packages/${wpA.id}/comments`, async (route) => {
+    if (route.request().method() === 'POST') {
+      const sent = route.request().postDataJSON() as { body: string; parent_id?: string | null }
+      await route.fulfill({
+        status: 201,
+        json: {
+          ...rootComment,
+          id: 'c-new',
+          parent_id: sent.parent_id ?? null,
+          body: sent.body,
+        },
+      })
+      return
+    }
+    await route.fulfill({ json: { items: [rootComment, reply], total: 2 } })
+  })
+
+  await page.goto(`/projects/${project.id}/work-packages`)
+  await page.getByRole('button', { name: '워크패키지 API 구현' }).click()
+  const drawer = page.getByRole('dialog')
+  await expect(drawer.getByText('루트 코멘트')).toBeVisible()
+  await expect(drawer.getByText('기존 답글')).toBeVisible()
+
+  // reply composer opens per-thread and posts with the root's parent_id
+  await drawer.getByRole('button', { name: '답글', exact: true }).click()
+  await drawer.getByLabel('답글 입력').fill('스레드 답글')
+  const post = page.waitForRequest(
+    (r) => r.method() === 'POST' && r.url().includes(`/work-packages/${wpA.id}/comments`),
+  )
+  await drawer.getByRole('button', { name: '답글 추가' }).click()
+  expect(((await post).postDataJSON() as { parent_id: string }).parent_id).toBe('c-root')
 })
 
 test('409 충돌 시 드로어 내 경고를 보여주고 최신 데이터로 재로드한다', async ({ page }) => {

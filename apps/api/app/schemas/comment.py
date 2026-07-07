@@ -8,6 +8,8 @@ MAX_COMMENT = 20_000
 
 class CommentCreate(BaseModel):
     body: str
+    # Single-level threading: must reference a ROOT comment on the same WP.
+    parent_id: uuid.UUID | None = None
 
     @field_validator("body")
     @classmethod
@@ -23,6 +25,7 @@ class CommentRead(BaseModel):
 
     id: uuid.UUID
     work_package_id: uuid.UUID
+    parent_id: uuid.UUID | None
     author_id: uuid.UUID | None
     body: str
     created_at: datetime

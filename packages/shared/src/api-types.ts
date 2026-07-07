@@ -1671,6 +1671,8 @@ export interface components {
         CommentCreate: {
             /** Body */
             body: string;
+            /** Parent Id */
+            parent_id?: string | null;
         };
         /** CommentList */
         CommentList: {
@@ -1695,6 +1697,8 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            /** Parent Id */
+            parent_id: string | null;
             /**
              * Updated At
              * Format: date-time
