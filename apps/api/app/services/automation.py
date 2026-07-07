@@ -7,7 +7,7 @@ writes are NOT fed back through the rules, so a rule can never cascade or loop.
 
 import uuid
 
-from sqlalchemy import select
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.automation_rule import AutomationRule
@@ -42,9 +42,21 @@ async def extra_changes_for_status(
         .all()
     )
     extra: dict = {}
+    winners: dict[str, uuid.UUID] = {}  # field -> winning rule id
     for rule in rules:
         if rule.action_type == "set_priority":
             # Trigger watches status, action writes priority — never the same field,
-            # so this can't re-trigger the same or another status rule.
+            # so this can't re-trigger the same or another status rule. Rules are
+            # reduced IN MEMORY to the final value per field (v13.1 R1-④).
             extra["priority"] = rule.action_value
+            winners["priority"] = rule.id
+    # Fire audit (v13.1 R1-①): "fired" = selected as the field's winning rule at
+    # evaluation time. Atomic UPDATE in the caller's transaction — the counter
+    # commits or rolls back together with the change that fired the rule.
+    if winners:
+        await session.execute(
+            update(AutomationRule)
+            .where(AutomationRule.id.in_(set(winners.values())))
+            .values(fired_count=AutomationRule.fired_count + 1, last_fired_at=func.now())
+        )
     return extra

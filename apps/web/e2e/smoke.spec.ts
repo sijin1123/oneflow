@@ -1740,16 +1740,31 @@ test('설정에서 자동화 규칙을 보여주고 새 규칙을 추가한다',
             action_type: 'set_priority',
             action_value: 'urgent',
             is_active: true,
+            last_fired_at: '2026-07-06T09:00:00Z',
+            fired_count: 3,
           },
         ],
         total: 1,
       },
     })
   })
+  await page.route(`**/api/v1/projects/${project.id}/automation-rules/r1`, (route) =>
+    route.fulfill({ json: { id: 'r1' } }),
+  )
 
   await page.goto(`/projects/${project.id}/settings`)
   await page.getByRole('tab', { name: '자동화' }).click()
   await expect(page.getByText(/상태가 '검토 중'.*우선순위를 '긴급'/)).toBeVisible()
+
+  // fire-audit surface renders per rule
+  await expect(page.getByText('발화 3회', { exact: false })).toBeVisible()
+
+  // inline edit sends a partial PATCH with the changed value only
+  const rulePatch = page.waitForRequest(
+    (r) => r.method() === 'PATCH' && r.url().includes('/automation-rules/r1'),
+  )
+  await page.getByLabel('검수 시 긴급 우선순위 값').selectOption('high')
+  expect(((await rulePatch).postDataJSON() as { action_value: string }).action_value).toBe('high')
 
   const post = page.waitForRequest(
     (r) => r.method() === 'POST' && r.url().includes('/automation-rules'),

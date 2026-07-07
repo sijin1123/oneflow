@@ -48,7 +48,14 @@ class AutomationRuleCreate(BaseModel):
 
 
 class AutomationRuleUpdate(BaseModel):
-    is_active: bool
+    """Partial rule edit (v13.1) — omitted fields keep their current value.
+    Validation runs on the MERGED rule (router builds an AutomationRuleCreate
+    from current+patch), so a value change can never leave the pair invalid."""
+
+    name: str | None = None
+    trigger_value: str | None = None
+    action_value: str | None = None
+    is_active: bool | None = None
 
 
 class AutomationRuleRead(BaseModel):
@@ -62,6 +69,8 @@ class AutomationRuleRead(BaseModel):
     action_type: str
     action_value: str
     is_active: bool
+    last_fired_at: datetime | None
+    fired_count: int
     created_at: datetime
 
 

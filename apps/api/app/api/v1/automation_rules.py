@@ -7,6 +7,7 @@ app.services.automation inside the work-package PATCH transaction.
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Response
+from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -102,7 +103,24 @@ async def update_automation_rule(
 ) -> AutomationRuleRead:
     await require_role(session, project_id, user, {"owner"}, write=True)
     rule = await _get_owned_rule(session, project_id, rule_id)
-    rule.is_active = body.is_active
+    provided = {k: v for k, v in body.model_dump(exclude_unset=True).items() if v is not None}
+    # Validate the MERGED rule with the same fan-in as create (v13.1 R1-③) —
+    # a partial edit can never leave the trigger/action pair invalid.
+    merged = {
+        "name": rule.name,
+        "trigger_type": rule.trigger_type,
+        "trigger_value": rule.trigger_value,
+        "action_type": rule.action_type,
+        "action_value": rule.action_value,
+        "is_active": rule.is_active,
+        **provided,
+    }
+    try:
+        AutomationRuleCreate(**merged)
+    except ValidationError as exc:
+        raise HTTPException(status_code=422, detail=exc.errors()[0]["msg"]) from exc
+    for key, value in provided.items():
+        setattr(rule, key, value)
     await session.commit()
     await session.refresh(rule)
     return AutomationRuleRead.model_validate(rule)

@@ -11,6 +11,7 @@ import {
   type WpStatus,
 } from '@/features/work-packages/types'
 import { useStatusLabels } from '@/features/work-packages/useStatusLabels'
+import { formatDateTime } from '@/lib/datetime'
 
 import {
   type AutomationRule,
@@ -65,7 +66,40 @@ export function AutomationManager({ projectId, isOwner }: { projectId: string; i
             >
               <span className={`min-w-0 flex-1 ${rule.is_active ? '' : 'text-of-muted line-through'}`}>
                 {ruleText(rule)}
+                <span className="ml-1.5 text-[10px] text-of-muted">
+                  {rule.fired_count > 0
+                    ? `발화 ${rule.fired_count}회 · 마지막 ${formatDateTime(rule.last_fired_at ?? '')}`
+                    : '아직 발화 없음'}
+                </span>
               </span>
+              {isOwner ? (
+                <>
+                  <Select
+                    aria-label={`${rule.name} 트리거 상태`}
+                    className="h-6 w-24 shrink-0 text-[11px]"
+                    value={rule.trigger_value}
+                    onChange={(e) => setActive.mutate({ id: rule.id, trigger_value: e.target.value })}
+                  >
+                    {WP_STATUSES.map((s) => (
+                      <option key={s} value={s}>
+                        {statusLabel(s)}
+                      </option>
+                    ))}
+                  </Select>
+                  <Select
+                    aria-label={`${rule.name} 우선순위 값`}
+                    className="h-6 w-20 shrink-0 text-[11px]"
+                    value={rule.action_value}
+                    onChange={(e) => setActive.mutate({ id: rule.id, action_value: e.target.value })}
+                  >
+                    {WP_PRIORITIES.map((p) => (
+                      <option key={p} value={p}>
+                        {PRIORITY_LABELS[p]}
+                      </option>
+                    ))}
+                  </Select>
+                </>
+              ) : null}
               {isOwner ? (
                 <>
                   <label className="flex shrink-0 items-center gap-1 text-[11px] text-of-muted">
