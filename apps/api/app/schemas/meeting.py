@@ -1,7 +1,7 @@
 import uuid
 from datetime import date, datetime
 
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
 MAX_RICH = 100_000
 
@@ -51,6 +51,9 @@ class ActionItemRead(BaseModel):
 class MeetingCreate(BaseModel):
     title: str
     scheduled_on: date | None = None
+    # Applying a template COPIES its agenda at create time (same-transaction
+    # lookup — a deleted template is a plain 404; v48.1 R1-④).
+    template_id: uuid.UUID | None = None
 
     @field_validator("title")
     @classmethod
@@ -132,3 +135,46 @@ class MeetingList(BaseModel):
 class MeetingConflict(BaseModel):
     detail: str
     current: MeetingRead
+
+
+class MeetingTemplateCreate(BaseModel):
+    """agenda XOR from_meeting_id (v48.1 R1-①): both or neither is a 422."""
+
+    name: str
+    agenda: str | None = None
+    from_meeting_id: uuid.UUID | None = None
+
+    @field_validator("name")
+    @classmethod
+    def _name(cls, v: str) -> str:
+        v = v.strip()
+        if not 1 <= len(v) <= 80:
+            raise ValueError("name must be 1-80 chars after trim")
+        return v
+
+    @field_validator("agenda")
+    @classmethod
+    def _agenda(cls, v: str | None) -> str | None:
+        return _rich(v)
+
+    @model_validator(mode="after")
+    def _source(self) -> "MeetingTemplateCreate":
+        if (self.agenda is None) == (self.from_meeting_id is None):
+            raise ValueError("provide exactly one of agenda or from_meeting_id")
+        return self
+
+
+class MeetingTemplateRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    project_id: uuid.UUID
+    name: str
+    agenda: str | None
+    created_by: uuid.UUID | None
+    created_at: datetime
+
+
+class MeetingTemplateList(BaseModel):
+    items: list[MeetingTemplateRead]
+    total: int

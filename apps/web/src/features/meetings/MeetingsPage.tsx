@@ -6,18 +6,22 @@ import { EmptyState, ErrorState, ListSkeleton } from '@/components/shell/states'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 
-import { useCreateMeeting, useMeetings } from './api'
+import { Select } from '@/components/ui/select'
+
+import { useCreateMeeting, useMeetings, useMeetingTemplates } from './api'
 
 export function MeetingsPage() {
   const { projectId } = useParams() as { projectId: string }
   const navigate = useNavigate()
   const { data, isPending, isError, error, refetch } = useMeetings(projectId)
   const create = useCreateMeeting(projectId)
+  const templates = useMeetingTemplates(projectId)
+  const [templateId, setTemplateId] = useState('')
   const [query, setQuery] = useState('')
 
   const newMeeting = () => {
     create.mutate(
-      { title: '제목 없는 회의' },
+      { title: '제목 없는 회의', ...(templateId ? { template_id: templateId } : {}) },
       { onSuccess: (m) => navigate(`/projects/${projectId}/meetings/${m.id}`) },
     )
   }
@@ -29,6 +33,19 @@ export function MeetingsPage() {
     <div className="mx-auto flex h-full max-w-3xl flex-col p-6">
       <div className="mb-4 flex items-center justify-between">
         <h1 className="text-base font-semibold">회의</h1>
+        <Select
+          aria-label="회의 템플릿"
+          className="h-8 w-40 text-xs"
+          value={templateId}
+          onChange={(e) => setTemplateId(e.target.value)}
+        >
+          <option value="">템플릿 없음</option>
+          {(templates.data?.items ?? []).map((t) => (
+            <option key={t.id} value={t.id}>
+              {t.name}
+            </option>
+          ))}
+        </Select>
         <Button size="sm" disabled={create.isPending} onClick={newMeeting}>
           <Plus size={14} /> 새 회의
         </Button>

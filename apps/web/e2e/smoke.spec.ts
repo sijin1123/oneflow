@@ -118,6 +118,10 @@ async function mockApi(page: Page, opts: { conflictOnPatch?: boolean } = {}) {
       json: { assigned: true, watched: true, commented: true, mention: true, due_alerts: true },
     }),
   )
+  // The meetings page's template select fetches on mount — default to none.
+  await page.route('**/api/v1/projects/*/meeting-templates', (route) =>
+    route.fulfill({ json: { items: [], total: 0 } }),
+  )
   // The list page's saved-filters bar fetches on mount — default to none.
   await page.route('**/api/v1/projects/*/saved-filters', (route) =>
     route.fulfill({ json: { items: [], total: 0 } }),
@@ -2579,6 +2583,103 @@ test('회의 상세가 안건·액션 아이템을 보여주고 액션 아이템
   await page.getByLabel('새 액션 아이템').fill('회의록 정리')
   await page.getByRole('button', { name: '추가' }).click()
   await post
+
+  // Save-as-template (Pass 48): the prompt value becomes the template name
+  // and the POST snapshots from the meeting.
+  page.once('dialog', (d) => void d.accept('주간 아젠다'))
+  const tplPost = page.waitForRequest(
+    (r) => r.method() === 'POST' && r.url().includes('/meeting-templates'),
+  )
+  await page.route(`**/api/v1/projects/${project.id}/meeting-templates`, (route) =>
+    route.fulfill({
+      status: 201,
+      json: {
+        id: 't1',
+        project_id: project.id,
+        name: '주간 아젠다',
+        agenda: '<p>안건 내용</p>',
+        created_by: 'me-1',
+        created_at: '2026-07-08T00:00:00Z',
+      },
+    }),
+  )
+  await page.getByRole('button', { name: '템플릿으로 저장' }).click()
+  const tplSent = (await tplPost).postDataJSON() as { name: string; from_meeting_id: string }
+  expect(tplSent).toEqual({ name: '주간 아젠다', from_meeting_id: 'm1' })
+})
+
+test('회의 생성 시 템플릿을 고르면 template_id가 실린다', async ({ page }) => {
+  await mockApi(page)
+  await page.route(`**/api/v1/projects/${project.id}/meeting-templates`, (route) =>
+    route.fulfill({
+      json: {
+        items: [
+          {
+            id: 't1',
+            project_id: project.id,
+            name: '주간 아젠다',
+            // sanitize boundary: the stored agenda is server-cleaned HTML
+            agenda: '<p>안건 1</p>',
+            created_by: 'me-1',
+            created_at: '2026-07-08T00:00:00Z',
+          },
+        ],
+        total: 1,
+      },
+    }),
+  )
+  await page.route(`**/api/v1/projects/${project.id}/meetings`, async (route) => {
+    if (route.request().method() === 'POST') {
+      await route.fulfill({
+        status: 201,
+        json: {
+          id: 'm-new',
+          project_id: project.id,
+          title: '제목 없는 회의',
+          scheduled_on: null,
+          agenda: '<p>안건 1</p>',
+          minutes: null,
+          author_id: null,
+          version: 0,
+          created_at: '2026-07-08T00:00:00Z',
+          updated_at: '2026-07-08T00:00:00Z',
+          action_items: [],
+        },
+      })
+      return
+    }
+    await route.fulfill({ json: { items: [], total: 0 } })
+  })
+  await page.route('**/api/v1/meetings/m-new', (route) =>
+    route.fulfill({
+      json: {
+        id: 'm-new',
+        project_id: project.id,
+        title: '제목 없는 회의',
+        scheduled_on: null,
+        agenda: '<p>안건 1</p>',
+        minutes: null,
+        author_id: null,
+        version: 0,
+        created_at: '2026-07-08T00:00:00Z',
+        updated_at: '2026-07-08T00:00:00Z',
+        action_items: [],
+      },
+    }),
+  )
+
+  await page.goto(`/projects/${project.id}/meetings`)
+  await page.getByLabel('회의 템플릿').selectOption('t1')
+  const post = page.waitForRequest(
+    (r) => r.method() === 'POST' && r.url().endsWith(`/projects/${project.id}/meetings`),
+  )
+  await page.getByRole('button', { name: '새 회의' }).click()
+  const sent = (await post).postDataJSON() as { title: string; template_id: string }
+  expect(sent.template_id).toBe('t1')
+  // Navigated to the new meeting with the template agenda applied (rendered
+  // through the rich editor — server-sanitized HTML only).
+  await expect(page.getByLabel('회의 제목')).toHaveValue('제목 없는 회의')
+  await expect(page.getByText('안건 1')).toBeVisible()
 })
 
 test('후속 회의를 만들면 아젠다·미결 항목을 들고 새 회의로 이동한다', async ({ page }) => {
