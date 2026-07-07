@@ -38,14 +38,19 @@ export function useExportCsv(projectId: string) {
   return useMutation({ mutationFn: () => downloadCsv(projectId) })
 }
 
+export type ImportSource = 'oneflow' | 'jira'
+
 export function useImportCsv(projectId: string) {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (input: { content: string; dry_run: boolean }) =>
-      api<CsvImportResult>(`/api/v1/projects/${projectId}/work-packages/import`, {
-        method: 'POST',
-        body: JSON.stringify(input),
-      }),
+    mutationFn: ({ source, ...input }: { content: string; dry_run: boolean; source: ImportSource }) =>
+      api<CsvImportResult>(
+        `/api/v1/projects/${projectId}/work-packages/import${source === 'jira' ? '/jira' : ''}`,
+        {
+          method: 'POST',
+          body: JSON.stringify(input),
+        },
+      ),
     onSuccess: (result) => {
       // A real commit changed the list; a dry-run touched nothing.
       if (!result.dry_run && result.inserted > 0) {

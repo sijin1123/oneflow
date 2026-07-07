@@ -1108,6 +1108,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{project_id}/work-packages/import/jira": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Import Jira Csv
+         * @description Jira CSV export → work packages (Pass 8 PR-T, PLAN v8.1 contract).
+         *
+         *     The adapter maps columns/values deterministically; this endpoint reuses the
+         *     standard import semantics: row-level isolation, disabled-type rejection,
+         *     dry-run preview, and — for idempotent re-uploads — a duplicate guard that
+         *     isolates rows whose subject (usually "[KEY] Summary") already exists.
+         */
+        post: operations["import_jira_csv_api_v1_projects__project_id__work_packages_import_jira_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/search/work-packages": {
         parameters: {
             query?: never;
@@ -1714,6 +1739,11 @@ export interface components {
             inserted: number;
             /** Invalid */
             invalid: number;
+            /**
+             * Notes
+             * @default []
+             */
+            notes: string[];
             /** Total Rows */
             total_rows: number;
             /** Valid */
@@ -5941,6 +5971,41 @@ export interface operations {
         };
     };
     import_work_packages_csv_api_v1_projects__project_id__work_packages_import_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CsvImportRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CsvImportResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    import_jira_csv_api_v1_projects__project_id__work_packages_import_jira_post: {
         parameters: {
             query?: never;
             header?: never;
