@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
-import { buildConnectors, buildTimeline, dayIndex, monthLabel } from './timeline.ts'
+import { buildConnectors, buildTimeline, contentWidth, dayIndex, monthLabel } from './timeline.ts'
 import type { WorkPackage } from './types.ts'
 
 function wp(id: string, start: string | null, due: string | null): WorkPackage {
@@ -97,4 +97,11 @@ test('buildConnectors normalizes follows, dedupes pairs, counts missing schedule
   assert.equal(connectors[0].fromRow, 0)
   assert.equal(connectors[0].toRow, 1)
   assert.equal(omittedMissingSchedule, 1)
+})
+
+test('contentWidth: fit stays fluid, fixed levels scale by px-per-day (Pass 36)', () => {
+  assert.equal(contentWidth(120, 'fit'), null)
+  assert.equal(contentWidth(100, 'month'), 400)
+  assert.equal(contentWidth(100, 'week'), 1000)
+  assert.equal(contentWidth(100, 'day'), 2400)
 })

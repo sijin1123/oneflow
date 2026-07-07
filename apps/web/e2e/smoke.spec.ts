@@ -640,6 +640,17 @@ test('타임라인이 일정이 있는 작업을 막대로 그린다', async ({ 
   await expect(page.getByTestId('dep-connector')).toHaveCount(1)
   await expect(page.getByText('일정 미정으로 표시되지 않은 의존 1건', { exact: false })).toBeVisible()
   await expect(page.getByText('2026.07')).toBeVisible() // month header from start/due dates
+
+  // Zoom (Pass 36): fixed levels set an explicit content width; the choice
+  // survives a reload via localStorage.
+  const content = page.getByTestId('timeline-content')
+  await expect(content).not.toHaveAttribute('style', /width/)
+  await page.getByRole('button', { name: '일', exact: true }).click()
+  await expect(content).toHaveAttribute('style', /width/)
+  await page.reload()
+  await expect(page.getByTestId('timeline-content')).toHaveAttribute('style', /width/)
+  await page.getByRole('button', { name: '자동', exact: true }).click()
+  await expect(page.getByTestId('timeline-content')).not.toHaveAttribute('style', /width/)
 })
 
 test('설정 화면에서 멤버를 보여주고 소유자가 멤버를 추가한다', async ({ page }) => {

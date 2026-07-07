@@ -175,3 +175,29 @@ export function buildConnectors(
   }
   return { connectors, omittedMissingSchedule: omitted }
 }
+
+
+/* Zoom (Pass 36 PR-BB): pure width computation. 'fit' keeps the original
+   fluid layout (fill the container, min 900px); fixed levels set an explicit
+   px-per-day content width — percent positioning inside is unchanged. */
+export const ZOOM_LEVELS = ['fit', 'month', 'week', 'day'] as const
+export type ZoomLevel = (typeof ZOOM_LEVELS)[number]
+
+export const ZOOM_LABELS: Record<ZoomLevel, string> = {
+  fit: '자동',
+  month: '월',
+  week: '주',
+  day: '일',
+}
+
+const PX_PER_DAY: Record<Exclude<ZoomLevel, 'fit'>, number> = {
+  month: 4,
+  week: 10,
+  day: 24,
+}
+
+/** null → fluid (fit); otherwise the explicit content width in px. */
+export function contentWidth(totalDays: number, zoom: ZoomLevel): number | null {
+  if (zoom === 'fit') return null
+  return totalDays * PX_PER_DAY[zoom]
+}
