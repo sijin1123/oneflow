@@ -1,4 +1,4 @@
-import { ArrowRightCircle, ArrowLeft, Plus, Trash2 } from 'lucide-react'
+import { ArrowRightCircle, ArrowLeft, CalendarPlus, Plus, Trash2 } from 'lucide-react'
 import { Suspense, lazy, useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 
@@ -12,6 +12,7 @@ import {
   conflictOf,
   useAddActionItem,
   useConvertActionItem,
+  useCreateFollowUp,
   useDeleteActionItem,
   useDeleteMeeting,
   useMeeting,
@@ -29,6 +30,7 @@ export function MeetingDetailPage() {
   const { data: mtg, isPending, isError, error, refetch } = useMeeting(meetingId)
   const update = useUpdateMeeting(projectId)
   const del = useDeleteMeeting(projectId)
+  const followUp = useCreateFollowUp(projectId)
   const addItem = useAddActionItem(meetingId)
   const convertItem = useConvertActionItem(meetingId)
   const toggleItem = useToggleActionItem(meetingId)
@@ -108,6 +110,34 @@ export function MeetingDetailPage() {
         <Button size="sm" disabled={!title.trim() || update.isPending} onClick={save}>
           저장
         </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={followUp.isPending}
+          title="아젠다와 미결 액션 아이템을 복사한 다음 회차를 만듭니다 (원본과의 연결은 저장되지 않음)"
+          onClick={() => {
+            const openCount = mtg.action_items.filter((i) => !i.done && !i.converted_wp_id).length
+            if (
+              !confirmDestructive(
+                `후속 회의를 만들까요?\n아젠다와 미결 액션 아이템 ${openCount}건이 복사됩니다.`,
+              )
+            ) {
+              return
+            }
+            followUp.mutate(mtg.id, {
+              onSuccess: (created) => navigate(`/projects/${projectId}/meetings/${created.id}`),
+            })
+          }}
+        >
+          <CalendarPlus size={14} /> 후속 회의 만들기
+        </Button>
+        {followUp.isError ? (
+          <span className="text-xs text-of-danger">
+            {followUp.error instanceof ApiError && followUp.error.status === 409
+              ? '같은 제목·날짜의 회의가 이미 있습니다.'
+              : '후속 회의 생성 실패'}
+          </span>
+        ) : null}
         <button
           type="button"
           aria-label="회의 삭제"

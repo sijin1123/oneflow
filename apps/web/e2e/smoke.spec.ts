@@ -2392,6 +2392,91 @@ test('회의 상세가 안건·액션 아이템을 보여주고 액션 아이템
   await post
 })
 
+test('후속 회의를 만들면 아젠다·미결 항목을 들고 새 회의로 이동한다', async ({ page }) => {
+  await mockApi(page)
+  const meeting = {
+    id: 'm1',
+    project_id: project.id,
+    title: '주간 회의',
+    scheduled_on: '2026-07-10',
+    agenda: '<p>안건</p>',
+    minutes: null,
+    author_id: null,
+    version: 1,
+    created_at: '2026-07-01T00:00:00Z',
+    updated_at: '2026-07-01T00:00:00Z',
+    action_items: [
+      {
+        id: 'a1',
+        meeting_id: 'm1',
+        description: '미결 항목',
+        assignee_id: null,
+        done: false,
+        converted_wp_id: null,
+        created_at: '2026-07-01T00:00:00Z',
+      },
+      {
+        id: 'a2',
+        meeting_id: 'm1',
+        description: '완료 항목',
+        assignee_id: null,
+        done: true,
+        converted_wp_id: null,
+        created_at: '2026-07-01T00:00:00Z',
+      },
+    ],
+  }
+  const followUp = {
+    ...meeting,
+    id: 'm2',
+    scheduled_on: '2026-07-17',
+    version: 0,
+    action_items: [meeting.action_items[0]],
+  }
+  await page.route(`**/api/v1/projects/${project.id}/meetings`, (route) =>
+    route.fulfill({
+      json: {
+        items: [
+          {
+            id: 'm1',
+            project_id: project.id,
+            title: '주간 회의',
+            scheduled_on: '2026-07-10',
+            version: 1,
+            updated_at: '2026-07-01T00:00:00Z',
+          },
+        ],
+        total: 1,
+      },
+    }),
+  )
+  await page.route('**/api/v1/meetings/m1', (route) => route.fulfill({ json: meeting }))
+  await page.route('**/api/v1/meetings/m2', (route) => route.fulfill({ json: followUp }))
+  await page.route('**/api/v1/meetings/m1/follow-up', (route) =>
+    route.fulfill({ status: 201, json: followUp }),
+  )
+
+  await page.goto(`/projects/${project.id}/meetings/m1`)
+  await expect(page.getByLabel('회의 제목')).toHaveValue('주간 회의')
+
+  // The confirm names the carried OPEN item count (done items excluded).
+  const dialogs: string[] = []
+  page.once('dialog', (d) => {
+    dialogs.push(d.message())
+    void d.accept()
+  })
+  const post = page.waitForRequest(
+    (r) => r.method() === 'POST' && r.url().includes('/meetings/m1/follow-up'),
+  )
+  await page.getByRole('button', { name: '후속 회의 만들기' }).click()
+  await post
+  expect(dialogs[0]).toContain('1건')
+
+  // Navigates to the created follow-up occurrence.
+  await expect(page).toHaveURL(new RegExp(`/projects/${project.id}/meetings/m2`))
+  await expect(page.getByLabel('회의 일정')).toHaveValue('2026-07-17')
+})
+
 test('파일 페이지가 링크를 보여주고 새 파일 링크를 추가한다', async ({ page }) => {
   await mockApi(page)
   await page.route(`**/api/v1/projects/${project.id}/attachments`, async (route) => {

@@ -58,6 +58,15 @@ class MeetingCreate(BaseModel):
         return _title(v)
 
 
+class MeetingFollowUpCreate(BaseModel):
+    """Follow-up meeting (Pass 34 PR-AZ): agenda carries over; open UNCONVERTED
+    action items are COPIED (never moved — the original meeting keeps its
+    record); scheduled_on defaults to the source date + 7 days."""
+
+    scheduled_on: date | None = None
+    carry_open_items: bool = True
+
+
 class MeetingUpdate(BaseModel):
     expected_version: int
     title: str | None = None
