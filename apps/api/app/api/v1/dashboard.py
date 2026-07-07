@@ -1,7 +1,6 @@
 import csv
 import io
 import uuid
-from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy import func, select
@@ -12,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.v1.csv_io import BOM, _guard_formula
 from app.core.auth import get_current_user
 from app.core.authz import require_member
+from app.core.dates import utc_today
 from app.db.session import get_session
 from app.models.activity import ACTIVITY_ACTIONS, Activity
 from app.models.cost_entry import CostEntry
@@ -47,7 +47,7 @@ async def project_dashboard(
     user: User = Depends(get_current_user),
 ) -> DashboardRead:
     await require_member(session, project_id, user)
-    today = date.today()
+    today = utc_today()  # UTC boundary (v21.1 — unified in Pass 46)
 
     async def group(col) -> dict[str, int]:
         rows = (

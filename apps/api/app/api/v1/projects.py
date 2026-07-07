@@ -1,5 +1,4 @@
 import uuid
-from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select, text
@@ -8,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import get_current_user
 from app.core.authz import authorize, is_member, require_member, require_role
+from app.core.dates import utc_today
 from app.db.session import get_session
 from app.models.automation_rule import AutomationRule
 from app.models.custom_field import CustomField
@@ -65,7 +65,7 @@ async def list_projects(
         # Rollups share the visible scope by construction (project_id IN the
         # returned ids). utc_today binds from the API layer — never the DB
         # session timezone (v22.1 R1-②).
-        utc_today = datetime.now(UTC).date()
+        today_utc = utc_today()
         open_filter = WorkPackage.status.notin_(WP_CLOSED_STATUSES)
         wp_rows = (
             await session.execute(
@@ -74,7 +74,7 @@ async def list_projects(
                     func.count().label("total"),
                     func.count().filter(open_filter).label("open"),
                     func.count()
-                    .filter(open_filter, WorkPackage.due_date < utc_today)
+                    .filter(open_filter, WorkPackage.due_date < today_utc)
                     .label("overdue"),
                 )
                 .where(WorkPackage.project_id.in_(ids))

@@ -5,16 +5,17 @@ composite same-project FK, column-list SET NULL, progress rollups) plus the
 module-specific pieces: explicit state machine values, optional date range,
 and lead membership integrity."""
 
-from datetime import date, timedelta
+from datetime import timedelta
 
 import pytest
 from sqlalchemy import select, text
 from sqlalchemy.exc import IntegrityError
 
+from app.core.dates import utc_today
 from app.models import WorkPackage
 from tests.conftest import create_project, create_wp
 
-TODAY = date.today()
+TODAY = utc_today()
 
 
 async def create_module(client, project_id, name="인증 모듈", **extra) -> dict:
