@@ -21,6 +21,8 @@ from app.models.relation import WorkPackageRelation
 from app.models.user import User
 from app.models.work_package import WorkPackage
 from app.schemas.work_package import (
+    BulkUpdateRequest,
+    BulkUpdateResult,
     ConflictResponse,
     RelationCreate,
     RelationList,
@@ -217,6 +219,86 @@ async def create_work_package(
     await session.flush()
     await session.commit()
     return WorkPackageRead.model_validate(wp)
+
+
+@router.post("/projects/{project_id}/work-packages/bulk-update", response_model=BulkUpdateResult)
+async def bulk_update_work_packages(
+    project_id: uuid.UUID,
+    body: BulkUpdateRequest,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+) -> BulkUpdateResult:
+    """Bulk simple-assignment update (Pass 12 PR-AB, PLAN v12.1 R1-①②⑥).
+
+    Single transaction, all-or-nothing over the rows found: SELECT..FOR UPDATE
+    the project-scoped rows, validate the uniform patch ONCE up front (422
+    before any write), then per row: snapshot old values, skip unchanged rows,
+    assign + version+1, record field changes and assignment notifications for
+    real changes only. ids not found in this project return as opaque
+    skipped_ids (missing and cross-project look identical — existence hiding).
+    Deliberate §6.2 exception: no per-row version token (simple assignments,
+    list-scale cleanup; the drawer's precision PATCH keeps the token)."""
+    await require_member(session, project_id, user, write=True)
+
+    provided = body.patch.model_fields_set
+    if not provided:
+        raise HTTPException(status_code=422, detail="patch must set at least one field")
+    if "status" in provided and body.patch.status is None:
+        raise HTTPException(status_code=422, detail="status cannot be null")
+    if "priority" in provided and body.patch.priority is None:
+        raise HTTPException(status_code=422, detail="priority cannot be null")
+    if body.patch.assignee_id is not None:
+        await _require_assignee_member(session, project_id, body.patch.assignee_id)
+
+    rows = (
+        (
+            await session.execute(
+                select(WorkPackage)
+                .where(WorkPackage.id.in_(body.ids), WorkPackage.project_id == project_id)
+                .with_for_update()
+            )
+        )
+        .scalars()
+        .all()
+    )
+    by_id = {row.id: row for row in rows}
+    skipped = [i for i in body.ids if i not in by_id]
+
+    patch_fields = {f: getattr(body.patch, f) for f in provided}
+    extra: dict = {}
+    if "status" in patch_fields:
+        extra = await extra_changes_for_status(session, project_id, patch_fields["status"])
+
+    updated: list[uuid.UUID] = []
+    unchanged: list[uuid.UUID] = []
+    for wp_id in body.ids:
+        wp = by_id.get(wp_id)
+        if wp is None:
+            continue
+        changes = {f: v for f, v in patch_fields.items() if getattr(wp, f) != v}
+        for field, value in extra.items():  # automation fills unset fields only
+            if field not in changes and getattr(wp, field) != value:
+                changes[field] = value
+        if not changes:
+            unchanged.append(wp_id)
+            continue
+        old_values = {f: getattr(wp, f) for f in changes}
+        for field, value in changes.items():
+            setattr(wp, field, value)
+        wp.version += 1
+        record_field_changes(session, wp_id, user.id, old_values, changes)
+        new_assignee = changes.get("assignee_id")
+        if new_assignee is not None:
+            await record_assignment(
+                session,
+                recipient_id=new_assignee,
+                actor_id=user.id,
+                project_id=project_id,
+                wp_id=wp_id,
+            )
+        updated.append(wp_id)
+    await session.commit()
+    return BulkUpdateResult(updated_ids=updated, unchanged_ids=unchanged, skipped_ids=skipped)
 
 
 @router.post(
