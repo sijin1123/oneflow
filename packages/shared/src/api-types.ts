@@ -784,6 +784,36 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{project_id}/dashboard/layout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Dashboard Layout
+         * @description The caller's OWN layout; absent row = the built-in default. Unknown keys
+         *     (a widget retired by a later migration) are filtered out; if nothing
+         *     survives, the default backfills (v18.1 R1-⑥).
+         */
+        get: operations["get_dashboard_layout_api_v1_projects__project_id__dashboard_layout_get"];
+        /**
+         * Put Dashboard Layout
+         * @description Upsert of the caller's OWN layout. Deliberately last-write-wins (v18.1
+         *     R1-① — single-owner personal preference, lost updates self-correct) and
+         *     deliberately EXEMPT from the archived-project write gate (R1-③ — a display
+         *     preference, not project data). API normalizes: de-dup keeping the first
+         *     occurrence; vocabulary/empty violations are 422 (DB CHECK is the backstop).
+         */
+        put: operations["put_dashboard_layout_api_v1_projects__project_id__dashboard_layout_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{project_id}/documents": {
         parameters: {
             query?: never;
@@ -2232,6 +2262,24 @@ export interface components {
             name?: string | null;
             /** Start Date */
             start_date?: string | null;
+        };
+        /** DashboardLayoutPut */
+        DashboardLayoutPut: {
+            /** Widgets */
+            widgets: string[];
+        };
+        /**
+         * DashboardLayoutRead
+         * @description v18.1 R1-⑤: is_default marks the built-in layout (no row persisted);
+         *     updated_at is null in that case. PUT echoes the NORMALIZED array.
+         */
+        DashboardLayoutRead: {
+            /** Is Default */
+            is_default: boolean;
+            /** Updated At */
+            updated_at: string | null;
+            /** Widgets */
+            widgets: string[];
         };
         /** DashboardRead */
         DashboardRead: {
@@ -5597,6 +5645,72 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_dashboard_layout_api_v1_projects__project_id__dashboard_layout_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DashboardLayoutRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_dashboard_layout_api_v1_projects__project_id__dashboard_layout_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DashboardLayoutPut"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DashboardLayoutRead"];
                 };
             };
             /** @description Validation Error */

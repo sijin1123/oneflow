@@ -486,12 +486,37 @@ test('대시보드가 집계 타일과 분포를 보여준다', async ({ page })
       },
     }),
   )
+  let savedWidgets: string[] | null = null
+  await page.route(`**/api/v1/projects/${project.id}/dashboard/layout`, async (route) => {
+    if (route.request().method() === 'PUT') {
+      savedWidgets = (route.request().postDataJSON() as { widgets: string[] }).widgets
+      await route.fulfill({
+        json: { widgets: savedWidgets, updated_at: '2026-07-07T00:00:00Z', is_default: false },
+      })
+      return
+    }
+    await route.fulfill({ json: { widgets: null, updated_at: null, is_default: true } })
+  })
+
   await page.goto(`/projects/${project.id}/dashboard`)
   await expect(page.getByText('전체 작업')).toBeVisible()
   await expect(page.getByText('최근 활동')).toBeVisible()
   await expect(page.getByText('기한 초과')).toBeVisible()
   await expect(page.getByText('10.5 / 40h')).toBeVisible()
   await expect(page.getByText('상태별')).toBeVisible()
+
+  // widget layout edit: hide the budget tiles, save → PUT carries the order
+  await page.getByRole('button', { name: '위젯 편집' }).click()
+  await page.getByLabel('비용/예산 타일 표시').uncheck()
+  await page.getByRole('button', { name: '레이아웃 저장' }).click()
+  await expect(page.getByText('비용 합계')).toBeHidden()
+  expect(savedWidgets).toEqual([
+    'summary',
+    'progress',
+    'status_distribution',
+    'priority_distribution',
+    'recent_activity',
+  ])
 })
 
 test('타임라인이 일정이 있는 작업을 막대로 그린다', async ({ page }) => {

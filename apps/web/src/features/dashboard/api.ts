@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { api } from '@/lib/api'
 
@@ -45,5 +45,32 @@ export function useProjectActivities(projectId: string) {
   return useQuery({
     queryKey: ['project-activities', projectId],
     queryFn: () => api<ProjectActivityList>(`/api/v1/projects/${projectId}/activities`),
+  })
+}
+
+export type DashboardLayout = {
+  widgets: string[]
+  updated_at: string | null
+  is_default: boolean
+}
+
+export function useDashboardLayout(projectId: string) {
+  return useQuery({
+    queryKey: ['dashboard-layout', projectId],
+    queryFn: () => api<DashboardLayout>(`/api/v1/projects/${projectId}/dashboard/layout`),
+  })
+}
+
+export function useSaveDashboardLayout(projectId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (widgets: string[]) =>
+      api<DashboardLayout>(`/api/v1/projects/${projectId}/dashboard/layout`, {
+        method: 'PUT',
+        body: JSON.stringify({ widgets }),
+      }),
+    onSuccess: (layout) => {
+      queryClient.setQueryData(['dashboard-layout', projectId], layout)
+    },
   })
 }
