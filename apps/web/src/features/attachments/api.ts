@@ -34,6 +34,7 @@ export function useCreateAttachment(projectId: string) {
       content_type?: string | null
       size_bytes?: number | null
       work_package_id?: string | null
+      document_id?: string | null
     }) =>
       api<Attachment>(`/api/v1/projects/${projectId}/attachments`, {
         method: 'POST',
@@ -57,8 +58,20 @@ export function useUploadAttachment(projectId: string) {
   return useMutation({
     // Raw body (no multipart): the filename travels in the query string and the
     // file's own type in Content-Type — mirrors the server's streaming protocol.
-    mutationFn: async ({ file, workPackageId }: { file: File; workPackageId?: string }) => {
-      const anchor = workPackageId ? `&work_package_id=${workPackageId}` : ''
+    mutationFn: async ({
+      file,
+      workPackageId,
+      documentId,
+    }: {
+      file: File
+      workPackageId?: string
+      documentId?: string
+    }) => {
+      const anchor = workPackageId
+        ? `&work_package_id=${workPackageId}`
+        : documentId
+          ? `&document_id=${documentId}`
+          : ''
       const res = await fetch(
         `${BASE_URL}/api/v1/projects/${projectId}/attachments/upload?filename=${encodeURIComponent(file.name)}${anchor}`,
         {
@@ -98,5 +111,15 @@ export function useWpAttachments(projectId: string, wpId: string | null) {
         `/api/v1/projects/${projectId}/attachments?work_package_id=${wpId}`,
       ),
     enabled: wpId !== null,
+  })
+}
+
+/** Attachments anchored to one document — the editor's 첨부 section. */
+export function useDocumentAttachments(projectId: string, docId: string | null) {
+  return useQuery({
+    queryKey: ['attachments', projectId, 'doc', docId],
+    queryFn: () =>
+      api<AttachmentList>(`/api/v1/projects/${projectId}/attachments?document_id=${docId}`),
+    enabled: docId !== null,
   })
 }
