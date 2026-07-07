@@ -7,6 +7,8 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { ApiError } from '@/lib/api'
 import { confirmDestructive } from '@/lib/guards'
+import { Select } from '@/components/ui/select'
+import { useWorkPackages } from '@/features/work-packages/api'
 
 import { downloadUrl, useAttachments, useCreateAttachment, useDeleteAttachment, useUploadAttachment } from './api'
 
@@ -31,6 +33,8 @@ export function FilesPage() {
 
   const [filename, setFilename] = useState('')
   const [url, setUrl] = useState('')
+  const [anchorWp, setAnchorWp] = useState('')
+  const { data: wps } = useWorkPackages(projectId, {})
   const err = create.error instanceof ApiError ? create.error.message : null
 
   const urlTrimmed = url.trim()
@@ -39,7 +43,7 @@ export function FilesPage() {
   const add = () => {
     if (!filename.trim() || !urlValid || urlTrimmed === '' || create.isPending) return
     create.mutate(
-      { filename: filename.trim(), url: urlTrimmed },
+      { filename: filename.trim(), url: urlTrimmed, work_package_id: anchorWp || null },
       {
         onSuccess: () => {
           setFilename('')
@@ -68,13 +72,26 @@ export function FilesPage() {
           className="hidden"
           onChange={(e) => {
             const f = e.target.files?.[0]
-            if (f) uploadFile.mutate(f)
+            if (f) uploadFile.mutate({ file: f, workPackageId: anchorWp || undefined })
             e.target.value = ''
           }}
         />
         <Button size="sm" disabled={uploadFile.isPending} onClick={() => fileInput.current?.click()}>
           <Upload size={13} /> 파일 업로드
         </Button>
+        <Select
+          aria-label="연결 대상 작업"
+          className="h-7 w-40 text-xs"
+          value={anchorWp}
+          onChange={(e) => setAnchorWp(e.target.value)}
+        >
+          <option value="">연결 안 함</option>
+          {(wps?.items ?? []).map((w) => (
+            <option key={w.id} value={w.id}>
+              {w.subject}
+            </option>
+          ))}
+        </Select>
         {uploadFile.isPending ? <span className="text-xs text-of-muted">업로드 중…</span> : null}
         {uploadFile.isError && uploadFile.error instanceof ApiError ? (
           <p role="alert" className="text-xs text-of-danger">

@@ -1,7 +1,17 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import BigInteger, DateTime, ForeignKey, Index, String, Text, func
+from sqlalchemy import (
+    BigInteger,
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    ForeignKeyConstraint,
+    Index,
+    String,
+    Text,
+    func,
+)
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -17,12 +27,36 @@ class Attachment(Base):
     carries user-controlled paths."""
 
     __tablename__ = "attachments"
-    __table_args__ = (Index("ix_attachments_project_created", "project_id", "created_at"),)
+    __table_args__ = (
+        # At most ONE anchor; deleting the anchor SET-NULLs it — the file stays
+        # a plain project attachment (data-preservation ruling, Pass 23).
+        CheckConstraint(
+            "NOT (work_package_id IS NOT NULL AND document_id IS NOT NULL)",
+            name="single_anchor",
+        ),
+        ForeignKeyConstraint(
+            ["work_package_id", "project_id"],
+            ["work_packages.id", "work_packages.project_id"],
+            name="fk_attachments_wp_same_project",
+            ondelete="SET NULL (work_package_id)",
+        ),
+        ForeignKeyConstraint(
+            ["document_id", "project_id"],
+            ["project_documents.id", "project_documents.project_id"],
+            name="fk_attachments_document_same_project",
+            ondelete="SET NULL (document_id)",
+        ),
+        Index("ix_attachments_wp", "work_package_id"),
+        Index("ix_attachments_document", "document_id"),
+        Index("ix_attachments_project_created", "project_id", "created_at"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     project_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False
     )
+    work_package_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    document_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     filename: Mapped[str] = mapped_column(String(255), nullable=False)
     content_type: Mapped[str | None] = mapped_column(String(120), nullable=True)
     size_bytes: Mapped[int | None] = mapped_column(BigInteger, nullable=True)

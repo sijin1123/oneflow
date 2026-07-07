@@ -127,6 +127,10 @@ async function mockApi(page: Page, opts: { conflictOnPatch?: boolean } = {}) {
   await page.route('**/api/v1/projects/*/relations**', (route) =>
     route.fulfill({ json: { items: [], total: 0, truncated: false } }),
   )
+  // The drawer attachments section reads anchored files.
+  await page.route('**/api/v1/projects/*/attachments**', (route) =>
+    route.fulfill({ json: { items: [], total: 0 } }),
+  )
   // The intake page reads the queue.
   await page.route('**/api/v1/projects/*/intake', (route) =>
     route.fulfill({ json: { items: [], total: 0 } }),
@@ -284,6 +288,33 @@ test('드로어에서 상태 변경 PATCH가 expected_version을 동봉한다', 
 
 test('드로어에서 활동 이력을 보여주고 댓글을 추가한다', async ({ page }) => {
   await mockApi(page)
+  // anchored attachment renders in the drawer 첨부 section
+  await page.route(`**/api/v1/projects/${project.id}/attachments**`, (route) => {
+    const url = new URL(route.request().url())
+    const anchored = url.searchParams.get('work_package_id') === wpA.id
+    return route.fulfill({
+      json: anchored
+        ? {
+            items: [
+              {
+                id: 'att-1',
+                project_id: project.id,
+                work_package_id: wpA.id,
+                document_id: null,
+                filename: '설계서.pdf',
+                content_type: 'application/pdf',
+                size_bytes: 1024,
+                url: 'oneflow://attachments/att-1',
+                has_file: true,
+                uploaded_by: null,
+                created_at: '2026-07-01T00:00:00Z',
+              },
+            ],
+            total: 1,
+          }
+        : { items: [], total: 0 },
+    })
+  })
   await page.goto(`/projects/${project.id}/work-packages`)
   await page.getByRole('button', { name: '워크패키지 API 구현' }).click()
   const drawer = page.getByRole('dialog')
@@ -297,6 +328,10 @@ test('드로어에서 활동 이력을 보여주고 댓글을 추가한다', asy
   await drawer.getByRole('button', { name: '댓글 추가' }).click()
   const req = await commentPost
   expect((req.postDataJSON() as { body: string }).body).toBe('검토 완료했습니다')
+
+  // 첨부 section shows the anchored file with a download affordance
+  await expect(drawer.getByText('설계서.pdf')).toBeVisible()
+  await expect(drawer.getByLabel('설계서.pdf 다운로드')).toBeVisible()
 })
 
 test('댓글 스레드: 답글이 루트 아래 들여쓰기로 붙고 parent_id를 보낸다', async ({ page }) => {

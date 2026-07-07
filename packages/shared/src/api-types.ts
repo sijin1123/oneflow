@@ -555,7 +555,12 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List Attachments */
+        /**
+         * List Attachments
+         * @description Read-side filters are LENIENT (v23.1 R1-②): only a double filter is a
+         *     422; a missing/cross-project anchor id simply matches nothing inside the
+         *     project scope (existence hiding).
+         */
         get: operations["list_attachments_api_v1_projects__project_id__attachments_get"];
         put?: never;
         /** Create Attachment */
@@ -1751,12 +1756,16 @@ export interface components {
         AttachmentCreate: {
             /** Content Type */
             content_type?: string | null;
+            /** Document Id */
+            document_id?: string | null;
             /** Filename */
             filename: string;
             /** Size Bytes */
             size_bytes?: number | null;
             /** Url */
             url: string;
+            /** Work Package Id */
+            work_package_id?: string | null;
         };
         /** AttachmentList */
         AttachmentList: {
@@ -1774,6 +1783,8 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+            /** Document Id */
+            document_id?: string | null;
             /** Filename */
             filename: string;
             /**
@@ -1797,6 +1808,8 @@ export interface components {
             uploaded_by: string | null;
             /** Url */
             url: string;
+            /** Work Package Id */
+            work_package_id?: string | null;
         };
         /** AuthConfigRead */
         AuthConfigRead: {
@@ -5217,7 +5230,10 @@ export interface operations {
     };
     list_attachments_api_v1_projects__project_id__attachments_get: {
         parameters: {
-            query?: never;
+            query?: {
+                work_package_id?: string | null;
+                document_id?: string | null;
+            };
             header?: never;
             path: {
                 project_id: string;
@@ -5285,6 +5301,8 @@ export interface operations {
         parameters: {
             query: {
                 filename: string;
+                work_package_id?: string | null;
+                document_id?: string | null;
             };
             header?: never;
             path: {
