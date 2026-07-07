@@ -20,7 +20,7 @@ export type AutomationRuleList = { items: AutomationRule[]; total: number }
 
 export type AutomationRuleInput = {
   name: string
-  trigger_type: 'status_changed_to'
+  trigger_type: 'status_changed_to' | 'type_changed_to' | 'priority_changed_to'
   trigger_value: string
   action_type: 'set_priority' | 'set_assignee'
   action_value: string

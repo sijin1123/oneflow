@@ -1,7 +1,7 @@
 """Automation engine (PLAN §3 Phase 3 자동화, reshaped in Pass 16 v16.1).
 
-Candidate computation is SIDE-EFFECT FREE: `status_change_candidates` returns
-the winning candidate per field for a status transition; the CALLER applies
+Candidate computation is SIDE-EFFECT FREE: `change_candidates` returns the
+winning candidate per field for the fired trigger set; the CALLER applies
 them (user-set fields win via setdefault), and only ACTUALLY APPLIED changes
 are recorded — `record_applied` inserts the per-WP execution-log row and
 `bump_fired` updates the counters atomically, both in the applying transaction.
@@ -16,7 +16,9 @@ field, e.g. record_assignment for assignee).
 import uuid
 from dataclasses import dataclass
 
+from sqlalchemy import and_ as sa_and
 from sqlalchemy import func, select, update
+from sqlalchemy import or_ as sa_or
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.authz import is_member
@@ -33,16 +35,32 @@ class AutomationCandidate:
     value: object
 
 
-async def status_change_candidates(
+async def change_candidates(
     session: AsyncSession,
     project_id: uuid.UUID,
-    new_status: str,
+    fired: dict[str, str],
 ) -> dict[str, AutomationCandidate]:
-    """Winning candidate per target field for a status becoming `new_status`.
+    """Winning candidate per target field for the USER-initiated changes in
+    `fired` — a {trigger_type: new_value} map built ONLY from real (old≠new)
+    changes (v41.1 R1-②; a no-op field never fires).
 
-    Pure computation — no counters, no log rows. Deterministic precedence:
-    created_at asc, the LAST rule per field wins (reduced in memory, so a
-    multi-rule pile-up can never emit intermediate values downstream)."""
+    Pure computation — no counters, no log rows. Rules from ALL fired
+    triggers merge into ONE global order (created_at asc, id asc — no
+    inter-trigger precedence, v41.1 R1-⑤); the LAST rule per field wins
+    (reduced in memory, so a multi-rule pile-up can never emit intermediate
+    values downstream). Single-pass stays intact: candidates come only from
+    the user's change, so priority_changed_to + set_priority cannot chain."""
+    if not fired:
+        return {}
+    match = sa_or(
+        *[
+            sa_and(
+                AutomationRule.trigger_type == trigger_type,
+                AutomationRule.trigger_value == value,
+            )
+            for trigger_type, value in fired.items()
+        ]
+    )
     rules = (
         (
             await session.execute(
@@ -50,8 +68,7 @@ async def status_change_candidates(
                 .where(
                     AutomationRule.project_id == project_id,
                     AutomationRule.is_active.is_(True),
-                    AutomationRule.trigger_type == "status_changed_to",
-                    AutomationRule.trigger_value == new_status,
+                    match,
                 )
                 .order_by(AutomationRule.created_at.asc(), AutomationRule.id.asc())
             )

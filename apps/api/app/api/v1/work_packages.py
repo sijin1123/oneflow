@@ -36,7 +36,7 @@ from app.schemas.work_package import (
     WorkPackageRead,
 )
 from app.services.activity import record_created, record_field_changes
-from app.services.automation import bump_fired, record_applied, status_change_candidates
+from app.services.automation import bump_fired, change_candidates, record_applied
 from app.services.notification import notify_watchers, record_assignment
 from app.services.sanitize import sanitize_html
 
@@ -267,11 +267,16 @@ async def bulk_update_work_packages(
     skipped = [i for i in body.ids if i not in by_id]
 
     patch_fields = {f: getattr(body.patch, f) for f in provided}
-    auto_candidates: dict = {}
-    if "status" in patch_fields:
-        auto_candidates = await status_change_candidates(
-            session, project_id, patch_fields["status"]
-        )
+    # Bulk supports status/priority/assignee — status AND priority changes
+    # fire automation (type is not bulk-editable). Fired sets are PER ROW
+    # (old≠new only — v41.1 R1-①/②); candidates are cached per distinct
+    # fired subset (at most 4 for two triggers).
+    bulk_triggers = {
+        t: f
+        for t, f in (("status_changed_to", "status"), ("priority_changed_to", "priority"))
+        if f in patch_fields
+    }
+    candidates_cache: dict[frozenset, dict] = {}
 
     updated: list[uuid.UUID] = []
     unchanged: list[uuid.UUID] = []
@@ -280,6 +285,11 @@ async def bulk_update_work_packages(
         if wp is None:
             continue
         changes = {f: v for f, v in patch_fields.items() if getattr(wp, f) != v}
+        row_fired = {t: patch_fields[f] for t, f in bulk_triggers.items() if f in changes}
+        cache_key = frozenset(row_fired.items())
+        if cache_key not in candidates_cache:
+            candidates_cache[cache_key] = await change_candidates(session, project_id, row_fired)
+        auto_candidates = candidates_cache[cache_key]
         row_auto: list = []  # automation fills unset fields only (user wins)
         for field, candidate in auto_candidates.items():
             if (
@@ -515,14 +525,22 @@ async def patch_work_package(
     if changes.get("module_id") is not None:
         await _require_module_in_project(session, wp.project_id, changes["module_id"])
 
-    # Automation (§3 Phase 3): a real status change can imply further field writes
-    # from active project rules. Single-pass and only fills fields the user did not
-    # set explicitly, so it never overrides user input or re-triggers itself.
-    auto_candidates: dict = {}
-    if changes.get("status") is not None and changes["status"] != wp.status:
-        auto_candidates = await status_change_candidates(session, wp.project_id, changes["status"])
-        for field, candidate in auto_candidates.items():
-            changes.setdefault(field, candidate.value)
+    # Automation (§3 Phase 3): a real status/type/priority change can imply
+    # further field writes from active project rules. Single-pass and only
+    # fills fields the user did not set explicitly, so it never overrides
+    # user input or re-triggers itself. `fired` holds REAL changes only —
+    # a no-op field never fires (v41.1 R1-②).
+    fired: dict[str, str] = {}
+    for trigger_type, field in (
+        ("status_changed_to", "status"),
+        ("type_changed_to", "type"),
+        ("priority_changed_to", "priority"),
+    ):
+        if changes.get(field) is not None and changes[field] != getattr(wp, field):
+            fired[trigger_type] = changes[field]
+    auto_candidates: dict = await change_candidates(session, wp.project_id, fired)
+    for field, candidate in auto_candidates.items():
+        changes.setdefault(field, candidate.value)
 
     # Capture pre-update values for the activity log BEFORE the UPDATE (the
     # populate_existing UPDATE below refreshes the identity-mapped wp in place).
