@@ -1,4 +1,4 @@
-import { FileText, Plus } from 'lucide-react'
+import { ChevronDown, ChevronRight, FileText, Plus } from 'lucide-react'
 import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 
@@ -8,6 +8,8 @@ import { Input } from '@/components/ui/input'
 import { formatDateTime } from '@/lib/datetime'
 
 import { useCreateDocument, useDocuments } from './api'
+import type { DocTreeNode } from './tree'
+import { buildDocTree } from './tree'
 
 export function DocumentsPage() {
   const { projectId } = useParams() as { projectId: string }
@@ -15,6 +17,7 @@ export function DocumentsPage() {
   const { data, isPending, isError, error, refetch } = useDocuments(projectId)
   const create = useCreateDocument(projectId)
   const [query, setQuery] = useState('')
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
 
   const newDoc = () => {
     create.mutate(
@@ -24,7 +27,29 @@ export function DocumentsPage() {
   }
 
   const q = query.trim().toLowerCase()
-  const visible = (data?.items ?? []).filter((d) => d.title.toLowerCase().includes(q))
+  // Searching flattens: a title match must never be hidden by tree structure.
+  const searching = q.length > 0
+  const items = data?.items ?? []
+  const visible = items.filter((d) => d.title.toLowerCase().includes(q))
+  const forest = buildDocTree(searching ? visible : items)
+
+  const toggle = (id: string) => {
+    setCollapsed((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  const rows: DocTreeNode[] = []
+  const flatten = (nodes: DocTreeNode[]) => {
+    for (const node of nodes) {
+      rows.push(node)
+      if (!collapsed.has(node.doc.id)) flatten(node.children)
+    }
+  }
+  flatten(forest)
 
   return (
     <div className="mx-auto flex h-full max-w-3xl flex-col p-6">
@@ -50,23 +75,46 @@ export function DocumentsPage() {
             aria-label="문서 제목 검색"
             className="mb-3"
           />
-          {visible.length === 0 ? (
+          {rows.length === 0 ? (
             <p className="py-8 text-center text-sm text-of-muted">검색 결과가 없습니다.</p>
           ) : (
             <ul className="divide-y divide-of-border overflow-hidden rounded-of border border-of-border bg-of-surface">
-              {visible.map((doc) => (
+              {rows.map(({ doc, depth, children }) => (
                 <li key={doc.id}>
-                  <button
-                    type="button"
-                    onClick={() => navigate(`/projects/${projectId}/documents/${doc.id}`)}
-                    className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-of-surface-2"
+                  <div
+                    className="flex w-full items-center gap-1.5 px-4 py-3 hover:bg-of-surface-2"
+                    style={{ paddingLeft: `${16 + depth * 20}px` }}
                   >
-                    <FileText size={15} className="shrink-0 text-of-muted" />
-                    <span className="min-w-0 flex-1 truncate text-sm font-medium">{doc.title}</span>
-                    <span className="shrink-0 text-xs text-of-muted">
-                      {formatDateTime(doc.updated_at)}
-                    </span>
-                  </button>
+                    {children.length > 0 && !searching ? (
+                      <button
+                        type="button"
+                        aria-label={collapsed.has(doc.id) ? '펼치기' : '접기'}
+                        className="shrink-0 rounded-of p-0.5 text-of-muted hover:bg-of-surface"
+                        onClick={() => toggle(doc.id)}
+                      >
+                        {collapsed.has(doc.id) ? (
+                          <ChevronRight size={14} />
+                        ) : (
+                          <ChevronDown size={14} />
+                        )}
+                      </button>
+                    ) : (
+                      <span className="w-[19px] shrink-0" />
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => navigate(`/projects/${projectId}/documents/${doc.id}`)}
+                      className="flex min-w-0 flex-1 items-center gap-3 text-left"
+                    >
+                      <FileText size={15} className="shrink-0 text-of-muted" />
+                      <span className="min-w-0 flex-1 truncate text-sm font-medium">
+                        {doc.title}
+                      </span>
+                      <span className="shrink-0 text-xs text-of-muted">
+                        {formatDateTime(doc.updated_at)}
+                      </span>
+                    </button>
+                  </div>
                 </li>
               ))}
             </ul>

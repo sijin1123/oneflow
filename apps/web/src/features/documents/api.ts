@@ -5,6 +5,7 @@ import { ApiError, api } from '@/lib/api'
 export type DocumentListItem = {
   id: string
   project_id: string
+  parent_id: string | null
   title: string
   author_id: string | null
   version: number
@@ -34,7 +35,7 @@ export function useDocument(docId: string | null) {
 export function useCreateDocument(projectId: string) {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (input: { title: string; body?: string | null }) =>
+    mutationFn: (input: { title: string; body?: string | null; parent_id?: string | null }) =>
       api<ProjectDocument>(`/api/v1/projects/${projectId}/documents`, {
         method: 'POST',
         body: JSON.stringify(input),
@@ -55,6 +56,7 @@ export function useUpdateDocument(projectId: string) {
       expected_version: number
       title?: string
       body?: string | null
+      parent_id?: string | null
     }) => {
       const { docId, ...patch } = input
       return api<ProjectDocument>(`/api/v1/documents/${docId}`, {

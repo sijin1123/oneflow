@@ -3,6 +3,11 @@
 Member-scoped CRUD. Bodies are sanitized rich-text HTML (same nh3 boundary as
 work-package descriptions); edits use the integer-version optimistic-concurrency
 contract (§6.2), so a stale editor gets a 409 with the current document.
+
+Nested pages (expansion Pass 9 PR-U): parent changes AND deletes serialize on
+the same per-project advisory lock, so a reparent cannot race a parent delete
+into a surprising final state (PLAN v9.1 R1-②). Depth contract: root is depth
+1, a path holds at most MAX_DOCUMENT_DEPTH documents.
 """
 
 import uuid
@@ -10,14 +15,14 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, Response
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy import update as sa_update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import get_current_user
 from app.core.authz import is_member, require_active_project, require_member
 from app.db.session import get_session
-from app.models.document import ProjectDocument
+from app.models.document import MAX_DOCUMENT_DEPTH, ProjectDocument
 from app.models.user import User
 from app.schemas.document import (
     DocumentConflict,
@@ -30,6 +35,96 @@ from app.schemas.document import (
 from app.services.sanitize import sanitize_html
 
 router = APIRouter()
+
+# Serializes document parent changes and deletes per project (WP parent-move
+# 427001 pattern). Exactly one advisory lock per transaction.
+DOC_PARENT_LOCK_CLASSID = 427004
+
+
+async def _lock_project_documents(session: AsyncSession, project_id: uuid.UUID) -> None:
+    await session.execute(text("SET LOCAL lock_timeout = '5s'"))
+    await session.execute(
+        text("SELECT pg_advisory_xact_lock(:classid, hashtext(:pid))").bindparams(
+            classid=DOC_PARENT_LOCK_CLASSID, pid=str(project_id)
+        )
+    )
+
+
+async def _ancestor_path_len(
+    session: AsyncSession, doc_id: uuid.UUID, project_id: uuid.UUID
+) -> int:
+    """Number of documents from doc_id up to its root, inclusive (root = 1)."""
+    count = 0
+    seen: set[uuid.UUID] = set()
+    cursor: uuid.UUID | None = doc_id
+    while cursor is not None and cursor not in seen:
+        seen.add(cursor)
+        count += 1
+        cursor = (
+            await session.execute(
+                select(ProjectDocument.parent_id).where(
+                    ProjectDocument.id == cursor, ProjectDocument.project_id == project_id
+                )
+            )
+        ).scalar_one_or_none()
+    return count
+
+
+async def _subtree_height(session: AsyncSession, doc_id: uuid.UUID, project_id: uuid.UUID) -> int:
+    """Height of the subtree rooted at doc_id (the document itself = 1)."""
+    row = (
+        await session.execute(
+            text(
+                """
+                WITH RECURSIVE sub AS (
+                    SELECT id, 1 AS depth FROM project_documents
+                    WHERE id = CAST(:doc_id AS uuid) AND project_id = CAST(:pid AS uuid)
+                    UNION ALL
+                    SELECT d.id, sub.depth + 1 FROM project_documents d
+                    JOIN sub ON d.parent_id = sub.id
+                    WHERE sub.depth < :cap
+                )
+                SELECT max(depth) FROM sub
+                """
+            ).bindparams(doc_id=str(doc_id), pid=str(project_id), cap=MAX_DOCUMENT_DEPTH + 1)
+        )
+    ).scalar_one_or_none()
+    return int(row or 1)
+
+
+async def _check_parent_guards(
+    session: AsyncSession, doc: ProjectDocument, new_parent_id: uuid.UUID
+) -> None:
+    """Self/cross-project/cycle/depth guards. Caller must hold the project lock."""
+    if new_parent_id == doc.id:
+        raise HTTPException(status_code=422, detail="document cannot be its own parent")
+    parent = (
+        await session.execute(select(ProjectDocument).where(ProjectDocument.id == new_parent_id))
+    ).scalar_one_or_none()
+    if parent is None or parent.project_id != doc.project_id:
+        raise HTTPException(status_code=422, detail="parent must exist in the same project")
+    # Ancestor walk — same-project (DB-enforced), bounded by project size.
+    seen: set[uuid.UUID] = set()
+    cursor: uuid.UUID | None = new_parent_id
+    while cursor is not None and cursor not in seen:
+        if cursor == doc.id:
+            raise HTTPException(status_code=422, detail="parent change would create a cycle")
+        seen.add(cursor)
+        cursor = (
+            await session.execute(
+                select(ProjectDocument.parent_id).where(ProjectDocument.id == cursor)
+            )
+        ).scalar_one_or_none()
+    if cursor is not None:  # pre-existing cycle encountered defensively
+        raise HTTPException(status_code=422, detail="parent chain integrity error")
+    # Depth: parent path + the moved subtree must fit MAX_DOCUMENT_DEPTH (root=1).
+    parent_depth = await _ancestor_path_len(session, new_parent_id, doc.project_id)
+    height = await _subtree_height(session, doc.id, doc.project_id)
+    if parent_depth + height > MAX_DOCUMENT_DEPTH:
+        raise HTTPException(
+            status_code=422,
+            detail=f"nesting deeper than {MAX_DOCUMENT_DEPTH} levels is not allowed",
+        )
 
 
 async def _get_doc_scoped(
@@ -74,8 +169,26 @@ async def create_document(
     user: User = Depends(get_current_user),
 ) -> DocumentRead:
     await require_member(session, project_id, user, write=True)
+    if body.parent_id is not None:
+        # Lock so the parent cannot be concurrently deleted between the check
+        # and the INSERT (clean 422 instead of an FK IntegrityError 500).
+        await _lock_project_documents(session, project_id)
+        parent = (
+            await session.execute(
+                select(ProjectDocument).where(ProjectDocument.id == body.parent_id)
+            )
+        ).scalar_one_or_none()
+        if parent is None or parent.project_id != project_id:
+            raise HTTPException(status_code=422, detail="parent must exist in the same project")
+        parent_depth = await _ancestor_path_len(session, body.parent_id, project_id)
+        if parent_depth + 1 > MAX_DOCUMENT_DEPTH:
+            raise HTTPException(
+                status_code=422,
+                detail=f"nesting deeper than {MAX_DOCUMENT_DEPTH} levels is not allowed",
+            )
     doc = ProjectDocument(
         project_id=project_id,
+        parent_id=body.parent_id,
         title=body.title,
         body=sanitize_html(body.body),
         author_id=user.id,
@@ -106,7 +219,7 @@ async def update_document(
     session: AsyncSession = Depends(get_session),
     user: User = Depends(get_current_user),
 ):
-    await _get_doc_scoped(session, doc_id, user, write=True)
+    doc = await _get_doc_scoped(session, doc_id, user, write=True)
 
     changes: dict = {}
     provided = body.model_fields_set
@@ -114,6 +227,13 @@ async def update_document(
         changes["title"] = body.title
     if "body" in provided:
         changes["body"] = sanitize_html(body.body)
+    if "parent_id" in provided:
+        changes["parent_id"] = body.parent_id
+        if body.parent_id is not None:
+            # Serialize reparent against concurrent moves/deletes, then guard
+            # (self/cycle/depth). Moving to root (null) needs no guards.
+            await _lock_project_documents(session, doc.project_id)
+            await _check_parent_guards(session, doc, body.parent_id)
 
     if not changes:
         fresh = await _reselect(session, doc_id)
@@ -151,6 +271,9 @@ async def delete_document(
     user: User = Depends(get_current_user),
 ) -> Response:
     doc = await _get_doc_scoped(session, doc_id, user, write=True)
+    # Same lock as parent changes: a reparent and this delete serialize, so the
+    # FK's SET NULL (child root-promotion) applies in a deterministic order.
+    await _lock_project_documents(session, doc.project_id)
     await session.delete(doc)
     await session.commit()
     return Response(status_code=204)

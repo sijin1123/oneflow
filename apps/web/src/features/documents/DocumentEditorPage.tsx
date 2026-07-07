@@ -5,10 +5,18 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { ErrorState, ListSkeleton } from '@/components/shell/states'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Select } from '@/components/ui/select'
 import { ApiError } from '@/lib/api'
 import { confirmDestructive, useUnsavedChangesPrompt } from '@/lib/guards'
 
-import { conflictOf, useDeleteDocument, useDocument, useUpdateDocument } from './api'
+import {
+  conflictOf,
+  useDeleteDocument,
+  useDocument,
+  useDocuments,
+  useUpdateDocument,
+} from './api'
+import { subtreeIds } from './tree'
 
 const RichTextEditor = lazy(() =>
   import('@/components/ui/rich-text-editor').then((m) => ({ default: m.RichTextEditor })),
@@ -18,11 +26,13 @@ export function DocumentEditorPage() {
   const { projectId, docId } = useParams() as { projectId: string; docId: string }
   const navigate = useNavigate()
   const { data: doc, isPending, isError, error, refetch } = useDocument(docId)
+  const siblings = useDocuments(projectId)
   const update = useUpdateDocument(projectId)
   const del = useDeleteDocument(projectId)
 
   const [title, setTitle] = useState('')
   const [body, setBody] = useState('')
+  const [parentId, setParentId] = useState<string | null>(null)
   // Resync when the server doc changes (load / save / 409 reload). react-query's
   // structural sharing keeps `doc`'s reference stable, so local edits aren't
   // clobbered until the cached document actually changes.
@@ -30,6 +40,7 @@ export function DocumentEditorPage() {
     if (doc) {
       setTitle(doc.title)
       setBody(doc.body ?? '')
+      setParentId(doc.parent_id)
     }
   }, [doc])
 
@@ -38,7 +49,7 @@ export function DocumentEditorPage() {
     !!doc &&
     !update.isPending &&
     !del.isPending &&
-    (title !== doc.title || body !== (doc.body ?? ''))
+    (title !== doc.title || body !== (doc.body ?? '') || parentId !== doc.parent_id)
   useUnsavedChangesPrompt(dirty, '저장되지 않은 변경이 있습니다. 나가시겠습니까?')
 
   if (isPending) return <ListSkeleton />
@@ -56,8 +67,14 @@ export function DocumentEditorPage() {
       expected_version: conflict ? conflict.current.version : doc.version,
       title: trimmed,
       body: body === '' ? null : body,
+      parent_id: parentId,
     })
   }
+
+  // A page cannot nest under itself or its own subtree (server enforces; the
+  // select simply doesn't offer those).
+  const excluded = subtreeIds(siblings.data?.items ?? [], doc.id)
+  const parentOptions = (siblings.data?.items ?? []).filter((d) => !excluded.has(d.id))
 
   const remove = () => {
     if (!confirmDestructive('이 문서를 삭제할까요? 되돌릴 수 없습니다.')) return
@@ -97,6 +114,25 @@ export function DocumentEditorPage() {
         >
           <Trash2 size={15} />
         </button>
+      </div>
+
+      <div className="mb-3 flex items-center gap-2">
+        <label htmlFor="doc-parent" className="shrink-0 text-xs font-medium text-of-muted">
+          상위 페이지
+        </label>
+        <Select
+          id="doc-parent"
+          className="h-7 max-w-xs text-xs"
+          value={parentId ?? ''}
+          onChange={(e) => setParentId(e.target.value === '' ? null : e.target.value)}
+        >
+          <option value="">(없음 — 최상위)</option>
+          {parentOptions.map((d) => (
+            <option key={d.id} value={d.id}>
+              {d.title}
+            </option>
+          ))}
+        </Select>
       </div>
 
       {conflict ? (
