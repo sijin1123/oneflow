@@ -77,3 +77,27 @@ class AutomationRuleRead(BaseModel):
 class AutomationRuleList(BaseModel):
     items: list[AutomationRuleRead]
     total: int
+
+
+class AutomationRuleRunRead(BaseModel):
+    """Execution-log row (v16.1 R1-⑤). Deleted references read via snapshots:
+    rule_id/work_package_id/actor_id may be null while rule_name and
+    work_package_subject stay readable."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    rule_id: uuid.UUID | None
+    rule_name: str
+    work_package_id: uuid.UUID | None
+    work_package_subject: str
+    field: str
+    old_value: str | None
+    new_value: str | None
+    actor_id: uuid.UUID | None
+    created_at: datetime
+
+
+class AutomationRuleRunList(BaseModel):
+    items: list[AutomationRuleRunRead]
+    total: int

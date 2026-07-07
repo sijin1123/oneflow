@@ -1,8 +1,9 @@
 """Automation rule full edit + fire audit (expansion PLAN Pass 13 PR-AC).
 
 Contract (v13.1): partial edits validate the MERGED rule (an edit can never
-leave the trigger/action pair invalid); fired = selected as the field's winning
-rule at evaluation time, counted atomically in the firing transaction; a field
+leave the trigger/action pair invalid); fired = the rule's change was ACTUALLY
+applied (v16.1 redefinition — counted with the run log in the applying
+transaction); a field
 the user set explicitly in the same request is never overwritten (setdefault
 precedence)."""
 

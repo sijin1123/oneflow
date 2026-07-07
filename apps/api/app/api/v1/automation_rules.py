@@ -6,7 +6,7 @@ app.services.automation inside the work-package PATCH transaction.
 
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -14,12 +14,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.auth import get_current_user
 from app.core.authz import require_member, require_role
 from app.db.session import get_session
-from app.models.automation_rule import AutomationRule
+from app.models.automation_rule import AutomationRule, AutomationRuleRun
 from app.models.user import User
 from app.schemas.automation_rule import (
     AutomationRuleCreate,
     AutomationRuleList,
     AutomationRuleRead,
+    AutomationRuleRunList,
+    AutomationRuleRunRead,
     AutomationRuleUpdate,
 )
 
@@ -61,6 +63,33 @@ async def list_automation_rules(
     )
     return AutomationRuleList(
         items=[AutomationRuleRead.model_validate(r) for r in rows], total=len(rows)
+    )
+
+
+@router.get("/projects/{project_id}/automation-rules/runs", response_model=AutomationRuleRunList)
+async def list_automation_rule_runs(
+    project_id: uuid.UUID,
+    limit: int = Query(default=50, ge=1, le=200),
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+) -> AutomationRuleRunList:
+    """Per-WP automation audit trail, newest first (member read — the same
+    visibility as the rules themselves)."""
+    await require_member(session, project_id, user)
+    rows = (
+        (
+            await session.execute(
+                select(AutomationRuleRun)
+                .where(AutomationRuleRun.project_id == project_id)
+                .order_by(AutomationRuleRun.created_at.desc(), AutomationRuleRun.id.asc())
+                .limit(limit)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return AutomationRuleRunList(
+        items=[AutomationRuleRunRead.model_validate(r) for r in rows], total=len(rows)
     )
 
 
