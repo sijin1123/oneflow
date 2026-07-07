@@ -1313,6 +1313,34 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/work-packages/{wp_id}/duplicate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Duplicate Work Package
+         * @description Same-project duplicate (Pass 12 PR-AA, PLAN v12.1).
+         *
+         *     Copied: subject('(복사) ' prefix), description, type, priority, dates,
+         *     estimate, milestone/cycle/module, assignee (only if STILL a member — R1-⑤),
+         *     and custom values that pass the current write validation (active + bound +
+         *     valid option/member — R1-④; the rest are counted, not copied).
+         *     Not copied: status (→backlog — a duplicate starts over), parent (no tree
+         *     duplication), relations, watchers, comments, activities, attachments,
+         *     time/cost entries.
+         */
+        post: operations["duplicate_work_package_api_v1_work_packages__wp_id__duplicate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/work-packages/{wp_id}/relations": {
         parameters: {
             query?: never;
@@ -3256,6 +3284,16 @@ export interface components {
              * @default task
              */
             type: string;
+        };
+        /**
+         * WorkPackageDuplicateResult
+         * @description Duplicate response: the new WP plus how many custom values did NOT copy
+         *     (inactive/unbound field, stale option or ex-member value — v12.1 R1-④).
+         */
+        WorkPackageDuplicateResult: {
+            /** Skipped Custom Values */
+            skipped_custom_values: number;
+            work_package: components["schemas"]["WorkPackageRead"];
         };
         /** WorkPackageList */
         WorkPackageList: {
@@ -6650,6 +6688,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DocumentList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    duplicate_work_package_api_v1_work_packages__wp_id__duplicate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                wp_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkPackageDuplicateResult"];
                 };
             };
             /** @description Validation Error */

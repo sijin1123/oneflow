@@ -343,6 +343,31 @@ test('댓글 스레드: 답글이 루트 아래 들여쓰기로 붙고 parent_id
   expect(((await post).postDataJSON() as { parent_id: string }).parent_id).toBe('c-root')
 })
 
+test('드로어 복제 버튼이 duplicate POST를 보내고 결과를 알린다', async ({ page }) => {
+  await mockApi(page)
+  await page.route(`**/api/v1/work-packages/${wpA.id}/duplicate`, (route) =>
+    route.fulfill({
+      status: 201,
+      json: {
+        work_package: { ...wpA, id: 'dup-1', subject: '(복사) 워크패키지 API 구현', status: 'backlog' },
+        skipped_custom_values: 2,
+      },
+    }),
+  )
+
+  await page.goto(`/projects/${project.id}/work-packages`)
+  await page.getByRole('button', { name: '워크패키지 API 구현' }).click()
+  const drawer = page.getByRole('dialog')
+
+  const post = page.waitForRequest(
+    (r) => r.method() === 'POST' && r.url().includes(`/work-packages/${wpA.id}/duplicate`),
+  )
+  await drawer.getByRole('button', { name: '복제' }).click()
+  await post
+  await expect(drawer.getByText("'(복사) 워크패키지 API 구현' 생성됨", { exact: false })).toBeVisible()
+  await expect(drawer.getByText('복사되지 않은 커스텀 값 2건', { exact: false })).toBeVisible()
+})
+
 test('댓글 멘션: 멤버 체크 후 작성하면 mentioned_user_ids를 보낸다', async ({ page }) => {
   await mockApi(page)
   await page.goto(`/projects/${project.id}/work-packages`)

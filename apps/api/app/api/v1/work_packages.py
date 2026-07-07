@@ -26,6 +26,7 @@ from app.schemas.work_package import (
     RelationList,
     RelationRead,
     WorkPackageCreate,
+    WorkPackageDuplicateResult,
     WorkPackageList,
     WorkPackagePatch,
     WorkPackageRead,
@@ -216,6 +217,108 @@ async def create_work_package(
     await session.flush()
     await session.commit()
     return WorkPackageRead.model_validate(wp)
+
+
+@router.post(
+    "/work-packages/{wp_id}/duplicate",
+    response_model=WorkPackageDuplicateResult,
+    status_code=201,
+)
+async def duplicate_work_package(
+    wp_id: uuid.UUID,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+) -> WorkPackageDuplicateResult:
+    """Same-project duplicate (Pass 12 PR-AA, PLAN v12.1).
+
+    Copied: subject('(복사) ' prefix), description, type, priority, dates,
+    estimate, milestone/cycle/module, assignee (only if STILL a member — R1-⑤),
+    and custom values that pass the current write validation (active + bound +
+    valid option/member — R1-④; the rest are counted, not copied).
+    Not copied: status (→backlog — a duplicate starts over), parent (no tree
+    duplication), relations, watchers, comments, activities, attachments,
+    time/cost entries."""
+    src = await _get_wp_scoped(session, wp_id, user, write=True)
+    # A duplicate is NEW usage of the type — the disabled-type gate applies.
+    await require_type_enabled(session, src.project_id, src.type)
+
+    assignee = None
+    if src.assignee_id is not None and await is_member(session, src.project_id, src.assignee_id):
+        assignee = src.assignee_id
+
+    subject = f"(복사) {src.subject}"[:255]
+    dup = WorkPackage(
+        project_id=src.project_id,
+        subject=subject,
+        description=src.description,
+        type=src.type,
+        status="backlog",
+        priority=src.priority,
+        assignee_id=assignee,
+        milestone_id=src.milestone_id,
+        cycle_id=src.cycle_id,
+        module_id=src.module_id,
+        start_date=src.start_date,
+        due_date=src.due_date,
+        estimated_hours=src.estimated_hours,
+        created_by=user.id,
+    )
+    session.add(dup)
+    await session.flush()
+    record_created(session, dup.id, user.id)
+    if assignee is not None:
+        await record_assignment(
+            session,
+            recipient_id=assignee,
+            actor_id=user.id,
+            project_id=src.project_id,
+            wp_id=dup.id,
+        )
+
+    # Custom values: re-run the same checks the write fan-in applies — a value
+    # that would be rejected as a new write today is skipped, not smuggled.
+    from app.api.v1.custom_fields import _validate_value
+    from app.models.custom_field import CustomField, WpCustomValue
+    from app.models.member import ProjectMember
+
+    rows = (
+        (
+            await session.execute(
+                select(WpCustomValue, CustomField)
+                .join(CustomField, CustomField.id == WpCustomValue.field_id)
+                .where(WpCustomValue.work_package_id == src.id)
+            )
+        )
+        .tuples()
+        .all()
+    )
+    skipped = 0
+    if rows:
+        member_ids: set[uuid.UUID] = set(
+            (
+                await session.execute(
+                    select(ProjectMember.user_id).where(ProjectMember.project_id == src.project_id)
+                )
+            ).scalars()
+        )
+        for value_row, field in rows:
+            if not field.is_active or (
+                field.applies_to is not None and dup.type not in field.applies_to
+            ):
+                skipped += 1
+                continue
+            try:
+                normalized = _validate_value(field, value_row.value, member_ids)
+            except HTTPException:
+                skipped += 1
+                continue
+            session.add(WpCustomValue(work_package_id=dup.id, field_id=field.id, value=normalized))
+
+    await session.flush()
+    await session.commit()
+    return WorkPackageDuplicateResult(
+        work_package=WorkPackageRead.model_validate(dup), skipped_custom_values=skipped
+    )
 
 
 @router.get("/work-packages/{wp_id}", response_model=WorkPackageRead)
