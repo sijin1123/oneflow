@@ -39,10 +39,19 @@ class ProjectCreate(BaseModel):
         return v
 
 
+PROJECT_HEALTH = ("on_track", "at_risk", "off_track")
+
+
 class ProjectUpdate(BaseModel):
     name: str | None = None
     description: str | None = None
     budget: float | None = None
+    # Health report (Pass 37, v37.1 transition table): omitted = untouched;
+    # a VALUE sets it and ALWAYS replaces the note (omitted note → null —
+    # Pass 29 precedent); null clears all health fields (note alongside = 422
+    # in the endpoint). Note is part of the report — never standalone.
+    health: str | None = None
+    health_note: str | None = None
 
     @field_validator("name")
     @classmethod
@@ -61,6 +70,25 @@ class ProjectUpdate(BaseModel):
             raise ValueError("budget out of range")
         return v
 
+    @field_validator("health")
+    @classmethod
+    def _health(cls, v: str | None) -> str | None:
+        if v is not None and v not in PROJECT_HEALTH:
+            raise ValueError(f"health must be one of {PROJECT_HEALTH}")
+        return v
+
+    @field_validator("health_note")
+    @classmethod
+    def _health_note(cls, v: str | None) -> str | None:
+        if v is None:
+            return v
+        v = v.strip()
+        if not v:
+            return None
+        if len(v) > 2000:
+            raise ValueError("health_note must be <= 2000 chars")
+        return v
+
 
 class ProjectRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -71,6 +99,10 @@ class ProjectRead(BaseModel):
     description: str | None
     budget: float | None
     archived_at: datetime | None
+    health: str | None
+    health_note: str | None
+    health_updated_by: uuid.UUID | None
+    health_updated_at: datetime | None
     created_at: datetime
     updated_at: datetime
 

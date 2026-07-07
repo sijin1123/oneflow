@@ -9,8 +9,26 @@ export type Project = {
   description: string | null
   budget: number | null
   archived_at: string | null
+  health: ProjectHealth | null
+  health_note: string | null
+  health_updated_by: string | null
+  health_updated_at: string | null
   created_at: string
   updated_at: string
+}
+
+export type ProjectHealth = 'on_track' | 'at_risk' | 'off_track'
+
+export const HEALTH_LABELS: Record<ProjectHealth, string> = {
+  on_track: '정상',
+  at_risk: '주의',
+  off_track: '위험',
+}
+
+export const HEALTH_STYLES: Record<ProjectHealth, string> = {
+  on_track: 'bg-emerald-100 text-emerald-700',
+  at_risk: 'bg-amber-100 text-amber-700',
+  off_track: 'bg-red-100 text-red-700',
 }
 
 export type ProjectListItem = Project & {

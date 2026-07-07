@@ -37,7 +37,13 @@ export function useCreateProject() {
 export function useUpdateProject(projectId: string) {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (patch: { name?: string; description?: string | null; budget?: number | null }) =>
+    mutationFn: (patch: {
+      name?: string
+      description?: string | null
+      budget?: number | null
+      health?: string | null
+      health_note?: string | null
+    }) =>
       api<Project>(`/api/v1/projects/${projectId}`, {
         method: 'PATCH',
         body: JSON.stringify(patch),
