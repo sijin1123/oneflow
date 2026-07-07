@@ -1,4 +1,4 @@
-import { ArrowRightCircle, ArrowLeft, CalendarPlus, Plus, Trash2 } from 'lucide-react'
+import { ArrowRightCircle, ArrowLeft, BookmarkPlus, CalendarPlus, Plus, Trash2 } from 'lucide-react'
 import { Suspense, lazy, useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 
@@ -13,6 +13,7 @@ import {
   useAddActionItem,
   useConvertActionItem,
   useCreateFollowUp,
+  useCreateMeetingTemplate,
   useDeleteActionItem,
   useDeleteMeeting,
   useMeeting,
@@ -31,6 +32,7 @@ export function MeetingDetailPage() {
   const update = useUpdateMeeting(projectId)
   const del = useDeleteMeeting(projectId)
   const followUp = useCreateFollowUp(projectId)
+  const saveTemplate = useCreateMeetingTemplate(projectId)
   const addItem = useAddActionItem(meetingId)
   const convertItem = useConvertActionItem(meetingId)
   const toggleItem = useToggleActionItem(meetingId)
@@ -136,6 +138,26 @@ export function MeetingDetailPage() {
             {followUp.error instanceof ApiError && followUp.error.status === 409
               ? '같은 제목·날짜의 회의가 이미 있습니다.'
               : '후속 회의 생성 실패'}
+          </span>
+        ) : null}
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={saveTemplate.isPending}
+          title="현재 저장된 아젠다를 이름 있는 템플릿으로 등록합니다"
+          onClick={() => {
+            const name = window.prompt('템플릿 이름을 입력하세요', `${mtg.title} 아젠다`)
+            if (!name || !name.trim()) return
+            saveTemplate.mutate({ name: name.trim(), from_meeting_id: mtg.id })
+          }}
+        >
+          <BookmarkPlus size={14} /> 템플릿으로 저장
+        </Button>
+        {saveTemplate.isError ? (
+          <span className="text-xs text-of-danger">
+            {saveTemplate.error instanceof ApiError && saveTemplate.error.status === 409
+              ? '같은 이름의 템플릿이 이미 있습니다.'
+              : '템플릿 저장 실패'}
           </span>
         ) : null}
         <button

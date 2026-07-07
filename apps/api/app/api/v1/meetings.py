@@ -13,6 +13,7 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
 from sqlalchemy import func, select, text
 from sqlalchemy import update as sa_update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import get_current_user
@@ -20,6 +21,7 @@ from app.core.authz import is_member, require_active_project, require_member
 from app.core.authz import is_member as _is_member_check  # noqa: F401 (alias below)
 from app.db.session import get_session
 from app.models.meeting import Meeting, MeetingActionItem
+from app.models.meeting_template import MeetingAgendaTemplate
 from app.models.member import ProjectMember
 from app.models.user import User
 from app.models.work_package import WorkPackage
@@ -33,6 +35,9 @@ from app.schemas.meeting import (
     MeetingList,
     MeetingListItem,
     MeetingRead,
+    MeetingTemplateCreate,
+    MeetingTemplateList,
+    MeetingTemplateRead,
     MeetingUpdate,
 )
 from app.services.activity import record_created
@@ -109,10 +114,27 @@ async def create_meeting(
     user: User = Depends(get_current_user),
 ) -> MeetingRead:
     await require_member(session, project_id, user, write=True)
+    agenda = None
+    if body.template_id is not None:
+        # Same-transaction lookup (v48.1 R1-④): a template deleted mid-flight
+        # is a plain 404; the copied agenda is a snapshot — later template
+        # changes never touch this meeting.
+        template = (
+            await session.execute(
+                select(MeetingAgendaTemplate).where(
+                    MeetingAgendaTemplate.id == body.template_id,
+                    MeetingAgendaTemplate.project_id == project_id,
+                )
+            )
+        ).scalar_one_or_none()
+        if template is None:
+            raise HTTPException(status_code=404, detail="not found")
+        agenda = template.agenda
     m = Meeting(
         project_id=project_id,
         title=body.title,
         scheduled_on=body.scheduled_on,
+        agenda=agenda,
         author_id=user.id,
     )
     session.add(m)
@@ -417,3 +439,105 @@ async def convert_action_item(
     await session.commit()
     await session.refresh(item)
     return ActionItemRead.model_validate(item)
+
+
+# --- Agenda templates (Pass 48 PR-BN, v48.1) -----------------------------------
+
+
+@router.get("/projects/{project_id}/meeting-templates", response_model=MeetingTemplateList)
+async def list_meeting_templates(
+    project_id: uuid.UUID,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+) -> MeetingTemplateList:
+    await require_member(session, project_id, user)
+    rows = (
+        (
+            await session.execute(
+                select(MeetingAgendaTemplate)
+                .where(MeetingAgendaTemplate.project_id == project_id)
+                .order_by(MeetingAgendaTemplate.name.asc(), MeetingAgendaTemplate.id.asc())
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return MeetingTemplateList(
+        items=[MeetingTemplateRead.model_validate(r) for r in rows], total=len(rows)
+    )
+
+
+@router.post(
+    "/projects/{project_id}/meeting-templates",
+    response_model=MeetingTemplateRead,
+    status_code=201,
+)
+async def create_meeting_template(
+    project_id: uuid.UUID,
+    body: MeetingTemplateCreate,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+) -> MeetingTemplateRead:
+    """agenda XOR from_meeting_id (schema-enforced). A from_meeting snapshot
+    copies the ALREADY-sanitized stored agenda; a direct agenda passes the
+    same nh3 boundary as meeting edits (v48.1 R1-②)."""
+    await require_member(session, project_id, user, write=True)
+    if body.from_meeting_id is not None:
+        source = (
+            await session.execute(
+                select(Meeting).where(
+                    Meeting.id == body.from_meeting_id, Meeting.project_id == project_id
+                )
+            )
+        ).scalar_one_or_none()
+        if source is None:
+            raise HTTPException(status_code=404, detail="not found")
+        agenda = source.agenda
+    else:
+        agenda = sanitize_html(body.agenda)
+    template = MeetingAgendaTemplate(
+        project_id=project_id, name=body.name, agenda=agenda, created_by=user.id
+    )
+    try:
+        session.add(template)
+        await session.flush()
+        await session.commit()
+    except IntegrityError as exc:
+        await session.rollback()
+        raise HTTPException(
+            status_code=409, detail="a template with that name already exists"
+        ) from exc
+    return MeetingTemplateRead.model_validate(template)
+
+
+@router.delete("/meeting-templates/{template_id}", status_code=204)
+async def delete_meeting_template(
+    template_id: uuid.UUID,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+) -> Response:
+    """Author or PROJECT OWNER (the #118 document-comment ruling): order is
+    scope 404 → archive 409 → authorship 404 (existence hidden). Deleting a
+    template never touches meetings created from it (snapshot copies)."""
+    template = (
+        await session.execute(
+            select(MeetingAgendaTemplate).where(MeetingAgendaTemplate.id == template_id)
+        )
+    ).scalar_one_or_none()
+    if template is None or not await is_member(session, template.project_id, user.id):
+        raise HTTPException(status_code=404, detail="not found")
+    await require_active_project(session, template.project_id)
+    if template.created_by != user.id:
+        role = (
+            await session.execute(
+                select(ProjectMember.role).where(
+                    ProjectMember.project_id == template.project_id,
+                    ProjectMember.user_id == user.id,
+                )
+            )
+        ).scalar_one_or_none()
+        if role != "owner":
+            raise HTTPException(status_code=404, detail="not found")
+    await session.delete(template)
+    await session.commit()
+    return Response(status_code=204)

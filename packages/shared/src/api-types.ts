@@ -474,6 +474,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/meeting-templates/{template_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Meeting Template
+         * @description Author or PROJECT OWNER (the #118 document-comment ruling): order is
+         *     scope 404 → archive 409 → authorship 404 (existence hidden). Deleting a
+         *     template never touches meetings created from it (snapshot copies).
+         */
+        delete: operations["delete_meeting_template_api_v1_meeting_templates__template_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/meetings/{meeting_id}": {
         parameters: {
             query?: never;
@@ -999,6 +1021,29 @@ export interface paths {
          *     and can never leave a duplicate work package (PLAN P2-5).
          */
         post: operations["triage_intake_api_v1_projects__project_id__intake__item_id__triage_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/meeting-templates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Meeting Templates */
+        get: operations["list_meeting_templates_api_v1_projects__project_id__meeting_templates_get"];
+        put?: never;
+        /**
+         * Create Meeting Template
+         * @description agenda XOR from_meeting_id (schema-enforced). A from_meeting snapshot
+         *     copies the ALREADY-sanitized stored agenda; a direct agenda passes the
+         *     same nh3 boundary as meeting edits (v48.1 R1-②).
+         */
+        post: operations["create_meeting_template_api_v1_projects__project_id__meeting_templates_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2969,6 +3014,8 @@ export interface components {
         MeetingCreate: {
             /** Scheduled On */
             scheduled_on?: string | null;
+            /** Template Id */
+            template_id?: string | null;
             /** Title */
             title: string;
         };
@@ -3066,6 +3113,49 @@ export interface components {
             updated_at: string;
             /** Version */
             version: number;
+        };
+        /**
+         * MeetingTemplateCreate
+         * @description agenda XOR from_meeting_id (v48.1 R1-①): both or neither is a 422.
+         */
+        MeetingTemplateCreate: {
+            /** Agenda */
+            agenda?: string | null;
+            /** From Meeting Id */
+            from_meeting_id?: string | null;
+            /** Name */
+            name: string;
+        };
+        /** MeetingTemplateList */
+        MeetingTemplateList: {
+            /** Items */
+            items: components["schemas"]["MeetingTemplateRead"][];
+            /** Total */
+            total: number;
+        };
+        /** MeetingTemplateRead */
+        MeetingTemplateRead: {
+            /** Agenda */
+            agenda: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Created By */
+            created_by: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
         };
         /** MeetingUpdate */
         MeetingUpdate: {
@@ -5386,6 +5476,35 @@ export interface operations {
             };
         };
     };
+    delete_meeting_template_api_v1_meeting_templates__template_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                template_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_meeting_api_v1_meetings__meeting_id__get: {
         parameters: {
             query?: never;
@@ -6666,6 +6785,72 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["IntakeRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_meeting_templates_api_v1_projects__project_id__meeting_templates_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MeetingTemplateList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_meeting_template_api_v1_projects__project_id__meeting_templates_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MeetingTemplateCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MeetingTemplateRead"];
                 };
             };
             /** @description Validation Error */

@@ -10,6 +10,7 @@ from app.models.document_comment import ProjectDocumentComment
 from app.models.initiative import Initiative, InitiativeProject
 from app.models.intake import IntakeItem
 from app.models.meeting import Meeting, MeetingActionItem
+from app.models.meeting_template import MeetingAgendaTemplate
 from app.models.member import ProjectMember
 from app.models.milestone import Milestone
 from app.models.module import Module
@@ -48,6 +49,7 @@ __all__ = [
     "ProjectDocumentComment",
     "Meeting",
     "MeetingActionItem",
+    "MeetingAgendaTemplate",
     "Attachment",
     "WpWatcher",
     "UserNotificationSettings",
