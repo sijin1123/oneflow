@@ -213,6 +213,7 @@ async def list_activities(
     offset: int = Query(default=0, ge=0),
     action: str | None = Query(default=None),
     field: str | None = Query(default=None, max_length=40),
+    actor_id: uuid.UUID | None = Query(default=None),
     order: str = Query(default="asc", pattern="^(asc|desc)$"),
     session: AsyncSession = Depends(get_session),
     user: User = Depends(get_current_user),
@@ -228,6 +229,10 @@ async def list_activities(
         base = base.where(Activity.action == action)
     if field is not None:
         base = base.where(Activity.field == field.strip())
+    if actor_id is not None:
+        # Same independent-AND contract (Pass 38); rows with a null actor
+        # never match a concrete id.
+        base = base.where(Activity.actor_id == actor_id)
     total = (await session.execute(select(func.count()).select_from(base.subquery()))).scalar_one()
     order_col = Activity.created_at.asc() if order == "asc" else Activity.created_at.desc()
     rows = (

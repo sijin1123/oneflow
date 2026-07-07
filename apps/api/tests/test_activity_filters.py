@@ -100,3 +100,40 @@ async def test_project_relations_listing(client, seeded, foreign_project):
     assert (probe["total"], probe["truncated"]) == (1, True)
     foreign_pid = str(foreign_project["project_id"])
     assert (await client.get(f"/api/v1/projects/{foreign_pid}/relations")).status_code == 404
+
+
+async def test_actor_filter_and_id_exposure(client, seeded, member_project):
+    """Pass 38 PR-BD (revising the Pass-19 exclusion): actor_id is exposed as
+    stored on BOTH reads (WP/feed identity — v38.1 R1-①) and filters as an
+    independent AND. An unrelated uuid is a legitimately empty page — members
+    can already walk the whole feed by pagination (R1-② threat model)."""
+    pid = seeded["pid"]
+    wp_id = seeded["wp_id"]
+    me = (await client.get("/api/v1/me")).json()
+
+    feed = (await client.get(f"/api/v1/projects/{pid}/activities")).json()
+    assert all(a["actor_id"] == me["id"] for a in feed["items"])  # id + name together
+    wp_acts = (await client.get(f"/api/v1/work-packages/{wp_id}/activities")).json()
+    assert {a["actor_id"] for a in wp_acts["items"]} == {me["id"]}  # identity across reads
+
+    # Feed: actor filter alone and AND-composed with action.
+    mine = (await client.get(f"/api/v1/projects/{pid}/activities?actor_id={me['id']}")).json()
+    assert mine["total"] == 3
+    both = (
+        await client.get(f"/api/v1/projects/{pid}/activities?actor_id={me['id']}&action=commented")
+    ).json()
+    assert [a["action"] for a in both["items"]] == ["commented"]
+
+    # WP endpoint: same contract, total = full filtered count.
+    wp_mine = (
+        await client.get(f"/api/v1/work-packages/{wp_id}/activities?actor_id={me['id']}")
+    ).json()
+    assert wp_mine["total"] == 3
+
+    # Unrelated (but real) uuid → empty page, never an error; malformed → 422.
+    other = str(member_project["owner_id"])
+    empty = (await client.get(f"/api/v1/projects/{pid}/activities?actor_id={other}")).json()
+    assert (empty["total"], empty["truncated"]) == (0, False)
+    assert (
+        await client.get(f"/api/v1/projects/{pid}/activities?actor_id=not-a-uuid")
+    ).status_code == 422

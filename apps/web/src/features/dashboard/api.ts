@@ -28,6 +28,7 @@ export type ProjectActivity = {
   id: string
   work_package_id: string
   work_package_subject: string
+  actor_id: string | null
   actor_name: string | null
   action: 'created' | 'field_changed' | 'commented'
   field: string | null
@@ -43,16 +44,23 @@ export type ProjectActivityList = {
   truncated: boolean
 }
 
-export type ActivityFilters = { action?: string; order?: 'asc' | 'desc' }
+export type ActivityFilters = { action?: string; order?: 'asc' | 'desc'; actor_id?: string }
 
 export function useProjectActivities(projectId: string, filters: ActivityFilters = {}) {
   const params = new URLSearchParams()
   if (filters.action) params.set('action', filters.action)
   if (filters.order) params.set('order', filters.order)
+  if (filters.actor_id) params.set('actor_id', filters.actor_id)
   const qs = params.toString()
   return useQuery({
     // filters belong in the cache key — each combination is its own page
-    queryKey: ['project-activities', projectId, filters.action ?? '', filters.order ?? 'desc'],
+    queryKey: [
+      'project-activities',
+      projectId,
+      filters.action ?? '',
+      filters.order ?? 'desc',
+      filters.actor_id ?? '',
+    ],
     queryFn: () =>
       api<ProjectActivityList>(`/api/v1/projects/${projectId}/activities${qs ? `?${qs}` : ''}`),
   })

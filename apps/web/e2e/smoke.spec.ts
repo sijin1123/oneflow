@@ -520,6 +520,18 @@ test('대시보드가 집계 타일과 분포를 보여준다', async ({ page })
   await page.route('**/api/v1/me/notifications', (route) =>
     route.fulfill({ json: { items: [], total: 0, unread: 0 } }),
   )
+  // The activity actor filter reads the roster (Pass 38).
+  await page.route(`**/api/v1/projects/${project.id}/members`, (route) =>
+    route.fulfill({
+      json: {
+        items: [
+          { user_id: 'me-1', email: 'dev@oneflow.local', display_name: 'Dev User', role: 'owner' },
+          { user_id: 'u-alex', email: 'alex@oneflow.local', display_name: 'Alex Kim', role: 'member' },
+        ],
+        total: 2,
+      },
+    }),
+  )
   await page.route(`**/api/v1/projects/${project.id}/dashboard`, (route) =>
     route.fulfill({
       json: {
@@ -553,6 +565,7 @@ test('대시보드가 집계 타일과 분포를 보여준다', async ({ page })
     id: 'pa1',
     work_package_id: wpA.id,
     work_package_subject: '워크패키지 API 구현',
+    actor_id: 'me-1',
     actor_name: 'Dev User',
     action: 'field_changed',
     field: 'status',
@@ -563,6 +576,8 @@ test('대시보드가 집계 타일과 분포를 보여준다', async ({ page })
   const paComment = {
     ...paChanged,
     id: 'pa2',
+    actor_id: 'u-alex',
+    actor_name: 'Alex Kim',
     action: 'commented',
     field: null,
     old_value: null,
@@ -572,8 +587,11 @@ test('대시보드가 집계 타일과 분포를 보여준다', async ({ page })
   await page.route(`**/api/v1/projects/${project.id}/activities**`, (route) => {
     const url = new URL(route.request().url())
     const action = url.searchParams.get('action')
+    const actorId = url.searchParams.get('actor_id')
     const order = url.searchParams.get('order') ?? 'desc'
-    let items = action ? [paComment, paChanged].filter((a) => a.action === action) : [paComment, paChanged]
+    let items = [paComment, paChanged]
+    if (action) items = items.filter((a) => a.action === action)
+    if (actorId) items = items.filter((a) => a.actor_id === actorId)
     items = [...items].sort((x, y) =>
       order === 'asc'
         ? x.created_at.localeCompare(y.created_at)
@@ -609,6 +627,13 @@ test('대시보드가 집계 타일과 분포를 보여준다', async ({ page })
   await page.getByLabel('활동 정렬').selectOption('asc')
   const rows = page.locator('li', { hasText: 'Dev User' })
   await expect(rows.first()).toContainText('todo → in_progress')
+
+  // actor filter (Pass 38): pick Alex → only the comment row; reset restores.
+  await page.getByLabel('활동 멤버').selectOption('u-alex')
+  await expect(page.getByText('· 댓글')).toBeVisible()
+  await expect(page.getByText('todo → in_progress', { exact: false })).toBeHidden()
+  await page.getByLabel('활동 멤버').selectOption('')
+  await expect(page.getByText('todo → in_progress', { exact: false })).toBeVisible()
 
   // widget layout edit: hide the budget tiles, save → PUT carries the order
   await page.getByRole('button', { name: '위젯 편집' }).click()
