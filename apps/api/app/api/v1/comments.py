@@ -11,7 +11,7 @@ from app.api.v1.work_packages import require_wp_member
 from app.core.auth import get_current_user
 from app.db.session import get_session
 from app.models.activity import ACTIVITY_ACTIONS, Activity
-from app.models.comment import REACTION_KEYS, CommentReaction, WorkPackageComment
+from app.models.comment import LEGACY_REACTION_KEYS, CommentReaction, WorkPackageComment
 from app.models.user import User
 from app.schemas.comment import (
     ActivityList,
@@ -24,6 +24,7 @@ from app.schemas.comment import (
     empty_reactions,
 )
 from app.services.activity import record_comment
+from app.services.emoji import is_single_emoji, normalize_emoji
 from app.services.notification import notify_mentions, notify_watchers
 
 router = APIRouter()
@@ -127,10 +128,24 @@ async def _reaction_aggregates(
             .group_by(CommentReaction.comment_id, CommentReaction.emoji)
         )
     ).all()
-    index = {key: i for i, key in enumerate(REACTION_KEYS)}
     for comment_id, emoji, count, me in rows:
-        out[comment_id][index[emoji]] = ReactionAgg(key=emoji, count=count, me=bool(me))
+        out[comment_id].append(ReactionAgg(key=emoji, count=count, me=bool(me)))
+    for aggs in out.values():
+        # Deterministic, collation-independent: count desc, codepoint asc
+        # (v35.1 R1-⑥ — Python str comparison is codepoint-based).
+        aggs.sort(key=lambda a: (-a.count, a.key))
     return out
+
+
+def _normalize_reaction(emoji: str) -> str:
+    """Wire value → stored glyph. Legacy Pass-17 keys normalize forever
+    (v35.1 R1-④); everything else must be exactly one emoji grapheme."""
+    if emoji in LEGACY_REACTION_KEYS:
+        return LEGACY_REACTION_KEYS[emoji]
+    normalized = normalize_emoji(emoji)
+    if not is_single_emoji(normalized):
+        raise HTTPException(status_code=422, detail="emoji must be a single emoji character")
+    return normalized
 
 
 async def _get_comment_scoped(
@@ -148,14 +163,13 @@ async def _get_comment_scoped(
 @router.put("/comments/{comment_id}/reactions/{emoji}", response_model=ReactionList)
 async def put_reaction(
     comment_id: uuid.UUID,
-    emoji: str = Path(pattern="^[a-z_]{1,16}$"),
+    emoji: str = Path(min_length=1, max_length=64),
     session: AsyncSession = Depends(get_session),
     user: User = Depends(get_current_user),
 ) -> ReactionList:
     """Idempotent add (v17.1 R1-①): INSERT..ON CONFLICT DO NOTHING — concurrent
     PUTs both succeed; a comment deleted mid-flight maps to 404 (R1-②)."""
-    if emoji not in REACTION_KEYS:
-        raise HTTPException(status_code=422, detail=f"emoji must be one of {REACTION_KEYS}")
+    emoji = _normalize_reaction(emoji)
     comment = await _get_comment_scoped(session, comment_id, user, write=True)
     try:
         await session.execute(
@@ -174,13 +188,12 @@ async def put_reaction(
 @router.delete("/comments/{comment_id}/reactions/{emoji}", status_code=204)
 async def delete_reaction(
     comment_id: uuid.UUID,
-    emoji: str = Path(pattern="^[a-z_]{1,16}$"),
+    emoji: str = Path(min_length=1, max_length=64),
     session: AsyncSession = Depends(get_session),
     user: User = Depends(get_current_user),
 ) -> Response:
     """Idempotent remove — a conditional DELETE whose rowcount is ignored."""
-    if emoji not in REACTION_KEYS:
-        raise HTTPException(status_code=422, detail=f"emoji must be one of {REACTION_KEYS}")
+    emoji = _normalize_reaction(emoji)
     await _get_comment_scoped(session, comment_id, user, write=True)
     await session.execute(
         sa_delete(CommentReaction).where(

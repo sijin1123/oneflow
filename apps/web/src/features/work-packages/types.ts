@@ -99,15 +99,10 @@ export type Comment = {
 
 export type ReactionAgg = { key: string; count: number; me: boolean }
 
-/** stable key → display glyph (keys live in API/DB; glyphs are web-only) */
-export const REACTION_EMOJI: Record<string, string> = {
-  thumbs_up: '👍',
-  thumbs_down: '👎',
-  tada: '🎉',
-  heart: '❤️',
-  smile: '😄',
-  confused: '😕',
-}
+/** Quick-pick glyphs (Pass 35: the API stores glyphs — the set is OPEN and
+    the aggregate returns whatever exists; this list is only the web's
+    one-click shortcut row). */
+export const QUICK_REACTIONS = ['👍', '👎', '🎉', '❤️', '😄', '😕'] as const
 
 export type CommentList = {
   items: Comment[]

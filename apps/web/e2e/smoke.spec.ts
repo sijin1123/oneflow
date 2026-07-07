@@ -411,15 +411,28 @@ test('댓글 스레드: 답글이 루트 아래 들여쓰기로 붙고 parent_id
   await drawer.getByRole('button', { name: '답글 추가' }).click()
   expect(((await post).postDataJSON() as { parent_id: string }).parent_id).toBe('c-root')
 
-  // reactions: the bar renders per comment and PUT toggles the stable key
-  await page.route('**/api/v1/comments/c-root/reactions/heart', (route) =>
-    route.fulfill({ json: { items: [{ key: 'heart', count: 1, me: true }] } }),
+  // reactions (Pass 35 open set): quick-pick glyph PUTs the percent-encoded
+  // emoji itself; the free input accepts any emoji.
+  await page.route('**/api/v1/comments/c-root/reactions/**', (route) =>
+    route.fulfill({ json: { items: [{ key: '❤️', count: 1, me: true }] } }),
   )
   const reactPut = page.waitForRequest(
-    (r) => r.method() === 'PUT' && r.url().includes('/comments/c-root/reactions/heart'),
+    (r) =>
+      r.method() === 'PUT' &&
+      r.url().includes(`/comments/c-root/reactions/${encodeURIComponent('❤️')}`),
   )
-  await drawer.getByLabel('heart 리액션').first().click()
+  await drawer.getByLabel('❤️ 리액션').first().click()
   await reactPut
+
+  const freePut = page.waitForRequest(
+    (r) =>
+      r.method() === 'PUT' &&
+      r.url().includes(`/comments/c-root/reactions/${encodeURIComponent('✨')}`),
+  )
+  await drawer.getByLabel('이모지 추가').first().click()
+  await drawer.getByLabel('자유 이모지 입력').fill('✨')
+  await drawer.getByLabel('이모지 등록').click()
+  await freePut
 })
 
 test('드로어 복제 버튼이 duplicate POST를 보내고 결과를 알린다', async ({ page }) => {

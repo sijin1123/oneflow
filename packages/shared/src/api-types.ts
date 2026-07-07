@@ -3642,8 +3642,9 @@ export interface components {
         };
         /**
          * ReactionAgg
-         * @description One fixed vocabulary slot — the API always returns all six in order
-         *     (0-count included), so clients render without merging (v17.1 R1-④).
+         * @description One emoji aggregate. The set is OPEN (Pass 35): only emojis with at
+         *     least one reaction appear, sorted by count desc then codepoint asc —
+         *     clients own the quick-pick set.
          */
         ReactionAgg: {
             /** Count */
