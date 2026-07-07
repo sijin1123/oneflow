@@ -107,5 +107,9 @@ class ProjectActivityRead(BaseModel):
 
 
 class ProjectActivityList(BaseModel):
+    """`total` is the RETURNED count (legacy contract — documented, v19.1);
+    `truncated` reports more rows beyond the limit (limit+1 probe)."""
+
     items: list[ProjectActivityRead]
     total: int
+    truncated: bool = False

@@ -13,7 +13,7 @@ from app.api.v1.csv_io import BOM, _guard_formula
 from app.core.auth import get_current_user
 from app.core.authz import require_member
 from app.db.session import get_session
-from app.models.activity import Activity
+from app.models.activity import ACTIVITY_ACTIONS, Activity
 from app.models.cost_entry import CostEntry
 from app.models.dashboard_layout import WIDGET_KEYS, DashboardLayout
 from app.models.project import Project
@@ -124,22 +124,40 @@ async def project_dashboard(
 async def project_activities(
     project_id: uuid.UUID,
     limit: int = Query(default=50, ge=1, le=200),
+    action: str | None = Query(default=None),
+    field: str | None = Query(default=None, max_length=40),
+    order: str = Query(default="desc", pattern="^(asc|desc)$"),
     session: AsyncSession = Depends(get_session),
     user: User = Depends(get_current_user),
 ) -> ProjectActivityList:
-    """Project-wide audit feed: every work-package activity in the project, newest
-    first, enriched with the work package subject and actor name (member-scoped)."""
+    """Project-wide audit feed, enriched with the work package subject and actor
+    name (member-scoped). Filters are independent ANDs (v19.1): exact-key
+    `field` with action=created/commented yields an empty page, never 422.
+    `total` stays the RETURNED count (legacy contract); `truncated` (limit+1
+    probe) says whether more rows exist. An actor filter is deliberately
+    absent — the read model does not expose actor ids (R1-④)."""
     await require_member(session, project_id, user)
+    if action is not None and action not in ACTIVITY_ACTIONS:
+        raise HTTPException(status_code=422, detail=f"action must be one of {ACTIVITY_ACTIONS}")
+    stmt = (
+        select(Activity, WorkPackage.subject, User.display_name)
+        .join(WorkPackage, Activity.work_package_id == WorkPackage.id)
+        .outerjoin(User, Activity.actor_id == User.id)
+        .where(WorkPackage.project_id == project_id)
+    )
+    if action is not None:
+        stmt = stmt.where(Activity.action == action)
+    if field is not None:
+        stmt = stmt.where(Activity.field == field.strip())
+    order_col = Activity.created_at.asc() if order == "asc" else Activity.created_at.desc()
     rows = (
         await session.execute(
-            select(Activity, WorkPackage.subject, User.display_name)
-            .join(WorkPackage, Activity.work_package_id == WorkPackage.id)
-            .outerjoin(User, Activity.actor_id == User.id)
-            .where(WorkPackage.project_id == project_id)
-            .order_by(Activity.created_at.desc())
-            .limit(limit)
+            # id ASC tie-breaker keeps equal timestamps deterministic (R1-②).
+            stmt.order_by(order_col, Activity.id.asc()).limit(limit + 1)
         )
     ).all()
+    truncated = len(rows) > limit
+    rows = rows[:limit]
     items = [
         ProjectActivityRead(
             id=a.id,
@@ -154,7 +172,7 @@ async def project_activities(
         )
         for (a, subject, actor_name) in rows
     ]
-    return ProjectActivityList(items=items, total=len(items))
+    return ProjectActivityList(items=items, total=len(items), truncated=truncated)
 
 
 @router.get("/projects/{project_id}/dashboard/export.csv")
