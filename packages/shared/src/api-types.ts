@@ -1736,6 +1736,8 @@ export interface components {
         };
         /** CustomFieldCreate */
         CustomFieldCreate: {
+            /** Applies To */
+            applies_to?: string[] | null;
             /** Field Type */
             field_type: string;
             /** Name */
@@ -1752,6 +1754,8 @@ export interface components {
         };
         /** CustomFieldRead */
         CustomFieldRead: {
+            /** Applies To */
+            applies_to: string[] | null;
             /**
              * Created At
              * Format: date-time
@@ -1786,8 +1790,11 @@ export interface components {
         /**
          * CustomFieldUpdate
          * @description field_type is immutable — changing it would corrupt stored values.
+         *     applies_to CAN be updated; send null to widen back to all types.
          */
         CustomFieldUpdate: {
+            /** Applies To */
+            applies_to?: string[] | null;
             /** Is Active */
             is_active?: boolean | null;
             /** Name */

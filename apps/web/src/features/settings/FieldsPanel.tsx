@@ -5,6 +5,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
+import { TYPE_LABELS, WP_TYPES, type WpType } from '@/features/work-packages/types'
 import {
   type CustomFieldType,
   FIELD_TYPE_LABELS,
@@ -36,6 +37,7 @@ export function FieldsPanel({
   const [name, setName] = useState('')
   const [type, setType] = useState<CustomFieldType>('text')
   const [options, setOptions] = useState('')
+  const [appliesTo, setAppliesTo] = useState<WpType[]>([])
 
   const dirty = name.trim() !== '' || options.trim() !== ''
   useEffect(() => {
@@ -76,6 +78,11 @@ export function FieldsPanel({
                     {f.options.join(' · ')}
                   </span>
                 ) : null}
+                <span className="hidden shrink-0 text-[10px] text-of-muted sm:inline">
+                  {f.applies_to
+                    ? f.applies_to.map((k) => TYPE_LABELS[k as WpType] ?? k).join('·')
+                    : '모든 타입'}
+                </span>
                 {isOwner ? (
                   <>
                     <button
@@ -147,6 +154,26 @@ export function FieldsPanel({
                 className="h-8 w-52 text-xs"
               />
             ) : null}
+            <span className="flex items-center gap-2 text-[11px] text-of-muted">
+              적용 타입:
+              {WP_TYPES.map((k) => (
+                <label key={k} className="flex items-center gap-1">
+                  <input
+                    type="checkbox"
+                    aria-label={`${TYPE_LABELS[k]} 타입에 적용`}
+                    checked={appliesTo.includes(k)}
+                    onChange={(e) =>
+                      setAppliesTo((prev) =>
+                        e.target.checked ? [...prev, k] : prev.filter((x) => x !== k),
+                      )
+                    }
+                    className="h-3 w-3 accent-of-accent"
+                  />
+                  {TYPE_LABELS[k]}
+                </label>
+              ))}
+              <span>(비우면 모든 타입)</span>
+            </span>
             <Button
               size="sm"
               disabled={
@@ -167,12 +194,14 @@ export function FieldsPanel({
                             .filter(Boolean),
                         }
                       : {}),
+                    ...(appliesTo.length > 0 ? { applies_to: appliesTo } : {}),
                   },
                   {
                     onSuccess: () => {
                       setName('')
                       setOptions('')
                       setType('text')
+                      setAppliesTo([])
                     },
                   },
                 )

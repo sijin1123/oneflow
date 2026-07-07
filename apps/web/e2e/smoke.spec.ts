@@ -875,6 +875,7 @@ test('설정 필드 탭에서 드롭다운 필드를 정의한다', async ({ pag
           options: sent.options,
           position: 0,
           is_active: true,
+          applies_to: null,
           created_at: '2026-07-06T00:00:00Z',
           updated_at: '2026-07-06T00:00:00Z',
         },
@@ -913,6 +914,19 @@ test('드로어 커스텀 필드에 값을 입력하면 델타 PUT이 간다', a
             options: ['낮음', '높음'],
             position: 0,
             is_active: true,
+            applies_to: null,
+            created_at: '2026-07-06T00:00:00Z',
+            updated_at: '2026-07-06T00:00:00Z',
+          },
+          {
+            id: 'cf-2',
+            project_id: project.id,
+            name: '재현 절차',
+            field_type: 'text',
+            options: null,
+            position: 1,
+            is_active: true,
+            applies_to: ['bug'],
             created_at: '2026-07-06T00:00:00Z',
             updated_at: '2026-07-06T00:00:00Z',
           },
@@ -943,6 +957,9 @@ test('드로어 커스텀 필드에 값을 입력하면 델타 PUT이 간다', a
   await page.getByRole('dialog').getByLabel('심각도').selectOption('높음')
   const sent = (await put).postDataJSON() as { values: Array<{ field_id: string; value: string }> }
   expect(sent.values).toEqual([{ field_id: 'cf-1', value: '높음' }])
+
+  // Binding shapes the form: wpA is a 'task', so the bug-only field stays hidden.
+  await expect(page.getByRole('dialog').getByLabel('재현 절차')).toHaveCount(0)
 })
 
 test('보드에서 카드를 드래그해 옮기면 상태 PATCH가 간다', async ({ page }) => {

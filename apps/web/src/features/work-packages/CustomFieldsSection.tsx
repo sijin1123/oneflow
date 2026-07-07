@@ -17,11 +17,13 @@ function FieldInput({
   value,
   wpId,
   projectId,
+  editable,
 }: {
   field: CustomField
   value: unknown
   wpId: string
   projectId: string
+  editable: boolean
 }) {
   const put = usePutCustomValue(wpId)
   const members = useMembers(projectId)
@@ -44,11 +46,13 @@ function FieldInput({
   }
 
   let control: React.ReactNode
-  if (!field.is_active) {
+  if (!editable) {
     // Inactive with a stored value: read-only + a clear affordance.
     control = (
       <div className="flex items-center gap-2 text-xs">
-        <span className="text-of-muted">{String(value)} (비활성 필드)</span>
+        <span className="text-of-muted">
+          {String(value)} {field.is_active ? '(다른 타입 필드)' : '(비활성 필드)'}
+        </span>
         <button
           type="button"
           className="text-of-muted hover:text-of-danger"
@@ -159,15 +163,28 @@ function Wrapped({ control, err }: { control: React.ReactNode; err: string | nul
 
 /* Custom field values in the drawer (Pass 3 PR-J). Fetches definitions with
    include_inactive so stored values on deactivated fields stay visible. */
-export function CustomFieldsSection({ wpId, projectId }: { wpId: string; projectId: string }) {
+export function CustomFieldsSection({
+  wpId,
+  projectId,
+  wpType,
+}: {
+  wpId: string
+  projectId: string
+  wpType: string
+}) {
   const fields = useCustomFields(projectId, true)
   const values = useCustomValues(wpId)
 
   if (!fields.data || fields.data.total === 0) return null
   const valueMap = new Map((values.data?.items ?? []).map((v) => [v.field_id, v.value]))
 
-  // Active fields always render; inactive ones only when a value remains.
-  const visible = fields.data.items.filter((f) => f.is_active || valueMap.has(f.id))
+  // Binding shapes the FORM: a field renders when it is active AND applies to
+  // the current type, or when a stored value remains (read-only + clear path).
+  const bound = (f: (typeof fields.data.items)[number]) =>
+    f.applies_to === null || f.applies_to.includes(wpType)
+  const visible = fields.data.items.filter(
+    (f) => (f.is_active && bound(f)) || valueMap.has(f.id),
+  )
   if (visible.length === 0) return null
 
   return (
@@ -177,7 +194,13 @@ export function CustomFieldsSection({ wpId, projectId }: { wpId: string; project
         {visible.map((f) => (
           <div key={f.id} className="space-y-1">
             <label className="text-xs font-medium text-of-muted">{f.name}</label>
-            <FieldInput field={f} value={valueMap.get(f.id)} wpId={wpId} projectId={projectId} />
+            <FieldInput
+              field={f}
+              value={valueMap.get(f.id)}
+              wpId={wpId}
+              projectId={projectId}
+              editable={f.is_active && bound(f)}
+            />
           </div>
         ))}
       </div>
