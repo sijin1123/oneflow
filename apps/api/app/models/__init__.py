@@ -6,6 +6,7 @@ from app.models.cost_entry import CostEntry
 from app.models.custom_field import CustomField, WpCustomValue
 from app.models.cycle import Cycle
 from app.models.document import DocumentWorkPackageLink, ProjectDocument
+from app.models.document_comment import ProjectDocumentComment
 from app.models.initiative import Initiative, InitiativeProject
 from app.models.intake import IntakeItem
 from app.models.meeting import Meeting, MeetingActionItem
@@ -44,6 +45,7 @@ __all__ = [
     "AutomationRule",
     "DocumentWorkPackageLink",
     "ProjectDocument",
+    "ProjectDocumentComment",
     "Meeting",
     "MeetingActionItem",
     "Attachment",

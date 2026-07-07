@@ -149,3 +149,47 @@ export function useDeleteDocument(projectId: string) {
     },
   })
 }
+
+
+export type DocumentComment = {
+  id: string
+  document_id: string
+  project_id: string
+  author_id: string | null
+  body: string
+  created_at: string
+}
+
+export type DocumentCommentList = { items: DocumentComment[]; total: number }
+
+export function useDocumentComments(docId: string) {
+  return useQuery({
+    queryKey: ['document-comments', docId],
+    queryFn: () => api<DocumentCommentList>(`/api/v1/documents/${docId}/comments`),
+  })
+}
+
+export function useCreateDocumentComment(docId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (body: string) =>
+      api<DocumentComment>(`/api/v1/documents/${docId}/comments`, {
+        method: 'POST',
+        body: JSON.stringify({ body }),
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['document-comments', docId] })
+    },
+  })
+}
+
+export function useDeleteDocumentComment(docId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (commentId: string) =>
+      api(`/api/v1/document-comments/${commentId}`, { method: 'DELETE' }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['document-comments', docId] })
+    },
+  })
+}
