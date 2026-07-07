@@ -4,7 +4,8 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { EmptyState, ErrorState, ListSkeleton } from '@/components/shell/states'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { useMe, useMembers } from '@/features/members/api'
+import { useMe, useMemberNames, useMembers } from '@/features/members/api'
+import { formatDateTime } from '@/lib/datetime'
 
 import { type IntakeItem, type IntakeStatus, useIntake, useSubmitIntake, useTriageIntake } from './api'
 
@@ -28,7 +29,9 @@ function ItemRow({
   projectId: string
 }) {
   const navigate = useNavigate()
+  const memberName = useMemberNames(projectId)
   const triage = useTriageIntake(projectId)
+  const [note, setNote] = useState('')
   const open = item.status === 'pending' || item.status === 'snoozed'
 
   return (
@@ -58,7 +61,7 @@ function ItemRow({
           <Button
             size="sm"
             disabled={triage.isPending}
-            onClick={() => triage.mutate({ itemId: item.id, status: 'accepted' })}
+            onClick={() => triage.mutate({ itemId: item.id, status: 'accepted', note: note || null })}
           >
             수락
           </Button>
@@ -66,7 +69,7 @@ function ItemRow({
             size="sm"
             variant="outline"
             disabled={triage.isPending}
-            onClick={() => triage.mutate({ itemId: item.id, status: 'declined' })}
+            onClick={() => triage.mutate({ itemId: item.id, status: 'declined', note: note || null })}
           >
             거절
           </Button>
@@ -74,7 +77,7 @@ function ItemRow({
             size="sm"
             variant="outline"
             disabled={triage.isPending}
-            onClick={() => triage.mutate({ itemId: item.id, status: 'duplicate' })}
+            onClick={() => triage.mutate({ itemId: item.id, status: 'duplicate', note: note || null })}
           >
             중복
           </Button>
@@ -93,7 +96,21 @@ function ItemRow({
               처리 실패 — 이미 처리된 항목일 수 있습니다.
             </span>
           ) : null}
+          <input
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            placeholder="판정 사유 (선택 — 거절 시 권장)"
+            aria-label={`${item.title} 판정 사유`}
+            className="h-7 min-w-0 flex-1 rounded-of border border-of-border bg-of-surface px-2 text-[11px]"
+          />
         </div>
+      ) : null}
+      {!open && item.triage_note ? (
+        <p className="text-[11px] text-of-muted">
+          판정 사유: <span className="whitespace-pre-wrap">{item.triage_note}</span>
+          {item.triaged_by_id ? ` · ${memberName(item.triaged_by_id)}` : ''}
+          {item.triaged_at ? ` · ${formatDateTime(item.triaged_at)}` : ''}
+        </p>
       ) : null}
     </li>
   )

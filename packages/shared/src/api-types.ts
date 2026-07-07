@@ -2755,6 +2755,12 @@ export interface components {
             submitter_name: string | null;
             /** Title */
             title: string;
+            /** Triage Note */
+            triage_note?: string | null;
+            /** Triaged At */
+            triaged_at?: string | null;
+            /** Triaged By Id */
+            triaged_by_id?: string | null;
             /**
              * Updated At
              * Format: date-time
@@ -2764,9 +2770,12 @@ export interface components {
         /**
          * IntakeTriage
          * @description Owner triage decision. `status` must be a decision (not 'pending');
-         *     `snooze_until` only pairs with 'snoozed'.
+         *     `snooze_until` only pairs with 'snoozed'. `note` is optional PLAIN TEXT
+         *     (v29.1 — no HTML surface; trim-empty normalizes to null).
          */
         IntakeTriage: {
+            /** Note */
+            note?: string | null;
             /** Snooze Until */
             snooze_until?: string | null;
             /** Status */

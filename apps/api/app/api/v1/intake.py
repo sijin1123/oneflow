@@ -1,7 +1,7 @@
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy import update as sa_update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -32,6 +32,9 @@ def _to_read(row: IntakeItem, submitter_name: str | None) -> IntakeRead:
         submitter_name=submitter_name,
         snooze_until=row.snooze_until,
         accepted_wp_id=row.accepted_wp_id,
+        triage_note=row.triage_note,
+        triaged_by_id=row.triaged_by,
+        triaged_at=row.triaged_at,
         created_at=row.created_at,
         updated_at=row.updated_at,
     )
@@ -114,7 +117,14 @@ async def triage_intake(
         record_created(session, wp.id, user.id)
         accepted_wp_id = wp.id
 
-    values: dict = {"status": body.status}
+    # Final-decision metadata: the note is ALWAYS replaced (null when omitted)
+    # so a snooze reason never lingers on the final decision (v29.1 R1-⑥).
+    values: dict = {
+        "status": body.status,
+        "triage_note": body.note,
+        "triaged_by": user.id,
+        "triaged_at": func.now(),
+    }
     if body.status == "accepted":
         values["accepted_wp_id"] = accepted_wp_id
     if body.status == "snoozed":
