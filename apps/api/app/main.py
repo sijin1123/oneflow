@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.v1 import (
     ai,
     attachments,
+    auth,
     automation_rules,
     comments,
     cost_entries,
@@ -95,6 +96,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.add_middleware(RequestIdMiddleware)
 
     app.include_router(health.router, prefix="/api/v1", tags=["health"])
+    app.include_router(auth.router, prefix="/api/v1", tags=["auth"])
     app.include_router(projects.router, prefix="/api/v1/projects", tags=["projects"])
     app.include_router(work_packages.router, prefix="/api/v1", tags=["work-packages"])
     app.include_router(csv_io.router, prefix="/api/v1", tags=["csv"])

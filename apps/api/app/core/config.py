@@ -38,6 +38,12 @@ class Settings(BaseSettings):
     allow_destructive_reset: str | None = None
     db_pool_size: int = 10
     db_max_overflow: int = 20
+    # OIDC provider surface (Pass 5 PR-N). Configuration only — the actual
+    # login flow stays 501 until the real integration lands. The secret is
+    # never echoed by any endpoint (only its presence as a boolean).
+    oidc_issuer: str | None = None
+    oidc_client_id: str | None = None
+    oidc_client_secret: str | None = None
     # File uploads (Pass 4 PR-M). Not secrets; restart required to change.
     # Local-dev default — production should point at a dedicated volume.
     storage_dir: str = "var/uploads"
@@ -75,6 +81,23 @@ class Settings(BaseSettings):
                 "ONEFLOW_AUTH_MODE=dev is forbidden when ONEFLOW_ENV is staging/production "
                 "(PLAN §9 startup guard)"
             )
+        # Guard (1b): oidc mode without a complete provider config must fail at
+        # boot, not with per-request 500s halfway through a deploy.
+        if self.auth_mode == "oidc":
+            missing = [
+                name
+                for name, value in (
+                    ("ONEFLOW_OIDC_ISSUER", self.oidc_issuer),
+                    ("ONEFLOW_OIDC_CLIENT_ID", self.oidc_client_id),
+                    ("ONEFLOW_OIDC_CLIENT_SECRET", self.oidc_client_secret),
+                )
+                if not value
+            ]
+            if missing:
+                raise ValueError("ONEFLOW_AUTH_MODE=oidc requires " + ", ".join(missing))
+            parts = urlsplit(self.oidc_issuer or "")
+            if parts.scheme != "https" or not parts.netloc:
+                raise ValueError("ONEFLOW_OIDC_ISSUER must be an https:// URL")
         # Guard (2): asyncpg scheme only — ONEFLOW_DATABASE_URL is the single DB entrypoint.
         for name, url in (
             ("ONEFLOW_DATABASE_URL", self.database_url),
