@@ -1671,6 +1671,11 @@ export interface components {
         CommentCreate: {
             /** Body */
             body: string;
+            /**
+             * Mentioned User Ids
+             * @default []
+             */
+            mentioned_user_ids: string[];
             /** Parent Id */
             parent_id?: string | null;
         };
@@ -1697,6 +1702,8 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            /** Mentions */
+            mentions: string[] | null;
             /** Parent Id */
             parent_id: string | null;
             /**
@@ -2739,6 +2746,8 @@ export interface components {
             assigned: boolean;
             /** Commented */
             commented: boolean;
+            /** Mention */
+            mention: boolean;
             /** Watched */
             watched: boolean;
         };
@@ -2751,6 +2760,8 @@ export interface components {
             assigned?: boolean | null;
             /** Commented */
             commented?: boolean | null;
+            /** Mention */
+            mention?: boolean | null;
             /** Watched */
             watched?: boolean | null;
         };

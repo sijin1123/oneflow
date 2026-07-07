@@ -2,6 +2,7 @@ import { useState } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
+import { useMemberNames, useMembers } from '@/features/members/api'
 import { formatDateTime } from '@/lib/datetime'
 
 import { FIELD_LABELS } from './activityLabels'
@@ -23,9 +24,12 @@ export function HistorySection({ wpId, projectId }: { wpId: string; projectId: s
   const comments = useComments(wpId)
   const createComment = useCreateComment(wpId)
   const statusLabel = useStatusLabels(projectId)
+  const members = useMembers(projectId)
+  const memberName = useMemberNames(projectId)
   const [draft, setDraft] = useState('')
   const [replyTo, setReplyTo] = useState<string | null>(null)
   const [replyDraft, setReplyDraft] = useState('')
+  const [mentioned, setMentioned] = useState<string[]>([])
 
   const labelValue = (field: string | null, value: string | null): string => {
     if (value === null) return '없음'
@@ -54,7 +58,21 @@ export function HistorySection({ wpId, projectId }: { wpId: string; projectId: s
   const submit = () => {
     const body = draft.trim()
     if (!body) return
-    createComment.mutate({ body }, { onSuccess: () => setDraft('') })
+    createComment.mutate(
+      { body, mentioned_user_ids: mentioned },
+      {
+        onSuccess: () => {
+          setDraft('')
+          setMentioned([])
+        },
+      },
+    )
+  }
+
+  const toggleMention = (userId: string) => {
+    setMentioned((prev) =>
+      prev.includes(userId) ? prev.filter((id) => id !== userId) : [...prev, userId],
+    )
   }
 
   const submitReply = (rootId: string) => {
@@ -80,6 +98,18 @@ export function HistorySection({ wpId, projectId }: { wpId: string; projectId: s
       }`}
     >
       <p className="whitespace-pre-wrap text-[13px]">{c.body}</p>
+      {c.mentions && c.mentions.length > 0 ? (
+        <p className="mt-1 flex flex-wrap gap-1">
+          {c.mentions.map((uid) => (
+            <span
+              key={uid}
+              className="rounded bg-of-accent-soft px-1 py-0.5 text-[10px] font-medium text-of-accent"
+            >
+              @{memberName(uid)}
+            </span>
+          ))}
+        </p>
+      ) : null}
       <p className="mt-1 flex items-center gap-2 text-[11px] text-of-muted">
         {formatDateTime(c.created_at)}
         {!isReply ? (
@@ -155,6 +185,24 @@ export function HistorySection({ wpId, projectId }: { wpId: string; projectId: s
           aria-label="댓글 입력"
           className="min-h-16"
         />
+        {(members.data?.items ?? []).length > 0 ? (
+          <fieldset className="flex flex-wrap items-center gap-2">
+            <legend className="sr-only">멘션할 멤버</legend>
+            <span className="text-[11px] text-of-muted">멘션:</span>
+            {(members.data?.items ?? []).map((m) => (
+              <label key={m.user_id} className="flex items-center gap-1 text-[11px]">
+                <input
+                  type="checkbox"
+                  checked={mentioned.includes(m.user_id)}
+                  onChange={() => toggleMention(m.user_id)}
+                  aria-label={`${m.display_name} 멘션`}
+                  className="h-3 w-3 accent-of-accent"
+                />
+                {m.display_name}
+              </label>
+            ))}
+          </fieldset>
+        ) : null}
         <div className="flex items-center gap-2">
           <Button size="sm" onClick={submit} disabled={createComment.isPending || !draft.trim()}>
             댓글 추가

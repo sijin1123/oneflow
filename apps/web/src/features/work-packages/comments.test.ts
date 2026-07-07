@@ -11,6 +11,7 @@ function c(id: string, parent_id: string | null, at: string): Comment {
     parent_id,
     author_id: null,
     body: id,
+    mentions: null,
     created_at: at,
     updated_at: at,
   }

@@ -12,6 +12,7 @@ const TOGGLES: Array<{ key: keyof NotificationSettings; label: string; hint: str
     hint: '워치 중인 작업의 상태·담당자가 바뀌면 알립니다.',
   },
   { key: 'commented', label: '댓글 알림', hint: '워치 중인 작업에 댓글이 달리면 알립니다.' },
+  { key: 'mention', label: '멘션 알림', hint: '댓글에서 나를 멘션하면 알립니다.' },
 ]
 
 /* Personal notification preferences (PR-E2) — applies to NEW notifications

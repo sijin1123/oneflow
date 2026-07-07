@@ -18,7 +18,7 @@ from app.schemas.comment import (
     CommentRead,
 )
 from app.services.activity import record_comment
-from app.services.notification import notify_watchers
+from app.services.notification import notify_mentions, notify_watchers
 
 router = APIRouter()
 
@@ -73,12 +73,25 @@ async def create_comment(
     )
     session.add(comment)
     record_comment(session, wp_id, user.id)  # same transaction as the comment
-    # Watchers hear about new comments in the same transaction (PR-E1).
-    await notify_watchers(
+    # Notification order (PLAN v10.1 R1-①): watchers first — the RETURNING set
+    # feeds the mention exclude, so nobody is notified twice for one comment.
+    watch_notified = await notify_watchers(
         session, wp_id=wp_id, project_id=wp.project_id, actor_id=user.id, kind="watch_comment"
     )
+    accepted = await notify_mentions(
+        session,
+        wp_id=wp_id,
+        project_id=wp.project_id,
+        actor_id=user.id,
+        candidate_ids=body.mentioned_user_ids,
+        exclude=watch_notified,
+    )
+    comment.mentions = [str(uid) for uid in accepted] or None
     await session.flush()
     await session.commit()
+    # The mentions assignment flushes as an UPDATE, expiring the onupdate
+    # updated_at — refresh before validating (MissingGreenlet trap, PR #76).
+    await session.refresh(comment)
     return CommentRead.model_validate(comment)
 
 
