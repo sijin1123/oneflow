@@ -1693,6 +1693,8 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+            /** Fired Count */
+            fired_count: number;
             /**
              * Id
              * Format: uuid
@@ -1700,6 +1702,8 @@ export interface components {
             id: string;
             /** Is Active */
             is_active: boolean;
+            /** Last Fired At */
+            last_fired_at: string | null;
             /** Name */
             name: string;
             /**
@@ -1712,10 +1716,21 @@ export interface components {
             /** Trigger Value */
             trigger_value: string;
         };
-        /** AutomationRuleUpdate */
+        /**
+         * AutomationRuleUpdate
+         * @description Partial rule edit (v13.1) — omitted fields keep their current value.
+         *     Validation runs on the MERGED rule (router builds an AutomationRuleCreate
+         *     from current+patch), so a value change can never leave the pair invalid.
+         */
         AutomationRuleUpdate: {
+            /** Action Value */
+            action_value?: string | null;
             /** Is Active */
-            is_active: boolean;
+            is_active?: boolean | null;
+            /** Name */
+            name?: string | null;
+            /** Trigger Value */
+            trigger_value?: string | null;
         };
         /** Bucket */
         Bucket: {

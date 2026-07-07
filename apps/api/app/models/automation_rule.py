@@ -1,16 +1,26 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKey, Index, String, func
+from sqlalchemy import (
+    Boolean,
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    func,
+)
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
 
 # Supported trigger/action vocabulary. Kept a closed CHECK-constrained set; the
-# columns are generic so more (trigger, action) pairs are additive later. The one
+# columns are generic so more (trigger, action) pairs are additive later. Every
 # implemented pair deliberately watches `status` and writes `priority` — trigger
 # and action touch different fields, so a rule can never re-trigger itself.
+# (set_assignee is deferred until a per-WP execution log exists — v13.1 R1-⑤.)
 TRIGGER_TYPES = ("status_changed_to",)
 ACTION_TYPES = ("set_priority",)
 
@@ -38,6 +48,9 @@ class AutomationRule(Base):
     action_type: Mapped[str] = mapped_column(String(30), nullable=False)
     action_value: Mapped[str] = mapped_column(String(30), nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    # Minimal fire-audit surface (Pass 13): updated in the firing transaction.
+    last_fired_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    fired_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
