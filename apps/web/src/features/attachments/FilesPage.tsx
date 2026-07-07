@@ -1,5 +1,5 @@
-import { ExternalLink, Paperclip, Trash2 } from 'lucide-react'
-import { useState } from 'react'
+import { Download, ExternalLink, Paperclip, Trash2, Upload } from 'lucide-react'
+import { useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
 
 import { EmptyState, ErrorState, ListSkeleton } from '@/components/shell/states'
@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input'
 import { ApiError } from '@/lib/api'
 import { confirmDestructive } from '@/lib/guards'
 
-import { useAttachments, useCreateAttachment, useDeleteAttachment } from './api'
+import { downloadUrl, useAttachments, useCreateAttachment, useDeleteAttachment, useUploadAttachment } from './api'
 
 // Client-side scheme allowlist mirrors the server's http(s)-only rule, so a
 // javascript:/data: link is rejected before it can be stored and rendered.
@@ -26,6 +26,8 @@ export function FilesPage() {
   const { data, isPending, isError, error, refetch } = useAttachments(projectId)
   const create = useCreateAttachment(projectId)
   const del = useDeleteAttachment(projectId)
+  const uploadFile = useUploadAttachment(projectId)
+  const fileInput = useRef<HTMLInputElement>(null)
 
   const [filename, setFilename] = useState('')
   const [url, setUrl] = useState('')
@@ -55,8 +57,31 @@ export function FilesPage() {
     <div className="mx-auto flex h-full max-w-3xl flex-col p-6">
       <h1 className="mb-1 text-base font-semibold">파일</h1>
       <p className="mb-4 text-xs text-of-muted">
-        외부에 저장된 파일의 이름과 링크를 등록합니다. (바이너리 호스팅은 후속 단계)
+        파일을 직접 업로드하거나, 외부에 저장된 파일의 링크를 등록합니다.
       </p>
+
+      <div className="mb-3 flex items-center gap-2 rounded-of border border-of-border bg-of-surface p-3">
+        <input
+          ref={fileInput}
+          type="file"
+          aria-label="업로드할 파일"
+          className="hidden"
+          onChange={(e) => {
+            const f = e.target.files?.[0]
+            if (f) uploadFile.mutate(f)
+            e.target.value = ''
+          }}
+        />
+        <Button size="sm" disabled={uploadFile.isPending} onClick={() => fileInput.current?.click()}>
+          <Upload size={13} /> 파일 업로드
+        </Button>
+        {uploadFile.isPending ? <span className="text-xs text-of-muted">업로드 중…</span> : null}
+        {uploadFile.isError && uploadFile.error instanceof ApiError ? (
+          <p role="alert" className="text-xs text-of-danger">
+            업로드 실패: {uploadFile.error.message}
+          </p>
+        ) : null}
+      </div>
 
       <div className="mb-4 space-y-2 rounded-of border border-of-border bg-of-surface p-3">
         <p className="text-xs font-medium">파일 링크 추가</p>
@@ -101,15 +126,25 @@ export function FilesPage() {
           {data.items.map((att) => (
             <li key={att.id} className="flex items-center gap-3 px-4 py-2.5">
               <Paperclip size={15} className="shrink-0 text-of-muted" />
-              <a
-                href={att.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex min-w-0 flex-1 items-center gap-1 truncate text-sm font-medium hover:text-of-accent"
-              >
-                <span className="truncate">{att.filename}</span>
-                <ExternalLink size={12} className="shrink-0 text-of-muted" />
-              </a>
+              {att.has_file ? (
+                <a
+                  href={downloadUrl(att.id)}
+                  className="flex min-w-0 flex-1 items-center gap-1 truncate text-sm font-medium hover:text-of-accent"
+                >
+                  <span className="truncate">{att.filename}</span>
+                  <Download size={12} className="shrink-0 text-of-muted" />
+                </a>
+              ) : (
+                <a
+                  href={att.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex min-w-0 flex-1 items-center gap-1 truncate text-sm font-medium hover:text-of-accent"
+                >
+                  <span className="truncate">{att.filename}</span>
+                  <ExternalLink size={12} className="shrink-0 text-of-muted" />
+                </a>
+              )}
               {att.size_bytes !== null ? (
                 <span className="shrink-0 text-xs text-of-muted">{fmtSize(att.size_bytes)}</span>
               ) : null}

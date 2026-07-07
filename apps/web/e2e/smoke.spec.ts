@@ -1006,6 +1006,67 @@ test('이니셔티브에서 프로젝트를 연결하면 POST가 간다', async 
   expect(sent.project_id).toBe('p-2')
 })
 
+test('파일 업로드가 raw body POST로 나가고 다운로드 링크가 생긴다', async ({ page }) => {
+  await mockApi(page)
+  let uploaded = false
+  await page.route(`**/api/v1/projects/${project.id}/attachments/upload**`, async (route) => {
+    uploaded = true
+    await route.fulfill({
+      status: 201,
+      json: {
+        id: 'att-up',
+        project_id: project.id,
+        filename: '설계서.txt',
+        content_type: 'text/plain',
+        size_bytes: 11,
+        url: 'oneflow://attachments/att-up',
+        has_file: true,
+        uploaded_by: 'u-dev',
+        created_at: '2026-07-07T00:00:00Z',
+      },
+    })
+  })
+  await page.route(`**/api/v1/projects/${project.id}/attachments`, (route) =>
+    route.fulfill({
+      json: uploaded
+        ? {
+            items: [
+              {
+                id: 'att-up',
+                project_id: project.id,
+                filename: '설계서.txt',
+                content_type: 'text/plain',
+                size_bytes: 11,
+                url: 'oneflow://attachments/att-up',
+                has_file: true,
+                uploaded_by: 'u-dev',
+                created_at: '2026-07-07T00:00:00Z',
+              },
+            ],
+            total: 1,
+          }
+        : { items: [], total: 0 },
+    }),
+  )
+
+  await page.goto(`/projects/${project.id}/files`)
+  const post = page.waitForRequest(
+    (r) => r.method() === 'POST' && r.url().includes('/attachments/upload'),
+  )
+  await page.getByLabel('업로드할 파일').setInputFiles({
+    name: '설계서.txt',
+    mimeType: 'text/plain',
+    buffer: Buffer.from('hello files'),
+  })
+  const req = await post
+  expect(req.url()).toContain(`filename=${encodeURIComponent('설계서.txt')}`)
+  expect(req.postData()).toBe('hello files')
+
+  const link = page.getByRole('link', { name: /설계서\.txt/ })
+  await expect(link).toBeVisible()
+  await expect(link).toHaveAttribute('href', /\/attachments\/att-up\/download/)
+})
+
 test('CSV 가져오기: dry-run 미리보기 후 실행하고 실패 행을 격리한다', async ({ page }) => {
   await mockApi(page)
   // Registered after mockApi → takes precedence over the generic work-packages glob.

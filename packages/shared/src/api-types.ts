@@ -42,6 +42,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/attachments/{attachment_id}/download": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Download Attachment */
+        get: operations["download_attachment_api_v1_attachments__attachment_id__download_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/capabilities": {
         parameters: {
             query?: never;
@@ -435,6 +452,29 @@ export interface paths {
         put?: never;
         /** Create Attachment */
         post: operations["create_attachment_api_v1_projects__project_id__attachments_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/attachments/upload": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Upload Attachment
+         * @description Raw-body upload (PLAN P4-1). Order inside ONE transaction: row flush →
+         *     stream to temp (counted) → atomic replace → commit. A failure before commit
+         *     rolls the row back and removes the temp file; only a failed commit can leave
+         *     an (harmless) orphan blob — a broken row is unrepresentable.
+         */
+        post: operations["upload_attachment_api_v1_projects__project_id__attachments_upload_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1293,6 +1333,11 @@ export interface components {
             created_at: string;
             /** Filename */
             filename: string;
+            /**
+             * Has File
+             * @default false
+             */
+            has_file: boolean;
             /**
              * Id
              * Format: uuid
@@ -3034,6 +3079,37 @@ export interface operations {
             };
         };
     };
+    download_attachment_api_v1_attachments__attachment_id__download_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                attachment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     capabilities_api_v1_capabilities_get: {
         parameters: {
             query?: never;
@@ -3936,6 +4012,39 @@ export interface operations {
                 "application/json": components["schemas"]["AttachmentCreate"];
             };
         };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AttachmentRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    upload_attachment_api_v1_projects__project_id__attachments_upload_post: {
+        parameters: {
+            query: {
+                filename: string;
+            };
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             201: {
