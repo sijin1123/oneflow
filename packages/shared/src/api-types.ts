@@ -638,6 +638,32 @@ export interface paths {
         patch: operations["update_cycle_api_v1_projects__project_id__cycles__cycle_id__patch"];
         trace?: never;
     };
+    "/api/v1/projects/{project_id}/cycles/{cycle_id}/rollover": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Rollover Cycle
+         * @description Move the source cycle's OPEN work packages to the target cycle
+         *     (PLAN P6-2). One UPDATE statement = statement-time snapshot (plain PG
+         *     row-level semantics — no extra locking); concurrently closed/moved rows are
+         *     judged as of execution. NOT destructive: it only reassigns cycle_id, so a
+         *     reverse rollover restores the previous grouping. Source/target lifecycle
+         *     states are deliberately unconstrained (the operator picks the moment); the
+         *     UI merely SUGGESTS completed sources.
+         */
+        post: operations["rollover_cycle_api_v1_projects__project_id__cycles__cycle_id__rollover_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{project_id}/dashboard": {
         parameters: {
             query?: never;
@@ -2684,6 +2710,19 @@ export interface components {
              */
             target_id: string;
         };
+        /** RolloverRequest */
+        RolloverRequest: {
+            /**
+             * Target Cycle Id
+             * Format: uuid
+             */
+            target_cycle_id: string;
+        };
+        /** RolloverResult */
+        RolloverResult: {
+            /** Moved */
+            moved: number;
+        };
         /** SavedFilterCreate */
         SavedFilterCreate: {
             /**
@@ -4562,6 +4601,42 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CycleRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    rollover_cycle_api_v1_projects__project_id__cycles__cycle_id__rollover_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                cycle_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RolloverRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RolloverResult"];
                 };
             };
             /** @description Validation Error */

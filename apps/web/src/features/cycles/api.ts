@@ -73,3 +73,18 @@ export function useDeleteCycle(projectId: string) {
     },
   })
 }
+
+export function useRolloverCycle(projectId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ cycleId, targetCycleId }: { cycleId: string; targetCycleId: string }) =>
+      api<{ moved: number }>(`/api/v1/projects/${projectId}/cycles/${cycleId}/rollover`, {
+        method: 'POST',
+        body: JSON.stringify({ target_cycle_id: targetCycleId }),
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['cycles', projectId] })
+      void queryClient.invalidateQueries({ queryKey: ['work-packages', projectId] })
+    },
+  })
+}

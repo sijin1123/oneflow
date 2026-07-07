@@ -1133,6 +1133,65 @@ test('액션 아이템을 작업으로 전환하면 POST가 가고 링크가 생
   await expect(page.getByRole('button', { name: '작업 보기' })).toBeVisible()
 })
 
+test('완료 사이클에서 미완료 이월을 실행하면 rollover POST가 간다', async ({ page }) => {
+  await mockApi(page)
+  await page.route('**/api/v1/me', (route) =>
+    route.fulfill({
+      json: { id: 'u-dev', email: 'dev@oneflow.local', display_name: 'Dev User', is_active: true },
+    }),
+  )
+  const cycles = [
+    {
+      id: 'cy-old',
+      project_id: project.id,
+      name: '지난 스프린트',
+      description: null,
+      start_date: '2026-06-01',
+      end_date: '2026-06-14',
+      status: 'completed',
+      work_package_count: 5,
+      done_work_package_count: 3,
+      created_at: '2026-06-01T00:00:00Z',
+      updated_at: '2026-06-01T00:00:00Z',
+    },
+    {
+      id: 'cy-new',
+      project_id: project.id,
+      name: '이번 스프린트',
+      description: null,
+      start_date: '2026-07-01',
+      end_date: '2026-07-14',
+      status: 'active',
+      work_package_count: 0,
+      done_work_package_count: 0,
+      created_at: '2026-07-01T00:00:00Z',
+      updated_at: '2026-07-01T00:00:00Z',
+    },
+  ]
+  await page.route(`**/api/v1/projects/${project.id}/cycles`, (route) =>
+    route.fulfill({ json: { items: cycles, total: 2 } }),
+  )
+  await page.route(`**/api/v1/projects/${project.id}/cycles/cy-old/rollover`, (route) =>
+    route.fulfill({ json: { moved: 2 } }),
+  )
+
+  await page.goto(`/projects/${project.id}/cycles`)
+  await expect(page.getByRole('region', { name: '완료' }).getByText('지난 스프린트')).toBeVisible()
+
+  const dialogs: string[] = []
+  page.once('dialog', (d) => {
+    dialogs.push(d.message())
+    void d.accept()
+  })
+  const post = page.waitForRequest(
+    (r) => r.method() === 'POST' && r.url().includes('/cycles/cy-old/rollover'),
+  )
+  await page.getByLabel('지난 스프린트 미완료 이월').selectOption('cy-new')
+  const sent = (await post).postDataJSON() as { target_cycle_id: string }
+  expect(sent.target_cycle_id).toBe('cy-new')
+  expect(dialogs[0]).toContain('미완료 작업 2건')
+})
+
 test('CSV 가져오기: dry-run 미리보기 후 실행하고 실패 행을 격리한다', async ({ page }) => {
   await mockApi(page)
   // Registered after mockApi → takes precedence over the generic work-packages glob.
