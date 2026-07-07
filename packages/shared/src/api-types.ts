@@ -2976,6 +2976,41 @@ export interface components {
             key: string;
             /** Name */
             name: string;
+            /** Template Project Id */
+            template_project_id?: string | null;
+        };
+        /**
+         * ProjectCreateResponse
+         * @description POST /projects response — additive: template_applied is null unless a
+         *     template was used, so existing clients are unaffected (v15.1 R1-⑤).
+         */
+        ProjectCreateResponse: {
+            /** Archived At */
+            archived_at: string | null;
+            /** Budget */
+            budget: number | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Description */
+            description: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Key */
+            key: string;
+            /** Name */
+            name: string;
+            template_applied?: components["schemas"]["TemplateApplied"] | null;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
         };
         /** ProjectList */
         ProjectList: {
@@ -3361,6 +3396,20 @@ export interface components {
             query: string;
             /** Total */
             total: number;
+        };
+        /**
+         * TemplateApplied
+         * @description Copy counts when a project was created from a template (never silent).
+         */
+        TemplateApplied: {
+            /** Automation Rules */
+            automation_rules: number;
+            /** Custom Fields */
+            custom_fields: number;
+            /** Statuses */
+            statuses: number;
+            /** Types */
+            types: number;
         };
         /** TimeEntryCreate */
         TimeEntryCreate: {
@@ -4617,7 +4666,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ProjectRead"];
+                    "application/json": components["schemas"]["ProjectCreateResponse"];
                 };
             };
             /** @description Validation Error */

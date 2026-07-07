@@ -1538,6 +1538,39 @@ test('알림 벨이 미확인 개수를 보여주고 모두 읽음을 보낸다'
   await readAll
 })
 
+test('새 프로젝트 폼에서 템플릿을 고르면 template_project_id를 보낸다', async ({ page }) => {
+  await mockApi(page)
+  await page.route('**/api/v1/projects', async (route) => {
+    if (route.request().method() === 'POST') {
+      await route.fulfill({
+        status: 201,
+        json: {
+          ...project,
+          id: 'p-new',
+          key: 'NEWT',
+          name: '템플릿 기반',
+          template_applied: { statuses: 6, types: 4, custom_fields: 1, automation_rules: 1 },
+        },
+      })
+      return
+    }
+    await route.fulfill({ json: { items: [project], total: 1 } })
+  })
+
+  await page.goto('/projects')
+  await page.getByRole('button', { name: '새 프로젝트' }).first().click()
+  await page.getByLabel('이름').fill('템플릿 기반')
+  await page.getByLabel(/키 \(대문자/).fill('NEWT')
+  await page.getByLabel(/템플릿으로 사용할 프로젝트/).selectOption(project.id)
+
+  const post = page.waitForRequest(
+    (r) => r.method() === 'POST' && r.url().endsWith('/api/v1/projects'),
+  )
+  await page.getByRole('button', { name: '만들기' }).click()
+  const sent = (await post).postDataJSON() as { template_project_id: string }
+  expect(sent.template_project_id).toBe(project.id)
+})
+
 test('전체 검색이 그룹 결과를 보여주고 문서로 이동한다', async ({ page }) => {
   await mockApi(page)
   const emptyGroup = { items: [], returned: 0, truncated: false }

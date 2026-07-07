@@ -1,19 +1,28 @@
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import get_current_user
-from app.core.authz import authorize, require_member, require_role
+from app.core.authz import authorize, is_member, require_member, require_role
 from app.db.session import get_session
+from app.models.automation_rule import AutomationRule
+from app.models.custom_field import CustomField
 from app.models.member import ProjectMember
 from app.models.project import Project
 from app.models.project_status import DEFAULT_STATUSES, ProjectStatus
 from app.models.project_type import DEFAULT_TYPES, ProjectType
 from app.models.user import User
-from app.schemas.project import ProjectCreate, ProjectList, ProjectRead, ProjectUpdate
+from app.schemas.project import (
+    ProjectCreate,
+    ProjectCreateResponse,
+    ProjectList,
+    ProjectRead,
+    ProjectUpdate,
+    TemplateApplied,
+)
 
 router = APIRouter()
 
@@ -48,13 +57,21 @@ async def list_projects(
     return ProjectList(items=[ProjectRead.model_validate(p) for p in rows], total=total)
 
 
-@router.post("", response_model=ProjectRead, status_code=201)
+@router.post("", response_model=ProjectCreateResponse, status_code=201)
 async def create_project(
     body: ProjectCreate,
     session: AsyncSession = Depends(get_session),
     user: User = Depends(get_current_user),
-) -> ProjectRead:
+) -> ProjectCreateResponse:
     if not authorize(user, "project:create"):
+        raise HTTPException(status_code=404, detail="not found")
+    # Captured BEFORE any rollback: the template path resets the transaction,
+    # which would expire `user` and turn user.id into a lazy load (MissingGreenlet).
+    user_id = user.id
+    if body.template_project_id is not None and not await is_member(
+        session, body.template_project_id, user_id
+    ):
+        # Existence hiding: a template you cannot see does not exist for you.
         raise HTTPException(status_code=404, detail="not found")
     # id is assigned client-side up front — column defaults fire only at flush,
     # and the membership row below needs the FK value immediately.
@@ -63,27 +80,115 @@ async def create_project(
     # Project is flushed before the membership row — without relationship()
     # metadata the ORM does not order cross-mapper inserts by raw FKs.
     # On key collision the whole transaction rolls back — no orphan membership.
+    applied: TemplateApplied | None = None
     try:
+        if body.template_project_id is not None:
+            # All template SELECTs must come from ONE snapshot, or a concurrent
+            # template edit could copy a mixed state (v15.1 R1-② — PG default
+            # READ COMMITTED snapshots per statement). SET TRANSACTION must be
+            # the transaction's FIRST statement — the membership check above
+            # already opened one, so reset it first (nothing written yet).
+            await session.rollback()
+            await session.execute(text("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ"))
         session.add(project)
         await session.flush()
-        session.add(ProjectMember(project_id=project.id, user_id=user.id, role="owner"))
-        # Seed the default workflow (label + order per status key) so every project
-        # has an editable status configuration from creation (PLAN §3 Phase 3).
-        session.add_all(
-            ProjectStatus(project_id=project.id, key=key, name=name, position=pos)
-            for key, name, pos in DEFAULT_STATUSES
-        )
-        # Same for work-item types (label/order/enablement — Pass 7 PR-R).
-        session.add_all(
-            ProjectType(project_id=project.id, key=key, name=name, position=pos)
-            for key, name, pos in DEFAULT_TYPES
-        )
+        session.add(ProjectMember(project_id=project.id, user_id=user_id, role="owner"))
+        if body.template_project_id is None:
+            # Seed the default workflow (label + order per status key) so every
+            # project has an editable status configuration from creation.
+            session.add_all(
+                ProjectStatus(project_id=project.id, key=key, name=name, position=pos)
+                for key, name, pos in DEFAULT_STATUSES
+            )
+            # Same for work-item types (label/order/enablement — Pass 7 PR-R).
+            session.add_all(
+                ProjectType(project_id=project.id, key=key, name=name, position=pos)
+                for key, name, pos in DEFAULT_TYPES
+            )
+        else:
+            # Template mode SKIPS the default seeds (v15.1 R1-③): the fixed KEY
+            # vocabulary makes the template rows the same set, just with the
+            # template's labels/order/enablement. SETTINGS only — no content.
+            applied = await _copy_template_settings(
+                session, source=body.template_project_id, target=project.id
+            )
         await session.flush()
         await session.commit()
     except IntegrityError as exc:
         await session.rollback()
         raise HTTPException(status_code=409, detail="project key already exists") from exc
-    return ProjectRead.model_validate(project)
+    response = ProjectCreateResponse.model_validate(project)
+    response.template_applied = applied
+    return response
+
+
+async def _copy_template_settings(
+    session: AsyncSession, *, source: uuid.UUID, target: uuid.UUID
+) -> TemplateApplied:
+    """Copy SETTINGS from the template project inside the caller's transaction.
+    Members can already read every copied kind (automation rules included —
+    v15.1 R1-①), so this leaks nothing. Copied automation rules start DISABLED
+    (R1-④ — review before they act) with fresh fire counters."""
+    statuses = (
+        (await session.execute(select(ProjectStatus).where(ProjectStatus.project_id == source)))
+        .scalars()
+        .all()
+    )
+    session.add_all(
+        ProjectStatus(project_id=target, key=s.key, name=s.name, position=s.position)
+        for s in statuses
+    )
+    types = (
+        (await session.execute(select(ProjectType).where(ProjectType.project_id == source)))
+        .scalars()
+        .all()
+    )
+    session.add_all(
+        ProjectType(
+            project_id=target, key=t.key, name=t.name, position=t.position, is_active=t.is_active
+        )
+        for t in types
+    )
+    fields = (
+        (await session.execute(select(CustomField).where(CustomField.project_id == source)))
+        .scalars()
+        .all()
+    )
+    session.add_all(
+        CustomField(
+            project_id=target,
+            name=f.name,
+            field_type=f.field_type,
+            options=f.options,
+            position=f.position,
+            applies_to=f.applies_to,
+            is_active=f.is_active,
+        )
+        for f in fields
+    )
+    rules = (
+        (await session.execute(select(AutomationRule).where(AutomationRule.project_id == source)))
+        .scalars()
+        .all()
+    )
+    session.add_all(
+        AutomationRule(
+            project_id=target,
+            name=r.name,
+            trigger_type=r.trigger_type,
+            trigger_value=r.trigger_value,
+            action_type=r.action_type,
+            action_value=r.action_value,
+            is_active=False,  # safe default — review, then enable (R1-④)
+        )
+        for r in rules
+    )
+    return TemplateApplied(
+        statuses=len(statuses),
+        types=len(types),
+        custom_fields=len(fields),
+        automation_rules=len(rules),
+    )
 
 
 @router.get("/{project_id}", response_model=ProjectRead)
