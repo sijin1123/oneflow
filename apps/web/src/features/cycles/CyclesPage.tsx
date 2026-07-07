@@ -5,10 +5,18 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { EmptyState, ErrorState, ListSkeleton } from '@/components/shell/states'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Select } from '@/components/ui/select'
 import { useMe, useMembers } from '@/features/members/api'
 import { confirmDestructive } from '@/lib/guards'
 
-import { type Cycle, useCreateCycle, useCycles, useDeleteCycle, useUpdateCycle } from './api'
+import {
+  type Cycle,
+  useCreateCycle,
+  useCycles,
+  useDeleteCycle,
+  useRolloverCycle,
+  useUpdateCycle,
+} from './api'
 
 const GROUPS: Array<{ status: Cycle['status']; label: string }> = [
   { status: 'active', label: '진행 중' },
@@ -40,14 +48,17 @@ function CycleRow({
   cycle,
   isOwner,
   projectId,
+  others,
 }: {
   cycle: Cycle
   isOwner: boolean
   projectId: string
+  others: Cycle[]
 }) {
   const navigate = useNavigate()
   const update = useUpdateCycle(projectId)
   const remove = useDeleteCycle(projectId)
+  const rollover = useRolloverCycle(projectId)
   const [editing, setEditing] = useState(false)
   const [name, setName] = useState(cycle.name)
   const [start, setStart] = useState(cycle.start_date)
@@ -113,6 +124,32 @@ function CycleRow({
         {cycle.start_date} ~ {cycle.end_date}
       </span>
       <ProgressBar done={cycle.done_work_package_count} total={cycle.work_package_count} />
+      {isOwner && cycle.status === 'completed' && others.length > 0 ? (
+        <Select
+          aria-label={`${cycle.name} 미완료 이월`}
+          className="h-7 w-36 text-xs"
+          value=""
+          disabled={rollover.isPending}
+          onChange={(e) => {
+            const target = others.find((c) => c.id === e.target.value)
+            if (!target) return
+            const openCount = cycle.work_package_count - cycle.done_work_package_count
+            if (
+              confirmDestructive(
+                `'${cycle.name}'의 미완료 작업 ${openCount}건을 '${target.name}'(으)로 이월할까요?\n(반대 방향 이월로 언제든 되돌릴 수 있습니다)`,
+              )
+            )
+              rollover.mutate({ cycleId: cycle.id, targetCycleId: target.id })
+          }}
+        >
+          <option value="">미완료 이월…</option>
+          {others.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.name}
+            </option>
+          ))}
+        </Select>
+      ) : null}
       {isOwner ? (
         <>
           <button
@@ -239,7 +276,13 @@ export function CyclesPage() {
                 </h2>
                 <ul className="divide-y divide-of-border overflow-hidden rounded-of border border-of-border bg-of-surface">
                   {group.map((c) => (
-                    <CycleRow key={c.id} cycle={c} isOwner={isOwner} projectId={projectId} />
+                    <CycleRow
+                      key={c.id}
+                      cycle={c}
+                      isOwner={isOwner}
+                      projectId={projectId}
+                      others={items.filter((o) => o.id !== c.id)}
+                    />
                   ))}
                 </ul>
               </section>

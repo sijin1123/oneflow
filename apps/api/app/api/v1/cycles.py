@@ -2,7 +2,9 @@ import uuid
 from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException, Response
+from pydantic import BaseModel
 from sqlalchemy import func, select
+from sqlalchemy import update as sa_update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import get_current_user
@@ -150,3 +152,51 @@ async def delete_cycle(
     await session.delete(c)
     await session.commit()
     return Response(status_code=204)
+
+
+class RolloverRequest(BaseModel):
+    target_cycle_id: uuid.UUID
+
+
+class RolloverResult(BaseModel):
+    moved: int
+
+
+@router.post("/projects/{project_id}/cycles/{cycle_id}/rollover", response_model=RolloverResult)
+async def rollover_cycle(
+    project_id: uuid.UUID,
+    cycle_id: uuid.UUID,
+    body: RolloverRequest,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+) -> RolloverResult:
+    """Move the source cycle's OPEN work packages to the target cycle
+    (PLAN P6-2). One UPDATE statement = statement-time snapshot (plain PG
+    row-level semantics — no extra locking); concurrently closed/moved rows are
+    judged as of execution. NOT destructive: it only reassigns cycle_id, so a
+    reverse rollover restores the previous grouping. Source/target lifecycle
+    states are deliberately unconstrained (the operator picks the moment); the
+    UI merely SUGGESTS completed sources."""
+    await require_role(session, project_id, user, {"owner"}, write=True)
+    await _get_scoped(session, project_id, cycle_id)
+    if body.target_cycle_id == cycle_id:
+        raise HTTPException(status_code=422, detail="target must differ from the source cycle")
+    # Target is request DATA (not a path resource): a cross-project/unknown id is
+    # a validation error, same contract as WP cycle assignment (422, not 404).
+    target = (
+        await session.execute(select(Cycle).where(Cycle.id == body.target_cycle_id))
+    ).scalar_one_or_none()
+    if target is None or target.project_id != project_id:
+        raise HTTPException(status_code=422, detail="target cycle must belong to the same project")
+
+    result = await session.execute(
+        sa_update(WorkPackage)
+        .where(
+            WorkPackage.project_id == project_id,
+            WorkPackage.cycle_id == cycle_id,
+            WorkPackage.status.not_in(WP_CLOSED_STATUSES),
+        )
+        .values(cycle_id=body.target_cycle_id)
+    )
+    await session.commit()
+    return RolloverResult(moved=result.rowcount or 0)
