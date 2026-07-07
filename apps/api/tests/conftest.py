@@ -98,7 +98,8 @@ async def _clean_tables(app):
                 "project_members, projects, users RESTART IDENTITY CASCADE"
             )
         )
-        session.add(User(email=DEV_USER_EMAIL, display_name="Dev User"))
+        # Mirrors dev auto-provisioning: the fixed dev user is workspace admin.
+        session.add(User(email=DEV_USER_EMAIL, display_name="Dev User", is_admin=True))
 
 
 # NOTE: fixtures below take `_clean_tables` explicitly — pytest's autouse-first

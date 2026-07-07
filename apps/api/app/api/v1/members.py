@@ -75,6 +75,10 @@ async def add_member(
     ).scalar_one_or_none()
     if target is None:
         raise HTTPException(status_code=404, detail="no user with that email")
+    # Deactivated accounts keep existing memberships and history, but never
+    # enter NEW projects (v33.1 R1-(5) -- the one new-reference write closed).
+    if not target.is_active:
+        raise HTTPException(status_code=409, detail="user is deactivated")
     existing = (
         await session.execute(
             select(ProjectMember).where(

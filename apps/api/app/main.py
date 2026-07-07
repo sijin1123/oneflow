@@ -32,6 +32,7 @@ from app.api.v1 import (
     saved_filters,
     search,
     time_entries,
+    users,
     watchers,
     work_packages,
 )
@@ -125,6 +126,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(intake.router, prefix="/api/v1", tags=["intake"])
     app.include_router(custom_fields.router, prefix="/api/v1", tags=["custom-fields"])
     app.include_router(initiatives.router, prefix="/api/v1", tags=["initiatives"])
+    app.include_router(users.router, prefix="/api/v1", tags=["users"])
     return app
 
 

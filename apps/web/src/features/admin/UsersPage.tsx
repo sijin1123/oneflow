@@ -1,0 +1,159 @@
+import { UserPlus } from 'lucide-react'
+import { useState } from 'react'
+
+import { EmptyState, ErrorState, ListSkeleton } from '@/components/shell/states'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { useMe } from '@/features/members/api'
+import { ApiError } from '@/lib/api'
+
+import { useCreateUser, useUpdateUser, useUsers } from './api'
+
+/* Workspace user directory (expansion Pass 33 PR-AY). Admin-only — the
+   server is the authority (403); the sidebar link is mere gating. Guards
+   mirror the API contract: no self-deactivation, and the last ACTIVE admin
+   can neither lose the flag nor be deactivated. */
+export function UsersPage() {
+  const me = useMe()
+  const { data, isPending, isError, error, refetch } = useUsers()
+  const create = useCreateUser()
+  const update = useUpdateUser()
+  const [adding, setAdding] = useState(false)
+  const [email, setEmail] = useState('')
+  const [name, setName] = useState('')
+
+  if (isPending) return <ListSkeleton />
+  if (isError) {
+    if (error instanceof ApiError && error.status === 403) {
+      return (
+        <EmptyState
+          title="접근 권한이 없습니다"
+          hint="워크스페이스 사용자 관리는 관리자만 사용할 수 있습니다."
+        />
+      )
+    }
+    return <ErrorState error={error} onRetry={() => refetch()} />
+  }
+
+  const activeAdmins = data.items.filter((u) => u.is_admin && u.is_active)
+  const isLastActiveAdmin = (id: string) =>
+    activeAdmins.length === 1 && activeAdmins[0].id === id
+
+  const submit = () => {
+    create.mutate(
+      { email: email.trim(), display_name: name.trim() },
+      {
+        onSuccess: () => {
+          setEmail('')
+          setName('')
+          setAdding(false)
+        },
+      },
+    )
+  }
+
+  return (
+    <div className="mx-auto max-w-3xl p-6">
+      <div className="mb-4 flex items-center justify-between">
+        <h1 className="text-base font-semibold">사용자 관리</h1>
+        {!adding ? (
+          <Button size="sm" onClick={() => setAdding(true)}>
+            <UserPlus size={14} /> 새 사용자
+          </Button>
+        ) : null}
+      </div>
+
+      {adding ? (
+        <div className="mb-4 flex flex-wrap items-center gap-2 rounded-of border border-of-border bg-of-surface p-3">
+          <Input
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="이메일"
+            aria-label="새 사용자 이메일"
+            className="h-8 w-56 text-xs"
+          />
+          <Input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="표시 이름"
+            aria-label="새 사용자 이름"
+            className="h-8 w-40 text-xs"
+          />
+          <Button size="sm" disabled={!email.trim() || !name.trim() || create.isPending} onClick={submit}>
+            추가
+          </Button>
+          <Button variant="ghost" size="sm" onClick={() => setAdding(false)}>
+            취소
+          </Button>
+          {create.isError ? (
+            <span className="text-xs text-of-danger">
+              추가 실패 — 이메일 중복 또는 형식을 확인해 주세요.
+            </span>
+          ) : null}
+        </div>
+      ) : null}
+
+      <table className="w-full border-collapse text-sm">
+        <thead>
+          <tr className="border-b border-of-border text-left text-xs text-of-muted">
+            <th className="px-3 py-2 font-medium">이름</th>
+            <th className="px-3 py-2 font-medium">이메일</th>
+            <th className="w-20 px-3 py-2 font-medium">상태</th>
+            <th className="w-24 px-3 py-2 font-medium">관리자</th>
+            <th className="w-28 px-3 py-2 font-medium">가입일</th>
+            <th className="w-28 px-3 py-2 font-medium" aria-label="동작 열" />
+          </tr>
+        </thead>
+        <tbody>
+          {data.items.map((u) => (
+            <tr key={u.id} className="border-b border-of-border">
+              <td className="px-3 py-2 font-medium">
+                {u.display_name}
+                {u.id === me.data?.id ? <span className="ml-1 text-xs text-of-muted">(나)</span> : null}
+              </td>
+              <td className="px-3 py-2 text-xs text-of-muted">{u.email}</td>
+              <td className="px-3 py-2 text-xs">
+                {u.is_active ? '활성' : <span className="text-of-danger">비활성</span>}
+              </td>
+              <td className="px-3 py-2 text-xs">
+                <label className="flex items-center gap-1">
+                  <input
+                    type="checkbox"
+                    checked={u.is_admin}
+                    // The last active admin cannot lose the flag (server 422;
+                    // disabled here for clarity).
+                    disabled={update.isPending || (u.is_admin && isLastActiveAdmin(u.id))}
+                    onChange={() => update.mutate({ id: u.id, is_admin: !u.is_admin })}
+                    aria-label={`${u.display_name} 관리자 권한`}
+                    className="h-3 w-3 accent-of-accent"
+                  />
+                  관리자
+                </label>
+              </td>
+              <td className="px-3 py-2 text-xs text-of-muted">{u.created_at.slice(0, 10)}</td>
+              <td className="px-3 py-2 text-right">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  // Self-deactivation and deactivating the last active admin
+                  // are server 422s — surfaced as disabled buttons.
+                  disabled={
+                    update.isPending ||
+                    (u.is_active && (u.id === me.data?.id || isLastActiveAdmin(u.id)))
+                  }
+                  onClick={() => update.mutate({ id: u.id, is_active: !u.is_active })}
+                >
+                  {u.is_active ? '비활성화' : '활성화'}
+                </Button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <p className="mt-3 text-xs text-of-muted">
+        비활성화는 로그인과 API 접근만 차단합니다. 기존 프로젝트 멤버십·담당 배정·작성 이력은
+        유지되며, 새 프로젝트 멤버로는 추가할 수 없습니다.
+      </p>
+    </div>
+  )
+}
