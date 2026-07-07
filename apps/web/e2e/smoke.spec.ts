@@ -931,6 +931,21 @@ test('드로어 커스텀 필드에 값을 입력하면 델타 PUT이 간다', a
   expect(sent.values).toEqual([{ field_id: 'cf-1', value: '높음' }])
 })
 
+test('보드에서 카드를 드래그해 옮기면 상태 PATCH가 간다', async ({ page }) => {
+  await mockApi(page)
+  await page.goto(`/projects/${project.id}/board`)
+  const card = page.getByRole('button', { name: /워크패키지 API 구현/ })
+  await expect(card).toBeVisible()
+
+  const patchReq = page.waitForRequest(
+    (r) => r.method() === 'PATCH' && r.url().includes(`/work-packages/${wpA.id}`),
+  )
+  await card.dragTo(page.getByLabel('진행 중 컬럼'))
+  const sent = (await patchReq).postDataJSON() as { status: string; expected_version: number }
+  expect(sent.status).toBe('in_progress')
+  expect(sent.expected_version).toBe(wpA.version)
+})
+
 test('CSV 가져오기: dry-run 미리보기 후 실행하고 실패 행을 격리한다', async ({ page }) => {
   await mockApi(page)
   // Registered after mockApi → takes precedence over the generic work-packages glob.
