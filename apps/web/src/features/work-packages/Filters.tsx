@@ -5,13 +5,15 @@ import { useCycles } from '@/features/cycles/api'
 import { useModules } from '@/features/modules/api'
 import { useMembers } from '@/features/members/api'
 
-import { PRIORITY_LABELS, TYPE_LABELS, WP_PRIORITIES, WP_STATUSES, WP_TYPES } from './types'
+import { PRIORITY_LABELS, WP_PRIORITIES, WP_STATUSES, WP_TYPES } from './types'
 import { useStatusLabels } from './useStatusLabels'
+import { useTypeLabels } from './useTypeLabels'
 
 /* URL-backed filters (client state lives in search params — PLAN §8). */
 export function Filters({ projectId }: { projectId: string }) {
   const [searchParams, setSearchParams] = useSearchParams()
   const statusLabel = useStatusLabels(projectId)
+  const typeLabel = useTypeLabels(projectId)
   const members = useMembers(projectId)
   const cycles = useCycles(projectId)
   const modules = useModules(projectId)
@@ -73,7 +75,7 @@ export function Filters({ projectId }: { projectId: string }) {
           <option value="">전체</option>
           {WP_TYPES.map((t) => (
             <option key={t} value={t}>
-              {TYPE_LABELS[t]}
+              {typeLabel(t)}
             </option>
           ))}
         </Select>

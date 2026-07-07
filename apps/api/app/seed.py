@@ -41,6 +41,7 @@ from app.models import (
     WorkPackageRelation,
 )
 from app.models.project_status import DEFAULT_STATUSES
+from app.models.project_type import DEFAULT_TYPES, ProjectType
 
 DEV_USER_EMAIL = "dev@oneflow.local"
 ALLOWED_RESET_HOSTS = {"localhost", "127.0.0.1", "::1", "postgres"}
@@ -155,6 +156,10 @@ async def seed_data(session: AsyncSession) -> bool:
         session.add_all(
             ProjectStatus(project_id=project.id, key=key, name=name, position=pos)
             for key, name, pos in DEFAULT_STATUSES
+        )
+        session.add_all(
+            ProjectType(project_id=project.id, key=key, name=name, position=pos)
+            for key, name, pos in DEFAULT_TYPES
         )
         milestone = Milestone(
             project_id=project.id,

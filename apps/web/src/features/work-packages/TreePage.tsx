@@ -10,11 +10,13 @@ import { PriorityChip, StatusChip, TypeChip } from './chips'
 import { useWorkPackages } from './api'
 import { branchIds, buildTree, type TreeNode } from './tree'
 import { useStatusLabels } from './useStatusLabels'
+import { useTypeLabels } from './useTypeLabels'
 
 export function TreePage() {
   const { projectId } = useParams() as { projectId: string }
   const [, setSearchParams] = useSearchParams()
   const statusLabel = useStatusLabels(projectId)
+  const typeLabel = useTypeLabels(projectId)
   // useWorkPackages now pages through the full set, so the tree no longer orphans
   // children whose parents fell past the first page.
   const { data, isPending, isError, error, refetch } = useWorkPackages(projectId, {})
@@ -74,6 +76,7 @@ export function TreePage() {
               onToggle={toggle}
               onOpen={openDrawer}
               statusLabel={statusLabel}
+          typeLabel={typeLabel}
             />
           ))}
         </div>
@@ -90,12 +93,14 @@ function TreeRow({
   onToggle,
   onOpen,
   statusLabel,
+  typeLabel,
 }: {
   node: TreeNode
   collapsed: Set<string>
   onToggle: (id: string) => void
   onOpen: (id: string) => void
   statusLabel: (key: string) => string
+  typeLabel: (key: string) => string
 }) {
   const hasChildren = node.children.length > 0
   const isCollapsed = collapsed.has(node.wp.id)
@@ -118,7 +123,7 @@ function TreeRow({
         ) : (
           <span className="inline-block w-[22px] shrink-0" aria-hidden />
         )}
-        <TypeChip type={node.wp.type} />
+        <TypeChip type={node.wp.type} label={typeLabel(node.wp.type)} />
         <button
           type="button"
           className="min-w-0 flex-1 truncate text-left text-sm font-medium hover:text-of-accent"
@@ -140,6 +145,7 @@ function TreeRow({
               onToggle={onToggle}
               onOpen={onOpen}
               statusLabel={statusLabel}
+          typeLabel={typeLabel}
             />
           ))}
         </div>

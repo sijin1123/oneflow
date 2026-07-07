@@ -10,6 +10,7 @@ import { useMembers } from '@/features/members/api'
 import { useCycles } from '@/features/cycles/api'
 import { useMilestones } from '@/features/milestones/api'
 import { useModules } from '@/features/modules/api'
+import { useProjectTypes } from '@/features/project-types/api'
 
 import { CustomFieldsSection } from './CustomFieldsSection'
 import { Select } from '@/components/ui/select'
@@ -79,6 +80,7 @@ function DrawerForm({ wp, projectId }: { wp: WorkPackage; projectId: string }) {
   const milestones = useMilestones(projectId)
   const cycles = useCycles(projectId)
   const modules = useModules(projectId)
+  const projectTypes = useProjectTypes(projectId)
   const members = useMembers(projectId)
   const statusLabel = useStatusLabels(projectId)
 
@@ -231,6 +233,30 @@ function DrawerForm({ wp, projectId }: { wp: WorkPackage; projectId: string }) {
               if (v !== (wp.estimated_hours ?? null)) send({ estimated_hours: v })
             }}
           />
+        </div>
+        <div className="space-y-1.5">
+          <label htmlFor="wp-type" className="text-xs font-medium text-of-muted">
+            타입
+          </label>
+          <Select
+            id="wp-type"
+            value={wp.type}
+            disabled={patch.isPending}
+            onChange={(e) => send({ type: e.target.value })}
+          >
+            {(projectTypes.data?.items ?? [])
+              .sort((a, b) => a.position - b.position)
+              .filter((t) => t.is_active || t.key === wp.type)
+              .map((t) => (
+                <option key={t.key} value={t.key}>
+                  {t.name}
+                  {t.is_active ? '' : ' (비활성)'}
+                </option>
+              ))}
+            {projectTypes.data && projectTypes.data.total > 0 ? null : (
+              <option value={wp.type}>{wp.type}</option>
+            )}
+          </Select>
         </div>
         <div className="space-y-1.5">
           <label htmlFor="wp-milestone" className="text-xs font-medium text-of-muted">

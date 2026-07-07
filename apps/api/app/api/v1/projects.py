@@ -11,6 +11,7 @@ from app.db.session import get_session
 from app.models.member import ProjectMember
 from app.models.project import Project
 from app.models.project_status import DEFAULT_STATUSES, ProjectStatus
+from app.models.project_type import DEFAULT_TYPES, ProjectType
 from app.models.user import User
 from app.schemas.project import ProjectCreate, ProjectList, ProjectRead, ProjectUpdate
 
@@ -71,6 +72,11 @@ async def create_project(
         session.add_all(
             ProjectStatus(project_id=project.id, key=key, name=name, position=pos)
             for key, name, pos in DEFAULT_STATUSES
+        )
+        # Same for work-item types (label/order/enablement — Pass 7 PR-R).
+        session.add_all(
+            ProjectType(project_id=project.id, key=key, name=name, position=pos)
+            for key, name, pos in DEFAULT_TYPES
         )
         await session.flush()
         await session.commit()

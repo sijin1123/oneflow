@@ -120,6 +120,10 @@ async function mockApi(page: Page, opts: { conflictOnPatch?: boolean } = {}) {
   await page.route('**/api/v1/initiatives', (route) =>
     route.fulfill({ json: { items: [], total: 0 } }),
   )
+  // Type config: default empty → built-in labels everywhere (fallback path).
+  await page.route('**/api/v1/projects/*/types', (route) =>
+    route.fulfill({ json: { items: [], total: 0 } }),
+  )
   // The sidebar footer shows the auth mode.
   await page.route('**/api/v1/auth/config', (route) =>
     route.fulfill({
@@ -1190,6 +1194,44 @@ test('완료 사이클에서 미완료 이월을 실행하면 rollover POST가 �
   const sent = (await post).postDataJSON() as { target_cycle_id: string }
   expect(sent.target_cycle_id).toBe('cy-new')
   expect(dialogs[0]).toContain('미완료 작업 2건')
+})
+
+test('타입 관리에서 라벨을 바꾸고 비활성화하면 PATCH가 간다', async ({ page }) => {
+  await mockApi(page)
+  await page.route('**/api/v1/me', (route) =>
+    route.fulfill({
+      json: { id: 'u-dev', email: 'dev@oneflow.local', display_name: 'Dev User', is_active: true },
+    }),
+  )
+  await page.route(`**/api/v1/projects/${project.id}`, (route) =>
+    route.fulfill({ json: project }),
+  )
+  const types = [
+    { id: 'pt-1', project_id: project.id, key: 'task', name: '작업', position: 0, is_active: true },
+    { id: 'pt-2', project_id: project.id, key: 'bug', name: '버그', position: 1, is_active: true },
+  ]
+  await page.route(`**/api/v1/projects/${project.id}/types`, (route) =>
+    route.fulfill({ json: { items: types, total: 2 } }),
+  )
+  await page.route(`**/api/v1/projects/${project.id}/types/pt-2`, (route) =>
+    route.fulfill({ json: { ...types[1], name: '결함' } }),
+  )
+
+  await page.goto(`/projects/${project.id}/settings?tab=workflow`)
+  await expect(page.getByText('워크 아이템 타입')).toBeVisible()
+
+  const patch = page.waitForRequest(
+    (r) => r.method() === 'PATCH' && r.url().includes('/types/pt-2'),
+  )
+  await page.getByLabel('bug 타입 이름').fill('결함')
+  await page.getByLabel('bug 타입 이름').blur()
+  expect(((await patch).postDataJSON() as { name: string }).name).toBe('결함')
+
+  const toggle = page.waitForRequest(
+    (r) => r.method() === 'PATCH' && r.url().includes('/types/pt-2'),
+  )
+  await page.getByLabel('bug 타입 활성').click()
+  expect(((await toggle).postDataJSON() as { is_active: boolean }).is_active).toBe(false)
 })
 
 test('CSV 가져오기: dry-run 미리보기 후 실행하고 실패 행을 격리한다', async ({ page }) => {

@@ -21,6 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.auth import get_current_user
 from app.core.authz import require_member
 from app.db.session import get_session
+from app.models.project_type import ProjectType
 from app.models.user import User
 from app.models.work_package import WorkPackage
 from app.schemas.csv_io import (
@@ -197,6 +198,17 @@ async def import_work_packages_csv(
     user: User = Depends(get_current_user),
 ) -> CsvImportResult:
     await require_member(session, project_id, user, write=True)
+    # Disabled work-item types are invalid for NEW rows (Pass 7 PR-R) — fetch
+    # once, then judge per row so a bad type isolates that row, not the import.
+    disabled_types = set(
+        (
+            await session.execute(
+                select(ProjectType.key).where(
+                    ProjectType.project_id == project_id, ProjectType.is_active.is_(False)
+                )
+            )
+        ).scalars()
+    )
 
     reader = csv.reader(io.StringIO(body.content))
     try:
@@ -228,6 +240,15 @@ async def import_work_packages_csv(
             loc = ".".join(str(p) for p in first.get("loc", ())) or "row"
             errors.append(
                 CsvRowError(row=total, message=f"{loc}: {first['msg']}", raw=_reserialize(row))
+            )
+            continue
+        if model.type in disabled_types:
+            errors.append(
+                CsvRowError(
+                    row=total,
+                    message=f"type: '{model.type}' is disabled in this project",
+                    raw=_reserialize(row),
+                )
             )
             continue
         valid_models.append(model)
