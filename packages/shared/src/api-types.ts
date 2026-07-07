@@ -2961,6 +2961,11 @@ export interface components {
             created_at: string;
             /** Description */
             description: string | null;
+            /**
+             * Done Work Package Count
+             * @default 0
+             */
+            done_work_package_count: number;
             /** Due Date */
             due_date: string | null;
             /**
@@ -2980,6 +2985,11 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
+            /**
+             * Work Package Count
+             * @default 0
+             */
+            work_package_count: number;
         };
         /** MilestoneUpdate */
         MilestoneUpdate: {

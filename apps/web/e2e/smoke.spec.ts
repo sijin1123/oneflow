@@ -2488,6 +2488,54 @@ test('빈 프로젝트 목록에서 새 프로젝트를 만들면 생성 요청 
   await expect(page).toHaveURL(/\/projects\/p-new\/work-packages/)
 })
 
+test('마일스톤 패널이 진행 바와 삭제 확인 문구를 보여준다', async ({ page }) => {
+  await mockApi(page)
+  await page.route('**/api/v1/me', (route) =>
+    route.fulfill({
+      json: { id: 'u-dev', email: 'dev@oneflow.local', display_name: 'Dev User', is_active: true },
+    }),
+  )
+  await page.route(`**/api/v1/projects/${project.id}`, (route) =>
+    route.fulfill({ json: project }),
+  )
+  await page.route(`**/api/v1/projects/${project.id}/milestones`, (route) =>
+    route.fulfill({
+      json: {
+        items: [
+          {
+            id: 'ms-1',
+            project_id: project.id,
+            name: '1차 출시',
+            description: null,
+            due_date: '2026-08-01',
+            work_package_count: 4,
+            done_work_package_count: 3,
+            created_at: '2026-07-01T00:00:00Z',
+            updated_at: '2026-07-01T00:00:00Z',
+          },
+        ],
+        total: 1,
+      },
+    }),
+  )
+
+  await page.goto(`/projects/${project.id}/settings?tab=milestones`)
+  await expect(page.getByText('1차 출시')).toBeVisible()
+  await expect(page.getByText('3/4')).toBeVisible()
+  await expect(page.getByRole('progressbar', { name: '1차 출시 진행률' })).toBeVisible()
+
+  // delete confirm carries the assignment-release wording (never silent)
+  const dialogs: string[] = []
+  page.once('dialog', (d) => {
+    dialogs.push(d.message())
+    void d.dismiss()
+  })
+  await page.getByLabel('1차 출시 삭제').click()
+  await expect
+    .poll(() => dialogs[0] ?? '')
+    .toContain('연결된 작업 4건은 삭제되지 않고 배정만 해제됩니다')
+})
+
 test('시스템 상태 페이지가 버전과 구성 카드를 보여준다', async ({ page }) => {
   await mockApi(page)
   await page.route('**/api/v1/ops/status', (route) =>

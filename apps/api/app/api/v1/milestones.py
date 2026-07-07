@@ -1,7 +1,7 @@
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Response
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import get_current_user
@@ -9,6 +9,7 @@ from app.core.authz import require_member
 from app.db.session import get_session
 from app.models.milestone import Milestone
 from app.models.user import User
+from app.models.work_package import WP_CLOSED_STATUSES, WorkPackage
 from app.schemas.milestone import (
     MilestoneCreate,
     MilestoneList,
@@ -46,7 +47,33 @@ async def list_milestones(
         .scalars()
         .all()
     )
-    return MilestoneList(items=[MilestoneRead.model_validate(m) for m in rows], total=len(rows))
+    # Progress rollup: one COUNT FILTER aggregate, scoped to THIS project's
+    # milestones (project_id in the WHERE — cross-project rows can never bleed
+    # in even if a milestone id collided, v30.1).
+    agg: dict = {}
+    if rows:
+        closed = WorkPackage.status.in_(WP_CLOSED_STATUSES)
+        agg_rows = (
+            await session.execute(
+                select(
+                    WorkPackage.milestone_id,
+                    func.count().label("total"),
+                    func.count().filter(closed).label("done"),
+                )
+                .where(
+                    WorkPackage.project_id == project_id,
+                    WorkPackage.milestone_id.in_([m.id for m in rows]),
+                )
+                .group_by(WorkPackage.milestone_id)
+            )
+        ).all()
+        agg = {mid: (t, d) for mid, t, d in agg_rows}
+    items = []
+    for m in rows:
+        item = MilestoneRead.model_validate(m)
+        item.work_package_count, item.done_work_package_count = agg.get(m.id, (0, 0))
+        items.append(item)
+    return MilestoneList(items=items, total=len(items))
 
 
 @router.post("/projects/{project_id}/milestones", response_model=MilestoneRead, status_code=201)

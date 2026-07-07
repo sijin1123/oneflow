@@ -8,6 +8,8 @@ export type Milestone = {
   name: string
   description: string | null
   due_date: string | null
+  work_package_count: number
+  done_work_package_count: number
   created_at: string
   updated_at: string
 }
