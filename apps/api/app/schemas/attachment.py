@@ -10,6 +10,9 @@ class AttachmentCreate(BaseModel):
     url: str
     content_type: str | None = None
     size_bytes: int | None = None
+    # Optional anchor (at most one) — validated against the project in the router.
+    work_package_id: uuid.UUID | None = None
+    document_id: uuid.UUID | None = None
 
     @field_validator("filename")
     @classmethod
@@ -51,6 +54,8 @@ class AttachmentRead(BaseModel):
 
     id: uuid.UUID
     project_id: uuid.UUID
+    work_package_id: uuid.UUID | None = None
+    document_id: uuid.UUID | None = None
     filename: str
     content_type: str | None
     size_bytes: int | None

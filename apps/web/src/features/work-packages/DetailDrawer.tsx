@@ -25,6 +25,7 @@ const RichTextEditor = lazy(() =>
 
 import { CostSection } from './CostSection'
 import { HistorySection } from './HistorySection'
+import { AttachmentsSection } from './AttachmentsSection'
 import { PagesSection } from './PagesSection'
 import { RelationsSection } from './RelationsSection'
 import { TimeTrackingSection } from './TimeTrackingSection'
@@ -403,6 +404,8 @@ function DrawerForm({ wp, projectId }: { wp: WorkPackage; projectId: string }) {
       <RelationsSection wpId={wp.id} projectId={projectId} />
 
       <PagesSection wpId={wp.id} projectId={projectId} />
+
+      <AttachmentsSection wpId={wp.id} projectId={projectId} />
 
       {patch.isPending ? (
         <p role="status" aria-live="polite" className="text-xs text-of-muted">

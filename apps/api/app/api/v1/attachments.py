@@ -20,7 +20,9 @@ from app.core.authz import is_member, require_active_project, require_member
 from app.core.config import Settings, get_settings
 from app.db.session import get_session
 from app.models.attachment import Attachment
+from app.models.document import ProjectDocument
 from app.models.user import User
+from app.models.work_package import WorkPackage
 from app.schemas.attachment import AttachmentCreate, AttachmentList, AttachmentRead
 from app.services.storage import LocalStorage, storage_key
 
@@ -44,21 +46,62 @@ def _read(att: Attachment) -> AttachmentRead:
     return read
 
 
+async def _validate_anchor(
+    session: AsyncSession,
+    project_id: uuid.UUID,
+    work_package_id: uuid.UUID | None,
+    document_id: uuid.UUID | None,
+) -> None:
+    """CREATE-side anchor contract (v23.1 R1-②: strict on write, lenient on
+    read): at most one anchor; it must exist in THIS project (missing or
+    cross-project → 422). Runs BEFORE any row/blob is created (R1-⑤)."""
+    if work_package_id is not None and document_id is not None:
+        raise HTTPException(status_code=422, detail="at most one anchor is allowed")
+    if work_package_id is not None:
+        row = (
+            await session.execute(
+                select(WorkPackage.id).where(
+                    WorkPackage.id == work_package_id, WorkPackage.project_id == project_id
+                )
+            )
+        ).scalar_one_or_none()
+        if row is None:
+            raise HTTPException(
+                status_code=422, detail="work package must exist in the same project"
+            )
+    if document_id is not None:
+        row = (
+            await session.execute(
+                select(ProjectDocument.id).where(
+                    ProjectDocument.id == document_id, ProjectDocument.project_id == project_id
+                )
+            )
+        ).scalar_one_or_none()
+        if row is None:
+            raise HTTPException(status_code=422, detail="document must exist in the same project")
+
+
 @router.get("/projects/{project_id}/attachments", response_model=AttachmentList)
 async def list_attachments(
     project_id: uuid.UUID,
+    work_package_id: uuid.UUID | None = Query(default=None),
+    document_id: uuid.UUID | None = Query(default=None),
     session: AsyncSession = Depends(get_session),
     user: User = Depends(get_current_user),
 ) -> AttachmentList:
+    """Read-side filters are LENIENT (v23.1 R1-②): only a double filter is a
+    422; a missing/cross-project anchor id simply matches nothing inside the
+    project scope (existence hiding)."""
     await require_member(session, project_id, user)
+    if work_package_id is not None and document_id is not None:
+        raise HTTPException(status_code=422, detail="at most one anchor filter is allowed")
+    stmt = select(Attachment).where(Attachment.project_id == project_id)
+    if work_package_id is not None:
+        stmt = stmt.where(Attachment.work_package_id == work_package_id)
+    if document_id is not None:
+        stmt = stmt.where(Attachment.document_id == document_id)
     rows = (
-        (
-            await session.execute(
-                select(Attachment)
-                .where(Attachment.project_id == project_id)
-                .order_by(Attachment.created_at.desc(), Attachment.id.asc())
-            )
-        )
+        (await session.execute(stmt.order_by(Attachment.created_at.desc(), Attachment.id.asc())))
         .scalars()
         .all()
     )
@@ -73,8 +116,11 @@ async def create_attachment(
     user: User = Depends(get_current_user),
 ) -> AttachmentRead:
     await require_member(session, project_id, user, write=True)
+    await _validate_anchor(session, project_id, body.work_package_id, body.document_id)
     att = Attachment(
         project_id=project_id,
+        work_package_id=body.work_package_id,
+        document_id=body.document_id,
         filename=body.filename,
         url=body.url,
         content_type=body.content_type,
@@ -122,6 +168,8 @@ async def upload_attachment(
     project_id: uuid.UUID,
     request: Request,
     filename: str = Query(min_length=1, max_length=255),
+    work_package_id: uuid.UUID | None = Query(default=None),
+    document_id: uuid.UUID | None = Query(default=None),
     session: AsyncSession = Depends(get_session),
     user: User = Depends(get_current_user),
     settings: Settings = Depends(get_settings),
@@ -131,6 +179,8 @@ async def upload_attachment(
     rolls the row back and removes the temp file; only a failed commit can leave
     an (harmless) orphan blob — a broken row is unrepresentable."""
     await require_member(session, project_id, user, write=True)
+    # Anchor contract runs BEFORE any row/blob exists (v23.1 R1-⑤).
+    await _validate_anchor(session, project_id, work_package_id, document_id)
 
     # ① Content-Length pre-check: cheap rejection before reading anything.
     declared = request.headers.get("content-length")
@@ -160,6 +210,8 @@ async def upload_attachment(
     att = Attachment(
         id=uuid.uuid4(),
         project_id=project_id,
+        work_package_id=work_package_id,
+        document_id=document_id,
         filename=_clean_filename(filename),
         content_type=(request.headers.get("content-type") or "application/octet-stream")[:120],
         uploaded_by=user.id,

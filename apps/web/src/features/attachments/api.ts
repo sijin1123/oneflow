@@ -5,6 +5,8 @@ import { ApiError, BASE_URL, api } from '@/lib/api'
 export type Attachment = {
   id: string
   project_id: string
+  work_package_id: string | null
+  document_id: string | null
   filename: string
   content_type: string | null
   size_bytes: number | null
@@ -31,6 +33,7 @@ export function useCreateAttachment(projectId: string) {
       url: string
       content_type?: string | null
       size_bytes?: number | null
+      work_package_id?: string | null
     }) =>
       api<Attachment>(`/api/v1/projects/${projectId}/attachments`, {
         method: 'POST',
@@ -54,9 +57,10 @@ export function useUploadAttachment(projectId: string) {
   return useMutation({
     // Raw body (no multipart): the filename travels in the query string and the
     // file's own type in Content-Type — mirrors the server's streaming protocol.
-    mutationFn: async (file: File) => {
+    mutationFn: async ({ file, workPackageId }: { file: File; workPackageId?: string }) => {
+      const anchor = workPackageId ? `&work_package_id=${workPackageId}` : ''
       const res = await fetch(
-        `${BASE_URL}/api/v1/projects/${projectId}/attachments/upload?filename=${encodeURIComponent(file.name)}`,
+        `${BASE_URL}/api/v1/projects/${projectId}/attachments/upload?filename=${encodeURIComponent(file.name)}${anchor}`,
         {
           method: 'POST',
           headers: { 'content-type': file.type || 'application/octet-stream' },
@@ -83,4 +87,16 @@ export function useUploadAttachment(projectId: string) {
 
 export function downloadUrl(attachmentId: string): string {
   return `${BASE_URL}/api/v1/attachments/${attachmentId}/download`
+}
+
+/** Attachments anchored to one work package — the drawer's 첨부 section. */
+export function useWpAttachments(projectId: string, wpId: string | null) {
+  return useQuery({
+    queryKey: ['attachments', projectId, 'wp', wpId],
+    queryFn: () =>
+      api<AttachmentList>(
+        `/api/v1/projects/${projectId}/attachments?work_package_id=${wpId}`,
+      ),
+    enabled: wpId !== null,
+  })
 }
