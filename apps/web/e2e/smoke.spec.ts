@@ -1119,12 +1119,15 @@ test('인테이크 큐에서 소유자가 수락하면 triage POST가 간다', a
   await expect(pending.getByText('검색이 느려요')).toBeVisible()
   await expect(pending.getByText('Alex Kim')).toBeVisible()
 
+  // the triage note travels with the decision (Pass 29)
+  await pending.getByLabel('검색이 느려요 판정 사유').fill('다음 분기 성능 작업으로 수락')
   const post = page.waitForRequest(
     (r) => r.method() === 'POST' && r.url().includes('/intake/it-1/triage'),
   )
   await pending.getByRole('button', { name: '수락' }).click()
-  const sent = (await post).postDataJSON() as { status: string }
+  const sent = (await post).postDataJSON() as { status: string; note: string }
   expect(sent.status).toBe('accepted')
+  expect(sent.note).toBe('다음 분기 성능 작업으로 수락')
 })
 
 test('설정 필드 탭에서 드롭다운 필드를 정의한다', async ({ page }) => {

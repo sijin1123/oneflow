@@ -1,5 +1,5 @@
 import uuid
-from datetime import date
+from datetime import UTC, date, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import BaseModel
@@ -243,7 +243,10 @@ async def cycle_burndown(
         .scalars()
         .all()
     )
-    today = date.today()
+    # UTC date-only per the v21.1 contract — date.today() is the SERVER's
+    # local zone and shifts the series at midnight boundaries (found when the
+    # local date rolled past UTC).
+    today = datetime.now(UTC).date()
     end = min(cycle.end_date, today)
     if not wps or end < cycle.start_date:
         return BurndownRead(scope="current_assignment", total_scope=len(wps), days=[])

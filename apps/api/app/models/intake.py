@@ -40,6 +40,13 @@ class IntakeItem(Base):
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
     snooze_until: Mapped[date | None] = mapped_column(Date, nullable=True)
+    # FINAL-decision metadata (Pass 29): every triage replaces the note (null
+    # when omitted); triaged_by survives user deletion (SET NULL).
+    triage_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    triaged_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    triaged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     accepted_wp_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("work_packages.id", ondelete="SET NULL"), nullable=True
     )

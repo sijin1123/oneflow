@@ -14,6 +14,9 @@ export type IntakeItem = {
   submitter_name: string | null
   snooze_until: string | null
   accepted_wp_id: string | null
+  triage_note: string | null
+  triaged_by_id: string | null
+  triaged_at: string | null
   created_at: string
   updated_at: string
 }
@@ -51,6 +54,7 @@ export function useTriageIntake(projectId: string) {
       itemId: string
       status: Exclude<IntakeStatus, 'pending'>
       snooze_until?: string | null
+      note?: string | null
     }) =>
       api<IntakeItem>(`/api/v1/projects/${projectId}/intake/${itemId}/triage`, {
         method: 'POST',

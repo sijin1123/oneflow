@@ -21,10 +21,24 @@ class IntakeCreate(BaseModel):
 
 class IntakeTriage(BaseModel):
     """Owner triage decision. `status` must be a decision (not 'pending');
-    `snooze_until` only pairs with 'snoozed'."""
+    `snooze_until` only pairs with 'snoozed'. `note` is optional PLAIN TEXT
+    (v29.1 — no HTML surface; trim-empty normalizes to null)."""
 
     status: str
     snooze_until: date | None = None
+    note: str | None = None
+
+    @field_validator("note")
+    @classmethod
+    def _note(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        v = v.strip()
+        if not v:
+            return None  # whitespace-only → null (R1-③)
+        if len(v) > 2000:
+            raise ValueError("note must be at most 2000 chars after trim")
+        return v
 
     @field_validator("status")
     @classmethod
@@ -44,6 +58,11 @@ class IntakeRead(BaseModel):
     submitter_name: str | None
     snooze_until: date | None
     accepted_wp_id: uuid.UUID | None
+    # Final-decision audit — id only (display name resolves client-side; no
+    # email or profile fields ride along — v29.1 R1-②).
+    triage_note: str | None = None
+    triaged_by_id: uuid.UUID | None = None
+    triaged_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
 
