@@ -63,3 +63,18 @@ class CycleRead(BaseModel):
 class CycleList(BaseModel):
     items: list[CycleRead]
     total: int
+
+
+class BurndownDay(BaseModel):
+    date: date
+    remaining: int
+
+
+class BurndownRead(BaseModel):
+    """Current-scope burndown (v21.1 R1-①): the day series covers WPs assigned
+    to the cycle NOW — items moved out mid-cycle are absent (documented; a
+    cycle-assignment history rebuild is a follow-up)."""
+
+    scope: str  # always "current_assignment"
+    total_scope: int
+    days: list[BurndownDay]

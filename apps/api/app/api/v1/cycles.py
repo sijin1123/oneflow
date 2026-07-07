@@ -10,10 +10,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.auth import get_current_user
 from app.core.authz import require_member, require_role
 from app.db.session import get_session
+from app.models.activity import Activity
 from app.models.cycle import Cycle
 from app.models.user import User
 from app.models.work_package import WP_CLOSED_STATUSES, WorkPackage
-from app.schemas.cycle import CycleCreate, CycleList, CycleRead, CycleUpdate
+from app.schemas.cycle import (
+    BurndownDay,
+    BurndownRead,
+    CycleCreate,
+    CycleList,
+    CycleRead,
+    CycleUpdate,
+)
 
 router = APIRouter()
 
@@ -200,3 +208,84 @@ async def rollover_cycle(
     )
     await session.commit()
     return RolloverResult(moved=result.rowcount or 0)
+
+
+@router.get("/projects/{project_id}/cycles/{cycle_id}/burndown", response_model=BurndownRead)
+async def cycle_burndown(
+    project_id: uuid.UUID,
+    cycle_id: uuid.UUID,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+) -> BurndownRead:
+    """Current-scope burndown-lite (Pass 21, v21.1) — derived from the status
+    activity history, no snapshots. Per WP the timeline is exact: before the
+    first status activity the status was that activity's old_value; after each
+    activity it is its new_value; with no activities it never changed. A day's
+    `remaining` counts scoped WPs created by that day whose end-of-day status
+    is outside the FIXED closed vocabulary (WP_CLOSED_STATUSES — label/enable
+    config never rewrites history, R1-④). All dates are UTC date-only; the
+    series stops at min(end_date, today) — the future is not fabricated.
+    Member read; archived projects stay readable (read-open); a foreign or
+    missing cycle is 404 (existence hiding). The two reads are sequential —
+    a mid-flight status change converges to the current state next fetch
+    (read-only visualization, R1-②)."""
+    await require_member(session, project_id, user)
+    cycle = await _get_scoped(session, project_id, cycle_id)
+
+    wps = (
+        (
+            await session.execute(
+                select(WorkPackage).where(
+                    WorkPackage.project_id == project_id, WorkPackage.cycle_id == cycle_id
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    today = date.today()
+    end = min(cycle.end_date, today)
+    if not wps or end < cycle.start_date:
+        return BurndownRead(scope="current_assignment", total_scope=len(wps), days=[])
+
+    # Status activities for the scoped WPs only (ix_activities_wp_created).
+    acts = (
+        await session.execute(
+            select(
+                Activity.work_package_id,
+                Activity.old_value,
+                Activity.new_value,
+                Activity.created_at,
+            )
+            .where(
+                Activity.work_package_id.in_([w.id for w in wps]),
+                Activity.field == "status",
+            )
+            .order_by(Activity.created_at.asc(), Activity.id.asc())
+        )
+    ).all()
+    by_wp: dict[uuid.UUID, list] = {}
+    for wp_id, old, new, at in acts:
+        by_wp.setdefault(wp_id, []).append((at.date(), old, new))
+
+    closed = set(WP_CLOSED_STATUSES)
+    days: list[BurndownDay] = []
+    d = cycle.start_date
+    while d <= end:
+        remaining = 0
+        for wp in wps:
+            if wp.created_at.date() > d:
+                continue  # not yet created on day d
+            history = by_wp.get(wp.id)
+            if not history:
+                status_on_d = wp.status  # never changed — exact
+            elif history[0][0] > d:
+                status_on_d = history[0][1]  # before the first change: its old_value
+            else:
+                status_on_d = next(h[2] for h in reversed(history) if h[0] <= d)
+            if status_on_d not in closed:
+                remaining += 1
+        days.append(BurndownDay(date=d, remaining=remaining))
+        d = date.fromordinal(d.toordinal() + 1)
+
+    return BurndownRead(scope="current_assignment", total_scope=len(wps), days=days)

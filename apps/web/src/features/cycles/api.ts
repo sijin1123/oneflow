@@ -88,3 +88,15 @@ export function useRolloverCycle(projectId: string) {
     },
   })
 }
+
+export type BurndownDay = { date: string; remaining: number }
+export type Burndown = { scope: string; total_scope: number; days: BurndownDay[] }
+
+export function useCycleBurndown(projectId: string, cycleId: string | null) {
+  return useQuery({
+    queryKey: ['cycle-burndown', projectId, cycleId],
+    queryFn: () =>
+      api<Burndown>(`/api/v1/projects/${projectId}/cycles/${cycleId}/burndown`),
+    enabled: cycleId !== null,
+  })
+}
