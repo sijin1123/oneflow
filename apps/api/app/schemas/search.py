@@ -14,6 +14,10 @@ class SearchResultItem(BaseModel):
     priority: str
     type: str
     due_date: date | None
+    # Content search (Pass 39): "primary" = the UI's main label (subject/
+    # title/name); a primary match wins when both match (snippet stays null).
+    matched_in: str = "primary"
+    snippet: str | None = None
 
 
 class SearchResults(BaseModel):
@@ -28,6 +32,8 @@ class SearchDocumentItem(BaseModel):
     project_key: str
     project_name: str
     title: str
+    matched_in: str = "primary"
+    snippet: str | None = None
 
 
 class SearchMeetingItem(BaseModel):
@@ -37,6 +43,8 @@ class SearchMeetingItem(BaseModel):
     project_name: str
     title: str
     scheduled_on: date | None
+    matched_in: str = "primary"
+    snippet: str | None = None
 
 
 class SearchNamedItem(BaseModel):

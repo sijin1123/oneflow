@@ -91,6 +91,7 @@ export function SearchPage() {
               >
                 <TypeChip type={item.type} />
                 <span className="min-w-0 flex-1 truncate text-sm font-medium">{item.subject}</span>
+                <ContentMatch item={item} />
                 <StatusChip status={item.status} />
                 <PriorityChip priority={item.priority} />
               </ResultRow>
@@ -109,6 +110,7 @@ export function SearchPage() {
                 onClick={() => navigate(`/projects/${item.project_id}/documents/${item.id}`)}
               >
                 <span className="min-w-0 flex-1 truncate text-sm font-medium">{item.title}</span>
+                <ContentMatch item={item} />
               </ResultRow>
             ))}
           </GroupSection>
@@ -125,6 +127,7 @@ export function SearchPage() {
                 onClick={() => navigate(`/projects/${item.project_id}/meetings/${item.id}`)}
               >
                 <span className="min-w-0 flex-1 truncate text-sm font-medium">{item.title}</span>
+                <ContentMatch item={item as { matched_in?: string; snippet?: string | null }} />
                 <span className="shrink-0 text-xs text-of-muted">{item.scheduled_on ?? ''}</span>
               </ResultRow>
             ))}
@@ -177,6 +180,20 @@ export function SearchPage() {
         </div>
       )}
     </div>
+  )
+}
+
+function ContentMatch({ item }: { item: { matched_in?: string; snippet?: string | null } }) {
+  if (item.matched_in !== 'content') return null
+  return (
+    <span className="flex min-w-0 items-baseline gap-1.5">
+      <span className="shrink-0 rounded-of bg-of-surface-2 px-1 py-0.5 text-[10px] text-of-muted">
+        본문
+      </span>
+      {item.snippet ? (
+        <span className="min-w-0 truncate text-xs text-of-muted">{item.snippet}</span>
+      ) : null}
+    </span>
   )
 }
 

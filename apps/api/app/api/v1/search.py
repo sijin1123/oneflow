@@ -37,6 +37,7 @@ from app.schemas.search import (
     UnifiedSearchResults,
     WpGroup,
 )
+from app.services.snippet import extract_snippet
 
 router = APIRouter()
 
@@ -94,32 +95,49 @@ async def unified_search(
     member_projects = _member_project_ids(user)
     probe = limit + 1  # limit+1 fetch → truncated without a COUNT round-trip
 
-    def scoped(model, text_col):
+    def scoped(model, text_col, *content_cols):
+        # Content predicates live INSIDE the member/archive scope — the OR
+        # can never widen visibility (v39.1 R1-③).
+        match = text_col.icontains(q, autoescape=True)
+        for col in content_cols:
+            match = match | col.icontains(q, autoescape=True)
         return (
             select(model, Project.key, Project.name)
             .join(Project, model.project_id == Project.id)
             .where(model.project_id.in_(member_projects))
             .where(Project.archived_at.is_(None))
-            .where(text_col.icontains(q, autoescape=True))
+            .where(match)
         )
+
+    def classify(primary: str, *contents: str | None) -> tuple[str, str | None]:
+        """v39.1 R1-② table: primary wins (snippet null); content-only items
+        carry a plain-text snippet — null when the match was markup-only."""
+        if q.lower() in primary.lower():
+            return "primary", None
+        for content in contents:
+            if content:
+                snippet = extract_snippet(content, q)
+                if snippet is not None:
+                    return "content", snippet
+        return "content", None
 
     wp_rows = (
         await session.execute(
-            scoped(WorkPackage, WorkPackage.subject)
+            scoped(WorkPackage, WorkPackage.subject, WorkPackage.description)
             .order_by(WorkPackage.updated_at.desc(), WorkPackage.id.asc())
             .limit(probe)
         )
     ).all()
     doc_rows = (
         await session.execute(
-            scoped(ProjectDocument, ProjectDocument.title)
+            scoped(ProjectDocument, ProjectDocument.title, ProjectDocument.body)
             .order_by(ProjectDocument.title.asc(), ProjectDocument.id.asc())
             .limit(probe)
         )
     ).all()
     meeting_rows = (
         await session.execute(
-            scoped(Meeting, Meeting.title)
+            scoped(Meeting, Meeting.title, Meeting.agenda, Meeting.minutes)
             .order_by(Meeting.title.asc(), Meeting.id.asc())
             .limit(probe)
         )
@@ -169,20 +187,24 @@ async def unified_search(
     modules, module_trunc = cut(module_rows)
     initiatives, initiative_trunc = cut(initiative_rows)
 
-    wp_items = [
-        SearchResultItem(
-            id=wp.id,
-            project_id=wp.project_id,
-            project_key=key,
-            project_name=name,
-            subject=wp.subject,
-            status=wp.status,
-            priority=wp.priority,
-            type=wp.type,
-            due_date=wp.due_date,
+    wp_items = []
+    for wp, key, name in wps:
+        matched_in, snippet = classify(wp.subject, wp.description)
+        wp_items.append(
+            SearchResultItem(
+                id=wp.id,
+                project_id=wp.project_id,
+                project_key=key,
+                project_name=name,
+                subject=wp.subject,
+                status=wp.status,
+                priority=wp.priority,
+                type=wp.type,
+                due_date=wp.due_date,
+                matched_in=matched_in,
+                snippet=snippet,
+            )
         )
-        for wp, key, name in wps
-    ]
 
     def named(rows) -> list[SearchNamedItem]:
         return [
@@ -207,6 +229,8 @@ async def unified_search(
                     project_key=key,
                     project_name=name,
                     title=d.title,
+                    matched_in=(dm := classify(d.title, d.body))[0],
+                    snippet=dm[1],
                 )
                 for d, key, name in docs
             ],
@@ -222,6 +246,8 @@ async def unified_search(
                     project_name=name,
                     title=m.title,
                     scheduled_on=m.scheduled_on,
+                    matched_in=(mm := classify(m.title, m.agenda, m.minutes))[0],
+                    snippet=mm[1],
                 )
                 for m, key, name in meetings
             ],

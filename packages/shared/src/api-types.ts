@@ -3847,6 +3847,11 @@ export interface components {
              */
             id: string;
             /**
+             * Matched In
+             * @default primary
+             */
+            matched_in: string;
+            /**
              * Project Id
              * Format: uuid
              */
@@ -3855,6 +3860,8 @@ export interface components {
             project_key: string;
             /** Project Name */
             project_name: string;
+            /** Snippet */
+            snippet?: string | null;
             /** Title */
             title: string;
         };
@@ -3878,6 +3885,11 @@ export interface components {
              */
             id: string;
             /**
+             * Matched In
+             * @default primary
+             */
+            matched_in: string;
+            /**
              * Project Id
              * Format: uuid
              */
@@ -3888,6 +3900,8 @@ export interface components {
             project_name: string;
             /** Scheduled On */
             scheduled_on: string | null;
+            /** Snippet */
+            snippet?: string | null;
             /** Title */
             title: string;
         };
@@ -3922,6 +3936,11 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            /**
+             * Matched In
+             * @default primary
+             */
+            matched_in: string;
             /** Priority */
             priority: string;
             /**
@@ -3933,6 +3952,8 @@ export interface components {
             project_key: string;
             /** Project Name */
             project_name: string;
+            /** Snippet */
+            snippet?: string | null;
             /** Status */
             status: string;
             /** Subject */

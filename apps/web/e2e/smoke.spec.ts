@@ -1853,6 +1853,8 @@ test('전체 검색이 그룹 결과를 보여주고 문서로 이동한다', as
               project_key: 'ONE',
               project_name: 'OneFlow 도입',
               title: '구현 가이드 문서',
+              matched_in: 'content',
+              snippet: '…배포 구현 절차를 정리한 본문입니다…',
             },
           ],
           returned: 1,
@@ -1895,6 +1897,9 @@ test('전체 검색이 그룹 결과를 보여주고 문서로 이동한다', as
   await expect(page.getByText('작업 1건')).toBeVisible()
   await expect(page.getByRole('button', { name: /워크패키지 API 구현/ })).toBeVisible()
   await expect(page.getByText('문서 1건')).toBeVisible()
+  // content match (Pass 39): badge + plain-text snippet render as text nodes
+  await expect(page.getByText('본문', { exact: true })).toBeVisible()
+  await expect(page.getByText('배포 구현 절차를 정리한 본문입니다', { exact: false })).toBeVisible()
   await expect(page.getByText('더 있음', { exact: false })).toBeVisible()
   await expect(page.getByText('회의', { exact: true })).toBeHidden() // empty group hidden
 
