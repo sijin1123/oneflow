@@ -25,6 +25,33 @@ export interface paths {
         patch: operations["update_action_item_api_v1_action_items__item_id__patch"];
         trace?: never;
     };
+    "/api/v1/action-items/{item_id}/convert": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Convert Action Item
+         * @description Turn a meeting action item into a work package (Pass 6 PR-O).
+         *
+         *     Intake-accept pattern: WP insert+flush, then a status-conditional UPDATE
+         *     (`converted_wp_id IS NULL`) in the SAME transaction — a concurrent convert
+         *     succeeds exactly once and the loser's WP insert rolls back (409).
+         *     Assignee inheritance: only if the item's assignee is a CURRENT project
+         *     member; otherwise (null / left / deleted) the WP starts unassigned —
+         *     conversion is never refused over a stale assignee.
+         */
+        post: operations["convert_action_item_api_v1_action_items__item_id__convert_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/attachments/{attachment_id}": {
         parameters: {
             query?: never;
@@ -1244,6 +1271,8 @@ export interface components {
         ActionItemRead: {
             /** Assignee Id */
             assignee_id: string | null;
+            /** Converted Wp Id */
+            converted_wp_id: string | null;
             /**
              * Created At
              * Format: date-time
@@ -3060,6 +3089,37 @@ export interface operations {
                 "application/json": components["schemas"]["ActionItemUpdate"];
             };
         };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActionItemRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    convert_action_item_api_v1_action_items__item_id__convert_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             200: {

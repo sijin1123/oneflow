@@ -44,6 +44,7 @@ class ActionItemRead(BaseModel):
     description: str
     assignee_id: uuid.UUID | None
     done: bool
+    converted_wp_id: uuid.UUID | None
     created_at: datetime
 
 

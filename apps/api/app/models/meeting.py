@@ -63,6 +63,11 @@ class MeetingActionItem(Base):
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
     done: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    # Set once when the item is converted to a work package (Pass 6 PR-O);
+    # SET NULL keeps the item if that WP is later deleted.
+    converted_wp_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("work_packages.id", ondelete="SET NULL"), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

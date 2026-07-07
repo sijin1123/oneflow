@@ -1,4 +1,4 @@
-import { ArrowLeft, Plus, Trash2 } from 'lucide-react'
+import { ArrowRightCircle, ArrowLeft, Plus, Trash2 } from 'lucide-react'
 import { Suspense, lazy, useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 
@@ -11,6 +11,7 @@ import { confirmDestructive, useUnsavedChangesPrompt } from '@/lib/guards'
 import {
   conflictOf,
   useAddActionItem,
+  useConvertActionItem,
   useDeleteActionItem,
   useDeleteMeeting,
   useMeeting,
@@ -29,6 +30,7 @@ export function MeetingDetailPage() {
   const update = useUpdateMeeting(projectId)
   const del = useDeleteMeeting(projectId)
   const addItem = useAddActionItem(meetingId)
+  const convertItem = useConvertActionItem(meetingId)
   const toggleItem = useToggleActionItem(meetingId)
   const deleteItem = useDeleteActionItem(meetingId)
 
@@ -162,6 +164,28 @@ export function MeetingDetailPage() {
                 <span className={`min-w-0 flex-1 truncate ${item.done ? 'text-of-muted line-through' : ''}`}>
                   {item.description}
                 </span>
+                {item.converted_wp_id ? (
+                  <button
+                    type="button"
+                    className="shrink-0 text-[11px] text-of-accent hover:underline"
+                    onClick={() =>
+                      navigate(`/projects/${projectId}/work-packages?wp=${item.converted_wp_id}`)
+                    }
+                  >
+                    작업 보기
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    aria-label={`${item.description} 작업으로 전환`}
+                    title="작업으로 전환"
+                    disabled={convertItem.isPending}
+                    className="shrink-0 rounded-of p-1 text-of-muted hover:bg-of-surface-2 hover:text-of-accent"
+                    onClick={() => convertItem.mutate(item.id)}
+                  >
+                    <ArrowRightCircle size={13} />
+                  </button>
+                )}
                 <button
                   type="button"
                   aria-label="액션 아이템 삭제"

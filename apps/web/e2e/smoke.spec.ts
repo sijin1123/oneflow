@@ -1089,6 +1089,50 @@ test('OIDC 모드면 사이드바 푸터가 발급자를 표시한다', async ({
   await expect(page.getByText('OIDC · idp.example.com')).toBeVisible()
 })
 
+test('액션 아이템을 작업으로 전환하면 POST가 가고 링크가 생긴다', async ({ page }) => {
+  await mockApi(page)
+  let converted = false
+  const item = () => ({
+    id: 'ai-1',
+    meeting_id: 'm1',
+    description: '배포 점검',
+    assignee_id: null,
+    done: converted,
+    converted_wp_id: converted ? wpA.id : null,
+    created_at: '2026-07-01T00:00:00Z',
+  })
+  await page.route('**/api/v1/meetings/m1', (route) =>
+    route.fulfill({
+      json: {
+        id: 'm1',
+        project_id: project.id,
+        title: '스프린트 회의',
+        scheduled_on: '2026-07-10',
+        agenda: null,
+        minutes: null,
+        version: 1,
+        created_at: '2026-07-01T00:00:00Z',
+        updated_at: '2026-07-01T00:00:00Z',
+        action_items: [item()],
+      },
+    }),
+  )
+  await page.route('**/api/v1/action-items/ai-1/convert', async (route) => {
+    converted = true
+    await route.fulfill({ json: item() })
+  })
+
+  await page.goto(`/projects/${project.id}/meetings/m1`)
+  await expect(page.getByText('배포 점검')).toBeVisible()
+
+  const post = page.waitForRequest(
+    (r) => r.method() === 'POST' && r.url().includes('/action-items/ai-1/convert'),
+  )
+  await page.getByLabel('배포 점검 작업으로 전환').click()
+  await post
+  await expect(page.getByRole('button', { name: '작업 보기' })).toBeVisible()
+})
+
 test('CSV 가져오기: dry-run 미리보기 후 실행하고 실패 행을 격리한다', async ({ page }) => {
   await mockApi(page)
   // Registered after mockApi → takes precedence over the generic work-packages glob.
