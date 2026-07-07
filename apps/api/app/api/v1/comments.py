@@ -1,14 +1,17 @@
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, Response
+from sqlalchemy import delete as sa_delete
 from sqlalchemy import func, select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.work_packages import require_wp_member
 from app.core.auth import get_current_user
 from app.db.session import get_session
 from app.models.activity import Activity
-from app.models.comment import WorkPackageComment
+from app.models.comment import REACTION_KEYS, CommentReaction, WorkPackageComment
 from app.models.user import User
 from app.schemas.comment import (
     ActivityList,
@@ -16,6 +19,9 @@ from app.schemas.comment import (
     CommentCreate,
     CommentList,
     CommentRead,
+    ReactionAgg,
+    ReactionList,
+    empty_reactions,
 )
 from app.services.activity import record_comment
 from app.services.notification import notify_mentions, notify_watchers
@@ -43,7 +49,11 @@ async def list_comments(
         .scalars()
         .all()
     )
-    return CommentList(items=[CommentRead.model_validate(c) for c in rows], total=total)
+    items = [CommentRead.model_validate(c) for c in rows]
+    aggs = await _reaction_aggregates(session, [c.id for c in rows], user.id)
+    for item in items:
+        item.reactions = aggs[item.id]
+    return CommentList(items=items, total=total)
 
 
 @router.post("/work-packages/{wp_id}/comments", response_model=CommentRead, status_code=201)
@@ -92,7 +102,95 @@ async def create_comment(
     # The mentions assignment flushes as an UPDATE, expiring the onupdate
     # updated_at — refresh before validating (MissingGreenlet trap, PR #76).
     await session.refresh(comment)
-    return CommentRead.model_validate(comment)
+    created = CommentRead.model_validate(comment)
+    created.reactions = empty_reactions()
+    return created
+
+
+async def _reaction_aggregates(
+    session: AsyncSession, comment_ids: list[uuid.UUID], user_id: uuid.UUID
+) -> dict[uuid.UUID, list[ReactionAgg]]:
+    """One batched query for the RETURNED comments only (no N+1); every comment
+    gets all six vocabulary slots in fixed order (v17.1 R1-④)."""
+    out: dict[uuid.UUID, list[ReactionAgg]] = {cid: empty_reactions() for cid in comment_ids}
+    if not comment_ids:
+        return out
+    rows = (
+        await session.execute(
+            select(
+                CommentReaction.comment_id,
+                CommentReaction.emoji,
+                func.count().label("count"),
+                func.bool_or(CommentReaction.user_id == user_id).label("me"),
+            )
+            .where(CommentReaction.comment_id.in_(comment_ids))
+            .group_by(CommentReaction.comment_id, CommentReaction.emoji)
+        )
+    ).all()
+    index = {key: i for i, key in enumerate(REACTION_KEYS)}
+    for comment_id, emoji, count, me in rows:
+        out[comment_id][index[emoji]] = ReactionAgg(key=emoji, count=count, me=bool(me))
+    return out
+
+
+async def _get_comment_scoped(
+    session: AsyncSession, comment_id: uuid.UUID, user: User, *, write: bool = False
+) -> WorkPackageComment:
+    comment = (
+        await session.execute(select(WorkPackageComment).where(WorkPackageComment.id == comment_id))
+    ).scalar_one_or_none()
+    if comment is None:
+        raise HTTPException(status_code=404, detail="not found")
+    await require_wp_member(session, comment.work_package_id, user, write=write)
+    return comment
+
+
+@router.put("/comments/{comment_id}/reactions/{emoji}", response_model=ReactionList)
+async def put_reaction(
+    comment_id: uuid.UUID,
+    emoji: str = Path(pattern="^[a-z_]{1,16}$"),
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+) -> ReactionList:
+    """Idempotent add (v17.1 R1-①): INSERT..ON CONFLICT DO NOTHING — concurrent
+    PUTs both succeed; a comment deleted mid-flight maps to 404 (R1-②)."""
+    if emoji not in REACTION_KEYS:
+        raise HTTPException(status_code=422, detail=f"emoji must be one of {REACTION_KEYS}")
+    comment = await _get_comment_scoped(session, comment_id, user, write=True)
+    try:
+        await session.execute(
+            pg_insert(CommentReaction)
+            .values(id=uuid.uuid4(), comment_id=comment.id, user_id=user.id, emoji=emoji)
+            .on_conflict_do_nothing(constraint="uq_reactions_comment_user_emoji")
+        )
+        await session.commit()
+    except IntegrityError as exc:  # comment deleted between the check and the insert
+        await session.rollback()
+        raise HTTPException(status_code=404, detail="not found") from exc
+    aggs = await _reaction_aggregates(session, [comment_id], user.id)
+    return ReactionList(items=aggs[comment_id])
+
+
+@router.delete("/comments/{comment_id}/reactions/{emoji}", status_code=204)
+async def delete_reaction(
+    comment_id: uuid.UUID,
+    emoji: str = Path(pattern="^[a-z_]{1,16}$"),
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+) -> Response:
+    """Idempotent remove — a conditional DELETE whose rowcount is ignored."""
+    if emoji not in REACTION_KEYS:
+        raise HTTPException(status_code=422, detail=f"emoji must be one of {REACTION_KEYS}")
+    await _get_comment_scoped(session, comment_id, user, write=True)
+    await session.execute(
+        sa_delete(CommentReaction).where(
+            CommentReaction.comment_id == comment_id,
+            CommentReaction.user_id == user.id,
+            CommentReaction.emoji == emoji,
+        )
+    )
+    await session.commit()
+    return Response(status_code=204)
 
 
 @router.get("/work-packages/{wp_id}/activities", response_model=ActivityList)

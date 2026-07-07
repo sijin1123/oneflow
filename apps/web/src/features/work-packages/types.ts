@@ -91,8 +91,22 @@ export type Comment = {
   body: string
   /** accepted mention user-ids (member-validated server-side); null = none */
   mentions: string[] | null
+  /** six fixed vocabulary slots (server always returns all — 0-count included) */
+  reactions: ReactionAgg[]
   created_at: string
   updated_at: string
+}
+
+export type ReactionAgg = { key: string; count: number; me: boolean }
+
+/** stable key → display glyph (keys live in API/DB; glyphs are web-only) */
+export const REACTION_EMOJI: Record<string, string> = {
+  thumbs_up: '👍',
+  thumbs_down: '👎',
+  tada: '🎉',
+  heart: '❤️',
+  smile: '😄',
+  confused: '😕',
 }
 
 export type CommentList = {

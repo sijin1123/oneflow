@@ -195,6 +195,7 @@ async function mockApi(page: Page, opts: { conflictOnPatch?: boolean } = {}) {
         author_id: null,
         body: sent.body,
         mentions: null,
+        reactions: [],
         created_at: '2026-07-02T00:00:00Z',
         updated_at: '2026-07-02T00:00:00Z',
       }
@@ -298,6 +299,7 @@ test('댓글 스레드: 답글이 루트 아래 들여쓰기로 붙고 parent_id
     author_id: null,
     body: '루트 코멘트',
     mentions: null,
+    reactions: [],
     ...at('2026-07-01T00:00:00Z'),
   }
   const reply: Comment = {
@@ -307,6 +309,7 @@ test('댓글 스레드: 답글이 루트 아래 들여쓰기로 붙고 parent_id
     author_id: null,
     body: '기존 답글',
     mentions: null,
+    reactions: [],
     ...at('2026-07-02T00:00:00Z'),
   }
   // Registered after mockApi → precedence over the empty default.
@@ -341,6 +344,16 @@ test('댓글 스레드: 답글이 루트 아래 들여쓰기로 붙고 parent_id
   )
   await drawer.getByRole('button', { name: '답글 추가' }).click()
   expect(((await post).postDataJSON() as { parent_id: string }).parent_id).toBe('c-root')
+
+  // reactions: the bar renders per comment and PUT toggles the stable key
+  await page.route('**/api/v1/comments/c-root/reactions/heart', (route) =>
+    route.fulfill({ json: { items: [{ key: 'heart', count: 1, me: true }] } }),
+  )
+  const reactPut = page.waitForRequest(
+    (r) => r.method() === 'PUT' && r.url().includes('/comments/c-root/reactions/heart'),
+  )
+  await drawer.getByLabel('heart 리액션').first().click()
+  await reactPut
 })
 
 test('드로어 복제 버튼이 duplicate POST를 보내고 결과를 알린다', async ({ page }) => {

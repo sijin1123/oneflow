@@ -123,6 +123,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/comments/{comment_id}/reactions/{emoji}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Put Reaction
+         * @description Idempotent add (v17.1 R1-①): INSERT..ON CONFLICT DO NOTHING — concurrent
+         *     PUTs both succeed; a comment deleted mid-flight maps to 404 (R1-②).
+         */
+        put: operations["put_reaction_api_v1_comments__comment_id__reactions__emoji__put"];
+        post?: never;
+        /**
+         * Delete Reaction
+         * @description Idempotent remove — a conditional DELETE whose rowcount is ignored.
+         */
+        delete: operations["delete_reaction_api_v1_comments__comment_id__reactions__emoji__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/documents/{doc_id}": {
         parameters: {
             query?: never;
@@ -1895,6 +1920,11 @@ export interface components {
             /** Parent Id */
             parent_id: string | null;
             /**
+             * Reactions
+             * @default []
+             */
+            reactions: components["schemas"]["ReactionAgg"][];
+            /**
              * Updated At
              * Format: date-time
              */
@@ -3205,6 +3235,24 @@ export interface components {
             /** Name */
             name?: string | null;
         };
+        /**
+         * ReactionAgg
+         * @description One fixed vocabulary slot — the API always returns all six in order
+         *     (0-count included), so clients render without merging (v17.1 R1-④).
+         */
+        ReactionAgg: {
+            /** Count */
+            count: number;
+            /** Key */
+            key: string;
+            /** Me */
+            me: boolean;
+        };
+        /** ReactionList */
+        ReactionList: {
+            /** Items */
+            items: components["schemas"]["ReactionAgg"][];
+        };
         /** RelationCreate */
         RelationCreate: {
             /** Relation Type */
@@ -3935,6 +3983,68 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AiCapabilities"];
+                };
+            };
+        };
+    };
+    put_reaction_api_v1_comments__comment_id__reactions__emoji__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                comment_id: string;
+                emoji: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReactionList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_reaction_api_v1_comments__comment_id__reactions__emoji__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                comment_id: string;
+                emoji: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
