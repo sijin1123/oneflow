@@ -44,6 +44,11 @@ class AutomationRuleCreate(BaseModel):
             raise ValueError(f"trigger_value must be one of {WP_STATUSES}")
         if self.action_type == "set_priority" and self.action_value not in WP_PRIORITIES:
             raise ValueError(f"action_value must be one of {WP_PRIORITIES}")
+        if self.action_type == "set_assignee":
+            try:
+                uuid.UUID(self.action_value)
+            except ValueError as exc:  # membership is checked in the router (DB)
+                raise ValueError("action_value must be a user id") from exc
         return self
 
 

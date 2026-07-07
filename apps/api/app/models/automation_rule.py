@@ -19,11 +19,12 @@ from app.db.base import Base
 
 # Supported trigger/action vocabulary. Kept a closed CHECK-constrained set; the
 # columns are generic so more (trigger, action) pairs are additive later. Every
-# implemented pair deliberately watches `status` and writes `priority` — trigger
-# and action touch different fields, so a rule can never re-trigger itself.
-# (set_assignee is deferred until a per-WP execution log exists — v13.1 R1-⑤.)
+# implemented pairs watch `status` and write a DIFFERENT field (priority /
+# assignee), so a rule can never re-trigger itself or another status rule.
+# set_assignee shipped WITH the per-WP execution log (Pass 16 — the Pass 13
+# ruling required the audit trail first).
 TRIGGER_TYPES = ("status_changed_to",)
-ACTION_TYPES = ("set_priority",)
+ACTION_TYPES = ("set_priority", "set_assignee")
 
 
 class AutomationRule(Base):
@@ -35,7 +36,9 @@ class AutomationRule(Base):
     __tablename__ = "automation_rules"
     __table_args__ = (
         CheckConstraint("trigger_type IN ('status_changed_to')", name="automation_trigger_allowed"),
-        CheckConstraint("action_type IN ('set_priority')", name="automation_action_allowed"),
+        CheckConstraint(
+            "action_type IN ('set_priority', 'set_assignee')", name="automation_action_allowed"
+        ),
         Index("ix_automation_rules_project", "project_id"),
     )
 
@@ -47,7 +50,8 @@ class AutomationRule(Base):
     trigger_type: Mapped[str] = mapped_column(String(30), nullable=False)
     trigger_value: Mapped[str] = mapped_column(String(30), nullable=False)
     action_type: Mapped[str] = mapped_column(String(30), nullable=False)
-    action_value: Mapped[str] = mapped_column(String(30), nullable=False)
+    # 64: wide enough for a UUID string (set_assignee) — widened in 0036.
+    action_value: Mapped[str] = mapped_column(String(64), nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     # Fire-audit surface. Since Pass 16: fired = the rule's change was ACTUALLY
     # applied (candidate selection alone no longer counts) — kept in lockstep

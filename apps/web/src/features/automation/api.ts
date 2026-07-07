@@ -22,7 +22,7 @@ export type AutomationRuleInput = {
   name: string
   trigger_type: 'status_changed_to'
   trigger_value: string
-  action_type: 'set_priority'
+  action_type: 'set_priority' | 'set_assignee'
   action_value: string
   is_active: boolean
 }
@@ -78,5 +78,28 @@ export function useDeleteAutomationRule(projectId: string) {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['automation-rules', projectId] })
     },
+  })
+}
+
+export type AutomationRuleRun = {
+  id: string
+  rule_id: string | null
+  rule_name: string
+  work_package_id: string | null
+  work_package_subject: string
+  field: string
+  old_value: string | null
+  new_value: string | null
+  actor_id: string | null
+  created_at: string
+}
+
+export function useAutomationRuleRuns(projectId: string) {
+  return useQuery({
+    queryKey: ['automation-rule-runs', projectId],
+    queryFn: () =>
+      api<{ items: AutomationRuleRun[]; total: number }>(
+        `/api/v1/projects/${projectId}/automation-rules/runs`,
+      ),
   })
 }
