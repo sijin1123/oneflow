@@ -29,6 +29,8 @@ class UserNotificationSettings(Base):
     watched: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     commented: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     mention: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    # Gates due_soon + overdue creation (Pass 40) — creation-only, like the rest.
+    due_alerts: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
     )

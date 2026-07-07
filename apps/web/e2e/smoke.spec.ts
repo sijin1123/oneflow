@@ -114,7 +114,9 @@ async function mockApi(page: Page, opts: { conflictOnPatch?: boolean } = {}) {
   )
   // The settings notifications tab reads the caller's toggles.
   await page.route('**/api/v1/me/notification-settings', (route) =>
-    route.fulfill({ json: { assigned: true, watched: true, commented: true } }),
+    route.fulfill({
+      json: { assigned: true, watched: true, commented: true, mention: true, due_alerts: true },
+    }),
   )
   // The list page's saved-filters bar fetches on mount — default to none.
   await page.route('**/api/v1/projects/*/saved-filters', (route) =>
@@ -1084,13 +1086,21 @@ test('설정 알림 탭에서 토글이 PUT을 보낸다', async ({ page }) => {
   // Override mockApi's GET-only default with a PUT-aware handler.
   await page.route('**/api/v1/me/notification-settings', async (route) => {
     if (route.request().method() === 'PUT') {
-      const sent = route.request().postDataJSON() as { watched?: boolean }
+      const sent = route.request().postDataJSON() as { watched?: boolean; due_alerts?: boolean }
       await route.fulfill({
-        json: { assigned: true, watched: sent.watched ?? true, commented: true },
+        json: {
+          assigned: true,
+          watched: sent.watched ?? true,
+          commented: true,
+          mention: true,
+          due_alerts: sent.due_alerts ?? true,
+        },
       })
       return
     }
-    await route.fulfill({ json: { assigned: true, watched: true, commented: true } })
+    await route.fulfill({
+      json: { assigned: true, watched: true, commented: true, mention: true, due_alerts: true },
+    })
   })
 
   await page.goto(`/projects/${project.id}/settings?tab=notifications`)
@@ -1101,6 +1111,13 @@ test('설정 알림 탭에서 토글이 PUT을 보낸다', async ({ page }) => {
   const req = await put
   expect((req.postDataJSON() as { watched: boolean }).watched).toBe(false)
   await expect(page.getByLabel(/워치 알림/)).not.toBeChecked()
+
+  // Due-date alerts toggle (Pass 40) sends its own key.
+  const duePut = page.waitForRequest(
+    (r) => r.method() === 'PUT' && r.url().includes('/me/notification-settings'),
+  )
+  await page.getByLabel(/기한 알림/).click()
+  expect(((await duePut).postDataJSON() as { due_alerts: boolean }).due_alerts).toBe(false)
 })
 
 test('위험 구역에서 보관 확인 후 POST /archive를 보낸다', async ({ page }) => {
@@ -1752,9 +1769,19 @@ test('알림 벨이 미확인 개수를 보여주고 모두 읽음을 보낸다'
         read: false,
         created_at: '2026-07-05T09:00:00Z',
       },
+      {
+        id: 'n2',
+        kind: 'overdue',
+        project_id: project.id,
+        work_package_id: wpA.id,
+        work_package_subject: '워크패키지 API 구현',
+        actor_name: null,
+        read: false,
+        created_at: '2026-07-05T09:00:00Z',
+      },
     ],
-    total: 1,
-    unread: 1,
+    total: 2,
+    unread: 2,
   }
   // sub-actions (read / read-all) → 204; list → the unread inbox (both after mockApi)
   await page.route('**/api/v1/me/notifications/**', (route) =>
@@ -1763,12 +1790,14 @@ test('알림 벨이 미확인 개수를 보여주고 모두 읽음을 보낸다'
   await page.route('**/api/v1/me/notifications', (route) => route.fulfill({ json: inbox }))
 
   await page.goto(`/projects/${project.id}/work-packages`)
-  const bell = page.getByRole('button', { name: '알림 1건 읽지 않음' })
+  const bell = page.getByRole('button', { name: '알림 2건 읽지 않음' })
   await expect(bell).toBeVisible()
   await bell.click()
 
   const drawer = page.getByRole('dialog')
   await expect(drawer.getByText(/배정했습니다/)).toBeVisible()
+  // System due alert (Pass 40): actor-less wording.
+  await expect(drawer.getByText(/기한이 지났습니다/)).toBeVisible()
 
   const readAll = page.waitForRequest(
     (req) => req.method() === 'POST' && req.url().includes('/me/notifications/read-all'),

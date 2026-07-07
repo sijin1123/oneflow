@@ -9,7 +9,15 @@ from app.db.base import Base
 
 # Notification kinds. Kept a closed set (CHECK-constrained) so the UI can render a
 # known message per kind. watch_* kinds go to work-package watchers (PR-E1).
-NOTIFICATION_KINDS = ("assigned", "watch_status", "watch_comment", "watch_assigned", "mention")
+NOTIFICATION_KINDS = (
+    "assigned",
+    "watch_status",
+    "watch_comment",
+    "watch_assigned",
+    "mention",
+    "due_soon",
+    "overdue",
+)
 
 
 class Notification(Base):
@@ -21,7 +29,8 @@ class Notification(Base):
     __tablename__ = "notifications"
     __table_args__ = (
         CheckConstraint(
-            "kind IN ('assigned', 'watch_status', 'watch_comment', 'watch_assigned', 'mention')",
+            "kind IN ('assigned', 'watch_status', 'watch_comment', 'watch_assigned', 'mention',"
+            " 'due_soon', 'overdue')",
             name="notification_kind_allowed",
         ),
         # Feed query: a user's notifications newest-first.

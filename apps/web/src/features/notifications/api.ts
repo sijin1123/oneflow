@@ -54,6 +54,7 @@ export type NotificationSettings = {
   watched: boolean
   commented: boolean
   mention: boolean
+  due_alerts: boolean
 }
 
 export function useNotificationSettings() {
