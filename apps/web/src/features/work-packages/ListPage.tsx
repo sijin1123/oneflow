@@ -1,12 +1,25 @@
-import { Download } from 'lucide-react'
+import { Columns3, Download } from 'lucide-react'
 import { useState } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
 
 import { EmptyState, ErrorState, ListSkeleton } from '@/components/shell/states'
 import { Button } from '@/components/ui/button'
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { Select } from '@/components/ui/select'
 import { useMemberNames, useMembers } from '@/features/members/api'
 
+import {
+  COLUMN_LABELS,
+  LIST_COLUMNS,
+  type ListColumn,
+  parseColumns,
+  serializeColumns,
+} from './columns'
 import { DetailDrawer } from './DetailDrawer'
 import { Filters } from './Filters'
 import { ImportDialog } from './ImportDialog'
@@ -31,6 +44,22 @@ export function ListPage() {
     module_id: searchParams.get('module_id') ?? undefined,
     q: searchParams.get('q') ?? undefined,
     sort: searchParams.get('sort') ?? undefined,
+  }
+  const columns = parseColumns(searchParams.get('columns'))
+  const show = (key: ListColumn) => columns.includes(key)
+  const toggleColumn = (key: ListColumn) => {
+    const next = show(key) ? columns.filter((k) => k !== key) : [...columns, key]
+    if (next.length === 0) return // at least one configurable column (v32.1 R1-①)
+    setSearchParams(
+      (prev) => {
+        const p = new URLSearchParams(prev)
+        const value = serializeColumns(next)
+        if (value) p.set('columns', value)
+        else p.delete('columns')
+        return p
+      },
+      { replace: true },
+    )
   }
   const sort = searchParams.get('sort') ?? 'created'
   const setSort = (value: string) => {
@@ -113,6 +142,27 @@ export function ListPage() {
             <option value="created">생성순</option>
             <option value="subject">제목순 (가나다)</option>
           </Select>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="sm">
+                <Columns3 size={14} /> 표시 열
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              {LIST_COLUMNS.map((key) => (
+                <DropdownMenuCheckboxItem
+                  key={key}
+                  checked={show(key)}
+                  // The last remaining column cannot be turned off (R1-①).
+                  disabled={show(key) && columns.length === 1}
+                  onCheckedChange={() => toggleColumn(key)}
+                  aria-label={`${COLUMN_LABELS[key]} 열 표시`}
+                >
+                  {COLUMN_LABELS[key]}
+                </DropdownMenuCheckboxItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
           <Button
             variant="outline"
             size="sm"
@@ -205,11 +255,13 @@ export function ListPage() {
               <tr className="border-b border-of-border text-left text-xs text-of-muted">
                 <th className="w-8 px-2 py-2" aria-label="선택 열" />
                 <th className="px-4 py-2 font-medium">제목</th>
-                <th className="w-24 px-2 py-2 font-medium">타입</th>
-                <th className="w-28 px-2 py-2 font-medium">상태</th>
-                <th className="w-24 px-2 py-2 font-medium">우선순위</th>
-                <th className="w-28 px-2 py-2 font-medium">담당자</th>
-                <th className="w-28 px-2 py-2 font-medium">기한</th>
+                {show('type') ? <th className="w-24 px-2 py-2 font-medium">타입</th> : null}
+                {show('status') ? <th className="w-28 px-2 py-2 font-medium">상태</th> : null}
+                {show('priority') ? <th className="w-24 px-2 py-2 font-medium">우선순위</th> : null}
+                {show('assignee') ? <th className="w-28 px-2 py-2 font-medium">담당자</th> : null}
+                {show('start_date') ? <th className="w-28 px-2 py-2 font-medium">시작일</th> : null}
+                {show('due_date') ? <th className="w-28 px-2 py-2 font-medium">기한</th> : null}
+                {show('created_at') ? <th className="w-28 px-2 py-2 font-medium">생성일</th> : null}
               </tr>
             </thead>
             <tbody>
@@ -241,19 +293,39 @@ export function ListPage() {
                       {wp.subject}
                     </button>
                   </td>
-                  <td className="px-2 py-2">
-                    <TypeChip type={wp.type} label={typeLabel(wp.type)} />
-                  </td>
-                  <td className="px-2 py-2">
-                    <StatusChip status={wp.status} label={statusLabel(wp.status)} />
-                  </td>
-                  <td className="px-2 py-2">
-                    <PriorityChip priority={wp.priority} />
-                  </td>
-                  <td className="px-2 py-2 text-xs text-of-muted">
-                    {memberName(wp.assignee_id)}
-                  </td>
-                  <td className="px-2 py-2 text-xs text-of-muted">{wp.due_date ?? '—'}</td>
+                  {show('type') ? (
+                    <td className="px-2 py-2">
+                      <TypeChip type={wp.type} label={typeLabel(wp.type)} />
+                    </td>
+                  ) : null}
+                  {show('status') ? (
+                    <td className="px-2 py-2">
+                      <StatusChip status={wp.status} label={statusLabel(wp.status)} />
+                    </td>
+                  ) : null}
+                  {show('priority') ? (
+                    <td className="px-2 py-2">
+                      <PriorityChip priority={wp.priority} />
+                    </td>
+                  ) : null}
+                  {show('assignee') ? (
+                    <td className="px-2 py-2 text-xs text-of-muted">
+                      {memberName(wp.assignee_id)}
+                    </td>
+                  ) : null}
+                  {show('start_date') ? (
+                    <td className="px-2 py-2 text-xs text-of-muted">{wp.start_date ?? '—'}</td>
+                  ) : null}
+                  {show('due_date') ? (
+                    <td className="px-2 py-2 text-xs text-of-muted">{wp.due_date ?? '—'}</td>
+                  ) : null}
+                  {show('created_at') ? (
+                    // UTC date part of the ISO timestamp — timezone-independent
+                    // date-only display, matching due_date (v32.1 R1-⑤).
+                    <td className="px-2 py-2 text-xs text-of-muted">
+                      {wp.created_at.slice(0, 10)}
+                    </td>
+                  ) : null}
                 </tr>
               ))}
             </tbody>

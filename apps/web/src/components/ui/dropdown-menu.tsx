@@ -1,4 +1,5 @@
 import * as DropdownPrimitive from '@radix-ui/react-dropdown-menu'
+import { Check } from 'lucide-react'
 import type * as React from 'react'
 
 import { cn } from '@/lib/utils'
@@ -21,6 +22,34 @@ export function DropdownMenuContent({
         {...props}
       />
     </DropdownPrimitive.Portal>
+  )
+}
+
+/* Plain form controls don't work inside a Radix menu (the menu intercepts
+   their pointer events) — checkbox rows must use this menu primitive. It
+   keeps the menu open on toggle so several columns can be flipped in one
+   visit. */
+export function DropdownMenuCheckboxItem({
+  className,
+  children,
+  ...props
+}: React.ComponentPropsWithoutRef<typeof DropdownPrimitive.CheckboxItem>) {
+  return (
+    <DropdownPrimitive.CheckboxItem
+      onSelect={(e) => e.preventDefault()}
+      className={cn(
+        'flex cursor-default select-none items-center gap-2 rounded-[4px] px-2 py-1.5 text-xs outline-none data-[highlighted]:bg-of-surface-2 data-[disabled]:opacity-50',
+        className,
+      )}
+      {...props}
+    >
+      <span className="flex h-3.5 w-3.5 items-center justify-center rounded-[3px] border border-of-border">
+        <DropdownPrimitive.ItemIndicator>
+          <Check size={10} />
+        </DropdownPrimitive.ItemIndicator>
+      </span>
+      {children}
+    </DropdownPrimitive.CheckboxItem>
   )
 }
 

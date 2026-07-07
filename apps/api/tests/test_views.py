@@ -141,3 +141,41 @@ async def test_author_can_rename_relayout_and_toggle_share(client, project):
         True,
         "subject",
     )
+
+
+async def test_columns_normalized_and_validated(client, project):
+    """Pass 32 PR-AX: display columns — closed vocabulary, canonical order."""
+    pid = project["id"]
+    res = await client.post(
+        f"/api/v1/projects/{pid}/saved-filters",
+        json={"name": "열 구성", "params": {"columns": "due_date, type ,type,status"}},
+    )
+    assert res.status_code == 201, res.text
+    # Duplicates collapse, whitespace trims, canonical order wins.
+    assert res.json()["params"]["columns"] == "type,status,due_date"
+
+    # Unknown keys are a 422 — a saved view must never carry a column the
+    # list cannot render (the client canonicalizes before saving; this is
+    # the defensive layer, v32.1 R1-④).
+    res = await client.post(
+        f"/api/v1/projects/{pid}/saved-filters",
+        json={"name": "이상한 열", "params": {"columns": "type,nope"}},
+    )
+    assert res.status_code == 422
+
+    # Empty / whitespace-only stores None → the client falls back to its
+    # default columns (min-1 is UI-enforced; subject-only is unsupported).
+    res = await client.post(
+        f"/api/v1/projects/{pid}/saved-filters",
+        json={"name": "빈 열", "params": {"columns": " , "}},
+    )
+    assert res.status_code == 201, res.text
+    assert res.json()["params"]["columns"] is None
+
+    # Legacy views without columns keep returning null (backward compat).
+    res = await client.post(
+        f"/api/v1/projects/{pid}/saved-filters",
+        json={"name": "레거시 열", "params": {"status": "todo"}},
+    )
+    assert res.status_code == 201
+    assert res.json()["params"]["columns"] is None

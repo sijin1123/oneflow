@@ -5,6 +5,11 @@ from pydantic import BaseModel, field_validator
 
 from app.models.work_package import WP_PRIORITIES, WP_STATUSES, WP_TYPES
 
+# Canonical order of configurable list columns. Subject and the selection
+# checkbox are always shown and never appear here. Display-only: the list
+# endpoint does not consume `columns`; the client renders from it.
+LIST_COLUMNS = ("type", "status", "priority", "assignee", "start_date", "due_date", "created_at")
+
 
 class SavedFilterParams(BaseModel):
     """The subset of the list query a filter can capture. Enum values are validated
@@ -17,6 +22,7 @@ class SavedFilterParams(BaseModel):
     cycle_id: str | None = None
     module_id: str | None = None
     q: str | None = None
+    columns: str | None = None
 
     @field_validator("assignee_id", "cycle_id", "module_id")
     @classmethod
@@ -57,6 +63,24 @@ class SavedFilterParams(BaseModel):
             if len(v) > 255:
                 raise ValueError("q must be <= 255 chars")
         return v
+
+    @field_validator("columns")
+    @classmethod
+    def _columns(cls, v: str | None) -> str | None:
+        """Comma-separated closed vocabulary, normalized to canonical order.
+
+        Unknown keys are a 422 (a saved view must never carry a column the list
+        cannot render); duplicates collapse; an empty result stores None so the
+        client falls back to its default column set."""
+        if v is None:
+            return v
+        keys = [k.strip() for k in v.split(",") if k.strip()]
+        unknown = [k for k in keys if k not in LIST_COLUMNS]
+        if unknown:
+            raise ValueError(f"columns must be a subset of {LIST_COLUMNS}")
+        wanted = set(keys)
+        normalized = [k for k in LIST_COLUMNS if k in wanted]
+        return ",".join(normalized) if normalized else None
 
 
 VIEW_LAYOUTS = ("list", "board", "tree", "timeline", "calendar")

@@ -1899,6 +1899,38 @@ test('현재 필터를 보드 레이아웃 공유 뷰로 저장한다', async ({
   expect(sent.params.status).toBe('todo')
 })
 
+test('표시 열 구성이 URL을 따르고 저장 시 정규화된다', async ({ page }) => {
+  await mockApi(page)
+  // Unknown key in a shared/hand-edited URL is silently ignored (R1-④).
+  await page.goto(`/projects/${project.id}/work-packages?columns=bogus,created_at,type`)
+  await expect(page.getByRole('columnheader', { name: '타입' })).toBeVisible()
+  await expect(page.getByRole('columnheader', { name: '생성일' })).toBeVisible()
+  await expect(page.getByRole('columnheader', { name: '상태' })).toBeHidden()
+  await expect(page.getByRole('columnheader', { name: '담당자' })).toBeHidden()
+  // created_at renders as the UTC date part only (R1-⑤).
+  await expect(page.getByRole('cell', { name: '2026-07-01' }).first()).toBeVisible()
+
+  // Toggling 타입 off leaves 생성일 as the last column — which cannot be
+  // turned off (min-1, R1-①).
+  await page.getByRole('button', { name: '표시 열' }).click()
+  await page.getByRole('menuitemcheckbox', { name: '타입 열 표시' }).click()
+  await expect(page.getByRole('columnheader', { name: '타입' })).toBeHidden()
+  await expect(page).toHaveURL(/columns=created_at/)
+  await expect(page.getByRole('menuitemcheckbox', { name: '생성일 열 표시' })).toBeDisabled()
+  await page.keyboard.press('Escape')
+
+  // Saving the view sends the CANONICAL columns value — the bogus key from
+  // the URL never reaches the API (URL→저장 왕복, R1-④).
+  await page.getByRole('button', { name: '현재 필터를 뷰로 저장' }).click()
+  await page.getByLabel('뷰 이름').fill('생성일 뷰')
+  const post = page.waitForRequest(
+    (r) => r.method() === 'POST' && r.url().includes('/saved-filters'),
+  )
+  await page.getByRole('button', { name: '저장', exact: true }).click()
+  const sent = (await post).postDataJSON() as { params: { columns?: string } }
+  expect(sent.params.columns).toBe('created_at')
+})
+
 test('보드가 프로젝트 워크플로우 설정의 라벨과 순서를 반영한다', async ({ page }) => {
   await mockApi(page)
   // custom labels for the two statuses the fixtures use (after mockApi → precedence)

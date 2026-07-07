@@ -10,6 +10,7 @@ export type SavedFilterParams = {
   cycle_id?: string | null
   module_id?: string | null
   q?: string | null
+  columns?: string | null
 }
 
 export type ViewLayout = 'list' | 'board' | 'tree' | 'timeline' | 'calendar'

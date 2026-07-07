@@ -3671,6 +3671,8 @@ export interface components {
         SavedFilterParams: {
             /** Assignee Id */
             assignee_id?: string | null;
+            /** Columns */
+            columns?: string | null;
             /** Cycle Id */
             cycle_id?: string | null;
             /** Module Id */

@@ -6,6 +6,8 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 
+import { parseColumns, serializeColumns } from './columns'
+
 import {
   type SavedFilter,
   type SavedFilterParams,
@@ -16,7 +18,16 @@ import {
   useUpdateSavedFilter,
 } from './savedFiltersApi'
 
-const KEYS = ['status', 'priority', 'type', 'assignee_id', 'cycle_id', 'module_id', 'q'] as const
+const KEYS = [
+  'status',
+  'priority',
+  'type',
+  'assignee_id',
+  'cycle_id',
+  'module_id',
+  'q',
+  'columns',
+] as const
 
 const LAYOUT_ROUTES: Record<ViewLayout, string> = {
   list: 'work-packages',
@@ -51,7 +62,10 @@ export function SavedFilters({ projectId }: { projectId: string }) {
 
   const current: SavedFilterParams = {}
   for (const k of KEYS) {
-    const v = searchParams.get(k)
+    let v = searchParams.get(k)
+    // The API 422s on unknown column keys — save exactly what the URL parser
+    // renders, never the raw URL value (v32.1 R1-④).
+    if (k === 'columns' && v !== null) v = serializeColumns(parseColumns(v))
     if (v) current[k] = v
   }
   const sort = searchParams.get('sort')
