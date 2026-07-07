@@ -465,6 +465,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/ops/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Ops Status */
+        get: operations["ops_status_api_v1_ops_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects": {
         parameters: {
             query?: never;
@@ -3188,6 +3205,39 @@ export interface components {
             watched?: boolean | null;
         };
         /**
+         * OpsConfig
+         * @description Strict allowlist — enums/booleans/numbers only, never secrets (R1-⑤).
+         */
+        OpsConfig: {
+            /** Ai Summary Enabled */
+            ai_summary_enabled: boolean;
+            /** Auth Mode */
+            auth_mode: string;
+            /** Project Storage Quota Bytes */
+            project_storage_quota_bytes: number;
+            /** Storage Backend */
+            storage_backend: string;
+            /** Upload Max Bytes */
+            upload_max_bytes: number;
+        };
+        /**
+         * OpsCounts
+         * @description Caller-scoped, best-effort (null on failure — v26.1 R1-④).
+         */
+        OpsCounts: {
+            /** Projects */
+            projects: number | null;
+            /** Work Packages */
+            work_packages: number | null;
+        };
+        /** OpsDatabase */
+        OpsDatabase: {
+            /** Current Revision */
+            current_revision: string | null;
+            /** Status */
+            status: string;
+        };
+        /**
          * ProjectActivityList
          * @description `total` is the RETURNED count (legacy contract — documented, v19.1);
          *     `truncated` reports more rows beyond the limit (limit+1 probe).
@@ -3769,6 +3819,14 @@ export interface components {
             query: string;
             /** Total */
             total: number;
+        };
+        /** StatusRead */
+        StatusRead: {
+            config: components["schemas"]["OpsConfig"];
+            counts: components["schemas"]["OpsCounts"];
+            database: components["schemas"]["OpsDatabase"];
+            /** Version */
+            version: string;
         };
         /**
          * TemplateApplied
@@ -5045,6 +5103,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    ops_status_api_v1_ops_status_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StatusRead"];
                 };
             };
         };

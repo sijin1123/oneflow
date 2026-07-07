@@ -1,5 +1,4 @@
-import {
-  Boxes,
+import {Activity, Boxes,
   Compass,
   ClipboardList,
   CalendarClock,
@@ -15,8 +14,7 @@ import {
   Paperclip,
   Search,
   Settings,
-  SquareKanban,
-} from 'lucide-react'
+  SquareKanban, } from 'lucide-react'
 import { NavLink, useParams } from 'react-router-dom'
 
 import { cn } from '@/lib/utils'
@@ -59,6 +57,9 @@ export function Sidebar() {
           </NavLink>
           <NavLink to="/search" className={navLinkClass}>
             <Search /> 검색
+          </NavLink>
+          <NavLink to="/status" className={navLinkClass}>
+            <Activity /> 시스템 상태
           </NavLink>
         </div>
 

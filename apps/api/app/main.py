@@ -25,6 +25,7 @@ from app.api.v1 import (
     members,
     milestones,
     modules,
+    ops,
     project_statuses,
     project_types,
     projects,
@@ -97,6 +98,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.add_middleware(RequestIdMiddleware)
 
     app.include_router(health.router, prefix="/api/v1", tags=["health"])
+    app.include_router(ops.router, prefix="/api/v1", tags=["ops"])
     app.include_router(auth.router, prefix="/api/v1", tags=["auth"])
     app.include_router(projects.router, prefix="/api/v1/projects", tags=["projects"])
     app.include_router(work_packages.router, prefix="/api/v1", tags=["work-packages"])
