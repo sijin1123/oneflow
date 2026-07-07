@@ -34,7 +34,7 @@ from app.schemas.work_package import (
     WorkPackageRead,
 )
 from app.services.activity import record_created, record_field_changes
-from app.services.automation import extra_changes_for_status
+from app.services.automation import bump_fired, record_applied, status_change_candidates
 from app.services.notification import notify_watchers, record_assignment
 from app.services.sanitize import sanitize_html
 
@@ -265,9 +265,11 @@ async def bulk_update_work_packages(
     skipped = [i for i in body.ids if i not in by_id]
 
     patch_fields = {f: getattr(body.patch, f) for f in provided}
-    extra: dict = {}
+    auto_candidates: dict = {}
     if "status" in patch_fields:
-        extra = await extra_changes_for_status(session, project_id, patch_fields["status"])
+        auto_candidates = await status_change_candidates(
+            session, project_id, patch_fields["status"]
+        )
 
     updated: list[uuid.UUID] = []
     unchanged: list[uuid.UUID] = []
@@ -276,9 +278,15 @@ async def bulk_update_work_packages(
         if wp is None:
             continue
         changes = {f: v for f, v in patch_fields.items() if getattr(wp, f) != v}
-        for field, value in extra.items():  # automation fills unset fields only
-            if field not in changes and getattr(wp, field) != value:
-                changes[field] = value
+        row_auto: list = []  # automation fills unset fields only (user wins)
+        for field, candidate in auto_candidates.items():
+            if (
+                field not in patch_fields
+                and field not in changes
+                and getattr(wp, field) != candidate.value
+            ):
+                changes[field] = candidate.value
+                row_auto.append(candidate)
         if not changes:
             unchanged.append(wp_id)
             continue
@@ -287,6 +295,20 @@ async def bulk_update_work_packages(
             setattr(wp, field, value)
         wp.version += 1
         record_field_changes(session, wp_id, user.id, old_values, changes)
+        applied_rules: set[uuid.UUID] = set()
+        for candidate in row_auto:
+            record_applied(
+                session,
+                candidate=candidate,
+                project_id=project_id,
+                wp_id=wp_id,
+                wp_subject=wp.subject,
+                actor_id=user.id,
+                old_value=old_values.get(candidate.field),
+                new_value=candidate.value,
+            )
+            applied_rules.add(candidate.rule_id)
+        await bump_fired(session, applied_rules)
         new_assignee = changes.get("assignee_id")
         if new_assignee is not None:
             await record_assignment(
@@ -494,11 +516,11 @@ async def patch_work_package(
     # Automation (§3 Phase 3): a real status change can imply further field writes
     # from active project rules. Single-pass and only fills fields the user did not
     # set explicitly, so it never overrides user input or re-triggers itself.
+    auto_candidates: dict = {}
     if changes.get("status") is not None and changes["status"] != wp.status:
-        for field, value in (
-            await extra_changes_for_status(session, wp.project_id, changes["status"])
-        ).items():
-            changes.setdefault(field, value)
+        auto_candidates = await status_change_candidates(session, wp.project_id, changes["status"])
+        for field, candidate in auto_candidates.items():
+            changes.setdefault(field, candidate.value)
 
     # Capture pre-update values for the activity log BEFORE the UPDATE (the
     # populate_existing UPDATE below refreshes the identity-mapped wp in place).
@@ -531,6 +553,27 @@ async def patch_work_package(
         if updated is not None:
             # Record field changes in the same transaction as the update.
             record_field_changes(session, wp_id, user.id, old_values, changes)
+            # Automation accounting (v16.1: fired = run = ACTUALLY APPLIED) —
+            # only candidates that survived the setdefault merge, really
+            # changed the value, and rode the successful conditional UPDATE.
+            applied_rules: set[uuid.UUID] = set()
+            for field, candidate in auto_candidates.items():
+                if (
+                    changes.get(field) == candidate.value
+                    and old_values.get(field) != candidate.value
+                ):
+                    record_applied(
+                        session,
+                        candidate=candidate,
+                        project_id=wp.project_id,
+                        wp_id=wp_id,
+                        wp_subject=updated.subject,
+                        actor_id=user.id,
+                        old_value=old_values.get(field),
+                        new_value=candidate.value,
+                    )
+                    applied_rules.add(candidate.rule_id)
+            await bump_fired(session, applied_rules)
             # Notify on a real (re)assignment to a new user.
             new_assignee = changes.get("assignee_id")
             assignee_changed = (

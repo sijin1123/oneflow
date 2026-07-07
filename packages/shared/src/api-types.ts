@@ -578,6 +578,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{project_id}/automation-rules/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Automation Rule Runs
+         * @description Per-WP automation audit trail, newest first (member read — the same
+         *     visibility as the rules themselves).
+         */
+        get: operations["list_automation_rule_runs_api_v1_projects__project_id__automation_rules_runs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{project_id}/automation-rules/{rule_id}": {
         parameters: {
             query?: never;
@@ -1737,6 +1758,47 @@ export interface components {
             trigger_type: string;
             /** Trigger Value */
             trigger_value: string;
+        };
+        /** AutomationRuleRunList */
+        AutomationRuleRunList: {
+            /** Items */
+            items: components["schemas"]["AutomationRuleRunRead"][];
+            /** Total */
+            total: number;
+        };
+        /**
+         * AutomationRuleRunRead
+         * @description Execution-log row (v16.1 R1-⑤). Deleted references read via snapshots:
+         *     rule_id/work_package_id/actor_id may be null while rule_name and
+         *     work_package_subject stay readable.
+         */
+        AutomationRuleRunRead: {
+            /** Actor Id */
+            actor_id: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Field */
+            field: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** New Value */
+            new_value: string | null;
+            /** Old Value */
+            old_value: string | null;
+            /** Rule Id */
+            rule_id: string | null;
+            /** Rule Name */
+            rule_name: string;
+            /** Work Package Id */
+            work_package_id: string | null;
+            /** Work Package Subject */
+            work_package_subject: string;
         };
         /**
          * AutomationRuleUpdate
@@ -4962,6 +5024,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AutomationRuleRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_automation_rule_runs_api_v1_projects__project_id__automation_rules_runs_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AutomationRuleRunList"];
                 };
             };
             /** @description Validation Error */

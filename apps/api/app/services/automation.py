@@ -1,27 +1,45 @@
-"""Automation engine (PLAN §3 Phase 3 자동화).
+"""Automation engine (PLAN §3 Phase 3 자동화, reshaped in Pass 16 v16.1).
 
-Evaluated inside the work-package PATCH transaction. Single-pass by design: it
-returns the extra field writes implied by active rules for the user's change; those
-writes are NOT fed back through the rules, so a rule can never cascade or loop.
+Candidate computation is SIDE-EFFECT FREE: `status_change_candidates` returns
+the winning candidate per field for a status transition; the CALLER applies
+them (user-set fields win via setdefault), and only ACTUALLY APPLIED changes
+are recorded — `record_applied` inserts the per-WP execution-log row and
+`bump_fired` updates the counters atomically, both in the applying transaction.
+Single-pass by design: automated writes are never fed back through the rules.
+
+Case semantics (v16.1 R1-③): no candidate / user override / no-op equal value /
+fire-time validation failure / conditional-update miss → NO fired, NO run.
+Applied change → fired+1, run row (and the ordinary notification path for the
+field, e.g. record_assignment for assignee).
 """
 
 import uuid
+from dataclasses import dataclass
 
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.automation_rule import AutomationRule
+from app.models.automation_rule import AutomationRule, AutomationRuleRun
 
 
-async def extra_changes_for_status(
+@dataclass(frozen=True)
+class AutomationCandidate:
+    rule_id: uuid.UUID
+    rule_name: str
+    field: str
+    value: str
+
+
+async def status_change_candidates(
     session: AsyncSession,
     project_id: uuid.UUID,
     new_status: str,
-) -> dict:
-    """Field writes triggered by a status becoming `new_status`.
+) -> dict[str, AutomationCandidate]:
+    """Winning candidate per target field for a status becoming `new_status`.
 
-    Only fills fields the caller did not set explicitly (the caller merges the
-    result without overriding user input)."""
+    Pure computation — no counters, no log rows. Deterministic precedence:
+    created_at asc, the LAST rule per field wins (reduced in memory, so a
+    multi-rule pile-up can never emit intermediate values downstream)."""
     rules = (
         (
             await session.execute(
@@ -32,31 +50,58 @@ async def extra_changes_for_status(
                     AutomationRule.trigger_type == "status_changed_to",
                     AutomationRule.trigger_value == new_status,
                 )
-                # Deterministic precedence: with several rules on the same status the
-                # most recently created one wins. Without ORDER BY the winner depended
-                # on physical row order (fable5 audit: nondeterministic automation).
                 .order_by(AutomationRule.created_at.asc(), AutomationRule.id.asc())
             )
         )
         .scalars()
         .all()
     )
-    extra: dict = {}
-    winners: dict[str, uuid.UUID] = {}  # field -> winning rule id
+    candidates: dict[str, AutomationCandidate] = {}
     for rule in rules:
         if rule.action_type == "set_priority":
-            # Trigger watches status, action writes priority — never the same field,
-            # so this can't re-trigger the same or another status rule. Rules are
-            # reduced IN MEMORY to the final value per field (v13.1 R1-④).
-            extra["priority"] = rule.action_value
-            winners["priority"] = rule.id
-    # Fire audit (v13.1 R1-①): "fired" = selected as the field's winning rule at
-    # evaluation time. Atomic UPDATE in the caller's transaction — the counter
-    # commits or rolls back together with the change that fired the rule.
-    if winners:
-        await session.execute(
-            update(AutomationRule)
-            .where(AutomationRule.id.in_(set(winners.values())))
-            .values(fired_count=AutomationRule.fired_count + 1, last_fired_at=func.now())
+            # Trigger watches status, action writes priority — never the same
+            # field, so this can't re-trigger the same or another status rule.
+            candidates["priority"] = AutomationCandidate(
+                rule_id=rule.id, rule_name=rule.name, field="priority", value=rule.action_value
+            )
+    return candidates
+
+
+def record_applied(
+    session: AsyncSession,
+    *,
+    candidate: AutomationCandidate,
+    project_id: uuid.UUID,
+    wp_id: uuid.UUID,
+    wp_subject: str,
+    actor_id: uuid.UUID,
+    old_value: object,
+    new_value: object,
+) -> None:
+    """Log one ACTUALLY APPLIED automation change (v16.1: fired = run = applied).
+    Caller invokes this only after its conditional UPDATE succeeded; the row
+    rides that transaction and rolls back with it."""
+    session.add(
+        AutomationRuleRun(
+            project_id=project_id,
+            rule_id=candidate.rule_id,
+            rule_name=candidate.rule_name,
+            work_package_id=wp_id,
+            work_package_subject=wp_subject,
+            field=candidate.field,
+            old_value=None if old_value is None else str(old_value),
+            new_value=None if new_value is None else str(new_value),
+            actor_id=actor_id,
         )
-    return extra
+    )
+
+
+async def bump_fired(session: AsyncSession, rule_ids: set[uuid.UUID]) -> None:
+    """Atomic fired counters for the given rules — read-modify-write forbidden."""
+    if not rule_ids:
+        return
+    await session.execute(
+        update(AutomationRule)
+        .where(AutomationRule.id.in_(rule_ids))
+        .values(fired_count=AutomationRule.fired_count + 1, last_fired_at=func.now())
+    )
