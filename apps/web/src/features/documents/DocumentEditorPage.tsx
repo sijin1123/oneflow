@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { ApiError } from '@/lib/api'
 import { confirmDestructive, useUnsavedChangesPrompt } from '@/lib/guards'
+import { useMe, useMemberNames, useMembers } from '@/features/members/api'
 
 import {
   conflictOf,
@@ -15,6 +16,9 @@ import {
   useDocument,
   useDocuments,
   useUpdateDocument,
+  useCreateDocumentComment,
+  useDeleteDocumentComment,
+  useDocumentComments,
 } from './api'
 import { DocumentAttachments } from './DocumentAttachments'
 import { LinkedWorkPackagesSection } from './LinkedWorkPackagesSection'
@@ -160,6 +164,84 @@ export function DocumentEditorPage() {
       <LinkedWorkPackagesSection docId={doc.id} projectId={projectId} />
 
       <DocumentAttachments docId={doc.id} projectId={projectId} />
+
+      <DocumentComments docId={doc.id} projectId={projectId} />
+    </div>
+  )
+}
+
+/* Flat plain-text margin notes (Pass 43): bodies render as TEXT NODES only —
+   never as HTML. Delete shows for my own comments (the server also lets the
+   project owner clean up; a failed delete just surfaces the error). */
+function DocumentComments({ docId, projectId }: { docId: string; projectId: string }) {
+  const me = useMe()
+  const memberName = useMemberNames(projectId)
+  const members = useMembers(projectId)
+  const { data } = useDocumentComments(docId)
+  const create = useCreateDocumentComment(docId)
+  const del = useDeleteDocumentComment(docId)
+  const [draft, setDraft] = useState('')
+
+  const authorLabel = (authorId: string | null) => {
+    if (authorId === null) return '삭제된 사용자'
+    if (members.data?.items.some((m) => m.user_id === authorId)) return memberName(authorId)
+    return '이전 구성원'
+  }
+
+  const submit = () => {
+    const body = draft.trim()
+    if (!body) return
+    create.mutate(body, { onSuccess: () => setDraft('') })
+  }
+
+  return (
+    <div className="mt-4 space-y-2 rounded-of border border-of-border bg-of-surface p-3">
+      <p className="text-xs font-medium">코멘트{data ? ` ${data.total}건` : ''}</p>
+      {data && data.items.length > 0 ? (
+        <ul className="space-y-1.5">
+          {data.items.map((c) => (
+            <li key={c.id} className="flex items-baseline gap-2 text-xs">
+              <span className="shrink-0 font-medium text-of-muted">{authorLabel(c.author_id)}</span>
+              <span className="min-w-0 flex-1 whitespace-pre-wrap break-words">{c.body}</span>
+              <span className="shrink-0 text-[11px] text-of-muted">{c.created_at.slice(0, 10)}</span>
+              {c.author_id === me.data?.id ? (
+                <button
+                  type="button"
+                  aria-label="코멘트 삭제"
+                  className="shrink-0 text-of-muted hover:text-of-danger"
+                  disabled={del.isPending}
+                  onClick={() => del.mutate(c.id)}
+                >
+                  <Trash2 size={12} />
+                </button>
+              ) : null}
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="text-xs text-of-muted">아직 코멘트가 없습니다.</p>
+      )}
+      <div className="flex items-center gap-2">
+        <Input
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') submit()
+          }}
+          placeholder="코멘트 남기기 (plain text)"
+          aria-label="새 코멘트"
+          className="h-8 flex-1 text-xs"
+          maxLength={4000}
+        />
+        <Button size="sm" disabled={!draft.trim() || create.isPending} onClick={submit}>
+          등록
+        </Button>
+      </div>
+      {create.isError ? (
+        <p role="alert" className="text-xs text-of-danger">
+          코멘트를 등록하지 못했습니다.
+        </p>
+      ) : null}
     </div>
   )
 }

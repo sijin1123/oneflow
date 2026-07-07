@@ -148,6 +148,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/document-comments/{comment_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Document Comment
+         * @description Author or PROJECT OWNER (v43.1 R1-④ — the owner is the cleanup
+         *     authority, incl. author-less SET NULL rows). Order: scope 404 → archive
+         *     409 → authorship 404; the conditional DELETE maps rowcount 0 to 404.
+         */
+        delete: operations["delete_document_comment_api_v1_document_comments__comment_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/documents/{doc_id}": {
         parameters: {
             query?: never;
@@ -165,6 +187,29 @@ export interface paths {
         head?: never;
         /** Update Document */
         patch: operations["update_document_api_v1_documents__doc_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/documents/{doc_id}/comments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Document Comments
+         * @description Member-scoped; reads stay open on archived projects. `total` is the
+         *     FULL count (limit/offset — the WP-activities contract; nothing is ever
+         *     unreachable, v43.1 R1-②).
+         */
+        get: operations["list_document_comments_api_v1_documents__doc_id__comments_get"];
+        put?: never;
+        /** Create Document Comment */
+        post: operations["create_document_comment_api_v1_documents__doc_id__comments_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/documents/{doc_id}/work-package-links": {
@@ -2503,6 +2548,49 @@ export interface components {
             /** Type Counts */
             type_counts: components["schemas"]["Bucket"][];
         };
+        /**
+         * DocumentCommentCreate
+         * @description Plain text only (the document body is the rich surface — v43.1 R1-⑤);
+         *     the web renders comments as text nodes, never as HTML.
+         */
+        DocumentCommentCreate: {
+            /** Body */
+            body: string;
+        };
+        /** DocumentCommentList */
+        DocumentCommentList: {
+            /** Items */
+            items: components["schemas"]["DocumentCommentRead"][];
+            /** Total */
+            total: number;
+        };
+        /** DocumentCommentRead */
+        DocumentCommentRead: {
+            /** Author Id */
+            author_id: string | null;
+            /** Body */
+            body: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Document Id
+             * Format: uuid
+             */
+            document_id: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+        };
         /** DocumentConflict */
         DocumentConflict: {
             current: components["schemas"]["DocumentRead"];
@@ -4583,6 +4671,35 @@ export interface operations {
             };
         };
     };
+    delete_document_comment_api_v1_document_comments__comment_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                comment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_document_api_v1_documents__doc_id__get: {
         parameters: {
             query?: never;
@@ -4674,6 +4791,75 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DocumentConflict"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_document_comments_api_v1_documents__doc_id__comments_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                doc_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentCommentList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_document_comment_api_v1_documents__doc_id__comments_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                doc_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DocumentCommentCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentCommentRead"];
                 };
             };
             /** @description Validation Error */

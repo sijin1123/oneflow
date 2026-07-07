@@ -12,17 +12,21 @@ into a surprising final state (PLAN v9.1 R1-②). Depth contract: root is depth
 
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
+from sqlalchemy import delete as sa_delete
 from sqlalchemy import func, select, text
 from sqlalchemy import update as sa_update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import get_current_user
 from app.core.authz import is_member, require_active_project, require_member
 from app.db.session import get_session
 from app.models.document import MAX_DOCUMENT_DEPTH, DocumentWorkPackageLink, ProjectDocument
+from app.models.document_comment import ProjectDocumentComment
+from app.models.member import ProjectMember
 from app.models.user import User
 from app.models.work_package import WorkPackage
 from app.schemas.document import (
@@ -35,6 +39,11 @@ from app.schemas.document import (
     DocumentListItem,
     DocumentRead,
     DocumentUpdate,
+)
+from app.schemas.document_comment import (
+    DocumentCommentCreate,
+    DocumentCommentList,
+    DocumentCommentRead,
 )
 from app.services.sanitize import sanitize_html
 
@@ -427,3 +436,98 @@ def _conflict(current: ProjectDocument) -> JSONResponse:
         current=DocumentRead.model_validate(current),
     )
     return JSONResponse(status_code=409, content=jsonable_encoder(payload))
+
+
+# --- Document comments (Pass 43 PR-BI, v43.1) ---------------------------------
+
+
+@router.get("/documents/{doc_id}/comments", response_model=DocumentCommentList)
+async def list_document_comments(
+    doc_id: uuid.UUID,
+    limit: int = Query(default=200, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+) -> DocumentCommentList:
+    """Member-scoped; reads stay open on archived projects. `total` is the
+    FULL count (limit/offset — the WP-activities contract; nothing is ever
+    unreachable, v43.1 R1-②)."""
+    doc = await _get_doc_scoped(session, doc_id, user)
+    base = select(ProjectDocumentComment).where(ProjectDocumentComment.document_id == doc.id)
+    total = (await session.execute(select(func.count()).select_from(base.subquery()))).scalar_one()
+    rows = (
+        (
+            await session.execute(
+                base.order_by(
+                    ProjectDocumentComment.created_at.asc(), ProjectDocumentComment.id.asc()
+                )
+                .limit(limit)
+                .offset(offset)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return DocumentCommentList(
+        items=[DocumentCommentRead.model_validate(r) for r in rows], total=total
+    )
+
+
+@router.post("/documents/{doc_id}/comments", response_model=DocumentCommentRead, status_code=201)
+async def create_document_comment(
+    doc_id: uuid.UUID,
+    body: DocumentCommentCreate,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+) -> DocumentCommentRead:
+    doc = await _get_doc_scoped(session, doc_id, user, write=True)
+    comment = ProjectDocumentComment(
+        document_id=doc.id, project_id=doc.project_id, author_id=user.id, body=body.body
+    )
+    try:
+        session.add(comment)
+        await session.flush()
+        await session.commit()
+    except IntegrityError as exc:
+        # The document vanished between the scope check and the INSERT — the
+        # same 404 the check would have produced (v43.1 R1-③).
+        await session.rollback()
+        raise HTTPException(status_code=404, detail="not found") from exc
+    return DocumentCommentRead.model_validate(comment)
+
+
+@router.delete("/document-comments/{comment_id}", status_code=204)
+async def delete_document_comment(
+    comment_id: uuid.UUID,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+) -> Response:
+    """Author or PROJECT OWNER (v43.1 R1-④ — the owner is the cleanup
+    authority, incl. author-less SET NULL rows). Order: scope 404 → archive
+    409 → authorship 404; the conditional DELETE maps rowcount 0 to 404."""
+    comment = (
+        await session.execute(
+            select(ProjectDocumentComment).where(ProjectDocumentComment.id == comment_id)
+        )
+    ).scalar_one_or_none()
+    if comment is None or not await is_member(session, comment.project_id, user.id):
+        raise HTTPException(status_code=404, detail="not found")
+    await require_active_project(session, comment.project_id)
+    if comment.author_id != user.id:
+        role = (
+            await session.execute(
+                select(ProjectMember.role).where(
+                    ProjectMember.project_id == comment.project_id,
+                    ProjectMember.user_id == user.id,
+                )
+            )
+        ).scalar_one_or_none()
+        if role != "owner":
+            raise HTTPException(status_code=404, detail="not found")  # existence hidden
+    result = await session.execute(
+        sa_delete(ProjectDocumentComment).where(ProjectDocumentComment.id == comment_id)
+    )
+    await session.commit()
+    if (result.rowcount or 0) == 0:
+        raise HTTPException(status_code=404, detail="not found")  # deleted mid-flight
+    return Response(status_code=204)
