@@ -20,6 +20,7 @@ import {
 import { NavLink, useParams } from 'react-router-dom'
 
 import { cn } from '@/lib/utils'
+import { useAuthConfig } from '@/features/auth/api'
 import { useProjects } from '@/features/projects/api'
 
 const navLinkClass = ({ isActive }: { isActive: boolean }) =>
@@ -31,6 +32,7 @@ const navLinkClass = ({ isActive }: { isActive: boolean }) =>
 export function Sidebar() {
   const { projectId } = useParams()
   const { data } = useProjects()
+  const auth = useAuthConfig()
 
   return (
     <aside className="flex w-56 shrink-0 flex-col border-r border-of-border bg-of-surface">
@@ -112,7 +114,9 @@ export function Sidebar() {
       </nav>
 
       <div className="border-t border-of-border px-3 py-2 text-[11px] text-of-muted">
-        dev 모드 · 로컬 전용
+        {auth.data?.auth_mode === 'oidc'
+          ? `OIDC · ${auth.data.oidc_issuer ? new URL(auth.data.oidc_issuer).host : '구성됨'}`
+          : 'dev 모드 · 로컬 전용'}
       </div>
     </aside>
   )

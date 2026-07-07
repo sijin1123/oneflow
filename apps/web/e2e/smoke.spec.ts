@@ -120,6 +120,12 @@ async function mockApi(page: Page, opts: { conflictOnPatch?: boolean } = {}) {
   await page.route('**/api/v1/initiatives', (route) =>
     route.fulfill({ json: { items: [], total: 0 } }),
   )
+  // The sidebar footer shows the auth mode.
+  await page.route('**/api/v1/auth/config', (route) =>
+    route.fulfill({
+      json: { auth_mode: 'dev', oidc_issuer: null, oidc_client_id: null, has_client_secret: false },
+    }),
+  )
   // The drawer custom-fields section reads definitions + values.
   await page.route('**/api/v1/projects/*/custom-fields**', (route) =>
     route.fulfill({ json: { items: [], total: 0 } }),
@@ -1065,6 +1071,22 @@ test('파일 업로드가 raw body POST로 나가고 다운로드 링크가 생�
   const link = page.getByRole('link', { name: /설계서\.txt/ })
   await expect(link).toBeVisible()
   await expect(link).toHaveAttribute('href', /\/attachments\/att-up\/download/)
+})
+
+test('OIDC 모드면 사이드바 푸터가 발급자를 표시한다', async ({ page }) => {
+  await mockApi(page)
+  await page.route('**/api/v1/auth/config', (route) =>
+    route.fulfill({
+      json: {
+        auth_mode: 'oidc',
+        oidc_issuer: 'https://idp.example.com/realms/company',
+        oidc_client_id: 'oneflow-web',
+        has_client_secret: true,
+      },
+    }),
+  )
+  await page.goto('/projects')
+  await expect(page.getByText('OIDC · idp.example.com')).toBeVisible()
 })
 
 test('CSV 가져오기: dry-run 미리보기 후 실행하고 실패 행을 격리한다', async ({ page }) => {

@@ -24,7 +24,13 @@ def test_dev_auth_forbidden_outside_dev_test(env):
 
 def test_oidc_allowed_in_production():
     s = Settings(
-        env="production", auth_mode="oidc", database_url=TEST_URL, test_database_url=TEST_URL
+        env="production",
+        auth_mode="oidc",
+        database_url=TEST_URL,
+        test_database_url=TEST_URL,
+        oidc_issuer="https://idp.example.com/realms/test",
+        oidc_client_id="oneflow-web",
+        oidc_client_secret="test-secret",
     )
     assert s.auth_mode == "oidc"
 
@@ -49,7 +55,14 @@ def test_dev_allow_nonlocal_strict_parse():
 
 
 def test_dev_allow_nonlocal_forbidden_outside_dev_test():
-    _expect_invalid(env="production", auth_mode="oidc", dev_allow_nonlocal="true")
+    _expect_invalid(
+        env="production",
+        auth_mode="oidc",
+        dev_allow_nonlocal="true",
+        oidc_issuer="https://idp.example.com/realms/test",
+        oidc_client_id="oneflow-web",
+        oidc_client_secret="test-secret",
+    )
 
 
 # --- dev loopback middleware (v5.1, §9 guard 4) ---
@@ -106,7 +119,13 @@ def test_seed_env_guard_blocks_staging_production():
         with pytest.raises(SeedGuardError):
             check_env_guard(
                 Settings(
-                    env=env, auth_mode="oidc", database_url=TEST_URL, test_database_url=TEST_URL
+                    env=env,
+                    auth_mode="oidc",
+                    database_url=TEST_URL,
+                    test_database_url=TEST_URL,
+                    oidc_issuer="https://idp.example.com/realms/test",
+                    oidc_client_id="oneflow-web",
+                    oidc_client_secret="test-secret",
                 )
             )
 

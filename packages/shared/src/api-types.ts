@@ -59,6 +59,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/auth/config": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Auth Config */
+        get: operations["auth_config_api_v1_auth_config_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/capabilities": {
         parameters: {
             query?: never;
@@ -1354,6 +1371,20 @@ export interface components {
             uploaded_by: string | null;
             /** Url */
             url: string;
+        };
+        /** AuthConfigRead */
+        AuthConfigRead: {
+            /** Auth Mode */
+            auth_mode: string;
+            /**
+             * Has Client Secret
+             * @default false
+             */
+            has_client_secret: boolean;
+            /** Oidc Client Id */
+            oidc_client_id?: string | null;
+            /** Oidc Issuer */
+            oidc_issuer?: string | null;
         };
         /** AutomationRuleCreate */
         AutomationRuleCreate: {
@@ -3106,6 +3137,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    auth_config_api_v1_auth_config_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthConfigRead"];
                 };
             };
         };
