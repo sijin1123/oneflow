@@ -151,9 +151,15 @@ async def get_notification_settings(
         )
     ).scalar_one_or_none()
     if row is None:
-        return NotificationSettingsRead(assigned=True, watched=True, commented=True, mention=True)
+        return NotificationSettingsRead(
+            assigned=True, watched=True, commented=True, mention=True, due_alerts=True
+        )
     return NotificationSettingsRead(
-        assigned=row.assigned, watched=row.watched, commented=row.commented, mention=row.mention
+        assigned=row.assigned,
+        watched=row.watched,
+        commented=row.commented,
+        mention=row.mention,
+        due_alerts=row.due_alerts,
     )
 
 
@@ -176,7 +182,11 @@ async def update_notification_settings(
             setattr(row, key, value)
     await session.commit()
     return NotificationSettingsRead(
-        assigned=row.assigned, watched=row.watched, commented=row.commented, mention=row.mention
+        assigned=row.assigned,
+        watched=row.watched,
+        commented=row.commented,
+        mention=row.mention,
+        due_alerts=row.due_alerts,
     )
 
 

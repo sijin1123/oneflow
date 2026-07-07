@@ -62,6 +62,23 @@ cd ../.. && make web-dev
 4. **보관/복구**: manifest를 백업 위치에 보관합니다. 오탐이면 manifest의 원경로대로 되돌리면 복구됩니다. 격리 영역은 이후 sweep이 건드리지 않으며, 최종 purge(영구 삭제)는 보존 기간 경과 후 운영자가 수동으로 수행합니다.
 5. **missing blob 행**: 리포트의 "rows with MISSING blobs"는 블롭이 사라진 attachment 행입니다 — 스크립트는 삭제하지 않으며, 데이터 복원 여부는 운영 판단입니다.
 
+## 기한(due-date) 알림 운영 절차 (Pass 40)
+
+담당 작업의 기한 알림(내일 마감 `due_soon` / 오늘 처음 초과 `overdue`)을 인앱 수신함에 넣는다.
+앱에 스케줄러가 없으므로 운영 cron이 **매일 1회(UTC 자정 이후)** 실행한다.
+
+```bash
+cd apps/api
+uv run python -m app.services.due_alerts            # dry-run: 생성될 건수만 보고
+uv run python -m app.services.due_alerts --create   # 실제 생성
+```
+
+- **멱등**: 같은 (사용자, 작업, 종류)의 당일(UTC) 중복 생성은 NOT EXISTS로 차단 — 재실행 안전.
+- **동시 실행 방지**: advisory lock(427007) — 후발 프로세스는 exit code 2로 즉시 종료.
+- **폭주 없음**: overdue는 '어제가 기한'인 항목만 알림(백필 없음). 실행을 놓친 날은 보충되지 않는다.
+- 대상: 담당자가 현재 프로젝트 멤버이면서 활성 사용자이고, 기한 알림 토글이 켜져 있는 경우만.
+- 로그 예: `created: due_soon=3` / `created: overdue=1`. exit 0=성공, 2=락 미획득.
+
 ## 백업/복구 런북
 
 백업 대상은 두 가지입니다: **PostgreSQL 데이터베이스**(메타데이터 전부)와 **업로드 스토리지 디렉터리**(`ONEFLOW_STORAGE_DIR`, 기본 `apps/api/var/uploads` — 블롭 본문). 반드시 **DB를 먼저, 블롭을 나중에** 백업합니다 — 행⇄블롭 계약상 "블롭만 남는" 고아는 무해하고 스윕 가능하지만, "행만 남는" 결손은 다운로드가 깨집니다.

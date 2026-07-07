@@ -6,6 +6,7 @@ class NotificationSettingsRead(BaseModel):
     watched: bool
     commented: bool
     mention: bool
+    due_alerts: bool
 
 
 class NotificationSettingsUpdate(BaseModel):
@@ -15,3 +16,4 @@ class NotificationSettingsUpdate(BaseModel):
     watched: bool | None = None
     commented: bool | None = None
     mention: bool | None = None
+    due_alerts: bool | None = None

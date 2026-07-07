@@ -3281,6 +3281,8 @@ export interface components {
             assigned: boolean;
             /** Commented */
             commented: boolean;
+            /** Due Alerts */
+            due_alerts: boolean;
             /** Mention */
             mention: boolean;
             /** Watched */
@@ -3295,6 +3297,8 @@ export interface components {
             assigned?: boolean | null;
             /** Commented */
             commented?: boolean | null;
+            /** Due Alerts */
+            due_alerts?: boolean | null;
             /** Mention */
             mention?: boolean | null;
             /** Watched */

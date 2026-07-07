@@ -13,6 +13,11 @@ const TOGGLES: Array<{ key: keyof NotificationSettings; label: string; hint: str
   },
   { key: 'commented', label: '댓글 알림', hint: '워치 중인 작업에 댓글이 달리면 알립니다.' },
   { key: 'mention', label: '멘션 알림', hint: '댓글에서 나를 멘션하면 알립니다.' },
+  {
+    key: 'due_alerts',
+    label: '기한 알림',
+    hint: '담당 작업 기한이 내일이거나 지나면 알립니다.',
+  },
 ]
 
 /* Personal notification preferences (PR-E2) — applies to NEW notifications

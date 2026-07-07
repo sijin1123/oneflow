@@ -34,15 +34,33 @@ async def project(client):
 async def test_defaults_and_roundtrip(client):
     res = await client.get("/api/v1/me/notification-settings")
     assert res.status_code == 200
-    assert res.json() == {"assigned": True, "watched": True, "commented": True, "mention": True}
+    assert res.json() == {
+        "assigned": True,
+        "watched": True,
+        "commented": True,
+        "mention": True,
+        "due_alerts": True,
+    }
 
     res = await client.put("/api/v1/me/notification-settings", json={"watched": False})
     assert res.status_code == 200
-    assert res.json() == {"assigned": True, "watched": False, "commented": True, "mention": True}
+    assert res.json() == {
+        "assigned": True,
+        "watched": False,
+        "commented": True,
+        "mention": True,
+        "due_alerts": True,
+    }
 
     # Partial update keeps the other toggles.
     res = await client.put("/api/v1/me/notification-settings", json={"commented": False})
-    assert res.json() == {"assigned": True, "watched": False, "commented": False, "mention": True}
+    assert res.json() == {
+        "assigned": True,
+        "watched": False,
+        "commented": False,
+        "mention": True,
+        "due_alerts": True,
+    }
 
 
 async def test_assigned_off_suppresses_new_assignment_notifications(client, app, member_project):
