@@ -23,7 +23,7 @@ from app.db.base import Base
 # assignee), so a rule can never re-trigger itself or another status rule.
 # set_assignee shipped WITH the per-WP execution log (Pass 16 — the Pass 13
 # ruling required the audit trail first).
-TRIGGER_TYPES = ("status_changed_to",)
+TRIGGER_TYPES = ("status_changed_to", "type_changed_to", "priority_changed_to")
 ACTION_TYPES = ("set_priority", "set_assignee")
 
 
@@ -35,7 +35,10 @@ class AutomationRule(Base):
 
     __tablename__ = "automation_rules"
     __table_args__ = (
-        CheckConstraint("trigger_type IN ('status_changed_to')", name="automation_trigger_allowed"),
+        CheckConstraint(
+            "trigger_type IN ('status_changed_to', 'type_changed_to', 'priority_changed_to')",
+            name="automation_trigger_allowed",
+        ),
         CheckConstraint(
             "action_type IN ('set_priority', 'set_assignee')", name="automation_action_allowed"
         ),

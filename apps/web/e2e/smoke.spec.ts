@@ -2203,6 +2203,22 @@ test('설정에서 자동화 규칙을 보여주고 새 규칙을 추가한다',
   const sent = (await post).postDataJSON() as { action_type: string; action_value: string }
   expect(sent.action_type).toBe('set_assignee')
   expect(sent.action_value).toBe('me-1')
+
+  // Type trigger (Pass 41): switching the trigger kind swaps the value
+  // vocabulary and the POST carries the new trigger pair.
+  await page.getByLabel('트리거 종류').selectOption('type_changed_to')
+  await page.getByLabel('트리거 값').selectOption('bug')
+  await page.getByLabel('액션 종류').selectOption('set_priority')
+  const typePost = page.waitForRequest(
+    (r) => r.method() === 'POST' && r.url().includes('/automation-rules'),
+  )
+  await page.getByRole('button', { name: '규칙 추가' }).click()
+  const typeSent = (await typePost).postDataJSON() as {
+    trigger_type: string
+    trigger_value: string
+  }
+  expect(typeSent.trigger_type).toBe('type_changed_to')
+  expect(typeSent.trigger_value).toBe('bug')
 })
 
 test('AI 요약 플래그가 켜지면 드로어에서 요약을 생성한다', async ({ page }) => {

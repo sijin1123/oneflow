@@ -7,10 +7,11 @@ import {
   PRIORITY_LABELS,
   WP_PRIORITIES,
   WP_STATUSES,
+  WP_TYPES,
   type WpPriority,
-  type WpStatus,
 } from '@/features/work-packages/types'
 import { useStatusLabels } from '@/features/work-packages/useStatusLabels'
+import { useTypeLabels } from '@/features/work-packages/useTypeLabels'
 import { formatDateTime } from '@/lib/datetime'
 
 import { useMembers } from '@/features/members/api'
@@ -32,22 +33,35 @@ export function AutomationManager({ projectId, isOwner }: { projectId: string; i
   const setActive = useSetAutomationRuleActive(projectId)
   const del = useDeleteAutomationRule(projectId)
   const statusLabel = useStatusLabels(projectId)
+  const typeLabel = useTypeLabels(projectId)
   const members = useMembers(projectId)
   const runs = useAutomationRuleRuns(projectId)
 
   const memberName = (id: string | null) =>
     members.data?.items.find((m) => m.user_id === id)?.display_name ?? '알 수 없음'
 
-  const ruleText = (rule: AutomationRule): string => {
-    const status = statusLabel(rule.trigger_value)
-    if (rule.action_type === 'set_assignee') {
-      return `상태가 '${status}'(으)로 바뀌면 → 담당자를 '${memberName(rule.action_value)}'(으)로 지정`
+  const triggerText = (rule: AutomationRule): string => {
+    if (rule.trigger_type === 'type_changed_to') {
+      return `타입이 '${typeLabel(rule.trigger_value)}'(으)로 바뀌면`
     }
-    const priority = PRIORITY_LABELS[rule.action_value as WpPriority] ?? rule.action_value
-    return `상태가 '${status}'(으)로 바뀌면 → 우선순위를 '${priority}'(으)로 설정`
+    if (rule.trigger_type === 'priority_changed_to') {
+      const p = PRIORITY_LABELS[rule.trigger_value as WpPriority] ?? rule.trigger_value
+      return `우선순위가 '${p}'(으)로 바뀌면`
+    }
+    return `상태가 '${statusLabel(rule.trigger_value)}'(으)로 바뀌면`
   }
 
-  const [triggerValue, setTriggerValue] = useState<WpStatus>('in_review')
+  const ruleText = (rule: AutomationRule): string => {
+    if (rule.action_type === 'set_assignee') {
+      return `${triggerText(rule)} → 담당자를 '${memberName(rule.action_value)}'(으)로 지정`
+    }
+    const priority = PRIORITY_LABELS[rule.action_value as WpPriority] ?? rule.action_value
+    return `${triggerText(rule)} → 우선순위를 '${priority}'(으)로 설정`
+  }
+
+  type TriggerType = 'status_changed_to' | 'type_changed_to' | 'priority_changed_to'
+  const [triggerType, setTriggerType] = useState<TriggerType>('status_changed_to')
+  const [triggerValue, setTriggerValue] = useState<string>('in_review')
   const [actionType, setActionType] = useState<'set_priority' | 'set_assignee'>('set_priority')
   const [actionValue, setActionValue] = useState<string>('high')
 
@@ -57,9 +71,15 @@ export function AutomationManager({ projectId, isOwner }: { projectId: string; i
       actionType === 'set_priority'
         ? PRIORITY_LABELS[actionValue as WpPriority]
         : memberName(actionValue)
+    const triggerLabel =
+      triggerType === 'type_changed_to'
+        ? typeLabel(triggerValue)
+        : triggerType === 'priority_changed_to'
+          ? (PRIORITY_LABELS[triggerValue as WpPriority] ?? triggerValue)
+          : statusLabel(triggerValue)
     create.mutate({
-      name: `${statusLabel(triggerValue)} → ${target}`,
-      trigger_type: 'status_changed_to',
+      name: `${triggerLabel} → ${target}`,
+      trigger_type: triggerType,
       trigger_value: triggerValue,
       action_type: actionType,
       action_value: actionValue,
@@ -172,16 +192,38 @@ export function AutomationManager({ projectId, isOwner }: { projectId: string; i
 
       {isOwner ? (
         <div className="flex flex-wrap items-center gap-2 pt-1">
-          <span className="text-xs text-of-muted">상태</span>
           <Select
-            aria-label="트리거 상태"
+            aria-label="트리거 종류"
+            className="h-7 w-40 text-xs"
+            value={triggerType}
+            onChange={(e) => {
+              const next = e.target.value as TriggerType
+              setTriggerType(next)
+              // Reset the value to the new trigger's vocabulary (create-only:
+              // editing an existing rule never changes its trigger type).
+              setTriggerValue(
+                next === 'type_changed_to' ? 'bug' : next === 'priority_changed_to' ? 'high' : 'in_review',
+              )
+            }}
+          >
+            <option value="status_changed_to">상태가 다음으로 변경</option>
+            <option value="type_changed_to">타입이 다음으로 변경</option>
+            <option value="priority_changed_to">우선순위가 다음으로 변경</option>
+          </Select>
+          <Select
+            aria-label="트리거 값"
             className="h-7 w-28 text-xs"
             value={triggerValue}
-            onChange={(e) => setTriggerValue(e.target.value as WpStatus)}
+            onChange={(e) => setTriggerValue(e.target.value)}
           >
-            {WP_STATUSES.map((s) => (
-              <option key={s} value={s}>
-                {statusLabel(s)}
+            {(triggerType === 'type_changed_to'
+              ? WP_TYPES.map((t) => [t, typeLabel(t)] as const)
+              : triggerType === 'priority_changed_to'
+                ? WP_PRIORITIES.map((p) => [p, PRIORITY_LABELS[p]] as const)
+                : WP_STATUSES.map((st) => [st, statusLabel(st)] as const)
+            ).map(([value, label]) => (
+              <option key={value} value={value}>
+                {label}
               </option>
             ))}
           </Select>

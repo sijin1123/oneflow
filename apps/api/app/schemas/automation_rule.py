@@ -4,7 +4,7 @@ from datetime import datetime
 from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
 from app.models.automation_rule import ACTION_TYPES, TRIGGER_TYPES
-from app.models.work_package import WP_PRIORITIES, WP_STATUSES
+from app.models.work_package import WP_PRIORITIES, WP_STATUSES, WP_TYPES
 
 
 class AutomationRuleCreate(BaseModel):
@@ -40,8 +40,13 @@ class AutomationRuleCreate(BaseModel):
     @model_validator(mode="after")
     def _values(self) -> "AutomationRuleCreate":
         # Validate each value against the vocabulary its type implies.
-        if self.trigger_type == "status_changed_to" and self.trigger_value not in WP_STATUSES:
-            raise ValueError(f"trigger_value must be one of {WP_STATUSES}")
+        trigger_vocab = {
+            "status_changed_to": WP_STATUSES,
+            "type_changed_to": WP_TYPES,
+            "priority_changed_to": WP_PRIORITIES,
+        }[self.trigger_type]
+        if self.trigger_value not in trigger_vocab:
+            raise ValueError(f"trigger_value must be one of {trigger_vocab}")
         if self.action_type == "set_priority" and self.action_value not in WP_PRIORITIES:
             raise ValueError(f"action_value must be one of {WP_PRIORITIES}")
         if self.action_type == "set_assignee":
