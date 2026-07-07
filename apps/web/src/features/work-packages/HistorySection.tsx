@@ -6,10 +6,10 @@ import { useMemberNames, useMembers } from '@/features/members/api'
 import { formatDateTime } from '@/lib/datetime'
 
 import { FIELD_LABELS } from './activityLabels'
-import { useActivities, useComments, useCreateComment } from './api'
+import { useActivities, useComments, useCreateComment, useToggleReaction } from './api'
 import type { CommentThread } from './comments'
 import { groupThreads } from './comments'
-import { PRIORITY_LABELS, TYPE_LABELS } from './types'
+import { PRIORITY_LABELS, REACTION_EMOJI, TYPE_LABELS } from './types'
 import type { Activity, Comment } from './types'
 import { useStatusLabels } from './useStatusLabels'
 
@@ -23,6 +23,7 @@ export function HistorySection({ wpId, projectId }: { wpId: string; projectId: s
   const activities = useActivities(wpId)
   const comments = useComments(wpId)
   const createComment = useCreateComment(wpId)
+  const toggleReaction = useToggleReaction(wpId)
   const statusLabel = useStatusLabels(projectId)
   const members = useMembers(projectId)
   const memberName = useMemberNames(projectId)
@@ -110,6 +111,31 @@ export function HistorySection({ wpId, projectId }: { wpId: string; projectId: s
           ))}
         </p>
       ) : null}
+      <p className="mt-1 flex flex-wrap items-center gap-1">
+        {Object.entries(REACTION_EMOJI).map(([key, glyph]) => {
+          const agg = c.reactions.find((r) => r.key === key)
+          const count = agg?.count ?? 0
+          const me = agg?.me ?? false
+          return (
+            <button
+              key={key}
+              type="button"
+              aria-label={`${key} 리액션`}
+              aria-pressed={me}
+              className={`rounded-full border px-1.5 py-0.5 text-[11px] ${
+                me
+                  ? 'border-of-accent bg-of-accent-soft text-of-accent'
+                  : 'border-of-border text-of-muted hover:bg-of-surface-2'
+              } ${count === 0 && !me ? 'opacity-60' : ''}`}
+              disabled={toggleReaction.isPending}
+              onClick={() => toggleReaction.mutate({ commentId: c.id, key, on: !me })}
+            >
+              {glyph}
+              {count > 0 ? ` ${count}` : ''}
+            </button>
+          )
+        })}
+      </p>
       <p className="mt-1 flex items-center gap-2 text-[11px] text-of-muted">
         {formatDateTime(c.created_at)}
         {!isReply ? (

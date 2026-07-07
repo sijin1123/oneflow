@@ -285,6 +285,17 @@ export function useBulkUpdate(projectId: string) {
   })
 }
 
+export function useToggleReaction(wpId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ commentId, key, on }: { commentId: string; key: string; on: boolean }) =>
+      api(`/api/v1/comments/${commentId}/reactions/${key}`, { method: on ? 'PUT' : 'DELETE' }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['work-package-comments', wpId] })
+    },
+  })
+}
+
 export function useCreateWorkPackage(projectId: string) {
   const queryClient = useQueryClient()
   return useMutation({

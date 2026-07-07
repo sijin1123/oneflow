@@ -3,6 +3,8 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, field_validator
 
+from app.models.comment import REACTION_KEYS
+
 MAX_COMMENT = 20_000
 
 
@@ -34,6 +36,23 @@ class CommentCreate(BaseModel):
         return deduped
 
 
+class ReactionAgg(BaseModel):
+    """One fixed vocabulary slot — the API always returns all six in order
+    (0-count included), so clients render without merging (v17.1 R1-④)."""
+
+    key: str
+    count: int
+    me: bool
+
+
+def empty_reactions() -> list[ReactionAgg]:
+    return [ReactionAgg(key=k, count=0, me=False) for k in REACTION_KEYS]
+
+
+class ReactionList(BaseModel):
+    items: list[ReactionAgg]
+
+
 class CommentRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -44,6 +63,7 @@ class CommentRead(BaseModel):
     body: str
     # Accepted mentions (member-validated at create time) — null means none.
     mentions: list[uuid.UUID] | None
+    reactions: list[ReactionAgg] = []
     created_at: datetime
     updated_at: datetime
 

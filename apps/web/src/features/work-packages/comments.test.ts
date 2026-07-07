@@ -12,6 +12,7 @@ function c(id: string, parent_id: string | null, at: string): Comment {
     author_id: null,
     body: id,
     mentions: null,
+    reactions: [],
     created_at: at,
     updated_at: at,
   }
