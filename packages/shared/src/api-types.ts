@@ -1197,6 +1197,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Unified Search
+         * @description Grouped workspace search (v14.1). Ordering contract: work packages keep
+         *     the existing updated_at desc; documents/meetings sort by title asc,
+         *     cycles/modules/initiatives by name asc; ties break on id asc.
+         */
+        get: operations["unified_search_api_v1_search_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/search/work-packages": {
         parameters: {
             query?: never;
@@ -2157,6 +2179,15 @@ export interface components {
             /** Title */
             title: string;
         };
+        /** DocumentGroup */
+        DocumentGroup: {
+            /** Items */
+            items: components["schemas"]["SearchDocumentItem"][];
+            /** Returned */
+            returned: number;
+            /** Truncated */
+            truncated: boolean;
+        };
         /** DocumentLinkCreate */
         DocumentLinkCreate: {
             /**
@@ -2317,6 +2348,15 @@ export interface components {
             state: string;
             /** Target Date */
             target_date?: string | null;
+        };
+        /** InitiativeGroup */
+        InitiativeGroup: {
+            /** Items */
+            items: components["schemas"]["SearchInitiativeItem"][];
+            /** Returned */
+            returned: number;
+            /** Truncated */
+            truncated: boolean;
         };
         /** InitiativeList */
         InitiativeList: {
@@ -2480,6 +2520,15 @@ export interface components {
             scheduled_on?: string | null;
             /** Title */
             title: string;
+        };
+        /** MeetingGroup */
+        MeetingGroup: {
+            /** Items */
+            items: components["schemas"]["SearchMeetingItem"][];
+            /** Returned */
+            returned: number;
+            /** Truncated */
+            truncated: boolean;
         };
         /** MeetingList */
         MeetingList: {
@@ -2806,6 +2855,15 @@ export interface components {
             subject: string;
             /** Type */
             type: string;
+        };
+        /** NamedGroup */
+        NamedGroup: {
+            /** Items */
+            items: components["schemas"]["SearchNamedItem"][];
+            /** Returned */
+            returned: number;
+            /** Truncated */
+            truncated: boolean;
         };
         /** NotificationList */
         NotificationList: {
@@ -3194,6 +3252,80 @@ export interface components {
             /** Sort */
             sort?: string | null;
         };
+        /** SearchDocumentItem */
+        SearchDocumentItem: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            /** Project Key */
+            project_key: string;
+            /** Project Name */
+            project_name: string;
+            /** Title */
+            title: string;
+        };
+        /** SearchInitiativeItem */
+        SearchInitiativeItem: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** State */
+            state: string;
+        };
+        /** SearchMeetingItem */
+        SearchMeetingItem: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            /** Project Key */
+            project_key: string;
+            /** Project Name */
+            project_name: string;
+            /** Scheduled On */
+            scheduled_on: string | null;
+            /** Title */
+            title: string;
+        };
+        /**
+         * SearchNamedItem
+         * @description Cycles and modules — matched by name within member projects.
+         */
+        SearchNamedItem: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            /** Project Key */
+            project_key: string;
+            /** Project Name */
+            project_name: string;
+        };
         /** SearchResultItem */
         SearchResultItem: {
             /** Due Date */
@@ -3276,6 +3408,22 @@ export interface components {
              * Format: uuid
              */
             work_package_id: string;
+        };
+        /**
+         * UnifiedSearchResults
+         * @description Grouped workspace search (Pass 14, v14.1). `returned` is the RETURNED
+         *     count; `truncated` means more hits exist beyond the per-group cap (computed
+         *     by a limit+1 fetch — never a silent cut).
+         */
+        UnifiedSearchResults: {
+            cycles: components["schemas"]["NamedGroup"];
+            documents: components["schemas"]["DocumentGroup"];
+            initiatives: components["schemas"]["InitiativeGroup"];
+            meetings: components["schemas"]["MeetingGroup"];
+            modules: components["schemas"]["NamedGroup"];
+            /** Query */
+            query: string;
+            work_packages: components["schemas"]["WpGroup"];
         };
         /** UserRead */
         UserRead: {
@@ -3466,6 +3614,15 @@ export interface components {
             updated_at: string;
             /** Version */
             version: number;
+        };
+        /** WpGroup */
+        WpGroup: {
+            /** Items */
+            items: components["schemas"]["SearchResultItem"][];
+            /** Returned */
+            returned: number;
+            /** Truncated */
+            truncated: boolean;
         };
     };
     responses: never;
@@ -6396,6 +6553,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CsvImportResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    unified_search_api_v1_search_get: {
+        parameters: {
+            query: {
+                q: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UnifiedSearchResults"];
                 };
             };
             /** @description Validation Error */
