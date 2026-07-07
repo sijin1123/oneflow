@@ -75,3 +75,33 @@ async def test_project_audit_feed(client, project):
 async def test_project_audit_nonmember_404(client, foreign_project):
     res = await client.get(f"/api/v1/projects/{foreign_project['project_id']}/activities")
     assert res.status_code == 404
+
+
+async def test_dashboard_csv_export(client, foreign_project):
+    """Pass 6 PR-Q: the roll-up as CSV — formula-guarded, BOM'd, member-scoped,
+    and readable on archived projects (read/export stays open)."""
+    from tests.conftest import create_project, create_wp
+
+    project = await create_project(client, key="DEXP", name="내보내기")
+    await create_wp(client, project["id"], subject="하나", status="done")
+    await create_wp(client, project["id"], subject="둘")
+
+    res = await client.get(f"/api/v1/projects/{project['id']}/dashboard/export.csv")
+    assert res.status_code == 200
+    assert res.headers["content-type"].startswith("text/csv")
+    body = res.text
+    assert body.startswith("﻿")  # Excel UTF-8 BOM convention
+    lines = body.lstrip("﻿").splitlines()
+    assert lines[0] == "section,key,value"
+    assert "summary,total_work_packages,2" in lines
+    assert "status,done,1" in lines
+
+    # Non-member: existence hidden.
+    foreign = str(foreign_project["project_id"])
+    assert (await client.get(f"/api/v1/projects/{foreign}/dashboard/export.csv")).status_code == 404
+
+    # Archived project keeps its export readable.
+    assert (await client.post(f"/api/v1/projects/{project['id']}/archive")).status_code == 200
+    assert (
+        await client.get(f"/api/v1/projects/{project['id']}/dashboard/export.csv")
+    ).status_code == 200

@@ -1,6 +1,8 @@
+import { FileDown } from 'lucide-react'
 import { useParams } from 'react-router-dom'
 
 import { ErrorState, ListSkeleton } from '@/components/shell/states'
+import { BASE_URL } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { PRIORITY_LABELS, WP_STATUSES } from '@/features/work-packages/types'
 import type { WpPriority, WpStatus } from '@/features/work-packages/types'
@@ -92,7 +94,15 @@ export function DashboardPage() {
 
   return (
     <div className="mx-auto max-w-3xl space-y-4 p-6">
-      <h1 className="text-base font-semibold">대시보드</h1>
+      <div className="flex items-center justify-between">
+        <h1 className="text-base font-semibold">대시보드</h1>
+        <a
+          href={`${BASE_URL}/api/v1/projects/${projectId}/dashboard/export.csv`}
+          className="flex items-center gap-1.5 rounded-of border border-of-border px-2.5 py-1.5 text-xs font-medium hover:bg-of-surface-2"
+        >
+          <FileDown size={13} /> CSV 내보내기
+        </a>
+      </div>
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Tile label="전체 작업" value={String(data.total_work_packages)} />
