@@ -1538,34 +1538,86 @@ test('알림 벨이 미확인 개수를 보여주고 모두 읽음을 보낸다'
   await readAll
 })
 
-test('전체 검색이 여러 프로젝트의 결과를 보여준다', async ({ page }) => {
+test('전체 검색이 그룹 결과를 보여주고 문서로 이동한다', async ({ page }) => {
   await mockApi(page)
-  await page.route('**/api/v1/search/work-packages**', (route) =>
+  const emptyGroup = { items: [], returned: 0, truncated: false }
+  await page.route('**/api/v1/search?**', (route) =>
     route.fulfill({
       json: {
-        items: [
-          {
-            id: wpA.id,
-            project_id: project.id,
-            project_key: 'ONE',
-            project_name: 'OneFlow 도입',
-            subject: '워크패키지 API 구현',
-            status: 'todo',
-            priority: 'high',
-            type: 'task',
-            due_date: '2026-07-15',
-          },
-        ],
-        total: 1,
         query: '구현',
+        work_packages: {
+          items: [
+            {
+              id: wpA.id,
+              project_id: project.id,
+              project_key: 'ONE',
+              project_name: 'OneFlow 도입',
+              subject: '워크패키지 API 구현',
+              status: 'todo',
+              priority: 'high',
+              type: 'task',
+              due_date: '2026-07-15',
+            },
+          ],
+          returned: 1,
+          truncated: false,
+        },
+        documents: {
+          items: [
+            {
+              id: 'd-77',
+              project_id: project.id,
+              project_key: 'ONE',
+              project_name: 'OneFlow 도입',
+              title: '구현 가이드 문서',
+            },
+          ],
+          returned: 1,
+          truncated: true,
+        },
+        meetings: emptyGroup,
+        cycles: emptyGroup,
+        modules: emptyGroup,
+        initiatives: emptyGroup,
       },
     }),
   )
+  await page.route('**/api/v1/documents/d-77', (route) =>
+    route.fulfill({
+      json: {
+        id: 'd-77',
+        project_id: project.id,
+        parent_id: null,
+        title: '구현 가이드 문서',
+        body: null,
+        author_id: null,
+        version: 0,
+        created_at: '2026-07-01T00:00:00Z',
+        updated_at: '2026-07-01T00:00:00Z',
+      },
+    }),
+  )
+  await page.route(`**/api/v1/projects/${project.id}/documents`, (route) =>
+    route.fulfill({ json: { items: [], total: 0 } }),
+  )
+  await page.route('**/api/v1/documents/d-77/work-package-links', (route) =>
+    route.fulfill({ json: { items: [], total: 0 } }),
+  )
+
   await page.goto('/search')
   await page.getByLabel('전체 검색어').fill('구현')
   await page.getByRole('button', { name: '검색' }).click()
-  await expect(page.getByText('1건')).toBeVisible()
+
+  // grouped sections with truncation notice on documents
+  await expect(page.getByText('작업 1건')).toBeVisible()
   await expect(page.getByRole('button', { name: /워크패키지 API 구현/ })).toBeVisible()
+  await expect(page.getByText('문서 1건')).toBeVisible()
+  await expect(page.getByText('더 있음', { exact: false })).toBeVisible()
+  await expect(page.getByText('회의', { exact: true })).toBeHidden() // empty group hidden
+
+  // navigation contract: a document result opens the editor
+  await page.getByRole('button', { name: /구현 가이드 문서/ }).click()
+  await expect(page.getByLabel('문서 제목')).toHaveValue('구현 가이드 문서')
 })
 
 test('저장된 필터를 적용하면 목록 쿼리에 반영된다', async ({ page }) => {

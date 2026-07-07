@@ -30,3 +30,45 @@ export function useSearch(q: string) {
     enabled: query.length > 0,
   })
 }
+
+export type SearchDocumentItem = {
+  id: string
+  project_id: string
+  project_key: string
+  project_name: string
+  title: string
+}
+
+export type SearchMeetingItem = SearchDocumentItem & { scheduled_on: string | null }
+
+export type SearchNamedItem = {
+  id: string
+  project_id: string
+  project_key: string
+  project_name: string
+  name: string
+}
+
+export type SearchInitiativeItem = { id: string; name: string; state: string }
+
+type Group<T> = { items: T[]; returned: number; truncated: boolean }
+
+export type UnifiedSearchResults = {
+  query: string
+  work_packages: Group<SearchResultItem>
+  documents: Group<SearchDocumentItem>
+  meetings: Group<SearchMeetingItem>
+  cycles: Group<SearchNamedItem>
+  modules: Group<SearchNamedItem>
+  initiatives: Group<SearchInitiativeItem>
+}
+
+export function useUnifiedSearch(q: string) {
+  const query = q.trim()
+  return useQuery({
+    queryKey: ['unified-search', query],
+    queryFn: () => api<UnifiedSearchResults>(`/api/v1/search?q=${encodeURIComponent(query)}`),
+    // The server requires 2+ chars (load control) — don't fire a doomed request.
+    enabled: query.length >= 2,
+  })
+}

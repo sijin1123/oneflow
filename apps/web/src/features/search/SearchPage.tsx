@@ -1,5 +1,5 @@
 import { Search } from 'lucide-react'
-import { type FormEvent, useState } from 'react'
+import { type FormEvent, type ReactNode, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 
 import { EmptyState, ErrorState, ListSkeleton } from '@/components/shell/states'
@@ -8,15 +8,18 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { PriorityChip, StatusChip, TypeChip } from '@/features/work-packages/chips'
 
-import { type SearchResultItem, useSearch } from './api'
+import { useUnifiedSearch } from './api'
 
+/* Unified workspace search (Pass 14 PR-AE): grouped results across work
+   packages, documents, meetings, cycles, modules and initiatives. Route
+   contract per group is fixed in PLAN v14.1 R1-③. */
 export function SearchPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const q = searchParams.get('q') ?? ''
   const [input, setInput] = useState(q)
   const navigate = useNavigate()
 
-  const { data, isFetching, isError, error, refetch } = useSearch(q)
+  const { data, isFetching, isError, error, refetch } = useUnifiedSearch(q)
 
   const submit = (e: FormEvent) => {
     e.preventDefault()
@@ -29,14 +32,22 @@ export function SearchPage() {
     })
   }
 
-  const open = (item: SearchResultItem) => {
-    navigate(`/projects/${item.project_id}/work-packages?wp=${item.id}`)
-  }
+  const empty =
+    data &&
+    data.work_packages.returned === 0 &&
+    data.documents.returned === 0 &&
+    data.meetings.returned === 0 &&
+    data.cycles.returned === 0 &&
+    data.modules.returned === 0 &&
+    data.initiatives.returned === 0
 
   return (
-    <div className="mx-auto flex h-full max-w-3xl flex-col p-6">
+    <div className="mx-auto flex h-full max-w-3xl flex-col overflow-y-auto p-6">
       <h1 className="mb-1 text-base font-semibold">전체 검색</h1>
-      <p className="mb-4 text-xs text-of-muted">내가 속한 모든 프로젝트의 작업을 제목으로 검색합니다.</p>
+      <p className="mb-4 text-xs text-of-muted">
+        내가 속한 프로젝트의 작업·문서·회의·사이클·모듈·이니셔티브를 검색합니다. 문서·회의는
+        제목만 검색됩니다(2자 이상).
+      </p>
 
       <form onSubmit={submit} className="mb-4 flex items-center gap-2">
         <div className="relative flex-1">
@@ -47,7 +58,7 @@ export function SearchPage() {
           <Input
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder="작업 제목 검색"
+            placeholder="검색어 (2자 이상)"
             aria-label="전체 검색어"
             className="pl-8"
           />
@@ -57,41 +68,168 @@ export function SearchPage() {
         </Button>
       </form>
 
-      {!q ? (
-        <EmptyState title="검색어를 입력하세요" hint="여러 프로젝트에 걸쳐 작업을 찾을 수 있습니다." />
+      {q.trim().length < 2 ? (
+        <EmptyState title="검색어를 입력하세요" hint="2자 이상 입력하면 전체 워크스페이스를 검색합니다." />
       ) : isFetching ? (
         <ListSkeleton />
       ) : isError ? (
         <ErrorState error={error} onRetry={() => refetch()} />
-      ) : !data || data.total === 0 ? (
+      ) : !data || empty ? (
         <EmptyState title={`'${q}' 결과가 없습니다`} />
       ) : (
-        <>
-          <p className="mb-2 text-xs text-of-muted">{data.total}건</p>
-          <ul className="divide-y divide-of-border overflow-hidden rounded-of border border-of-border bg-of-surface">
-            {data.items.map((item) => (
-              <li key={item.id}>
-                <button
-                  type="button"
-                  onClick={() => open(item)}
-                  className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-of-surface-2"
-                >
-                  <Badge variant="neutral" className="shrink-0 font-mono">
-                    {item.project_key}
-                  </Badge>
-                  <TypeChip type={item.type} />
-                  <span className="min-w-0 flex-1 truncate text-sm font-medium">{item.subject}</span>
-                  <StatusChip status={item.status} />
-                  <PriorityChip priority={item.priority} />
-                  <span className="w-24 shrink-0 text-right text-xs text-of-muted">
-                    {item.due_date ?? '—'}
-                  </span>
-                </button>
-              </li>
+        <div className="space-y-5">
+          <GroupSection
+            title="작업"
+            returned={data.work_packages.returned}
+            truncated={data.work_packages.truncated}
+          >
+            {data.work_packages.items.map((item) => (
+              <ResultRow
+                key={item.id}
+                projectKey={item.project_key}
+                onClick={() => navigate(`/projects/${item.project_id}/work-packages?wp=${item.id}`)}
+              >
+                <TypeChip type={item.type} />
+                <span className="min-w-0 flex-1 truncate text-sm font-medium">{item.subject}</span>
+                <StatusChip status={item.status} />
+                <PriorityChip priority={item.priority} />
+              </ResultRow>
             ))}
-          </ul>
-        </>
+          </GroupSection>
+
+          <GroupSection
+            title="문서"
+            returned={data.documents.returned}
+            truncated={data.documents.truncated}
+          >
+            {data.documents.items.map((item) => (
+              <ResultRow
+                key={item.id}
+                projectKey={item.project_key}
+                onClick={() => navigate(`/projects/${item.project_id}/documents/${item.id}`)}
+              >
+                <span className="min-w-0 flex-1 truncate text-sm font-medium">{item.title}</span>
+              </ResultRow>
+            ))}
+          </GroupSection>
+
+          <GroupSection
+            title="회의"
+            returned={data.meetings.returned}
+            truncated={data.meetings.truncated}
+          >
+            {data.meetings.items.map((item) => (
+              <ResultRow
+                key={item.id}
+                projectKey={item.project_key}
+                onClick={() => navigate(`/projects/${item.project_id}/meetings/${item.id}`)}
+              >
+                <span className="min-w-0 flex-1 truncate text-sm font-medium">{item.title}</span>
+                <span className="shrink-0 text-xs text-of-muted">{item.scheduled_on ?? ''}</span>
+              </ResultRow>
+            ))}
+          </GroupSection>
+
+          <GroupSection
+            title="사이클"
+            returned={data.cycles.returned}
+            truncated={data.cycles.truncated}
+          >
+            {data.cycles.items.map((item) => (
+              <ResultRow
+                key={item.id}
+                projectKey={item.project_key}
+                onClick={() => navigate(`/projects/${item.project_id}/cycles`)}
+              >
+                <span className="min-w-0 flex-1 truncate text-sm font-medium">{item.name}</span>
+              </ResultRow>
+            ))}
+          </GroupSection>
+
+          <GroupSection
+            title="모듈"
+            returned={data.modules.returned}
+            truncated={data.modules.truncated}
+          >
+            {data.modules.items.map((item) => (
+              <ResultRow
+                key={item.id}
+                projectKey={item.project_key}
+                onClick={() => navigate(`/projects/${item.project_id}/modules`)}
+              >
+                <span className="min-w-0 flex-1 truncate text-sm font-medium">{item.name}</span>
+              </ResultRow>
+            ))}
+          </GroupSection>
+
+          <GroupSection
+            title="이니셔티브"
+            returned={data.initiatives.returned}
+            truncated={data.initiatives.truncated}
+          >
+            {data.initiatives.items.map((item) => (
+              <ResultRow key={item.id} onClick={() => navigate('/initiatives')}>
+                <span className="min-w-0 flex-1 truncate text-sm font-medium">{item.name}</span>
+                <span className="shrink-0 text-xs text-of-muted">{item.state}</span>
+              </ResultRow>
+            ))}
+          </GroupSection>
+        </div>
       )}
     </div>
+  )
+}
+
+function GroupSection({
+  title,
+  returned,
+  truncated,
+  children,
+}: {
+  title: string
+  returned: number
+  truncated: boolean
+  children: ReactNode
+}) {
+  if (returned === 0) return null
+  return (
+    <section aria-label={`${title} 결과`}>
+      <p className="mb-1.5 text-xs font-semibold text-of-muted">
+        {title} {returned}건
+        {truncated ? (
+          <span className="ml-1.5 font-normal">더 있음 — 검색어를 좁혀 주세요</span>
+        ) : null}
+      </p>
+      <ul className="divide-y divide-of-border overflow-hidden rounded-of border border-of-border bg-of-surface">
+        {children}
+      </ul>
+    </section>
+  )
+}
+
+function ResultRow({
+  projectKey,
+  onClick,
+  children,
+}: {
+  projectKey?: string
+  onClick: () => void
+  children: ReactNode
+}) {
+  return (
+    <li>
+      <button
+        type="button"
+        onClick={onClick}
+        className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-of-surface-2"
+      >
+        {projectKey ? (
+          <Badge variant="neutral" className="shrink-0 font-mono">
+            {projectKey}
+          </Badge>
+        ) : null}
+        {children}
+      </button>
+    </li>
   )
 }
