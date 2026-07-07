@@ -24,6 +24,8 @@ from app.schemas.work_package import (
     BulkUpdateRequest,
     BulkUpdateResult,
     ConflictResponse,
+    ProjectRelationList,
+    ProjectRelationRead,
     RelationCreate,
     RelationList,
     RelationRead,
@@ -653,6 +655,39 @@ def _conflict_response(current: WorkPackage) -> JSONResponse:
         current=WorkPackageRead.model_validate(current),
     )
     return JSONResponse(status_code=409, content=jsonable_encoder(payload))
+
+
+@router.get("/projects/{project_id}/relations", response_model=ProjectRelationList)
+async def list_project_relations(
+    project_id: uuid.UUID,
+    limit: int = Query(default=500, ge=1, le=1000),
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+) -> ProjectRelationList:
+    """Every relation in the project (member read) — the timeline draws
+    dependency connectors from this. Deterministic order, limit+1 truncation
+    probe (v20.1 R1-① — relations are few per WP; a hard 1000 cap bounds the
+    payload, revisit with pagination if projects outgrow it)."""
+    await require_member(session, project_id, user)
+    rows = (
+        (
+            await session.execute(
+                select(WorkPackageRelation)
+                .where(WorkPackageRelation.project_id == project_id)
+                .order_by(WorkPackageRelation.created_at.asc(), WorkPackageRelation.id.asc())
+                .limit(limit + 1)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    truncated = len(rows) > limit
+    rows = rows[:limit]
+    return ProjectRelationList(
+        items=[ProjectRelationRead.model_validate(r) for r in rows],
+        total=len(rows),
+        truncated=truncated,
+    )
 
 
 @router.get("/work-packages/{wp_id}/relations", response_model=RelationList)

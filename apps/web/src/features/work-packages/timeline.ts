@@ -94,3 +94,84 @@ export function monthLabel(idx: number): string {
   const d = indexToDate(idx)
   return `${d.getUTCFullYear()}.${String(d.getUTCMonth() + 1).padStart(2, '0')}`
 }
+
+
+export type ProjectRelation = {
+  id: string
+  source_id: string
+  target_id: string
+  relation_type: string
+}
+
+export type Connector = {
+  id: string
+  /** all coordinates in DAY indices (x) and ROW indices (y) — the renderer
+      converts x via pct() and y via rowHeight */
+  fromDay: number
+  fromRow: number
+  toDay: number
+  toRow: number
+  type: 'blocks' | 'precedes'
+}
+
+export type ConnectorModel = {
+  connectors: Connector[]
+  /** dependencies hidden because an endpoint has no schedule bar (v20.1 R1-④);
+      `relates` rows are NOT dependencies and are never counted */
+  omittedMissingSchedule: number
+}
+
+/** Dependency connectors between timeline bars (pure — Pass 20 PR-AL).
+    follows(A→B) normalizes to precedes(B→A); duplicate (source,target) pairs
+    keep blocks over precedes; both endpoints must have bars. */
+export function buildConnectors(
+  bars: TimelineBar[],
+  relations: ProjectRelation[],
+): ConnectorModel {
+  const rowOf = new Map<string, number>()
+  const barOf = new Map<string, TimelineBar>()
+  bars.forEach((b, i) => {
+    rowOf.set(b.wp.id, i)
+    barOf.set(b.wp.id, b)
+  })
+
+  type Norm = { id: string; source: string; target: string; type: 'blocks' | 'precedes' }
+  const normalized: Norm[] = []
+  for (const r of relations) {
+    if (r.relation_type === 'blocks' || r.relation_type === 'precedes') {
+      normalized.push({ id: r.id, source: r.source_id, target: r.target_id, type: r.relation_type })
+    } else if (r.relation_type === 'follows') {
+      // A follows B  ==  B precedes A (direction normalization — R1-②)
+      normalized.push({ id: r.id, source: r.target_id, target: r.source_id, type: 'precedes' })
+    }
+    // relates: direction-free, not a dependency — never drawn, never counted.
+  }
+
+  // Dedupe per (source,target): blocks wins over precedes (R1-⑤).
+  const byPair = new Map<string, Norm>()
+  for (const n of normalized) {
+    const key = `${n.source}→${n.target}`
+    const existing = byPair.get(key)
+    if (!existing || (existing.type === 'precedes' && n.type === 'blocks')) byPair.set(key, n)
+  }
+
+  const connectors: Connector[] = []
+  let omitted = 0
+  for (const n of byPair.values()) {
+    const from = barOf.get(n.source)
+    const to = barOf.get(n.target)
+    if (!from || !to) {
+      omitted += 1
+      continue
+    }
+    connectors.push({
+      id: n.id,
+      fromDay: from.endIdx + 1, // right edge of the source bar
+      fromRow: rowOf.get(n.source) as number,
+      toDay: to.startIdx,
+      toRow: rowOf.get(n.target) as number,
+      type: n.type,
+    })
+  }
+  return { connectors, omittedMissingSchedule: omitted }
+}

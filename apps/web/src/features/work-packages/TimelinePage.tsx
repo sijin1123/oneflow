@@ -7,8 +7,8 @@ import { todayISO } from '@/lib/datetime'
 import { cn } from '@/lib/utils'
 
 import { DetailDrawer } from './DetailDrawer'
-import { useWorkPackages } from './api'
-import { buildTimeline, dayIndex, monthLabel, pct, type TimelineBar } from './timeline'
+import { useProjectRelations, useWorkPackages } from './api'
+import { buildConnectors, buildTimeline, dayIndex, monthLabel, pct, type TimelineBar } from './timeline'
 import type { WpStatus } from './types'
 
 const STATUS_BAR: Record<WpStatus, string> = {
@@ -30,6 +30,7 @@ export function TimelinePage() {
   const [, setSearchParams] = useSearchParams()
   const { data, isPending, isError, error, refetch } = useWorkPackages(projectId, {})
   const milestones = useMilestones(projectId)
+  const relations = useProjectRelations(projectId)
 
   if (isPending) return <ListSkeleton />
   if (isError) return <ErrorState error={error} onRetry={() => refetch()} />
@@ -58,6 +59,13 @@ export function TimelinePage() {
       return next
     })
   }
+
+  // Row height is 32px (h-8); connector y = row*32 + 16 (bar centerline).
+  const { connectors, omittedMissingSchedule } = buildConnectors(
+    model.bars,
+    relations.data?.items ?? [],
+  )
+  const xPct = (day: number) => `${pct(day - model.rangeStart, model.totalDays)}%`
 
   const barStyle = (b: TimelineBar) => {
     const left = pct(b.startIdx - model.rangeStart, model.totalDays)
@@ -112,7 +120,51 @@ export function TimelinePage() {
             </div>
           </div>
 
-          {/* rows */}
+          {/* rows + dependency connector overlay (percent x / px y — the
+              overlay lives in the same scroll content as the bars) */}
+          <div className="relative">
+            <svg
+              aria-label="의존 연결선"
+              className="pointer-events-none absolute top-0 z-10 h-full"
+              style={{ left: LABEL_COL, width: `calc(100% - ${LABEL_COL}px)` }}
+            >
+              <defs>
+                <marker
+                  id="dep-arrow"
+                  markerWidth="6"
+                  markerHeight="6"
+                  refX="5"
+                  refY="3"
+                  orient="auto"
+                  markerUnits="strokeWidth"
+                >
+                  <path d="M0,0 L6,3 L0,6 z" className="fill-of-muted" />
+                </marker>
+              </defs>
+              {connectors.map((c) => {
+                const y1 = c.fromRow * 32 + 16
+                const y2 = c.toRow * 32 + 16
+                const x1 = xPct(c.fromDay)
+                const x2 = xPct(c.toDay)
+                const xm = `${(pct(c.fromDay - model.rangeStart, model.totalDays) + pct(c.toDay - model.rangeStart, model.totalDays)) / 2}%`
+                const cls = c.type === 'blocks' ? 'stroke-of-danger/70' : 'stroke-of-muted'
+                return (
+                  <g key={c.id} data-testid="dep-connector">
+                    <line x1={x1} y1={y1} x2={xm} y2={y1} className={cls} strokeWidth="1.5" />
+                    <line x1={xm} y1={y1} x2={xm} y2={y2} className={cls} strokeWidth="1.5" />
+                    <line
+                      x1={xm}
+                      y1={y2}
+                      x2={x2}
+                      y2={y2}
+                      className={cls}
+                      strokeWidth="1.5"
+                      markerEnd="url(#dep-arrow)"
+                    />
+                  </g>
+                )
+              })}
+            </svg>
           {model.bars.map((b) => (
             <div key={b.wp.id} className="flex items-center border-b border-of-border/60 hover:bg-of-surface-2/40">
               <button
@@ -156,6 +208,15 @@ export function TimelinePage() {
               </div>
             </div>
           ))}
+
+          </div>
+
+          {omittedMissingSchedule > 0 ? (
+            <p className="px-3 py-1.5 text-[11px] text-of-muted">
+              일정 미정으로 표시되지 않은 의존 {omittedMissingSchedule}건 (연관(relates)은 의존이
+              아니라 표시하지 않습니다)
+            </p>
+          ) : null}
 
           {model.undated.length > 0 ? (
             <div className="flex items-start gap-2 px-3 py-3 text-xs text-of-muted">

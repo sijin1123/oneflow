@@ -117,6 +117,10 @@ async function mockApi(page: Page, opts: { conflictOnPatch?: boolean } = {}) {
   await page.route('**/api/v1/work-packages/*/documents', (route) =>
     route.fulfill({ json: { items: [], total: 0 } }),
   )
+  // The timeline reads project-wide relations for dependency connectors.
+  await page.route('**/api/v1/projects/*/relations**', (route) =>
+    route.fulfill({ json: { items: [], total: 0, truncated: false } }),
+  )
   // The intake page reads the queue.
   await page.route('**/api/v1/projects/*/intake', (route) =>
     route.fulfill({ json: { items: [], total: 0 } }),
@@ -543,8 +547,23 @@ test('대시보드가 집계 타일과 분포를 보여준다', async ({ page })
 
 test('타임라인이 일정이 있는 작업을 막대로 그린다', async ({ page }) => {
   await mockApi(page)
+  // one drawable dependency + one whose endpoint has no bar (omitted note)
+  await page.route(`**/api/v1/projects/${project.id}/relations**`, (route) =>
+    route.fulfill({
+      json: {
+        items: [
+          { id: 'rel-1', source_id: wpA.id, target_id: wpB.id, relation_type: 'precedes' },
+          { id: 'rel-2', source_id: wpA.id, target_id: 'ghost-wp', relation_type: 'blocks' },
+        ],
+        total: 2,
+        truncated: false,
+      },
+    }),
+  )
   await page.goto(`/projects/${project.id}/timeline`)
   await expect(page.getByRole('button', { name: '워크패키지 API 구현 일정' })).toBeVisible()
+  await expect(page.getByTestId('dep-connector')).toHaveCount(1)
+  await expect(page.getByText('일정 미정으로 표시되지 않은 의존 1건', { exact: false })).toBeVisible()
   await expect(page.getByText('2026.07')).toBeVisible() // month header from start/due dates
 })
 

@@ -71,3 +71,32 @@ async def test_project_feed_filters_truncated_and_scope(client, seeded, foreign_
     assert (await client.get(f"{base}?action=nope")).status_code == 422
     foreign_pid = str(foreign_project["project_id"])
     assert (await client.get(f"/api/v1/projects/{foreign_pid}/activities")).status_code == 404
+
+
+async def test_project_relations_listing(client, seeded, foreign_project):
+    """Pass 20 PR-AL: project-wide relation list feeds timeline connectors."""
+    pid = seeded["pid"]
+    a = seeded["wp_id"]
+    from tests.conftest import create_wp
+
+    b = (await create_wp(client, pid, subject="후속 작업"))["id"]
+    res = await client.post(
+        f"/api/v1/work-packages/{a}/relations",
+        json={"target_id": b, "relation_type": "precedes"},
+    )
+    assert res.status_code == 201, res.text
+
+    listed = (await client.get(f"/api/v1/projects/{pid}/relations")).json()
+    assert listed["total"] == 1
+    assert listed["truncated"] is False
+    row = listed["items"][0]
+    assert (row["source_id"], row["target_id"], row["relation_type"]) == (a, b, "precedes")
+
+    # limit+1 probe and existence hiding.
+    await client.post(
+        f"/api/v1/work-packages/{a}/relations", json={"target_id": b, "relation_type": "blocks"}
+    )
+    probe = (await client.get(f"/api/v1/projects/{pid}/relations?limit=1")).json()
+    assert (probe["total"], probe["truncated"]) == (1, True)
+    foreign_pid = str(foreign_project["project_id"])
+    assert (await client.get(f"/api/v1/projects/{foreign_pid}/relations")).status_code == 404
