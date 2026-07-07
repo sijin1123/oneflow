@@ -6,14 +6,17 @@ import { formatDateTime } from '@/lib/datetime'
 
 import { FIELD_LABELS } from './activityLabels'
 import { useActivities, useComments, useCreateComment } from './api'
+import type { CommentThread } from './comments'
+import { groupThreads } from './comments'
 import { PRIORITY_LABELS, TYPE_LABELS } from './types'
 import type { Activity, Comment } from './types'
 import { useStatusLabels } from './useStatusLabels'
 
-/** Merge activities and comments into one chronological feed. */
+/** Merge activities and comment THREADS into one chronological feed — a thread
+    sorts by its root, replies stay beneath it (PLAN v10.1 R1-⑦). */
 type FeedItem =
   | { kind: 'activity'; at: string; activity: Activity }
-  | { kind: 'comment'; at: string; comment: Comment }
+  | { kind: 'thread'; at: string; thread: CommentThread }
 
 export function HistorySection({ wpId, projectId }: { wpId: string; projectId: string }) {
   const activities = useActivities(wpId)
@@ -21,6 +24,8 @@ export function HistorySection({ wpId, projectId }: { wpId: string; projectId: s
   const createComment = useCreateComment(wpId)
   const statusLabel = useStatusLabels(projectId)
   const [draft, setDraft] = useState('')
+  const [replyTo, setReplyTo] = useState<string | null>(null)
+  const [replyDraft, setReplyDraft] = useState('')
 
   const labelValue = (field: string | null, value: string | null): string => {
     if (value === null) return '없음'
@@ -41,18 +46,57 @@ export function HistorySection({ wpId, projectId }: { wpId: string; projectId: s
     ...(activities.data?.items ?? []).map(
       (a): FeedItem => ({ kind: 'activity', at: a.created_at, activity: a }),
     ),
-    ...(comments.data?.items ?? []).map(
-      (c): FeedItem => ({ kind: 'comment', at: c.created_at, comment: c }),
+    ...groupThreads(comments.data?.items ?? []).map(
+      (t): FeedItem => ({ kind: 'thread', at: t.root.created_at, thread: t }),
     ),
   ].sort((x, y) => x.at.localeCompare(y.at))
 
   const submit = () => {
     const body = draft.trim()
     if (!body) return
-    createComment.mutate(body, { onSuccess: () => setDraft('') })
+    createComment.mutate({ body }, { onSuccess: () => setDraft('') })
+  }
+
+  const submitReply = (rootId: string) => {
+    const body = replyDraft.trim()
+    if (!body) return
+    createComment.mutate(
+      { body, parent_id: rootId },
+      {
+        onSuccess: () => {
+          setReplyDraft('')
+          setReplyTo(null)
+        },
+      },
+    )
   }
 
   const pending = activities.isPending || comments.isPending
+
+  const commentBox = (c: Comment, isReply: boolean) => (
+    <div
+      className={`rounded-of border border-of-border bg-of-surface-2/40 px-2.5 py-2 ${
+        isReply ? 'ml-5' : ''
+      }`}
+    >
+      <p className="whitespace-pre-wrap text-[13px]">{c.body}</p>
+      <p className="mt-1 flex items-center gap-2 text-[11px] text-of-muted">
+        {formatDateTime(c.created_at)}
+        {!isReply ? (
+          <button
+            type="button"
+            className="rounded-of px-1 py-0.5 hover:bg-of-surface-2 hover:text-of-fg"
+            onClick={() => {
+              setReplyTo((prev) => (prev === c.id ? null : c.id))
+              setReplyDraft('')
+            }}
+          >
+            답글
+          </button>
+        ) : null}
+      </p>
+    </div>
+  )
 
   return (
     <section aria-label="활동 및 댓글" className="space-y-3 border-t border-of-border pt-3">
@@ -65,13 +109,30 @@ export function HistorySection({ wpId, projectId }: { wpId: string; projectId: s
       ) : (
         <ul className="space-y-2">
           {feed.map((item) =>
-            item.kind === 'comment' ? (
-              <li
-                key={`c-${item.comment.id}`}
-                className="rounded-of border border-of-border bg-of-surface-2/40 px-2.5 py-2"
-              >
-                <p className="whitespace-pre-wrap text-[13px]">{item.comment.body}</p>
-                <p className="mt-1 text-[11px] text-of-muted">{formatDateTime(item.comment.created_at)}</p>
+            item.kind === 'thread' ? (
+              <li key={`c-${item.thread.root.id}`} className="space-y-1.5">
+                {commentBox(item.thread.root, false)}
+                {item.thread.replies.map((r) => (
+                  <div key={r.id}>{commentBox(r, true)}</div>
+                ))}
+                {replyTo === item.thread.root.id ? (
+                  <div className="ml-5 space-y-1.5">
+                    <Textarea
+                      value={replyDraft}
+                      onChange={(e) => setReplyDraft(e.target.value)}
+                      placeholder="답글을 입력하세요"
+                      aria-label="답글 입력"
+                      className="min-h-12"
+                    />
+                    <Button
+                      size="sm"
+                      onClick={() => submitReply(item.thread.root.id)}
+                      disabled={createComment.isPending || !replyDraft.trim()}
+                    >
+                      답글 추가
+                    </Button>
+                  </div>
+                ) : null}
               </li>
             ) : (
               <li key={`a-${item.activity.id}`} className="flex gap-2 px-1 text-xs text-of-muted">

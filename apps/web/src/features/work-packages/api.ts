@@ -227,10 +227,10 @@ export function useActivities(wpId: string | null) {
 export function useCreateComment(wpId: string) {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (body: string) =>
+    mutationFn: (input: { body: string; parent_id?: string | null }) =>
       api<Comment>(`/api/v1/work-packages/${wpId}/comments`, {
         method: 'POST',
-        body: JSON.stringify({ body }),
+        body: JSON.stringify(input),
       }),
     onSuccess: () => {
       // A comment also appends a 'commented' activity — refresh both.

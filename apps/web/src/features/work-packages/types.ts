@@ -83,6 +83,8 @@ export type ConflictBody = {
 export type Comment = {
   id: string
   work_package_id: string
+  /** set on replies — always references a ROOT comment (single-level threads) */
+  parent_id: string | null
   author_id: string | null
   body: string
   created_at: string
