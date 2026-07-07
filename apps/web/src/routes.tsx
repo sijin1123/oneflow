@@ -3,6 +3,7 @@ import { Navigate, createBrowserRouter } from 'react-router-dom'
 import { AppShell } from '@/components/shell/AppShell'
 import { NotFound, RouteError } from '@/components/shell/RouteError'
 import { FilesPage } from '@/features/attachments/FilesPage'
+import { InitiativesPage } from '@/features/initiatives/InitiativesPage'
 import { IntakePage } from '@/features/intake/IntakePage'
 import { DashboardPage } from '@/features/dashboard/DashboardPage'
 import { DocumentEditorPage } from '@/features/documents/DocumentEditorPage'
@@ -31,6 +32,7 @@ export const router = createBrowserRouter([
     children: [
       { index: true, element: <Navigate to="/projects" replace /> },
       { path: 'my', element: <MyWorkPage /> },
+      { path: 'initiatives', element: <InitiativesPage /> },
       { path: 'projects', element: <ProjectsPage /> },
       { path: 'search', element: <SearchPage /> },
       { path: 'projects/:projectId/work-packages', element: <ListPage /> },

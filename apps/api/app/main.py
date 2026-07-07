@@ -17,6 +17,7 @@ from app.api.v1 import (
     dashboard,
     documents,
     health,
+    initiatives,
     intake,
     me,
     meetings,
@@ -117,6 +118,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(watchers.router, prefix="/api/v1", tags=["watchers"])
     app.include_router(intake.router, prefix="/api/v1", tags=["intake"])
     app.include_router(custom_fields.router, prefix="/api/v1", tags=["custom-fields"])
+    app.include_router(initiatives.router, prefix="/api/v1", tags=["initiatives"])
     return app
 
 

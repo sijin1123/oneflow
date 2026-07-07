@@ -6,6 +6,7 @@ from app.models.cost_entry import CostEntry
 from app.models.custom_field import CustomField, WpCustomValue
 from app.models.cycle import Cycle
 from app.models.document import ProjectDocument
+from app.models.initiative import Initiative, InitiativeProject
 from app.models.intake import IntakeItem
 from app.models.meeting import Meeting, MeetingActionItem
 from app.models.member import ProjectMember
@@ -48,4 +49,6 @@ __all__ = [
     "IntakeItem",
     "CustomField",
     "WpCustomValue",
+    "Initiative",
+    "InitiativeProject",
 ]

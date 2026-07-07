@@ -1,5 +1,6 @@
 import {
   Boxes,
+  Compass,
   ClipboardList,
   CalendarClock,
   IterationCcw,
@@ -50,6 +51,9 @@ export function Sidebar() {
           </NavLink>
           <NavLink to="/projects" end className={navLinkClass}>
             <FolderKanban /> 프로젝트
+          </NavLink>
+          <NavLink to="/initiatives" className={navLinkClass}>
+            <Compass /> 이니셔티브
           </NavLink>
           <NavLink to="/search" className={navLinkClass}>
             <Search /> 검색
