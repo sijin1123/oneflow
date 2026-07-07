@@ -1,4 +1,5 @@
 import { CalendarRange, Flag } from 'lucide-react'
+import { useState } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
 
 import { EmptyState, ErrorState, ListSkeleton } from '@/components/shell/states'
@@ -8,7 +9,18 @@ import { cn } from '@/lib/utils'
 
 import { DetailDrawer } from './DetailDrawer'
 import { useProjectRelations, useWorkPackages } from './api'
-import { buildConnectors, buildTimeline, dayIndex, monthLabel, pct, type TimelineBar } from './timeline'
+import {
+  buildConnectors,
+  buildTimeline,
+  contentWidth,
+  dayIndex,
+  monthLabel,
+  pct,
+  type TimelineBar,
+  type ZoomLevel,
+  ZOOM_LABELS,
+  ZOOM_LEVELS,
+} from './timeline'
 import type { WpStatus } from './types'
 
 const STATUS_BAR: Record<WpStatus, string> = {
@@ -21,6 +33,26 @@ const STATUS_BAR: Record<WpStatus, string> = {
 }
 
 const LABEL_COL = 220 // px
+const ZOOM_STORAGE_KEY = 'oneflow.timeline.zoom.v1'
+
+/** Broken/unknown stored values fall back to 'fit' — a corrupted preference
+    must never break the page (#97 contract). */
+function loadZoom(): ZoomLevel {
+  try {
+    const raw = localStorage.getItem(ZOOM_STORAGE_KEY)
+    return ZOOM_LEVELS.includes(raw as ZoomLevel) ? (raw as ZoomLevel) : 'fit'
+  } catch {
+    return 'fit'
+  }
+}
+
+function saveZoom(zoom: ZoomLevel) {
+  try {
+    localStorage.setItem(ZOOM_STORAGE_KEY, zoom)
+  } catch {
+    // private mode / quota — keep the in-memory state only
+  }
+}
 
 /* Lightweight, license-free schedule/timeline (PLAN §12: no GPL/AGPL Gantt lib).
    Read-only positioning from work package start/due dates; drag/resize/deps are
@@ -31,6 +63,11 @@ export function TimelinePage() {
   const { data, isPending, isError, error, refetch } = useWorkPackages(projectId, {})
   const milestones = useMilestones(projectId)
   const relations = useProjectRelations(projectId)
+  const [zoom, setZoom] = useState<ZoomLevel>(loadZoom)
+  const changeZoom = (next: ZoomLevel) => {
+    setZoom(next)
+    saveZoom(next)
+  }
 
   if (isPending) return <ListSkeleton />
   if (isError) return <ErrorState error={error} onRetry={() => refetch()} />
@@ -80,8 +117,36 @@ export function TimelinePage() {
 
   return (
     <div className="flex h-full flex-col">
+      <div className="flex items-center gap-1.5 border-b border-of-border px-4 py-1.5 text-xs text-of-muted">
+        <span>줌</span>
+        {ZOOM_LEVELS.map((z) => (
+          <button
+            key={z}
+            type="button"
+            aria-pressed={zoom === z}
+            className={`rounded-of border px-1.5 py-0.5 ${
+              zoom === z
+                ? 'border-of-accent bg-of-accent-soft text-of-accent'
+                : 'border-of-border hover:bg-of-surface-2'
+            }`}
+            onClick={() => changeZoom(z)}
+          >
+            {ZOOM_LABELS[z]}
+          </button>
+        ))}
+      </div>
       <div className="min-w-0 flex-1 overflow-auto">
-        <div className="min-w-[900px]">
+        <div
+          data-testid="timeline-content"
+          className={zoom === 'fit' ? 'min-w-[900px]' : undefined}
+          // Fixed zooms set an explicit px width (+ the label column);
+          // percent positioning inside is unchanged.
+          style={
+            zoom === 'fit'
+              ? undefined
+              : { width: (contentWidth(model.totalDays, zoom) as number) + LABEL_COL }
+          }
+        >
           {/* month header */}
           <div className="sticky top-0 z-10 flex border-b border-of-border bg-of-surface">
             <div className="shrink-0 border-r border-of-border px-3 py-2 text-xs font-medium text-of-muted" style={{ width: LABEL_COL }}>
