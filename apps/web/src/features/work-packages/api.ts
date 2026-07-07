@@ -261,6 +261,30 @@ export function useDuplicateWorkPackage(projectId: string) {
   })
 }
 
+export type BulkUpdateResult = {
+  updated_ids: string[]
+  unchanged_ids: string[]
+  /** opaque — missing and cross-project ids look identical (existence hiding) */
+  skipped_ids: string[]
+}
+
+export function useBulkUpdate(projectId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (input: {
+      ids: string[]
+      patch: { status?: string; assignee_id?: string | null; priority?: string }
+    }) =>
+      api<BulkUpdateResult>(`/api/v1/projects/${projectId}/work-packages/bulk-update`, {
+        method: 'POST',
+        body: JSON.stringify(input),
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['work-packages', projectId] })
+    },
+  })
+}
+
 export function useCreateWorkPackage(projectId: string) {
   const queryClient = useQueryClient()
   return useMutation({

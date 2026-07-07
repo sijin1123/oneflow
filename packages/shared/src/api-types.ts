@@ -1109,6 +1109,35 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{project_id}/work-packages/bulk-update": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Bulk Update Work Packages
+         * @description Bulk simple-assignment update (Pass 12 PR-AB, PLAN v12.1 R1-①②⑥).
+         *
+         *     Single transaction, all-or-nothing over the rows found: SELECT..FOR UPDATE
+         *     the project-scoped rows, validate the uniform patch ONCE up front (422
+         *     before any write), then per row: snapshot old values, skip unchanged rows,
+         *     assign + version+1, record field changes and assignment notifications for
+         *     real changes only. ids not found in this project return as opaque
+         *     skipped_ids (missing and cross-project look identical — existence hiding).
+         *     Deliberate §6.2 exception: no per-row version token (simple assignments,
+         *     list-scale cleanup; the drawer's precision PATCH keeps the token).
+         */
+        post: operations["bulk_update_work_packages_api_v1_projects__project_id__work_packages_bulk_update_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{project_id}/work-packages/export.csv": {
         parameters: {
             query?: never;
@@ -1694,6 +1723,38 @@ export interface components {
             count: number;
             /** Key */
             key: string;
+        };
+        /**
+         * BulkPatch
+         * @description Uniform patch for bulk-update — simple assignments only (v12.1: the
+         *     deliberate §6.2 exception; drawer precision edits keep the version token).
+         */
+        BulkPatch: {
+            /** Assignee Id */
+            assignee_id?: string | null;
+            /** Priority */
+            priority?: string | null;
+            /** Status */
+            status?: string | null;
+        };
+        /** BulkUpdateRequest */
+        BulkUpdateRequest: {
+            /** Ids */
+            ids: string[];
+            patch: components["schemas"]["BulkPatch"];
+        };
+        /**
+         * BulkUpdateResult
+         * @description skipped_ids is deliberately opaque (missing / cross-project / whatever —
+         *     existence hiding, v12.1 R1-③); unchanged rows are reported, not re-written.
+         */
+        BulkUpdateResult: {
+            /** Skipped Ids */
+            skipped_ids: string[];
+            /** Unchanged Ids */
+            unchanged_ids: string[];
+            /** Updated Ids */
+            updated_ids: string[];
         };
         /** CommentCreate */
         CommentCreate: {
@@ -6184,6 +6245,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["WorkPackageRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    bulk_update_work_packages_api_v1_projects__project_id__work_packages_bulk_update_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BulkUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BulkUpdateResult"];
                 };
             };
             /** @description Validation Error */

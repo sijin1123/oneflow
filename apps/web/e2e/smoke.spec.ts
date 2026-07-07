@@ -368,6 +368,31 @@ test('드로어 복제 버튼이 duplicate POST를 보내고 결과를 알린다
   await expect(drawer.getByText('복사되지 않은 커스텀 값 2건', { exact: false })).toBeVisible()
 })
 
+test('목록 일괄 변경: 선택한 작업에 상태를 적용하고 payload를 보낸다', async ({ page }) => {
+  await mockApi(page)
+  await page.route(`**/api/v1/projects/${project.id}/work-packages/bulk-update`, (route) =>
+    route.fulfill({
+      json: { updated_ids: [wpA.id, wpB.id], unchanged_ids: [], skipped_ids: [] },
+    }),
+  )
+
+  await page.goto(`/projects/${project.id}/work-packages`)
+  await page.getByLabel('워크패키지 API 구현 선택').check()
+  await page.getByLabel('보드 뷰 구현 선택').check()
+  await expect(page.getByText('2건 선택')).toBeVisible()
+
+  await page.getByLabel('일괄 상태').selectOption('done')
+  const post = page.waitForRequest(
+    (r) => r.method() === 'POST' && r.url().includes('/work-packages/bulk-update'),
+  )
+  await page.getByRole('button', { name: '적용' }).click()
+  const sent = (await post).postDataJSON() as { ids: string[]; patch: { status: string } }
+  expect(sent.ids.sort()).toEqual([wpA.id, wpB.id].sort())
+  expect(sent.patch).toEqual({ status: 'done' })
+  // Selection clears after a successful apply.
+  await expect(page.getByText('2건 선택')).toBeHidden()
+})
+
 test('댓글 멘션: 멤버 체크 후 작성하면 mentioned_user_ids를 보낸다', async ({ page }) => {
   await mockApi(page)
   await page.goto(`/projects/${project.id}/work-packages`)

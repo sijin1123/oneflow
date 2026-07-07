@@ -183,6 +183,51 @@ class WorkPackageList(BaseModel):
     total: int
 
 
+class BulkPatch(BaseModel):
+    """Uniform patch for bulk-update — simple assignments only (v12.1: the
+    deliberate §6.2 exception; drawer precision edits keep the version token)."""
+
+    status: str | None = None
+    assignee_id: uuid.UUID | None = None
+    priority: str | None = None
+
+    @field_validator("status")
+    @classmethod
+    def _status(cls, v: str | None) -> str | None:
+        if v is not None and v not in WP_STATUSES:
+            raise ValueError(f"status must be one of {WP_STATUSES}")
+        return v
+
+    @field_validator("priority")
+    @classmethod
+    def _priority(cls, v: str | None) -> str | None:
+        if v is not None and v not in WP_PRIORITIES:
+            raise ValueError(f"priority must be one of {WP_PRIORITIES}")
+        return v
+
+
+class BulkUpdateRequest(BaseModel):
+    ids: list[uuid.UUID]
+    patch: BulkPatch
+
+    @field_validator("ids")
+    @classmethod
+    def _ids(cls, v: list[uuid.UUID]) -> list[uuid.UUID]:
+        deduped = list(dict.fromkeys(v))
+        if not 1 <= len(deduped) <= 100:
+            raise ValueError("ids must contain 1-100 unique work package ids")
+        return deduped
+
+
+class BulkUpdateResult(BaseModel):
+    """skipped_ids is deliberately opaque (missing / cross-project / whatever —
+    existence hiding, v12.1 R1-③); unchanged rows are reported, not re-written."""
+
+    updated_ids: list[uuid.UUID]
+    unchanged_ids: list[uuid.UUID]
+    skipped_ids: list[uuid.UUID]
+
+
 class WorkPackageDuplicateResult(BaseModel):
     """Duplicate response: the new WP plus how many custom values did NOT copy
     (inactive/unbound field, stale option or ex-member value — v12.1 R1-④)."""
