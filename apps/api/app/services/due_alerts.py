@@ -63,9 +63,11 @@ _COUNT = _INSERT.replace(
 
 async def run(create: bool) -> dict[str, int] | None:
     """None when another run holds the lock; else per-kind counts."""
-    from datetime import UTC, datetime, timedelta
+    from datetime import timedelta
 
-    today = datetime.now(UTC).date()
+    from app.core.dates import utc_today
+
+    today = utc_today()
     targets = {
         "due_soon": today + timedelta(days=1),
         "overdue": today - timedelta(days=1),  # first day overdue only (R1-①)

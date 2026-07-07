@@ -1,5 +1,5 @@
 import uuid
-from datetime import date, timedelta
+from datetime import timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy import func, select
@@ -7,6 +7,7 @@ from sqlalchemy import update as sa_update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import get_current_user
+from app.core.dates import utc_today
 from app.db.session import get_session
 from app.models.activity import Activity
 from app.models.member import ProjectMember
@@ -101,8 +102,8 @@ async def my_work(
         )
     ).all()
 
-    # Same convention as the dashboard's overdue computation: server-local date.
-    today = date.today()
+    # UTC boundary (v21.1 — unified in Pass 46; was server-local).
+    today = utc_today()
     due_rows = (
         await session.execute(
             assigned_stmt().where(

@@ -5,12 +5,13 @@ Covers the validator-required contract: membership evaluated at query time
 shared completion policy excludes closed items, due-soon boundaries, and the
 hard list caps."""
 
-from datetime import date, timedelta
+from datetime import timedelta
 
 import pytest
 from sqlalchemy import delete, select
 
 from app.core.auth import DEV_USER_EMAIL
+from app.core.dates import utc_today
 from app.models import Project, ProjectMember, User, WorkPackage
 from tests.conftest import create_project, create_wp
 
@@ -31,7 +32,7 @@ async def home(client):
     """One member project with a mix of assigned/unassigned/closed items."""
     me = await _dev_id(client)
     project = await create_project(client, key="HOME", name="홈 프로젝트")
-    today = date.today()
+    today = utc_today()  # the endpoint's boundary is UTC (Pass 46)
     wps = {
         "due_tomorrow": await create_wp(
             client,

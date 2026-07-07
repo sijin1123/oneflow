@@ -1,5 +1,5 @@
 import uuid
-from datetime import UTC, date, datetime
+from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import BaseModel
@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import get_current_user
 from app.core.authz import require_member, require_role
+from app.core.dates import utc_today
 from app.db.session import get_session
 from app.models.activity import Activity
 from app.models.cycle import Cycle
@@ -93,7 +94,7 @@ async def list_cycles(
         .all()
     )
     counts = await _counts(session, project_id)
-    today = date.today()
+    today = utc_today()
     items = [_read(c, today, *counts.get(c.id, (0, 0))) for c in rows]
     return CycleList(items=items, total=len(items))
 
@@ -115,7 +116,7 @@ async def create_cycle(
     )
     session.add(c)
     await session.commit()
-    return _read(c, date.today(), 0, 0)
+    return _read(c, utc_today(), 0, 0)
 
 
 @router.patch("/projects/{project_id}/cycles/{cycle_id}", response_model=CycleRead)
@@ -143,7 +144,7 @@ async def update_cycle(
     await session.commit()
     await session.refresh(c)  # onupdate updated_at is server-computed
     counts = await _counts(session, project_id)
-    return _read(c, date.today(), *counts.get(c.id, (0, 0)))
+    return _read(c, utc_today(), *counts.get(c.id, (0, 0)))
 
 
 @router.delete("/projects/{project_id}/cycles/{cycle_id}", status_code=204)
@@ -246,7 +247,7 @@ async def cycle_burndown(
     # UTC date-only per the v21.1 contract — date.today() is the SERVER's
     # local zone and shifts the series at midnight boundaries (found when the
     # local date rolled past UTC).
-    today = datetime.now(UTC).date()
+    today = utc_today()
     end = min(cycle.end_date, today)
     if not wps or end < cycle.start_date:
         return BurndownRead(scope="current_assignment", total_scope=len(wps), days=[])

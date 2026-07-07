@@ -11,10 +11,11 @@ import pytest
 from sqlalchemy import select, text
 from sqlalchemy.exc import IntegrityError
 
+from app.core.dates import utc_today
 from app.models import WorkPackage
 from tests.conftest import create_project, create_wp
 
-TODAY = date.today()
+TODAY = utc_today()  # derived status boundaries are UTC (Pass 46)
 
 
 def _iso(d: date) -> str:

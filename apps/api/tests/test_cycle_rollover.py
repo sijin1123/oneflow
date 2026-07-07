@@ -4,13 +4,14 @@ Contract: owner-only single-statement move of OPEN items; closed items stay;
 reversible by rolling back the other way; target is validated as request data
 (422); archive/membership gates apply."""
 
-from datetime import date, timedelta
+from datetime import timedelta
 
 import pytest
 
+from app.core.dates import utc_today
 from tests.conftest import create_project, create_wp
 
-TODAY = date.today()
+TODAY = utc_today()  # cycle boundaries are UTC (Pass 46)
 
 
 async def make_cycle(client, pid, name, start_offset, end_offset):
