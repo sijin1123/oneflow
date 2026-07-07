@@ -302,7 +302,10 @@ export function useToggleReaction(wpId: string) {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: ({ commentId, key, on }: { commentId: string; key: string; on: boolean }) =>
-      api(`/api/v1/comments/${commentId}/reactions/${key}`, { method: on ? 'PUT' : 'DELETE' }),
+      // encodeURIComponent: a raw '#' (keycap #⃣) would start a URL fragment.
+      api(`/api/v1/comments/${commentId}/reactions/${encodeURIComponent(key)}`, {
+        method: on ? 'PUT' : 'DELETE',
+      }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['work-package-comments', wpId] })
     },

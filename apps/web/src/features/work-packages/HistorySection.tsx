@@ -9,7 +9,7 @@ import { FIELD_LABELS } from './activityLabels'
 import { useActivities, useComments, useCreateComment, useToggleReaction } from './api'
 import type { CommentThread } from './comments'
 import { groupThreads } from './comments'
-import { PRIORITY_LABELS, REACTION_EMOJI, TYPE_LABELS } from './types'
+import { PRIORITY_LABELS, QUICK_REACTIONS, TYPE_LABELS } from './types'
 import type { Activity, Comment } from './types'
 import { useStatusLabels } from './useStatusLabels'
 
@@ -18,6 +18,63 @@ import { useStatusLabels } from './useStatusLabels'
 type FeedItem =
   | { kind: 'activity'; at: string; activity: Activity }
   | { kind: 'thread'; at: string; thread: CommentThread }
+
+/* Free-emoji entry (Pass 35): a tiny inline input — the server enforces the
+   single-grapheme grammar (422), so the client stays permissive. */
+function FreeReactionInput({
+  disabled,
+  onAdd,
+}: {
+  disabled: boolean
+  onAdd: (emoji: string) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const [value, setValue] = useState('')
+  const submit = () => {
+    const emoji = value.trim()
+    if (!emoji) return
+    onAdd(emoji)
+    setValue('')
+    setOpen(false)
+  }
+  if (!open) {
+    return (
+      <button
+        type="button"
+        aria-label="이모지 추가"
+        className="rounded-full border border-of-border px-1.5 py-0.5 text-[11px] text-of-muted hover:bg-of-surface-2"
+        onClick={() => setOpen(true)}
+      >
+        ➕
+      </button>
+    )
+  }
+  return (
+    <span className="flex items-center gap-1">
+      <input
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') submit()
+          if (e.key === 'Escape') setOpen(false)
+        }}
+        placeholder="😀"
+        aria-label="자유 이모지 입력"
+        className="h-6 w-14 rounded-of border border-of-border bg-of-surface px-1 text-center text-[12px]"
+        maxLength={16}
+      />
+      <button
+        type="button"
+        aria-label="이모지 등록"
+        disabled={disabled || !value.trim()}
+        className="rounded-of border border-of-border px-1.5 py-0.5 text-[11px] text-of-muted hover:bg-of-surface-2 disabled:opacity-50"
+        onClick={submit}
+      >
+        추가
+      </button>
+    </span>
+  )
+}
 
 export function HistorySection({ wpId, projectId }: { wpId: string; projectId: string }) {
   const activities = useActivities(wpId)
@@ -112,29 +169,37 @@ export function HistorySection({ wpId, projectId }: { wpId: string; projectId: s
         </p>
       ) : null}
       <p className="mt-1 flex flex-wrap items-center gap-1">
-        {Object.entries(REACTION_EMOJI).map(([key, glyph]) => {
-          const agg = c.reactions.find((r) => r.key === key)
-          const count = agg?.count ?? 0
-          const me = agg?.me ?? false
-          return (
-            <button
-              key={key}
-              type="button"
-              aria-label={`${key} 리액션`}
-              aria-pressed={me}
-              className={`rounded-full border px-1.5 py-0.5 text-[11px] ${
-                me
-                  ? 'border-of-accent bg-of-accent-soft text-of-accent'
-                  : 'border-of-border text-of-muted hover:bg-of-surface-2'
-              } ${count === 0 && !me ? 'opacity-60' : ''}`}
-              disabled={toggleReaction.isPending}
-              onClick={() => toggleReaction.mutate({ commentId: c.id, key, on: !me })}
-            >
-              {glyph}
-              {count > 0 ? ` ${count}` : ''}
-            </button>
-          )
-        })}
+        {/* Open set (Pass 35): existing aggregates first, then quick-pick
+            glyphs not yet present, then free input. */}
+        {[
+          ...c.reactions,
+          ...QUICK_REACTIONS.filter((g) => !c.reactions.some((r) => r.key === g)).map((g) => ({
+            key: g,
+            count: 0,
+            me: false,
+          })),
+        ].map(({ key, count, me }) => (
+          <button
+            key={key}
+            type="button"
+            aria-label={`${key} 리액션`}
+            aria-pressed={me}
+            className={`rounded-full border px-1.5 py-0.5 text-[11px] ${
+              me
+                ? 'border-of-accent bg-of-accent-soft text-of-accent'
+                : 'border-of-border text-of-muted hover:bg-of-surface-2'
+            } ${count === 0 && !me ? 'opacity-60' : ''}`}
+            disabled={toggleReaction.isPending}
+            onClick={() => toggleReaction.mutate({ commentId: c.id, key, on: !me })}
+          >
+            {key}
+            {count > 0 ? ` ${count}` : ''}
+          </button>
+        ))}
+        <FreeReactionInput
+          disabled={toggleReaction.isPending}
+          onAdd={(emoji) => toggleReaction.mutate({ commentId: c.id, key: emoji, on: true })}
+        />
       </p>
       <p className="mt-1 flex items-center gap-2 text-[11px] text-of-muted">
         {formatDateTime(c.created_at)}

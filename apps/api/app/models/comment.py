@@ -59,19 +59,31 @@ class WorkPackageComment(Base):
     )
 
 
-REACTION_KEYS = ("thumbs_up", "thumbs_down", "tada", "heart", "smile", "confused")
+# Legacy Pass-17 keys, accepted forever on the wire and normalized to glyphs
+# (v35.1 R1-④ — old clients keep working; storage holds glyphs only).
+LEGACY_REACTION_KEYS = {
+    "thumbs_up": "👍",
+    "thumbs_down": "👎",
+    "tada": "🎉",
+    "heart": "❤️",
+    "smile": "😄",
+    "confused": "😕",
+}
 
 
 class CommentReaction(Base):
-    """Emoji reaction as a STABLE KEY (Pass 17 — no Unicode in API/DB; the web
-    maps keys to glyphs). Ephemeral social signal: CASCADEs with both the
-    comment and the user (deliberately unlike authorship/mentions — R1-⑤)."""
+    """Free-emoji reaction stored as the glyph itself (Pass 35 revised the
+    Pass-17 stable-key rule: an OPEN set cannot be key-mapped). The DB CHECK
+    is a coarse shape backstop; app.services.emoji is the full grammar.
+    Ephemeral social signal: CASCADEs with both the comment and the user."""
 
     __tablename__ = "comment_reactions"
     __table_args__ = (
         CheckConstraint(
-            "emoji IN ('thumbs_up', 'thumbs_down', 'tada', 'heart', 'smile', 'confused')",
-            name="emoji_allowed",
+            "char_length(emoji) BETWEEN 1 AND 16"
+            " AND emoji ~ '[^\x01-\x7f]'"
+            " AND emoji !~ '[[:space:][:cntrl:]]'",
+            name="emoji_shape",
         ),
         UniqueConstraint("comment_id", "user_id", "emoji", name="uq_reactions_comment_user_emoji"),
         Index("ix_comment_reactions_comment", "comment_id"),

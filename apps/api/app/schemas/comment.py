@@ -3,8 +3,6 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, field_validator
 
-from app.models.comment import REACTION_KEYS
-
 MAX_COMMENT = 20_000
 
 
@@ -37,8 +35,9 @@ class CommentCreate(BaseModel):
 
 
 class ReactionAgg(BaseModel):
-    """One fixed vocabulary slot — the API always returns all six in order
-    (0-count included), so clients render without merging (v17.1 R1-④)."""
+    """One emoji aggregate. The set is OPEN (Pass 35): only emojis with at
+    least one reaction appear, sorted by count desc then codepoint asc —
+    clients own the quick-pick set."""
 
     key: str
     count: int
@@ -46,7 +45,7 @@ class ReactionAgg(BaseModel):
 
 
 def empty_reactions() -> list[ReactionAgg]:
-    return [ReactionAgg(key=k, count=0, me=False) for k in REACTION_KEYS]
+    return []
 
 
 class ReactionList(BaseModel):
