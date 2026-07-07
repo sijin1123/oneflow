@@ -266,6 +266,25 @@ async def update_project(
     # unhandled IntegrityError → 500 (fable5 audit: PATCH null-semantics).
     if "name" in fields and fields["name"] is None:
         raise HTTPException(status_code=422, detail="name cannot be null")
+    # Health transition table (v37.1 R1-②): the note is part of the report,
+    # never standalone; a set health ALWAYS replaces the note (Pass 29).
+    if "health" in fields:
+        health = fields.pop("health")
+        note = fields.pop("health_note", None)
+        if health is None:
+            if note is not None:
+                raise HTTPException(status_code=422, detail="health_note requires a health value")
+            project.health = None
+            project.health_note = None
+            project.health_updated_by = None
+            project.health_updated_at = None
+        else:
+            project.health = health
+            project.health_note = note  # always replaced (null when omitted)
+            project.health_updated_by = user.id
+            project.health_updated_at = func.now()
+    elif "health_note" in fields:
+        raise HTTPException(status_code=422, detail="health_note requires a health value")
     for key, value in fields.items():
         setattr(project, key, value)
     await session.commit()

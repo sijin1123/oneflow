@@ -9,6 +9,7 @@ import { Select } from '@/components/ui/select'
 import { ApiError } from '@/lib/api'
 
 import { useCreateProject, useProjects } from './api'
+import { HEALTH_LABELS, HEALTH_STYLES } from './types'
 
 const KEY_RE = /^[A-Z][A-Z0-9]{1,9}$/
 
@@ -231,6 +232,14 @@ export function ProjectsPage() {
                   <p className="truncate text-sm font-medium">
                     <span className="mr-1.5 text-of-muted">{p.key}</span>
                     {p.name}
+                    {p.health ? (
+                      <span
+                        title={p.health_note ?? undefined}
+                        className={`ml-1.5 rounded-of px-1.5 py-0.5 text-[10px] font-medium ${HEALTH_STYLES[p.health]}`}
+                      >
+                        {HEALTH_LABELS[p.health]}
+                      </span>
+                    ) : null}
                     {p.archived_at ? (
                       <span className="ml-1.5 rounded-of bg-of-surface-2 px-1.5 py-0.5 text-[10px] text-of-muted">
                         보관됨
