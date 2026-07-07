@@ -2820,6 +2820,14 @@ export interface components {
             created_at: string;
             /** Description */
             description: string | null;
+            /** Health */
+            health: string | null;
+            /** Health Note */
+            health_note: string | null;
+            /** Health Updated At */
+            health_updated_at: string | null;
+            /** Health Updated By */
+            health_updated_by: string | null;
             /**
              * Id
              * Format: uuid
@@ -2851,6 +2859,10 @@ export interface components {
         InitiativeUpdate: {
             /** Description */
             description?: string | null;
+            /** Health */
+            health?: string | null;
+            /** Health Note */
+            health_note?: string | null;
             /** Name */
             name?: string | null;
             /** Start Date */

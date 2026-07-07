@@ -20,6 +20,10 @@ export type Initiative = {
   state: InitiativeState
   start_date: string | null
   target_date: string | null
+  health: 'on_track' | 'at_risk' | 'off_track' | null
+  health_note: string | null
+  health_updated_by: string | null
+  health_updated_at: string | null
   is_mine: boolean
   connected_project_count: number
   projects: InitiativeProject[]
@@ -60,7 +64,16 @@ export function useCreateInitiative() {
 export function useUpdateInitiative() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: ({ id, ...input }: { id: string; name?: string; state?: InitiativeState }) =>
+    mutationFn: ({
+      id,
+      ...input
+    }: {
+      id: string
+      name?: string
+      state?: InitiativeState
+      health?: string | null
+      health_note?: string | null
+    }) =>
       api<Initiative>(`/api/v1/initiatives/${id}`, {
         method: 'PATCH',
         body: JSON.stringify(input),

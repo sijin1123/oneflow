@@ -1361,6 +1361,10 @@ test('이니셔티브에서 프로젝트를 연결하면 POST가 간다', async 
     state: 'in_progress',
     start_date: null,
     target_date: null,
+    health: 'at_risk',
+    health_note: '일정 검토 필요',
+    health_updated_by: 'me-1',
+    health_updated_at: '2026-07-08T00:00:00Z',
     is_mine: true,
     connected_project_count: 1,
     projects: [
@@ -1397,6 +1401,23 @@ test('이니셔티브에서 프로젝트를 연결하면 POST가 간다', async 
   const active = page.getByRole('region', { name: '진행 중' })
   await expect(active.getByText('플랫폼 개편')).toBeVisible()
   await expect(active.getByText('1/4 (25%)')).toBeVisible()
+
+  // Health (Pass 44): chip renders; the creator report row PATCHes the pair.
+  await expect(active.getByTitle('일정 검토 필요')).toHaveText('주의')
+  const healthPatch = page.waitForRequest(
+    (r) => r.method() === 'PATCH' && r.url().includes('/initiatives/ini-1'),
+  )
+  await page.route('**/api/v1/initiatives/ini-1', (route) =>
+    route.fulfill({ json: { ...ini, health: 'off_track' } }),
+  )
+  await page.getByLabel('플랫폼 개편 헬스').selectOption('off_track')
+  await page.getByLabel('플랫폼 개편 상태 사유').fill('차단 발생')
+  await page.getByRole('button', { name: '상태 보고' }).click()
+  const healthSent = (await healthPatch).postDataJSON() as {
+    health: string
+    health_note: string
+  }
+  expect(healthSent).toEqual({ health: 'off_track', health_note: '차단 발생' })
 
   const post = page.waitForRequest(
     (r) => r.method() === 'POST' && r.url().includes('/initiatives/ini-1/projects'),

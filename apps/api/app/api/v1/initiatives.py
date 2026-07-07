@@ -21,6 +21,7 @@ from app.schemas.initiative import (
     InitiativeRead,
     InitiativeUpdate,
 )
+from app.services.health import apply_health_patch
 
 router = APIRouter()
 
@@ -107,6 +108,10 @@ async def _read_one(session: AsyncSession, ini: Initiative, user: User) -> Initi
         state=ini.state,
         start_date=ini.start_date,
         target_date=ini.target_date,
+        health=ini.health,
+        health_note=ini.health_note,
+        health_updated_by=ini.health_updated_by,
+        health_updated_at=ini.health_updated_at,
         is_mine=ini.owner_id == user.id,
         connected_project_count=total_connected,
         projects=[
@@ -183,6 +188,9 @@ async def update_initiative(
     target = fields.get("target_date", ini.target_date)
     if start and target and start > target:
         raise HTTPException(status_code=422, detail="start_date must be on or before target_date")
+    # Health report (Pass 44): creator-only like every initiative edit; the
+    # shared pure helper owns ONLY the payload transition (v44.1 R1-③).
+    apply_health_patch(ini, fields, user.id)
     for key, value in fields.items():
         setattr(ini, key, value)
     await session.commit()
