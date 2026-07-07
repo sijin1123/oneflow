@@ -38,6 +38,16 @@ class Initiative(Base):
             "start_date IS NULL OR target_date IS NULL OR start_date <= target_date",
             name="date_order",
         ),
+        CheckConstraint(
+            "health IN ('on_track', 'at_risk', 'off_track')",
+            name="health_allowed",
+        ),
+        CheckConstraint(
+            "(health IS NULL AND health_note IS NULL"
+            " AND health_updated_by IS NULL AND health_updated_at IS NULL)"
+            " OR (health IS NOT NULL AND health_updated_at IS NOT NULL)",
+            name="health_shape",
+        ),
         Index("ix_initiatives_owner", "owner_id"),
     )
 
@@ -49,6 +59,16 @@ class Initiative(Base):
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
     state: Mapped[str] = mapped_column(String(20), nullable=False, default="planned")
+    # Health report (Pass 44 — the Pass-37 contract verbatim): a qualitative
+    # axis SEPARATE from the lifecycle `state`; unset means fully unset.
+    health: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    health_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    health_updated_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    health_updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     start_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     target_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     created_at: Mapped[datetime] = mapped_column(

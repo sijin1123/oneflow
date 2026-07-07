@@ -125,3 +125,69 @@ async def test_delete_cascades_connections_not_projects(client, app):
             await session.execute(select(Project).where(Project.key == "INID"))
         ).scalar_one_or_none()
         assert project_alive is not None
+
+
+async def test_health_report_mirrors_project_contract(client, app):
+    """Pass 44 PR-BJ (v44.1): the v37.1 transition table via the shared pure
+    helper; creator-only like every initiative edit; id-only updated_by;
+    last-write-wins (snapshot-only — the always-replaced note can't linger)."""
+    import asyncio
+
+    from sqlalchemy import text
+
+    ini = await create_initiative(client, name="헬스 이니셔티브")
+    me = (await client.get("/api/v1/me")).json()
+
+    # Set with note → stamped; setting WITHOUT a note replaces it with null.
+    res = await client.patch(
+        f"/api/v1/initiatives/{ini['id']}", json={"health": "at_risk", "health_note": " 지연 "}
+    )
+    assert res.status_code == 200, res.text
+    body = res.json()
+    assert (body["health"], body["health_note"]) == ("at_risk", "지연")
+    assert body["health_updated_by"] == me["id"]
+    res = await client.patch(f"/api/v1/initiatives/{ini['id']}", json={"health": "on_track"})
+    assert res.json()["health_note"] is None
+
+    # Standalone note 422; null+note 422; null clears everything.
+    assert (
+        await client.patch(f"/api/v1/initiatives/{ini['id']}", json={"health_note": "사유만"})
+    ).status_code == 422
+    assert (
+        await client.patch(
+            f"/api/v1/initiatives/{ini['id']}", json={"health": None, "health_note": "모순"}
+        )
+    ).status_code == 422
+    cleared = (await client.patch(f"/api/v1/initiatives/{ini['id']}", json={"health": None})).json()
+    assert (cleared["health"], cleared["health_updated_at"]) == (None, None)
+
+    # Vocabulary + concurrency: last-write-wins, exactly one value persists.
+    assert (
+        await client.patch(f"/api/v1/initiatives/{ini['id']}", json={"health": "fine"})
+    ).status_code == 422
+    r1, r2 = await asyncio.gather(
+        client.patch(f"/api/v1/initiatives/{ini['id']}", json={"health": "on_track"}),
+        client.patch(
+            f"/api/v1/initiatives/{ini['id']}", json={"health": "off_track", "health_note": "경합"}
+        ),
+    )
+    assert {r1.status_code, r2.status_code} == {200}
+    final = next(
+        i for i in (await client.get("/api/v1/initiatives")).json()["items"] if i["id"] == ini["id"]
+    )
+    assert final["health"] in ("on_track", "off_track")
+    if final["health"] == "on_track":
+        assert final["health_note"] is None  # the winning write replaced the note
+
+    # DB shape CHECK blocks impossible states.
+    import pytest as _pytest
+    from sqlalchemy.exc import IntegrityError
+
+    with _pytest.raises(IntegrityError):
+        async with app.state.sessionmaker() as session, session.begin():
+            await session.execute(
+                text(
+                    "UPDATE initiatives SET health = 'on_track', health_updated_at = NULL "
+                    "WHERE id = CAST(:id AS uuid)"
+                ).bindparams(id=ini["id"])
+            )
