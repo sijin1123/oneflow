@@ -52,6 +52,16 @@ cd ../.. && make web-dev
 | OpenAPI 타입 생성/드리프트 | `make gen-types` / `make check-types` |
 | 클린룸 게이트 | `make cleanroom-check` |
 
+## Storage sweep 운영 절차 (고아 블롭 정리)
+
+업로드 스토리지에는 크래시가 남긴 `.upload-*` 임시 파일과, attachment 행이 삭제된 뒤 남은 고아 블롭이 쌓일 수 있습니다. 정리는 반드시 아래 순서를 따릅니다.
+
+1. **dry-run**: `make api-sweep-blobs` — 후보 목록만 출력하며 아무것도 이동/삭제하지 않습니다. `--json`을 붙이면 기계가독 리포트를 얻습니다.
+2. **검토**: 후보가 예상과 다르면(대량 발생, 최근 파일 다수) 중단하고 원인을 확인합니다. `min-age`(기본 24h) 이내 파일과 인식 불가/symlink 경로는 항상 보호됩니다.
+3. **격리 실행**: `make api-sweep-blobs-delete` — 후보를 `<storage root>/.quarantine/<runstamp>/`로 **이동**(unlink 아님)하고 `manifest.json`을 남깁니다. 실행 직전 DB 키를 재조회해 두 스냅샷 합집합에 없는 파일만 격리합니다.
+4. **보관/복구**: manifest를 백업 위치에 보관합니다. 오탐이면 manifest의 원경로대로 되돌리면 복구됩니다. 격리 영역은 이후 sweep이 건드리지 않으며, 최종 purge(영구 삭제)는 보존 기간 경과 후 운영자가 수동으로 수행합니다.
+5. **missing blob 행**: 리포트의 "rows with MISSING blobs"는 블롭이 사라진 attachment 행입니다 — 스크립트는 삭제하지 않으며, 데이터 복원 여부는 운영 판단입니다.
+
 CI(`.github/workflows/ci.yml`)는 `backend`/`frontend`/`cleanroom`/`security-audit` 4개 잡으로 검증합니다. 앞의 3개(`backend`/`frontend`/`cleanroom`)를 main 브랜치의 required status checks로 등록하며, `security-audit`(pip-audit·npm audit)는 자문용 비차단 잡입니다.
 
 ## Layout
