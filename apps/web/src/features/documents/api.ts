@@ -82,6 +82,63 @@ export function conflictOf(error: unknown): DocumentConflict | null {
   return null
 }
 
+export type DocumentLink = {
+  id: string
+  project_id: string
+  document_id: string
+  work_package_id: string
+  created_at: string
+}
+
+export function useDocLinks(docId: string | null) {
+  return useQuery({
+    queryKey: ['document-links', docId],
+    queryFn: () =>
+      api<{ items: DocumentLink[]; total: number }>(
+        `/api/v1/documents/${docId}/work-package-links`,
+      ),
+    enabled: docId !== null,
+  })
+}
+
+export function useCreateDocLink(docId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (work_package_id: string) =>
+      api<DocumentLink>(`/api/v1/documents/${docId}/work-package-links`, {
+        method: 'POST',
+        body: JSON.stringify({ work_package_id }),
+      }),
+    onSuccess: (link) => {
+      void queryClient.invalidateQueries({ queryKey: ['document-links', docId] })
+      void queryClient.invalidateQueries({
+        queryKey: ['work-package-documents', link.work_package_id],
+      })
+    },
+  })
+}
+
+export function useDeleteDocLink(docId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (linkId: string) =>
+      api<void>(`/api/v1/documents/${docId}/work-package-links/${linkId}`, { method: 'DELETE' }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['document-links', docId] })
+      void queryClient.invalidateQueries({ queryKey: ['work-package-documents'] })
+    },
+  })
+}
+
+/** Reverse lookup for the WP drawer: documents linked to a work package. */
+export function useLinkedDocuments(wpId: string | null) {
+  return useQuery({
+    queryKey: ['work-package-documents', wpId],
+    queryFn: () => api<DocumentList>(`/api/v1/work-packages/${wpId}/documents`),
+    enabled: wpId !== null,
+  })
+}
+
 export function useDeleteDocument(projectId: string) {
   const queryClient = useQueryClient()
   return useMutation({

@@ -112,6 +112,10 @@ async function mockApi(page: Page, opts: { conflictOnPatch?: boolean } = {}) {
   await page.route('**/api/v1/work-packages/*/watchers', (route) =>
     route.fulfill({ json: { items: [], total: 0, me_watching: false } }),
   )
+  // The drawer pages section reads linked documents.
+  await page.route('**/api/v1/work-packages/*/documents', (route) =>
+    route.fulfill({ json: { items: [], total: 0 } }),
+  )
   // The intake page reads the queue.
   await page.route('**/api/v1/projects/*/intake', (route) =>
     route.fulfill({ json: { items: [], total: 0 } }),
@@ -1747,6 +1751,69 @@ test('문서 트리가 계층을 들여쓰기로 보여주고 상위 페이지 �
   )
   await page.getByRole('button', { name: '저장' }).click()
   expect(((await patch).postDataJSON() as { parent_id: string }).parent_id).toBe('d1')
+})
+
+test('문서 편집기에서 작업을 연결하고 드로어 페이지 섹션이 링크를 보여준다', async ({
+  page,
+}) => {
+  await mockApi(page)
+  const doc = {
+    id: 'd1',
+    project_id: project.id,
+    parent_id: null,
+    title: '설계 문서',
+    author_id: null,
+    version: 0,
+    created_at: '2026-07-01T00:00:00Z',
+    updated_at: '2026-07-03T00:00:00Z',
+  }
+  await page.route(`**/api/v1/projects/${project.id}/documents`, (route) =>
+    route.fulfill({ json: { items: [doc], total: 1 } }),
+  )
+  await page.route('**/api/v1/documents/d1', (route) =>
+    route.fulfill({ json: { ...doc, body: null } }),
+  )
+  await page.route('**/api/v1/documents/d1/work-package-links', async (route) => {
+    if (route.request().method() === 'POST') {
+      const sent = route.request().postDataJSON() as { work_package_id: string }
+      await route.fulfill({
+        status: 201,
+        json: {
+          id: 'link-1',
+          project_id: project.id,
+          document_id: 'd1',
+          work_package_id: sent.work_package_id,
+          created_at: '2026-07-07T00:00:00Z',
+        },
+      })
+      return
+    }
+    await route.fulfill({ json: { items: [], total: 0 } })
+  })
+  // Reverse side: the drawer's pages section (registered after mockApi's empty
+  // default → takes precedence).
+  await page.route(`**/api/v1/work-packages/${wpA.id}/documents`, (route) =>
+    route.fulfill({ json: { items: [doc], total: 1 } }),
+  )
+
+  // editor: pick a work package and link it — the POST carries its id
+  await page.goto(`/projects/${project.id}/documents/d1`)
+  const section = page.getByRole('region', { name: '연결된 작업' })
+  await expect(section.getByText('연결된 작업이 없습니다.')).toBeVisible()
+  await section.getByLabel('연결할 작업').selectOption(wpA.id)
+  const post = page.waitForRequest(
+    (r) => r.method() === 'POST' && r.url().includes('/work-package-links'),
+  )
+  await section.getByRole('button', { name: '연결' }).click()
+  expect(((await post).postDataJSON() as { work_package_id: string }).work_package_id).toBe(
+    wpA.id,
+  )
+
+  // drawer: the linked page shows up and navigates back to the document
+  await page.goto(`/projects/${project.id}/work-packages`)
+  await page.getByRole('button', { name: wpA.subject }).click()
+  const pages = page.getByRole('region', { name: '페이지' })
+  await expect(pages.getByRole('button', { name: /설계 문서/ })).toBeVisible()
 })
 
 test('회의 상세가 안건·액션 아이템을 보여주고 액션 아이템을 추가한다', async ({ page }) => {

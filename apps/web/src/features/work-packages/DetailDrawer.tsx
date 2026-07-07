@@ -25,6 +25,7 @@ const RichTextEditor = lazy(() =>
 
 import { CostSection } from './CostSection'
 import { HistorySection } from './HistorySection'
+import { PagesSection } from './PagesSection'
 import { RelationsSection } from './RelationsSection'
 import { TimeTrackingSection } from './TimeTrackingSection'
 import { PriorityChip, StatusChip } from './chips'
@@ -364,6 +365,8 @@ function DrawerForm({ wp, projectId }: { wp: WorkPackage; projectId: string }) {
       <CustomFieldsSection wpId={wp.id} projectId={projectId} wpType={wp.type} />
 
       <RelationsSection wpId={wp.id} projectId={projectId} />
+
+      <PagesSection wpId={wp.id} projectId={projectId} />
 
       {patch.isPending ? (
         <p role="status" aria-live="polite" className="text-xs text-of-muted">

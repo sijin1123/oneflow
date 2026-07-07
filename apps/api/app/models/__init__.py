@@ -5,7 +5,7 @@ from app.models.comment import WorkPackageComment
 from app.models.cost_entry import CostEntry
 from app.models.custom_field import CustomField, WpCustomValue
 from app.models.cycle import Cycle
-from app.models.document import ProjectDocument
+from app.models.document import DocumentWorkPackageLink, ProjectDocument
 from app.models.initiative import Initiative, InitiativeProject
 from app.models.intake import IntakeItem
 from app.models.meeting import Meeting, MeetingActionItem
@@ -42,6 +42,7 @@ __all__ = [
     "ProjectStatus",
     "ProjectType",
     "AutomationRule",
+    "DocumentWorkPackageLink",
     "ProjectDocument",
     "Meeting",
     "MeetingActionItem",
