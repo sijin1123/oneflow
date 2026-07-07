@@ -211,3 +211,164 @@ def map_jira_csv(content: str) -> JiraMapResult:
     if ignored:
         result.notes.append("무시된 열: " + ", ".join(sorted(set(ignored))))
     return result
+
+
+# --- Linear CSV adapter (Pass 25 PR-AQ) -------------------------------------
+# Same frame and result shape as the Jira adapter above (JiraMapResult is
+# consumed unchanged — v25.1 R1-②). Linear's official export has fixed columns;
+# custom statuses outside the standard six isolate their row (R1-③), and
+# Estimate is a POINT scale — semantically different from hours, so it is never
+# injected, only counted in notes (R1-⑥).
+
+_L_TITLE = "title"
+_L_DESCRIPTION = "description"
+_L_STATUS = "status"
+_L_PRIORITY = "priority"
+_L_DUE = ("due date", "duedate")
+_L_ID = "id"
+_L_PEOPLE = ("assignee", "creator")
+_L_ESTIMATE = "estimate"
+
+LINEAR_STATUS_MAP = {
+    "backlog": "backlog",
+    "todo": "todo",
+    "in progress": "in_progress",
+    "in review": "in_review",
+    "done": "done",
+    "canceled": "cancelled",
+    "cancelled": "cancelled",
+}
+
+LINEAR_PRIORITY_MAP = {
+    "urgent": "urgent",
+    "high": "high",
+    "medium": "medium",
+    "low": "low",
+    "no priority": "none",
+}
+
+
+def map_linear_csv(content: str) -> JiraMapResult:
+    result = JiraMapResult()
+    reader = csv.reader(io.StringIO(content))
+    try:
+        header = next(reader)
+    except (StopIteration, csv.Error):
+        result.header_error = "CSV is empty"
+        return result
+
+    lowered = [h.lstrip("\ufeff").strip().lower() for h in header]
+    idx: dict[str, int] = {}
+    ignored: list[str] = []
+    people_cols: list[int] = []
+    estimate_col: int | None = None
+    for i, name in enumerate(lowered):
+        if name == _L_TITLE and "title" not in idx:
+            idx["title"] = i
+        elif name == _L_DESCRIPTION and "description" not in idx:
+            idx["description"] = i
+        elif name == _L_STATUS and "status" not in idx:
+            idx["status"] = i
+        elif name == _L_PRIORITY and "priority" not in idx:
+            idx["priority"] = i
+        elif name in _L_DUE and "due" not in idx:
+            idx["due"] = i
+        elif name == _L_ID and "id" not in idx:
+            idx["id"] = i
+        elif name in _L_PEOPLE:
+            people_cols.append(i)
+        elif name == _L_ESTIMATE and estimate_col is None:
+            estimate_col = i
+        else:
+            ignored.append(header[i].strip() or "(빈 헤더)")
+
+    if "title" not in idx:
+        result.header_error = "Linear CSV header must include a 'Title' column"
+        return result
+
+    unknown_priorities = 0
+    people_values = 0
+    estimates_skipped = 0
+    row_number = 0
+
+    def cell(row: list[str], key: str) -> str:
+        i = idx.get(key)
+        return row[i].strip() if i is not None and i < len(row) else ""
+
+    try:
+        rows = list(reader)
+    except csv.Error:
+        result.header_error = "malformed CSV"
+        return result
+
+    for row in rows:
+        if not any(c.strip() for c in row):
+            continue
+        row_number += 1
+        raw = ",".join(row)
+
+        title = cell(row, "title")
+        if not title:
+            result.rows.append((row_number, None, "Title: 값이 비어 있습니다", raw))
+            continue
+
+        raw_status = cell(row, "status")
+        if raw_status and raw_status.lower() not in LINEAR_STATUS_MAP:
+            # Custom Linear statuses isolate — a wrong status corrupts progress.
+            result.rows.append((row_number, None, f"Status: 매핑할 수 없는 값 '{raw_status}'", raw))
+            continue
+
+        raw_due = cell(row, "due")
+        due: str | None = None
+        if raw_due:
+            try:
+                due = date.fromisoformat(raw_due).isoformat()
+            except ValueError:
+                result.rows.append(
+                    (row_number, None, f"Due Date: 지원하지 않는 형식 '{raw_due}'", raw)
+                )
+                continue
+
+        raw_priority = cell(row, "priority")
+        if raw_priority and raw_priority.lower() not in LINEAR_PRIORITY_MAP:
+            unknown_priorities += 1
+        for i in people_cols:
+            if i < len(row) and row[i].strip():
+                people_values += 1
+                break
+        if estimate_col is not None and estimate_col < len(row) and row[estimate_col].strip():
+            estimates_skipped += 1  # point scale ≠ hours — never injected (R1-⑥)
+
+        identifier = cell(row, "id")
+        subject = f"[{identifier}] {title}" if identifier else title
+        payload = {
+            "subject": subject[:255],
+            "description": cell(row, "description") or None,
+            "type": "task",  # Linear export has no type column — documented
+            "status": (
+                LINEAR_STATUS_MAP.get(raw_status.lower(), "backlog") if raw_status else "backlog"
+            ),
+            "priority": (
+                LINEAR_PRIORITY_MAP.get(raw_priority.lower(), "none") if raw_priority else "none"
+            ),
+            "start_date": None,
+            "due_date": due,
+            "estimated_hours": None,
+        }
+        result.rows.append((row_number, payload, None, raw))
+
+    if people_values:
+        result.notes.append(
+            f"Assignee/Creator 값 {people_values}건은 매핑되지 않았습니다(계정 매칭 불가)."
+        )
+    if unknown_priorities:
+        result.notes.append(
+            f"알 수 없는 Priority {unknown_priorities}건은 '없음'으로 가져왔습니다."
+        )
+    if estimates_skipped:
+        result.notes.append(
+            f"Estimate {estimates_skipped}건은 포인트 단위라 시간으로 넣지 않았습니다."
+        )
+    if ignored:
+        result.notes.append("무시된 열: " + ", ".join(sorted(set(ignored))))
+    return result

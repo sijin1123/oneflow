@@ -13,6 +13,7 @@ import type { CsvImportResult } from './types'
 
 const SAMPLE = 'subject,type,status,priority,start_date,due_date,estimated_hours'
 const JIRA_SAMPLE = 'Issue key,Summary,Issue Type,Status,Priority,Due date'
+const LINEAR_SAMPLE = 'ID,Title,Status,Priority,Due Date'
 
 export function ImportDialog({ projectId }: { projectId: string }) {
   const [open, setOpen] = useState(false)
@@ -65,6 +66,7 @@ export function ImportDialog({ projectId }: { projectId: string }) {
             >
               <option value="oneflow">OneFlow CSV</option>
               <option value="jira">Jira CSV</option>
+              <option value="linear">Linear CSV</option>
             </Select>
           </div>
 
@@ -78,12 +80,19 @@ export function ImportDialog({ projectId }: { projectId: string }) {
                 열은 필수이며, 인식하는 열:{' '}
                 <code className="rounded bg-of-surface-2 px-1">{SAMPLE}</code>
               </p>
-            ) : (
+            ) : source === 'jira' ? (
               <p className="text-xs text-of-muted">
                 Jira에서 내보낸 CSV를 붙여넣으세요.{' '}
                 <code className="rounded bg-of-surface-2 px-1">Summary</code> 열은 필수이며, 인식하는
                 열: <code className="rounded bg-of-surface-2 px-1">{JIRA_SAMPLE}</code>. 나머지 열은
                 무시되고 결과에 표시됩니다.
+              </p>
+            ) : (
+              <p className="text-xs text-of-muted">
+                Linear에서 내보낸 CSV를 붙여넣으세요.{' '}
+                <code className="rounded bg-of-surface-2 px-1">Title</code> 열은 필수이며, 인식하는
+                열: <code className="rounded bg-of-surface-2 px-1">{LINEAR_SAMPLE}</code>. Estimate는
+                포인트 단위라 시간으로 넣지 않습니다.
               </p>
             )}
             <Textarea
@@ -98,7 +107,9 @@ export function ImportDialog({ projectId }: { projectId: string }) {
               placeholder={
                 source === 'oneflow'
                   ? `${SAMPLE}\n로그인 버그 수정,bug,todo,high,,,4`
-                  : `${JIRA_SAMPLE}\nPROJ-1,로그인 버그,Bug,In Progress,High,1/Jul/26`
+                  : source === 'jira'
+                    ? `${JIRA_SAMPLE}\nPROJ-1,로그인 버그,Bug,In Progress,High,1/Jul/26`
+                    : `${LINEAR_SAMPLE}\nABC-1,로그인 버그,In Progress,Urgent,2026-07-10`
               }
             />
           </div>
