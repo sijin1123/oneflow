@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react'
-import { useParams, useSearchParams } from 'react-router-dom'
+import { Navigate, useParams, useSearchParams } from 'react-router-dom'
 
 import { ErrorState, ListSkeleton } from '@/components/shell/states'
 import { AutomationManager } from '@/features/automation/AutomationManager'
@@ -11,7 +11,6 @@ import { useUnsavedLocationPrompt } from '@/lib/guards'
 import { DangerPanel } from './DangerPanel'
 import { FieldsPanel } from './FieldsPanel'
 import { GeneralPanel } from './GeneralPanel'
-import { NotificationsPanel } from './NotificationsPanel'
 import { StoragePanel } from './StoragePanel'
 import { MembersPanel } from './MembersPanel'
 import { MilestonesPanel } from './MilestonesPanel'
@@ -25,7 +24,6 @@ const TABS = [
   { key: 'milestones', label: '마일스톤' },
   { key: 'fields', label: '필드' },
   { key: 'automation', label: '자동화' },
-  { key: 'notifications', label: '알림' },
   { key: 'storage', label: '스토리지' },
   { key: 'danger', label: '위험 구역' },
 ] as const
@@ -46,6 +44,9 @@ export function SettingsPage() {
   useUnsavedLocationPrompt(dirty, '저장되지 않은 변경이 있습니다. 나가시겠습니까?')
 
   const requested = searchParams.get('tab')
+  // The notification toggles are USER-scoped (/me) and moved to /settings —
+  // old project-settings deep links follow them (Pass 64 PR-CD).
+  if (requested === 'notifications') return <Navigate to="/settings" replace />
   const tab: TabKey = TABS.some((t) => t.key === requested) ? (requested as TabKey) : 'general'
 
   if (members.isPending || me.isPending) return <ListSkeleton />
@@ -114,7 +115,6 @@ export function SettingsPage() {
           {tab === 'automation' ? (
             <AutomationManager projectId={projectId} isOwner={isOwner} />
           ) : null}
-          {tab === 'notifications' ? <NotificationsPanel /> : null}
           {tab === 'storage' ? <StoragePanel projectId={projectId} /> : null}
           {tab === 'danger' ? <DangerPanel isOwner={isOwner} /> : null}
         </div>
