@@ -1284,6 +1284,49 @@ test('설정 필드 탭에서 드롭다운 필드를 정의한다', async ({ pag
   expect(sent.options).toEqual(['낮음', '높음'])
 })
 
+test('설정 필드 탭에서 아래로 이동하면 전체 순서 PUT이 간다', async ({ page }) => {
+  await mockApi(page)
+  await page.route('**/api/v1/me', (route) =>
+    route.fulfill({
+      json: { id: 'u-dev', email: 'dev@oneflow.local', display_name: 'Dev User', is_active: true },
+    }),
+  )
+  await page.route(`**/api/v1/projects/${project.id}`, (route) =>
+    route.fulfill({ json: project }),
+  )
+  const field = (id: string, name: string, position: number) => ({
+    id,
+    project_id: project.id,
+    name,
+    field_type: 'text',
+    options: null,
+    position,
+    is_active: true,
+    applies_to: null,
+    created_at: '2026-07-06T00:00:00Z',
+    updated_at: '2026-07-06T00:00:00Z',
+  })
+  await page.route(`**/api/v1/projects/${project.id}/custom-fields**`, async (route) => {
+    if (route.request().method() === 'PUT') {
+      await route.fulfill({
+        json: { items: [field('cf-2', '둘', 0), field('cf-1', '하나', 1)], total: 2 },
+      })
+      return
+    }
+    await route.fulfill({
+      json: { items: [field('cf-1', '하나', 0), field('cf-2', '둘', 1)], total: 2 },
+    })
+  })
+
+  await page.goto(`/projects/${project.id}/settings?tab=fields`)
+  const put = page.waitForRequest(
+    (r) => r.method() === 'PUT' && r.url().includes('/custom-fields/order'),
+  )
+  await page.getByLabel('하나 아래로').click()
+  const sentOrder = (await put).postDataJSON() as { ordered_ids: string[] }
+  expect(sentOrder.ordered_ids).toEqual(['cf-2', 'cf-1'])
+})
+
 test('드로어 커스텀 필드에 값을 입력하면 델타 PUT이 간다', async ({ page }) => {
   await mockApi(page)
   await page.route(`**/api/v1/projects/${project.id}/custom-fields**`, (route) =>

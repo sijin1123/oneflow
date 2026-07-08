@@ -19,6 +19,7 @@ from app.schemas.custom_field import (
     CustomFieldCreate,
     CustomFieldList,
     CustomFieldRead,
+    CustomFieldReorder,
     CustomFieldUpdate,
     CustomValueList,
     CustomValueRead,
@@ -345,3 +346,43 @@ async def put_custom_values(
         )
     await session.commit()
     return await list_custom_values(wp_id, session, user)
+
+
+@router.put("/projects/{project_id}/custom-fields/order", response_model=CustomFieldList)
+async def reorder_custom_fields(
+    project_id: uuid.UUID,
+    body: CustomFieldReorder,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+) -> CustomFieldList:
+    """Owner-only atomic reorder (Pass 50 — the statuses /order contract
+    verbatim): ordered_ids must list EXACTLY this project's fields (active
+    and inactive); positions rewrite 0..n-1 in one transaction."""
+    await require_role(session, project_id, user, {"owner"}, write=True)
+    rows = (
+        (await session.execute(select(CustomField).where(CustomField.project_id == project_id)))
+        .scalars()
+        .all()
+    )
+    by_id = {r.id: r for r in rows}
+    if set(body.ordered_ids) != set(by_id):
+        raise HTTPException(
+            status_code=422, detail="ordered_ids must list exactly this project's fields"
+        )
+    for position, field_id in enumerate(body.ordered_ids):
+        by_id[field_id].position = position
+    await session.commit()
+    # Re-select async: the UPDATE expired onupdate columns (updated_at) and a
+    # sync lazy-load here would MissingGreenlet (the house gotcha).
+    ordered = (
+        (
+            await session.execute(
+                select(CustomField)
+                .where(CustomField.project_id == project_id)
+                .order_by(CustomField.position.asc(), CustomField.id.asc())
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return CustomFieldList(items=[_read(r) for r in ordered], total=len(ordered))

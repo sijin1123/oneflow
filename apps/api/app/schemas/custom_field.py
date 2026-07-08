@@ -146,3 +146,9 @@ class CustomValueRead(BaseModel):
 class CustomValueList(BaseModel):
     items: list[CustomValueRead]
     total: int
+
+
+class CustomFieldReorder(BaseModel):
+    """Exactly this project's field ids (active + inactive), new order."""
+
+    ordered_ids: list[uuid.UUID]

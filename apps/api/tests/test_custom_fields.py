@@ -213,3 +213,44 @@ async def test_cross_project_field_and_immutable_type(client, project):
     )
     assert res.status_code == 200
     assert res.json()["field_type"] == "text"
+
+
+async def test_field_reorder(client, project, member_project):
+    """Pass 50 PR-BP — the statuses /order contract verbatim: exact-set 422,
+    atomic 0..n-1 rewrite, owner-only, archive write-gated."""
+    pid = project["id"]
+    ids = []
+    for i, name in enumerate(["가 필드", "나 필드", "다 필드"]):
+        res = await client.post(
+            f"/api/v1/projects/{pid}/custom-fields",
+            json={"name": name, "field_type": "text", "position": i},
+        )
+        assert res.status_code == 201, res.text
+        ids.append(res.json()["id"])
+
+    # Reversed order round-trips; the response comes back sorted.
+    res = await client.put(
+        f"/api/v1/projects/{pid}/custom-fields/order", json={"ordered_ids": list(reversed(ids))}
+    )
+    assert res.status_code == 200, res.text
+    assert [f["id"] for f in res.json()["items"]] == list(reversed(ids))
+    listed = (await client.get(f"/api/v1/projects/{pid}/custom-fields")).json()
+    assert [f["id"] for f in listed["items"]] == list(reversed(ids))
+
+    # Partial or foreign sets are a 422.
+    assert (
+        await client.put(
+            f"/api/v1/projects/{pid}/custom-fields/order", json={"ordered_ids": ids[:2]}
+        )
+    ).status_code == 422
+
+    # Non-owner 403; archive write-gate 409.
+    shared = str(member_project["project_id"])
+    assert (
+        await client.put(f"/api/v1/projects/{shared}/custom-fields/order", json={"ordered_ids": []})
+    ).status_code == 403
+    assert (await client.post(f"/api/v1/projects/{pid}/archive")).status_code == 200
+    assert (
+        await client.put(f"/api/v1/projects/{pid}/custom-fields/order", json={"ordered_ids": ids})
+    ).status_code == 409
+    await client.post(f"/api/v1/projects/{pid}/unarchive")
