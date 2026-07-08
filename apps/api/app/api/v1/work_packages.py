@@ -110,6 +110,33 @@ async def require_wp_member(
     return await _get_wp_scoped(session, wp_id, user, write=write)
 
 
+# Display-log snapshots (Pass 71, v71.1 R1-①): activities store TEXT renderings,
+# so project-scoped references record their NAME at change time — deletion,
+# rename or a cross-project move can never distort past history. assignee_id
+# stays a uuid (the web resolves member names — the existing contract).
+_NAMED_REF_FIELDS = {"cycle_id": Cycle, "module_id": Module, "milestone_id": Milestone}
+
+
+async def _display_values(
+    session: AsyncSession, old_values: dict, changes: dict
+) -> tuple[dict, dict]:
+    touched = [f for f in _NAMED_REF_FIELDS if f in changes]
+    if not touched:
+        return old_values, changes
+    disp_old, disp_new = dict(old_values), dict(changes)
+    for field in touched:
+        model = _NAMED_REF_FIELDS[field]
+        ids = {v for v in (old_values.get(field), changes.get(field)) if v is not None}
+        names: dict = {}
+        if ids:
+            names = dict(
+                (await session.execute(select(model.id, model.name).where(model.id.in_(ids)))).all()
+            )
+        disp_old[field] = names.get(old_values.get(field)) if old_values.get(field) else None
+        disp_new[field] = names.get(changes.get(field)) if changes.get(field) else None
+    return disp_old, disp_new
+
+
 async def _require_assignee_member(
     session: AsyncSession, project_id: uuid.UUID, assignee_id: uuid.UUID
 ) -> None:
@@ -435,7 +462,8 @@ async def bulk_update_work_packages(
         for field, value in changes.items():
             setattr(wp, field, value)
         wp.version += 1
-        record_field_changes(session, wp_id, user.id, old_values, changes)
+        disp_old, disp_new = await _display_values(session, old_values, changes)
+        record_field_changes(session, wp_id, user.id, disp_old, disp_new)
         applied_rules: set[uuid.UUID] = set()
         for candidate in row_auto:
             record_applied(
@@ -701,7 +729,8 @@ async def patch_work_package(
         updated = (await session.execute(stmt)).scalar_one_or_none()
         if updated is not None:
             # Record field changes in the same transaction as the update.
-            record_field_changes(session, wp_id, user.id, old_values, changes)
+            disp_old, disp_new = await _display_values(session, old_values, changes)
+            record_field_changes(session, wp_id, user.id, disp_old, disp_new)
             # Automation accounting (v16.1: fired = run = ACTUALLY APPLIED) —
             # only candidates that survived the setdefault merge, really
             # changed the value, and rode the successful conditional UPDATE.
