@@ -15,6 +15,7 @@ WIDGET_KEYS = (
     "progress",
     "status_distribution",
     "priority_distribution",
+    "type_distribution",
     "recent_activity",
 )
 
@@ -34,7 +35,7 @@ class DashboardLayout(Base):
             "jsonb_typeof(widgets) = 'array' AND jsonb_array_length(widgets) >= 1 "
             'AND widgets <@ \'["summary", "budget", "progress", '
             '"status_distribution", "priority_distribution", '
-            '"recent_activity"]\'::jsonb',
+            '"type_distribution", "recent_activity"]\'::jsonb',
             name="widgets_valid",
         ),
     )

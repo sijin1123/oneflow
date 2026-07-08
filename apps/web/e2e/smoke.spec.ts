@@ -561,7 +561,10 @@ test('대시보드가 집계 타일과 분포를 보여준다', async ({ page })
           { key: 'high', count: 2 },
           { key: 'urgent', count: 0 },
         ],
-        type_counts: [],
+        type_counts: [
+          { key: 'task', count: 3 },
+          { key: 'bug', count: 2 },
+        ],
         total_estimated_hours: 40,
         total_spent_hours: 10.5,
         budget: 1000000,
@@ -625,6 +628,8 @@ test('대시보드가 집계 타일과 분포를 보여준다', async ({ page })
   await expect(page.getByText('기한 초과')).toBeVisible()
   await expect(page.getByText('10.5 / 40h')).toBeVisible()
   await expect(page.getByText('상태별')).toBeVisible()
+  // Type distribution widget (Pass 58): renders from the existing payload.
+  await expect(page.getByText('타입별')).toBeVisible()
 
   // activity filter: only comments remain; order flip puts the change first
   await expect(page.getByText('· 댓글')).toBeVisible()
@@ -653,6 +658,7 @@ test('대시보드가 집계 타일과 분포를 보여준다', async ({ page })
     'progress',
     'status_distribution',
     'priority_distribution',
+    'type_distribution', // Pass 58: the default set grew by one
     'recent_activity',
   ])
 })

@@ -5,12 +5,20 @@ import { useParams } from 'react-router-dom'
 import { ErrorState, ListSkeleton } from '@/components/shell/states'
 import { BASE_URL } from '@/lib/api'
 import { cn } from '@/lib/utils'
-import { PRIORITY_LABELS, WP_STATUSES } from '@/features/work-packages/types'
+import { PRIORITY_LABELS, WP_STATUSES, WP_TYPES } from '@/features/work-packages/types'
 import type { WpPriority, WpStatus } from '@/features/work-packages/types'
 import { useStatusLabels } from '@/features/work-packages/useStatusLabels'
+import { useTypeLabels } from '@/features/work-packages/useTypeLabels'
 
 import { RecentActivity } from './RecentActivity'
 import { useDashboard, useDashboardLayout, useSaveDashboardLayout, type Bucket } from './api'
+
+const TYPE_COLOR: Record<string, string> = {
+  task: 'bg-sky-400',
+  bug: 'bg-red-400',
+  feature: 'bg-emerald-400',
+  milestone: 'bg-violet-400',
+}
 
 const STATUS_COLOR: Record<string, string> = {
   backlog: 'bg-gray-400',
@@ -81,6 +89,7 @@ const WIDGET_LABELS: Record<string, string> = {
   progress: '예상 대비 소요',
   status_distribution: '상태별 분포',
   priority_distribution: '우선순위별 분포',
+  type_distribution: '타입별 분포',
   recent_activity: '최근 활동',
 }
 
@@ -94,6 +103,11 @@ export function DashboardPage() {
   const statusLabel = useStatusLabels(projectId)
   const statusLabels = Object.fromEntries(WP_STATUSES.map((s) => [s, statusLabel(s)])) as Record<
     WpStatus,
+    string
+  >
+  const typeLabel = useTypeLabels(projectId)
+  const typeLabels = Object.fromEntries(WP_TYPES.map((t) => [t, typeLabel(t)])) as Record<
+    string,
     string
   >
 
@@ -284,6 +298,16 @@ export function DashboardPage() {
               buckets={data.priority_counts}
               colors={PRIORITY_COLOR}
               labels={PRIORITY_LABELS as Record<WpPriority, string>}
+            />
+          )
+        if (key === 'type_distribution')
+          return (
+            <Distribution
+              key={key}
+              title="타입별"
+              buckets={data.type_counts}
+              colors={TYPE_COLOR}
+              labels={typeLabels}
             />
           )
         if (key === 'recent_activity') return <RecentActivity key={key} projectId={projectId} />
