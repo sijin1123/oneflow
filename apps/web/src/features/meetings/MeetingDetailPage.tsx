@@ -3,9 +3,11 @@ import { Suspense, lazy, useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 
 import { ErrorState, ListSkeleton } from '@/components/shell/states'
+import { ReadOnlyNotice } from '@/components/shell/ReadOnlyNotice'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { ApiError } from '@/lib/api'
+import { useCanWrite } from '@/features/members/useCanWrite'
 import { confirmDestructive, useUnsavedChangesPrompt } from '@/lib/guards'
 
 import {
@@ -30,6 +32,7 @@ export function MeetingDetailPage() {
   const navigate = useNavigate()
   const { data: mtg, isPending, isError, error, refetch } = useMeeting(meetingId)
   const update = useUpdateMeeting(projectId)
+  const canWrite = useCanWrite(projectId)
   const del = useDeleteMeeting(projectId)
   const followUp = useCreateFollowUp(projectId)
   const saveTemplate = useCreateMeetingTemplate(projectId)
@@ -103,6 +106,7 @@ export function MeetingDetailPage() {
         <Input
           value={title}
           onChange={(e) => setTitle(e.target.value)}
+          readOnly={!canWrite}
           aria-label="회의 제목"
           className="flex-1 text-sm font-medium"
         />
@@ -110,6 +114,7 @@ export function MeetingDetailPage() {
           type="date"
           value={scheduledOn}
           onChange={(e) => setScheduledOn(e.target.value)}
+          readOnly={!canWrite}
           aria-label="회의 일정"
           className="w-40"
         />
@@ -118,7 +123,7 @@ export function MeetingDetailPage() {
           title="반복은 일정이 지나면 다음 회차를 자동 생성합니다. 매월 반복은 말일 초과 시 그 달 말일로 조정되며 이후 그 날짜가 기준이 됩니다."
           className="h-8 w-28 rounded-of border border-of-border bg-of-surface px-2 text-xs"
           value={recurrence}
-          disabled={!scheduledOn}
+          disabled={!canWrite || !scheduledOn}
           onChange={(e) => setRecurrence(e.target.value)}
         >
           <option value="">반복 안 함</option>
@@ -126,6 +131,8 @@ export function MeetingDetailPage() {
           <option value="biweekly">격주</option>
           <option value="monthly">매월</option>
         </select>
+        {canWrite ? (
+        <>
         <Button size="sm" disabled={!title.trim() || update.isPending} onClick={save}>
           저장
         </Button>
@@ -190,7 +197,10 @@ export function MeetingDetailPage() {
         >
           <Trash2 size={15} />
         </button>
+        </>
+        ) : null}
       </div>
+      {!canWrite ? <ReadOnlyNotice /> : null}
 
       {conflict ? (
         <p role="alert" className="text-xs text-of-danger">
@@ -207,14 +217,14 @@ export function MeetingDetailPage() {
       <section className="space-y-1.5">
         <span className="text-xs font-medium text-of-muted">안건</span>
         <Suspense fallback={<div className="h-32 rounded-of border border-of-border bg-of-surface-2/40" />}>
-          <RichTextEditor value={mtg.agenda ?? ''} ariaLabel="안건" onSave={setAgenda} />
+          <RichTextEditor value={mtg.agenda ?? ''} ariaLabel="안건" editable={canWrite} onSave={setAgenda} />
         </Suspense>
       </section>
 
       <section className="space-y-1.5">
         <span className="text-xs font-medium text-of-muted">회의록</span>
         <Suspense fallback={<div className="h-32 rounded-of border border-of-border bg-of-surface-2/40" />}>
-          <RichTextEditor value={mtg.minutes ?? ''} ariaLabel="회의록" onSave={setMinutes} />
+          <RichTextEditor value={mtg.minutes ?? ''} ariaLabel="회의록" editable={canWrite} onSave={setMinutes} />
         </Suspense>
       </section>
 
@@ -227,6 +237,7 @@ export function MeetingDetailPage() {
                 <input
                   type="checkbox"
                   checked={item.done}
+                  disabled={!canWrite}
                   aria-label={`${item.description} 완료`}
                   onChange={(e) => toggleItem.mutate({ id: item.id, done: e.target.checked })}
                 />
@@ -243,7 +254,7 @@ export function MeetingDetailPage() {
                   >
                     작업 보기
                   </button>
-                ) : (
+                ) : canWrite ? (
                   <button
                     type="button"
                     aria-label={`${item.description} 작업으로 전환`}
@@ -254,21 +265,24 @@ export function MeetingDetailPage() {
                   >
                     <ArrowRightCircle size={13} />
                   </button>
-                )}
-                <button
-                  type="button"
-                  aria-label="액션 아이템 삭제"
-                  className="shrink-0 rounded-of p-1 text-of-muted hover:bg-of-surface-2 hover:text-of-danger"
-                  onClick={() => deleteItem.mutate(item.id)}
-                >
-                  <Trash2 size={13} />
-                </button>
+                ) : null}
+                {canWrite ? (
+                  <button
+                    type="button"
+                    aria-label="액션 아이템 삭제"
+                    className="shrink-0 rounded-of p-1 text-of-muted hover:bg-of-surface-2 hover:text-of-danger"
+                    onClick={() => deleteItem.mutate(item.id)}
+                  >
+                    <Trash2 size={13} />
+                  </button>
+                ) : null}
               </li>
             ))}
           </ul>
         ) : (
           <p className="text-xs text-of-muted">액션 아이템이 없습니다.</p>
         )}
+        {canWrite ? (
         <div className="flex items-center gap-2">
           <Input
             value={newItem}
@@ -290,6 +304,7 @@ export function MeetingDetailPage() {
             <Plus size={13} /> 추가
           </Button>
         </div>
+        ) : null}
       </section>
 
       <p className="text-right text-[11px] text-of-muted">v{mtg.version}</p>

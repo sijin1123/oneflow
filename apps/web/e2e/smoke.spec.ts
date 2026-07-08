@@ -2973,6 +2973,126 @@ test('제목순 정렬 선택이 목록 쿼리에 sort=subject를 반영한다',
   await req
 })
 
+const asViewer = (page: import('@playwright/test').Page) =>
+  Promise.all([
+    page.route(`**/api/v1/projects/${project.id}/members`, (route) =>
+      route.fulfill({
+        json: {
+          items: [
+            { user_id: 'me-1', email: 'dev@oneflow.local', display_name: 'Dev User', role: 'viewer' },
+          ],
+          total: 1,
+        },
+      }),
+    ),
+    page.route(`**/api/v1/projects/${project.id}`, (route) => route.fulfill({ json: project })),
+  ])
+
+test('뷰어 문서 에디터는 제목·본문이 읽기 전용이고 저장·삭제·코멘트가 없다', async ({ page }) => {
+  await mockApi(page)
+  await asViewer(page)
+  const doc = {
+    id: 'd1',
+    project_id: project.id,
+    parent_id: null,
+    title: '팀 위키',
+    author_id: null,
+    version: 2,
+    created_at: '2026-07-01T00:00:00Z',
+    updated_at: '2026-07-03T00:00:00Z',
+  }
+  await page.route(`**/api/v1/projects/${project.id}/documents`, (route) =>
+    route.fulfill({ json: { items: [doc], total: 1 } }),
+  )
+  await page.route('**/api/v1/documents/d1', (route) =>
+    route.fulfill({ json: { ...doc, body: '<p>온보딩 가이드</p>' } }),
+  )
+  await page.route('**/api/v1/documents/d1/comments', (route) =>
+    route.fulfill({ json: { items: [], total: 0 } }),
+  )
+  await page.route('**/api/v1/documents/d1/work-package-links', (route) =>
+    route.fulfill({ json: { items: [], total: 0 } }),
+  )
+  await page.route(`**/api/v1/projects/${project.id}/attachments**`, (route) =>
+    route.fulfill({ json: { items: [], total: 0 } }),
+  )
+
+  await page.goto(`/projects/${project.id}/documents/d1`)
+  await expect(page.getByLabel('문서 제목')).toHaveValue('팀 위키')
+  await expect(page.getByText('읽기 전용입니다', { exact: false })).toBeVisible()
+  await expect(page.getByLabel('문서 제목')).toHaveAttribute('readonly', '')
+  await expect(page.getByRole('button', { name: '저장' })).toHaveCount(0)
+  await expect(page.getByLabel('문서 삭제')).toHaveCount(0)
+  await expect(page.getByLabel('새 코멘트')).toHaveCount(0)
+})
+
+test('뷰어 회의 상세는 저장·후속·삭제가 없고 안건이 비편집이다', async ({ page }) => {
+  await mockApi(page)
+  await asViewer(page)
+  const meeting = {
+    id: 'm1',
+    project_id: project.id,
+    title: '스프린트 회의',
+    scheduled_on: '2026-07-10',
+    agenda: '<p>안건 내용</p>',
+    minutes: null,
+    author_id: null,
+    recurrence: null,
+    recurrence_source_id: null,
+    version: 1,
+    created_at: '2026-07-01T00:00:00Z',
+    updated_at: '2026-07-01T00:00:00Z',
+    action_items: [],
+  }
+  await page.route(`**/api/v1/projects/${project.id}/meetings`, (route) =>
+    route.fulfill({
+      json: {
+        items: [
+          {
+            id: 'm1',
+            project_id: project.id,
+            title: '스프린트 회의',
+            scheduled_on: '2026-07-10',
+            recurrence: null,
+            version: 1,
+            updated_at: '2026-07-01T00:00:00Z',
+          },
+        ],
+        total: 1,
+      },
+    }),
+  )
+  await page.route('**/api/v1/meetings/m1', (route) => route.fulfill({ json: meeting }))
+
+  await page.goto(`/projects/${project.id}/meetings/m1`)
+  await expect(page.getByLabel('회의 제목')).toHaveValue('스프린트 회의')
+  await expect(page.getByText('읽기 전용입니다', { exact: false })).toBeVisible()
+  await expect(page.getByLabel('회의 제목')).toHaveAttribute('readonly', '')
+  await expect(page.getByRole('button', { name: '저장' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: '후속 회의 만들기' })).toHaveCount(0)
+  await expect(page.getByLabel('회의 삭제')).toHaveCount(0)
+  await expect(page.getByLabel('새 액션 아이템')).toHaveCount(0)
+})
+
+test('뷰어 인테이크는 제출 폼 대신 읽기 전용 안내를 본다', async ({ page }) => {
+  await mockApi(page)
+  await asViewer(page)
+  await page.route(`**/api/v1/projects/${project.id}/intake`, (route) =>
+    route.fulfill({ json: { items: [], total: 0 } }),
+  )
+  let submitPosts = 0
+  await page.route(`**/api/v1/projects/${project.id}/intake`, (route) => {
+    if (route.request().method() === 'POST') submitPosts += 1
+    return route.fulfill({ json: { items: [], total: 0 } })
+  })
+
+  await page.goto(`/projects/${project.id}/intake`)
+  await expect(page.getByText('읽기 전용입니다', { exact: false })).toBeVisible()
+  await expect(page.getByLabel('인테이크 요청 제목')).toHaveCount(0)
+  await expect(page.getByRole('button', { name: '요청 제출' })).toHaveCount(0)
+  expect(submitPosts).toBe(0)
+})
+
 test('문서 목록에서 문서를 열면 편집기가 제목과 본문을 보여준다', async ({ page }) => {
   await mockApi(page)
   const doc = {
