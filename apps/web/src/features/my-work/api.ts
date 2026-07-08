@@ -43,3 +43,31 @@ export function useMyWork() {
     queryFn: () => api<MeWork>('/api/v1/me/work'),
   })
 }
+
+
+export type MyTimeEntry = {
+  id: string
+  work_package_id: string
+  work_package_subject: string
+  project_id: string
+  project_name: string
+  hours: number
+  note: string | null
+  spent_on: string
+}
+
+export type MyTime = {
+  from_date: string
+  to_date: string
+  items: MyTimeEntry[]
+  total: number
+  total_hours: number
+  by_project: Array<{ project_id: string; project_name: string; hours: number }>
+}
+
+export function useMyTime() {
+  return useQuery({
+    queryKey: ['my-time'],
+    queryFn: () => api<MyTime>('/api/v1/me/time-entries'),
+  })
+}

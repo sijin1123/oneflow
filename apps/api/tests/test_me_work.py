@@ -226,3 +226,86 @@ async def test_created_by_me_delegation_view(client, app, member_project):
     await client.post(f"/api/v1/projects/{pid}/archive")
     body = (await client.get("/api/v1/me/work")).json()
     assert all(w["project_id"] != pid for w in body["created_by_me"])
+
+
+async def test_my_time_entries(client, app, member_project):
+    """Pass 53 PR-BS (v53.1): user_id is the only ownership filter (entries
+    survive leaving a project — audit data); date-only UTC inclusive on
+    spent_on; totals cover the whole range; WP deletion cascades entries
+    away (existing contract)."""
+    from datetime import timedelta as td
+
+    from sqlalchemy import text as sa_text
+
+    from app.core.dates import utc_today
+    from tests.conftest import create_project, create_wp
+
+    project = await create_project(client, key="MYTM", name="내 시간")
+    pid = project["id"]
+    wp = await create_wp(client, pid, subject="시간 기록 대상")
+    today = utc_today()
+
+    for offset, hours in ((0, 2.0), (3, 1.5), (8, 4.0)):  # 8 is outside the 7-day default
+        res = await client.post(
+            f"/api/v1/work-packages/{wp['id']}/time-entries",
+            json={
+                "hours": hours,
+                "spent_on": str(today - __import__("datetime").timedelta(days=offset)),
+            },
+        )
+        assert res.status_code == 201, res.text
+
+    res = await client.get("/api/v1/me/time-entries")
+    assert res.status_code == 200, res.text
+    body = res.json()
+    assert body["total"] == 2 and body["total_hours"] == 3.5  # default window
+    assert body["by_project"][0]["project_name"] == "내 시간"
+
+    # Explicit pair widens the window; one-sided is ambiguous (422).
+    wide = (
+        await client.get(f"/api/v1/me/time-entries?from={today - td(days=30)}&to={today}")
+    ).json()
+    assert wide["total"] == 3 and wide["total_hours"] == 7.5
+    assert (await client.get(f"/api/v1/me/time-entries?from={today}")).status_code == 422
+    assert (
+        await client.get(f"/api/v1/me/time-entries?from={today}&to={today - td(days=1)}")
+    ).status_code == 422
+    assert (
+        await client.get(f"/api/v1/me/time-entries?from={today - td(days=200)}&to={today}")
+    ).status_code == 422
+
+    # Another user's entries never appear (ownership filter).
+    other_project = str(member_project["project_id"])
+    other_wp = await create_wp(client, other_project, subject="남의 기록용")
+    async with app.state.sessionmaker() as session, session.begin():
+        await session.execute(
+            sa_text(
+                "INSERT INTO time_entries (id, work_package_id, user_id, hours, spent_on) "
+                "VALUES (gen_random_uuid(), CAST(:wp AS uuid), CAST(:u AS uuid), 9,"
+                " CAST(:d AS date))"
+            ).bindparams(wp=other_wp["id"], u=str(member_project["owner_id"]), d=str(today))
+        )
+    body = (await client.get("/api/v1/me/time-entries")).json()
+    assert body["total_hours"] == 3.5  # the owner's 9h never bleeds in
+
+    # Leaving the project keeps MY records visible (v53.1 R1-① re-ruling).
+    me = (await client.get("/api/v1/me")).json()
+    async with app.state.sessionmaker() as session, session.begin():
+        await session.execute(
+            sa_text(
+                "DELETE FROM project_members WHERE project_id = CAST(:p AS uuid) "
+                "AND user_id = CAST(:u AS uuid)"
+            ).bindparams(p=pid, u=me["id"])
+        )
+    body = (await client.get("/api/v1/me/time-entries")).json()
+    assert body["total_hours"] == 3.5  # still mine after leaving
+
+    # WP deletion cascades my entries away (existing contract, made explicit).
+    async with app.state.sessionmaker() as session, session.begin():
+        await session.execute(
+            sa_text("DELETE FROM work_packages WHERE id = CAST(:id AS uuid)").bindparams(
+                id=wp["id"]
+            )
+        )
+    body = (await client.get("/api/v1/me/time-entries")).json()
+    assert body["total_hours"] == 0.0

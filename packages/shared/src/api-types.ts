@@ -451,6 +451,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/me/time-entries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * My Time Entries
+         * @description The caller's OWN logged time (Pass 53, v53.1): user_id is the only
+         *     ownership filter — entries stay visible after leaving a project (audit/
+         *     billing data). Dates are date-only UTC INCLUSIVE on spent_on; from/to
+         *     come as a pair (one alone is ambiguous → 422); default = the last 7 UTC
+         *     days. Totals cover the whole range; items paginate.
+         */
+        get: operations["my_time_entries_api_v1_me_time_entries_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/me/work": {
         parameters: {
             query?: never;
@@ -3423,6 +3447,75 @@ export interface components {
             /** Work Package Subject */
             work_package_subject: string;
         };
+        /** MyTimeEntry */
+        MyTimeEntry: {
+            /** Hours */
+            hours: number;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Note */
+            note: string | null;
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            /** Project Name */
+            project_name: string;
+            /**
+             * Spent On
+             * Format: date
+             */
+            spent_on: string;
+            /**
+             * Work Package Id
+             * Format: uuid
+             */
+            work_package_id: string;
+            /** Work Package Subject */
+            work_package_subject: string;
+        };
+        /** MyTimeProjectSum */
+        MyTimeProjectSum: {
+            /** Hours */
+            hours: number;
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            /** Project Name */
+            project_name: string;
+        };
+        /**
+         * MyTimeRead
+         * @description Personal time view (Pass 53, v53.1): the caller's OWN entries — kept
+         *     visible after leaving a project (audit/billing data); totals cover the
+         *     WHOLE range regardless of item pagination.
+         */
+        MyTimeRead: {
+            /** By Project */
+            by_project: components["schemas"]["MyTimeProjectSum"][];
+            /**
+             * From Date
+             * Format: date
+             */
+            from_date: string;
+            /** Items */
+            items: components["schemas"]["MyTimeEntry"][];
+            /**
+             * To Date
+             * Format: date
+             */
+            to_date: string;
+            /** Total */
+            total: number;
+            /** Total Hours */
+            total_hours: number;
+        };
         /**
          * MyWorkPackage
          * @description Slim cross-project work-package row for the personal home: enough to
@@ -5500,6 +5593,40 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    my_time_entries_api_v1_me_time_entries_get: {
+        parameters: {
+            query?: {
+                from?: string | null;
+                to?: string | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MyTimeRead"];
+                };
             };
             /** @description Validation Error */
             422: {

@@ -7,7 +7,7 @@ import { FIELD_LABELS } from '@/features/work-packages/activityLabels'
 import { PriorityChip, StatusChip } from '@/features/work-packages/chips'
 import { formatDateTime } from '@/lib/datetime'
 
-import { type MyActivity, type MyWorkPackage, useMyWork } from './api'
+import { type MyActivity, type MyWorkPackage, useMyWork, useMyTime } from './api'
 
 function actionText(a: MyActivity): string {
   if (a.action === 'created') return '생성'
@@ -61,6 +61,7 @@ function WorkList({
    plate, what is due this week, my inbox, and what changed around me. */
 export function MyWorkPage() {
   const myWork = useMyWork()
+  const myTime = useMyTime()
   const notifications = useNotifications()
   const navigate = useNavigate()
 
@@ -97,6 +98,47 @@ export function MyWorkPage() {
               <span className="text-xs font-normal text-of-muted">{assigned_to_me.length}건</span>
             </h2>
             <WorkList items={assigned_to_me} emptyText="배정된 미완료 작업이 없습니다." />
+          </section>
+
+          <section aria-label="내 시간" className="rounded-of border border-of-border bg-of-surface p-4">
+            <h2 className="mb-2 text-sm font-semibold">
+              내 시간{' '}
+              <span className="text-xs font-normal text-of-muted">
+                최근 7일 {myTime.data ? `${myTime.data.total_hours}h` : ''}
+              </span>
+            </h2>
+            {!myTime.data || myTime.data.total === 0 ? (
+              <p className="text-xs text-of-muted">최근 7일간 기록한 시간이 없습니다.</p>
+            ) : (
+              <div className="space-y-2">
+                <ul className="space-y-1">
+                  {myTime.data.by_project.map((p) => (
+                    <li key={p.project_id} className="flex items-center gap-2 text-xs">
+                      <span className="w-32 shrink-0 truncate text-of-muted">{p.project_name}</span>
+                      <span className="h-2 rounded-full bg-of-accent/70" style={{ width: `${Math.min(100, (p.hours / myTime.data.total_hours) * 100)}%` }} />
+                      <span className="shrink-0 tabular-nums">{p.hours}h</span>
+                    </li>
+                  ))}
+                </ul>
+                <ul className="space-y-1 border-t border-of-border pt-2">
+                  {myTime.data.items.slice(0, 5).map((e) => (
+                    <li key={e.id} className="flex items-baseline gap-2 text-xs">
+                      <span className="shrink-0 text-of-muted">{e.spent_on}</span>
+                      <button
+                        type="button"
+                        className="min-w-0 flex-1 truncate text-left hover:text-of-accent"
+                        onClick={() =>
+                          navigate(`/projects/${e.project_id}/work-packages?wp=${e.work_package_id}`)
+                        }
+                      >
+                        {e.work_package_subject}
+                      </button>
+                      <span className="shrink-0 tabular-nums">{e.hours}h</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </section>
 
           <section aria-label="내가 만든 작업">
