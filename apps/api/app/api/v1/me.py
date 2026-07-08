@@ -1,5 +1,5 @@
 import uuid
-from datetime import timedelta
+from datetime import date, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy import func, select
@@ -14,9 +14,17 @@ from app.models.member import ProjectMember
 from app.models.notification import Notification
 from app.models.notification_setting import UserNotificationSettings
 from app.models.project import Project
+from app.models.time_entry import TimeEntry
 from app.models.user import User
 from app.models.work_package import WP_CLOSED_STATUSES, WorkPackage
-from app.schemas.me_work import MeWorkRead, MyActivityRead, MyWorkPackage
+from app.schemas.me_work import (
+    MeWorkRead,
+    MyActivityRead,
+    MyTimeEntry,
+    MyTimeProjectSum,
+    MyTimeRead,
+    MyWorkPackage,
+)
 from app.schemas.notification import NotificationList, NotificationRead
 from app.schemas.notification_setting import (
     NotificationSettingsRead,
@@ -302,3 +310,88 @@ async def mark_all_notifications_read(
     )
     await session.commit()
     return Response(status_code=204)
+
+
+MY_TIME_MAX_RANGE_DAYS = 92
+
+
+@router.get("/me/time-entries", response_model=MyTimeRead)
+async def my_time_entries(
+    from_date: date | None = Query(default=None, alias="from"),
+    to_date: date | None = Query(default=None, alias="to"),
+    limit: int = Query(default=200, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+) -> MyTimeRead:
+    """The caller's OWN logged time (Pass 53, v53.1): user_id is the only
+    ownership filter — entries stay visible after leaving a project (audit/
+    billing data). Dates are date-only UTC INCLUSIVE on spent_on; from/to
+    come as a pair (one alone is ambiguous → 422); default = the last 7 UTC
+    days. Totals cover the whole range; items paginate."""
+    if (from_date is None) != (to_date is None):
+        raise HTTPException(status_code=422, detail="provide both from and to, or neither")
+    if from_date is None:
+        to_date = utc_today()
+        from_date = to_date - timedelta(days=6)
+    assert to_date is not None
+    if from_date > to_date:
+        raise HTTPException(status_code=422, detail="from must be on or before to")
+    if (to_date - from_date).days > MY_TIME_MAX_RANGE_DAYS:
+        raise HTTPException(status_code=422, detail=f"range exceeds {MY_TIME_MAX_RANGE_DAYS} days")
+
+    base = (
+        select(TimeEntry, WorkPackage.subject, Project.id, Project.name)
+        .join(WorkPackage, TimeEntry.work_package_id == WorkPackage.id)
+        .join(Project, WorkPackage.project_id == Project.id)
+        .where(
+            TimeEntry.user_id == user.id,
+            TimeEntry.spent_on >= from_date,
+            TimeEntry.spent_on <= to_date,
+        )
+    )
+    rows = (
+        await session.execute(
+            base.order_by(TimeEntry.spent_on.desc(), TimeEntry.id.asc()).limit(limit).offset(offset)
+        )
+    ).all()
+    total = (await session.execute(select(func.count()).select_from(base.subquery()))).scalar_one()
+    # Whole-range aggregates — independent of item pagination (v53.1 R1-②).
+    sums = (
+        await session.execute(
+            select(Project.id, Project.name, func.sum(TimeEntry.hours))
+            .select_from(TimeEntry)
+            .join(WorkPackage, TimeEntry.work_package_id == WorkPackage.id)
+            .join(Project, WorkPackage.project_id == Project.id)
+            .where(
+                TimeEntry.user_id == user.id,
+                TimeEntry.spent_on >= from_date,
+                TimeEntry.spent_on <= to_date,
+            )
+            .group_by(Project.id, Project.name)
+            .order_by(func.sum(TimeEntry.hours).desc(), Project.name.asc())
+        )
+    ).all()
+    return MyTimeRead(
+        from_date=from_date,
+        to_date=to_date,
+        items=[
+            MyTimeEntry(
+                id=e.id,
+                work_package_id=e.work_package_id,
+                work_package_subject=subject,
+                project_id=pid,
+                project_name=pname,
+                hours=float(e.hours),
+                note=e.comment,
+                spent_on=e.spent_on,
+            )
+            for (e, subject, pid, pname) in rows
+        ],
+        total=total,
+        total_hours=float(sum(h for (_, _, h) in sums)),
+        by_project=[
+            MyTimeProjectSum(project_id=pid, project_name=pname, hours=float(h))
+            for (pid, pname, h) in sums
+        ],
+    )

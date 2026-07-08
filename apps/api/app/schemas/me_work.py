@@ -49,3 +49,33 @@ class MeWorkRead(BaseModel):
     # (unassigned or assigned to someone else).
     created_by_me: list[MyWorkPackage]
     recent_activity: list[MyActivityRead]
+
+
+class MyTimeEntry(BaseModel):
+    id: uuid.UUID
+    work_package_id: uuid.UUID
+    work_package_subject: str
+    project_id: uuid.UUID
+    project_name: str
+    hours: float
+    note: str | None  # the entry's comment field
+    spent_on: date
+
+
+class MyTimeProjectSum(BaseModel):
+    project_id: uuid.UUID
+    project_name: str
+    hours: float
+
+
+class MyTimeRead(BaseModel):
+    """Personal time view (Pass 53, v53.1): the caller's OWN entries — kept
+    visible after leaving a project (audit/billing data); totals cover the
+    WHOLE range regardless of item pagination."""
+
+    from_date: date
+    to_date: date
+    items: list[MyTimeEntry]
+    total: int  # full item count in range
+    total_hours: float
+    by_project: list[MyTimeProjectSum]
