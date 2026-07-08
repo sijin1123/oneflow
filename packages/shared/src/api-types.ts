@@ -1223,6 +1223,31 @@ export interface paths {
         patch: operations["update_module_api_v1_projects__project_id__modules__module_id__patch"];
         trace?: never;
     };
+    "/api/v1/projects/{project_id}/modules/{module_id}/members": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Module Members */
+        get: operations["list_module_members_api_v1_projects__project_id__modules__module_id__members_get"];
+        /**
+         * Replace Module Members
+         * @description Full replace under the SAME project advisory lock role changes use
+         *     (427002) — a concurrent demotion/removal serializes against this write,
+         *     and the conditional INSERT..SELECT re-checks eligibility at commit time
+         *     (v65.1 R1-③). Two concurrent PUTs are last-write-wins by design (an
+         *     informational roster — v65.1 R1-④).
+         */
+        put: operations["replace_module_members_api_v1_projects__project_id__modules__module_id__members_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{project_id}/permissions": {
         parameters: {
             query?: never;
@@ -3413,6 +3438,34 @@ export interface components {
             /** Total */
             total: number;
         };
+        /** ModuleMemberList */
+        ModuleMemberList: {
+            /** Items */
+            items: components["schemas"]["ModuleMemberRead"][];
+            /** Total */
+            total: number;
+        };
+        /** ModuleMemberRead */
+        ModuleMemberRead: {
+            /** Display Name */
+            display_name: string;
+            /** Email */
+            email: string;
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+        };
+        /**
+         * ModuleMembersPut
+         * @description Full-replace roster (idempotent; duplicates collapse; [] clears).
+         *     Every id must be currently eligible or the whole request is refused.
+         */
+        ModuleMembersPut: {
+            /** User Ids */
+            user_ids: string[];
+        };
         /** ModuleRead */
         ModuleRead: {
             /**
@@ -3431,6 +3484,11 @@ export interface components {
             id: string;
             /** Lead Id */
             lead_id: string | null;
+            /**
+             * Member Count
+             * @default 0
+             */
+            member_count: number;
             /** Name */
             name: string;
             /**
@@ -7675,6 +7733,74 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ModuleRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_module_members_api_v1_projects__project_id__modules__module_id__members_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                module_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModuleMemberList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    replace_module_members_api_v1_projects__project_id__modules__module_id__members_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                module_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ModuleMembersPut"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModuleMemberList"];
                 };
             };
             /** @description Validation Error */

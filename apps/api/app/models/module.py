@@ -6,6 +6,7 @@ from sqlalchemy import (
     Date,
     DateTime,
     ForeignKey,
+    ForeignKeyConstraint,
     Index,
     String,
     Text,
@@ -63,4 +64,34 @@ class Module(Base):
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+
+class ModuleMember(Base):
+    """Module participant roster row (Pass 65, v65.1). A LIVING grouping —
+    reads always re-filter to currently-eligible users (active AND project
+    member AND role != viewer), so a stale row is invisible, not wrong."""
+
+    __tablename__ = "module_members"
+    __table_args__ = (
+        # Composite FK through uq_modules_id_project: cross-project rows are
+        # unrepresentable (house pattern — cycles/WP anchors).
+        ForeignKeyConstraint(
+            ["module_id", "project_id"],
+            ["modules.id", "modules.project_id"],
+            name="fk_module_members_module_project",
+            ondelete="CASCADE",
+        ),
+        UniqueConstraint("module_id", "user_id", name="uq_module_members_module_user"),
+        Index("ix_module_members_module", "module_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    module_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    project_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
     )

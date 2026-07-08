@@ -15,11 +15,15 @@ export type ProjectModule = {
   target_date: string | null
   work_package_count: number
   done_work_package_count: number
+  member_count: number
   created_at: string
   updated_at: string
 }
 
 export type ModuleList = { items: ProjectModule[]; total: number }
+
+export type ModuleMemberRead = { user_id: string; display_name: string; email: string }
+export type ModuleMemberList = { items: ModuleMemberRead[]; total: number }
 
 export const MODULE_STATE_LABELS: Record<ModuleState, string> = {
   planned: '계획됨',
@@ -78,6 +82,30 @@ export function useDeleteModule(projectId: string) {
     mutationFn: (moduleId: string) =>
       api<void>(`/api/v1/projects/${projectId}/modules/${moduleId}`, { method: 'DELETE' }),
     onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['modules', projectId] })
+    },
+  })
+}
+
+export function useModuleMembers(projectId: string, moduleId: string, enabled: boolean) {
+  return useQuery({
+    queryKey: ['module-members', projectId, moduleId],
+    queryFn: () =>
+      api<ModuleMemberList>(`/api/v1/projects/${projectId}/modules/${moduleId}/members`),
+    enabled,
+  })
+}
+
+export function useReplaceModuleMembers(projectId: string, moduleId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (userIds: string[]) =>
+      api<ModuleMemberList>(`/api/v1/projects/${projectId}/modules/${moduleId}/members`, {
+        method: 'PUT',
+        body: JSON.stringify({ user_ids: userIds }),
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['module-members', projectId, moduleId] })
       void queryClient.invalidateQueries({ queryKey: ['modules', projectId] })
     },
   })

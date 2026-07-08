@@ -16,6 +16,7 @@ function mod(id: string, start: string | null, target: string | null): ProjectMo
     target_date: target,
     work_package_count: 0,
     done_work_package_count: 0,
+    member_count: 0,
     created_at: '2026-07-01T00:00:00Z',
     updated_at: '2026-07-01T00:00:00Z',
   }
