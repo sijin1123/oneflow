@@ -52,3 +52,57 @@ async def test_rollups_empty_and_archived(client):
     row = next(p for p in items if p["id"] == pid)
     assert row["work_package_count"] == 1
     await client.post(f"/api/v1/projects/{pid}/unarchive")
+
+
+async def test_initiative_rollup_column(client, app):
+    """Pass 51 PR-BQ (v51.1): a separate aggregate — top 5 by name + overflow
+    count; unconnected projects get an empty list; no cross-project
+    contamination (connection implies visibility)."""
+
+    from tests.conftest import create_project
+
+    a = await create_project(client, key="INIA", name="이니셔티브 A")
+    b = await create_project(client, key="INIB", name="이니셔티브 B")
+
+    # Six initiatives connected to A (one overflows the cap of 5); B stays bare.
+    for i in range(6):
+        ini = (await client.post("/api/v1/initiatives", json={"name": f"전략 {i}"})).json()
+        res = await client.post(
+            f"/api/v1/initiatives/{ini['id']}/projects", json={"project_id": a["id"]}
+        )
+        assert res.status_code == 200, res.text
+
+    listed = (await client.get("/api/v1/projects")).json()
+    row_a = next(p for p in listed["items"] if p["id"] == a["id"])
+    row_b = next(p for p in listed["items"] if p["id"] == b["id"])
+    assert [x["name"] for x in row_a["initiatives"]] == [f"전략 {i}" for i in range(5)]
+    assert row_a["initiative_overflow"] == 1
+    assert (row_b["initiatives"], row_b["initiative_overflow"]) == ([], 0)
+
+    # A foreign creator's initiative connected to MY project still shows
+    # (connection implies visibility); one connected only to a foreign
+    # project never bleeds in.
+    async with app.state.sessionmaker() as session, session.begin():
+        from app.models import Initiative, InitiativeProject, Project, ProjectMember, User
+
+        stranger = User(email="ini-stranger@x.co", display_name="외부인")
+        foreign_project = Project(key="INIZ", name="남의 프로젝트")
+        session.add_all([stranger, foreign_project])
+        await session.flush()
+        session.add(ProjectMember(project_id=foreign_project.id, user_id=stranger.id, role="owner"))
+        theirs_on_mine = Initiative(name="가나 전략", owner_id=stranger.id)
+        theirs_elsewhere = Initiative(name="남의 전략", owner_id=stranger.id)
+        session.add_all([theirs_on_mine, theirs_elsewhere])
+        await session.flush()
+        session.add_all(
+            [
+                InitiativeProject(initiative_id=theirs_on_mine.id, project_id=b["id"]),
+                InitiativeProject(initiative_id=theirs_elsewhere.id, project_id=foreign_project.id),
+            ]
+        )
+
+    listed = (await client.get("/api/v1/projects")).json()
+    row_b = next(p for p in listed["items"] if p["id"] == b["id"])
+    assert [x["name"] for x in row_b["initiatives"]] == ["가나 전략"]
+    all_names = {x["name"] for p in listed["items"] for x in p["initiatives"]}
+    assert "남의 전략" not in all_names  # never bleeds from a foreign project

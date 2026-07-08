@@ -123,6 +123,7 @@ function NewProjectForm({ onClose }: { onClose: () => void }) {
 }
 
 const ROLLUP_COLUMNS = [
+  { key: 'initiatives', label: '이니셔티브' },
   { key: 'work_package_count', label: '작업' },
   { key: 'open_work_package_count', label: '진행 중' },
   { key: 'overdue_count', label: '기한 초과' },
@@ -131,7 +132,10 @@ const ROLLUP_COLUMNS = [
 
 type RollupKey = (typeof ROLLUP_COLUMNS)[number]['key']
 const COLUMNS_STORAGE_KEY = 'oneflow.projects.columns.v1'
-const DEFAULT_COLUMNS: RollupKey[] = ROLLUP_COLUMNS.map((c) => c.key)
+// 'initiatives' is opt-in (Pass 51) — the default keeps the original five-column look.
+const DEFAULT_COLUMNS: RollupKey[] = ROLLUP_COLUMNS.filter((c) => c.key !== 'initiatives').map(
+  (c) => c.key,
+)
 
 /** Corrupted JSON / unknown keys / unavailable storage all fall back to the
     defaults (v22.1 R1-④) — a broken preference must never break the list. */
@@ -185,6 +189,7 @@ function saveColumns(cols: RollupKey[]) {
 }
 
 export function ProjectsPage() {
+  const navigate = useNavigate()
   const [includeArchived, setIncludeArchived] = useState(false)
   const [columns, setColumns] = useState<RollupKey[]>(loadColumns)
   const [sort, setSort] = useState<{ key: ProjectSortKey; dir: SortDir }>(loadSort)
@@ -285,6 +290,28 @@ export function ProjectsPage() {
                   <p className="truncate text-sm font-medium">
                     <span className="mr-1.5 text-of-muted">{p.key}</span>
                     {p.name}
+                    {columns.includes('initiatives') && p.initiatives.length > 0 ? (
+                      <span className="ml-1.5 inline-flex flex-wrap items-center gap-1 align-middle">
+                        {p.initiatives.map((ini) => (
+                          <button
+                            key={ini.id}
+                            type="button"
+                            className="rounded-of border border-of-border px-1.5 py-0.5 text-[10px] text-of-muted hover:text-of-accent"
+                            onClick={(e) => {
+                              e.preventDefault()
+                              navigate(`/initiatives?highlight=${ini.id}`)
+                            }}
+                          >
+                            {ini.name}
+                          </button>
+                        ))}
+                        {p.initiative_overflow > 0 ? (
+                          <span className="text-[10px] text-of-muted">
+                            외 {p.initiative_overflow}
+                          </span>
+                        ) : null}
+                      </span>
+                    ) : null}
                     {p.health ? (
                       <span
                         title={p.health_note ?? undefined}

@@ -132,8 +132,18 @@ class ProjectListItem(ProjectRead):
     open_work_package_count: int = 0
     overdue_count: int = 0
     member_count: int = 0
+    # Initiative rollup (Pass 51, v51.1): top 5 by name (connection implies
+    # visibility — every listed project is the caller's), plus the overflow
+    # count beyond the cap. Empty list when unconnected.
+    initiatives: list["ProjectInitiativeRef"] = []
+    initiative_overflow: int = 0
 
 
 class ProjectList(BaseModel):
     items: list[ProjectListItem]
     total: int
+
+
+class ProjectInitiativeRef(BaseModel):
+    id: uuid.UUID
+    name: str

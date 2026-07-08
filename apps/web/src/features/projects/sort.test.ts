@@ -22,6 +22,8 @@ function p(name: string, extra: Partial<ProjectListItem> = {}): ProjectListItem 
     open_work_package_count: 0,
     overdue_count: 0,
     member_count: 0,
+    initiatives: [],
+    initiative_overflow: 0,
     ...extra,
   }
 }

@@ -3674,6 +3674,16 @@ export interface components {
              */
             updated_at: string;
         };
+        /** ProjectInitiativeRef */
+        ProjectInitiativeRef: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+        };
         /** ProjectList */
         ProjectList: {
             /** Items */
@@ -3712,6 +3722,16 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            /**
+             * Initiative Overflow
+             * @default 0
+             */
+            initiative_overflow: number;
+            /**
+             * Initiatives
+             * @default []
+             */
+            initiatives: components["schemas"]["ProjectInitiativeRef"][];
             /** Key */
             key: string;
             /**
