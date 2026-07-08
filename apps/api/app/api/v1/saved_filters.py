@@ -38,6 +38,7 @@ def _to_read(row: SavedFilter, *, me: uuid.UUID, owner_name: str) -> SavedFilter
         layout=row.layout,
         sort=row.sort,
         is_shared=row.is_shared,
+        is_locked=row.is_locked,
         is_mine=row.user_id == me,
         owner_name=owner_name,
         created_at=row.created_at,
@@ -133,9 +134,13 @@ async def update_saved_filter(
     await require_member(session, project_id, user, write=True)
     row = await _get_own(session, project_id, filter_id, user)
     fields = body.model_dump(exclude_unset=True)
-    for key in ("name", "layout", "is_shared"):
+    for key in ("name", "layout", "is_shared", "is_locked"):
         if key in fields and fields[key] is None:
             raise HTTPException(status_code=422, detail=f"{key} cannot be null")
+    # Locked views accept the SINGLE-FIELD unlock only (v54.1 R1-⑤): the
+    # two-step is the point of the guard.
+    if row.is_locked and fields != {"is_locked": False}:
+        raise HTTPException(status_code=409, detail="view is locked — unlock it first")
     try:
         for key, value in fields.items():
             setattr(row, key, value)
@@ -157,6 +162,8 @@ async def delete_saved_filter(
 ) -> Response:
     await require_member(session, project_id, user, write=True)
     row = await _get_own(session, project_id, filter_id, user)
+    if row.is_locked:
+        raise HTTPException(status_code=409, detail="view is locked — unlock it first")
     await session.delete(row)
     await session.commit()
     return Response(status_code=204)

@@ -1,4 +1,4 @@
-import { Bookmark, Share2, X } from 'lucide-react'
+import { Bookmark, Lock, LockOpen, Share2, X } from 'lucide-react'
 import { useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 
@@ -122,21 +122,37 @@ export function SavedFilters({ projectId }: { projectId: string }) {
               <>
                 <button
                   type="button"
-                  aria-label={`${f.name} 공유 ${f.is_shared ? '해제' : '설정'}`}
-                  aria-pressed={f.is_shared}
-                  className={f.is_shared ? 'text-of-accent' : 'text-of-muted hover:text-of-accent'}
-                  onClick={() => update.mutate({ id: f.id, is_shared: !f.is_shared })}
+                  aria-label={`${f.name} 잠금 ${f.is_locked ? '해제' : '설정'}`}
+                  aria-pressed={f.is_locked}
+                  title={f.is_locked ? '잠긴 뷰 — 해제해야 수정/삭제할 수 있습니다' : '실수 방지 잠금'}
+                  className={f.is_locked ? 'text-of-accent' : 'text-of-muted hover:text-of-accent'}
+                  onClick={() => update.mutate({ id: f.id, is_locked: !f.is_locked })}
                 >
-                  <Share2 size={11} />
+                  {f.is_locked ? <Lock size={11} /> : <LockOpen size={11} />}
                 </button>
-                <button
-                  type="button"
-                  aria-label={`${f.name} 삭제`}
-                  className="text-of-muted hover:text-of-danger"
-                  onClick={() => del.mutate(f.id)}
-                >
-                  <X size={11} />
-                </button>
+                {!f.is_locked ? (
+                  <>
+                    <button
+                      type="button"
+                      aria-label={`${f.name} 공유 ${f.is_shared ? '해제' : '설정'}`}
+                      aria-pressed={f.is_shared}
+                      className={
+                        f.is_shared ? 'text-of-accent' : 'text-of-muted hover:text-of-accent'
+                      }
+                      onClick={() => update.mutate({ id: f.id, is_shared: !f.is_shared })}
+                    >
+                      <Share2 size={11} />
+                    </button>
+                    <button
+                      type="button"
+                      aria-label={`${f.name} 삭제`}
+                      className="text-of-muted hover:text-of-danger"
+                      onClick={() => del.mutate(f.id)}
+                    >
+                      <X size={11} />
+                    </button>
+                  </>
+                ) : null}
               </>
             ) : null}
           </span>

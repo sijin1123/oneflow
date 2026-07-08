@@ -179,3 +179,75 @@ async def test_columns_normalized_and_validated(client, project):
     )
     assert res.status_code == 201
     assert res.json()["params"]["columns"] is None
+
+
+async def test_locked_views(client, app, project):
+    """Pass 54 PR-BT (v54.1): a locked view accepts ONLY the single-field
+    unlock — every other PATCH combination and DELETE is a 409; unlocking
+    restores full editing; author deletion cascades the view away (no
+    orphaned locks — the existing FK contract, made explicit)."""
+    pid = project["id"]
+    created = (
+        await client.post(
+            f"/api/v1/projects/{pid}/saved-filters", json={"name": "잠글 뷰", "layout": "board"}
+        )
+    ).json()
+    fid = created["id"]
+    assert created["is_locked"] is False
+
+    # Lock it; then everything except the bare unlock is a 409.
+    res = await client.patch(
+        f"/api/v1/projects/{pid}/saved-filters/{fid}", json={"is_locked": True}
+    )
+    assert res.status_code == 200 and res.json()["is_locked"] is True
+    assert (
+        await client.patch(f"/api/v1/projects/{pid}/saved-filters/{fid}", json={"name": "변경"})
+    ).status_code == 409
+    assert (
+        await client.patch(
+            f"/api/v1/projects/{pid}/saved-filters/{fid}",
+            json={"is_locked": False, "name": "동시 변경"},
+        )
+    ).status_code == 409  # two-step enforced
+    assert (await client.delete(f"/api/v1/projects/{pid}/saved-filters/{fid}")).status_code == 409
+
+    # Bare unlock, then edits and delete work again.
+    assert (
+        await client.patch(f"/api/v1/projects/{pid}/saved-filters/{fid}", json={"is_locked": False})
+    ).status_code == 200
+    assert (
+        await client.patch(f"/api/v1/projects/{pid}/saved-filters/{fid}", json={"name": "수정됨"})
+    ).status_code == 200
+    assert (await client.delete(f"/api/v1/projects/{pid}/saved-filters/{fid}")).status_code == 204
+
+    # No orphaned locked views: deleting the author cascades their views.
+    from sqlalchemy import text
+
+    other = (
+        await client.post(
+            "/api/v1/users", json={"email": "lockowner@x.co", "display_name": "잠금주"}
+        )
+    ).json()
+    locked = (
+        await client.post(
+            f"/api/v1/projects/{pid}/saved-filters", json={"name": "고아 방지", "layout": "list"}
+        )
+    ).json()
+    async with app.state.sessionmaker() as session, session.begin():
+        await session.execute(
+            text(
+                "UPDATE saved_filters SET user_id = CAST(:u AS uuid), is_locked = true "
+                "WHERE id = CAST(:id AS uuid)"
+            ).bindparams(u=other["id"], id=locked["id"])
+        )
+        await session.execute(
+            text("DELETE FROM users WHERE id = CAST(:u AS uuid)").bindparams(u=other["id"])
+        )
+        remaining = (
+            await session.execute(
+                text("SELECT count(*) FROM saved_filters WHERE id = CAST(:id AS uuid)").bindparams(
+                    id=locked["id"]
+                )
+            )
+        ).scalar_one()
+    assert remaining == 0  # CASCADE — no orphaned locks

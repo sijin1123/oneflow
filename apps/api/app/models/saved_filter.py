@@ -47,6 +47,9 @@ class SavedFilter(Base):
     layout: Mapped[str] = mapped_column(String(20), nullable=False, default="list")
     sort: Mapped[str | None] = mapped_column(String(20), nullable=True)
     is_shared: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    # Author's own edit guard (Pass 54): a locked view only accepts the
+    # single-field unlock PATCH. Mistake guard, not a security boundary.
+    is_locked: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
