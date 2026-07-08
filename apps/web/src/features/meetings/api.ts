@@ -22,6 +22,8 @@ export type Meeting = {
   author_id: string | null
   recurrence: 'weekly' | 'biweekly' | 'monthly' | null
   recurrence_source_id: string | null
+  follow_up_source_id: string | null
+  follow_up_source_title: string | null
   version: number
   created_at: string
   updated_at: string

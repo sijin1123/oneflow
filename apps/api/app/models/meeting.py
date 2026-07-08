@@ -53,6 +53,11 @@ class Meeting(Base):
     recurrence_source_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("meetings.id", ondelete="SET NULL"), nullable=True
     )
+    # Manual follow-up's IMMEDIATE parent (Pass 79) — distinct axis from the
+    # recurrence chain above; SET NULL keeps the follow-up if the source dies.
+    follow_up_source_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("meetings.id", ondelete="SET NULL"), nullable=True
+    )
     version: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()

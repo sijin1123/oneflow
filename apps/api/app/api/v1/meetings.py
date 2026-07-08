@@ -88,6 +88,12 @@ async def _action_items(session: AsyncSession, meeting_id: uuid.UUID) -> list[Ac
 async def _read(session: AsyncSession, m: Meeting) -> MeetingRead:
     out = MeetingRead.model_validate(m)
     out.action_items = await _action_items(session, m.id)
+    # Source title only on the DETAIL read (single SELECT — never the list
+    # path, so no N+1; v79.1 R1-②). SET NULL after a delete → title stays None.
+    if m.follow_up_source_id is not None:
+        out.follow_up_source_title = (
+            await session.execute(select(Meeting.title).where(Meeting.id == m.follow_up_source_id))
+        ).scalar_one_or_none()
     return out
 
 
@@ -266,6 +272,7 @@ async def create_follow_up(
         scheduled_on=scheduled,
         agenda=src.agenda,  # already sanitized at write time
         author_id=user.id,
+        follow_up_source_id=src.id,  # immediate parent (Pass 79, v79.1 R1-①)
     )
     session.add(m)
     await session.flush()

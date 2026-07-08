@@ -202,6 +202,22 @@ export function MeetingDetailPage() {
       </div>
       {!canWrite ? <ReadOnlyNotice /> : null}
 
+      {mtg.follow_up_source_id ? (
+        <p className="text-[11px] text-of-muted">
+          ←{' '}
+          <button
+            type="button"
+            className="text-of-accent hover:underline"
+            onClick={() =>
+              navigate(`/projects/${projectId}/meetings/${mtg.follow_up_source_id}`)
+            }
+          >
+            '{mtg.follow_up_source_title ?? '원본 회의'}'
+          </button>{' '}
+          의 후속 회의입니다
+        </p>
+      ) : null}
+
       {conflict ? (
         <p role="alert" className="text-xs text-of-danger">
           다른 사용자가 먼저 수정했습니다. 작성 중인 내용은 유지했으니, 다시 저장하면 최신 내용
