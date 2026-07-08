@@ -1,4 +1,6 @@
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { useAuthConfig, useLogout } from '@/features/auth/api'
 import { useMe } from '@/features/members/api'
 
 import { NotificationsPanel } from './NotificationsPanel'
@@ -8,6 +10,8 @@ import { NotificationsPanel } from './NotificationsPanel'
    belonged to a project. Read-only account card + the moved panel. */
 export function PersonalSettingsPage() {
   const me = useMe()
+  const auth = useAuthConfig()
+  const logout = useLogout()
 
   return (
     <div className="mx-auto max-w-2xl p-6">
@@ -39,6 +43,39 @@ export function PersonalSettingsPage() {
             </div>
           </div>
         ) : null}
+      </section>
+
+      <section
+        aria-label="로그인/세션"
+        className="mb-6 rounded-of border border-of-border bg-of-surface p-4"
+      >
+        <h2 className="mb-2 text-sm font-semibold">로그인/세션</h2>
+        <div className="space-y-1.5 text-xs">
+          <p>
+            인증 모드:{' '}
+            <Badge variant="neutral">
+              {auth.data?.auth_mode === 'oidc' ? 'SSO (OIDC)' : '개발 모드'}
+            </Badge>
+          </p>
+          {auth.data?.auth_mode !== 'oidc' ? (
+            <p className="text-of-muted">
+              개발 모드에서는 로그인 세션이 필수 설정(ONEFLOW_DEV_LOGIN_REQUIRED)에 따라
+              적용됩니다. 꺼져 있으면 자동 개발 로그인으로 동작합니다.
+            </p>
+          ) : null}
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={logout.isPending}
+            onClick={() =>
+              logout.mutate(undefined, {
+                onSuccess: () => window.location.assign('/login'),
+              })
+            }
+          >
+            로그아웃
+          </Button>
+        </div>
       </section>
 
       <section

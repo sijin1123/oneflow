@@ -3616,6 +3616,59 @@ test('알 수 없는 주소는 스타일된 404 페이지를 보여준다', asyn
   await expect(page).toHaveURL(/\/projects$/)
 })
 
+test('로그인 화면에서 이메일 로그인 후 이동하고 OIDC 모드는 안내만 보인다', async ({ page }) => {
+  await mockApi(page)
+  await page.route('**/api/v1/auth/login', (route) =>
+    route.fulfill({
+      json: { user_id: 'me-1', email: 'dev@oneflow.local', display_name: 'Dev User' },
+    }),
+  )
+
+  await page.goto('/login?next=/projects')
+  const post = page.waitForRequest(
+    (r) => r.method() === 'POST' && r.url().includes('/auth/login'),
+  )
+  await page.getByLabel('이메일').fill('dev@oneflow.local')
+  await page.getByRole('button', { name: '로그인' }).click()
+  expect(((await post).postDataJSON() as { email: string }).email).toBe('dev@oneflow.local')
+  await expect(page).toHaveURL(/\/projects$/)
+
+  // OIDC mode: guidance only, no form (real IdP not wired — 501 policy).
+  await page.route('**/api/v1/auth/config', (route) =>
+    route.fulfill({
+      json: {
+        auth_mode: 'oidc',
+        oidc_issuer: 'https://idp.example.com',
+        oidc_client_id: 'oneflow',
+        has_client_secret: true,
+      },
+    }),
+  )
+  await page.goto('/login')
+  await expect(page.getByText('SSO(OIDC) 인증 모드입니다.')).toBeVisible()
+  await expect(page.getByText('발급자: https://idp.example.com')).toBeVisible()
+  await expect(page.getByLabel('이메일')).toBeHidden()
+})
+
+test('Topbar 계정 메뉴가 계정을 보여주고 로그아웃 POST 후 로그인으로 이동한다', async ({
+  page,
+}) => {
+  await mockApi(page)
+  await page.route('**/api/v1/auth/logout', (route) => route.fulfill({ status: 204 }))
+
+  await page.goto('/projects')
+  await page.getByLabel('계정 메뉴').click()
+  await expect(page.getByRole('menu', { name: '계정' })).toBeVisible()
+  await expect(page.getByRole('menu', { name: '계정' }).getByText('dev@oneflow.local')).toBeVisible()
+
+  const post = page.waitForRequest(
+    (r) => r.method() === 'POST' && r.url().includes('/auth/logout'),
+  )
+  await page.getByRole('menuitem', { name: '로그아웃' }).click()
+  await post
+  await expect(page).toHaveURL(/\/login/)
+})
+
 test('관리자가 사용자 디렉터리에서 추가·비활성화를 수행한다', async ({ page }) => {
   await mockApi(page)
   const admin = {
