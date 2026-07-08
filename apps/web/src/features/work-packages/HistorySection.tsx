@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { useMemberNames, useMembers } from '@/features/members/api'
+import { useCanWrite } from '@/features/members/useCanWrite'
 import { formatDateTime } from '@/lib/datetime'
 
 import { FIELD_LABELS } from './activityLabels'
@@ -83,6 +84,7 @@ export function HistorySection({ wpId, projectId }: { wpId: string; projectId: s
   const toggleReaction = useToggleReaction(wpId)
   const statusLabel = useStatusLabels(projectId)
   const members = useMembers(projectId)
+  const canWrite = useCanWrite(projectId)
   const memberName = useMemberNames(projectId)
   const [draft, setDraft] = useState('')
   const [replyTo, setReplyTo] = useState<string | null>(null)
@@ -171,6 +173,7 @@ export function HistorySection({ wpId, projectId }: { wpId: string; projectId: s
           ))}
         </p>
       ) : null}
+      {canWrite ? (
       <p className="mt-1 flex flex-wrap items-center gap-1">
         {/* Open set (Pass 35): existing aggregates first, then quick-pick
             glyphs not yet present, then free input. */}
@@ -204,9 +207,10 @@ export function HistorySection({ wpId, projectId }: { wpId: string; projectId: s
           onAdd={(emoji) => toggleReaction.mutate({ commentId: c.id, key: emoji, on: true })}
         />
       </p>
+      ) : null}
       <p className="mt-1 flex items-center gap-2 text-[11px] text-of-muted">
         {formatDateTime(c.created_at)}
-        {!isReply ? (
+        {canWrite && !isReply ? (
           <button
             type="button"
             className="rounded-of px-1 py-0.5 hover:bg-of-surface-2 hover:text-of-fg"
@@ -271,6 +275,7 @@ export function HistorySection({ wpId, projectId }: { wpId: string; projectId: s
         </ul>
       )}
 
+      {canWrite ? (
       <div className="space-y-2">
         <Textarea
           value={draft}
@@ -306,6 +311,7 @@ export function HistorySection({ wpId, projectId }: { wpId: string; projectId: s
           ) : null}
         </div>
       </div>
+      ) : null}
     </section>
   )
 }

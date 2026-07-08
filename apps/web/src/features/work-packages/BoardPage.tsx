@@ -3,7 +3,9 @@ import { useParams, useSearchParams } from 'react-router-dom'
 
 import { EmptyState, ErrorState, ListSkeleton } from '@/components/shell/states'
 import { Select } from '@/components/ui/select'
+import { ReadOnlyNotice } from '@/components/shell/ReadOnlyNotice'
 import { useMemberNames } from '@/features/members/api'
+import { useCanWrite } from '@/features/members/useCanWrite'
 import { useProjectStatuses } from '@/features/project-statuses/api'
 
 import { DetailDrawer } from './DetailDrawer'
@@ -24,6 +26,7 @@ export function BoardPage() {
   const { data, isPending, isError, error, refetch } = useWorkPackages(projectId, {})
   const statuses = useProjectStatuses(projectId)
   const patch = usePatchWorkPackage(projectId)
+  const canWrite = useCanWrite(projectId)
   const typeLabel = useTypeLabels(projectId)
   const memberName = useMemberNames(projectId)
   const [laneBy, setLaneBy] = useState<LaneBy>('none')
@@ -103,6 +106,7 @@ export function BoardPage() {
 
   return (
     <div className="h-full overflow-x-auto p-4">
+      {!canWrite ? <ReadOnlyNotice className="mb-2" /> : null}
       <div className="mb-2 flex items-center gap-2">
         <Select
           aria-label="스윔레인 기준"
@@ -142,12 +146,18 @@ export function BoardPage() {
             <section
               key={column.key}
               aria-label={`${lane.label ? `${lane.label} ` : ''}${column.label} 컬럼`}
-              onDragOver={(e) => {
-                e.preventDefault()
-                setDropTarget(targetKey)
-              }}
-              onDragLeave={() => setDropTarget((t) => (t === targetKey ? null : t))}
-              onDrop={(e) => drop(column.key, lane.key, e)}
+              onDragOver={
+                canWrite
+                  ? (e) => {
+                      e.preventDefault()
+                      setDropTarget(targetKey)
+                    }
+                  : undefined
+              }
+              onDragLeave={
+                canWrite ? () => setDropTarget((t) => (t === targetKey ? null : t)) : undefined
+              }
+              onDrop={canWrite ? (e) => drop(column.key, lane.key, e) : undefined}
               className={`flex max-h-full w-64 shrink-0 flex-col rounded-of border bg-of-surface-2/50 ${
                 dropTarget === targetKey ? 'border-of-accent' : 'border-of-border'
               }`}
@@ -161,15 +171,19 @@ export function BoardPage() {
                   <button
                     key={wp.id}
                     type="button"
-                    draggable
-                    onDragStart={(e) => {
-                      e.dataTransfer.setData('text/oneflow-wp', wp.id)
-                      e.dataTransfer.effectAllowed = 'move'
-                    }}
+                    draggable={canWrite}
+                    onDragStart={
+                      canWrite
+                        ? (e) => {
+                            e.dataTransfer.setData('text/oneflow-wp', wp.id)
+                            e.dataTransfer.effectAllowed = 'move'
+                          }
+                        : undefined
+                    }
                     onClick={() => openDrawer(wp.id)}
-                    className={`w-full cursor-grab rounded-of border border-of-border bg-of-surface p-2.5 text-left shadow-sm hover:border-of-accent active:cursor-grabbing ${
-                      pendingMoves.has(wp.id) ? 'opacity-60' : ''
-                    }`}
+                    className={`w-full rounded-of border border-of-border bg-of-surface p-2.5 text-left shadow-sm hover:border-of-accent ${
+                      canWrite ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'
+                    } ${pendingMoves.has(wp.id) ? 'opacity-60' : ''}`}
                   >
                     <p className="mb-1.5 line-clamp-2 text-[13px] font-medium">{wp.subject}</p>
                     <div className="flex items-center gap-2">

@@ -12,7 +12,9 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Select } from '@/components/ui/select'
 import { useCustomFields } from '@/features/custom-fields/api'
+import { ReadOnlyNotice } from '@/components/shell/ReadOnlyNotice'
 import { useMemberNames, useMembers } from '@/features/members/api'
+import { useCanWrite } from '@/features/members/useCanWrite'
 
 import {
   COLUMN_LABELS,
@@ -120,6 +122,7 @@ export function ListPage() {
   const typeLabel = useTypeLabels(projectId)
   const memberName = useMemberNames(projectId)
   const members = useMembers(projectId)
+  const canWrite = useCanWrite(projectId)
   const bulk = useBulkUpdate(projectId)
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [bulkStatus, setBulkStatus] = useState('')
@@ -164,6 +167,7 @@ export function ListPage() {
 
   return (
     <div className="flex h-full flex-col">
+      {members.data && !canWrite ? <ReadOnlyNotice className="mx-4 mt-2" /> : null}
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-of-border px-4 py-2">
         <Filters projectId={projectId} />
         <div className="flex items-center gap-2">
@@ -236,9 +240,9 @@ export function ListPage() {
 
       <SavedFilters projectId={projectId} />
 
-      <NewWorkPackageInline projectId={projectId} />
+      {canWrite ? <NewWorkPackageInline projectId={projectId} /> : null}
 
-      {selected.size > 0 ? (
+      {canWrite && selected.size > 0 ? (
         <div className="flex flex-wrap items-center gap-2 border-b border-of-border bg-of-surface-2/40 px-4 py-2 text-xs">
           <span className="font-medium">{selected.size}건 선택</span>
           <Select
@@ -312,7 +316,7 @@ export function ListPage() {
           <table className="w-full min-w-[720px] border-collapse text-sm">
             <thead>
               <tr className="border-b border-of-border text-left text-xs text-of-muted">
-                <th className="w-8 px-2 py-2" aria-label="선택 열" />
+                {canWrite ? <th className="w-8 px-2 py-2" aria-label="선택 열" /> : null}
                 <th className="px-4 py-2 font-medium">제목</th>
                 {show('type') ? <th className="w-24 px-2 py-2 font-medium">타입</th> : null}
                 {show('status') ? <th className="w-28 px-2 py-2 font-medium">상태</th> : null}
@@ -335,16 +339,18 @@ export function ListPage() {
                   className="cursor-pointer border-b border-of-border hover:bg-of-surface-2"
                   onClick={() => openDrawer(wp.id)}
                 >
-                  <td className="px-2 py-2">
-                    <input
-                      type="checkbox"
-                      aria-label={`${wp.subject} 선택`}
-                      checked={selected.has(wp.id)}
-                      onClick={(e) => e.stopPropagation()}
-                      onChange={() => toggleSelected(wp.id)}
-                      className="h-3.5 w-3.5 accent-of-accent"
-                    />
-                  </td>
+                  {canWrite ? (
+                    <td className="px-2 py-2">
+                      <input
+                        type="checkbox"
+                        aria-label={`${wp.subject} 선택`}
+                        checked={selected.has(wp.id)}
+                        onClick={(e) => e.stopPropagation()}
+                        onChange={() => toggleSelected(wp.id)}
+                        className="h-3.5 w-3.5 accent-of-accent"
+                      />
+                    </td>
+                  ) : null}
                   <td className="px-4 py-2">
                     <button
                       type="button"

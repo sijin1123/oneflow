@@ -18,15 +18,18 @@ type Props = {
       download URL. Only the document editor passes this — surfaces without
       it (meetings, …) get no image button and the server rejects <img>. */
   onImageUpload?: (file: File) => Promise<string>
+  /** Read-only (Pass 76): no toolbar, no editing — content renders as-is. */
+  editable?: boolean
 }
 
-export function RichTextEditor({ value, onSave, ariaLabel, onImageUpload }: Props) {
+export function RichTextEditor({ value, onSave, ariaLabel, onImageUpload, editable = true }: Props) {
   const fileRef = useRef<HTMLInputElement>(null)
   const editor = useEditor({
     extensions: onImageUpload
       ? [StarterKit, Image.configure({ HTMLAttributes: { class: 'max-w-full' } })]
       : [StarterKit],
     content: value || '',
+    editable,
     // CSR-only Vite app, but keep StrictMode's double-invoke from warning.
     immediatelyRender: false,
     editorProps: {
@@ -46,6 +49,10 @@ export function RichTextEditor({ value, onSave, ariaLabel, onImageUpload }: Prop
     }
   }, [value, editor])
 
+  useEffect(() => {
+    if (editor) editor.setEditable(editable)
+  }, [editable, editor])
+
   if (!editor) return null
 
   const btn = (active: boolean) =>
@@ -56,6 +63,7 @@ export function RichTextEditor({ value, onSave, ariaLabel, onImageUpload }: Prop
 
   return (
     <div className="rounded-of border border-of-border bg-of-surface">
+      {editable ? (
       <div className="flex items-center gap-0.5 border-b border-of-border px-1 py-0.5">
         <button
           type="button"
@@ -121,6 +129,7 @@ export function RichTextEditor({ value, onSave, ariaLabel, onImageUpload }: Prop
           </>
         ) : null}
       </div>
+      ) : null}
       <EditorContent editor={editor} />
     </div>
   )

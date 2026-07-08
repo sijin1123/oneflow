@@ -7,7 +7,9 @@ import { ErrorState, ListSkeleton } from '@/components/shell/states'
 import { Input } from '@/components/ui/input'
 import { AiSummarySection } from '@/features/ai/AiSummarySection'
 import { Button } from '@/components/ui/button'
+import { ReadOnlyNotice } from '@/components/shell/ReadOnlyNotice'
 import { useMembers } from '@/features/members/api'
+import { useCanWrite } from '@/features/members/useCanWrite'
 import { useProjects } from '@/features/projects/api'
 import { useCycles } from '@/features/cycles/api'
 import { useMilestones } from '@/features/milestones/api'
@@ -179,6 +181,7 @@ function DrawerForm({ wp, projectId }: { wp: WorkPackage; projectId: string }) {
   const members = useMembers(projectId)
   const statusLabel = useStatusLabels(projectId)
   const duplicate = useDuplicateWorkPackage(projectId)
+  const canWrite = useCanWrite(projectId)
   const [moveOpen, setMoveOpen] = useState(false)
 
   // All editable fields are controlled and resynced from server data, so a 409
@@ -222,25 +225,29 @@ function DrawerForm({ wp, projectId }: { wp: WorkPackage; projectId: string }) {
           저장하지 못했습니다: {saveError}
         </p>
       ) : null}
-      <div className="flex items-center justify-between">
-        <WatchRow wpId={wp.id} />
-        <button
-          type="button"
-          className="rounded-of border border-of-border px-2 py-1 text-xs text-of-muted hover:bg-of-surface-2"
-          disabled={duplicate.isPending}
-          onClick={() => duplicate.mutate(wp.id)}
-        >
-          복제
-        </button>
-        <button
-          type="button"
-          className="rounded-of border border-of-border px-2 py-1 text-xs text-of-muted hover:bg-of-surface-2"
-          onClick={() => setMoveOpen((v) => !v)}
-        >
-          이동
-        </button>
-      </div>
-      {moveOpen ? <MoveSection wp={wp} projectId={projectId} /> : null}
+      {canWrite ? (
+        <div className="flex items-center justify-between">
+          <WatchRow wpId={wp.id} />
+          <button
+            type="button"
+            className="rounded-of border border-of-border px-2 py-1 text-xs text-of-muted hover:bg-of-surface-2"
+            disabled={duplicate.isPending}
+            onClick={() => duplicate.mutate(wp.id)}
+          >
+            복제
+          </button>
+          <button
+            type="button"
+            className="rounded-of border border-of-border px-2 py-1 text-xs text-of-muted hover:bg-of-surface-2"
+            onClick={() => setMoveOpen((v) => !v)}
+          >
+            이동
+          </button>
+        </div>
+      ) : (
+        <ReadOnlyNotice />
+      )}
+      {canWrite && moveOpen ? <MoveSection wp={wp} projectId={projectId} /> : null}
       {duplicate.isSuccess ? (
         <p role="status" className="text-xs text-of-muted">
           '{duplicate.data.work_package.subject}' 생성됨
@@ -258,8 +265,9 @@ function DrawerForm({ wp, projectId }: { wp: WorkPackage; projectId: string }) {
         </label>
         <Input
           id="wp-subject"
+          readOnly={!canWrite}
           value={subject}
-          disabled={patch.isPending}
+          disabled={!canWrite || patch.isPending}
           onChange={(e) => setSubject(e.target.value)}
           onBlur={() => {
             const trimmed = subject.trim()
@@ -276,7 +284,7 @@ function DrawerForm({ wp, projectId }: { wp: WorkPackage; projectId: string }) {
           <Select
             id="wp-status"
             value={wp.status}
-            disabled={patch.isPending}
+            disabled={!canWrite || patch.isPending}
             onChange={(e) => send({ status: e.target.value as WpStatus })}
           >
             {WP_STATUSES.map((s) => (
@@ -293,7 +301,7 @@ function DrawerForm({ wp, projectId }: { wp: WorkPackage; projectId: string }) {
           <Select
             id="wp-priority"
             value={wp.priority}
-            disabled={patch.isPending}
+            disabled={!canWrite || patch.isPending}
             onChange={(e) => send({ priority: e.target.value as WpPriority })}
           >
             {WP_PRIORITIES.map((p) => (
@@ -313,9 +321,10 @@ function DrawerForm({ wp, projectId }: { wp: WorkPackage; projectId: string }) {
           {/* date-only string round-trip — never through JS Date (§6.1) */}
           <Input
             id="wp-start"
+            readOnly={!canWrite}
             type="date"
             value={startDate}
-            disabled={patch.isPending}
+            disabled={!canWrite || patch.isPending}
             onChange={(e) => setStartDate(e.target.value)}
             onBlur={() => {
               const v = startDate || null
@@ -329,9 +338,10 @@ function DrawerForm({ wp, projectId }: { wp: WorkPackage; projectId: string }) {
           </label>
           <Input
             id="wp-due"
+            readOnly={!canWrite}
             type="date"
             value={dueDate}
-            disabled={patch.isPending}
+            disabled={!canWrite || patch.isPending}
             onChange={(e) => setDueDate(e.target.value)}
             onBlur={() => {
               const v = dueDate || null
@@ -348,11 +358,12 @@ function DrawerForm({ wp, projectId }: { wp: WorkPackage; projectId: string }) {
           </label>
           <Input
             id="wp-estimate"
+            readOnly={!canWrite}
             type="number"
             step="0.5"
             min="0"
             value={estimate}
-            disabled={patch.isPending}
+            disabled={!canWrite || patch.isPending}
             onChange={(e) => setEstimate(e.target.value)}
             onBlur={() => {
               const v = estimate.trim() === '' ? null : Number(estimate)
@@ -367,7 +378,7 @@ function DrawerForm({ wp, projectId }: { wp: WorkPackage; projectId: string }) {
           <Select
             id="wp-type"
             value={wp.type}
-            disabled={patch.isPending}
+            disabled={!canWrite || patch.isPending}
             onChange={(e) => send({ type: e.target.value })}
           >
             {(projectTypes.data?.items ?? [])
@@ -391,7 +402,7 @@ function DrawerForm({ wp, projectId }: { wp: WorkPackage; projectId: string }) {
           <Select
             id="wp-milestone"
             value={wp.milestone_id ?? ''}
-            disabled={patch.isPending}
+            disabled={!canWrite || patch.isPending}
             onChange={(e) => send({ milestone_id: e.target.value || null })}
           >
             <option value="">없음</option>
@@ -409,7 +420,7 @@ function DrawerForm({ wp, projectId }: { wp: WorkPackage; projectId: string }) {
           <Select
             id="wp-cycle"
             value={wp.cycle_id ?? ''}
-            disabled={patch.isPending}
+            disabled={!canWrite || patch.isPending}
             onChange={(e) => send({ cycle_id: e.target.value || null })}
           >
             <option value="">없음</option>
@@ -427,7 +438,7 @@ function DrawerForm({ wp, projectId }: { wp: WorkPackage; projectId: string }) {
           <Select
             id="wp-module"
             value={wp.module_id ?? ''}
-            disabled={patch.isPending}
+            disabled={!canWrite || patch.isPending}
             onChange={(e) => send({ module_id: e.target.value || null })}
           >
             <option value="">없음</option>
@@ -447,7 +458,7 @@ function DrawerForm({ wp, projectId }: { wp: WorkPackage; projectId: string }) {
         <Select
           id="wp-assignee"
           value={wp.assignee_id ?? ''}
-          disabled={patch.isPending}
+          disabled={!canWrite || patch.isPending}
           onChange={(e) => send({ assignee_id: e.target.value || null })}
         >
           <option value="">미배정</option>
@@ -465,6 +476,7 @@ function DrawerForm({ wp, projectId }: { wp: WorkPackage; projectId: string }) {
           fallback={<div className="h-24 rounded-of border border-of-border bg-of-surface-2/40" />}
         >
           <RichTextEditor
+            editable={canWrite}
             value={wp.description ?? ''}
             ariaLabel="설명"
             onSave={(html) => {

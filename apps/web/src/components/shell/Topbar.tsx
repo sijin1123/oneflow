@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useLogout } from '@/features/auth/api'
 import { useMe } from '@/features/members/api'
+import { useCanWrite } from '@/features/members/useCanWrite'
 import { NotificationBell } from '@/features/notifications/NotificationBell'
 import { useProjects } from '@/features/projects/api'
 
@@ -65,6 +66,18 @@ function AccountMenu() {
         </div>
       ) : null}
     </div>
+  )
+}
+
+/** Gated behind write access — a viewer never sees the create button
+    (Pass 76). Own component so useCanWrite only runs with a real projectId. */
+function NewWorkPackageButton({ projectId, onClick }: { projectId: string; onClick: () => void }) {
+  const canWrite = useCanWrite(projectId)
+  if (!canWrite) return null
+  return (
+    <Button size="sm" onClick={onClick}>
+      <Plus /> 새 작업
+    </Button>
   )
 }
 
@@ -132,9 +145,9 @@ export function Topbar() {
             />
           </div>
         ) : null}
-        {onListView ? (
-          <Button
-            size="sm"
+        {onListView && projectId ? (
+          <NewWorkPackageButton
+            projectId={projectId}
             onClick={() =>
               setSearchParams((prev) => {
                 const next = new URLSearchParams(prev)
@@ -142,9 +155,7 @@ export function Topbar() {
                 return next
               })
             }
-          >
-            <Plus /> 새 작업
-          </Button>
+          />
         ) : null}
         <NotificationBell />
         <AccountMenu />
