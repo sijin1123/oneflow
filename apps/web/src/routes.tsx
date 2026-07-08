@@ -1,3 +1,4 @@
+import { Suspense, lazy } from 'react'
 import { Navigate, createBrowserRouter } from 'react-router-dom'
 
 import { AppShell } from '@/components/shell/AppShell'
@@ -25,7 +26,10 @@ import { BoardPage } from '@/features/work-packages/BoardPage'
 import { CyclesPage } from '@/features/cycles/CyclesPage'
 import { CalendarPage } from '@/features/work-packages/CalendarPage'
 import { ListPage } from '@/features/work-packages/ListPage'
-import { TimelinePage } from '@/features/work-packages/TimelinePage'
+// DHTMLX Gantt is heavy — the timeline route is code-split (v73.1 R1-⑥).
+const TimelinePage = lazy(() =>
+  import('@/features/work-packages/TimelinePage').then((m) => ({ default: m.TimelinePage })),
+)
 import { TreePage } from '@/features/work-packages/TreePage'
 
 export const router = createBrowserRouter([
@@ -51,7 +55,14 @@ export const router = createBrowserRouter([
       { path: 'projects/:projectId/board', element: <BoardPage /> },
       { path: 'projects/:projectId/backlog', element: <BacklogPage /> },
       { path: 'projects/:projectId/tree', element: <TreePage /> },
-      { path: 'projects/:projectId/timeline', element: <TimelinePage /> },
+      {
+        path: 'projects/:projectId/timeline',
+        element: (
+          <Suspense fallback={<div className="p-6 text-xs text-of-muted">타임라인 로딩 중…</div>}>
+            <TimelinePage />
+          </Suspense>
+        ),
+      },
       { path: 'projects/:projectId/calendar', element: <CalendarPage /> },
       { path: 'projects/:projectId/cycles', element: <CyclesPage /> },
       { path: 'projects/:projectId/modules', element: <ModulesPage /> },

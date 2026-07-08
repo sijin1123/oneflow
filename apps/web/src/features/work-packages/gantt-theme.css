@@ -1,0 +1,14 @@
+/* OneFlow overrides for DHTMLX Gantt (Pass 73) — status bar colors mirror the
+   old clean-room timeline; blocks links render in the danger tone. */
+.gantt_task_line.of-bar-backlog { background: #d1d5db; border-color: #d1d5db; }
+.gantt_task_line.of-bar-todo { background: #38bdf8; border-color: #38bdf8; }
+.gantt_task_line.of-bar-in_progress { background: #fbbf24; border-color: #fbbf24; }
+.gantt_task_line.of-bar-in_review { background: #a78bfa; border-color: #a78bfa; }
+.gantt_task_line.of-bar-done { background: #34d399; border-color: #34d399; }
+.gantt_task_line.of-bar-cancelled { background: #e5e7eb; border-color: #e5e7eb; }
+.gantt_task_line.of-bar-backlog .gantt_task_content,
+.gantt_task_line.of-bar-cancelled .gantt_task_content { color: #374151; }
+.gantt_task_link.of-link-blocks .gantt_line_wrapper div { background: rgba(220, 38, 38, 0.7); }
+.gantt_task_link.of-link-blocks .gantt_link_arrow_right,
+.gantt_task_link.of-link-blocks .gantt_link_arrow_left { border-left-color: rgba(220, 38, 38, 0.7); }
+.gantt_task_cell.of-today-cell { background: rgba(220, 38, 38, 0.08); border-right: 1px solid rgba(220, 38, 38, 0.5); }

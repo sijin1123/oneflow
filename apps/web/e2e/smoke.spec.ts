@@ -752,37 +752,78 @@ test('대시보드가 집계 타일과 분포를 보여준다', async ({ page })
   ])
 })
 
-test('타임라인이 일정이 있는 작업을 막대로 그린다', async ({ page }) => {
+test('DHTMLX 타임라인이 막대·의존선·마일스톤을 그리고 읽기 전용이다', async ({ page }) => {
   await mockApi(page)
-  // one drawable dependency + one whose endpoint has no bar (omitted note)
+  // one drawable dependency + one whose endpoint has no bar (omitted note),
+  // plus a 'relates' pair that must NOT draw (not a dependency).
   await page.route(`**/api/v1/projects/${project.id}/relations**`, (route) =>
     route.fulfill({
       json: {
         items: [
           { id: 'rel-1', source_id: wpA.id, target_id: wpB.id, relation_type: 'precedes' },
           { id: 'rel-2', source_id: wpA.id, target_id: 'ghost-wp', relation_type: 'blocks' },
+          { id: 'rel-3', source_id: wpA.id, target_id: wpB.id, relation_type: 'relates' },
         ],
-        total: 2,
+        total: 3,
         truncated: false,
       },
     }),
   )
-  await page.goto(`/projects/${project.id}/timeline`)
-  await expect(page.getByRole('button', { name: '워크패키지 API 구현 일정' })).toBeVisible()
-  await expect(page.getByTestId('dep-connector')).toHaveCount(1)
-  await expect(page.getByText('일정 미정으로 표시되지 않은 의존 1건', { exact: false })).toBeVisible()
-  await expect(page.getByText('2026.07')).toBeVisible() // month header from start/due dates
+  await page.route(`**/api/v1/projects/${project.id}/milestones`, (route) =>
+    route.fulfill({
+      json: {
+        items: [
+          {
+            id: 'ms-1',
+            project_id: project.id,
+            name: 'v1 릴리스',
+            due_date: '2026-07-20',
+            description: null,
+            created_at: '2026-07-01T00:00:00Z',
+            updated_at: '2026-07-01T00:00:00Z',
+          },
+        ],
+        total: 1,
+      },
+    }),
+  )
 
-  // Zoom (Pass 36): fixed levels set an explicit content width; the choice
-  // survives a reload via localStorage.
-  const content = page.getByTestId('timeline-content')
-  await expect(content).not.toHaveAttribute('style', /width/)
-  await page.getByRole('button', { name: '일', exact: true }).click()
-  await expect(content).toHaveAttribute('style', /width/)
+  await page.goto(`/projects/${project.id}/timeline`)
+  const chart = page.getByTestId('gantt-container')
+  // Bars render as gantt task lines with our status classes.
+  await expect(chart.locator(`[data-task-id="${wpA.id}"].gantt_task_line`)).toBeVisible()
+  await expect(chart.locator(`[data-task-id="${wpB.id}"].gantt_task_line`)).toBeVisible()
+  // Exactly ONE dependency link (precedes) — relates never draws; the ghost
+  // endpoint is reported as omitted instead.
+  await expect(chart.locator('.gantt_task_link')).toHaveCount(1)
+  await expect(page.getByText('일정 미정으로 표시되지 않은 의존 1건', { exact: false })).toBeVisible()
+  // Milestone row renders as a gantt milestone.
+  await expect(chart.locator('.gantt_task_line.gantt_milestone')).toHaveCount(1)
+  await expect(page.getByText('2026.07').first()).toBeVisible() // month scale header
+
+  // XSS regression (v73.1 R1-⓪): no element injected from task text templates.
+  await expect(chart.locator('.gantt_grid img')).toHaveCount(0)
+
+  // Zoom presets persist via localStorage across a reload (Pass 36 parity).
+  await page.getByRole('button', { name: '일', exact: true }).click({ force: true })
+  await expect(page.getByRole('button', { name: '일', exact: true })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  )
   await page.reload()
-  await expect(page.getByTestId('timeline-content')).toHaveAttribute('style', /width/)
-  await page.getByRole('button', { name: '자동', exact: true }).click()
-  await expect(page.getByTestId('timeline-content')).not.toHaveAttribute('style', /width/)
+  await expect(page.getByRole('button', { name: '일', exact: true })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  )
+  await page.getByRole('button', { name: '자동', exact: true }).click({ force: true })
+
+  // Read-only: double-click never opens the built-in editor (lightbox).
+  await chart.locator(`[data-task-id="${wpA.id}"].gantt_task_line`).dblclick({ force: true })
+  await expect(page.locator('.gantt_cal_light')).toHaveCount(0)
+
+  // Bar click deep-links into the drawer (?wp=).
+  await chart.locator(`[data-task-id="${wpA.id}"].gantt_task_line`).click({ force: true })
+  await expect(page).toHaveURL(new RegExp(`wp=${wpA.id}`))
 })
 
 test('설정 화면에서 멤버를 보여주고 소유자가 멤버를 추가한다', async ({ page }) => {
