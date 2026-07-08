@@ -92,9 +92,7 @@ async def _read(session: AsyncSession, m: Meeting) -> MeetingRead:
     # path, so no N+1; v79.1 R1-②). SET NULL after a delete → title stays None.
     if m.follow_up_source_id is not None:
         out.follow_up_source_title = (
-            await session.execute(
-                select(Meeting.title).where(Meeting.id == m.follow_up_source_id)
-            )
+            await session.execute(select(Meeting.title).where(Meeting.id == m.follow_up_source_id))
         ).scalar_one_or_none()
     return out
 
