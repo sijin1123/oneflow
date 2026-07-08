@@ -1223,6 +1223,23 @@ export interface paths {
         patch: operations["update_module_api_v1_projects__project_id__modules__module_id__patch"];
         trace?: never;
     };
+    "/api/v1/projects/{project_id}/permissions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Permission Report */
+        get: operations["permission_report_api_v1_projects__project_id__permissions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{project_id}/relations": {
         parameters: {
             query?: never;
@@ -3685,6 +3702,39 @@ export interface components {
             current_revision: string | null;
             /** Status */
             status: string;
+        };
+        /** PermissionReportRead */
+        PermissionReportRead: {
+            /** My Role */
+            my_role: string;
+            /** Verbs */
+            verbs: components["schemas"]["PermissionVerb"][];
+        };
+        /** PermissionVerb */
+        PermissionVerb: {
+            /** Condition */
+            condition: string | null;
+            /** Key */
+            key: string;
+            /** Label */
+            label: string;
+            /**
+             * Member
+             * @enum {string}
+             */
+            member: "always" | "never" | "conditional";
+            /** Note */
+            note: string | null;
+            /**
+             * Owner
+             * @enum {string}
+             */
+            owner: "always" | "never" | "conditional";
+            /**
+             * Viewer
+             * @enum {string}
+             */
+            viewer: "always" | "never" | "conditional";
         };
         /**
          * ProjectActivityList
@@ -7574,6 +7624,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ModuleRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    permission_report_api_v1_projects__project_id__permissions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PermissionReportRead"];
                 };
             };
             /** @description Validation Error */

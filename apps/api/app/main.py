@@ -26,6 +26,7 @@ from app.api.v1 import (
     milestones,
     modules,
     ops,
+    permissions,
     project_statuses,
     project_types,
     projects,
@@ -106,6 +107,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(csv_io.router, prefix="/api/v1", tags=["csv"])
     app.include_router(comments.router, prefix="/api/v1", tags=["comments"])
     app.include_router(members.router, prefix="/api/v1", tags=["members"])
+    app.include_router(permissions.router, prefix="/api/v1", tags=["permissions"])
     app.include_router(me.router, prefix="/api/v1", tags=["me"])
     app.include_router(time_entries.router, prefix="/api/v1", tags=["time-entries"])
     app.include_router(dashboard.router, prefix="/api/v1", tags=["dashboard"])

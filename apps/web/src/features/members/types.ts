@@ -17,3 +17,20 @@ export type Me = {
   is_active: boolean
   is_admin: boolean
 }
+
+export type PermissionAllow = 'always' | 'never' | 'conditional'
+
+export type PermissionVerb = {
+  key: string
+  label: string
+  owner: PermissionAllow
+  member: PermissionAllow
+  viewer: PermissionAllow
+  condition: string | null
+  note: string | null
+}
+
+export type PermissionReport = {
+  my_role: 'owner' | 'member' | 'viewer'
+  verbs: PermissionVerb[]
+}

@@ -6,13 +6,80 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
-import { useAddMember, useMe, useMembers, useRemoveMember, useUpdateMemberRole } from '@/features/members/api'
+import {
+  useAddMember,
+  useMe,
+  useMembers,
+  usePermissionReport,
+  useRemoveMember,
+  useUpdateMemberRole,
+} from '@/features/members/api'
 import { ApiError } from '@/lib/api'
 
 const ROLE_LABELS: Record<string, string> = {
   owner: '소유자',
   member: '멤버',
   viewer: '뷰어',
+}
+
+function AllowCell({ value, condition }: { value: string; condition: string | null }) {
+  if (value === 'always') return <span className="text-of-accent">✓</span>
+  if (value === 'never') return <span className="text-of-muted">—</span>
+  return (
+    <span title={condition ?? undefined} className="cursor-help text-[11px] text-of-muted underline decoration-dotted">
+      조건부
+    </span>
+  )
+}
+
+function PermissionsTable({ projectId }: { projectId: string }) {
+  const report = usePermissionReport(projectId)
+  if (!report.data) return null
+  const myRole = report.data.my_role
+  const roleCol = (role: string) =>
+    role === myRole ? 'bg-of-accent-soft/40 font-medium' : ''
+  return (
+    <section aria-label="권한" className="mt-6">
+      <h3 className="mb-1 text-xs font-semibold">역할별 권한</h3>
+      <p className="mb-2 text-[11px] text-of-muted">
+        이 표는 시스템이 실제로 시행하는 고정 규칙입니다. 내 역할(
+        {ROLE_LABELS[myRole] ?? myRole}) 열이 강조됩니다. 워크스페이스 관리자 권한은 프로젝트
+        역할과 별개이며 프로젝트 권한을 부여하지 않습니다.
+      </p>
+      <div className="overflow-x-auto rounded-of border border-of-border">
+        <table className="w-full min-w-[28rem] bg-of-surface text-xs">
+          <thead>
+            <tr className="border-b border-of-border text-left text-[11px] text-of-muted">
+              <th className="px-3 py-2 font-medium">기능</th>
+              <th className={`w-16 px-2 py-2 text-center font-medium ${roleCol('owner')}`}>소유자</th>
+              <th className={`w-16 px-2 py-2 text-center font-medium ${roleCol('member')}`}>멤버</th>
+              <th className={`w-16 px-2 py-2 text-center font-medium ${roleCol('viewer')}`}>뷰어</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-of-border">
+            {report.data.verbs.map((v) => (
+              <tr key={v.key}>
+                <td className="px-3 py-1.5">
+                  {v.label}
+                  {v.note ? <span className="ml-1 text-[11px] text-of-muted">({v.note})</span> : null}
+                </td>
+                <td className={`px-2 py-1.5 text-center ${roleCol('owner')}`}>
+                  <AllowCell value={v.owner} condition={v.condition} />
+                </td>
+                <td className={`px-2 py-1.5 text-center ${roleCol('member')}`}>
+                  <AllowCell value={v.member} condition={v.condition} />
+                </td>
+                <td className={`px-2 py-1.5 text-center ${roleCol('viewer')}`}>
+                  <AllowCell value={v.viewer} condition={v.condition} />
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="mt-1 text-[11px] text-of-muted">조건부 항목은 마우스를 올리면 조건이 표시됩니다.</p>
+    </section>
+  )
 }
 
 export function MembersPanel({
@@ -134,12 +201,10 @@ export function MembersPanel({
             </Button>
           </div>
           {addErr ? <p className="text-xs text-of-danger">{addErr}</p> : null}
-          <p className="text-[11px] text-of-muted">
-            소유자는 설정·멤버를 관리하고, 멤버는 작업을 만들고 수정할 수 있습니다. 뷰어는 모든
-            내용을 볼 수 있지만 변경할 수 없습니다.
-          </p>
         </div>
       ) : null}
+
+      <PermissionsTable projectId={projectId} />
     </div>
   )
 }
