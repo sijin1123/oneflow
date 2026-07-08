@@ -826,6 +826,105 @@ test('DHTMLX 타임라인이 막대·의존선·마일스톤을 그리고 읽기
   await expect(page).toHaveURL(new RegExp(`wp=${wpA.id}`))
 })
 
+test('타임라인 드래그로 일정을 조정하면 PATCH를 보내고 실패 시 되돌린다', async ({ page }) => {
+  await mockApi(page)
+  // Editable gate: me-1 must be an owner/member AND the project unarchived.
+  await page.route(`**/api/v1/projects/${project.id}/members`, (route) =>
+    route.fulfill({
+      json: {
+        items: [
+          { user_id: 'me-1', email: 'dev@oneflow.local', display_name: 'Dev User', role: 'owner' },
+        ],
+        total: 1,
+      },
+    }),
+  )
+  await page.route(`**/api/v1/projects/${project.id}`, (route) =>
+    route.fulfill({ json: project }),
+  )
+  let patchCount = 0
+  let failNext = false
+  await page.route(`**/api/v1/work-packages/${wpA.id}`, async (route) => {
+    if (route.request().method() !== 'PATCH') return route.fulfill({ json: wpA })
+    patchCount += 1
+    if (failNext) {
+      return route.fulfill({ status: 422, json: { detail: 'start_date must be <= due_date' } })
+    }
+    const sent = route.request().postDataJSON() as Record<string, unknown>
+    return route.fulfill({ json: { ...wpA, ...sent, version: 1 } })
+  })
+
+  await page.goto(`/projects/${project.id}/timeline`)
+  await expect(page.getByText('막대를 드래그해 일정을 조정할 수 있습니다')).toBeVisible()
+  const bar = page.getByTestId('gantt-container').locator(`[data-task-id="${wpA.id}"].gantt_task_line`)
+  await expect(bar).toBeVisible()
+
+  const drag = async () => {
+    const box = (await bar.boundingBox())!
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+    await page.mouse.down()
+    await page.mouse.move(box.x + box.width / 2 + 60, box.y + box.height / 2, { steps: 6 })
+    await page.mouse.up()
+  }
+
+  const patched = page.waitForRequest(
+    (r) => r.method() === 'PATCH' && r.url().includes(`/work-packages/${wpA.id}`),
+  )
+  await drag()
+  const sent = (await patched).postDataJSON() as {
+    start_date: string
+    due_date: string
+    expected_version: number
+  }
+  // Moved right — dates travel as date-only strings with the version token.
+  expect(sent.expected_version).toBe(0)
+  expect(sent.start_date > wpA.start_date!).toBe(true)
+  expect(sent.due_date > wpA.due_date!).toBe(true)
+
+  // Failure path (v74.1 R1-①): a 422 rolls the bar back with a notice.
+  // The success invalidation re-renders the chart — wait for the bar to settle.
+  await expect(bar).toBeVisible()
+  await page.waitForTimeout(300)
+  failNext = true
+  await drag()
+  await expect(page.getByText('일정을 저장하지 못해 원래대로 되돌렸습니다.')).toBeVisible()
+  expect(patchCount).toBe(2)
+})
+
+test('뷰어에게는 타임라인 드래그가 비활성이다', async ({ page }) => {
+  await mockApi(page)
+  await page.route(`**/api/v1/projects/${project.id}/members`, (route) =>
+    route.fulfill({
+      json: {
+        items: [
+          { user_id: 'me-1', email: 'dev@oneflow.local', display_name: 'Dev User', role: 'viewer' },
+        ],
+        total: 1,
+      },
+    }),
+  )
+  await page.route(`**/api/v1/projects/${project.id}`, (route) =>
+    route.fulfill({ json: project }),
+  )
+  let patchCount = 0
+  await page.route(`**/api/v1/work-packages/${wpA.id}`, async (route) => {
+    if (route.request().method() === 'PATCH') patchCount += 1
+    return route.fulfill({ json: wpA })
+  })
+
+  await page.goto(`/projects/${project.id}/timeline`)
+  const bar = page.getByTestId('gantt-container').locator(`[data-task-id="${wpA.id}"].gantt_task_line`)
+  await expect(bar).toBeVisible()
+  await expect(page.getByText('막대를 드래그해 일정을 조정할 수 있습니다')).toBeHidden()
+  const box = (await bar.boundingBox())!
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(box.x + box.width / 2 + 60, box.y + box.height / 2, { steps: 6 })
+  await page.mouse.up()
+  await page.waitForTimeout(400)
+  expect(patchCount).toBe(0)
+})
+
 test('설정 화면에서 멤버를 보여주고 소유자가 멤버를 추가한다', async ({ page }) => {
   await page.route('**/api/v1/projects', (route) =>
     route.fulfill({ json: projects }),
