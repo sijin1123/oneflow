@@ -6,7 +6,9 @@ import { useSearchParams } from 'react-router-dom'
 import { ErrorState, ListSkeleton } from '@/components/shell/states'
 import { Input } from '@/components/ui/input'
 import { AiSummarySection } from '@/features/ai/AiSummarySection'
+import { Button } from '@/components/ui/button'
 import { useMembers } from '@/features/members/api'
+import { useProjects } from '@/features/projects/api'
 import { useCycles } from '@/features/cycles/api'
 import { useMilestones } from '@/features/milestones/api'
 import { useModules } from '@/features/modules/api'
@@ -32,6 +34,7 @@ import { TimeTrackingSection } from './TimeTrackingSection'
 import { PriorityChip, StatusChip } from './chips'
 import {
   useDuplicateWorkPackage,
+  useMoveWorkPackage,
   usePatchWorkPackage,
   useSetWatching,
   useWatchers,
@@ -82,6 +85,90 @@ function DrawerBody({ wpId, projectId }: { wpId: string; projectId: string }) {
   )
 }
 
+
+/* Cross-project move (Pass 66): pick a target, ALWAYS preview what gets
+   detached/deleted (dry_run), then confirm. The server is the authority on
+   target permissions (owner-of-source is checked there too). */
+function MoveSection({ wp, projectId }: { wp: WorkPackage; projectId: string }) {
+  const projects = useProjects()
+  const move = useMoveWorkPackage(projectId)
+  const [target, setTarget] = useState('')
+  const preview = move.data?.dry_run ? move.data.cleared : null
+
+  const pick = (pid: string) => {
+    setTarget(pid)
+    if (pid) move.mutate({ wpId: wp.id, target_project_id: pid, expected_version: wp.version, dry_run: true })
+  }
+  const summaryLine = (label: string, s2: { count: number; names: string[]; overflow: number }) =>
+    s2.count > 0 ? `${label} ${s2.count}건(${s2.names.join(', ')}${s2.overflow ? ` 외 ${s2.overflow}` : ''})` : null
+
+  const lines = preview
+    ? [
+        preview.parent ? '상위 작업 연결 해제' : null,
+        summaryLine('하위 작업 분리', preview.children),
+        preview.milestone ? '마일스톤 해제' : null,
+        preview.cycle ? '사이클 해제' : null,
+        preview.module ? '모듈 해제' : null,
+        summaryLine('관계 삭제', preview.relations),
+        summaryLine('커스텀 값 삭제', preview.custom_values),
+        summaryLine('문서 연결 삭제', preview.document_links),
+        summaryLine('워처 제거', preview.watchers_removed),
+        preview.assignee_cleared ? '담당자 해제(대상 프로젝트 자격 없음)' : null,
+      ].filter(Boolean)
+    : []
+
+  const candidates = (projects.data?.items ?? []).filter((p) => p.id !== projectId)
+
+  return (
+    <div className="rounded-of border border-of-border bg-of-surface-2/40 p-3 text-xs">
+      <p className="mb-1.5 font-medium">다른 프로젝트로 이동</p>
+      <select
+        aria-label="이동 대상 프로젝트"
+        className="h-7 w-full rounded-of border border-of-border bg-of-surface px-2 text-xs"
+        value={target}
+        onChange={(e) => pick(e.target.value)}
+      >
+        <option value="">프로젝트 선택…</option>
+        {candidates.map((p) => (
+          <option key={p.id} value={p.id}>
+            {p.key} · {p.name}
+          </option>
+        ))}
+      </select>
+      {preview && target ? (
+        <div className="mt-2 space-y-1">
+          {lines.length === 0 ? (
+            <p className="text-of-muted">해제되는 참조 없음 — 코멘트·시간·이력은 함께 이동합니다.</p>
+          ) : (
+            <ul className="list-inside list-disc text-of-muted">
+              {lines.map((l) => (
+                <li key={l as string}>{l}</li>
+              ))}
+            </ul>
+          )}
+          <Button
+            size="sm"
+            disabled={move.isPending}
+            onClick={() =>
+              move.mutate({ wpId: wp.id, target_project_id: target, expected_version: wp.version })
+            }
+          >
+            이동 실행
+          </Button>
+        </div>
+      ) : null}
+      {move.isError ? (
+        <p role="alert" className="mt-1 text-of-danger">
+          이동할 수 없습니다 — 출발 프로젝트 소유자만, 대상은 쓰기 가능한 프로젝트만 가능합니다.
+        </p>
+      ) : null}
+      {move.data && !move.data.dry_run ? (
+        <p role="status" className="mt-1 text-of-muted">이동되었습니다.</p>
+      ) : null}
+    </div>
+  )
+}
+
 function DrawerForm({ wp, projectId }: { wp: WorkPackage; projectId: string }) {
   const patch = usePatchWorkPackage(projectId)
   const queryClient = useQueryClient()
@@ -92,6 +179,7 @@ function DrawerForm({ wp, projectId }: { wp: WorkPackage; projectId: string }) {
   const members = useMembers(projectId)
   const statusLabel = useStatusLabels(projectId)
   const duplicate = useDuplicateWorkPackage(projectId)
+  const [moveOpen, setMoveOpen] = useState(false)
 
   // All editable fields are controlled and resynced from server data, so a 409
   // invalidate+refetch really does reload every field (review finding #2).
@@ -144,7 +232,15 @@ function DrawerForm({ wp, projectId }: { wp: WorkPackage; projectId: string }) {
         >
           복제
         </button>
+        <button
+          type="button"
+          className="rounded-of border border-of-border px-2 py-1 text-xs text-of-muted hover:bg-of-surface-2"
+          onClick={() => setMoveOpen((v) => !v)}
+        >
+          이동
+        </button>
       </div>
+      {moveOpen ? <MoveSection wp={wp} projectId={projectId} /> : null}
       {duplicate.isSuccess ? (
         <p role="status" className="text-xs text-of-muted">
           '{duplicate.data.work_package.subject}' 생성됨

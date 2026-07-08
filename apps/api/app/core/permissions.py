@@ -104,6 +104,15 @@ PERMISSION_MATRIX: list[dict[str, str | None]] = [
         "note": None,
     },
     {
+        "key": "work.move",
+        "label": "작업을 다른 프로젝트로 이동",
+        "owner": ALWAYS,
+        "member": NEVER,
+        "viewer": NEVER,
+        "condition": None,
+        "note": "출발 프로젝트 소유자만. 대상 프로젝트에서는 쓰기 멤버여야 합니다.",
+    },
+    {
         "key": "work.write",
         "label": "작업 생성·수정·코멘트·시간/비용 기록·첨부·워처",
         "owner": ALWAYS,
@@ -235,6 +244,7 @@ ENDPOINT_VERBS: dict[str, str] = {
     "PATCH /api/v1/work-packages/{wp_id}": "work.write",
     "POST /api/v1/projects/{project_id}/work-packages/bulk-update": "work.write",
     "POST /api/v1/work-packages/{wp_id}/duplicate": "work.write",
+    "POST /api/v1/work-packages/{wp_id}/move": "work.move",
     "POST /api/v1/projects/{project_id}/work-packages/import": "work.write",
     "POST /api/v1/projects/{project_id}/work-packages/import/jira": "work.write",
     "POST /api/v1/projects/{project_id}/work-packages/import/linear": "work.write",

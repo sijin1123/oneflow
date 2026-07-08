@@ -286,3 +286,40 @@ class ConflictResponse(BaseModel):
 
     detail: str
     current: WorkPackageRead
+
+
+class MoveRefSummary(BaseModel):
+    """One cleared-reference category of a cross-project move: count plus the
+    first few names so the preview is meaningful, never just a number."""
+
+    count: int = 0
+    names: list[str] = []
+    overflow: int = 0
+
+
+class MoveCleared(BaseModel):
+    parent: bool
+    children: MoveRefSummary
+    milestone: bool
+    cycle: bool
+    module: bool
+    relations: MoveRefSummary
+    custom_values: MoveRefSummary
+    document_links: MoveRefSummary
+    watchers_removed: MoveRefSummary
+    assignee_cleared: bool
+
+
+class WorkPackageMove(BaseModel):
+    target_project_id: uuid.UUID
+    expected_version: int
+    dry_run: bool = False
+
+
+class WorkPackageMoveResult(BaseModel):
+    """dry_run=True returns the SAME cleared summary with work_package=None
+    and no state change (v66.1 R1-④)."""
+
+    work_package: WorkPackageRead | None
+    cleared: MoveCleared
+    dry_run: bool
