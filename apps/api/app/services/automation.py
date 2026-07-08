@@ -21,7 +21,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy import or_ as sa_or
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.authz import is_member
+from app.core.authz import member_role
 from app.models.automation_rule import AutomationRule, AutomationRuleRun
 
 
@@ -91,13 +91,16 @@ async def change_candidates(
                 field="assignee_id",
                 value=uuid.UUID(rule.action_value),
             )
-    # Fire-time recheck (v16.1 R1-④): the WINNING assignee must still be a
-    # member — the same predicate the ordinary assignee fan-in uses. A stale
-    # rule (member left after the rule was saved) skips the FIELD, silently:
-    # no apply, no run, no fired (never assign an ex-member).
+    # Fire-time recheck (v16.1 R1-④, v61.1 R1-⑥): the WINNING assignee must
+    # still be a member with a writable role — the same predicate the ordinary
+    # assignee fan-in uses. A stale rule (member left or was demoted to viewer
+    # after the rule was saved) skips the FIELD, silently: no apply, no run,
+    # no fired (never assign an ex-member or a read-only viewer).
     winner = candidates.get("assignee_id")
-    if winner is not None and not await is_member(session, project_id, winner.value):
-        del candidates["assignee_id"]
+    if winner is not None:
+        role = await member_role(session, project_id, winner.value)
+        if role is None or role == "viewer":
+            del candidates["assignee_id"]
     return candidates
 
 

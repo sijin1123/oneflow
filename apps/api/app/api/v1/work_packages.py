@@ -12,7 +12,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.project_types import require_type_enabled
 from app.core.auth import get_current_user
-from app.core.authz import is_member, require_active_project, require_member
+from app.core.authz import (
+    is_member,
+    member_role,
+    require_active_project,
+    require_member,
+    require_writer,
+)
 from app.db.session import get_session
 from app.models.cycle import Cycle
 from app.models.milestone import Milestone
@@ -82,6 +88,7 @@ async def _get_wp_scoped(
     if wp is None or not await is_member(session, wp.project_id, user.id):
         raise HTTPException(status_code=404, detail="not found")
     if write:
+        await require_writer(session, wp.project_id, user.id)
         await require_active_project(session, wp.project_id)
     return wp
 
@@ -99,8 +106,11 @@ async def require_wp_member(
 async def _require_assignee_member(
     session: AsyncSession, project_id: uuid.UUID, assignee_id: uuid.UUID
 ) -> None:
-    if not await is_member(session, project_id, assignee_id):
+    role = await member_role(session, project_id, assignee_id)
+    if role is None:
         raise HTTPException(status_code=422, detail="assignee must be a member of the project")
+    if role == "viewer":
+        raise HTTPException(status_code=422, detail="assignee must not have a read-only role")
 
 
 async def _require_milestone_in_project(

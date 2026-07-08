@@ -20,7 +20,7 @@ class ProjectMember(Base):
     __tablename__ = "project_members"
     __table_args__ = (
         UniqueConstraint("project_id", "user_id", name="uq_project_members_project_user"),
-        CheckConstraint("role IN ('owner', 'member')", name="role_allowed"),
+        CheckConstraint("role IN ('owner', 'member', 'viewer')", name="role_allowed"),
         # user_id-only lookup path (project list, cross-project search, user cascade).
         Index("ix_project_members_user", "user_id"),
     )

@@ -2,7 +2,7 @@ export type Member = {
   user_id: string
   email: string
   display_name: string
-  role: 'owner' | 'member'
+  role: 'owner' | 'member' | 'viewer'
 }
 
 export type MemberList = {

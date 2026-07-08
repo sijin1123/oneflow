@@ -22,7 +22,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import get_current_user
-from app.core.authz import is_member, require_active_project, require_member
+from app.core.authz import is_member, require_active_project, require_member, require_writer
 from app.db.session import get_session
 from app.models.document import MAX_DOCUMENT_DEPTH, DocumentWorkPackageLink, ProjectDocument
 from app.models.document_comment import ProjectDocumentComment
@@ -149,6 +149,7 @@ async def _get_doc_scoped(
     if doc is None or not await is_member(session, doc.project_id, user.id):
         raise HTTPException(status_code=404, detail="not found")
     if write:
+        await require_writer(session, doc.project_id, user.id)
         await require_active_project(session, doc.project_id)
     return doc
 
@@ -512,6 +513,7 @@ async def delete_document_comment(
     ).scalar_one_or_none()
     if comment is None or not await is_member(session, comment.project_id, user.id):
         raise HTTPException(status_code=404, detail="not found")
+    await require_writer(session, comment.project_id, user.id)
     await require_active_project(session, comment.project_id)
     if comment.author_id != user.id:
         role = (

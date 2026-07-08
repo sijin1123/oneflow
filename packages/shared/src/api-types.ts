@@ -42,8 +42,9 @@ export interface paths {
          *     (`converted_wp_id IS NULL`) in the SAME transaction — a concurrent convert
          *     succeeds exactly once and the loser's WP insert rolls back (409).
          *     Assignee inheritance: only if the item's assignee is a CURRENT project
-         *     member; otherwise (null / left / deleted) the WP starts unassigned —
-         *     conversion is never refused over a stale assignee.
+         *     member with a writable role; otherwise (null / left / deleted / viewer)
+         *     the WP starts unassigned — conversion is never refused over a stale
+         *     assignee (v61.1 R1-⑥).
          */
         post: operations["convert_action_item_api_v1_action_items__item_id__convert_post"];
         delete?: never;

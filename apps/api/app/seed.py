@@ -137,6 +137,8 @@ async def seed_data(session: AsyncSession) -> bool:
             dev.is_admin = True  # keep re-seeded dev DBs administrable (v33.1 R1-(2))
         mate = User(email="alex@oneflow.local", display_name="Alex Kim")
         session.add(mate)
+        observer = User(email="viewer@oneflow.local", display_name="Viewer Choi")
+        session.add(observer)
         await session.flush()
 
         project = Project(
@@ -151,6 +153,7 @@ async def seed_data(session: AsyncSession) -> bool:
             [
                 ProjectMember(project_id=project.id, user_id=dev.id, role="owner"),
                 ProjectMember(project_id=project.id, user_id=mate.id, role="member"),
+                ProjectMember(project_id=project.id, user_id=observer.id, role="viewer"),
             ]
         )
         # Seed the default workflow so the demo project has an editable status
@@ -345,7 +348,7 @@ async def seed_data(session: AsyncSession) -> bool:
             ]
         )
 
-    print("[seed] demo data inserted (1 project, 2 users, 12 work packages, 2 relations, history)")
+    print("[seed] demo data inserted (1 project, 3 users, 12 work packages, 2 relations, history)")
     return True
 
 
