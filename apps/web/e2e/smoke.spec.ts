@@ -2480,6 +2480,58 @@ test('표시 열 구성이 URL을 따르고 저장 시 정규화된다', async (
   expect(sent.params.columns).toBe('created_at')
 })
 
+test('커스텀 필드 열을 켜면 목록이 값과 함께 렌더된다', async ({ page }) => {
+  await mockApi(page)
+  const FIELD_ID = '11111111-2222-3333-4444-555555555555'
+  await page.route(`**/api/v1/projects/${project.id}/custom-fields**`, (route) =>
+    route.fulfill({
+      json: {
+        items: [
+          {
+            id: FIELD_ID,
+            project_id: project.id,
+            name: '환경',
+            field_type: 'text',
+            is_active: true,
+            applies_to: null,
+            options: null,
+            position: 0,
+          },
+        ],
+        total: 1,
+      },
+    }),
+  )
+  await page.route(
+    `**/api/v1/projects/${project.id}/work-packages?**custom_fields=**`,
+    (route) =>
+      route.fulfill({
+        json: {
+          items: [
+            {
+              ...wpA,
+              custom_values: [
+                { field_id: FIELD_ID, value: '스테이징', member_display_name: null },
+              ],
+            },
+            { ...wpB, custom_values: [] },
+          ],
+          total: 2,
+        },
+      }),
+  )
+
+  await page.goto(`/projects/${project.id}/work-packages`)
+  const listGet = page.waitForRequest((r) => r.url().includes(`custom_fields=${FIELD_ID}`))
+  await page.getByRole('button', { name: '표시 열' }).click()
+  await page.getByRole('menuitemcheckbox', { name: '환경 열 표시' }).click()
+  await listGet
+  await page.keyboard.press('Escape')
+  await expect(page).toHaveURL(new RegExp(`columns=.*custom%3A${FIELD_ID}|custom:${FIELD_ID}`))
+  await expect(page.getByRole('columnheader', { name: '환경' })).toBeVisible()
+  await expect(page.getByRole('cell', { name: '스테이징' })).toBeVisible()
+})
+
 test('보드가 프로젝트 워크플로우 설정의 라벨과 순서를 반영한다', async ({ page }) => {
   await mockApi(page)
   // custom labels for the two statuses the fixtures use (after mockApi → precedence)

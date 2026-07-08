@@ -148,6 +148,102 @@ async def _require_module_in_project(
         raise HTTPException(status_code=422, detail="module must belong to the same project")
 
 
+# Custom-field list columns (Pass 67, v67.1): the list accepts up to five
+# ACTIVE project fields and batch-attaches their stored values to the page.
+CUSTOM_FIELD_COLUMN_CAP = 5
+_CUSTOM_FIELDS_422 = "custom_fields must be up to 5 active field ids of this project"
+
+
+async def _parse_custom_fields(
+    session: AsyncSession, project_id: uuid.UUID, raw: str | None
+) -> list[uuid.UUID] | None:
+    """v67.1 R1-④ normalization: split → trim → empty token 422 → UUID parse
+    422 → first-occurrence dedup → cap AFTER dedup → request order kept.
+    Validation is project-scoped ONLY, and every rejection (missing / foreign
+    / inactive / malformed) is the SAME generic 422 — a foreign field id is
+    indistinguishable from a random one (R1-②/③)."""
+    if raw is None:
+        return None
+    ids: list[uuid.UUID] = []
+    for token in raw.split(","):
+        token = token.strip()
+        if not token:
+            raise HTTPException(status_code=422, detail=_CUSTOM_FIELDS_422)
+        try:
+            fid = uuid.UUID(token)
+        except ValueError:
+            raise HTTPException(status_code=422, detail=_CUSTOM_FIELDS_422) from None
+        if fid not in ids:
+            ids.append(fid)
+    if len(ids) > CUSTOM_FIELD_COLUMN_CAP:
+        raise HTTPException(status_code=422, detail=_CUSTOM_FIELDS_422)
+    from app.models.custom_field import CustomField
+
+    known = set(
+        (
+            await session.execute(
+                select(CustomField.id).where(
+                    CustomField.project_id == project_id,
+                    CustomField.id.in_(ids),
+                    CustomField.is_active.is_(True),
+                )
+            )
+        ).scalars()
+    )
+    if len(known) != len(ids):
+        raise HTTPException(status_code=422, detail=_CUSTOM_FIELDS_422)
+    return ids
+
+
+async def _attach_custom_values(
+    session: AsyncSession, items: list[WorkPackageRead], field_ids: list[uuid.UUID]
+) -> None:
+    """ONE batch SELECT for page×fields (never per-row); member names resolve
+    in a second tiny query (the single-WP endpoint's exact shape). A field
+    deleted between validation and here converges to empty cells (R1-⑤)."""
+    from app.models.custom_field import CustomField, WpCustomValue
+    from app.schemas.custom_field import CustomValueRead
+
+    if not items or not field_ids:
+        for item in items:
+            item.custom_values = []
+        return
+    wp_ids = [item.id for item in items]
+    rows = (
+        await session.execute(
+            select(WpCustomValue, CustomField.field_type)
+            .join(CustomField, WpCustomValue.field_id == CustomField.id)
+            .where(
+                WpCustomValue.work_package_id.in_(wp_ids),
+                WpCustomValue.field_id.in_(field_ids),
+            )
+        )
+    ).all()
+    member_ids = {uuid.UUID(v.value) for v, ftype in rows if ftype == "member"}
+    names: dict[uuid.UUID, str] = {}
+    if member_ids:
+        names = dict(
+            (
+                await session.execute(
+                    select(User.id, User.display_name).where(User.id.in_(member_ids))
+                )
+            ).all()
+        )
+    by_wp: dict[uuid.UUID, list] = {}
+    for v, ftype in rows:
+        by_wp.setdefault(v.work_package_id, []).append(
+            CustomValueRead(
+                field_id=v.field_id,
+                value=v.value,
+                member_display_name=(
+                    names.get(uuid.UUID(v.value), "(삭제된 사용자)") if ftype == "member" else None
+                ),
+            )
+        )
+    for item in items:
+        item.custom_values = by_wp.get(item.id, [])
+
+
 @router.get("/projects/{project_id}/work-packages", response_model=WorkPackageList)
 async def list_work_packages(
     project_id: uuid.UUID,
@@ -163,6 +259,7 @@ async def list_work_packages(
     open_only: bool = Query(default=False),
     module_id: uuid.UUID | None = Query(default=None),
     q: str | None = Query(default=None, max_length=255),
+    custom_fields: str | None = Query(default=None, max_length=255),
     sort: SortField = Query(default="created"),
     limit: int = Query(default=200, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
@@ -170,6 +267,7 @@ async def list_work_packages(
     user: User = Depends(get_current_user),
 ) -> WorkPackageList:
     await require_member(session, project_id, user)
+    requested_fields = await _parse_custom_fields(session, project_id, custom_fields)
     stmt = select(WorkPackage).where(WorkPackage.project_id == project_id)
     if status is not None:
         stmt = stmt.where(WorkPackage.status == status)
@@ -202,7 +300,10 @@ async def list_work_packages(
     rows = (
         (await session.execute(stmt.order_by(*order).limit(limit).offset(offset))).scalars().all()
     )
-    return WorkPackageList(items=[WorkPackageRead.model_validate(w) for w in rows], total=total)
+    items = [WorkPackageRead.model_validate(w) for w in rows]
+    if requested_fields is not None:
+        await _attach_custom_values(session, items, requested_fields)
+    return WorkPackageList(items=items, total=total)
 
 
 @router.post(

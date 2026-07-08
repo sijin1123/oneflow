@@ -4,6 +4,7 @@ from datetime import date, datetime
 from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
 from app.models.work_package import WP_PRIORITIES, WP_STATUSES, WP_TYPES
+from app.schemas.custom_field import CustomValueRead
 
 MAX_DESCRIPTION = 20_000
 
@@ -176,6 +177,9 @@ class WorkPackageRead(BaseModel):
     version: int
     created_at: datetime
     updated_at: datetime
+    # Batch custom-field values (Pass 67): populated ONLY when the list is
+    # requested with `custom_fields=` — None otherwise (additive optional).
+    custom_values: list[CustomValueRead] | None = None
 
 
 class WorkPackageList(BaseModel):

@@ -41,6 +41,13 @@ export type WorkPackage = {
   version: number
   created_at: string
   updated_at: string
+  /** batch custom-field values — present only when the list was requested
+      with `custom_fields=` (Pass 67); null otherwise */
+  custom_values?: Array<{
+    field_id: string
+    value: unknown
+    member_display_name: string | null
+  }> | null
 }
 
 export type WorkPackageList = {
