@@ -20,6 +20,8 @@ import {
   type ProjectModule,
   useCreateModule,
   useDeleteModule,
+  useModuleMembers,
+  useReplaceModuleMembers,
   useModules,
   useUpdateModule,
 } from './api'
@@ -46,6 +48,85 @@ function ProgressBar({ done, total }: { done: number; total: number }) {
   )
 }
 
+
+/* Roster panel (Pass 65): the count shows currently-ELIGIBLE participants;
+   owners edit via full-replace PUT (viewers are shown disabled — they cannot
+   participate, matching the assignment rule). */
+function ModuleMembersPanel({
+  module,
+  projectId,
+  isOwner,
+}: {
+  module: ProjectModule
+  projectId: string
+  isOwner: boolean
+}) {
+  const roster = useModuleMembers(projectId, module.id, true)
+  const replace = useReplaceModuleMembers(projectId, module.id)
+  const members = useMembers(projectId)
+  const [draft, setDraft] = useState<string[] | null>(null)
+
+  if (!roster.data) return <p className="px-1 py-1 text-[11px] text-of-muted">불러오는 중…</p>
+  const current = roster.data.items.map((i) => i.user_id)
+  const selected = draft ?? current
+
+  const toggle = (id: string) =>
+    setDraft(selected.includes(id) ? selected.filter((x) => x !== id) : [...selected, id])
+
+  return (
+    <div className="mt-1 rounded-of border border-of-border bg-of-surface-2/50 p-2">
+      {isOwner ? (
+        <>
+          <ul className="flex flex-wrap gap-2">
+            {(members.data?.items ?? []).map((m) => (
+              <li key={m.user_id}>
+                <label
+                  className={`flex items-center gap-1 text-[11px] ${m.role === 'viewer' ? 'text-of-muted' : ''}`}
+                >
+                  <input
+                    type="checkbox"
+                    className="h-3 w-3 accent-of-accent"
+                    checked={selected.includes(m.user_id)}
+                    disabled={m.role === 'viewer' || replace.isPending}
+                    onChange={() => toggle(m.user_id)}
+                    aria-label={`${module.name} 참여자 ${m.display_name}`}
+                  />
+                  {m.display_name}
+                  {m.role === 'viewer' ? ' (뷰어)' : ''}
+                </label>
+              </li>
+            ))}
+          </ul>
+          <div className="mt-1.5 flex items-center gap-2">
+            <Button
+              size="sm"
+              disabled={draft === null || replace.isPending}
+              onClick={() => replace.mutate(selected, { onSuccess: () => setDraft(null) })}
+            >
+              참여자 저장
+            </Button>
+            {replace.isError ? (
+              <span className="text-[11px] text-of-danger">
+                저장 실패 — 활성 멤버(뷰어 제외)만 참여할 수 있습니다.
+              </span>
+            ) : null}
+          </div>
+        </>
+      ) : roster.data.total === 0 ? (
+        <p className="text-[11px] text-of-muted">참여자가 없습니다.</p>
+      ) : (
+        <ul className="flex flex-wrap gap-1.5">
+          {roster.data.items.map((i) => (
+            <li key={i.user_id} className="rounded-full bg-of-surface px-2 py-0.5 text-[11px]">
+              {i.display_name}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  )
+}
+
 function ModuleRow({
   module,
   isOwner,
@@ -59,9 +140,11 @@ function ModuleRow({
   const update = useUpdateModule(projectId)
   const remove = useDeleteModule(projectId)
   const memberName = useMemberNames(projectId)
+  const [showMembers, setShowMembers] = useState(false)
 
   return (
-    <li className="flex items-center gap-3 px-3 py-2">
+    <li className="px-3 py-2">
+      <div className="flex items-center gap-3">
       <button
         type="button"
         className="min-w-0 flex-1 truncate text-left text-[13px] font-medium hover:underline"
@@ -72,6 +155,13 @@ function ModuleRow({
       <span className="shrink-0 text-[11px] text-of-muted">
         리드: {module.lead_id ? memberName(module.lead_id) : '없음'}
       </span>
+      <button
+        type="button"
+        className="shrink-0 text-[11px] text-of-muted hover:text-of-accent hover:underline"
+        onClick={() => setShowMembers((v) => !v)}
+      >
+        참여자 {module.member_count}
+      </button>
       <ProgressBar done={module.done_work_package_count} total={module.work_package_count} />
       {isOwner ? (
         <>
@@ -112,6 +202,10 @@ function ModuleRow({
           {MODULE_STATE_LABELS[module.state]}
         </span>
       )}
+      </div>
+      {showMembers ? (
+        <ModuleMembersPanel module={module} projectId={projectId} isOwner={isOwner} />
+      ) : null}
     </li>
   )
 }

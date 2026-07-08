@@ -72,6 +72,9 @@ class ModuleRead(BaseModel):
     # Progress rollup (single aggregate query — see the router).
     work_package_count: int
     done_work_package_count: int
+    # Currently-ELIGIBLE participants (active AND member AND role != viewer —
+    # Pass 65 v65.1; independent aggregate, never a join into the row query).
+    member_count: int = 0
     created_at: datetime
     updated_at: datetime
 
@@ -79,3 +82,21 @@ class ModuleRead(BaseModel):
 class ModuleList(BaseModel):
     items: list[ModuleRead]
     total: int
+
+
+class ModuleMemberRead(BaseModel):
+    user_id: uuid.UUID
+    display_name: str
+    email: str
+
+
+class ModuleMemberList(BaseModel):
+    items: list[ModuleMemberRead]
+    total: int
+
+
+class ModuleMembersPut(BaseModel):
+    """Full-replace roster (idempotent; duplicates collapse; [] clears).
+    Every id must be currently eligible or the whole request is refused."""
+
+    user_ids: list[uuid.UUID]

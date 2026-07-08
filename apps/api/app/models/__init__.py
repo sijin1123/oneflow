@@ -13,7 +13,7 @@ from app.models.meeting import Meeting, MeetingActionItem
 from app.models.meeting_template import MeetingAgendaTemplate
 from app.models.member import ProjectMember
 from app.models.milestone import Milestone
-from app.models.module import Module
+from app.models.module import Module, ModuleMember
 from app.models.notification import Notification
 from app.models.notification_setting import UserNotificationSettings
 from app.models.project import Project
@@ -39,6 +39,7 @@ __all__ = [
     "Milestone",
     "Cycle",
     "Module",
+    "ModuleMember",
     "Notification",
     "SavedFilter",
     "ProjectStatus",
