@@ -18,7 +18,7 @@ function won(n: number): string {
   return `₩${n.toLocaleString('ko-KR')}`
 }
 
-export function CostSection({ wpId }: { wpId: string }) {
+export function CostSection({ wpId, canWrite }: { wpId: string; canWrite: boolean }) {
   const entries = useCostEntries(wpId)
   const logCost = useLogCost(wpId)
   const deleteEntry = useDeleteCostEntry(wpId)
@@ -55,50 +55,54 @@ export function CostSection({ wpId }: { wpId: string }) {
               <span className="w-24 shrink-0 font-medium">{won(e.amount)}</span>
               <span className="w-14 shrink-0 text-of-muted">{KIND_LABELS[e.kind] ?? e.kind}</span>
               <span className="min-w-0 flex-1 truncate text-of-muted">{e.spent_on}</span>
-              <button
-                type="button"
-                aria-label="비용 삭제"
-                className="shrink-0 rounded-of p-1 text-of-muted hover:bg-of-surface-2 hover:text-of-danger"
-                onClick={() => deleteEntry.mutate(e.id)}
-              >
-                <Trash2 size={13} />
-              </button>
+              {canWrite ? (
+                <button
+                  type="button"
+                  aria-label="비용 삭제"
+                  className="shrink-0 rounded-of p-1 text-of-muted hover:bg-of-surface-2 hover:text-of-danger"
+                  onClick={() => deleteEntry.mutate(e.id)}
+                >
+                  <Trash2 size={13} />
+                </button>
+              ) : null}
             </li>
           ))}
         </ul>
       ) : null}
 
-      <div className="flex items-center gap-1.5">
-        <Input
-          type="number"
-          min="0"
-          value={amount}
-          onChange={(e) => setAmount(e.target.value)}
-          placeholder="금액(₩)"
-          aria-label="비용 금액"
-          className="w-28"
-        />
-        <Select
-          aria-label="비용 종류"
-          className="w-24"
-          value={kind}
-          onChange={(e) => setKind(e.target.value)}
-        >
-          <option value="labor">인건비</option>
-          <option value="material">자재</option>
-          <option value="other">기타</option>
-        </Select>
-        <Input
-          type="date"
-          value={spentOn}
-          onChange={(e) => setSpentOn(e.target.value)}
-          aria-label="비용 발생일"
-          className="flex-1"
-        />
-        <Button size="sm" onClick={submit} disabled={!amount || logCost.isPending}>
-          기록
-        </Button>
-      </div>
+      {canWrite ? (
+        <div className="flex items-center gap-1.5">
+          <Input
+            type="number"
+            min="0"
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+            placeholder="금액(₩)"
+            aria-label="비용 금액"
+            className="w-28"
+          />
+          <Select
+            aria-label="비용 종류"
+            className="w-24"
+            value={kind}
+            onChange={(e) => setKind(e.target.value)}
+          >
+            <option value="labor">인건비</option>
+            <option value="material">자재</option>
+            <option value="other">기타</option>
+          </Select>
+          <Input
+            type="date"
+            value={spentOn}
+            onChange={(e) => setSpentOn(e.target.value)}
+            aria-label="비용 발생일"
+            className="flex-1"
+          />
+          <Button size="sm" onClick={submit} disabled={!amount || logCost.isPending}>
+            기록
+          </Button>
+        </div>
+      ) : null}
     </section>
   )
 }

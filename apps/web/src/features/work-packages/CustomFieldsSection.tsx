@@ -18,12 +18,14 @@ function FieldInput({
   wpId,
   projectId,
   editable,
+  canWrite,
 }: {
   field: CustomField
   value: unknown
   wpId: string
   projectId: string
   editable: boolean
+  canWrite: boolean
 }) {
   const put = usePutCustomValue(wpId)
   const members = useMembers(projectId)
@@ -53,13 +55,15 @@ function FieldInput({
         <span className="text-of-muted">
           {String(value)} {field.is_active ? '(다른 타입 필드)' : '(비활성 필드)'}
         </span>
-        <button
-          type="button"
-          className="text-of-muted hover:text-of-danger"
-          onClick={() => save(null)}
-        >
-          비우기
-        </button>
+        {canWrite ? (
+          <button
+            type="button"
+            className="text-of-muted hover:text-of-danger"
+            onClick={() => save(null)}
+          >
+            비우기
+          </button>
+        ) : null}
       </div>
     )
     return <Wrapped control={control} err={err} />
@@ -167,10 +171,12 @@ export function CustomFieldsSection({
   wpId,
   projectId,
   wpType,
+  canWrite,
 }: {
   wpId: string
   projectId: string
   wpType: string
+  canWrite: boolean
 }) {
   const fields = useCustomFields(projectId, true)
   const values = useCustomValues(wpId)
@@ -199,7 +205,8 @@ export function CustomFieldsSection({
               value={valueMap.get(f.id)}
               wpId={wpId}
               projectId={projectId}
-              editable={f.is_active && bound(f)}
+              editable={canWrite && f.is_active && bound(f)}
+              canWrite={canWrite}
             />
           </div>
         ))}

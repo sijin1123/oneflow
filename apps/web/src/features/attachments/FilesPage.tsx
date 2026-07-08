@@ -3,11 +3,13 @@ import { useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
 
 import { EmptyState, ErrorState, ListSkeleton } from '@/components/shell/states'
+import { ReadOnlyNotice } from '@/components/shell/ReadOnlyNotice'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { ApiError } from '@/lib/api'
 import { confirmDestructive } from '@/lib/guards'
 import { Select } from '@/components/ui/select'
+import { useCanWrite } from '@/features/members/useCanWrite'
 import { useWorkPackages } from '@/features/work-packages/api'
 import { useDocuments } from '@/features/documents/api'
 
@@ -30,6 +32,7 @@ export function FilesPage() {
   const create = useCreateAttachment(projectId)
   const del = useDeleteAttachment(projectId)
   const uploadFile = useUploadAttachment(projectId)
+  const canWrite = useCanWrite(projectId)
   const fileInput = useRef<HTMLInputElement>(null)
 
   const [filename, setFilename] = useState('')
@@ -74,6 +77,8 @@ export function FilesPage() {
         파일을 직접 업로드하거나, 외부에 저장된 파일의 링크를 등록합니다.
       </p>
 
+      {!canWrite ? <ReadOnlyNotice className="mb-3" /> : null}
+      {canWrite ? (
       <div className="mb-3 flex items-center gap-2 rounded-of border border-of-border bg-of-surface p-3">
         <input
           ref={fileInput}
@@ -123,7 +128,9 @@ export function FilesPage() {
           </p>
         ) : null}
       </div>
+      ) : null}
 
+      {canWrite ? (
       <div className="mb-4 space-y-2 rounded-of border border-of-border bg-of-surface p-3">
         <p className="text-xs font-medium">파일 링크 추가</p>
         <div className="flex flex-wrap items-center gap-2">
@@ -155,6 +162,7 @@ export function FilesPage() {
         ) : null}
         {err ? <p className="text-xs text-of-danger">{err}</p> : null}
       </div>
+      ) : null}
 
       {isPending ? (
         <ListSkeleton />
@@ -189,14 +197,16 @@ export function FilesPage() {
               {att.size_bytes !== null ? (
                 <span className="shrink-0 text-xs text-of-muted">{fmtSize(att.size_bytes)}</span>
               ) : null}
-              <button
-                type="button"
-                aria-label={`${att.filename} 삭제`}
-                className="shrink-0 rounded-of p-1 text-of-muted hover:bg-of-surface-2 hover:text-of-danger"
-                onClick={() => remove(att.id, att.filename)}
-              >
-                <Trash2 size={14} />
-              </button>
+              {canWrite ? (
+                <button
+                  type="button"
+                  aria-label={`${att.filename} 삭제`}
+                  className="shrink-0 rounded-of p-1 text-of-muted hover:bg-of-surface-2 hover:text-of-danger"
+                  onClick={() => remove(att.id, att.filename)}
+                >
+                  <Trash2 size={14} />
+                </button>
+              ) : null}
             </li>
           ))}
         </ul>
