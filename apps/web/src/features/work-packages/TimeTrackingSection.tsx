@@ -14,7 +14,7 @@ function todayStr(): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
-export function TimeTrackingSection({ wp }: { wp: WorkPackage }) {
+export function TimeTrackingSection({ wp, canWrite }: { wp: WorkPackage; canWrite: boolean }) {
   const entries = useTimeEntries(wp.id)
   const logTime = useLogTime(wp.id)
   const deleteEntry = useDeleteTimeEntry(wp.id)
@@ -75,48 +75,52 @@ export function TimeTrackingSection({ wp }: { wp: WorkPackage }) {
               <span className="w-12 shrink-0 font-medium">{e.hours}h</span>
               <span className="w-24 shrink-0 text-of-muted">{e.spent_on}</span>
               <span className="min-w-0 flex-1 truncate">{e.comment ?? ''}</span>
-              <button
-                type="button"
-                aria-label="시간 기록 삭제"
-                className="shrink-0 rounded-of p-1 text-of-muted hover:bg-of-surface-2 hover:text-of-danger"
-                onClick={() => deleteEntry.mutate(e.id)}
-              >
-                <Trash2 size={13} />
-              </button>
+              {canWrite ? (
+                <button
+                  type="button"
+                  aria-label="시간 기록 삭제"
+                  className="shrink-0 rounded-of p-1 text-of-muted hover:bg-of-surface-2 hover:text-of-danger"
+                  onClick={() => deleteEntry.mutate(e.id)}
+                >
+                  <Trash2 size={13} />
+                </button>
+              ) : null}
             </li>
           ))}
         </ul>
       ) : null}
 
-      <div className="flex items-center gap-1.5">
-        <Input
-          type="number"
-          step="0.25"
-          min="0"
-          value={hours}
-          onChange={(e) => setHours(e.target.value)}
-          placeholder="시간"
-          aria-label="기록할 시간"
-          className="w-16"
-        />
-        <Input
-          type="date"
-          value={spentOn}
-          onChange={(e) => setSpentOn(e.target.value)}
-          aria-label="작업일"
-          className="w-36"
-        />
-        <Input
-          value={comment}
-          onChange={(e) => setComment(e.target.value)}
-          placeholder="메모(선택)"
-          aria-label="시간 메모"
-          className="flex-1"
-        />
-        <Button size="sm" onClick={submit} disabled={!hours || logTime.isPending}>
-          기록
-        </Button>
-      </div>
+      {canWrite ? (
+        <div className="flex items-center gap-1.5">
+          <Input
+            type="number"
+            step="0.25"
+            min="0"
+            value={hours}
+            onChange={(e) => setHours(e.target.value)}
+            placeholder="시간"
+            aria-label="기록할 시간"
+            className="w-16"
+          />
+          <Input
+            type="date"
+            value={spentOn}
+            onChange={(e) => setSpentOn(e.target.value)}
+            aria-label="작업일"
+            className="w-36"
+          />
+          <Input
+            value={comment}
+            onChange={(e) => setComment(e.target.value)}
+            placeholder="메모(선택)"
+            aria-label="시간 메모"
+            className="flex-1"
+          />
+          <Button size="sm" onClick={submit} disabled={!hours || logTime.isPending}>
+            기록
+          </Button>
+        </div>
+      ) : null}
     </section>
   )
 }

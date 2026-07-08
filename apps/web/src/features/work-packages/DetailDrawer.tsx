@@ -503,13 +503,13 @@ function DrawerForm({ wp, projectId }: { wp: WorkPackage; projectId: string }) {
 
       <AiSummarySection wpId={wp.id} />
 
-      <TimeTrackingSection wp={wp} />
+      <TimeTrackingSection wp={wp} canWrite={canWrite} />
 
-      <CostSection wpId={wp.id} />
+      <CostSection wpId={wp.id} canWrite={canWrite} />
 
-      <CustomFieldsSection wpId={wp.id} projectId={projectId} wpType={wp.type} />
+      <CustomFieldsSection wpId={wp.id} projectId={projectId} wpType={wp.type} canWrite={canWrite} />
 
-      <RelationsSection wpId={wp.id} projectId={projectId} />
+      <RelationsSection wpId={wp.id} projectId={projectId} canWrite={canWrite} />
 
       <PagesSection wpId={wp.id} projectId={projectId} />
 

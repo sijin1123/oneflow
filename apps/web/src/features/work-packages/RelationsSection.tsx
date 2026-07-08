@@ -27,7 +27,15 @@ function relationPhrase(r: Relation, subjectOf: (id: string) => string): string 
   return `${label} ${arrow} ${subjectOf(other)}`
 }
 
-export function RelationsSection({ wpId, projectId }: { wpId: string; projectId: string }) {
+export function RelationsSection({
+  wpId,
+  projectId,
+  canWrite,
+}: {
+  wpId: string
+  projectId: string
+  canWrite: boolean
+}) {
   const relations = useRelations(wpId)
   const candidates = useWorkPackages(projectId, {})
   const createRelation = useCreateRelation(wpId)
@@ -67,53 +75,59 @@ export function RelationsSection({ wpId, projectId }: { wpId: string; projectId:
               className="flex items-center gap-2 rounded-of border border-of-border px-2 py-1.5 text-xs"
             >
               <span className="min-w-0 flex-1 truncate">{relationPhrase(r, subjectOf)}</span>
-              <button
-                type="button"
-                aria-label="관계 삭제"
-                className="shrink-0 rounded-of p-1 text-of-muted hover:bg-of-surface-2 hover:text-of-danger"
-                onClick={() => deleteRelation.mutate(r.id)}
-              >
-                <Trash2 size={13} />
-              </button>
+              {canWrite ? (
+                <button
+                  type="button"
+                  aria-label="관계 삭제"
+                  className="shrink-0 rounded-of p-1 text-of-muted hover:bg-of-surface-2 hover:text-of-danger"
+                  onClick={() => deleteRelation.mutate(r.id)}
+                >
+                  <Trash2 size={13} />
+                </button>
+              ) : null}
             </li>
           ))}
         </ul>
       )}
 
-      <div className="flex items-center gap-1.5">
-        <Select
-          aria-label="관계 유형"
-          className="h-7 w-20 text-xs"
-          value={relType}
-          onChange={(e) => setRelType(e.target.value)}
-        >
-          {RELATION_TYPES.map((t) => (
-            <option key={t} value={t}>
-              {RELATION_LABELS[t]}
-            </option>
-          ))}
-        </Select>
-        <Select
-          aria-label="대상 작업"
-          className="h-7 flex-1 text-xs"
-          value={targetId}
-          onChange={(e) => setTargetId(e.target.value)}
-        >
-          <option value="">대상 선택…</option>
-          {otherWps.map((w) => (
-            <option key={w.id} value={w.id}>
-              {w.subject}
-            </option>
-          ))}
-        </Select>
-        <Button size="sm" onClick={submit} disabled={!targetId || createRelation.isPending}>
-          추가
-        </Button>
-      </div>
-      {createRelation.isError ? (
-        <p className="text-xs text-of-danger">
-          관계를 추가하지 못했습니다(이미 존재하거나 대상이 올바르지 않음).
-        </p>
+      {canWrite ? (
+        <>
+          <div className="flex items-center gap-1.5">
+            <Select
+              aria-label="관계 유형"
+              className="h-7 w-20 text-xs"
+              value={relType}
+              onChange={(e) => setRelType(e.target.value)}
+            >
+              {RELATION_TYPES.map((t) => (
+                <option key={t} value={t}>
+                  {RELATION_LABELS[t]}
+                </option>
+              ))}
+            </Select>
+            <Select
+              aria-label="대상 작업"
+              className="h-7 flex-1 text-xs"
+              value={targetId}
+              onChange={(e) => setTargetId(e.target.value)}
+            >
+              <option value="">대상 선택…</option>
+              {otherWps.map((w) => (
+                <option key={w.id} value={w.id}>
+                  {w.subject}
+                </option>
+              ))}
+            </Select>
+            <Button size="sm" onClick={submit} disabled={!targetId || createRelation.isPending}>
+              추가
+            </Button>
+          </div>
+          {createRelation.isError ? (
+            <p className="text-xs text-of-danger">
+              관계를 추가하지 못했습니다(이미 존재하거나 대상이 올바르지 않음).
+            </p>
+          ) : null}
+        </>
       ) : null}
     </section>
   )
