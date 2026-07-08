@@ -86,3 +86,15 @@ async def test_archive_exempt_and_guards(client, project, foreign_project):
     res = await client.get(f"/api/v1/projects/{foreign_pid}/dashboard/layout")
     assert res.status_code == 404  # existence hiding
     assert (await put_layout(client, foreign_pid, ["summary"])).status_code == 404
+
+
+async def test_type_distribution_widget_key(client, project):
+    """Pass 58 PR-BX: the vocabulary grows additively — the new key saves,
+    the absent-row default now lists seven, and the old keys keep working."""
+    pid = project["id"]
+    body = await get_layout(client, pid)
+    assert "type_distribution" in body["widgets"]  # default = all seven
+
+    res = await put_layout(client, pid, ["type_distribution", "summary"])
+    assert res.status_code == 200, res.text
+    assert res.json()["widgets"] == ["type_distribution", "summary"]
