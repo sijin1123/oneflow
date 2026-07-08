@@ -1,4 +1,5 @@
 import uuid
+from datetime import date
 
 from pydantic import BaseModel
 
@@ -42,4 +43,29 @@ class PortfolioTotals(BaseModel):
 class PortfolioReportRead(BaseModel):
     items: list[PortfolioItem]
     totals: PortfolioTotals
+    total: int
+
+
+class PortfolioTimelineMilestone(BaseModel):
+    id: uuid.UUID
+    name: str
+    due_date: date
+
+
+class PortfolioTimelineItem(BaseModel):
+    """One project lane (Pass 75). start/end derive from the project's dated
+    work packages (min of starts/dues → max) — null when nothing is dated."""
+
+    project_id: uuid.UUID
+    key: str
+    name: str
+    archived: bool
+    start_date: date | None
+    end_date: date | None
+    open_work_package_count: int
+    milestones: list[PortfolioTimelineMilestone]
+
+
+class PortfolioTimelineRead(BaseModel):
+    items: list[PortfolioTimelineItem]
     total: int

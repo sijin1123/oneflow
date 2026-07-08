@@ -1678,6 +1678,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/reports/portfolio/timeline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Portfolio Timeline
+         * @description Cross-project lanes (Pass 75, v75.1): scope/order/paging are the
+         *     portfolio-report contract (#138); the lane span derives from the
+         *     project's dated work packages via an INDEPENDENT aggregate (min of any
+         *     start/due → max — join multiplication unrepresentable); the open count
+         *     reuses the SAME closed-status predicate; milestones come from ONE batch
+         *     query (dated only).
+         */
+        get: operations["portfolio_timeline_api_v1_reports_portfolio_timeline_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/search": {
         parameters: {
             query?: never;
@@ -4035,6 +4060,54 @@ export interface components {
             /** Total */
             total: number;
             totals: components["schemas"]["PortfolioTotals"];
+        };
+        /**
+         * PortfolioTimelineItem
+         * @description One project lane (Pass 75). start/end derive from the project's dated
+         *     work packages (min of starts/dues → max) — null when nothing is dated.
+         */
+        PortfolioTimelineItem: {
+            /** Archived */
+            archived: boolean;
+            /** End Date */
+            end_date: string | null;
+            /** Key */
+            key: string;
+            /** Milestones */
+            milestones: components["schemas"]["PortfolioTimelineMilestone"][];
+            /** Name */
+            name: string;
+            /** Open Work Package Count */
+            open_work_package_count: number;
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            /** Start Date */
+            start_date: string | null;
+        };
+        /** PortfolioTimelineMilestone */
+        PortfolioTimelineMilestone: {
+            /**
+             * Due Date
+             * Format: date
+             */
+            due_date: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+        };
+        /** PortfolioTimelineRead */
+        PortfolioTimelineRead: {
+            /** Items */
+            items: components["schemas"]["PortfolioTimelineItem"][];
+            /** Total */
+            total: number;
         };
         /**
          * PortfolioTotals
@@ -9197,6 +9270,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    portfolio_timeline_api_v1_reports_portfolio_timeline_get: {
+        parameters: {
+            query?: {
+                include_archived?: boolean;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PortfolioTimelineRead"];
                 };
             };
             /** @description Validation Error */

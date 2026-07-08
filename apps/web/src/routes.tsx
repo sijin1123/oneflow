@@ -15,7 +15,6 @@ import { MeetingsPage } from '@/features/meetings/MeetingsPage'
 import { ModulesPage } from '@/features/modules/ModulesPage'
 import { MyWorkPage } from '@/features/my-work/MyWorkPage'
 import { ProjectsPage } from '@/features/projects/ProjectsPage'
-import { ReportsPage } from '@/features/reports/ReportsPage'
 import { SearchPage } from '@/features/search/SearchPage'
 import { StatusPage } from '@/features/ops/StatusPage'
 import { UsersPage } from '@/features/admin/UsersPage'
@@ -26,7 +25,10 @@ import { BoardPage } from '@/features/work-packages/BoardPage'
 import { CyclesPage } from '@/features/cycles/CyclesPage'
 import { CalendarPage } from '@/features/work-packages/CalendarPage'
 import { ListPage } from '@/features/work-packages/ListPage'
-// DHTMLX Gantt is heavy — the timeline route is code-split (v73.1 R1-⑥).
+// DHTMLX Gantt is heavy — routes that pull it in are code-split (v73.1 R1-⑥).
+const ReportsPage = lazy(() =>
+  import('@/features/reports/ReportsPage').then((m) => ({ default: m.ReportsPage })),
+)
 const TimelinePage = lazy(() =>
   import('@/features/work-packages/TimelinePage').then((m) => ({ default: m.TimelinePage })),
 )
@@ -47,7 +49,14 @@ export const router = createBrowserRouter([
       { path: 'initiatives', element: <InitiativesPage /> },
       { path: 'projects', element: <ProjectsPage /> },
       { path: 'search', element: <SearchPage /> },
-      { path: 'reports', element: <ReportsPage /> },
+      {
+        path: 'reports',
+        element: (
+          <Suspense fallback={<div className="p-6 text-xs text-of-muted">리포트 로딩 중…</div>}>
+            <ReportsPage />
+          </Suspense>
+        ),
+      },
       { path: 'status', element: <StatusPage /> },
       { path: 'admin/users', element: <UsersPage /> },
       { path: 'settings', element: <PersonalSettingsPage /> },

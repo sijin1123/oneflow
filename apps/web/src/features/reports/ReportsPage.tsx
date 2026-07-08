@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 
 import { EmptyState, ErrorState, ListSkeleton } from '@/components/shell/states'
+import { PortfolioTimelineChart, usePortfolioTimeline } from './PortfolioTimeline'
 import { Button } from '@/components/ui/button'
 import { HEALTH_LABELS, HEALTH_STYLES, type ProjectHealth } from '@/features/projects/types'
 import { api } from '@/lib/api'
@@ -50,7 +51,10 @@ const num = (v: number) => v.toLocaleString('ko-KR')
    server parameter, so totals always match what is on screen (v63.1 R1-⑤). */
 export function ReportsPage() {
   const [includeArchived, setIncludeArchived] = useState(false)
+  const [view, setView] = useState<'table' | 'timeline'>('table')
   const report = usePortfolio(includeArchived)
+  // Single shared filter state across both views (v75.1 R1-⑥).
+  const timeline = usePortfolioTimeline(includeArchived)
   const navigate = useNavigate()
 
   if (report.isPending) return <ListSkeleton />
@@ -70,6 +74,28 @@ export function ReportsPage() {
           </p>
         </div>
         <div className="flex items-center gap-3">
+          <div className="flex overflow-hidden rounded-of border border-of-border text-xs">
+            {(
+              [
+                ['table', '요약 표'],
+                ['timeline', '타임라인'],
+              ] as const
+            ).map(([key, label]) => (
+              <button
+                key={key}
+                type="button"
+                aria-pressed={view === key}
+                className={
+                  view === key
+                    ? 'bg-of-accent-soft px-2.5 py-1 font-medium text-of-accent'
+                    : 'px-2.5 py-1 text-of-muted hover:bg-of-surface-2'
+                }
+                onClick={() => setView(key)}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
           <label className="flex items-center gap-1.5 text-xs">
             <input
               type="checkbox"
@@ -91,7 +117,25 @@ export function ReportsPage() {
         </div>
       </div>
 
-      {items.length === 0 ? (
+      {view === 'timeline' ? (
+        <div>
+          {(timeline.data?.items ?? []).some((p) => !p.start_date) ? (
+            <p className="mb-2 text-[11px] text-of-muted">
+              일정 없음{' '}
+              {(timeline.data?.items ?? []).filter((p) => !p.start_date).length}건 — 작업에
+              시작일/기한이 생기면 표시됩니다.
+            </p>
+          ) : null}
+          {timeline.data && timeline.data.items.every((p) => !p.start_date) ? (
+            <EmptyState
+              title="일정이 있는 프로젝트가 없습니다"
+              hint="작업에 시작일/기한을 지정하면 프로젝트 기간이 집계됩니다."
+            />
+          ) : (
+            <PortfolioTimelineChart items={timeline.data?.items ?? []} />
+          )}
+        </div>
+      ) : items.length === 0 ? (
         <EmptyState
           title="표시할 프로젝트가 없습니다"
           hint="프로젝트 멤버가 되면 여기에 집계됩니다."
