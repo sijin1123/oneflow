@@ -31,6 +31,11 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     # Strict parse: exactly "true" enables it, everything else stays locked (PLAN §9 table).
     dev_allow_nonlocal: str = "false"
+    # Dev-login sessions (Pass 72): OFF = the historical zero-credential auto
+    # dev user (cookies IGNORED — deterministic for tests/scripts); exactly
+    # "true" = a session cookie is REQUIRED (missing/invalid → 401). Restart
+    # to change; never exposed in any settings UI (boot-time config).
+    dev_login_required: str = "false"
     # AI summary feature flag (PLAN §3 Phase 3 AI/RAG). Default OFF; exactly "true"
     # enables the work-package summary endpoint. Uses a local, no-secret provider.
     ai_summary: str = "false"
@@ -57,6 +62,10 @@ class Settings(BaseSettings):
     @property
     def dev_allow_nonlocal_enabled(self) -> bool:
         return self.dev_allow_nonlocal == "true"
+
+    @property
+    def dev_login_required_enabled(self) -> bool:
+        return self.dev_login_required == "true"
 
     @property
     def ai_summary_enabled(self) -> bool:

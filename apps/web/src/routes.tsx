@@ -1,6 +1,7 @@
 import { Navigate, createBrowserRouter } from 'react-router-dom'
 
 import { AppShell } from '@/components/shell/AppShell'
+import { LoginPage } from '@/features/auth/LoginPage'
 import { NotFound, RouteError } from '@/components/shell/RouteError'
 import { FilesPage } from '@/features/attachments/FilesPage'
 import { InitiativesPage } from '@/features/initiatives/InitiativesPage'
@@ -28,6 +29,8 @@ import { TimelinePage } from '@/features/work-packages/TimelinePage'
 import { TreePage } from '@/features/work-packages/TreePage'
 
 export const router = createBrowserRouter([
+  // Outside the shell: must render with no session (Pass 72).
+  { path: '/login', element: <LoginPage /> },
   {
     path: '/',
     element: <AppShell />,

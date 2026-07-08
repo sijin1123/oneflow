@@ -104,6 +104,49 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/auth/login": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Dev Login
+         * @description Passwordless DEV login (Pass 72): the email of an existing ACTIVE
+         *     directory user starts a 7-day session. Unknown and inactive emails are
+         *     the SAME generic 401 (no account enumeration). oidc mode stays 501.
+         */
+        post: operations["dev_login_api_v1_auth_login_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/logout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Dev Logout
+         * @description Revoke the cookie's session and clear the cookie — unauthenticated and
+         *     idempotent (a missing/unknown cookie is still a clean 204).
+         */
+        post: operations["dev_logout_api_v1_auth_logout_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/capabilities": {
         parameters: {
             query?: never;
@@ -3193,6 +3236,23 @@ export interface components {
             /** Status */
             status: string;
         };
+        /** LoginRequest */
+        LoginRequest: {
+            /** Email */
+            email: string;
+        };
+        /** LoginResult */
+        LoginResult: {
+            /** Display Name */
+            display_name: string;
+            /** Email */
+            email: string;
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+        };
         /**
          * MeWorkRead
          * @description Personal home payload. Lists are hard-capped (no pagination yet):
@@ -5089,7 +5149,9 @@ export interface operations {
             path: {
                 item_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -5118,7 +5180,9 @@ export interface operations {
             path: {
                 item_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody: {
             content: {
@@ -5153,7 +5217,9 @@ export interface operations {
             path: {
                 item_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -5184,7 +5250,9 @@ export interface operations {
             path: {
                 attachment_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -5213,7 +5281,9 @@ export interface operations {
             path: {
                 attachment_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -5257,12 +5327,76 @@ export interface operations {
             };
         };
     };
-    capabilities_api_v1_capabilities_get: {
+    dev_login_api_v1_auth_login_post: {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LoginRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LoginResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    dev_logout_api_v1_auth_logout_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    capabilities_api_v1_capabilities_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -5275,6 +5409,15 @@ export interface operations {
                     "application/json": components["schemas"]["AiCapabilities"];
                 };
             };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
         };
     };
     put_reaction_api_v1_comments__comment_id__reactions__emoji__put: {
@@ -5285,7 +5428,9 @@ export interface operations {
                 comment_id: string;
                 emoji: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -5317,7 +5462,9 @@ export interface operations {
                 comment_id: string;
                 emoji: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -5346,7 +5493,9 @@ export interface operations {
             path: {
                 comment_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -5375,7 +5524,9 @@ export interface operations {
             path: {
                 doc_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -5406,7 +5557,9 @@ export interface operations {
             path: {
                 doc_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -5435,7 +5588,9 @@ export interface operations {
             path: {
                 doc_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody: {
             content: {
@@ -5482,7 +5637,9 @@ export interface operations {
             path: {
                 doc_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -5513,7 +5670,9 @@ export interface operations {
             path: {
                 doc_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody: {
             content: {
@@ -5548,7 +5707,9 @@ export interface operations {
             path: {
                 doc_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -5579,7 +5740,9 @@ export interface operations {
             path: {
                 doc_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody: {
             content: {
@@ -5615,7 +5778,9 @@ export interface operations {
                 doc_id: string;
                 link_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -5684,7 +5849,9 @@ export interface operations {
             query?: never;
             header?: never;
             path?: never;
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -5697,6 +5864,15 @@ export interface operations {
                     "application/json": components["schemas"]["InitiativeList"];
                 };
             };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
         };
     };
     create_initiative_api_v1_initiatives_post: {
@@ -5704,7 +5880,9 @@ export interface operations {
             query?: never;
             header?: never;
             path?: never;
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody: {
             content: {
@@ -5739,7 +5917,9 @@ export interface operations {
             path: {
                 initiative_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -5768,7 +5948,9 @@ export interface operations {
             path: {
                 initiative_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody: {
             content: {
@@ -5803,7 +5985,9 @@ export interface operations {
             path: {
                 initiative_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody: {
             content: {
@@ -5839,7 +6023,9 @@ export interface operations {
                 initiative_id: string;
                 project_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -5868,7 +6054,9 @@ export interface operations {
             query?: never;
             header?: never;
             path?: never;
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -5881,6 +6069,15 @@ export interface operations {
                     "application/json": components["schemas"]["UserRead"];
                 };
             };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
         };
     };
     get_notification_settings_api_v1_me_notification_settings_get: {
@@ -5888,7 +6085,9 @@ export interface operations {
             query?: never;
             header?: never;
             path?: never;
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -5901,6 +6100,15 @@ export interface operations {
                     "application/json": components["schemas"]["NotificationSettingsRead"];
                 };
             };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
         };
     };
     update_notification_settings_api_v1_me_notification_settings_put: {
@@ -5908,7 +6116,9 @@ export interface operations {
             query?: never;
             header?: never;
             path?: never;
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody: {
             content: {
@@ -5944,7 +6154,9 @@ export interface operations {
             };
             header?: never;
             path?: never;
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -5973,7 +6185,9 @@ export interface operations {
             query?: never;
             header?: never;
             path?: never;
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -5984,6 +6198,15 @@ export interface operations {
                 };
                 content?: never;
             };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
         };
     };
     mark_notification_read_api_v1_me_notifications__notification_id__read_post: {
@@ -5993,7 +6216,9 @@ export interface operations {
             path: {
                 notification_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -6025,7 +6250,9 @@ export interface operations {
             };
             header?: never;
             path?: never;
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -6054,7 +6281,9 @@ export interface operations {
             query?: never;
             header?: never;
             path?: never;
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -6067,6 +6296,15 @@ export interface operations {
                     "application/json": components["schemas"]["MeWorkRead"];
                 };
             };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
         };
     };
     delete_meeting_template_api_v1_meeting_templates__template_id__delete: {
@@ -6076,7 +6314,9 @@ export interface operations {
             path: {
                 template_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -6105,7 +6345,9 @@ export interface operations {
             path: {
                 meeting_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -6136,7 +6378,9 @@ export interface operations {
             path: {
                 meeting_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -6165,7 +6409,9 @@ export interface operations {
             path: {
                 meeting_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody: {
             content: {
@@ -6209,7 +6455,9 @@ export interface operations {
             path: {
                 meeting_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody: {
             content: {
@@ -6244,7 +6492,9 @@ export interface operations {
             path: {
                 meeting_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody: {
             content: {
@@ -6277,7 +6527,9 @@ export interface operations {
             query?: never;
             header?: never;
             path?: never;
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -6288,6 +6540,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["StatusRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -6301,7 +6562,9 @@ export interface operations {
             };
             header?: never;
             path?: never;
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -6330,7 +6593,9 @@ export interface operations {
             query?: never;
             header?: never;
             path?: never;
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody: {
             content: {
@@ -6365,7 +6630,9 @@ export interface operations {
             path: {
                 project_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -6396,7 +6663,9 @@ export interface operations {
             path: {
                 project_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody: {
             content: {
@@ -6437,7 +6706,9 @@ export interface operations {
             path: {
                 project_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -6468,7 +6739,9 @@ export interface operations {
             path: {
                 project_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -6502,7 +6775,9 @@ export interface operations {
             path: {
                 project_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -6533,7 +6808,9 @@ export interface operations {
             path: {
                 project_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody: {
             content: {
@@ -6572,7 +6849,9 @@ export interface operations {
             path: {
                 project_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -6603,7 +6882,9 @@ export interface operations {
             path: {
                 project_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -6634,7 +6915,9 @@ export interface operations {
             path: {
                 project_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody: {
             content: {
@@ -6671,7 +6954,9 @@ export interface operations {
             path: {
                 project_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -6703,7 +6988,9 @@ export interface operations {
                 project_id: string;
                 rule_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -6733,7 +7020,9 @@ export interface operations {
                 project_id: string;
                 rule_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody: {
             content: {
@@ -6770,7 +7059,9 @@ export interface operations {
             path: {
                 project_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -6801,7 +7092,9 @@ export interface operations {
             path: {
                 project_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody: {
             content: {
@@ -6836,7 +7129,9 @@ export interface operations {
             path: {
                 project_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody: {
             content: {
@@ -6872,7 +7167,9 @@ export interface operations {
                 project_id: string;
                 field_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -6902,7 +7199,9 @@ export interface operations {
                 project_id: string;
                 field_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody: {
             content: {
@@ -6937,7 +7236,9 @@ export interface operations {
             path: {
                 project_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -6968,7 +7269,9 @@ export interface operations {
             path: {
                 project_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody: {
             content: {
@@ -7004,7 +7307,9 @@ export interface operations {
                 project_id: string;
                 cycle_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -7034,7 +7339,9 @@ export interface operations {
                 project_id: string;
                 cycle_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody: {
             content: {
@@ -7070,7 +7377,9 @@ export interface operations {
                 project_id: string;
                 cycle_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -7102,7 +7411,9 @@ export interface operations {
                 project_id: string;
                 cycle_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody: {
             content: {
@@ -7137,7 +7448,9 @@ export interface operations {
             path: {
                 project_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -7168,7 +7481,9 @@ export interface operations {
             path: {
                 project_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -7199,7 +7514,9 @@ export interface operations {
             path: {
                 project_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -7230,7 +7547,9 @@ export interface operations {
             path: {
                 project_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody: {
             content: {
@@ -7265,7 +7584,9 @@ export interface operations {
             path: {
                 project_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -7296,7 +7617,9 @@ export interface operations {
             path: {
                 project_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody: {
             content: {
@@ -7331,7 +7654,9 @@ export interface operations {
             path: {
                 project_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -7362,7 +7687,9 @@ export interface operations {
             path: {
                 project_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody: {
             content: {
@@ -7398,7 +7725,9 @@ export interface operations {
                 project_id: string;
                 item_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody: {
             content: {
@@ -7433,7 +7762,9 @@ export interface operations {
             path: {
                 project_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -7464,7 +7795,9 @@ export interface operations {
             path: {
                 project_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody: {
             content: {
@@ -7499,7 +7832,9 @@ export interface operations {
             path: {
                 project_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -7530,7 +7865,9 @@ export interface operations {
             path: {
                 project_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody: {
             content: {
@@ -7565,7 +7902,9 @@ export interface operations {
             path: {
                 project_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -7596,7 +7935,9 @@ export interface operations {
             path: {
                 project_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody: {
             content: {
@@ -7632,7 +7973,9 @@ export interface operations {
                 project_id: string;
                 user_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -7662,7 +8005,9 @@ export interface operations {
                 project_id: string;
                 user_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody: {
             content: {
@@ -7697,7 +8042,9 @@ export interface operations {
             path: {
                 project_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -7728,7 +8075,9 @@ export interface operations {
             path: {
                 project_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody: {
             content: {
@@ -7764,7 +8113,9 @@ export interface operations {
                 project_id: string;
                 milestone_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -7794,7 +8145,9 @@ export interface operations {
                 project_id: string;
                 milestone_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody: {
             content: {
@@ -7829,7 +8182,9 @@ export interface operations {
             path: {
                 project_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -7860,7 +8215,9 @@ export interface operations {
             path: {
                 project_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody: {
             content: {
@@ -7896,7 +8253,9 @@ export interface operations {
                 project_id: string;
                 module_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -7926,7 +8285,9 @@ export interface operations {
                 project_id: string;
                 module_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody: {
             content: {
@@ -7962,7 +8323,9 @@ export interface operations {
                 project_id: string;
                 module_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -7994,7 +8357,9 @@ export interface operations {
                 project_id: string;
                 module_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody: {
             content: {
@@ -8029,7 +8394,9 @@ export interface operations {
             path: {
                 project_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -8062,7 +8429,9 @@ export interface operations {
             path: {
                 project_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -8093,7 +8462,9 @@ export interface operations {
             path: {
                 project_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -8124,7 +8495,9 @@ export interface operations {
             path: {
                 project_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody: {
             content: {
@@ -8160,7 +8533,9 @@ export interface operations {
                 project_id: string;
                 filter_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -8190,7 +8565,9 @@ export interface operations {
                 project_id: string;
                 filter_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody: {
             content: {
@@ -8225,7 +8602,9 @@ export interface operations {
             path: {
                 project_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -8256,7 +8635,9 @@ export interface operations {
             path: {
                 project_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody: {
             content: {
@@ -8292,7 +8673,9 @@ export interface operations {
                 project_id: string;
                 status_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody: {
             content: {
@@ -8327,7 +8710,9 @@ export interface operations {
             path: {
                 project_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -8358,7 +8743,9 @@ export interface operations {
             path: {
                 project_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -8389,7 +8776,9 @@ export interface operations {
             path: {
                 project_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody: {
             content: {
@@ -8425,7 +8814,9 @@ export interface operations {
                 project_id: string;
                 type_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody: {
             content: {
@@ -8460,7 +8851,9 @@ export interface operations {
             path: {
                 project_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -8505,7 +8898,9 @@ export interface operations {
             path: {
                 project_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -8536,7 +8931,9 @@ export interface operations {
             path: {
                 project_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody: {
             content: {
@@ -8571,7 +8968,9 @@ export interface operations {
             path: {
                 project_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody: {
             content: {
@@ -8606,7 +9005,9 @@ export interface operations {
             path: {
                 project_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -8637,7 +9038,9 @@ export interface operations {
             path: {
                 project_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody: {
             content: {
@@ -8672,7 +9075,9 @@ export interface operations {
             path: {
                 project_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody: {
             content: {
@@ -8707,7 +9112,9 @@ export interface operations {
             path: {
                 project_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody: {
             content: {
@@ -8744,7 +9151,9 @@ export interface operations {
             };
             header?: never;
             path?: never;
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -8775,7 +9184,9 @@ export interface operations {
             };
             header?: never;
             path?: never;
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -8807,7 +9218,9 @@ export interface operations {
             };
             header?: never;
             path?: never;
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -8839,7 +9252,9 @@ export interface operations {
             };
             header?: never;
             path?: never;
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -8868,7 +9283,9 @@ export interface operations {
             query?: never;
             header?: never;
             path?: never;
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -8881,6 +9298,15 @@ export interface operations {
                     "application/json": components["schemas"]["UserDirectoryList"];
                 };
             };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
         };
     };
     create_user_api_v1_users_post: {
@@ -8888,7 +9314,9 @@ export interface operations {
             query?: never;
             header?: never;
             path?: never;
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody: {
             content: {
@@ -8923,7 +9351,9 @@ export interface operations {
             path: {
                 user_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody: {
             content: {
@@ -8961,7 +9391,9 @@ export interface operations {
             path: {
                 user_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -8992,7 +9424,9 @@ export interface operations {
             path: {
                 wp_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -9023,7 +9457,9 @@ export interface operations {
             path: {
                 wp_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody: {
             content: {
@@ -9074,7 +9510,9 @@ export interface operations {
             path: {
                 wp_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -9108,7 +9546,9 @@ export interface operations {
             path: {
                 wp_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -9139,7 +9579,9 @@ export interface operations {
             path: {
                 wp_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody: {
             content: {
@@ -9174,7 +9616,9 @@ export interface operations {
             path: {
                 wp_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -9205,7 +9649,9 @@ export interface operations {
             path: {
                 wp_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody: {
             content: {
@@ -9241,7 +9687,9 @@ export interface operations {
                 wp_id: string;
                 entry_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -9270,7 +9718,9 @@ export interface operations {
             path: {
                 wp_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -9301,7 +9751,9 @@ export interface operations {
             path: {
                 wp_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody: {
             content: {
@@ -9336,7 +9788,9 @@ export interface operations {
             path: {
                 wp_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -9367,7 +9821,9 @@ export interface operations {
             path: {
                 wp_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -9398,7 +9854,9 @@ export interface operations {
             path: {
                 wp_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody: {
             content: {
@@ -9433,7 +9891,9 @@ export interface operations {
             path: {
                 wp_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -9464,7 +9924,9 @@ export interface operations {
             path: {
                 wp_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody: {
             content: {
@@ -9500,7 +9962,9 @@ export interface operations {
                 wp_id: string;
                 relation_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -9529,7 +9993,9 @@ export interface operations {
             path: {
                 wp_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -9560,7 +10026,9 @@ export interface operations {
             path: {
                 wp_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -9591,7 +10059,9 @@ export interface operations {
             path: {
                 wp_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody: {
             content: {
@@ -9627,7 +10097,9 @@ export interface operations {
                 wp_id: string;
                 entry_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -9656,7 +10128,9 @@ export interface operations {
             path: {
                 wp_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -9687,7 +10161,9 @@ export interface operations {
             path: {
                 wp_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -9716,7 +10192,9 @@ export interface operations {
             path: {
                 wp_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
