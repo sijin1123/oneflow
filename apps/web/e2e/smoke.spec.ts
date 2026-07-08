@@ -3437,3 +3437,28 @@ test('잠긴 뷰는 공유/삭제가 숨고 해제하면 복원된다', async ({
   await expect(page.getByLabel('잠긴 뷰 삭제')).toBeVisible()
   await expect(page.getByLabel(/잠긴 뷰 공유/)).toBeVisible()
 })
+
+
+test('설정 스토리지 탭이 사용량 바와 카운트를 보여준다', async ({ page }) => {
+  await mockApi(page)
+  await page.route(`**/api/v1/projects/${project.id}`, (route) =>
+    route.fulfill({ json: project }),
+  )
+  await page.route(`**/api/v1/projects/${project.id}/milestones`, (route) =>
+    route.fulfill({ json: { items: [], total: 0 } }),
+  )
+  await page.route(`**/api/v1/projects/${project.id}/storage`, (route) =>
+    route.fulfill({
+      json: {
+        used_bytes: 900 * 1_048_576,
+        quota_bytes: 1024 * 1_048_576,
+        attachment_count: 12,
+        link_count: 3,
+      },
+    }),
+  )
+  await page.goto(`/projects/${project.id}/settings?tab=storage`)
+  await expect(page.getByText('900.0 MiB / 1024.0 MiB (88%)', { exact: false })).toBeVisible()
+  await expect(page.getByText('한도에 가까워지고 있습니다', { exact: false })).toBeVisible()
+  await expect(page.getByText('업로드 파일 12건 · 외부 링크 3건', { exact: false })).toBeVisible()
+})

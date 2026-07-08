@@ -1336,6 +1336,28 @@ export interface paths {
         patch: operations["update_project_status_api_v1_projects__project_id__statuses__status_id__patch"];
         trace?: never;
     };
+    "/api/v1/projects/{project_id}/storage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Project Storage
+         * @description Read-only usage snapshot for the settings Storage tab (Pass 57): one
+         *     self-consistent aggregate; the quota itself is env-owned (editing it is
+         *     an explicit non-goal — restart required, see the env rules).
+         */
+        get: operations["project_storage_api_v1_projects__project_id__storage_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{project_id}/types": {
         parameters: {
             query?: never;
@@ -4332,6 +4354,21 @@ export interface components {
             database: components["schemas"]["OpsDatabase"];
             /** Version */
             version: string;
+        };
+        /**
+         * StorageRead
+         * @description Settings Storage tab payload (Pass 57): used counts stored blobs only;
+         *     links carry no bytes. quota comes from env (read-only here).
+         */
+        StorageRead: {
+            /** Attachment Count */
+            attachment_count: number;
+            /** Link Count */
+            link_count: number;
+            /** Quota Bytes */
+            quota_bytes: number;
+            /** Used Bytes */
+            used_bytes: number;
         };
         /**
          * TemplateApplied
@@ -7803,6 +7840,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ProjectStatusRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    project_storage_api_v1_projects__project_id__storage_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StorageRead"];
                 };
             };
             /** @description Validation Error */

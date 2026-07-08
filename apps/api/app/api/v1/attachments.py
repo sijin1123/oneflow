@@ -12,7 +12,7 @@ from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from fastapi.responses import FileResponse
-from sqlalchemy import func, select, text
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import get_current_user
@@ -23,8 +23,9 @@ from app.models.attachment import Attachment
 from app.models.document import ProjectDocument
 from app.models.user import User
 from app.models.work_package import WorkPackage
-from app.schemas.attachment import AttachmentCreate, AttachmentList, AttachmentRead
+from app.schemas.attachment import AttachmentCreate, AttachmentList, AttachmentRead, StorageRead
 from app.services.storage import LocalStorage, storage_key
+from app.services.storage_usage import storage_usage, used_bytes
 
 router = APIRouter()
 
@@ -196,14 +197,8 @@ async def upload_attachment(
             classid=UPLOAD_LOCK_CLASSID, pid=str(project_id)
         )
     )
-    used = (
-        await session.execute(
-            select(func.coalesce(func.sum(Attachment.size_bytes), 0)).where(
-                Attachment.project_id == project_id,
-                Attachment.storage_key.is_not(None),
-            )
-        )
-    ).scalar_one()
+    # Shared aggregate (Pass 57): the SAME function feeds the Storage tab.
+    used = await used_bytes(session, project_id)
     if used + int(declared) > settings.project_storage_quota_bytes:
         raise HTTPException(status_code=413, detail="project storage quota exceeded")
 
@@ -281,4 +276,24 @@ async def download_attachment(
         media_type=att.content_type or "application/octet-stream",
         # NEVER inline: a stored HTML/SVG must not render on our origin.
         headers={"Content-Disposition": disposition},
+    )
+
+
+@router.get("/projects/{project_id}/storage", response_model=StorageRead)
+async def project_storage(
+    project_id: uuid.UUID,
+    session: AsyncSession = Depends(get_session),
+    settings: Settings = Depends(get_settings),
+    user: User = Depends(get_current_user),
+) -> StorageRead:
+    """Read-only usage snapshot for the settings Storage tab (Pass 57): one
+    self-consistent aggregate; the quota itself is env-owned (editing it is
+    an explicit non-goal — restart required, see the env rules)."""
+    await require_member(session, project_id, user)
+    used, files, links = await storage_usage(session, project_id)
+    return StorageRead(
+        used_bytes=used,
+        quota_bytes=settings.project_storage_quota_bytes,
+        attachment_count=files,
+        link_count=links,
     )

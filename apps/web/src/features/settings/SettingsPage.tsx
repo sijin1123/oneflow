@@ -12,6 +12,7 @@ import { DangerPanel } from './DangerPanel'
 import { FieldsPanel } from './FieldsPanel'
 import { GeneralPanel } from './GeneralPanel'
 import { NotificationsPanel } from './NotificationsPanel'
+import { StoragePanel } from './StoragePanel'
 import { MembersPanel } from './MembersPanel'
 import { MilestonesPanel } from './MilestonesPanel'
 
@@ -25,6 +26,7 @@ const TABS = [
   { key: 'fields', label: '필드' },
   { key: 'automation', label: '자동화' },
   { key: 'notifications', label: '알림' },
+  { key: 'storage', label: '스토리지' },
   { key: 'danger', label: '위험 구역' },
 ] as const
 
@@ -113,6 +115,7 @@ export function SettingsPage() {
             <AutomationManager projectId={projectId} isOwner={isOwner} />
           ) : null}
           {tab === 'notifications' ? <NotificationsPanel /> : null}
+          {tab === 'storage' ? <StoragePanel projectId={projectId} /> : null}
           {tab === 'danger' ? <DangerPanel isOwner={isOwner} /> : null}
         </div>
       </div>

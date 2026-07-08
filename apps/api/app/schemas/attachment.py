@@ -70,3 +70,13 @@ class AttachmentRead(BaseModel):
 class AttachmentList(BaseModel):
     items: list[AttachmentRead]
     total: int
+
+
+class StorageRead(BaseModel):
+    """Settings Storage tab payload (Pass 57): used counts stored blobs only;
+    links carry no bytes. quota comes from env (read-only here)."""
+
+    used_bytes: int
+    quota_bytes: int
+    attachment_count: int
+    link_count: int
