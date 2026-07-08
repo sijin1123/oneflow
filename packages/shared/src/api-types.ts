@@ -3384,6 +3384,10 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+            /** Follow Up Source Id */
+            follow_up_source_id?: string | null;
+            /** Follow Up Source Title */
+            follow_up_source_title?: string | null;
             /**
              * Id
              * Format: uuid

@@ -133,6 +133,8 @@ class MeetingRead(BaseModel):
     author_id: uuid.UUID | None
     recurrence: str | None = None
     recurrence_source_id: uuid.UUID | None = None
+    follow_up_source_id: uuid.UUID | None = None
+    follow_up_source_title: str | None = None
     version: int
     created_at: datetime
     updated_at: datetime

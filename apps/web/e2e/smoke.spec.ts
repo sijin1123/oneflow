@@ -3473,6 +3473,44 @@ test('회의 상세가 안건·액션 아이템을 보여주고 액션 아이템
   expect(tplSent).toEqual({ name: '주간 아젠다', from_meeting_id: 'm1' })
 })
 
+test('후속 회의 상세는 원본 링크를 보여주고 클릭하면 원본으로 이동한다', async ({ page }) => {
+  await mockApi(page)
+  const base = {
+    project_id: project.id,
+    agenda: null,
+    minutes: null,
+    author_id: null,
+    recurrence: null,
+    recurrence_source_id: null,
+    version: 1,
+    created_at: '2026-07-01T00:00:00Z',
+    updated_at: '2026-07-01T00:00:00Z',
+    action_items: [],
+  }
+  const src = { ...base, id: 'm-src', title: '주간 회의', scheduled_on: '2026-07-01', follow_up_source_id: null, follow_up_source_title: null }
+  const fu = { ...base, id: 'm-fu', title: '주간 회의', scheduled_on: '2026-07-08', follow_up_source_id: 'm-src', follow_up_source_title: '주간 회의' }
+  await page.route('**/api/v1/meetings/m-src', (route) => route.fulfill({ json: src }))
+  await page.route('**/api/v1/meetings/m-fu', (route) => route.fulfill({ json: fu }))
+  await page.route(`**/api/v1/projects/${project.id}/meetings`, (route) =>
+    route.fulfill({
+      json: {
+        items: [
+          { id: 'm-src', project_id: project.id, title: '주간 회의', scheduled_on: '2026-07-01', recurrence: null, version: 1, updated_at: '2026-07-01T00:00:00Z' },
+          { id: 'm-fu', project_id: project.id, title: '주간 회의', scheduled_on: '2026-07-08', recurrence: null, version: 1, updated_at: '2026-07-01T00:00:00Z' },
+        ],
+        total: 2,
+      },
+    }),
+  )
+
+  await page.goto(`/projects/${project.id}/meetings/m-fu`)
+  await expect(page.getByText('의 후속 회의입니다', { exact: false })).toBeVisible()
+  await page.getByRole('button', { name: "'주간 회의'" }).click()
+  await expect(page).toHaveURL(/\/meetings\/m-src/)
+  // The source meeting itself shows no follow-up link.
+  await expect(page.getByText('의 후속 회의입니다', { exact: false })).toBeHidden()
+})
+
 test('회의 상세에서 반복 주기를 고르면 PATCH에 recurrence가 실린다', async ({ page }) => {
   await mockApi(page)
   const meeting = {
