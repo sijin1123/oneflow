@@ -3,6 +3,7 @@ from datetime import date, datetime
 
 from sqlalchemy import (
     Boolean,
+    CheckConstraint,
     Date,
     DateTime,
     ForeignKey,
@@ -26,7 +27,12 @@ class Meeting(Base):
     optimistic-concurrency token."""
 
     __tablename__ = "meetings"
-    __table_args__ = (Index("ix_meetings_project_scheduled", "project_id", "scheduled_on"),)
+    __table_args__ = (
+        Index("ix_meetings_project_scheduled", "project_id", "scheduled_on"),
+        CheckConstraint(
+            "recurrence IN ('weekly', 'biweekly', 'monthly')", name="recurrence_allowed"
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     project_id: Mapped[uuid.UUID] = mapped_column(
@@ -38,6 +44,14 @@ class Meeting(Base):
     minutes: Mapped[str | None] = mapped_column(Text, nullable=True)
     author_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    # Recurrence lives on the CHAIN TAIL only (Pass 69): the sweep hands it to
+    # each new occurrence and clears it here — one active tail per chain.
+    recurrence: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    # Sweep-generated occurrences anchor to their origin — idempotency probes
+    # use this id, never title+date heuristics (v69.1 R1-①).
+    recurrence_source_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("meetings.id", ondelete="SET NULL"), nullable=True
     )
     version: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     created_at: Mapped[datetime] = mapped_column(

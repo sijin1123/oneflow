@@ -136,11 +136,14 @@ async def create_meeting(
         if template is None:
             raise HTTPException(status_code=404, detail="not found")
         agenda = template.agenda
+    if body.recurrence is not None and body.scheduled_on is None:
+        raise HTTPException(status_code=422, detail="recurrence requires scheduled_on")
     m = Meeting(
         project_id=project_id,
         title=body.title,
         scheduled_on=body.scheduled_on,
         agenda=agenda,
+        recurrence=body.recurrence,
         author_id=user.id,
     )
     session.add(m)
@@ -181,6 +184,18 @@ async def update_meeting(
         changes["agenda"] = sanitize_html(body.agenda)
     if "minutes" in provided:
         changes["minutes"] = sanitize_html(body.minutes)
+    if "recurrence" in provided:
+        changes["recurrence"] = body.recurrence
+    # Cross-field guard on the MERGED state: a recurring meeting always has a
+    # date (dropping the date requires dropping the recurrence too — Pass 69).
+    if "recurrence" in changes or ("scheduled_on" in changes and changes["scheduled_on"] is None):
+        current = await _reselect(session, meeting_id)
+        if current is None:
+            raise HTTPException(status_code=404, detail="not found")
+        merged_rec = changes.get("recurrence", current.recurrence)
+        merged_date = changes.get("scheduled_on", current.scheduled_on)
+        if merged_rec is not None and merged_date is None:
+            raise HTTPException(status_code=422, detail="recurrence requires scheduled_on")
 
     if not changes:
         fresh = await _reselect(session, meeting_id)

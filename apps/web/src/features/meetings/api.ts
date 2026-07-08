@@ -20,6 +20,8 @@ export type Meeting = {
   agenda: string | null
   minutes: string | null
   author_id: string | null
+  recurrence: 'weekly' | 'biweekly' | 'monthly' | null
+  recurrence_source_id: string | null
   version: number
   created_at: string
   updated_at: string
@@ -31,6 +33,7 @@ export type MeetingListItem = {
   project_id: string
   title: string
   scheduled_on: string | null
+  recurrence: 'weekly' | 'biweekly' | 'monthly' | null
   version: number
   updated_at: string
 }
@@ -85,6 +88,7 @@ export function useUpdateMeeting(projectId: string) {
       expected_version: number
       title?: string
       scheduled_on?: string | null
+      recurrence?: string | null
       agenda?: string | null
       minutes?: string | null
     }) => {

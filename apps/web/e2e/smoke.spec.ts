@@ -3146,6 +3146,65 @@ test('회의 상세가 안건·액션 아이템을 보여주고 액션 아이템
   expect(tplSent).toEqual({ name: '주간 아젠다', from_meeting_id: 'm1' })
 })
 
+test('회의 상세에서 반복 주기를 고르면 PATCH에 recurrence가 실린다', async ({ page }) => {
+  await mockApi(page)
+  const meeting = {
+    id: 'm1',
+    project_id: project.id,
+    title: '주간 회의',
+    scheduled_on: '2026-07-10',
+    agenda: null,
+    minutes: null,
+    author_id: null,
+    recurrence: null,
+    recurrence_source_id: null,
+    version: 1,
+    created_at: '2026-07-01T00:00:00Z',
+    updated_at: '2026-07-01T00:00:00Z',
+    action_items: [],
+  }
+  await page.route(`**/api/v1/projects/${project.id}/meetings`, (route) =>
+    route.fulfill({
+      json: {
+        items: [
+          {
+            id: 'm1',
+            project_id: project.id,
+            title: '주간 회의',
+            scheduled_on: '2026-07-10',
+            recurrence: null,
+            version: 1,
+            updated_at: '2026-07-01T00:00:00Z',
+          },
+        ],
+        total: 1,
+      },
+    }),
+  )
+  await page.route('**/api/v1/meetings/m1', async (route) => {
+    if (route.request().method() === 'PATCH') {
+      const sent = route.request().postDataJSON() as { recurrence?: string | null }
+      await route.fulfill({
+        json: { ...meeting, recurrence: sent.recurrence ?? null, version: 2 },
+      })
+      return
+    }
+    await route.fulfill({ json: meeting })
+  })
+
+  await page.goto(`/projects/${project.id}/meetings/m1`)
+  await expect(page.getByLabel('회의 제목')).toHaveValue('주간 회의')
+
+  const patch = page.waitForRequest(
+    (r) => r.method() === 'PATCH' && r.url().includes('/meetings/m1'),
+  )
+  await page.getByLabel('반복 주기').selectOption('weekly')
+  await page.getByRole('button', { name: '저장', exact: true }).click()
+  const sent = (await patch).postDataJSON() as { recurrence?: string }
+  expect(sent.recurrence).toBe('weekly')
+  await expect(page.getByLabel('반복 주기')).toHaveValue('weekly')
+})
+
 test('회의 생성 시 템플릿을 고르면 template_id가 실린다', async ({ page }) => {
   await mockApi(page)
   await page.route(`**/api/v1/projects/${project.id}/meeting-templates`, (route) =>
