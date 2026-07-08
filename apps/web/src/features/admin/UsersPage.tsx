@@ -1,5 +1,5 @@
 import { UserPlus } from 'lucide-react'
-import { useState } from 'react'
+import { Fragment, useState } from 'react'
 
 import { EmptyState, ErrorState, ListSkeleton } from '@/components/shell/states'
 import { Button } from '@/components/ui/button'
@@ -7,7 +7,46 @@ import { Input } from '@/components/ui/input'
 import { useMe } from '@/features/members/api'
 import { ApiError } from '@/lib/api'
 
-import { useCreateUser, useUpdateUser, useUsers } from './api'
+import { useCreateUser, useUpdateUser, useUserMemberships, useUsers } from './api'
+
+const ROLE_LABELS: Record<string, string> = {
+  owner: '소유자',
+  member: '멤버',
+  viewer: '뷰어',
+}
+
+/* Workspace governance READ (Pass 62 PR-CB): which projects a user belongs
+   to, for offboarding checks. Read-only — membership changes stay with each
+   project's owner; the offboarding write tool is deactivation. */
+function MembershipsRow({ userId, colSpan }: { userId: string; colSpan: number }) {
+  const memberships = useUserMemberships(userId)
+  return (
+    <tr className="border-b border-of-border bg-of-surface-2/50">
+      <td colSpan={colSpan} className="px-3 py-2">
+        {memberships.isPending ? (
+          <span className="text-xs text-of-muted">멤버십을 불러오는 중…</span>
+        ) : memberships.isError ? (
+          <span className="text-xs text-of-danger">멤버십을 불러오지 못했습니다.</span>
+        ) : memberships.data.total === 0 ? (
+          <span className="text-xs text-of-muted">속한 프로젝트가 없습니다.</span>
+        ) : (
+          <ul aria-label="프로젝트 멤버십" className="flex flex-wrap gap-1.5">
+            {memberships.data.items.map((m) => (
+              <li
+                key={m.project_id}
+                className="flex items-center gap-1 rounded-of border border-of-border bg-of-surface px-2 py-0.5 text-xs"
+              >
+                <span className="font-medium">{m.project_name}</span>
+                <span className="text-of-muted">· {ROLE_LABELS[m.role] ?? m.role}</span>
+                {m.archived ? <span className="text-[10px] text-of-muted">(아카이브)</span> : null}
+              </li>
+            ))}
+          </ul>
+        )}
+      </td>
+    </tr>
+  )
+}
 
 /* Workspace user directory (expansion Pass 33 PR-AY). Admin-only — the
    server is the authority (403); the sidebar link is mere gating. Guards
@@ -21,6 +60,7 @@ export function UsersPage() {
   const [adding, setAdding] = useState(false)
   const [email, setEmail] = useState('')
   const [name, setName] = useState('')
+  const [expanded, setExpanded] = useState<string | null>(null)
 
   if (isPending) return <ListSkeleton />
   if (isError) {
@@ -106,9 +146,17 @@ export function UsersPage() {
         </thead>
         <tbody>
           {data.items.map((u) => (
-            <tr key={u.id} className="border-b border-of-border">
+            <Fragment key={u.id}>
+            <tr className="border-b border-of-border">
               <td className="px-3 py-2 font-medium">
-                {u.display_name}
+                <button
+                  type="button"
+                  className="hover:text-of-accent hover:underline"
+                  title="프로젝트 멤버십 보기"
+                  onClick={() => setExpanded(expanded === u.id ? null : u.id)}
+                >
+                  {u.display_name}
+                </button>
                 {u.id === me.data?.id ? <span className="ml-1 text-xs text-of-muted">(나)</span> : null}
               </td>
               <td className="px-3 py-2 text-xs text-of-muted">{u.email}</td>
@@ -147,6 +195,8 @@ export function UsersPage() {
                 </Button>
               </td>
             </tr>
+            {expanded === u.id ? <MembershipsRow userId={u.id} colSpan={6} /> : null}
+            </Fragment>
           ))}
         </tbody>
       </table>

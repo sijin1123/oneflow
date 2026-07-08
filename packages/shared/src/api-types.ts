@@ -1650,6 +1650,30 @@ export interface paths {
         patch: operations["update_user_api_v1_users__user_id__patch"];
         trace?: never;
     };
+    "/api/v1/users/{user_id}/memberships": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List User Memberships
+         * @description Workspace governance READ (Pass 62 PR-CB, v62.1 R1-②): admins see a
+         *     user's project memberships to verify offboarding — deliberately minimal
+         *     fields, and read-only. Membership WRITES stay owner-only per project
+         *     (Pass 33 invariant unchanged); offboarding's write tool is deactivation.
+         *     Inactive users stay queryable (that is the offboarding-check use case).
+         */
+        get: operations["list_user_memberships_api_v1_users__user_id__memberships_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/work-packages/{wp_id}": {
         parameters: {
             query?: never;
@@ -4540,6 +4564,33 @@ export interface components {
             is_active: boolean;
             /** Is Admin */
             is_admin: boolean;
+        };
+        /** UserMembershipList */
+        UserMembershipList: {
+            /** Items */
+            items: components["schemas"]["UserMembershipRead"][];
+            /** Total */
+            total: number;
+        };
+        /**
+         * UserMembershipRead
+         * @description One project membership row for the workspace governance read
+         *     (Pass 62 PR-CB) — deliberately minimal fields (v62.1 R1-(2)).
+         */
+        UserMembershipRead: {
+            /** Archived */
+            archived: boolean;
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            /** Project Key */
+            project_key: string;
+            /** Project Name */
+            project_name: string;
+            /** Role */
+            role: string;
         };
         /** UserRead */
         UserRead: {
@@ -8488,6 +8539,40 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["UserDirectoryRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_user_memberships_api_v1_users__user_id__memberships_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserMembershipList"];
                 };
             };
             /** @description Validation Error */

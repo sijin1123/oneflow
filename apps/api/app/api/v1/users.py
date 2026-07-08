@@ -10,18 +10,22 @@ new-reference write it closes is project member ADD (409 in members.py)."""
 
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import get_current_user
 from app.db.session import get_session
+from app.models.member import ProjectMember
+from app.models.project import Project
 from app.models.user import User
 from app.schemas.user import (
     UserCreate,
     UserDirectoryList,
     UserDirectoryRead,
+    UserMembershipList,
+    UserMembershipRead,
     UserUpdate,
 )
 
@@ -69,6 +73,55 @@ async def list_users(
     )
     items = [UserDirectoryRead.model_validate(u) for u in rows]
     return UserDirectoryList(items=items, total=len(items))
+
+
+@router.get("/users/{user_id}/memberships", response_model=UserMembershipList)
+async def list_user_memberships(
+    user_id: uuid.UUID,
+    limit: int = Query(default=200, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+) -> UserMembershipList:
+    """Workspace governance READ (Pass 62 PR-CB, v62.1 R1-②): admins see a
+    user's project memberships to verify offboarding — deliberately minimal
+    fields, and read-only. Membership WRITES stay owner-only per project
+    (Pass 33 invariant unchanged); offboarding's write tool is deactivation.
+    Inactive users stay queryable (that is the offboarding-check use case)."""
+    _require_admin(user)
+    target = (await session.execute(select(User.id).where(User.id == user_id))).scalar_one_or_none()
+    if target is None:
+        raise HTTPException(status_code=404, detail="not found")
+    base = (
+        select(
+            Project.id,
+            Project.key,
+            Project.name,
+            ProjectMember.role,
+            Project.archived_at,
+        )
+        .join(Project, ProjectMember.project_id == Project.id)
+        .where(ProjectMember.user_id == user_id)
+    )
+    total = (await session.execute(select(func.count()).select_from(base.subquery()))).scalar_one()
+    rows = (
+        await session.execute(
+            base.order_by(Project.name.asc(), Project.id.asc()).limit(limit).offset(offset)
+        )
+    ).all()
+    return UserMembershipList(
+        items=[
+            UserMembershipRead(
+                project_id=pid,
+                project_key=key,
+                project_name=name,
+                role=role,
+                archived=archived_at is not None,
+            )
+            for pid, key, name, role, archived_at in rows
+        ],
+        total=total,
+    )
 
 
 @router.post("/users", response_model=UserDirectoryRead, status_code=201)
