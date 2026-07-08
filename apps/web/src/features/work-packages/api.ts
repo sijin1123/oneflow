@@ -367,3 +367,50 @@ export function usePatchWorkPackage(projectId: string) {
     },
   })
 }
+
+export type MoveRefSummary = { count: number; names: string[]; overflow: number }
+
+export type MoveCleared = {
+  parent: boolean
+  children: MoveRefSummary
+  milestone: boolean
+  cycle: boolean
+  module: boolean
+  relations: MoveRefSummary
+  custom_values: MoveRefSummary
+  document_links: MoveRefSummary
+  watchers_removed: MoveRefSummary
+  assignee_cleared: boolean
+}
+
+export type MoveResult = {
+  work_package: WorkPackage | null
+  cleared: MoveCleared
+  dry_run: boolean
+}
+
+export function useMoveWorkPackage(projectId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (input: {
+      wpId: string
+      target_project_id: string
+      expected_version: number
+      dry_run?: boolean
+    }) =>
+      api<MoveResult>(`/api/v1/work-packages/${input.wpId}/move`, {
+        method: 'POST',
+        body: JSON.stringify({
+          target_project_id: input.target_project_id,
+          expected_version: input.expected_version,
+          dry_run: input.dry_run ?? false,
+        }),
+      }),
+    onSuccess: (result) => {
+      if (result.dry_run) return
+      void queryClient.invalidateQueries({ queryKey: ['work-packages', projectId] })
+      void queryClient.invalidateQueries({ queryKey: ['work-package'] })
+      void queryClient.invalidateQueries({ queryKey: ['projects'] })
+    },
+  })
+}

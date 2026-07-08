@@ -5,6 +5,7 @@ from typing import Literal
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
+from sqlalchemy import delete as sa_delete
 from sqlalchemy import func, select, text
 from sqlalchemy import update as sa_update
 from sqlalchemy.exc import DBAPIError, IntegrityError
@@ -17,8 +18,10 @@ from app.core.authz import (
     member_role,
     require_active_project,
     require_member,
+    require_role,
     require_writer,
 )
+from app.core.config import Settings, get_settings
 from app.db.session import get_session
 from app.models.cycle import Cycle
 from app.models.milestone import Milestone
@@ -30,6 +33,8 @@ from app.schemas.work_package import (
     BulkUpdateRequest,
     BulkUpdateResult,
     ConflictResponse,
+    MoveCleared,
+    MoveRefSummary,
     ProjectRelationList,
     ProjectRelationRead,
     RelationCreate,
@@ -38,6 +43,8 @@ from app.schemas.work_package import (
     WorkPackageCreate,
     WorkPackageDuplicateResult,
     WorkPackageList,
+    WorkPackageMove,
+    WorkPackageMoveResult,
     WorkPackagePatch,
     WorkPackageRead,
 )
@@ -827,3 +834,306 @@ async def delete_relation(
     await session.delete(relation)
     await session.commit()
     return Response(status_code=204)
+
+
+# Cross-project move locks (Pass 66, v66.1 R1-③): acquired on BOTH projects in
+# UUID order (deadlock-free), before the WP row lock and any quota lock.
+MOVE_LOCK_CLASSID = 427009
+
+_MOVE_NAME_CAP = 3
+
+
+def _summary(names: list[str]) -> MoveRefSummary:
+    return MoveRefSummary(
+        count=len(names),
+        names=names[:_MOVE_NAME_CAP],
+        overflow=max(0, len(names) - _MOVE_NAME_CAP),
+    )
+
+
+@router.post("/work-packages/{wp_id}/move", response_model=WorkPackageMoveResult)
+async def move_work_package(
+    wp_id: uuid.UUID,
+    body: WorkPackageMove,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+    settings: Settings = Depends(get_settings),
+):
+    """Move a work package to another project (Pass 66 PR-CF, v66.1).
+
+    A move is a FULL transfer of ownership and visibility — comments, time,
+    cost and history travel with the item (internal trust model; the source
+    OWNER gate is the control). Project-scoped references cannot travel:
+    parent/children links detach, relations / custom values / document links
+    are deleted (previewed via dry_run first), watchers and the assignee are
+    re-checked against target eligibility. Blob storage keys are immutable —
+    quota and sweeps follow the DB project_id, never the key prefix."""
+    from app.models.activity import Activity
+    from app.models.attachment import Attachment
+    from app.models.custom_field import CustomField, WpCustomValue
+    from app.models.document import DocumentWorkPackageLink, ProjectDocument
+    from app.models.member import ProjectMember
+    from app.models.notification import Notification
+    from app.models.project import Project
+    from app.models.watcher import WpWatcher
+    from app.services.storage_usage import used_bytes
+
+    wp = (
+        await session.execute(select(WorkPackage).where(WorkPackage.id == wp_id))
+    ).scalar_one_or_none()
+    if wp is None or not await is_member(session, wp.project_id, user.id):
+        raise HTTPException(status_code=404, detail="not found")
+    # Source OWNER (v66.1 R1-② — destructive cleanup + visibility transfer),
+    # archived source refuses writes; then target membership/write.
+    await require_role(session, wp.project_id, user, {"owner"}, write=True)
+    await require_member(session, body.target_project_id, user, write=True)
+    if body.target_project_id == wp.project_id:
+        raise HTTPException(status_code=422, detail="target must be a different project")
+    # The stored type key must be usable in the target (duplicate precedent —
+    # explicit refusal beats a silent fallback).
+    await require_type_enabled(session, body.target_project_id, wp.type)
+
+    if not body.dry_run:
+        # Deterministic two-project serialization, then the row itself.
+        for pid in sorted((wp.project_id, body.target_project_id), key=str):
+            await session.execute(
+                text("SELECT pg_advisory_xact_lock(:classid, hashtext(:pid))").bindparams(
+                    classid=MOVE_LOCK_CLASSID, pid=str(pid)
+                )
+            )
+        wp = (
+            await session.execute(
+                select(WorkPackage).where(WorkPackage.id == wp_id).with_for_update()
+            )
+        ).scalar_one()
+    if wp.version != body.expected_version:
+        fresh = await _reselect_fresh(session, wp_id)
+        return _conflict_response(fresh)
+
+    # ---- gather the cleared-reference summaries (shared by dry_run) --------
+    children = (
+        (
+            await session.execute(
+                select(WorkPackage.subject)
+                .where(WorkPackage.parent_id == wp_id)
+                .order_by(WorkPackage.subject.asc())
+            )
+        )
+        .scalars()
+        .all()
+    )
+    rel_rows = (
+        (
+            await session.execute(
+                select(WorkPackage.subject)
+                .join(
+                    WorkPackageRelation,
+                    (
+                        (WorkPackageRelation.source_id == wp_id)
+                        & (WorkPackageRelation.target_id == WorkPackage.id)
+                    )
+                    | (
+                        (WorkPackageRelation.target_id == wp_id)
+                        & (WorkPackageRelation.source_id == WorkPackage.id)
+                    ),
+                )
+                .order_by(WorkPackage.subject.asc())
+            )
+        )
+        .scalars()
+        .all()
+    )
+    cv_rows = (
+        (
+            await session.execute(
+                select(CustomField.name)
+                .join(WpCustomValue, WpCustomValue.field_id == CustomField.id)
+                .where(WpCustomValue.work_package_id == wp_id)
+                .order_by(CustomField.name.asc())
+            )
+        )
+        .scalars()
+        .all()
+    )
+    link_rows = (
+        (
+            await session.execute(
+                select(ProjectDocument.title)
+                .join(
+                    DocumentWorkPackageLink,
+                    DocumentWorkPackageLink.document_id == ProjectDocument.id,
+                )
+                .where(DocumentWorkPackageLink.work_package_id == wp_id)
+                .order_by(ProjectDocument.title.asc())
+            )
+        )
+        .scalars()
+        .all()
+    )
+    # Watchers keep only target-eligible users (member AND not viewer AND active).
+    eligible_watchers = set(
+        (
+            await session.execute(
+                select(WpWatcher.user_id)
+                .join(
+                    ProjectMember,
+                    (ProjectMember.user_id == WpWatcher.user_id)
+                    & (ProjectMember.project_id == body.target_project_id),
+                )
+                .join(User, User.id == WpWatcher.user_id)
+                .where(
+                    WpWatcher.work_package_id == wp_id,
+                    ProjectMember.role != "viewer",
+                    User.is_active.is_(True),
+                )
+            )
+        ).scalars()
+    )
+    removed_watchers = (
+        (
+            await session.execute(
+                select(User.display_name)
+                .join(WpWatcher, WpWatcher.user_id == User.id)
+                .where(
+                    WpWatcher.work_package_id == wp_id,
+                    User.id.notin_(eligible_watchers) if eligible_watchers else True,
+                )
+                .order_by(User.display_name.asc())
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assignee_cleared = False
+    if wp.assignee_id is not None:
+        role = await member_role(session, body.target_project_id, wp.assignee_id)
+        active = (
+            await session.execute(select(User.is_active).where(User.id == wp.assignee_id))
+        ).scalar_one_or_none()
+        assignee_cleared = role is None or role == "viewer" or active is not True
+
+    cleared = MoveCleared(
+        parent=wp.parent_id is not None,
+        children=_summary(list(children)),
+        milestone=wp.milestone_id is not None,
+        cycle=wp.cycle_id is not None,
+        module=wp.module_id is not None,
+        relations=_summary(list(rel_rows)),
+        custom_values=_summary(list(cv_rows)),
+        document_links=_summary(list(link_rows)),
+        watchers_removed=_summary(list(removed_watchers)),
+        assignee_cleared=assignee_cleared,
+    )
+    if body.dry_run:
+        return WorkPackageMoveResult(work_package=None, cleared=cleared, dry_run=True)
+
+    # ---- attachment quota (target upload lock — the upload contract) -------
+    moving_bytes = (
+        await session.execute(
+            select(func.coalesce(func.sum(Attachment.size_bytes), 0)).where(
+                Attachment.work_package_id == wp_id
+            )
+        )
+    ).scalar_one()
+    att_count = (
+        await session.execute(
+            select(func.count()).select_from(Attachment).where(Attachment.work_package_id == wp_id)
+        )
+    ).scalar_one()
+    if att_count:
+        from app.api.v1.attachments import UPLOAD_LOCK_CLASSID
+
+        await session.execute(
+            text("SELECT pg_advisory_xact_lock(:classid, hashtext(:pid))").bindparams(
+                classid=UPLOAD_LOCK_CLASSID, pid=str(body.target_project_id)
+            )
+        )
+        # Settings via Depends — a direct get_settings() call would split-brain
+        # against the app's explicit Settings (house review finding #5).
+        if await used_bytes(session, body.target_project_id) + int(moving_bytes) > (
+            settings.project_storage_quota_bytes
+        ):
+            raise HTTPException(status_code=413, detail="target project storage quota exceeded")
+
+    # ---- apply (one transaction) --------------------------------------------
+    old_project_id = wp.project_id
+    names = dict(
+        (
+            await session.execute(
+                select(Project.id, Project.name).where(
+                    Project.id.in_([old_project_id, body.target_project_id])
+                )
+            )
+        ).all()
+    )
+    await session.execute(
+        sa_update(WorkPackage).where(WorkPackage.parent_id == wp_id).values(parent_id=None)
+    )
+    await session.execute(
+        sa_delete(WorkPackageRelation).where(
+            (WorkPackageRelation.source_id == wp_id) | (WorkPackageRelation.target_id == wp_id)
+        )
+    )
+    await session.execute(sa_delete(WpCustomValue).where(WpCustomValue.work_package_id == wp_id))
+    await session.execute(
+        sa_delete(DocumentWorkPackageLink).where(DocumentWorkPackageLink.work_package_id == wp_id)
+    )
+    if eligible_watchers:
+        await session.execute(
+            sa_delete(WpWatcher).where(
+                WpWatcher.work_package_id == wp_id,
+                WpWatcher.user_id.notin_(eligible_watchers),
+            )
+        )
+    else:
+        await session.execute(sa_delete(WpWatcher).where(WpWatcher.work_package_id == wp_id))
+    # Composite FK dance: attachments reference (work_package_id, project_id),
+    # so neither side can change first. Detach the anchor, move the WP below,
+    # re-anchor with the new project — one transaction, constraint never trips.
+    moved_attachment_ids = (
+        (await session.execute(select(Attachment.id).where(Attachment.work_package_id == wp_id)))
+        .scalars()
+        .all()
+    )
+    if moved_attachment_ids:
+        await session.execute(
+            sa_update(Attachment)
+            .where(Attachment.id.in_(moved_attachment_ids))
+            .values(work_package_id=None)
+        )
+    # Old notifications must deep-link into the CURRENT project (R1-⑤).
+    await session.execute(
+        sa_update(Notification)
+        .where(Notification.work_package_id == wp_id)
+        .values(project_id=body.target_project_id)
+    )
+    wp.parent_id = None
+    wp.milestone_id = None
+    wp.cycle_id = None
+    wp.module_id = None
+    if assignee_cleared:
+        wp.assignee_id = None
+    wp.project_id = body.target_project_id
+    wp.version += 1
+    await session.flush()  # WP row moves before attachments re-anchor
+    if moved_attachment_ids:
+        await session.execute(
+            sa_update(Attachment)
+            .where(Attachment.id.in_(moved_attachment_ids))
+            .values(work_package_id=wp_id, project_id=body.target_project_id)
+        )
+    session.add(
+        Activity(
+            work_package_id=wp_id,
+            actor_id=user.id,
+            action="field_changed",
+            field="project",
+            old_value=names.get(old_project_id),
+            new_value=names.get(body.target_project_id),
+        )
+    )
+    await session.commit()
+    fresh = await _reselect_fresh(session, wp_id)
+    return WorkPackageMoveResult(
+        work_package=WorkPackageRead.model_validate(fresh), cleared=cleared, dry_run=False
+    )

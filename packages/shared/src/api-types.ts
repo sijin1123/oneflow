@@ -1894,6 +1894,34 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/work-packages/{wp_id}/move": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Move Work Package
+         * @description Move a work package to another project (Pass 66 PR-CF, v66.1).
+         *
+         *     A move is a FULL transfer of ownership and visibility — comments, time,
+         *     cost and history travel with the item (internal trust model; the source
+         *     OWNER gate is the control). Project-scoped references cannot travel:
+         *     parent/children links detach, relations / custom values / document links
+         *     are deleted (previewed via dry_run first), watchers and the assignee are
+         *     re-checked against target eligibility. Blob storage keys are immutable —
+         *     quota and sweeps follow the DB project_id, never the key prefix.
+         */
+        post: operations["move_work_package_api_v1_work_packages__wp_id__move_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/work-packages/{wp_id}/relations": {
         parameters: {
             query?: never;
@@ -3563,6 +3591,46 @@ export interface components {
             /** Target Date */
             target_date?: string | null;
         };
+        /** MoveCleared */
+        MoveCleared: {
+            /** Assignee Cleared */
+            assignee_cleared: boolean;
+            children: components["schemas"]["MoveRefSummary"];
+            custom_values: components["schemas"]["MoveRefSummary"];
+            /** Cycle */
+            cycle: boolean;
+            document_links: components["schemas"]["MoveRefSummary"];
+            /** Milestone */
+            milestone: boolean;
+            /** Module */
+            module: boolean;
+            /** Parent */
+            parent: boolean;
+            relations: components["schemas"]["MoveRefSummary"];
+            watchers_removed: components["schemas"]["MoveRefSummary"];
+        };
+        /**
+         * MoveRefSummary
+         * @description One cleared-reference category of a cross-project move: count plus the
+         *     first few names so the preview is meaningful, never just a number.
+         */
+        MoveRefSummary: {
+            /**
+             * Count
+             * @default 0
+             */
+            count: number;
+            /**
+             * Names
+             * @default []
+             */
+            names: string[];
+            /**
+             * Overflow
+             * @default 0
+             */
+            overflow: number;
+        };
         /**
          * MyActivityRead
          * @description Recent activity across the caller's projects, enriched for display.
@@ -4868,6 +4936,32 @@ export interface components {
             items: components["schemas"]["WorkPackageRead"][];
             /** Total */
             total: number;
+        };
+        /** WorkPackageMove */
+        WorkPackageMove: {
+            /**
+             * Dry Run
+             * @default false
+             */
+            dry_run: boolean;
+            /** Expected Version */
+            expected_version: number;
+            /**
+             * Target Project Id
+             * Format: uuid
+             */
+            target_project_id: string;
+        };
+        /**
+         * WorkPackageMoveResult
+         * @description dry_run=True returns the SAME cleared summary with work_package=None
+         *     and no state change (v66.1 R1-④).
+         */
+        WorkPackageMoveResult: {
+            cleared: components["schemas"]["MoveCleared"];
+            /** Dry Run */
+            dry_run: boolean;
+            work_package: components["schemas"]["WorkPackageRead"] | null;
         };
         /**
          * WorkPackagePatch
@@ -9271,6 +9365,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["WorkPackageDuplicateResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    move_work_package_api_v1_work_packages__wp_id__move_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                wp_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkPackageMove"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkPackageMoveResult"];
                 };
             };
             /** @description Validation Error */

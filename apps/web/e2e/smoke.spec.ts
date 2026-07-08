@@ -472,6 +472,83 @@ test('드로어 복제 버튼이 duplicate POST를 보내고 결과를 알린다
   await expect(drawer.getByText('복사되지 않은 커스텀 값 2건', { exact: false })).toBeVisible()
 })
 
+test('드로어 이동: 대상 선택 시 미리보기 후 이동 POST를 보낸다', async ({ page }) => {
+  await mockApi(page)
+  await page.route('**/api/v1/projects', (route) =>
+    route.fulfill({
+      json: {
+        items: [project, { ...project, id: 'p-2', key: 'TWO', name: '두번째 프로젝트' }],
+        total: 2,
+      },
+    }),
+  )
+  await page.route(`**/api/v1/work-packages/${wpA.id}/move`, (route) => {
+    const sent = route.request().postDataJSON() as { dry_run?: boolean }
+    if (sent.dry_run) {
+      return route.fulfill({
+        json: {
+          work_package: null,
+          dry_run: true,
+          cleared: {
+            parent: false,
+            children: { count: 0, names: [], overflow: 0 },
+            milestone: true,
+            cycle: false,
+            module: false,
+            relations: { count: 2, names: ['관계 A', '관계 B'], overflow: 0 },
+            custom_values: { count: 0, names: [], overflow: 0 },
+            document_links: { count: 0, names: [], overflow: 0 },
+            watchers_removed: { count: 0, names: [], overflow: 0 },
+            assignee_cleared: false,
+          },
+        },
+      })
+    }
+    return route.fulfill({
+      json: {
+        work_package: { ...wpA, project_id: 'p-2', version: 1 },
+        dry_run: false,
+        cleared: {
+          parent: false,
+          children: { count: 0, names: [], overflow: 0 },
+          milestone: true,
+          cycle: false,
+          module: false,
+          relations: { count: 2, names: ['관계 A', '관계 B'], overflow: 0 },
+          custom_values: { count: 0, names: [], overflow: 0 },
+          document_links: { count: 0, names: [], overflow: 0 },
+          watchers_removed: { count: 0, names: [], overflow: 0 },
+          assignee_cleared: false,
+        },
+      },
+    })
+  })
+
+  await page.goto(`/projects/${project.id}/work-packages`)
+  await page.getByRole('button', { name: '워크패키지 API 구현' }).click()
+  const drawer = page.getByRole('dialog')
+  await drawer.getByRole('button', { name: '이동' }).click()
+
+  const dryRun = page.waitForRequest(
+    (r) => r.method() === 'POST' && r.url().includes(`/work-packages/${wpA.id}/move`),
+  )
+  await drawer.getByLabel('이동 대상 프로젝트').selectOption('p-2')
+  expect(((await dryRun).postDataJSON() as { dry_run: boolean }).dry_run).toBe(true)
+  await expect(drawer.getByText('마일스톤 해제')).toBeVisible()
+  await expect(drawer.getByText('관계 삭제 2건(관계 A, 관계 B)')).toBeVisible()
+
+  const realMove = page.waitForRequest(
+    (r) =>
+      r.method() === 'POST' &&
+      r.url().includes('/move') &&
+      (r.postDataJSON() as { dry_run: boolean }).dry_run === false,
+  )
+  await drawer.getByRole('button', { name: '이동 실행' }).click()
+  const sent = (await realMove).postDataJSON() as { target_project_id: string }
+  expect(sent.target_project_id).toBe('p-2')
+  await expect(drawer.getByText('이동되었습니다.')).toBeVisible()
+})
+
 test('목록 일괄 변경: 선택한 작업에 상태를 적용하고 payload를 보낸다', async ({ page }) => {
   await mockApi(page)
   await page.route(`**/api/v1/projects/${project.id}/work-packages/bulk-update`, (route) =>
