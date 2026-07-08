@@ -5,13 +5,19 @@ import './gantt-theme.css'
 import { useEffect, useRef, useState } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
 
+import { useQueryClient } from '@tanstack/react-query'
+
 import { EmptyState, ErrorState, ListSkeleton } from '@/components/shell/states'
+import { useMe, useMembers } from '@/features/members/api'
 import { useMilestones } from '@/features/milestones/api'
+import { useProject } from '@/features/projects/api'
+import { ApiError } from '@/lib/api'
 import { todayISO } from '@/lib/datetime'
 import { cn } from '@/lib/utils'
 
 import { DetailDrawer } from './DetailDrawer'
-import { useProjectRelations, useWorkPackages } from './api'
+import { ganttDatesToPatch, nextDay } from './ganttDates'
+import { usePatchWorkPackage, useProjectRelations, useWorkPackages } from './api'
 import { type ProjectRelation, ZOOM_LABELS, ZOOM_LEVELS, type ZoomLevel } from './timeline'
 import type { WorkPackage } from './types'
 
@@ -45,13 +51,6 @@ function esc(value: string): string {
     .replaceAll('"', '&quot;')
 }
 
-/** date-only 'YYYY-MM-DD' + 1 day — DHTMLX end_date is EXCLUSIVE while the
-    OneFlow due date is INCLUSIVE (v73.1 R1-③). String math only (§6.1). */
-function nextDay(iso: string): string {
-  const [y, m, d] = iso.split('-').map(Number)
-  const date = new Date(Date.UTC(y, m - 1, d + 1))
-  return date.toISOString().slice(0, 10)
-}
 
 // Existing connector semantics (Pass 20, verified in v73.1 R1-①):
 // blocks/precedes draw source→target, follows draws REVERSED, relates is
@@ -107,17 +106,30 @@ function GanttChart({
   milestones,
   relations,
   zoom,
+  editable,
   onOpen,
+  onReschedule,
 }: {
   items: WorkPackage[]
   milestones: Array<{ id: string; name: string; due_date: string | null }>
   relations: ProjectRelation[]
   zoom: ZoomLevel
+  editable: boolean
   onOpen: (id: string) => void
+  onReschedule: (
+    id: string,
+    patch: { start_date: string; due_date: string },
+    rollback: () => void,
+  ) => Promise<void>
 }) {
   const container = useRef<HTMLDivElement>(null)
   const openRef = useRef(onOpen)
   openRef.current = onOpen
+  const rescheduleRef = useRef(onReschedule)
+  rescheduleRef.current = onReschedule
+  const editableRef = useRef(editable)
+  const pendingRef = useRef(false)
+  const snapshotRef = useRef<{ id: string; start: Date | undefined; end: Date | undefined } | null>(null)
 
   // Lifecycle contract (v73.1 R1-②): the dhtmlx singleton is initialized once
   // per mount; cleanup detaches every event and clears data so a remount
@@ -153,14 +165,57 @@ function GanttChart({
       return false // never open any built-in editor (read-only)
     })
     const dblId = gantt.attachEvent('onTaskDblClick', () => false)
+    // Drag editing (Pass 74): WP bars only, one in-flight edit at a time,
+    // fail-closed on anything unknown (v74.1 R1-④/⑤).
+    const beforeDragId = gantt.attachEvent('onBeforeTaskDrag', (id: string) => {
+      if (!editableRef.current || pendingRef.current) return false
+      const task = gantt.getTask(id)
+      if (task?.of_kind !== 'wp') return false
+      snapshotRef.current = {
+        id: String(id),
+        start: task.start_date ? new Date(task.start_date as Date) : undefined,
+        end: task.end_date ? new Date(task.end_date as Date) : undefined,
+      }
+      return true
+    })
+    const afterDragId = gantt.attachEvent('onAfterTaskDrag', (id: string) => {
+      const task = gantt.getTask(id)
+      const snap = snapshotRef.current
+      snapshotRef.current = null
+      if (!task || !snap || snap.id !== String(id)) return
+      const rollback = () => {
+        const t = gantt.isTaskExists(id) ? gantt.getTask(id) : null
+        if (t) {
+          t.start_date = snap.start
+          t.end_date = snap.end
+          gantt.updateTask(String(id))
+        }
+      }
+      pendingRef.current = true
+      void rescheduleRef
+        .current(String(id), ganttDatesToPatch(task.start_date as Date, task.end_date as Date), rollback)
+        .finally(() => {
+          pendingRef.current = false
+        })
+    })
     const initedContainer = container.current
     gantt.init(initedContainer)
     return () => {
       gantt.detachEvent(clickId)
       gantt.detachEvent(dblId)
+      gantt.detachEvent(beforeDragId)
+      gantt.detachEvent(afterDragId)
       gantt.clearAll()
     }
   }, [])
+
+  useEffect(() => {
+    editableRef.current = editable
+    gantt.config.readonly = !editable
+    gantt.config.drag_move = editable
+    gantt.config.drag_resize = editable
+    gantt.render()
+  }, [editable])
 
   // Data + zoom: no re-init — clearAll + parse only (R1-②).
   useEffect(() => {
@@ -213,10 +268,47 @@ export function TimelinePage() {
   const { data, isPending, isError, error, refetch } = useWorkPackages(projectId, {})
   const milestones = useMilestones(projectId)
   const relations = useProjectRelations(projectId)
+  const me = useMe()
+  const members = useMembers(projectId)
+  const project = useProject(projectId)
+  const patch = usePatchWorkPackage(projectId)
+  const queryClient = useQueryClient()
+  const [dragNotice, setDragNotice] = useState<string | null>(null)
   const [zoom, setZoom] = useState<ZoomLevel>(loadZoom)
   const changeZoom = (next: ZoomLevel) => {
     setZoom(next)
     saveZoom(next)
+  }
+
+  // Edit gate (v74.1 R1-②): my role + archive state from authoritative
+  // queries; anything unknown/loading stays read-only (fail-closed).
+  const myRole = members.data?.items.find((m) => m.user_id === me.data?.id)?.role
+  const editable =
+    (myRole === 'owner' || myRole === 'member') && project.data?.archived_at === null
+
+  const reschedule = async (
+    id: string,
+    fields: { start_date: string; due_date: string },
+    rollback: () => void,
+  ) => {
+    // Version token from the cache, never the drag-time snapshot (#97).
+    const cached = queryClient.getQueryData<{ version: number }>(['work-package', id])
+    const listItem = data?.items.find((w) => w.id === id)
+    const version = cached?.version ?? listItem?.version ?? 0
+    try {
+      await patch.mutateAsync({ wpId: id, patch: { expected_version: version, ...fields } })
+      setDragNotice(null)
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 409) {
+        setDragNotice('다른 곳에서 먼저 수정되어 최신 일정으로 새로고침했습니다.')
+        void queryClient.invalidateQueries({ queryKey: ['work-packages', projectId] })
+      } else {
+        rollback()
+        setDragNotice('일정을 저장하지 못해 원래대로 되돌렸습니다.')
+        void queryClient.invalidateQueries({ queryKey: ['members', projectId] })
+        void queryClient.invalidateQueries({ queryKey: ['project', projectId] })
+      }
+    }
   }
 
   if (isPending) return <ListSkeleton />
@@ -263,6 +355,8 @@ export function TimelinePage() {
           </button>
         ))}
         <span className="ml-auto flex items-center gap-3">
+          {dragNotice ? <span role="alert" className="text-of-danger">{dragNotice}</span> : null}
+          {editable ? <span>막대를 드래그해 일정을 조정할 수 있습니다</span> : null}
           {omitted > 0 ? (
             <span>일정 미정으로 표시되지 않은 의존 {omitted}건 (연관(relates)은 의존이 아니라 표시하지 않음)</span>
           ) : null}
@@ -277,7 +371,9 @@ export function TimelinePage() {
           milestones={milestones.data?.items ?? []}
           relations={relations.data?.items ?? []}
           zoom={zoom}
+          editable={Boolean(editable)}
           onOpen={openDrawer}
+          onReschedule={reschedule}
         />
       </div>
       <DetailDrawer projectId={projectId} />
