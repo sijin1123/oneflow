@@ -3,6 +3,7 @@ import { Suspense, lazy, useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 
 import { ErrorState, ListSkeleton } from '@/components/shell/states'
+import { useUploadAttachment } from '@/features/attachments/api'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
@@ -39,6 +40,7 @@ export function DocumentEditorPage() {
   const [title, setTitle] = useState('')
   const [body, setBody] = useState('')
   const [parentId, setParentId] = useState<string | null>(null)
+  const upload = useUploadAttachment(projectId)
   // Resync when the server doc changes (load / save / 409 reload). react-query's
   // structural sharing keeps `doc`'s reference stable, so local edits aren't
   // clobbered until the cached document actually changes.
@@ -156,7 +158,18 @@ export function DocumentEditorPage() {
       <Suspense
         fallback={<div className="h-64 rounded-of border border-of-border bg-of-surface-2/40" />}
       >
-        <RichTextEditor value={doc.body ?? ''} ariaLabel="문서 본문" onSave={setBody} />
+        <RichTextEditor
+          value={doc.body ?? ''}
+          ariaLabel="문서 본문"
+          onSave={setBody}
+          // Inline image (Pass 68): upload anchored to THIS document, then
+          // insert the canonical download URL — the server re-validates
+          // ownership + content type on save (v68.1 R1-①).
+          onImageUpload={async (file) => {
+            const att = await upload.mutateAsync({ file, documentId: doc.id })
+            return `/api/v1/attachments/${att.id}/download`
+          }}
+        />
       </Suspense>
 
       <p className="mt-2 text-right text-[11px] text-of-muted">v{doc.version}</p>

@@ -33,6 +33,9 @@ router = APIRouter()
 # check + insert serialize per project so concurrent uploads cannot overshoot.
 UPLOAD_LOCK_CLASSID = 427002
 
+# Raster types that may render inline (document images — v68.1 R1-②/③).
+INLINE_IMAGE_TYPES = {"image/png", "image/jpeg", "image/gif", "image/webp"}
+
 _CONTROL_RE = re.compile(r"[\x00-\x1f\x7f]")
 
 
@@ -269,14 +272,18 @@ async def download_attachment(
     if path is None:  # blob lost or racing delete
         raise HTTPException(status_code=404, detail="not found")
     ascii_fallback = att.filename.encode("ascii", "replace").decode().replace('"', "_")
-    disposition = (
-        f"attachment; filename=\"{ascii_fallback}\"; filename*=UTF-8''{quote(att.filename)}"
-    )
+    # Inline is allowed ONLY for script-free raster images (Pass 68, v68.1
+    # R1-②) so document <img> tags render; everything else — HTML, SVG, PDF,
+    # unknown — stays a forced download and must never render on our origin.
+    mode = "inline" if att.content_type in INLINE_IMAGE_TYPES else "attachment"
+    disposition = f"{mode}; filename=\"{ascii_fallback}\"; filename*=UTF-8''{quote(att.filename)}"
     return FileResponse(
         path,
         media_type=att.content_type or "application/octet-stream",
-        # NEVER inline: a stored HTML/SVG must not render on our origin.
-        headers={"Content-Disposition": disposition},
+        headers={
+            "Content-Disposition": disposition,
+            "X-Content-Type-Options": "nosniff",
+        },
     )
 
 
