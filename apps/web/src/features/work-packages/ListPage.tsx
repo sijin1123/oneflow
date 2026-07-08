@@ -11,11 +11,14 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Select } from '@/components/ui/select'
+import { useCustomFields } from '@/features/custom-fields/api'
 import { useMemberNames, useMembers } from '@/features/members/api'
 
 import {
   COLUMN_LABELS,
   LIST_COLUMNS,
+  MAX_CUSTOM_COLUMNS,
+  parseCustomColumns,
   type ListColumn,
   parseColumns,
   serializeColumns,
@@ -32,6 +35,21 @@ import { PRIORITY_LABELS, STATUS_LABELS } from './types'
 import { useStatusLabels } from './useStatusLabels'
 import { useTypeLabels } from './useTypeLabels'
 
+
+/* Custom-column cell (Pass 67): the requested field list is the source of
+   truth — a missing value renders as an empty cell (v67.1 R1-⑥). */
+function renderCustomCell(
+  wp: { custom_values?: Array<{ field_id: string; value: unknown; member_display_name: string | null }> | null },
+  fieldId: string,
+  fieldType: string | undefined,
+): string {
+  const hit = (wp.custom_values ?? []).find((v) => v.field_id.toLowerCase() === fieldId)
+  if (!hit) return '—'
+  if (fieldType === 'member') return hit.member_display_name ?? '—'
+  if (fieldType === 'boolean') return hit.value === true || hit.value === 'true' ? '✓' : '─'
+  return String(hit.value ?? '—')
+}
+
 export function ListPage() {
   const { projectId } = useParams() as { projectId: string }
   const [searchParams, setSearchParams] = useSearchParams()
@@ -45,21 +63,42 @@ export function ListPage() {
     q: searchParams.get('q') ?? undefined,
     sort: searchParams.get('sort') ?? undefined,
   }
+  // placed after columns parsing below (custom_fields follows the visible columns)
+  const customFields = useCustomFields(projectId)
+  const knownFieldIds = new Set((customFields.data?.items ?? []).map((f) => f.id.toLowerCase()))
   const columns = parseColumns(searchParams.get('columns'))
+  // Definitions are the render-time source of truth: columns whose field is
+  // gone drop out on the next canonicalize (v67.1 R1-⑥).
+  const customColumns = parseCustomColumns(
+    searchParams.get('columns'),
+    customFields.data ? knownFieldIds : undefined,
+  )
+  const fieldById = new Map((customFields.data?.items ?? []).map((f) => [f.id.toLowerCase(), f]))
   const show = (key: ListColumn) => columns.includes(key)
-  const toggleColumn = (key: ListColumn) => {
-    const next = show(key) ? columns.filter((k) => k !== key) : [...columns, key]
-    if (next.length === 0) return // at least one configurable column (v32.1 R1-①)
+  const writeColumns = (nextBuiltin: ListColumn[], nextCustom: string[]) => {
     setSearchParams(
       (prev) => {
         const p = new URLSearchParams(prev)
-        const value = serializeColumns(next)
+        const value = serializeColumns(nextBuiltin, nextCustom)
         if (value) p.set('columns', value)
         else p.delete('columns')
         return p
       },
       { replace: true },
     )
+  }
+  const toggleColumn = (key: ListColumn) => {
+    const next = show(key) ? columns.filter((k) => k !== key) : [...columns, key]
+    if (next.length === 0) return // at least one configurable column (v32.1 R1-①)
+    writeColumns(next, customColumns)
+  }
+  const toggleCustomColumn = (id: string) => {
+    const lower = id.toLowerCase()
+    const next = customColumns.includes(lower)
+      ? customColumns.filter((k) => k !== lower)
+      : [...customColumns, lower]
+    if (next.length > MAX_CUSTOM_COLUMNS) return // deterministic cap (v67.1 R1-①)
+    writeColumns(columns, next)
   }
   const sort = searchParams.get('sort') ?? 'created'
   const setSort = (value: string) => {
@@ -73,7 +112,9 @@ export function ListPage() {
       { replace: true },
     )
   }
-  const { data, isPending, isError, error, refetch } = useWorkPackages(projectId, filters)
+  const listFilters =
+    customColumns.length > 0 ? { ...filters, custom_fields: customColumns.join(',') } : filters
+  const { data, isPending, isError, error, refetch } = useWorkPackages(projectId, listFilters)
   const exportCsv = useExportCsv(projectId)
   const statusLabel = useStatusLabels(projectId)
   const typeLabel = useTypeLabels(projectId)
@@ -161,6 +202,24 @@ export function ListPage() {
                   {COLUMN_LABELS[key]}
                 </DropdownMenuCheckboxItem>
               ))}
+              {(customFields.data?.items ?? [])
+                .filter((f) => f.is_active)
+                .map((f) => {
+                  const lower = f.id.toLowerCase()
+                  const on = customColumns.includes(lower)
+                  return (
+                    <DropdownMenuCheckboxItem
+                      key={f.id}
+                      checked={on}
+                      // Cap: five custom columns per view (v67.1 R1-①).
+                      disabled={!on && customColumns.length >= MAX_CUSTOM_COLUMNS}
+                      onCheckedChange={() => toggleCustomColumn(f.id)}
+                      aria-label={`${f.name} 열 표시`}
+                    >
+                      {f.name} <span className="text-of-muted">(커스텀)</span>
+                    </DropdownMenuCheckboxItem>
+                  )
+                })}
             </DropdownMenuContent>
           </DropdownMenu>
           <Button
@@ -262,6 +321,11 @@ export function ListPage() {
                 {show('start_date') ? <th className="w-28 px-2 py-2 font-medium">시작일</th> : null}
                 {show('due_date') ? <th className="w-28 px-2 py-2 font-medium">기한</th> : null}
                 {show('created_at') ? <th className="w-28 px-2 py-2 font-medium">생성일</th> : null}
+                {customColumns.map((id) => (
+                  <th key={id} className="w-28 px-2 py-2 font-medium">
+                    {fieldById.get(id)?.name ?? '커스텀'}
+                  </th>
+                ))}
               </tr>
             </thead>
             <tbody>
@@ -326,6 +390,11 @@ export function ListPage() {
                       {wp.created_at.slice(0, 10)}
                     </td>
                   ) : null}
+                  {customColumns.map((id) => (
+                    <td key={id} className="px-2 py-2 text-xs text-of-muted">
+                      {renderCustomCell(wp, id, fieldById.get(id)?.field_type)}
+                    </td>
+                  ))}
                 </tr>
               ))}
             </tbody>

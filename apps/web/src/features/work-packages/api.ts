@@ -27,6 +27,7 @@ export type WpFilters = {
   sort?: string
   no_cycle?: string
   open_only?: string
+  custom_fields?: string
 }
 
 // The server caps a single page at 500. Fetch every page so no view silently

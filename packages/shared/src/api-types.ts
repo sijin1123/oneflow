@@ -5010,6 +5010,8 @@ export interface components {
             created_at: string;
             /** Created By */
             created_by: string | null;
+            /** Custom Values */
+            custom_values?: components["schemas"]["CustomValueRead"][] | null;
             /** Cycle Id */
             cycle_id: string | null;
             /** Description */
@@ -8484,6 +8486,7 @@ export interface operations {
                 open_only?: boolean;
                 module_id?: string | null;
                 q?: string | null;
+                custom_fields?: string | null;
                 sort?: "created" | "subject";
                 limit?: number;
                 offset?: number;

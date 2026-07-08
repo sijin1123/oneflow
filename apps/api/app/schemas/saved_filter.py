@@ -67,19 +67,33 @@ class SavedFilterParams(BaseModel):
     @field_validator("columns")
     @classmethod
     def _columns(cls, v: str | None) -> str | None:
-        """Comma-separated closed vocabulary, normalized to canonical order.
-
-        Unknown keys are a 422 (a saved view must never carry a column the list
-        cannot render); duplicates collapse; an empty result stores None so the
-        client falls back to its default column set."""
+        """Comma-separated vocabulary, normalized: built-in keys collapse to
+        canonical order; `custom:<uuid>` keys (Pass 67) keep request order
+        AFTER the built-ins, capped at five (v67.1 R1-①). Existence of the
+        field is a render-time concern (the web canonicalizer drops columns
+        whose definition is gone), not a save-time one."""
         if v is None:
             return v
         keys = [k.strip() for k in v.split(",") if k.strip()]
-        unknown = [k for k in keys if k not in LIST_COLUMNS]
-        if unknown:
-            raise ValueError(f"columns must be a subset of {LIST_COLUMNS}")
-        wanted = set(keys)
-        normalized = [k for k in LIST_COLUMNS if k in wanted]
+        custom: list[str] = []
+        builtin: set[str] = set()
+        for k in keys:
+            if k in LIST_COLUMNS:
+                builtin.add(k)
+                continue
+            if k.startswith("custom:"):
+                try:
+                    fid = str(uuid.UUID(k.removeprefix("custom:")))
+                except ValueError:
+                    raise ValueError("custom column keys must be custom:<uuid>") from None
+                key = f"custom:{fid}"
+                if key not in custom:
+                    custom.append(key)
+                continue
+            raise ValueError(f"columns must be built-in keys {LIST_COLUMNS} or custom:<uuid>")
+        if len(custom) > 5:
+            raise ValueError("at most 5 custom columns per view")
+        normalized = [k for k in LIST_COLUMNS if k in builtin] + custom
         return ",".join(normalized) if normalized else None
 
 
