@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 
 import { EmptyState, ErrorState, ListSkeleton } from '@/components/shell/states'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
@@ -114,6 +115,65 @@ function ModuleRow({
 /* Project modules/feature groups (expansion PLAN Pass 1 PR-D): explicit-state
    groupings with a lead and progress. Management is owner-only; assigning work
    happens in the work-package drawer. */
+const LAYOUT_STORAGE_KEY = 'oneflow.modules.layout.v1'
+
+type ModuleLayout = 'list' | 'gallery'
+
+/** Broken values fall back to list (#97 contract). */
+function loadLayout(): ModuleLayout {
+  try {
+    const raw = localStorage.getItem(LAYOUT_STORAGE_KEY)
+    return raw === 'gallery' ? 'gallery' : 'list'
+  } catch {
+    return 'list'
+  }
+}
+
+function saveLayout(layout: ModuleLayout) {
+  try {
+    localStorage.setItem(LAYOUT_STORAGE_KEY, layout)
+  } catch {
+    // private mode / quota — in-memory only
+  }
+}
+
+/* Gallery card (Pass 56): the same data as the row, arranged for scanning. */
+function ModuleCard({ module, projectId }: { module: ProjectModule; projectId: string }) {
+  const navigate = useNavigate()
+  const memberName = useMemberNames(projectId)
+  const done = module.done_work_package_count
+  const total = module.work_package_count
+  const pct = total > 0 ? Math.round((done / total) * 100) : 0
+  return (
+    <li className="space-y-2 rounded-of border border-of-border bg-of-surface p-3">
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          className="min-w-0 flex-1 truncate text-left text-[13px] font-medium hover:text-of-accent"
+          onClick={() => navigate(`/projects/${projectId}/work-packages?module_id=${module.id}`)}
+        >
+          {module.name}
+        </button>
+        <Badge variant="neutral">{MODULE_STATE_LABELS[module.state]}</Badge>
+      </div>
+      <p className="text-[11px] text-of-muted">
+        리드 {module.lead_id ? memberName(module.lead_id) : '없음'}
+        {module.start_date || module.target_date
+          ? ` · ${module.start_date ?? '?'} → ${module.target_date ?? '?'}`
+          : ''}
+      </p>
+      <div className="flex items-center gap-2">
+        <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-of-surface-2">
+          <div className="h-full bg-of-accent" style={{ width: `${pct}%` }} />
+        </div>
+        <span className="shrink-0 text-[11px] tabular-nums text-of-muted">
+          {done}/{total}
+        </span>
+      </div>
+    </li>
+  )
+}
+
 export function ModulesPage() {
   const { projectId } = useParams() as { projectId: string }
   const modules = useModules(projectId)
@@ -122,6 +182,11 @@ export function ModulesPage() {
 
   const [name, setName] = useState('')
   const [lead, setLead] = useState('')
+  const [layout, setLayout] = useState<ModuleLayout>(loadLayout)
+  const changeLayout = (next: ModuleLayout) => {
+    setLayout(next)
+    saveLayout(next)
+  }
   const create = useCreateModule(projectId)
 
   if (modules.isPending || members.isPending) return <ListSkeleton />
@@ -134,9 +199,28 @@ export function ModulesPage() {
   return (
     <div className="mx-auto max-w-4xl p-6">
       <h1 className="mb-1 text-base font-semibold">모듈</h1>
-      <p className="mb-4 text-xs text-of-muted">
-        기능/릴리스 단위로 작업을 묶어 상태와 진행률을 봅니다. 작업 배정은 각 작업의 드로어에서 합니다.
-      </p>
+      <div className="mb-4 flex items-center justify-between gap-2">
+        <p className="text-xs text-of-muted">
+          기능/릴리스 단위로 작업을 묶어 상태와 진행률을 봅니다. 작업 배정은 각 작업의 드로어에서 합니다.
+        </p>
+        <div className="flex shrink-0 items-center gap-1 text-xs">
+          {(['list', 'gallery'] as const).map((l) => (
+            <button
+              key={l}
+              type="button"
+              aria-pressed={layout === l}
+              className={`rounded-of border px-2 py-1 ${
+                layout === l
+                  ? 'border-of-accent bg-of-accent-soft text-of-accent'
+                  : 'border-of-border text-of-muted hover:bg-of-surface-2'
+              }`}
+              onClick={() => changeLayout(l)}
+            >
+              {l === 'list' ? '목록' : '갤러리'}
+            </button>
+          ))}
+        </div>
+      </div>
 
       {isOwner ? (
         <div className="mb-5 flex flex-wrap items-center gap-2 rounded-of border border-of-border bg-of-surface p-3">
@@ -201,11 +285,19 @@ export function ModulesPage() {
                   {MODULE_STATE_LABELS[state]}{' '}
                   <span className="text-xs font-normal text-of-muted">{group.length}</span>
                 </h2>
-                <ul className="divide-y divide-of-border overflow-hidden rounded-of border border-of-border bg-of-surface">
-                  {group.map((m) => (
-                    <ModuleRow key={m.id} module={m} isOwner={isOwner} projectId={projectId} />
-                  ))}
-                </ul>
+                {layout === 'gallery' ? (
+                  <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                    {group.map((m) => (
+                      <ModuleCard key={m.id} module={m} projectId={projectId} />
+                    ))}
+                  </ul>
+                ) : (
+                  <ul className="divide-y divide-of-border overflow-hidden rounded-of border border-of-border bg-of-surface">
+                    {group.map((m) => (
+                      <ModuleRow key={m.id} module={m} isOwner={isOwner} projectId={projectId} />
+                    ))}
+                  </ul>
+                )}
               </section>
             )
           })}
