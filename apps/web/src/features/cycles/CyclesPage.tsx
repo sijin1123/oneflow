@@ -18,6 +18,7 @@ import {
   useUpdateCycle,
   useCycleBurndown,
 } from './api'
+import { recentVelocity } from './velocity'
 
 const GROUPS: Array<{ status: Cycle['status']; label: string }> = [
   { status: 'active', label: '진행 중' },
@@ -249,6 +250,7 @@ export function CyclesPage() {
   const myRole = members.data?.items.find((m) => m.user_id === me.data?.id)?.role
   const isOwner = myRole === 'owner'
   const items = cycles.data.items
+  const velocity = recentVelocity(items)
 
   return (
     <div className="mx-auto max-w-4xl p-6">
@@ -256,6 +258,33 @@ export function CyclesPage() {
       <p className="mb-4 text-xs text-of-muted">
         기간 단위(스프린트)로 작업을 묶어 진행률을 봅니다. 작업 배정은 각 작업의 드로어에서 합니다.
       </p>
+
+      {velocity ? (
+        <section
+          aria-label="벨로시티"
+          className="mb-5 rounded-of border border-of-border bg-of-surface p-3"
+        >
+          <p className="mb-2 text-xs font-medium">
+            벨로시티{' '}
+            <span className="font-normal text-of-muted">
+              최근 완료 {velocity.points.length}개 사이클 · 평균 {velocity.average.toFixed(1)}건
+            </span>
+          </p>
+          <div className="flex items-end gap-3" style={{ height: 72 }}>
+            {velocity.points.map((pt) => (
+              <div key={pt.id} className="flex min-w-0 flex-col items-center gap-1" title={`${pt.name}: ${pt.done}건`}>
+                <span className="text-[10px] tabular-nums text-of-muted">{pt.done}</span>
+                <div
+                  className="w-8 rounded-t bg-of-accent/70"
+                  style={{ height: `${Math.max(4, (pt.done / velocity.max) * 48)}px` }}
+                  aria-label={`${pt.name} 완료 ${pt.done}건`}
+                />
+                <span className="max-w-16 truncate text-[10px] text-of-muted">{pt.name}</span>
+              </div>
+            ))}
+          </div>
+        </section>
+      ) : null}
 
       {isOwner ? (
         <div className="mb-5 flex flex-wrap items-center gap-2 rounded-of border border-of-border bg-of-surface p-3">
