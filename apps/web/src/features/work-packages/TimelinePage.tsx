@@ -8,9 +8,8 @@ import { useParams, useSearchParams } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 
 import { EmptyState, ErrorState, ListSkeleton } from '@/components/shell/states'
-import { useMe, useMembers } from '@/features/members/api'
+import { useCanWrite } from '@/features/members/useCanWrite'
 import { useMilestones } from '@/features/milestones/api'
-import { useProject } from '@/features/projects/api'
 import { ApiError } from '@/lib/api'
 import { todayISO } from '@/lib/datetime'
 import { cn } from '@/lib/utils'
@@ -268,9 +267,7 @@ export function TimelinePage() {
   const { data, isPending, isError, error, refetch } = useWorkPackages(projectId, {})
   const milestones = useMilestones(projectId)
   const relations = useProjectRelations(projectId)
-  const me = useMe()
-  const members = useMembers(projectId)
-  const project = useProject(projectId)
+  const editable = useCanWrite(projectId)
   const patch = usePatchWorkPackage(projectId)
   const queryClient = useQueryClient()
   const [dragNotice, setDragNotice] = useState<string | null>(null)
@@ -279,12 +276,6 @@ export function TimelinePage() {
     setZoom(next)
     saveZoom(next)
   }
-
-  // Edit gate (v74.1 R1-②): my role + archive state from authoritative
-  // queries; anything unknown/loading stays read-only (fail-closed).
-  const myRole = members.data?.items.find((m) => m.user_id === me.data?.id)?.role
-  const editable =
-    (myRole === 'owner' || myRole === 'member') && project.data?.archived_at === null
 
   const reschedule = async (
     id: string,
@@ -371,7 +362,7 @@ export function TimelinePage() {
           milestones={milestones.data?.items ?? []}
           relations={relations.data?.items ?? []}
           zoom={zoom}
-          editable={Boolean(editable)}
+          editable={editable}
           onOpen={openDrawer}
           onReschedule={reschedule}
         />

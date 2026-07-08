@@ -50,7 +50,7 @@ const wpA: WorkPackage = {
   start_date: '2026-07-01',
   due_date: '2026-07-15',
   estimated_hours: 16,
-  created_by: 'u-dev',
+  created_by: 'me-1',
   version: 0,
   created_at: '2026-07-01T00:00:00Z',
   updated_at: '2026-07-01T00:00:00Z',
@@ -106,6 +106,11 @@ const noComments: CommentList = { items: [], total: 0 }
 async function mockApi(page: Page, opts: { conflictOnPatch?: boolean } = {}) {
   await page.route('**/api/v1/projects', (route) =>
     route.fulfill({ json: projects }),
+  )
+  // Single-project GET — the write-access gate (Pass 76) reads archived_at
+  // from here; default to the unarchived fixture so owner flows stay editable.
+  await page.route(`**/api/v1/projects/${project.id}`, (route) =>
+    route.fulfill({ json: project }),
   )
   // The Topbar bell polls this on every page — default to an empty inbox.
   await page.route('**/api/v1/me/notifications', (route) =>
@@ -224,7 +229,7 @@ async function mockApi(page: Page, opts: { conflictOnPatch?: boolean } = {}) {
     route.fulfill({
       json: {
         items: [
-          { user_id: 'u-dev', email: 'dev@oneflow.local', display_name: 'Dev User', role: 'owner' },
+          { user_id: 'me-1', email: 'dev@oneflow.local', display_name: 'Dev User', role: 'owner' },
           { user_id: 'u-alex', email: 'alex@oneflow.local', display_name: 'Alex Kim', role: 'member' },
         ],
         total: 2,
@@ -750,6 +755,56 @@ test('대시보드가 집계 타일과 분포를 보여준다', async ({ page })
     'type_distribution', // Pass 58: the default set grew by one
     'recent_activity',
   ])
+})
+
+test('뷰어는 목록에서 생성·벌크 컨트롤이 없고 읽기 전용 안내를 본다', async ({ page }) => {
+  await mockApi(page)
+  await page.route(`**/api/v1/projects/${project.id}/members`, (route) =>
+    route.fulfill({
+      json: {
+        items: [
+          { user_id: 'me-1', email: 'dev@oneflow.local', display_name: 'Dev User', role: 'viewer' },
+        ],
+        total: 1,
+      },
+    }),
+  )
+  await page.route(`**/api/v1/projects/${project.id}`, (route) => route.fulfill({ json: project }))
+
+  await page.goto(`/projects/${project.id}/work-packages`)
+  await expect(page.getByRole('button', { name: '워크패키지 API 구현' })).toBeVisible()
+  await expect(page.getByText('읽기 전용입니다', { exact: false })).toBeVisible()
+  await expect(page.getByRole('button', { name: '새 작업' })).toBeHidden()
+  // No selection column → no bulk bar can appear.
+  await expect(page.getByRole('checkbox', { name: /선택$/ })).toHaveCount(0)
+})
+
+test('뷰어 드로어는 필드가 읽기 전용이고 복제·이동·댓글이 없다', async ({ page }) => {
+  await mockApi(page)
+  await page.route(`**/api/v1/projects/${project.id}/members`, (route) =>
+    route.fulfill({
+      json: {
+        items: [
+          { user_id: 'me-1', email: 'dev@oneflow.local', display_name: 'Dev User', role: 'viewer' },
+        ],
+        total: 1,
+      },
+    }),
+  )
+  await page.route(`**/api/v1/projects/${project.id}`, (route) => route.fulfill({ json: project }))
+
+  await page.goto(`/projects/${project.id}/work-packages`)
+  await page.getByRole('button', { name: '워크패키지 API 구현' }).click()
+  const drawer = page.getByRole('dialog')
+  await expect(drawer).toBeVisible()
+  // Read-only notice replaces the action row; write controls are gone.
+  await expect(drawer.getByText('읽기 전용입니다', { exact: false })).toBeVisible()
+  await expect(drawer.getByRole('button', { name: '복제' })).toBeHidden()
+  await expect(drawer.getByRole('button', { name: '이동' })).toBeHidden()
+  await expect(drawer.getByLabel('댓글 입력')).toHaveCount(0)
+  // Fields render but are not editable.
+  await expect(drawer.getByLabel('제목', { exact: false }).first()).toHaveAttribute('readonly', '')
+  await expect(drawer.locator('#wp-status')).toBeDisabled()
 })
 
 test('DHTMLX 타임라인이 막대·의존선·마일스톤을 그리고 읽기 전용이다', async ({ page }) => {
@@ -1282,7 +1337,7 @@ test('사이클 페이지가 상태 그룹·진행률을 보여주고 소유자�
   await mockApi(page)
   await page.route('**/api/v1/me', (route) =>
     route.fulfill({
-      json: { id: 'u-dev', email: 'dev@oneflow.local', display_name: 'Dev User', is_active: true },
+      json: { id: 'me-1', email: 'dev@oneflow.local', display_name: 'Dev User', is_active: true },
     }),
   )
   // Register AFTER mockApi so this takes precedence over the empty default.
@@ -1475,7 +1530,7 @@ test('모듈 페이지가 상태 그룹·리드·진행률을 보여주고 소�
   await mockApi(page)
   await page.route('**/api/v1/me', (route) =>
     route.fulfill({
-      json: { id: 'u-dev', email: 'dev@oneflow.local', display_name: 'Dev User', is_active: true },
+      json: { id: 'me-1', email: 'dev@oneflow.local', display_name: 'Dev User', is_active: true },
     }),
   )
   // Register AFTER mockApi so this takes precedence over the empty default.
@@ -1590,7 +1645,7 @@ test('개인 설정에서 알림 토글이 PUT을 보내고 구 딥링크가 리
   await mockApi(page)
   await page.route('**/api/v1/me', (route) =>
     route.fulfill({
-      json: { id: 'u-dev', email: 'dev@oneflow.local', display_name: 'Dev User', is_active: true },
+      json: { id: 'me-1', email: 'dev@oneflow.local', display_name: 'Dev User', is_active: true },
     }),
   )
   await page.route(`**/api/v1/projects/${project.id}`, (route) =>
@@ -1642,7 +1697,7 @@ test('위험 구역에서 보관 확인 후 POST /archive를 보낸다', async (
   await mockApi(page)
   await page.route('**/api/v1/me', (route) =>
     route.fulfill({
-      json: { id: 'u-dev', email: 'dev@oneflow.local', display_name: 'Dev User', is_active: true },
+      json: { id: 'me-1', email: 'dev@oneflow.local', display_name: 'Dev User', is_active: true },
     }),
   )
   await page.route(`**/api/v1/projects/${project.id}`, (route) =>
@@ -1672,7 +1727,7 @@ test('인테이크 큐에서 소유자가 수락하면 triage POST가 간다', a
   await mockApi(page)
   await page.route('**/api/v1/me', (route) =>
     route.fulfill({
-      json: { id: 'u-dev', email: 'dev@oneflow.local', display_name: 'Dev User', is_active: true },
+      json: { id: 'me-1', email: 'dev@oneflow.local', display_name: 'Dev User', is_active: true },
     }),
   )
   await page.route(`**/api/v1/projects/${project.id}/intake/it-1/triage`, (route) =>
@@ -1735,7 +1790,7 @@ test('설정 필드 탭에서 드롭다운 필드를 정의한다', async ({ pag
   await mockApi(page)
   await page.route('**/api/v1/me', (route) =>
     route.fulfill({
-      json: { id: 'u-dev', email: 'dev@oneflow.local', display_name: 'Dev User', is_active: true },
+      json: { id: 'me-1', email: 'dev@oneflow.local', display_name: 'Dev User', is_active: true },
     }),
   )
   await page.route(`**/api/v1/projects/${project.id}`, (route) =>
@@ -1783,7 +1838,7 @@ test('설정 필드 탭에서 아래로 이동하면 전체 순서 PUT이 간다
   await mockApi(page)
   await page.route('**/api/v1/me', (route) =>
     route.fulfill({
-      json: { id: 'u-dev', email: 'dev@oneflow.local', display_name: 'Dev User', is_active: true },
+      json: { id: 'me-1', email: 'dev@oneflow.local', display_name: 'Dev User', is_active: true },
     }),
   )
   await page.route(`**/api/v1/projects/${project.id}`, (route) =>
@@ -2113,7 +2168,7 @@ test('완료 사이클에서 미완료 이월을 실행하면 rollover POST가 �
   await mockApi(page)
   await page.route('**/api/v1/me', (route) =>
     route.fulfill({
-      json: { id: 'u-dev', email: 'dev@oneflow.local', display_name: 'Dev User', is_active: true },
+      json: { id: 'me-1', email: 'dev@oneflow.local', display_name: 'Dev User', is_active: true },
     }),
   )
   const cycles = [
@@ -2172,7 +2227,7 @@ test('타입 관리에서 라벨을 바꾸고 비활성화하면 PATCH가 간다
   await mockApi(page)
   await page.route('**/api/v1/me', (route) =>
     route.fulfill({
-      json: { id: 'u-dev', email: 'dev@oneflow.local', display_name: 'Dev User', is_active: true },
+      json: { id: 'me-1', email: 'dev@oneflow.local', display_name: 'Dev User', is_active: true },
     }),
   )
   await page.route(`**/api/v1/projects/${project.id}`, (route) =>
@@ -3673,7 +3728,7 @@ test('마일스톤 패널이 진행 바와 삭제 확인 문구를 보여준다'
   await mockApi(page)
   await page.route('**/api/v1/me', (route) =>
     route.fulfill({
-      json: { id: 'u-dev', email: 'dev@oneflow.local', display_name: 'Dev User', is_active: true },
+      json: { id: 'me-1', email: 'dev@oneflow.local', display_name: 'Dev User', is_active: true },
     }),
   )
   await page.route(`**/api/v1/projects/${project.id}`, (route) =>

@@ -2,6 +2,8 @@ import { useParams } from 'react-router-dom'
 
 import { EmptyState, ErrorState, ListSkeleton } from '@/components/shell/states'
 import { Select } from '@/components/ui/select'
+import { ReadOnlyNotice } from '@/components/shell/ReadOnlyNotice'
+import { useCanWrite } from '@/features/members/useCanWrite'
 import { useCycles } from '@/features/cycles/api'
 import { useMemberNames } from '@/features/members/api'
 
@@ -26,6 +28,7 @@ export function BacklogPage() {
   const statusLabel = useStatusLabels(projectId)
   const typeLabel = useTypeLabels(projectId)
   const memberName = useMemberNames(projectId)
+  const canWrite = useCanWrite(projectId)
 
   if (isPending) return <ListSkeleton />
   if (isError) return <ErrorState error={error} onRetry={() => refetch()} />
@@ -38,6 +41,7 @@ export function BacklogPage() {
       <p className="mb-4 text-xs text-of-muted">
         사이클에 배정되지 않은 미완료 작업입니다. 사이클을 고르면 바로 배정됩니다.
       </p>
+      {!canWrite ? <ReadOnlyNotice className="mb-3" /> : null}
       {update.isError ? (
         <p role="alert" className="mb-2 text-xs text-of-danger">
           배정하지 못했습니다 — 보관된 프로젝트이거나 다른 사용자가 먼저 수정했습니다.
@@ -56,26 +60,28 @@ export function BacklogPage() {
               <span className="hidden w-24 shrink-0 truncate text-right text-[11px] text-of-muted sm:inline">
                 {memberName(wp.assignee_id)}
               </span>
-              <Select
-                aria-label={`${wp.subject} 사이클 배정`}
-                className="h-7 w-36 text-xs"
-                value=""
-                disabled={update.isPending || assignable.length === 0}
-                onChange={(e) => {
-                  if (!e.target.value) return
-                  update.mutate({
-                    wpId: wp.id,
-                    patch: { expected_version: wp.version, cycle_id: e.target.value },
-                  })
-                }}
-              >
-                <option value="">사이클 배정…</option>
-                {assignable.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </Select>
+              {canWrite ? (
+                <Select
+                  aria-label={`${wp.subject} 사이클 배정`}
+                  className="h-7 w-36 text-xs"
+                  value=""
+                  disabled={update.isPending || assignable.length === 0}
+                  onChange={(e) => {
+                    if (!e.target.value) return
+                    update.mutate({
+                      wpId: wp.id,
+                      patch: { expected_version: wp.version, cycle_id: e.target.value },
+                    })
+                  }}
+                >
+                  <option value="">사이클 배정…</option>
+                  {assignable.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </Select>
+              ) : null}
             </li>
           ))}
         </ul>
