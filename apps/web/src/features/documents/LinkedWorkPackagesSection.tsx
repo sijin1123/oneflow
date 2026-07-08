@@ -12,9 +12,11 @@ import { useCreateDocLink, useDeleteDocLink, useDocLinks } from './api'
 export function LinkedWorkPackagesSection({
   docId,
   projectId,
+  canWrite,
 }: {
   docId: string
   projectId: string
+  canWrite: boolean
 }) {
   const links = useDocLinks(docId)
   const candidates = useWorkPackages(projectId, {})
@@ -51,41 +53,47 @@ export function LinkedWorkPackagesSection({
               className="flex items-center gap-2 rounded-of border border-of-border px-2 py-1.5 text-xs"
             >
               <span className="min-w-0 flex-1 truncate">{subjectOf(l.work_package_id)}</span>
-              <button
-                type="button"
-                aria-label="작업 연결 해제"
-                className="shrink-0 rounded-of p-1 text-of-muted hover:bg-of-surface-2 hover:text-of-danger"
-                onClick={() => deleteLink.mutate(l.id)}
-              >
-                <Trash2 size={13} />
-              </button>
+              {canWrite ? (
+                <button
+                  type="button"
+                  aria-label="작업 연결 해제"
+                  className="shrink-0 rounded-of p-1 text-of-muted hover:bg-of-surface-2 hover:text-of-danger"
+                  onClick={() => deleteLink.mutate(l.id)}
+                >
+                  <Trash2 size={13} />
+                </button>
+              ) : null}
             </li>
           ))}
         </ul>
       )}
 
-      <div className="flex items-center gap-1.5">
-        <Select
-          aria-label="연결할 작업"
-          className="h-7 flex-1 text-xs"
-          value={wpId}
-          onChange={(e) => setWpId(e.target.value)}
-        >
-          <option value="">작업 선택…</option>
-          {options.map((w) => (
-            <option key={w.id} value={w.id}>
-              {w.subject}
-            </option>
-          ))}
-        </Select>
-        <Button size="sm" onClick={submit} disabled={!wpId || createLink.isPending}>
-          연결
-        </Button>
-      </div>
-      {createLink.isError ? (
-        <p className="text-xs text-of-danger">
-          작업을 연결하지 못했습니다(이미 연결되었거나 보관된 프로젝트).
-        </p>
+      {canWrite ? (
+        <>
+          <div className="flex items-center gap-1.5">
+            <Select
+              aria-label="연결할 작업"
+              className="h-7 flex-1 text-xs"
+              value={wpId}
+              onChange={(e) => setWpId(e.target.value)}
+            >
+              <option value="">작업 선택…</option>
+              {options.map((w) => (
+                <option key={w.id} value={w.id}>
+                  {w.subject}
+                </option>
+              ))}
+            </Select>
+            <Button size="sm" onClick={submit} disabled={!wpId || createLink.isPending}>
+              연결
+            </Button>
+          </div>
+          {createLink.isError ? (
+            <p className="text-xs text-of-danger">
+              작업을 연결하지 못했습니다(이미 연결되었거나 보관된 프로젝트).
+            </p>
+          ) : null}
+        </>
       ) : null}
     </section>
   )

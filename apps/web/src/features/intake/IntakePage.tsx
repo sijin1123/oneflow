@@ -2,9 +2,11 @@ import { useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 
 import { EmptyState, ErrorState, ListSkeleton } from '@/components/shell/states'
+import { ReadOnlyNotice } from '@/components/shell/ReadOnlyNotice'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useMe, useMemberNames, useMembers } from '@/features/members/api'
+import { useCanWrite } from '@/features/members/useCanWrite'
 import { formatDateTime } from '@/lib/datetime'
 
 import { type IntakeItem, type IntakeStatus, useIntake, useSubmitIntake, useTriageIntake } from './api'
@@ -131,6 +133,7 @@ export function IntakePage() {
   const me = useMe()
   const members = useMembers(projectId)
   const submit = useSubmitIntake(projectId)
+  const canWrite = useCanWrite(projectId)
   const [title, setTitle] = useState('')
 
   if (intake.isPending || members.isPending) return <ListSkeleton />
@@ -149,24 +152,28 @@ export function IntakePage() {
           : '요청을 제출하면 소유자가 검토합니다. 내가 제출한 항목만 보입니다.'}
       </p>
 
-      <div className="mb-5 flex items-center gap-2 rounded-of border border-of-border bg-of-surface p-3">
-        <Input
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          placeholder="요청 제목"
-          aria-label="인테이크 요청 제목"
-          className="h-8 flex-1 text-xs"
-        />
-        <Button
-          size="sm"
-          disabled={!title.trim() || submit.isPending}
-          onClick={() =>
-            submit.mutate({ title: title.trim() }, { onSuccess: () => setTitle('') })
-          }
-        >
-          요청 제출
-        </Button>
-      </div>
+      {canWrite ? (
+        <div className="mb-5 flex items-center gap-2 rounded-of border border-of-border bg-of-surface p-3">
+          <Input
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            placeholder="요청 제목"
+            aria-label="인테이크 요청 제목"
+            className="h-8 flex-1 text-xs"
+          />
+          <Button
+            size="sm"
+            disabled={!title.trim() || submit.isPending}
+            onClick={() =>
+              submit.mutate({ title: title.trim() }, { onSuccess: () => setTitle('') })
+            }
+          >
+            요청 제출
+          </Button>
+        </div>
+      ) : (
+        <ReadOnlyNotice className="mb-5" />
+      )}
       {submit.isError ? (
         <p role="alert" className="mb-3 text-xs text-of-danger">
           제출하지 못했습니다.

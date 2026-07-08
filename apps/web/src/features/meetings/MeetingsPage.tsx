@@ -3,10 +3,13 @@ import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 
 import { EmptyState, ErrorState, ListSkeleton } from '@/components/shell/states'
+import { ReadOnlyNotice } from '@/components/shell/ReadOnlyNotice'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 
 import { Select } from '@/components/ui/select'
+
+import { useCanWrite } from '@/features/members/useCanWrite'
 
 import { useCreateMeeting, useMeetings, useMeetingTemplates } from './api'
 
@@ -15,6 +18,7 @@ export function MeetingsPage() {
   const navigate = useNavigate()
   const { data, isPending, isError, error, refetch } = useMeetings(projectId)
   const create = useCreateMeeting(projectId)
+  const canWrite = useCanWrite(projectId)
   const templates = useMeetingTemplates(projectId)
   const [templateId, setTemplateId] = useState('')
   const [query, setQuery] = useState('')
@@ -33,23 +37,28 @@ export function MeetingsPage() {
     <div className="mx-auto flex h-full max-w-3xl flex-col p-6">
       <div className="mb-4 flex items-center justify-between">
         <h1 className="text-base font-semibold">회의</h1>
-        <Select
-          aria-label="회의 템플릿"
-          className="h-8 w-40 text-xs"
-          value={templateId}
-          onChange={(e) => setTemplateId(e.target.value)}
-        >
-          <option value="">템플릿 없음</option>
-          {(templates.data?.items ?? []).map((t) => (
-            <option key={t.id} value={t.id}>
-              {t.name}
-            </option>
-          ))}
-        </Select>
-        <Button size="sm" disabled={create.isPending} onClick={newMeeting}>
-          <Plus size={14} /> 새 회의
-        </Button>
+        {canWrite ? (
+          <div className="flex items-center gap-2">
+            <Select
+              aria-label="회의 템플릿"
+              className="h-8 w-40 text-xs"
+              value={templateId}
+              onChange={(e) => setTemplateId(e.target.value)}
+            >
+              <option value="">템플릿 없음</option>
+              {(templates.data?.items ?? []).map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name}
+                </option>
+              ))}
+            </Select>
+            <Button size="sm" disabled={create.isPending} onClick={newMeeting}>
+              <Plus size={14} /> 새 회의
+            </Button>
+          </div>
+        ) : null}
       </div>
+      {!canWrite ? <ReadOnlyNotice className="mb-3" /> : null}
 
       {isPending ? (
         <ListSkeleton />

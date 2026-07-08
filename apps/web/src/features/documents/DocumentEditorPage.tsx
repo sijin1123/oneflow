@@ -3,7 +3,9 @@ import { Suspense, lazy, useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 
 import { ErrorState, ListSkeleton } from '@/components/shell/states'
+import { ReadOnlyNotice } from '@/components/shell/ReadOnlyNotice'
 import { useUploadAttachment } from '@/features/attachments/api'
+import { useCanWrite } from '@/features/members/useCanWrite'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
@@ -41,6 +43,7 @@ export function DocumentEditorPage() {
   const [body, setBody] = useState('')
   const [parentId, setParentId] = useState<string | null>(null)
   const upload = useUploadAttachment(projectId)
+  const canWrite = useCanWrite(projectId)
   // Resync when the server doc changes (load / save / 409 reload). react-query's
   // structural sharing keeps `doc`'s reference stable, so local edits aren't
   // clobbered until the cached document actually changes.
@@ -108,21 +111,27 @@ export function DocumentEditorPage() {
         <Input
           value={title}
           onChange={(e) => setTitle(e.target.value)}
+          readOnly={!canWrite}
           aria-label="문서 제목"
           className="flex-1 text-sm font-medium"
         />
-        <Button size="sm" disabled={!title.trim() || update.isPending} onClick={save}>
-          저장
-        </Button>
-        <button
-          type="button"
-          aria-label="문서 삭제"
-          className="rounded-of p-1.5 text-of-muted hover:bg-of-surface-2 hover:text-of-danger"
-          onClick={remove}
-        >
-          <Trash2 size={15} />
-        </button>
+        {canWrite ? (
+          <>
+            <Button size="sm" disabled={!title.trim() || update.isPending} onClick={save}>
+              저장
+            </Button>
+            <button
+              type="button"
+              aria-label="문서 삭제"
+              className="rounded-of p-1.5 text-of-muted hover:bg-of-surface-2 hover:text-of-danger"
+              onClick={remove}
+            >
+              <Trash2 size={15} />
+            </button>
+          </>
+        ) : null}
       </div>
+      {!canWrite ? <ReadOnlyNotice className="mb-3" /> : null}
 
       <div className="mb-3 flex items-center gap-2">
         <label htmlFor="doc-parent" className="shrink-0 text-xs font-medium text-of-muted">
@@ -132,6 +141,7 @@ export function DocumentEditorPage() {
           id="doc-parent"
           className="h-7 max-w-xs text-xs"
           value={parentId ?? ''}
+          disabled={!canWrite}
           onChange={(e) => setParentId(e.target.value === '' ? null : e.target.value)}
         >
           <option value="">(없음 — 최상위)</option>
@@ -161,24 +171,30 @@ export function DocumentEditorPage() {
         <RichTextEditor
           value={doc.body ?? ''}
           ariaLabel="문서 본문"
+          editable={canWrite}
           onSave={setBody}
           // Inline image (Pass 68): upload anchored to THIS document, then
           // insert the canonical download URL — the server re-validates
-          // ownership + content type on save (v68.1 R1-①).
-          onImageUpload={async (file) => {
-            const att = await upload.mutateAsync({ file, documentId: doc.id })
-            return `/api/v1/attachments/${att.id}/download`
-          }}
+          // ownership + content type on save (v68.1 R1-①). Only writers get
+          // the image button (Pass 77).
+          onImageUpload={
+            canWrite
+              ? async (file) => {
+                  const att = await upload.mutateAsync({ file, documentId: doc.id })
+                  return `/api/v1/attachments/${att.id}/download`
+                }
+              : undefined
+          }
         />
       </Suspense>
 
       <p className="mt-2 text-right text-[11px] text-of-muted">v{doc.version}</p>
 
-      <LinkedWorkPackagesSection docId={doc.id} projectId={projectId} />
+      <LinkedWorkPackagesSection docId={doc.id} projectId={projectId} canWrite={canWrite} />
 
       <DocumentAttachments docId={doc.id} projectId={projectId} />
 
-      <DocumentComments docId={doc.id} projectId={projectId} />
+      <DocumentComments docId={doc.id} projectId={projectId} canWrite={canWrite} />
     </div>
   )
 }
@@ -186,7 +202,15 @@ export function DocumentEditorPage() {
 /* Flat plain-text margin notes (Pass 43): bodies render as TEXT NODES only —
    never as HTML. Delete shows for my own comments (the server also lets the
    project owner clean up; a failed delete just surfaces the error). */
-function DocumentComments({ docId, projectId }: { docId: string; projectId: string }) {
+function DocumentComments({
+  docId,
+  projectId,
+  canWrite,
+}: {
+  docId: string
+  projectId: string
+  canWrite: boolean
+}) {
   const me = useMe()
   const memberName = useMemberNames(projectId)
   const members = useMembers(projectId)
@@ -217,7 +241,7 @@ function DocumentComments({ docId, projectId }: { docId: string; projectId: stri
               <span className="shrink-0 font-medium text-of-muted">{authorLabel(c.author_id)}</span>
               <span className="min-w-0 flex-1 whitespace-pre-wrap break-words">{c.body}</span>
               <span className="shrink-0 text-[11px] text-of-muted">{c.created_at.slice(0, 10)}</span>
-              {c.author_id === me.data?.id ? (
+              {canWrite && c.author_id === me.data?.id ? (
                 <button
                   type="button"
                   aria-label="코멘트 삭제"
@@ -234,26 +258,30 @@ function DocumentComments({ docId, projectId }: { docId: string; projectId: stri
       ) : (
         <p className="text-xs text-of-muted">아직 코멘트가 없습니다.</p>
       )}
-      <div className="flex items-center gap-2">
-        <Input
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') submit()
-          }}
-          placeholder="코멘트 남기기 (plain text)"
-          aria-label="새 코멘트"
-          className="h-8 flex-1 text-xs"
-          maxLength={4000}
-        />
-        <Button size="sm" disabled={!draft.trim() || create.isPending} onClick={submit}>
-          등록
-        </Button>
-      </div>
-      {create.isError ? (
-        <p role="alert" className="text-xs text-of-danger">
-          코멘트를 등록하지 못했습니다.
-        </p>
+      {canWrite ? (
+        <>
+          <div className="flex items-center gap-2">
+            <Input
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') submit()
+              }}
+              placeholder="코멘트 남기기 (plain text)"
+              aria-label="새 코멘트"
+              className="h-8 flex-1 text-xs"
+              maxLength={4000}
+            />
+            <Button size="sm" disabled={!draft.trim() || create.isPending} onClick={submit}>
+              등록
+            </Button>
+          </div>
+          {create.isError ? (
+            <p role="alert" className="text-xs text-of-danger">
+              코멘트를 등록하지 못했습니다.
+            </p>
+          ) : null}
+        </>
       ) : null}
     </div>
   )

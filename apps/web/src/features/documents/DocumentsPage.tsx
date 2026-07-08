@@ -3,9 +3,12 @@ import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 
 import { EmptyState, ErrorState, ListSkeleton } from '@/components/shell/states'
+import { ReadOnlyNotice } from '@/components/shell/ReadOnlyNotice'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { formatDateTime } from '@/lib/datetime'
+
+import { useCanWrite } from '@/features/members/useCanWrite'
 
 import { useCreateDocument, useDocuments } from './api'
 import type { DocTreeNode } from './tree'
@@ -16,6 +19,7 @@ export function DocumentsPage() {
   const navigate = useNavigate()
   const { data, isPending, isError, error, refetch } = useDocuments(projectId)
   const create = useCreateDocument(projectId)
+  const canWrite = useCanWrite(projectId)
   const [query, setQuery] = useState('')
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
 
@@ -55,10 +59,13 @@ export function DocumentsPage() {
     <div className="mx-auto flex h-full max-w-3xl flex-col p-6">
       <div className="mb-4 flex items-center justify-between">
         <h1 className="text-base font-semibold">문서</h1>
-        <Button size="sm" disabled={create.isPending} onClick={newDoc}>
-          <Plus size={14} /> 새 문서
-        </Button>
+        {canWrite ? (
+          <Button size="sm" disabled={create.isPending} onClick={newDoc}>
+            <Plus size={14} /> 새 문서
+          </Button>
+        ) : null}
       </div>
+      {!canWrite ? <ReadOnlyNotice className="mb-3" /> : null}
 
       {isPending ? (
         <ListSkeleton />
