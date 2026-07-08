@@ -42,6 +42,7 @@ export function MeetingDetailPage() {
   const [scheduledOn, setScheduledOn] = useState('')
   const [agenda, setAgenda] = useState('')
   const [minutes, setMinutes] = useState('')
+  const [recurrence, setRecurrence] = useState('')
   const [newItem, setNewItem] = useState('')
   useEffect(() => {
     if (mtg) {
@@ -49,6 +50,7 @@ export function MeetingDetailPage() {
       setScheduledOn(mtg.scheduled_on ?? '')
       setAgenda(mtg.agenda ?? '')
       setMinutes(mtg.minutes ?? '')
+      setRecurrence(mtg.recurrence ?? '')
     }
   }, [mtg])
 
@@ -58,6 +60,7 @@ export function MeetingDetailPage() {
     !del.isPending &&
     (title !== mtg.title ||
       scheduledOn !== (mtg.scheduled_on ?? '') ||
+      recurrence !== (mtg.recurrence ?? '') ||
       agenda !== (mtg.agenda ?? '') ||
       minutes !== (mtg.minutes ?? ''))
   useUnsavedChangesPrompt(dirty, '저장되지 않은 변경이 있습니다. 나가시겠습니까?')
@@ -77,6 +80,7 @@ export function MeetingDetailPage() {
       expected_version: conflict ? conflict.current.version : mtg.version,
       title: trimmed,
       scheduled_on: scheduledOn || null,
+      recurrence: recurrence || null,
       agenda: agenda === '' ? null : agenda,
       minutes: minutes === '' ? null : minutes,
     })
@@ -109,6 +113,19 @@ export function MeetingDetailPage() {
           aria-label="회의 일정"
           className="w-40"
         />
+        <select
+          aria-label="반복 주기"
+          title="반복은 일정이 지나면 다음 회차를 자동 생성합니다. 매월 반복은 말일 초과 시 그 달 말일로 조정되며 이후 그 날짜가 기준이 됩니다."
+          className="h-8 w-28 rounded-of border border-of-border bg-of-surface px-2 text-xs"
+          value={recurrence}
+          disabled={!scheduledOn}
+          onChange={(e) => setRecurrence(e.target.value)}
+        >
+          <option value="">반복 안 함</option>
+          <option value="weekly">매주</option>
+          <option value="biweekly">격주</option>
+          <option value="monthly">매월</option>
+        </select>
         <Button size="sm" disabled={!title.trim() || update.isPending} onClick={save}>
           저장
         </Button>

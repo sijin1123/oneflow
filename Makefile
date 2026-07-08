@@ -31,6 +31,13 @@ api-sweep-blobs:
 api-sweep-blobs-delete:
 	cd apps/api && uv run python -m app.services.storage_sweep --delete
 
+# Recurring-meeting sweep (Pass 69): dry-run reports; -create materializes.
+api-recurring-meetings:
+	cd apps/api && uv run python -m app.services.recurring_meetings
+
+api-recurring-meetings-create:
+	cd apps/api && uv run python -m app.services.recurring_meetings --create
+
 api-test:
 	cd apps/api && uv run pytest -q
 

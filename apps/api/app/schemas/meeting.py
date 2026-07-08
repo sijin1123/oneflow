@@ -48,12 +48,25 @@ class ActionItemRead(BaseModel):
     created_at: datetime
 
 
+RECURRENCES = ("weekly", "biweekly", "monthly")
+
+
 class MeetingCreate(BaseModel):
     title: str
     scheduled_on: date | None = None
+    # Recurrence preset (Pass 69) — requires a date (validated in the router
+    # against the MERGED state for PATCH).
+    recurrence: str | None = None
     # Applying a template COPIES its agenda at create time (same-transaction
     # lookup — a deleted template is a plain 404; v48.1 R1-④).
     template_id: uuid.UUID | None = None
+
+    @field_validator("recurrence")
+    @classmethod
+    def _recurrence(cls, v: str | None) -> str | None:
+        if v is not None and v not in RECURRENCES:
+            raise ValueError(f"recurrence must be one of {RECURRENCES}")
+        return v
 
     @field_validator("title")
     @classmethod
@@ -76,12 +89,20 @@ class MeetingUpdate(BaseModel):
     scheduled_on: date | None = None
     agenda: str | None = None
     minutes: str | None = None
+    recurrence: str | None = None
 
     @field_validator("expected_version")
     @classmethod
     def _v(cls, v: int) -> int:
         if not 0 <= v <= 2_147_483_647:
             raise ValueError("expected_version must be between 0 and 2147483647")
+        return v
+
+    @field_validator("recurrence")
+    @classmethod
+    def _recurrence(cls, v: str | None) -> str | None:
+        if v is not None and v not in RECURRENCES:
+            raise ValueError(f"recurrence must be one of {RECURRENCES}")
         return v
 
     @field_validator("title")
@@ -110,6 +131,8 @@ class MeetingRead(BaseModel):
     agenda: str | None
     minutes: str | None
     author_id: uuid.UUID | None
+    recurrence: str | None = None
+    recurrence_source_id: uuid.UUID | None = None
     version: int
     created_at: datetime
     updated_at: datetime
@@ -123,6 +146,7 @@ class MeetingListItem(BaseModel):
     project_id: uuid.UUID
     title: str
     scheduled_on: date | None
+    recurrence: str | None = None
     version: int
     updated_at: datetime
 

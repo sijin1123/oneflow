@@ -3217,6 +3217,8 @@ export interface components {
         };
         /** MeetingCreate */
         MeetingCreate: {
+            /** Recurrence */
+            recurrence?: string | null;
             /** Scheduled On */
             scheduled_on?: string | null;
             /** Template Id */
@@ -3267,6 +3269,8 @@ export interface components {
              * Format: uuid
              */
             project_id: string;
+            /** Recurrence */
+            recurrence?: string | null;
             /** Scheduled On */
             scheduled_on: string | null;
             /** Title */
@@ -3307,6 +3311,10 @@ export interface components {
              * Format: uuid
              */
             project_id: string;
+            /** Recurrence */
+            recurrence?: string | null;
+            /** Recurrence Source Id */
+            recurrence_source_id?: string | null;
             /** Scheduled On */
             scheduled_on: string | null;
             /** Title */
@@ -3370,6 +3378,8 @@ export interface components {
             expected_version: number;
             /** Minutes */
             minutes?: string | null;
+            /** Recurrence */
+            recurrence?: string | null;
             /** Scheduled On */
             scheduled_on?: string | null;
             /** Title */
