@@ -83,6 +83,9 @@ export function Sidebar() {
               <NavLink to={`/projects/${p.id}/board`} className={navLinkClass}>
                 <SquareKanban /> Board
               </NavLink>
+              <NavLink to={`/projects/${p.id}/backlog`} className={navLinkClass}>
+                <ClipboardList /> Backlog
+              </NavLink>
               <NavLink to={`/projects/${p.id}/tree`} className={navLinkClass}>
                 <ListTree /> Hierarchy
               </NavLink>

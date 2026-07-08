@@ -19,7 +19,7 @@ from app.models.milestone import Milestone
 from app.models.module import Module
 from app.models.relation import WorkPackageRelation
 from app.models.user import User
-from app.models.work_package import WorkPackage
+from app.models.work_package import WP_CLOSED_STATUSES, WorkPackage
 from app.schemas.work_package import (
     BulkUpdateRequest,
     BulkUpdateResult,
@@ -139,6 +139,11 @@ async def list_work_packages(
     type: TypeFilter | None = Query(default=None),
     assignee_id: uuid.UUID | None = Query(default=None),
     cycle_id: uuid.UUID | None = Query(default=None),
+    # Backlog filters (Pass 52, v52.1): pure additive ANDs inside the scoped
+    # WHERE. no_cycle=true is cycle_id IS NULL (contradictory with cycle_id →
+    # 422); open_only=true excludes the fixed closed vocabulary.
+    no_cycle: bool = Query(default=False),
+    open_only: bool = Query(default=False),
     module_id: uuid.UUID | None = Query(default=None),
     q: str | None = Query(default=None, max_length=255),
     sort: SortField = Query(default="created"),
@@ -157,8 +162,14 @@ async def list_work_packages(
         stmt = stmt.where(WorkPackage.type == type)
     if assignee_id is not None:
         stmt = stmt.where(WorkPackage.assignee_id == assignee_id)
+    if no_cycle and cycle_id is not None:
+        raise HTTPException(status_code=422, detail="no_cycle contradicts cycle_id")
     if cycle_id is not None:
         stmt = stmt.where(WorkPackage.cycle_id == cycle_id)
+    if no_cycle:
+        stmt = stmt.where(WorkPackage.cycle_id.is_(None))
+    if open_only:
+        stmt = stmt.where(WorkPackage.status.not_in(WP_CLOSED_STATUSES))
     if module_id is not None:
         stmt = stmt.where(WorkPackage.module_id == module_id)
     if q:

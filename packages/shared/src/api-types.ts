@@ -7825,6 +7825,8 @@ export interface operations {
                 type?: ("task" | "bug" | "feature" | "milestone") | null;
                 assignee_id?: string | null;
                 cycle_id?: string | null;
+                no_cycle?: boolean;
+                open_only?: boolean;
                 module_id?: string | null;
                 q?: string | null;
                 sort?: "created" | "subject";

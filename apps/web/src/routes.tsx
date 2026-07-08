@@ -17,6 +17,7 @@ import { SearchPage } from '@/features/search/SearchPage'
 import { StatusPage } from '@/features/ops/StatusPage'
 import { UsersPage } from '@/features/admin/UsersPage'
 import { SettingsPage } from '@/features/settings/SettingsPage'
+import { BacklogPage } from '@/features/work-packages/BacklogPage'
 import { BoardPage } from '@/features/work-packages/BoardPage'
 import { CyclesPage } from '@/features/cycles/CyclesPage'
 import { CalendarPage } from '@/features/work-packages/CalendarPage'
@@ -41,6 +42,7 @@ export const router = createBrowserRouter([
       { path: 'admin/users', element: <UsersPage /> },
       { path: 'projects/:projectId/work-packages', element: <ListPage /> },
       { path: 'projects/:projectId/board', element: <BoardPage /> },
+      { path: 'projects/:projectId/backlog', element: <BacklogPage /> },
       { path: 'projects/:projectId/tree', element: <TreePage /> },
       { path: 'projects/:projectId/timeline', element: <TimelinePage /> },
       { path: 'projects/:projectId/calendar', element: <CalendarPage /> },

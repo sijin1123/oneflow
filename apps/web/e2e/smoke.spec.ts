@@ -3267,3 +3267,69 @@ test('프로젝트 목록 이니셔티브 열을 켜면 칩이 보이고 클릭 
   // The target card carries the highlight ring.
   await expect(page.locator('li.ring-1', { hasText: '플랫폼 전략' })).toBeVisible()
 })
+
+
+test('백로그에서 사이클을 배정하면 PATCH 후 행이 사라진다', async ({ page }) => {
+  await mockApi(page)
+  let assigned = false
+  await page.route(`**/api/v1/projects/${project.id}/work-packages**`, (route) => {
+    const url = new URL(route.request().url())
+    if (url.searchParams.get('no_cycle') === 'true') {
+      return route.fulfill({
+        json: assigned ? { items: [], total: 0 } : { items: [wpA], total: 1 },
+      })
+    }
+    return route.fulfill({ json: { items: [wpA, wpB], total: 2 } })
+  })
+  await page.route(`**/api/v1/projects/${project.id}/cycles`, (route) =>
+    route.fulfill({
+      json: {
+        items: [
+          {
+            id: 'cy-1',
+            project_id: project.id,
+            name: '스프린트 8',
+            start_date: '2026-07-01',
+            end_date: '2026-07-14',
+            status: 'active',
+            work_package_count: 0,
+            done_work_package_count: 0,
+            created_at: '2026-07-01T00:00:00Z',
+          },
+          {
+            id: 'cy-0',
+            project_id: project.id,
+            name: '지난 스프린트',
+            start_date: '2026-06-01',
+            end_date: '2026-06-14',
+            status: 'completed',
+            work_package_count: 0,
+            done_work_package_count: 0,
+            created_at: '2026-06-01T00:00:00Z',
+          },
+        ],
+        total: 2,
+      },
+    }),
+  )
+  await page.route(`**/api/v1/work-packages/${wpA.id}`, (route) => {
+    assigned = true
+    return route.fulfill({ json: { ...wpA, cycle_id: 'cy-1', version: 1 } })
+  })
+
+  await page.goto(`/projects/${project.id}/backlog`)
+  await expect(page.getByText('워크패키지 API 구현')).toBeVisible()
+  const select = page.getByLabel('워크패키지 API 구현 사이클 배정')
+  // Completed cycles are not offered (v52.1).
+  await expect(select.locator('option', { hasText: '지난 스프린트' })).toHaveCount(0)
+
+  const patch = page.waitForRequest(
+    (r) => r.method() === 'PATCH' && r.url().includes(`/work-packages/${wpA.id}`),
+  )
+  await select.selectOption('cy-1')
+  const sent = (await patch).postDataJSON() as { cycle_id: string; expected_version: number }
+  expect(sent.cycle_id).toBe('cy-1')
+  expect(sent.expected_version).toBe(wpA.version)
+  // Refetch drops the assigned row out of the backlog.
+  await expect(page.getByText('백로그가 비어 있습니다')).toBeVisible()
+})
