@@ -4156,6 +4156,8 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            /** Is Locked */
+            is_locked: boolean;
             /** Is Mine */
             is_mine: boolean;
             /** Is Shared */
@@ -4177,9 +4179,12 @@ export interface components {
         };
         /**
          * SavedFilterUpdate
-         * @description Author-only partial update (rename, relayout, share toggle).
+         * @description Author-only partial update (rename, relayout, share/lock toggles).
+         *     A LOCKED view only accepts the single-field unlock (v54.1 R1-⑤).
          */
         SavedFilterUpdate: {
+            /** Is Locked */
+            is_locked?: boolean | null;
             /** Is Shared */
             is_shared?: boolean | null;
             /** Layout */

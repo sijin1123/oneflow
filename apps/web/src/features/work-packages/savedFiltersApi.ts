@@ -23,6 +23,7 @@ export type SavedFilter = {
   layout: ViewLayout
   sort: string | null
   is_shared: boolean
+  is_locked: boolean
   is_mine: boolean
   owner_name: string
   created_at: string
@@ -60,7 +61,15 @@ export function useCreateSavedFilter(projectId: string) {
 export function useUpdateSavedFilter(projectId: string) {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: ({ id, ...input }: { id: string; is_shared?: boolean; name?: string }) =>
+    mutationFn: ({
+      id,
+      ...input
+    }: {
+      id: string
+      is_shared?: boolean
+      is_locked?: boolean
+      name?: string
+    }) =>
       api<SavedFilter>(`/api/v1/projects/${projectId}/saved-filters/${id}`, {
         method: 'PATCH',
         body: JSON.stringify(input),

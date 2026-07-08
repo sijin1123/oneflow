@@ -122,12 +122,14 @@ class SavedFilterCreate(BaseModel):
 
 
 class SavedFilterUpdate(BaseModel):
-    """Author-only partial update (rename, relayout, share toggle)."""
+    """Author-only partial update (rename, relayout, share/lock toggles).
+    A LOCKED view only accepts the single-field unlock (v54.1 R1-⑤)."""
 
     name: str | None = None
     layout: str | None = None
     sort: str | None = None
     is_shared: bool | None = None
+    is_locked: bool | None = None
 
     @field_validator("name")
     @classmethod
@@ -160,6 +162,7 @@ class SavedFilterRead(BaseModel):
     layout: str
     sort: str | None
     is_shared: bool
+    is_locked: bool
     # Authorship for the UI: shared views show who owns them; edits are
     # author-only, so the client hides controls when is_mine is False.
     is_mine: bool

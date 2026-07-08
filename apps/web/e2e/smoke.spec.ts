@@ -2090,6 +2090,7 @@ test('저장된 필터를 적용하면 목록 쿼리에 반영된다', async ({ 
             layout: 'list',
             sort: null,
             is_shared: false,
+            is_locked: false,
             is_mine: true,
             owner_name: 'Dev User',
             created_at: '2026-07-01T00:00:00Z',
@@ -3363,4 +3364,49 @@ test('백로그에서 사이클을 배정하면 PATCH 후 행이 사라진다', 
   expect(sent.expected_version).toBe(wpA.version)
   // Refetch drops the assigned row out of the backlog.
   await expect(page.getByText('백로그가 비어 있습니다')).toBeVisible()
+})
+
+
+test('잠긴 뷰는 공유/삭제가 숨고 해제하면 복원된다', async ({ page }) => {
+  await mockApi(page)
+  let locked = true
+  await page.route(`**/api/v1/projects/${project.id}/saved-filters`, (route) =>
+    route.fulfill({
+      json: {
+        items: [
+          {
+            id: 'sf-l',
+            project_id: project.id,
+            name: '잠긴 뷰',
+            params: {},
+            layout: 'list',
+            sort: null,
+            is_shared: false,
+            is_locked: locked,
+            is_mine: true,
+            owner_name: 'Dev User',
+            created_at: '2026-07-01T00:00:00Z',
+          },
+        ],
+        total: 1,
+      },
+    }),
+  )
+  await page.route(`**/api/v1/projects/${project.id}/saved-filters/sf-l`, (route) => {
+    locked = false
+    return route.fulfill({ json: { id: 'sf-l' } })
+  })
+
+  await page.goto(`/projects/${project.id}/work-packages`)
+  // Locked: share/delete hidden; only the unlock toggle shows.
+  await expect(page.getByLabel('잠긴 뷰 삭제')).toBeHidden()
+  await expect(page.getByLabel(/잠긴 뷰 공유/)).toBeHidden()
+  const patch = page.waitForRequest(
+    (r) => r.method() === 'PATCH' && r.url().includes('/saved-filters/sf-l'),
+  )
+  await page.getByLabel('잠긴 뷰 잠금 해제').click()
+  expect(((await patch).postDataJSON() as { is_locked: boolean }).is_locked).toBe(false)
+  // Unlock refetch restores the delete/share controls (v54.1 R1-⑤).
+  await expect(page.getByLabel('잠긴 뷰 삭제')).toBeVisible()
+  await expect(page.getByLabel(/잠긴 뷰 공유/)).toBeVisible()
 })
