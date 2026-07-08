@@ -94,6 +94,9 @@ export function HistorySection({ wpId, projectId }: { wpId: string; projectId: s
     if (field === 'status') return statusLabel(value)
     if (field === 'priority') return PRIORITY_LABELS[value as keyof typeof PRIORITY_LABELS] ?? value
     if (field === 'type') return TYPE_LABELS[value as keyof typeof TYPE_LABELS] ?? value
+    // Members stay uuids in the log (the existing contract) — resolve here.
+    // cycle/module/milestone records store NAME snapshots since Pass 71.
+    if (field === 'assignee_id') return memberName(value)
     return value
   }
 

@@ -198,17 +198,38 @@ async def rollover_cycle(
     if target is None or target.project_id != project_id:
         raise HTTPException(status_code=422, detail="target cycle must belong to the same project")
 
-    result = await session.execute(
-        sa_update(WorkPackage)
-        .where(
-            WorkPackage.project_id == project_id,
-            WorkPackage.cycle_id == cycle_id,
-            WorkPackage.status.not_in(WP_CLOSED_STATUSES),
+    src = (await session.execute(select(Cycle).where(Cycle.id == cycle_id))).scalar_one()
+    moved_ids = (
+        (
+            await session.execute(
+                sa_update(WorkPackage)
+                .where(
+                    WorkPackage.project_id == project_id,
+                    WorkPackage.cycle_id == cycle_id,
+                    WorkPackage.status.not_in(WP_CLOSED_STATUSES),
+                )
+                .values(cycle_id=body.target_cycle_id)
+                .returning(WorkPackage.id)
+            )
         )
-        .values(cycle_id=body.target_cycle_id)
+        .scalars()
+        .all()
     )
+    # Assignment history (Pass 71, v71.1 R1-④): one activity per moved WP with
+    # NAME snapshots — a later rename/delete never distorts this record.
+    for wp_id in moved_ids:
+        session.add(
+            Activity(
+                work_package_id=wp_id,
+                actor_id=user.id,
+                action="field_changed",
+                field="cycle_id",
+                old_value=src.name,
+                new_value=target.name,
+            )
+        )
     await session.commit()
-    return RolloverResult(moved=result.rowcount or 0)
+    return RolloverResult(moved=len(moved_ids))
 
 
 @router.get("/projects/{project_id}/cycles/{cycle_id}/burndown", response_model=BurndownRead)

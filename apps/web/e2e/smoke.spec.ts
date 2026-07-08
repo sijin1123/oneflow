@@ -88,8 +88,18 @@ const activities: ActivityList = {
       new_value: null,
       created_at: '2026-07-01T00:00:00Z',
     },
+    {
+      id: 'a2',
+      work_package_id: wpA.id,
+      actor_id: null,
+      action: 'field_changed',
+      field: 'cycle_id',
+      old_value: '스프린트 1',
+      new_value: '스프린트 2',
+      created_at: '2026-07-02T00:00:00Z',
+    },
   ],
-  total: 1,
+  total: 2,
 }
 const noComments: CommentList = { items: [], total: 0 }
 
@@ -352,6 +362,8 @@ test('드로어에서 활동 이력을 보여주고 댓글을 추가한다', asy
   await page.getByRole('button', { name: '워크패키지 API 구현' }).click()
   const drawer = page.getByRole('dialog')
   await expect(drawer.getByText('작업을 생성했습니다')).toBeVisible() // activity feed
+  // Cycle assignment history renders NAME snapshots (Pass 71).
+  await expect(drawer.getByText('사이클: 스프린트 1 → 스프린트 2')).toBeVisible()
   await expect(drawer.getByText('만든 사람: Dev User', { exact: false })).toBeVisible()
 
   const commentPost = page.waitForRequest(
