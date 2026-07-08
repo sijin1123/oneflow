@@ -16,7 +16,7 @@ from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import get_current_user
-from app.core.authz import is_member, require_active_project, require_member
+from app.core.authz import is_member, require_active_project, require_member, require_writer
 from app.core.config import Settings, get_settings
 from app.db.session import get_session
 from app.models.attachment import Attachment
@@ -147,6 +147,7 @@ async def delete_attachment(
     # Existence hiding: unknown id or a non-member's project both surface as 404.
     if att is None or not await is_member(session, att.project_id, user.id):
         raise HTTPException(status_code=404, detail="not found")
+    await require_writer(session, att.project_id, user.id)
     await require_active_project(session, att.project_id)
     key = att.storage_key
     await session.delete(att)

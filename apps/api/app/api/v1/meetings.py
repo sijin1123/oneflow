@@ -17,8 +17,13 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import get_current_user
-from app.core.authz import is_member, require_active_project, require_member
-from app.core.authz import is_member as _is_member_check  # noqa: F401 (alias below)
+from app.core.authz import (
+    is_member,
+    member_role,
+    require_active_project,
+    require_member,
+    require_writer,
+)
 from app.db.session import get_session
 from app.models.meeting import Meeting, MeetingActionItem
 from app.models.meeting_template import MeetingAgendaTemplate
@@ -60,6 +65,7 @@ async def _get_meeting_scoped(
     if m is None or not await is_member(session, m.project_id, user.id):
         raise HTTPException(status_code=404, detail="not found")
     if write:
+        await require_writer(session, m.project_id, user.id)
         await require_active_project(session, m.project_id)
     return m
 
@@ -265,8 +271,8 @@ async def create_follow_up(
             .all()
         )
         # A carried item is a NEW assignment: the assignee survives only as a
-        # current, ACTIVE project member — otherwise null (v34.1 R1-③,
-        # Pass 33 deactivation policy).
+        # current, ACTIVE project member with a writable role — otherwise null
+        # (v34.1 R1-③, Pass 33 deactivation policy, v61.1 R1-⑥ viewer 제외).
         valid_assignees = {
             row
             for row in (
@@ -275,6 +281,7 @@ async def create_follow_up(
                     .join(User, ProjectMember.user_id == User.id)
                     .where(
                         ProjectMember.project_id == src.project_id,
+                        ProjectMember.role != "viewer",
                         User.is_active.is_(True),
                     )
                 )
@@ -313,10 +320,12 @@ async def create_action_item(
     user: User = Depends(get_current_user),
 ) -> ActionItemRead:
     m = await _get_meeting_scoped(session, meeting_id, user, write=True)
-    if body.assignee_id is not None and not await is_member(
-        session, m.project_id, body.assignee_id
-    ):
-        raise HTTPException(status_code=422, detail="assignee must be a member of the project")
+    if body.assignee_id is not None:
+        role = await member_role(session, m.project_id, body.assignee_id)
+        if role is None:
+            raise HTTPException(status_code=422, detail="assignee must be a member of the project")
+        if role == "viewer":
+            raise HTTPException(status_code=422, detail="assignee must not have a read-only role")
     item = MeetingActionItem(
         meeting_id=meeting_id, description=body.description, assignee_id=body.assignee_id
     )
@@ -394,8 +403,9 @@ async def convert_action_item(
     (`converted_wp_id IS NULL`) in the SAME transaction — a concurrent convert
     succeeds exactly once and the loser's WP insert rolls back (409).
     Assignee inheritance: only if the item's assignee is a CURRENT project
-    member; otherwise (null / left / deleted) the WP starts unassigned —
-    conversion is never refused over a stale assignee."""
+    member with a writable role; otherwise (null / left / deleted / viewer)
+    the WP starts unassigned — conversion is never refused over a stale
+    assignee (v61.1 R1-⑥)."""
     item = await _get_action_item_scoped(session, item_id, user, write=True)
     if item.converted_wp_id is not None:
         raise HTTPException(status_code=409, detail="action item was already converted")
@@ -404,10 +414,10 @@ async def convert_action_item(
     ).scalar_one()
 
     assignee = None
-    if item.assignee_id is not None and await is_member(
-        session, meeting.project_id, item.assignee_id
-    ):
-        assignee = item.assignee_id
+    if item.assignee_id is not None:
+        role = await member_role(session, meeting.project_id, item.assignee_id)
+        if role is not None and role != "viewer":
+            assignee = item.assignee_id
 
     wp = WorkPackage(
         project_id=meeting.project_id,
@@ -526,6 +536,7 @@ async def delete_meeting_template(
     ).scalar_one_or_none()
     if template is None or not await is_member(session, template.project_id, user.id):
         raise HTTPException(status_code=404, detail="not found")
+    await require_writer(session, template.project_id, user.id)
     await require_active_project(session, template.project_id)
     if template.created_by != user.id:
         role = (

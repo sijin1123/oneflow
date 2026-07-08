@@ -12,7 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import get_current_user
-from app.core.authz import is_member, require_member, require_role
+from app.core.authz import member_role, require_member, require_role
 from app.db.session import get_session
 from app.models.automation_rule import AutomationRule, AutomationRuleRun
 from app.models.user import User
@@ -46,12 +46,16 @@ async def _get_owned_rule(
 async def _require_assignee_value_member(
     session: AsyncSession, project_id: uuid.UUID, body_like: AutomationRuleCreate
 ) -> None:
-    """set_assignee's value must be a CURRENT project member (v16.1 R1-④ — the
-    same membership predicate the ordinary assignee fan-in uses)."""
+    """set_assignee's value must be a CURRENT project member with a writable
+    role (v16.1 R1-④, v61.1 R1-⑥ — the same predicate the ordinary assignee
+    fan-in uses; viewers are read-only and cannot be assignment targets)."""
     if body_like.action_type != "set_assignee":
         return
-    if not await is_member(session, project_id, uuid.UUID(body_like.action_value)):
+    role = await member_role(session, project_id, uuid.UUID(body_like.action_value))
+    if role is None:
         raise HTTPException(status_code=422, detail="action_value must be a project member")
+    if role == "viewer":
+        raise HTTPException(status_code=422, detail="action_value must not have a read-only role")
 
 
 @router.get("/projects/{project_id}/automation-rules", response_model=AutomationRuleList)

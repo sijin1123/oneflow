@@ -9,6 +9,12 @@ import { Select } from '@/components/ui/select'
 import { useAddMember, useMe, useMembers, useRemoveMember, useUpdateMemberRole } from '@/features/members/api'
 import { ApiError } from '@/lib/api'
 
+const ROLE_LABELS: Record<string, string> = {
+  owner: '소유자',
+  member: '멤버',
+  viewer: '뷰어',
+}
+
 export function MembersPanel({
   projectId,
   isOwner,
@@ -71,10 +77,11 @@ export function MembersPanel({
                   >
                     <option value="owner">소유자</option>
                     <option value="member">멤버</option>
+                    <option value="viewer">뷰어</option>
                   </Select>
                 ) : (
                   <Badge variant={m.role === 'owner' ? 'accent' : 'neutral'}>
-                    {m.role === 'owner' ? '소유자' : '멤버'}
+                    {ROLE_LABELS[m.role] ?? m.role}
                   </Badge>
                 )}
                 {isOwner ? (
@@ -114,6 +121,7 @@ export function MembersPanel({
             >
               <option value="member">멤버</option>
               <option value="owner">소유자</option>
+              <option value="viewer">뷰어</option>
             </Select>
             <Button
               size="sm"
@@ -126,6 +134,10 @@ export function MembersPanel({
             </Button>
           </div>
           {addErr ? <p className="text-xs text-of-danger">{addErr}</p> : null}
+          <p className="text-[11px] text-of-muted">
+            소유자는 설정·멤버를 관리하고, 멤버는 작업을 만들고 수정할 수 있습니다. 뷰어는 모든
+            내용을 볼 수 있지만 변경할 수 없습니다.
+          </p>
         </div>
       ) : null}
     </div>
