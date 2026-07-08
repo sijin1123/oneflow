@@ -13,10 +13,28 @@ export type DirectoryUser = {
 
 export type DirectoryList = { items: DirectoryUser[]; total: number }
 
+export type UserMembership = {
+  project_id: string
+  project_key: string
+  project_name: string
+  role: 'owner' | 'member' | 'viewer'
+  archived: boolean
+}
+
+export type UserMembershipList = { items: UserMembership[]; total: number }
+
 export function useUsers() {
   return useQuery({
     queryKey: ['admin-users'],
     queryFn: () => api<DirectoryList>('/api/v1/users'),
+  })
+}
+
+export function useUserMemberships(userId: string | null) {
+  return useQuery({
+    queryKey: ['admin-user-memberships', userId],
+    queryFn: () => api<UserMembershipList>(`/api/v1/users/${userId}/memberships`),
+    enabled: userId !== null,
   })
 }
 

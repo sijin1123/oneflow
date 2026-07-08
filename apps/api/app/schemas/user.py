@@ -29,6 +29,22 @@ class UserDirectoryList(BaseModel):
     total: int
 
 
+class UserMembershipRead(BaseModel):
+    """One project membership row for the workspace governance read
+    (Pass 62 PR-CB) — deliberately minimal fields (v62.1 R1-(2))."""
+
+    project_id: uuid.UUID
+    project_key: str
+    project_name: str
+    role: str
+    archived: bool
+
+
+class UserMembershipList(BaseModel):
+    items: list[UserMembershipRead]
+    total: int
+
+
 def _clean_display_name(v: str) -> str:
     v = v.strip()
     if not 1 <= len(v) <= 120:
