@@ -3458,6 +3458,8 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            /** Intake Item Id */
+            intake_item_id?: string | null;
             /** Kind */
             kind: string;
             /**
@@ -3480,6 +3482,8 @@ export interface components {
             commented: boolean;
             /** Due Alerts */
             due_alerts: boolean;
+            /** Intake */
+            intake: boolean;
             /** Mention */
             mention: boolean;
             /** Watched */
@@ -3496,6 +3500,8 @@ export interface components {
             commented?: boolean | null;
             /** Due Alerts */
             due_alerts?: boolean | null;
+            /** Intake */
+            intake?: boolean | null;
             /** Mention */
             mention?: boolean | null;
             /** Watched */

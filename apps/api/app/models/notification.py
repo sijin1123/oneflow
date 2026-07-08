@@ -17,6 +17,8 @@ NOTIFICATION_KINDS = (
     "mention",
     "due_soon",
     "overdue",
+    "intake_accepted",
+    "intake_declined",
 )
 
 
@@ -30,7 +32,7 @@ class Notification(Base):
     __table_args__ = (
         CheckConstraint(
             "kind IN ('assigned', 'watch_status', 'watch_comment', 'watch_assigned', 'mention',"
-            " 'due_soon', 'overdue')",
+            " 'due_soon', 'overdue', 'intake_accepted', 'intake_declined')",
             name="notification_kind_allowed",
         ),
         # Feed query: a user's notifications newest-first.
@@ -55,6 +57,11 @@ class Notification(Base):
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
     kind: Mapped[str] = mapped_column(String(20), nullable=False)
+    # Anchor for WP-less intake notifications (Pass 49); SET NULL degrades the
+    # web route to the intake page.
+    intake_item_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("intake_items.id", ondelete="SET NULL"), nullable=True
+    )
     read: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()

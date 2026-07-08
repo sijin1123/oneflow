@@ -25,6 +25,10 @@ function message(n: Notification): string {
   // System-generated due alerts (Pass 40): no actor.
   if (n.kind === 'due_soon') return `'${subject}' 작업 기한이 내일입니다.`
   if (n.kind === 'overdue') return `'${subject}' 작업 기한이 지났습니다.`
+  // Intake verdicts (Pass 49): accepted deep-links to the converted WP;
+  // declined routes to the intake page (item highlighted when it survives).
+  if (n.kind === 'intake_accepted') return `접수 항목이 '${subject}' 작업으로 전환되었습니다.`
+  if (n.kind === 'intake_declined') return '접수 항목이 반영되지 않았습니다 — 인테이크에서 사유를 확인하세요.'
   return `${who}: ${subject}`
 }
 
@@ -42,6 +46,10 @@ export function NotificationBell() {
     setOpen(false)
     if (n.work_package_id) {
       navigate(`/projects/${n.project_id}/work-packages?wp=${n.work_package_id}`)
+    } else if (n.kind === 'intake_declined') {
+      // Item anchor survives deletion as a plain page route (v49.1 R1-①).
+      const anchor = n.intake_item_id ? `?item=${n.intake_item_id}` : ''
+      navigate(`/projects/${n.project_id}/intake${anchor}`)
     }
   }
 

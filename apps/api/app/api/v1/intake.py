@@ -13,6 +13,7 @@ from app.models.user import User
 from app.models.work_package import WorkPackage
 from app.schemas.intake import IntakeCreate, IntakeList, IntakeRead, IntakeTriage
 from app.services.activity import record_created
+from app.services.notification import record_intake_triage
 from app.services.sanitize import sanitize_html
 
 router = APIRouter()
@@ -139,6 +140,14 @@ async def triage_intake(
         # including the just-inserted work package.
         await session.rollback()
         raise HTTPException(status_code=409, detail="item was already triaged")
+    # Notify the submitter of a FINAL verdict only (Pass 49, v49.1 R1-③ —
+    # after the conditional UPDATE succeeded, inside the same transaction, so
+    # a concurrent triage can never leave an orphan or duplicate notification;
+    # snoozed is an interim state and stays silent).
+    if body.status in ("accepted", "declined", "duplicate"):
+        await record_intake_triage(
+            session, item=item, actor_id=user.id, accepted_wp_id=accepted_wp_id
+        )
     await session.commit()
     await session.refresh(item)
     name = (

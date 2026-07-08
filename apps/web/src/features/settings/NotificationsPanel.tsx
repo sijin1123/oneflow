@@ -18,6 +18,11 @@ const TOGGLES: Array<{ key: keyof NotificationSettings; label: string; hint: str
     label: '기한 알림',
     hint: '담당 작업 기한이 내일이거나 지나면 알립니다.',
   },
+  {
+    key: 'intake',
+    label: '접수 판정 알림',
+    hint: '내가 제출한 접수 항목이 판정되면 알립니다.',
+  },
 ]
 
 /* Personal notification preferences (PR-E2) — applies to NEW notifications

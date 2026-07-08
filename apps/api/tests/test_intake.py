@@ -134,3 +134,127 @@ async def test_non_member_hidden(client, foreign_project):
     assert (await client.get(f"/api/v1/projects/{foreign}/intake")).status_code == 404
     res = await client.post(f"/api/v1/projects/{foreign}/intake", json={"title": "외부"})
     assert res.status_code == 404
+
+
+async def test_triage_notifications(client, app, project):
+    """Pass 49 PR-BO (v49.1): the submitter gets a FINAL-verdict notification
+    (accepted → WP-linked, declined/duplicate → item-anchored); snoozed and
+    self-triage stay silent; the triple recipient gate (exists/active/current
+    member) and the intake toggle gate creation."""
+    from sqlalchemy import text as sa_text
+
+    pid = project["id"]
+    me = (await client.get("/api/v1/me")).json()
+
+    # A second member to act as the submitter (the dev user triages).
+    other = (
+        await client.post(
+            "/api/v1/users", json={"email": "submitter@corp.com", "display_name": "제출자"}
+        )
+    ).json()
+    await client.post(
+        f"/api/v1/projects/{pid}/members", json={"email": "submitter@corp.com", "role": "member"}
+    )
+
+    async def submit_as_other(title):
+        item = await submit(client, pid, title=title)
+        async with app.state.sessionmaker() as session, session.begin():
+            await session.execute(
+                sa_text(
+                    "UPDATE intake_items SET submitted_by = CAST(:u AS uuid) "
+                    "WHERE id = CAST(:id AS uuid)"
+                ).bindparams(u=other["id"], id=item["id"])
+            )
+        return item
+
+    async def notif_rows():
+        async with app.state.sessionmaker() as session:
+            return (
+                await session.execute(
+                    sa_text(
+                        "SELECT kind, work_package_id, intake_item_id, user_id::text "
+                        "FROM notifications WHERE kind LIKE 'intake_%' ORDER BY created_at"
+                    )
+                )
+            ).all()
+
+    # accepted → WP-linked notification to the submitter.
+    a = await submit_as_other("수락될 항목")
+    res = await client.post(
+        f"/api/v1/projects/{pid}/intake/{a['id']}/triage", json={"status": "accepted"}
+    )
+    assert res.status_code == 200, res.text
+    rows = await notif_rows()
+    assert len(rows) == 1
+    assert rows[0][0] == "intake_accepted"
+    assert rows[0][1] is not None and str(rows[0][2]) == a["id"]
+    assert rows[0][3] == other["id"]
+
+    # duplicate → intake_declined kind, item anchor, no WP.
+    b = await submit_as_other("중복 항목")
+    await client.post(
+        f"/api/v1/projects/{pid}/intake/{b['id']}/triage", json={"status": "duplicate"}
+    )
+    rows = await notif_rows()
+    assert rows[-1][0] == "intake_declined" and rows[-1][1] is None
+
+    # snoozed stays silent; self-triage (submitter == actor) stays silent.
+    c = await submit_as_other("보류 항목")
+    await client.post(
+        f"/api/v1/projects/{pid}/intake/{c['id']}/triage",
+        json={"status": "snoozed", "snooze_until": "2027-01-01"},
+    )
+    mine = await submit(client, pid, title="자기 판정")
+    await client.post(
+        f"/api/v1/projects/{pid}/intake/{mine['id']}/triage", json={"status": "declined"}
+    )
+    assert len(await notif_rows()) == 2
+    del me
+
+    # Toggle off gates creation; deactivated submitter is skipped.
+    async with app.state.sessionmaker() as session, session.begin():
+        await session.execute(
+            sa_text(
+                "INSERT INTO user_notification_settings (user_id, intake) "
+                "VALUES (CAST(:u AS uuid), false) "
+                "ON CONFLICT (user_id) DO UPDATE SET intake = false"
+            ).bindparams(u=other["id"])
+        )
+    d = await submit_as_other("토글 오프")
+    await client.post(
+        f"/api/v1/projects/{pid}/intake/{d['id']}/triage", json={"status": "declined"}
+    )
+    assert len(await notif_rows()) == 2
+
+    async with app.state.sessionmaker() as session, session.begin():
+        await session.execute(
+            sa_text(
+                "DELETE FROM user_notification_settings WHERE user_id = CAST(:u AS uuid)"
+            ).bindparams(u=other["id"])
+        )
+        await session.execute(
+            sa_text("UPDATE users SET is_active = false WHERE id = CAST(:u AS uuid)").bindparams(
+                u=other["id"]
+            )
+        )
+    e = await submit_as_other("비활성 제출자")
+    await client.post(
+        f"/api/v1/projects/{pid}/intake/{e['id']}/triage", json={"status": "declined"}
+    )
+    assert len(await notif_rows()) == 2
+
+    # Concurrent accept: exactly one WP and one notification (R1-③).
+    async with app.state.sessionmaker() as session, session.begin():
+        await session.execute(
+            sa_text("UPDATE users SET is_active = true WHERE id = CAST(:u AS uuid)").bindparams(
+                u=other["id"]
+            )
+        )
+    f = await submit_as_other("동시 판정")
+    r1, r2 = await asyncio.gather(
+        client.post(f"/api/v1/projects/{pid}/intake/{f['id']}/triage", json={"status": "accepted"}),
+        client.post(f"/api/v1/projects/{pid}/intake/{f['id']}/triage", json={"status": "accepted"}),
+    )
+    assert sorted([r1.status_code, r2.status_code]) == [200, 409]
+    rows = await notif_rows()
+    assert len(rows) == 3 and rows[-1][0] == "intake_accepted"

@@ -7,6 +7,7 @@ export type Notification = {
   kind: string
   project_id: string
   work_package_id: string | null
+  intake_item_id?: string | null
   work_package_subject: string | null
   actor_name: string | null
   read: boolean
@@ -55,6 +56,7 @@ export type NotificationSettings = {
   commented: boolean
   mention: boolean
   due_alerts: boolean
+  intake: boolean
 }
 
 export function useNotificationSettings() {
