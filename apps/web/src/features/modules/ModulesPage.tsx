@@ -4,6 +4,10 @@ import { useNavigate, useParams } from 'react-router-dom'
 
 import { EmptyState, ErrorState, ListSkeleton } from '@/components/shell/states'
 import { Badge } from '@/components/ui/badge'
+import { dayIndex, pct } from '@/features/work-packages/timeline'
+import { todayISO } from '@/lib/datetime'
+
+import { moduleBars } from './moduleTimeline'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
@@ -117,13 +121,13 @@ function ModuleRow({
    happens in the work-package drawer. */
 const LAYOUT_STORAGE_KEY = 'oneflow.modules.layout.v1'
 
-type ModuleLayout = 'list' | 'gallery'
+type ModuleLayout = 'list' | 'gallery' | 'timeline'
 
 /** Broken values fall back to list (#97 contract). */
 function loadLayout(): ModuleLayout {
   try {
     const raw = localStorage.getItem(LAYOUT_STORAGE_KEY)
-    return raw === 'gallery' ? 'gallery' : 'list'
+    return raw === 'gallery' || raw === 'timeline' ? raw : 'list'
   } catch {
     return 'list'
   }
@@ -174,6 +178,66 @@ function ModuleCard({ module, projectId }: { module: ProjectModule; projectId: s
   )
 }
 
+
+/* Timeline-lite (Pass 59): bars from start→target reusing the WP timeline's
+   UTC day helpers; modules without both dates list below. */
+function ModuleTimeline({ modules, projectId }: { modules: ProjectModule[]; projectId: string }) {
+  const navigate = useNavigate()
+  const todayIdx = dayIndex(todayISO()) ?? 0
+  const model = moduleBars(modules, todayIdx)
+  if (!model) {
+    return (
+      <p className="rounded-of border border-of-border bg-of-surface p-3 text-xs text-of-muted">
+        시작일과 목표일이 모두 있는 모듈이 없어 타임라인을 그릴 수 없습니다.
+      </p>
+    )
+  }
+  const left = (idx: number) => `${pct(idx - model.rangeStart, model.totalDays)}%`
+  const width = (b: { startIdx: number; endIdx: number }) =>
+    `${Math.max(pct(b.endIdx - b.startIdx + 1, model.totalDays), 1)}%`
+  const todayLeft =
+    todayIdx >= model.rangeStart && todayIdx <= model.rangeEnd ? left(todayIdx) : null
+  return (
+    <div className="space-y-2">
+      <div className="overflow-hidden rounded-of border border-of-border bg-of-surface">
+        {model.bars.map((b) => (
+          <div key={b.module.id} className="flex items-center border-b border-of-border/60 last:border-b-0">
+            <button
+              type="button"
+              className="w-40 shrink-0 truncate border-r border-of-border px-3 py-2 text-left text-[13px] hover:text-of-accent"
+              onClick={() =>
+                navigate(`/projects/${projectId}/work-packages?module_id=${b.module.id}`)
+              }
+            >
+              {b.module.name}
+            </button>
+            <div className="relative h-8 flex-1">
+              {todayLeft ? (
+                <div
+                  className="absolute top-0 h-full border-l-2 border-of-danger/70"
+                  style={{ left: todayLeft }}
+                  aria-hidden
+                />
+              ) : null}
+              <div
+                className="absolute top-2 h-4 rounded-sm bg-of-accent/70"
+                style={{ left: left(b.startIdx), width: width(b) }}
+                title={`${b.module.start_date} → ${b.module.target_date}`}
+                aria-label={`${b.module.name} 기간`}
+              />
+            </div>
+          </div>
+        ))}
+      </div>
+      {model.undated.length > 0 ? (
+        <p className="text-xs text-of-muted">
+          기간 미정 {model.undated.length}건: {model.undated.map((m) => m.name).join(', ')}
+        </p>
+      ) : null}
+    </div>
+  )
+}
+
 export function ModulesPage() {
   const { projectId } = useParams() as { projectId: string }
   const modules = useModules(projectId)
@@ -204,7 +268,7 @@ export function ModulesPage() {
           기능/릴리스 단위로 작업을 묶어 상태와 진행률을 봅니다. 작업 배정은 각 작업의 드로어에서 합니다.
         </p>
         <div className="flex shrink-0 items-center gap-1 text-xs">
-          {(['list', 'gallery'] as const).map((l) => (
+          {(['list', 'gallery', 'timeline'] as const).map((l) => (
             <button
               key={l}
               type="button"
@@ -216,7 +280,7 @@ export function ModulesPage() {
               }`}
               onClick={() => changeLayout(l)}
             >
-              {l === 'list' ? '목록' : '갤러리'}
+              {l === 'list' ? '목록' : l === 'gallery' ? '갤러리' : '타임라인'}
             </button>
           ))}
         </div>
@@ -276,7 +340,11 @@ export function ModulesPage() {
         />
       ) : (
         <div className="space-y-5">
-          {STATE_ORDER.map((state) => {
+          {layout === 'timeline' ? (
+            <ModuleTimeline modules={items} projectId={projectId} />
+          ) : null}
+          {layout !== 'timeline' &&
+            STATE_ORDER.map((state) => {
             const group = items.filter((m) => m.state === state)
             if (group.length === 0) return null
             return (
