@@ -4201,6 +4201,71 @@ test('설정 스토리지 탭이 사용량 바와 카운트를 보여준다', as
   await expect(page.getByText('업로드 파일 12건 · 외부 링크 3건', { exact: false })).toBeVisible()
 })
 
+test('포트폴리오 타임라인 토글이 프로젝트 막대·마일스톤을 그리고 딥링크한다', async ({ page }) => {
+  await mockApi(page)
+  await page.route('**/api/v1/reports/portfolio?**', (route) =>
+    route.fulfill({
+      json: {
+        items: [],
+        totals: {
+          projects: 0,
+          work_packages: 0,
+          open: 0,
+          overdue: 0,
+          budget: 0,
+          cost_total: 0,
+          hours_total: 0,
+        },
+        total: 0,
+      },
+    }),
+  )
+  await page.route('**/api/v1/reports/portfolio/timeline?**', (route) =>
+    route.fulfill({
+      json: {
+        items: [
+          {
+            project_id: project.id,
+            key: 'ONE',
+            name: 'OneFlow 도입',
+            archived: false,
+            start_date: '2026-07-01',
+            end_date: '2026-07-20',
+            open_work_package_count: 5,
+            milestones: [{ id: 'ms-1', name: 'v1 릴리스', due_date: '2026-07-15' }],
+          },
+          {
+            project_id: 'p-none',
+            key: 'EMP',
+            name: '<img src=x onerror=alert(1)>일정없음',
+            archived: false,
+            start_date: null,
+            end_date: null,
+            open_work_package_count: 0,
+            milestones: [],
+          },
+        ],
+        total: 2,
+      },
+    }),
+  )
+
+  await page.goto('/reports')
+  await page.getByRole('button', { name: '타임라인' }).click()
+  const chart = page.getByTestId('portfolio-gantt')
+  await expect(chart.locator(`[data-task-id="p-${project.id}"].gantt_task_line`)).toBeVisible()
+  await expect(chart.locator('.gantt_task_line.gantt_milestone')).toHaveCount(1)
+  // Undated project stays OUT of the chart with a notice (v75.1 R1-⑤)…
+  await expect(page.getByText('일정 없음 1건', { exact: false })).toBeVisible()
+  // …and hostile names never become elements (escape regression, R1-②).
+  await expect(chart.locator('img')).toHaveCount(0)
+
+  // Lane click deep-links into that project's own timeline (route exists).
+  await chart.locator(`[data-task-id="p-${project.id}"].gantt_task_line`).click({ force: true })
+  await expect(page).toHaveURL(new RegExp(`/projects/${project.id}/timeline`))
+  await expect(page.getByTestId('gantt-container')).toBeVisible()
+})
+
 test('포트폴리오 리포트가 행·합계·아카이브 토글을 보여준다', async ({ page }) => {
   await mockApi(page)
   const active = {

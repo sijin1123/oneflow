@@ -23,11 +23,19 @@ from app.core.dates import utc_today
 from app.db.session import get_session
 from app.models.cost_entry import CostEntry
 from app.models.member import ProjectMember
+from app.models.milestone import Milestone
 from app.models.project import Project
 from app.models.time_entry import TimeEntry
 from app.models.user import User
 from app.models.work_package import WorkPackage
-from app.schemas.report import PortfolioItem, PortfolioReportRead, PortfolioTotals
+from app.schemas.report import (
+    PortfolioItem,
+    PortfolioReportRead,
+    PortfolioTimelineItem,
+    PortfolioTimelineMilestone,
+    PortfolioTimelineRead,
+    PortfolioTotals,
+)
 
 router = APIRouter()
 
@@ -225,3 +233,82 @@ async def export_portfolio_csv(
         media_type="text/csv; charset=utf-8",
         headers={"Content-Disposition": 'attachment; filename="portfolio.csv"'},
     )
+
+
+@router.get("/reports/portfolio/timeline", response_model=PortfolioTimelineRead)
+async def portfolio_timeline(
+    include_archived: bool = Query(default=False),
+    limit: int = Query(default=200, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+) -> PortfolioTimelineRead:
+    """Cross-project lanes (Pass 75, v75.1): scope/order/paging are the
+    portfolio-report contract (#138); the lane span derives from the
+    project's dated work packages via an INDEPENDENT aggregate (min of any
+    start/due → max — join multiplication unrepresentable); the open count
+    reuses the SAME closed-status predicate; milestones come from ONE batch
+    query (dated only)."""
+    open_filter = WorkPackage.status.notin_(WP_CLOSED_STATUSES)
+    spans = (
+        select(
+            WorkPackage.project_id,
+            func.min(func.coalesce(WorkPackage.start_date, WorkPackage.due_date)).label("start"),
+            func.max(func.coalesce(WorkPackage.due_date, WorkPackage.start_date)).label("end"),
+            func.count().filter(open_filter).label("open"),
+        )
+        .group_by(WorkPackage.project_id)
+        .subquery()
+    )
+    base = (
+        select(
+            Project.id,
+            Project.key,
+            Project.name,
+            Project.archived_at,
+            spans.c.start,
+            spans.c.end,
+            func.coalesce(spans.c.open, 0),
+        )
+        .join(
+            ProjectMember,
+            (ProjectMember.project_id == Project.id) & (ProjectMember.user_id == user.id),
+        )
+        .outerjoin(spans, spans.c.project_id == Project.id)
+    )
+    if not include_archived:
+        base = base.where(Project.archived_at.is_(None))
+    total = (await session.execute(select(func.count()).select_from(base.subquery()))).scalar_one()
+    rows = (
+        await session.execute(
+            base.order_by(Project.name.asc(), Project.id.asc()).limit(limit).offset(offset)
+        )
+    ).all()
+    ids = [r[0] for r in rows]
+    ms_by_project: dict[uuid.UUID, list[PortfolioTimelineMilestone]] = {}
+    if ids:
+        ms_rows = (
+            await session.execute(
+                select(Milestone.project_id, Milestone.id, Milestone.name, Milestone.due_date)
+                .where(Milestone.project_id.in_(ids), Milestone.due_date.is_not(None))
+                .order_by(Milestone.due_date.asc(), Milestone.id.asc())
+            )
+        ).all()
+        for pid, mid, name, due in ms_rows:
+            ms_by_project.setdefault(pid, []).append(
+                PortfolioTimelineMilestone(id=mid, name=name, due_date=due)
+            )
+    items = [
+        PortfolioTimelineItem(
+            project_id=pid,
+            key=key,
+            name=name,
+            archived=archived_at is not None,
+            start_date=start,
+            end_date=end,
+            open_work_package_count=open_count,
+            milestones=ms_by_project.get(pid, []),
+        )
+        for (pid, key, name, archived_at, start, end, open_count) in rows
+    ]
+    return PortfolioTimelineRead(items=items, total=total)
