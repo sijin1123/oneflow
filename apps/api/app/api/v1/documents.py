@@ -10,6 +10,7 @@ into a surprising final state (PLAN v9.1 R1-②). Depth contract: root is depth
 1, a path holds at most MAX_DOCUMENT_DEPTH documents.
 """
 
+import re
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
@@ -21,9 +22,11 @@ from sqlalchemy import update as sa_update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.v1.attachments import INLINE_IMAGE_TYPES
 from app.core.auth import get_current_user
 from app.core.authz import is_member, require_active_project, require_member, require_writer
 from app.db.session import get_session
+from app.models.attachment import Attachment
 from app.models.document import MAX_DOCUMENT_DEPTH, DocumentWorkPackageLink, ProjectDocument
 from app.models.document_comment import ProjectDocumentComment
 from app.models.member import ProjectMember
@@ -45,7 +48,7 @@ from app.schemas.document_comment import (
     DocumentCommentList,
     DocumentCommentRead,
 )
-from app.services.sanitize import sanitize_html
+from app.services.sanitize import sanitize_document_html
 
 router = APIRouter()
 
@@ -204,13 +207,68 @@ async def create_document(
         project_id=project_id,
         parent_id=body.parent_id,
         title=body.title,
-        body=sanitize_html(body.body),
+        # CREATE cannot own inline images yet (v68.1 R1-①) — imgs drop here.
+        body=await _validate_inline_images(
+            session, project_id, None, sanitize_document_html(body.body)
+        ),
         author_id=user.id,
     )
     session.add(doc)
     await session.flush()
     await session.commit()
     return DocumentRead.model_validate(doc)
+
+
+# Inline images (Pass 68, v68.1 R1-①): only THIS document's own raster-image
+# attachments may appear as <img> — anything else (cross-project, another
+# document, deleted, non-image, malformed) drops the WHOLE tag. CREATE has no
+# document id yet, so document_id=None drops every img (insertion happens by
+# editing an existing document).
+_IMG_TAG_RE = re.compile(r"<img\b[^>]*>", re.IGNORECASE)
+_IMG_SRC_RE = re.compile(
+    r'src="/api/v1/attachments/([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-'
+    r'[0-9a-fA-F]{4}-[0-9a-fA-F]{12})/download"'
+)
+
+
+async def _validate_inline_images(
+    session: AsyncSession,
+    project_id: uuid.UUID,
+    document_id: uuid.UUID | None,
+    html: str | None,
+) -> str | None:
+    if not html or "<img" not in html.lower():
+        return html
+    tags = _IMG_TAG_RE.findall(html)
+    ids: set[uuid.UUID] = set()
+    for tag in tags:
+        m = _IMG_SRC_RE.search(tag)
+        if m:
+            ids.add(uuid.UUID(m.group(1)))
+    allowed: set[uuid.UUID] = set()
+    if ids and document_id is not None:
+        allowed = set(
+            (
+                await session.execute(
+                    select(Attachment.id).where(
+                        Attachment.id.in_(ids),
+                        Attachment.project_id == project_id,
+                        Attachment.document_id == document_id,
+                        Attachment.content_type.in_(INLINE_IMAGE_TYPES),
+                        Attachment.storage_key.is_not(None),
+                    )
+                )
+            ).scalars()
+        )
+
+    def _keep(match: re.Match) -> str:
+        tag = match.group(0)
+        m = _IMG_SRC_RE.search(tag)
+        if m and uuid.UUID(m.group(1)) in allowed:
+            return tag
+        return ""  # deterministic drop — no src-less img survives (R1-⑥)
+
+    return _IMG_TAG_RE.sub(_keep, html)
 
 
 @router.get("/documents/{doc_id}", response_model=DocumentRead)
@@ -240,7 +298,9 @@ async def update_document(
     if "title" in provided and body.title is not None:
         changes["title"] = body.title
     if "body" in provided:
-        changes["body"] = sanitize_html(body.body)
+        changes["body"] = await _validate_inline_images(
+            session, doc.project_id, doc.id, sanitize_document_html(body.body)
+        )
     if "parent_id" in provided:
         changes["parent_id"] = body.parent_id
         if body.parent_id is not None:

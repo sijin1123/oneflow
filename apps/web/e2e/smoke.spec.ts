@@ -2871,6 +2871,87 @@ test('문서 목록에서 문서를 열면 편집기가 제목과 본문을 보�
   expect(((await post).postDataJSON() as { body: string }).body).toBe('여백 메모')
 })
 
+test('문서 편집기에서 이미지를 업로드하면 본문에 img가 삽입되어 저장된다', async ({ page }) => {
+  await mockApi(page)
+  const doc = {
+    id: 'd1',
+    project_id: project.id,
+    parent_id: null,
+    title: '이미지 문서',
+    author_id: null,
+    version: 1,
+    created_at: '2026-07-01T00:00:00Z',
+    updated_at: '2026-07-01T00:00:00Z',
+  }
+  await page.route(`**/api/v1/projects/${project.id}/documents`, (route) =>
+    route.fulfill({ json: { items: [doc], total: 1 } }),
+  )
+  await page.route('**/api/v1/documents/d1/comments', (route) =>
+    route.fulfill({ json: { items: [], total: 0 } }),
+  )
+  await page.route('**/api/v1/documents/d1/work-package-links', (route) =>
+    route.fulfill({ json: { items: [], total: 0 } }),
+  )
+  await page.route('**/api/v1/documents/d1', async (route) => {
+    if (route.request().method() === 'PATCH') {
+      const sent = route.request().postDataJSON() as { body?: string }
+      await route.fulfill({ json: { ...doc, version: 2, body: sent.body ?? null } })
+      return
+    }
+    await route.fulfill({ json: { ...doc, body: '<p>본문</p>' } })
+  })
+  await page.route(
+    `**/api/v1/projects/${project.id}/attachments/upload**`,
+    (route) =>
+      route.fulfill({
+        status: 201,
+        json: {
+          id: 'att-img-1',
+          project_id: project.id,
+          work_package_id: null,
+          document_id: 'd1',
+          filename: 'shot.png',
+          content_type: 'image/png',
+          size_bytes: 3,
+          url: 'oneflow://attachments/att-img-1',
+          has_file: true,
+          uploaded_by: 'me-1',
+          created_at: '2026-07-01T00:00:00Z',
+        },
+      }),
+  )
+  await page.route(`**/api/v1/projects/${project.id}/attachments?**`, (route) =>
+    route.fulfill({ json: { items: [], total: 0 } }),
+  )
+
+  await page.goto(`/projects/${project.id}/documents/d1`)
+  await expect(page.getByLabel('문서 본문')).toBeVisible()
+
+  const uploadPost = page.waitForRequest(
+    (r) => r.method() === 'POST' && r.url().includes('/attachments/upload'),
+  )
+  await page.getByLabel('이미지 파일 선택').setInputFiles({
+    name: 'shot.png',
+    mimeType: 'image/png',
+    buffer: Buffer.from([137, 80, 78]),
+  })
+  const req = await uploadPost
+  expect(req.url()).toContain('document_id=d1')
+
+  // The editor now holds the img node with the canonical download URL.
+  await expect(
+    page.getByLabel('문서 본문').locator('img[src="/api/v1/attachments/att-img-1/download"]'),
+  ).toBeVisible()
+
+  // Saving sends the body containing the img tag.
+  const patch = page.waitForRequest(
+    (r) => r.method() === 'PATCH' && r.url().includes('/documents/d1'),
+  )
+  await page.getByRole('button', { name: '저장' }).click()
+  const sent = (await patch).postDataJSON() as { body: string }
+  expect(sent.body).toContain('/api/v1/attachments/att-img-1/download')
+})
+
 test('문서 트리가 계층을 들여쓰기로 보여주고 상위 페이지 변경을 저장한다', async ({ page }) => {
   await mockApi(page)
   const base = {

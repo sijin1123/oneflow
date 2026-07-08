@@ -2,10 +2,11 @@
    on write (nh3 allowlist), so this editor is a convenience layer, not the security
    boundary. StarterKit only, keeping the output within the server's allowlist. */
 
+import Image from '@tiptap/extension-image'
 import { EditorContent, useEditor } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
-import { Bold, Italic, List, ListOrdered } from 'lucide-react'
-import { useEffect } from 'react'
+import { Bold, Image as ImageIcon, Italic, List, ListOrdered } from 'lucide-react'
+import { useEffect, useRef } from 'react'
 
 import { cn } from '@/lib/utils'
 
@@ -13,11 +14,18 @@ type Props = {
   value: string
   onSave: (html: string) => void
   ariaLabel: string
+  /** Inline images (Pass 68): upload the file and resolve to the canonical
+      download URL. Only the document editor passes this — surfaces without
+      it (meetings, …) get no image button and the server rejects <img>. */
+  onImageUpload?: (file: File) => Promise<string>
 }
 
-export function RichTextEditor({ value, onSave, ariaLabel }: Props) {
+export function RichTextEditor({ value, onSave, ariaLabel, onImageUpload }: Props) {
+  const fileRef = useRef<HTMLInputElement>(null)
   const editor = useEditor({
-    extensions: [StarterKit],
+    extensions: onImageUpload
+      ? [StarterKit, Image.configure({ HTMLAttributes: { class: 'max-w-full' } })]
+      : [StarterKit],
     content: value || '',
     // CSR-only Vite app, but keep StrictMode's double-invoke from warning.
     immediatelyRender: false,
@@ -81,6 +89,37 @@ export function RichTextEditor({ value, onSave, ariaLabel }: Props) {
         >
           <ListOrdered size={13} />
         </button>
+        {onImageUpload ? (
+          <>
+            <button
+              type="button"
+              aria-label="이미지 삽입"
+              className={btn(false)}
+              onClick={() => fileRef.current?.click()}
+            >
+              <ImageIcon size={13} />
+            </button>
+            <input
+              ref={fileRef}
+              type="file"
+              accept="image/png,image/jpeg,image/gif,image/webp"
+              className="hidden"
+              aria-label="이미지 파일 선택"
+              onChange={async (e) => {
+                const file = e.target.files?.[0]
+                e.target.value = ''
+                if (!file) return
+                try {
+                  const src = await onImageUpload(file)
+                  editor.chain().focus().setImage({ src, alt: file.name }).run()
+                  onSave(editor.getHTML())
+                } catch {
+                  // Upload errors surface via the caller's mutation state.
+                }
+              }}
+            />
+          </>
+        ) : null}
       </div>
       <EditorContent editor={editor} />
     </div>
