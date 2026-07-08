@@ -1576,6 +1576,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/reports/portfolio": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Portfolio Report */
+        get: operations["portfolio_report_api_v1_reports_portfolio_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/reports/portfolio/export.csv": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Export Portfolio Csv */
+        get: operations["export_portfolio_csv_api_v1_reports_portfolio_export_csv_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/search": {
         parameters: {
             query?: never;
@@ -3759,6 +3793,74 @@ export interface components {
              * @enum {string}
              */
             viewer: "always" | "never" | "conditional";
+        };
+        /**
+         * PortfolioItem
+         * @description One project row of the portfolio report (Pass 63, v63.1).
+         *
+         *     Numbers reuse the existing contracts: counts share the list-rollup
+         *     predicates (WP_CLOSED_STATUSES, UTC-today overdue), cost_total the
+         *     dashboard's cost_entries sum, hours_total the time_entries sum — all as
+         *     plain floats (workspace single-currency assumption, same as budget).
+         */
+        PortfolioItem: {
+            /** Archived */
+            archived: boolean;
+            /** Budget */
+            budget: number | null;
+            /** Cost Total */
+            cost_total: number;
+            /** Health */
+            health: string | null;
+            /** Hours Total */
+            hours_total: number;
+            /** Key */
+            key: string;
+            /** Member Count */
+            member_count: number;
+            /** Name */
+            name: string;
+            /** Open Work Package Count */
+            open_work_package_count: number;
+            /** Overdue Count */
+            overdue_count: number;
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            /** Work Package Count */
+            work_package_count: number;
+        };
+        /** PortfolioReportRead */
+        PortfolioReportRead: {
+            /** Items */
+            items: components["schemas"]["PortfolioItem"][];
+            /** Total */
+            total: number;
+            totals: components["schemas"]["PortfolioTotals"];
+        };
+        /**
+         * PortfolioTotals
+         * @description Server-side sums over the RETURNED items (same statement snapshot —
+         *     the totals can never disagree with the rows they accompany). budget sums
+         *     only projects that have one set.
+         */
+        PortfolioTotals: {
+            /** Budget */
+            budget: number;
+            /** Cost Total */
+            cost_total: number;
+            /** Hours Total */
+            hours_total: number;
+            /** Open */
+            open: number;
+            /** Overdue */
+            overdue: number;
+            /** Projects */
+            projects: number;
+            /** Work Packages */
+            work_packages: number;
         };
         /**
          * ProjectActivityList
@@ -8387,6 +8489,70 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CsvImportResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    portfolio_report_api_v1_reports_portfolio_get: {
+        parameters: {
+            query?: {
+                include_archived?: boolean;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PortfolioReportRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_portfolio_csv_api_v1_reports_portfolio_export_csv_get: {
+        parameters: {
+            query?: {
+                include_archived?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
             /** @description Validation Error */

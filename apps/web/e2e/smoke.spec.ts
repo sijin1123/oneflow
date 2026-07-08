@@ -3646,3 +3646,82 @@ test('설정 스토리지 탭이 사용량 바와 카운트를 보여준다', as
   await expect(page.getByText('한도에 가까워지고 있습니다', { exact: false })).toBeVisible()
   await expect(page.getByText('업로드 파일 12건 · 외부 링크 3건', { exact: false })).toBeVisible()
 })
+
+test('포트폴리오 리포트가 행·합계·아카이브 토글을 보여준다', async ({ page }) => {
+  await mockApi(page)
+  const active = {
+    project_id: 'p-1',
+    key: 'ONE',
+    name: 'OneFlow 도입',
+    archived: false,
+    health: 'at_risk',
+    member_count: 3,
+    work_package_count: 12,
+    open_work_package_count: 7,
+    overdue_count: 2,
+    budget: 20000000,
+    cost_total: 5000000,
+    hours_total: 42.5,
+  }
+  const archived = {
+    ...active,
+    project_id: 'p-2',
+    key: 'OLD',
+    name: '종료 프로젝트',
+    archived: true,
+    health: null,
+    budget: null,
+    cost_total: 100,
+    hours_total: 1,
+  }
+  await page.route('**/api/v1/reports/portfolio?include_archived=false', (route) =>
+    route.fulfill({
+      json: {
+        items: [active],
+        totals: {
+          projects: 1,
+          work_packages: 12,
+          open: 7,
+          overdue: 2,
+          budget: 20000000,
+          cost_total: 5000000,
+          hours_total: 42.5,
+        },
+        total: 1,
+      },
+    }),
+  )
+  await page.route('**/api/v1/reports/portfolio?include_archived=true', (route) =>
+    route.fulfill({
+      json: {
+        items: [active, archived],
+        totals: {
+          projects: 2,
+          work_packages: 24,
+          open: 14,
+          overdue: 4,
+          budget: 20000000,
+          cost_total: 5000100,
+          hours_total: 43.5,
+        },
+        total: 2,
+      },
+    }),
+  )
+
+  await page.goto('/projects')
+  await page.getByRole('link', { name: '리포트' }).click()
+  await expect(page.getByRole('heading', { name: '포트폴리오 리포트' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'OneFlow 도입' })).toBeVisible()
+  await expect(page.getByText('주의')).toBeVisible() // health chip
+  await expect(page.getByText('25%')).toBeVisible() // 5,000,000 / 20,000,000
+  await expect(page.getByText('합계 · 1개 프로젝트')).toBeVisible()
+
+  // The archive toggle re-requests with the SERVER param — totals follow.
+  const archivedGet = page.waitForRequest((r) => r.url().includes('include_archived=true'))
+  await page.getByLabel('아카이브 포함').check()
+  await archivedGet
+  await expect(page.getByText('(아카이브)')).toBeVisible()
+  await expect(page.getByText('합계 · 2개 프로젝트')).toBeVisible()
+  await expect(page.getByText('미설정')).toBeVisible() // NULL budget row
+})
