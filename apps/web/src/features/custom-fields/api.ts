@@ -120,3 +120,18 @@ export function usePutCustomValue(wpId: string) {
     },
   })
 }
+
+
+export function useReorderCustomFields(projectId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (orderedIds: string[]) =>
+      api<CustomFieldList>(`/api/v1/projects/${projectId}/custom-fields/order`, {
+        method: 'PUT',
+        body: JSON.stringify({ ordered_ids: orderedIds }),
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['custom-fields', projectId] })
+    },
+  })
+}

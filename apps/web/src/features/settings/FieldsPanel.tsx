@@ -10,6 +10,7 @@ import {
   type CustomFieldType,
   FIELD_TYPE_LABELS,
   useCreateCustomField,
+  useReorderCustomFields,
   useCustomFields,
   useDeleteCustomField,
   useUpdateCustomField,
@@ -33,6 +34,16 @@ export function FieldsPanel({
   const create = useCreateCustomField(projectId)
   const update = useUpdateCustomField(projectId)
   const remove = useDeleteCustomField(projectId)
+  const reorder = useReorderCustomFields(projectId)
+
+  const move = (index: number, delta: -1 | 1) => {
+    const items = fields.data?.items ?? []
+    const target = index + delta
+    if (target < 0 || target >= items.length) return
+    const ids = items.map((f) => f.id)
+    ;[ids[index], ids[target]] = [ids[target], ids[index]]
+    reorder.mutate(ids)
+  }
 
   const [name, setName] = useState('')
   const [type, setType] = useState<CustomFieldType>('text')
@@ -64,7 +75,7 @@ export function FieldsPanel({
         </p>
         {fields.data && fields.data.total > 0 ? (
           <ul className="space-y-1">
-            {fields.data.items.map((f) => (
+            {fields.data.items.map((f, idx) => (
               <li
                 key={f.id}
                 className="flex items-center gap-2 rounded-of border border-of-border px-2 py-1.5 text-xs"
@@ -85,6 +96,24 @@ export function FieldsPanel({
                 </span>
                 {isOwner ? (
                   <>
+                    <button
+                      type="button"
+                      aria-label={`${f.name} 위로`}
+                      className="shrink-0 text-of-muted hover:text-of-accent disabled:opacity-30"
+                      disabled={reorder.isPending || idx === 0}
+                      onClick={() => move(idx, -1)}
+                    >
+                      ↑
+                    </button>
+                    <button
+                      type="button"
+                      aria-label={`${f.name} 아래로`}
+                      className="shrink-0 text-of-muted hover:text-of-accent disabled:opacity-30"
+                      disabled={reorder.isPending || idx === (fields.data?.items.length ?? 0) - 1}
+                      onClick={() => move(idx, 1)}
+                    >
+                      ↓
+                    </button>
                     <button
                       type="button"
                       className="shrink-0 text-[11px] text-of-muted hover:text-of-accent"

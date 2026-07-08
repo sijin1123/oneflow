@@ -780,6 +780,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{project_id}/custom-fields/order": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Reorder Custom Fields
+         * @description Owner-only atomic reorder (Pass 50 — the statuses /order contract
+         *     verbatim): ordered_ids must list EXACTLY this project's fields (active
+         *     and inactive); positions rewrite 0..n-1 in one transaction.
+         */
+        put: operations["reorder_custom_fields_api_v1_projects__project_id__custom_fields_order_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{project_id}/custom-fields/{field_id}": {
         parameters: {
             query?: never;
@@ -2416,6 +2438,14 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
+        };
+        /**
+         * CustomFieldReorder
+         * @description Exactly this project's field ids (active + inactive), new order.
+         */
+        CustomFieldReorder: {
+            /** Ordered Ids */
+            ordered_ids: string[];
         };
         /**
          * CustomFieldUpdate
@@ -6229,6 +6259,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CustomFieldRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reorder_custom_fields_api_v1_projects__project_id__custom_fields_order_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CustomFieldReorder"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CustomFieldList"];
                 };
             };
             /** @description Validation Error */
