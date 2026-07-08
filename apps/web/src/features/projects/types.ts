@@ -36,6 +36,8 @@ export type ProjectListItem = Project & {
   open_work_package_count: number
   overdue_count: number
   member_count: number
+  initiatives: Array<{ id: string; name: string }>
+  initiative_overflow: number
 }
 
 export type ProjectList = {

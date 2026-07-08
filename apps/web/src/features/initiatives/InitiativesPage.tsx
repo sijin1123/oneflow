@@ -1,6 +1,6 @@
 import { Trash2, X } from 'lucide-react'
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 
 import { EmptyState, ErrorState, ListSkeleton } from '@/components/shell/states'
 import { Badge } from '@/components/ui/badge'
@@ -34,7 +34,13 @@ function Progress({ done, total }: { done: number; total: number }) {
   )
 }
 
-function InitiativeCard({ initiative }: { initiative: Initiative }) {
+function InitiativeCard({
+  initiative,
+  highlighted = false,
+}: {
+  initiative: Initiative
+  highlighted?: boolean
+}) {
   const navigate = useNavigate()
   const update = useUpdateInitiative()
   const remove = useDeleteInitiative()
@@ -48,7 +54,11 @@ function InitiativeCard({ initiative }: { initiative: Initiative }) {
   const hiddenCount = initiative.connected_project_count - initiative.projects.length
 
   return (
-    <li className="space-y-2 rounded-of border border-of-border bg-of-surface p-3">
+    <li
+      className={`space-y-2 rounded-of border bg-of-surface p-3 ${
+        highlighted ? 'border-of-accent ring-1 ring-of-accent' : 'border-of-border'
+      }`}
+    >
       <div className="flex items-center gap-2">
         <span className="min-w-0 flex-1 truncate text-[13px] font-medium">{initiative.name}</span>
         <span className="shrink-0 text-[11px] text-of-muted">
@@ -217,6 +227,10 @@ function HealthReportRow({ initiative }: { initiative: Initiative }) {
 /* Cross-project initiatives (Pass 3 PR-L): strategic groupings with per-project
    progress roll-ups limited to the caller's member projects. */
 export function InitiativesPage() {
+  const [searchParams] = useSearchParams()
+  // Project-list chip deep link (Pass 51): highlight the target card;
+  // an unknown/invisible id silently degrades to the plain page.
+  const highlightId = searchParams.get('highlight')
   const initiatives = useInitiatives()
   const create = useCreateInitiative()
   const [name, setName] = useState('')
@@ -267,7 +281,7 @@ export function InitiativesPage() {
                 </h2>
                 <ul className="space-y-2">
                   {group.map((i) => (
-                    <InitiativeCard key={i.id} initiative={i} />
+                    <InitiativeCard key={i.id} initiative={i} highlighted={i.id === highlightId} />
                   ))}
                 </ul>
               </section>

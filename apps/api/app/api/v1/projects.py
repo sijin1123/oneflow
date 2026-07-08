@@ -11,6 +11,7 @@ from app.core.dates import utc_today
 from app.db.session import get_session
 from app.models.automation_rule import AutomationRule
 from app.models.custom_field import CustomField
+from app.models.initiative import Initiative, InitiativeProject
 from app.models.member import ProjectMember
 from app.models.project import Project
 from app.models.project_status import DEFAULT_STATUSES, ProjectStatus
@@ -20,6 +21,7 @@ from app.models.work_package import WP_CLOSED_STATUSES, WorkPackage
 from app.schemas.project import (
     ProjectCreate,
     ProjectCreateResponse,
+    ProjectInitiativeRef,
     ProjectList,
     ProjectListItem,
     ProjectRead,
@@ -29,6 +31,9 @@ from app.schemas.project import (
 from app.services.health import apply_health_patch
 
 router = APIRouter()
+
+# Top-N initiatives per project row (v51.1 R1-③); the rest is a count.
+INITIATIVE_ROLLUP_CAP = 5
 
 
 def _member_project_ids(user: User):
@@ -91,6 +96,22 @@ async def list_projects(
         ).all()
         member_agg = dict(member_rows)
 
+    # Initiative rollup (Pass 51, v51.1): a SEPARATE aggregate query — the
+    # many-to-many never joins into the row/count queries (no distortion).
+    # Connection implies visibility (every listed project is the caller's).
+    ini_agg: dict = {}
+    if ids:
+        ini_rows = (
+            await session.execute(
+                select(InitiativeProject.project_id, Initiative.id, Initiative.name)
+                .join(Initiative, InitiativeProject.initiative_id == Initiative.id)
+                .where(InitiativeProject.project_id.in_(ids))
+                .order_by(Initiative.name.asc(), Initiative.id.asc())
+            )
+        ).all()
+        for pid, ini_id, ini_name in ini_rows:
+            ini_agg.setdefault(pid, []).append(ProjectInitiativeRef(id=ini_id, name=ini_name))
+
     items = []
     for p in rows:
         item = ProjectListItem.model_validate(p)
@@ -99,6 +120,9 @@ async def list_projects(
         item.open_work_package_count = o
         item.overdue_count = ov
         item.member_count = member_agg.get(p.id, 0)
+        connected = ini_agg.get(p.id, [])
+        item.initiatives = connected[:INITIATIVE_ROLLUP_CAP]
+        item.initiative_overflow = max(0, len(connected) - INITIATIVE_ROLLUP_CAP)
         items.append(item)
     return ProjectList(items=items, total=total)
 

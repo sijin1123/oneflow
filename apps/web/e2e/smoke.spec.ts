@@ -70,6 +70,8 @@ const projectRollups = {
   open_work_package_count: 2,
   overdue_count: 0,
   member_count: 1,
+  initiatives: [],
+  initiative_overflow: 0,
 }
 const projects: ProjectList = { items: [{ ...project, ...projectRollups }], total: 1 }
 const workPackages: WorkPackageList = { items: [wpA, wpB], total: 2 }
@@ -3205,4 +3207,63 @@ test('프로젝트 목록 정렬이 순서를 바꾸고 방향 토글이 동작�
   await expect(names.first()).toContainText('베타') // 5 overdue first
   await page.getByLabel(/정렬 방향/).click() // back to asc
   await expect(names.first()).toContainText('알파')
+})
+
+
+test('프로젝트 목록 이니셔티브 열을 켜면 칩이 보이고 클릭 시 하이라이트로 이동한다', async ({ page }) => {
+  await mockApi(page)
+  await page.route('**/api/v1/projects', (route) =>
+    route.fulfill({
+      json: {
+        items: [
+          {
+            ...project,
+            ...projectRollups,
+            initiatives: [{ id: 'ini-9', name: '플랫폼 전략' }],
+            initiative_overflow: 2,
+          },
+        ],
+        total: 1,
+      },
+    }),
+  )
+  await page.route('**/api/v1/initiatives', (route) =>
+    route.fulfill({
+      json: {
+        items: [
+          {
+            id: 'ini-9',
+            name: '플랫폼 전략',
+            description: null,
+            owner_id: 'me-1',
+            owner_name: 'Dev User',
+            state: 'in_progress',
+            start_date: null,
+            target_date: null,
+            health: null,
+            health_note: null,
+            health_updated_by: null,
+            health_updated_at: null,
+            is_mine: true,
+            connected_project_count: 1,
+            projects: [],
+            created_at: '2026-07-01T00:00:00Z',
+            updated_at: '2026-07-01T00:00:00Z',
+          },
+        ],
+        total: 1,
+      },
+    }),
+  )
+
+  await page.goto('/projects')
+  // Opt-in column (default off keeps the original look).
+  await page.getByLabel('이니셔티브 열 표시').check()
+  await expect(page.getByRole('button', { name: '플랫폼 전략' })).toBeVisible()
+  await expect(page.getByText('외 2')).toBeVisible()
+
+  await page.getByRole('button', { name: '플랫폼 전략' }).click()
+  await expect(page).toHaveURL(/\/initiatives\?highlight=ini-9/)
+  // The target card carries the highlight ring.
+  await expect(page.locator('li.ring-1', { hasText: '플랫폼 전략' })).toBeVisible()
 })
