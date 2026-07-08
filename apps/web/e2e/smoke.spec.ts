@@ -1282,7 +1282,7 @@ test('드로어에서 워치 토글이 PUT/DELETE를 보낸다', async ({ page }
   await del
 })
 
-test('설정 알림 탭에서 토글이 PUT을 보낸다', async ({ page }) => {
+test('개인 설정에서 알림 토글이 PUT을 보내고 구 딥링크가 리다이렉트된다', async ({ page }) => {
   await mockApi(page)
   await page.route('**/api/v1/me', (route) =>
     route.fulfill({
@@ -1312,7 +1312,12 @@ test('설정 알림 탭에서 토글이 PUT을 보낸다', async ({ page }) => {
     })
   })
 
+  // The OLD project-settings deep link follows the moved panel (Pass 64).
   await page.goto(`/projects/${project.id}/settings?tab=notifications`)
+  await expect(page).toHaveURL(/\/settings$/)
+  await expect(page.getByRole('heading', { name: '개인 설정' })).toBeVisible()
+  await expect(page.getByText('dev@oneflow.local')).toBeVisible() // account card
+
   const put = page.waitForRequest(
     (r) => r.method() === 'PUT' && r.url().includes('/me/notification-settings'),
   )
