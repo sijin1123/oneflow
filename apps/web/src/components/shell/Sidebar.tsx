@@ -1,4 +1,4 @@
-import {Activity, Boxes, SlidersHorizontal,
+import {Activity, BarChart3, Boxes, SlidersHorizontal,
   UsersRound,
   Compass,
   ClipboardList,
@@ -60,6 +60,9 @@ export function Sidebar() {
           </NavLink>
           <NavLink to="/search" className={navLinkClass}>
             <Search /> 검색
+          </NavLink>
+          <NavLink to="/reports" className={navLinkClass}>
+            <BarChart3 /> 리포트
           </NavLink>
           <NavLink to="/settings" className={navLinkClass}>
             <SlidersHorizontal /> 개인 설정
