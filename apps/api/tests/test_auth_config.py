@@ -20,7 +20,18 @@ async def test_dev_mode_config_is_minimal(client):
         "oidc_issuer": None,
         "oidc_client_id": None,
         "has_client_secret": False,
+        "command_palette_enabled": False,
     }
+
+
+async def test_command_palette_config_flag_is_public_and_default_off():
+    settings = make_test_settings(command_palette_enabled="true")
+    app = create_app(settings)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        res = await client.get("/api/v1/auth/config")
+        assert res.status_code == 200
+        assert res.json()["command_palette_enabled"] is True
+    await app.state.engine.dispose()
 
 
 async def test_oidc_mode_answers_config_but_501s_everything_else():
@@ -40,6 +51,7 @@ async def test_oidc_mode_answers_config_but_501s_everything_else():
         assert body["oidc_issuer"] == "https://idp.example.com/realms/test"
         assert body["oidc_client_id"] == "oneflow-web"
         assert body["has_client_secret"] is True
+        assert body["command_palette_enabled"] is False
         # …and the secret VALUE appears nowhere in the response.
         assert "s3cr3t-value" not in res.text
 

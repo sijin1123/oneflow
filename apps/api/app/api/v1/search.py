@@ -46,6 +46,15 @@ def _member_project_ids(user: User):
     return select(ProjectMember.project_id).where(ProjectMember.user_id == user.id)
 
 
+def _visible_member_project_ids(user: User):
+    return (
+        select(ProjectMember.project_id)
+        .join(Project, ProjectMember.project_id == Project.id)
+        .where(ProjectMember.user_id == user.id)
+        .where(Project.archived_at.is_(None))
+    )
+
+
 @router.get("/search/work-packages", response_model=SearchResults)
 async def search_work_packages(
     q: str = Query(min_length=1, max_length=255),
@@ -92,7 +101,7 @@ async def unified_search(
     """Grouped workspace search (v14.1). Ordering contract: work packages keep
     the existing updated_at desc; documents/meetings sort by title asc,
     cycles/modules/initiatives by name asc; ties break on id asc."""
-    member_projects = _member_project_ids(user)
+    visible_member_projects = _visible_member_project_ids(user)
     probe = limit + 1  # limit+1 fetch → truncated without a COUNT round-trip
 
     def scoped(model, text_col, *content_cols):
@@ -104,7 +113,7 @@ async def unified_search(
         return (
             select(model, Project.key, Project.name)
             .join(Project, model.project_id == Project.id)
-            .where(model.project_id.in_(member_projects))
+            .where(model.project_id.in_(visible_member_projects))
             .where(Project.archived_at.is_(None))
             .where(match)
         )
@@ -153,7 +162,8 @@ async def unified_search(
         )
     ).all()
     # Initiatives are workspace-level: visible if you created one or you are a
-    # member of at least one connected project (existing derived-visibility rule).
+    # member of at least one connected *visible* project. Hidden/archived-only
+    # connections must not affect counts, truncation, or snippets in global search.
     initiative_rows = (
         (
             await session.execute(
@@ -164,7 +174,7 @@ async def unified_search(
                         Initiative.owner_id == user.id,
                         Initiative.id.in_(
                             select(InitiativeProject.initiative_id).where(
-                                InitiativeProject.project_id.in_(member_projects)
+                                InitiativeProject.project_id.in_(visible_member_projects)
                             )
                         ),
                     )

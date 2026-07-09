@@ -54,6 +54,12 @@ def test_dev_allow_nonlocal_strict_parse():
     assert make_test_settings(dev_allow_nonlocal="true").dev_allow_nonlocal_enabled
 
 
+def test_command_palette_flag_strict_parse():
+    _expect_invalid(command_palette_enabled="TRUE")  # exactly "true" only
+    _expect_invalid(command_palette_enabled="1")
+    assert make_test_settings(command_palette_enabled="true").command_palette_is_enabled
+
+
 def test_dev_allow_nonlocal_forbidden_outside_dev_test():
     _expect_invalid(
         env="production",
