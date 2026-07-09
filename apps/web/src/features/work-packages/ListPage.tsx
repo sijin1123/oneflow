@@ -1,9 +1,10 @@
-import { Download } from 'lucide-react'
-import { useState } from 'react'
+import { Download, Search, X } from 'lucide-react'
+import { type FormEvent, useEffect, useState } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
 
 import { EmptyState, ErrorState, ListSkeleton } from '@/components/shell/states'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { useCustomFields } from '@/features/custom-fields/api'
 import { ReadOnlyNotice } from '@/components/shell/ReadOnlyNotice'
@@ -35,6 +36,20 @@ import { PRIORITY_LABELS, STATUS_LABELS } from './types'
 import { useStatusLabels } from './useStatusLabels'
 import { useTypeLabels } from './useTypeLabels'
 
+const VIEW_CONTROL_KEYS = [
+  'status',
+  'priority',
+  'type',
+  'assignee_id',
+  'cycle_id',
+  'module_id',
+  'q',
+  'columns',
+  'sort',
+  'cf_field',
+  'cf_op',
+  'cf_value',
+] as const
 
 /* Custom-column cell (Pass 67): the requested field list is the source of
    truth — a missing value renders as an empty cell (v67.1 R1-⑥). */
@@ -104,6 +119,13 @@ export function ListPage() {
     writeColumns(columns, next)
   }
   const sort = parseWorkPackageSort(searchParams.get('sort'))
+  const query = searchParams.get('q') ?? ''
+  const [queryDraft, setQueryDraft] = useState(query)
+
+  useEffect(() => {
+    setQueryDraft(query)
+  }, [query])
+
   const setSort = (value: WorkPackageSort) => {
     setSearchParams(
       (prev) => {
@@ -116,6 +138,42 @@ export function ListPage() {
       { replace: true },
     )
   }
+  const submitSearch = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev)
+        const trimmed = queryDraft.trim()
+        if (trimmed) next.set('q', trimmed)
+        else next.delete('q')
+        return next
+      },
+      { replace: true },
+    )
+  }
+  const clearSearch = () => {
+    setQueryDraft('')
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev)
+        next.delete('q')
+        return next
+      },
+      { replace: true },
+    )
+  }
+  const clearViewControls = () => {
+    setQueryDraft('')
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev)
+        VIEW_CONTROL_KEYS.forEach((key) => next.delete(key))
+        return next
+      },
+      { replace: true },
+    )
+  }
+  const activeControlCount = VIEW_CONTROL_KEYS.filter((key) => searchParams.get(key)).length
   const listFilters =
     customColumns.length > 0 ? { ...filters, custom_fields: customColumns.join(',') } : filters
   const { data, isPending, isError, error, refetch } = useWorkPackages(projectId, listFilters)
@@ -170,38 +228,77 @@ export function ListPage() {
   return (
     <div className="flex h-full flex-col">
       {members.data && !canWrite ? <ReadOnlyNotice className="mx-4 mt-2" /> : null}
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-of-border px-4 py-2">
-        <Filters projectId={projectId} />
-        <div className="flex items-center gap-2">
-          {data ? (
-            <span className="text-xs text-of-muted">
-              {data.items.length < data.total
-                ? `${data.total}건 중 ${data.items.length}건 표시 (검색·필터로 좁혀 주세요)`
-                : `${data.total}건`}
-            </span>
-          ) : null}
-          <DisplayMenu
-            sort={sort}
-            columns={columns}
-            customColumns={customColumns}
-            customFields={customFields.data?.items ?? []}
-            onSortChange={setSort}
-            onToggleColumn={toggleColumn}
-            onToggleCustomColumn={toggleCustomColumn}
+      <div className="border-b border-of-border bg-of-surface">
+        <div className="flex flex-col gap-2 px-4 py-2.5">
+          <div className="flex flex-col gap-2 xl:flex-row xl:items-center xl:justify-between">
+            <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+              <form onSubmit={submitSearch} className="flex min-w-[220px] flex-1 gap-2 sm:max-w-sm">
+                <div className="relative min-w-0 flex-1">
+                  <Search
+                    size={14}
+                    className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-of-muted"
+                  />
+                  <Input
+                    value={queryDraft}
+                    onChange={(event) => setQueryDraft(event.target.value)}
+                    placeholder="작업 검색"
+                    aria-label="작업 목록 검색어"
+                    className="h-7 pl-8 pr-7 text-xs"
+                  />
+                  {queryDraft ? (
+                    <button
+                      type="button"
+                      aria-label="작업 검색어 지우기"
+                      className="absolute right-1 top-1/2 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-of text-of-muted transition-colors hover:bg-of-surface-hover hover:text-of-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus"
+                      onClick={clearSearch}
+                    >
+                      <X size={12} />
+                    </button>
+                  ) : null}
+                </div>
+                <Button type="submit" size="sm" variant="outline">
+                  <Search size={13} /> 검색
+                </Button>
+              </form>
+              <Filters projectId={projectId} />
+            </div>
+
+            <div className="flex shrink-0 flex-wrap items-center gap-2">
+              {data ? (
+                <span className="rounded-of bg-of-surface-2 px-2 py-1 text-xs text-of-muted" aria-live="polite">
+                  {data.items.length < data.total
+                    ? `${data.total}건 중 ${data.items.length}건`
+                    : `${data.total}건`}
+                </span>
+              ) : null}
+              <DisplayMenu
+                sort={sort}
+                columns={columns}
+                customColumns={customColumns}
+                customFields={customFields.data?.items ?? []}
+                onSortChange={setSort}
+                onToggleColumn={toggleColumn}
+                onToggleCustomColumn={toggleCustomColumn}
+              />
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={exportCsv.isPending}
+                onClick={() => exportCsv.mutate()}
+              >
+                <Download size={14} /> 내보내기
+              </Button>
+              <ImportDialog projectId={projectId} />
+            </div>
+          </div>
+
+          <SavedFilters
+            projectId={projectId}
+            activeControlCount={activeControlCount}
+            onClearCurrentView={clearViewControls}
           />
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={exportCsv.isPending}
-            onClick={() => exportCsv.mutate()}
-          >
-            <Download size={14} /> 내보내기
-          </Button>
-          <ImportDialog projectId={projectId} />
         </div>
       </div>
-
-      <SavedFilters projectId={projectId} />
 
       {canWrite ? <NewWorkPackageInline projectId={projectId} /> : null}
 

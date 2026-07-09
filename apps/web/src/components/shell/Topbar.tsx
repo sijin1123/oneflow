@@ -1,5 +1,5 @@
 import { LogOut, Menu, Plus, Search, SlidersHorizontal } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 
 import { Button } from '@/components/ui/button'
@@ -148,6 +148,12 @@ export function Topbar({ onOpenMobileSidebar }: { onOpenMobileSidebar?: () => vo
   // Search (?q=) and inline creation (?new=1) are consumed by the list view
   // only — showing them on Board/Timeline would be dead controls (finding #6).
   const onListView = Boolean(projectId) && location.pathname.endsWith('/work-packages')
+  const query = searchParams.get('q') ?? ''
+  const [searchDraft, setSearchDraft] = useState(query)
+
+  useEffect(() => {
+    setSearchDraft(query)
+  }, [query])
 
   const onSearch = (value: string) => {
     setSearchParams(
@@ -190,7 +196,8 @@ export function Topbar({ onOpenMobileSidebar }: { onOpenMobileSidebar?: () => vo
               className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-of-muted"
             />
             <Input
-              defaultValue={searchParams.get('q') ?? ''}
+              value={searchDraft}
+              onChange={(event) => setSearchDraft(event.target.value)}
               onKeyDown={(e) => {
                 if (e.key === 'Enter') onSearch(e.currentTarget.value)
               }}

@@ -444,6 +444,10 @@ test('앱 셸과 프로젝트/워크패키지 목록이 렌더링된다', async 
     path: '../../docs/screenshots/redevelopment/ui-shell/desktop-list.png',
     fullPage: true,
   })
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/view-controls/desktop.png',
+    fullPage: true,
+  })
 })
 
 test('모바일 앱 셸에서 사이드바가 drawer로 열린다', async ({ page }) => {
@@ -452,6 +456,10 @@ test('모바일 앱 셸에서 사이드바가 drawer로 열린다', async ({ pag
   await page.goto(`/projects/${project.id}/work-packages`)
 
   await expect(page.getByRole('banner').getByText('Work Packages')).toBeVisible()
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/view-controls/mobile.png',
+    fullPage: true,
+  })
   await page.getByRole('button', { name: '사이드바 열기' }).click()
 
   const drawer = page.getByRole('dialog', { name: '모바일 내비게이션' })
@@ -2929,6 +2937,25 @@ test('현재 필터를 보드 레이아웃 공유 뷰로 저장한다', async ({
   expect(sent.layout).toBe('board')
   expect(sent.is_shared).toBe(true)
   expect(sent.params.status).toBe('todo')
+})
+
+test('목록 view controls가 검색과 초기화를 URL 상태로 공유한다', async ({ page }) => {
+  await mockApi(page)
+  await page.goto(`/projects/${project.id}/work-packages?status=todo&sort=subject`)
+
+  const listReq = page.waitForRequest(
+    (r) => r.url().includes('/work-packages?') && r.url().includes('q=API'),
+  )
+  await page.getByLabel('작업 목록 검색어').fill('API')
+  await page.getByRole('button', { name: '검색', exact: true }).click()
+  await listReq
+  await expect(page).toHaveURL(/q=API/)
+
+  await page.getByRole('button', { name: '현재 보기 초기화' }).click()
+  await expect(page.getByLabel('작업 목록 검색어')).toHaveValue('')
+  await expect(page).not.toHaveURL(/status=/)
+  await expect(page).not.toHaveURL(/sort=/)
+  await expect(page).not.toHaveURL(/q=/)
 })
 
 test('표시 열 구성이 URL을 따르고 저장 시 정규화된다', async ({ page }) => {
