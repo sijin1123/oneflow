@@ -371,6 +371,31 @@ test('앱 셸과 프로젝트/워크패키지 목록이 렌더링된다', async 
   // date-only string displayed verbatim — no timezone off-by-one (§6.1)
   await expect(page.getByText('2026-07-15')).toBeVisible()
   await page.screenshot({ path: '../../docs/screenshots/web-list.png', fullPage: true })
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/ui-shell/desktop-list.png',
+    fullPage: true,
+  })
+})
+
+test('모바일 앱 셸에서 사이드바가 drawer로 열린다', async ({ page }) => {
+  await mockApi(page)
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto(`/projects/${project.id}/work-packages`)
+
+  await expect(page.getByRole('banner').getByText('Work Packages')).toBeVisible()
+  await page.getByRole('button', { name: '사이드바 열기' }).click()
+
+  const drawer = page.getByRole('dialog', { name: '모바일 내비게이션' })
+  await expect(drawer).toBeVisible()
+  await expect(drawer.getByRole('link', { name: /Board/ })).toBeVisible()
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/ui-shell/mobile-drawer.png',
+    fullPage: true,
+  })
+
+  await drawer.getByRole('link', { name: /Board/ }).click()
+  await expect(drawer).toBeHidden()
+  await expect(page).toHaveURL(new RegExp(`/projects/${project.id}/board$`))
 })
 
 test('보드 뷰가 상태 컬럼으로 그려진다', async ({ page }) => {
