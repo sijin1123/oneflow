@@ -3785,6 +3785,81 @@ test('자동화 규칙 우선순위: 아래로 이동하면 순서를 담아 PUT
   expect(sent.ordered_ids).toEqual(['r2', 'r1'])
 })
 
+test('프로젝트 governance 표면은 모바일에서 워크플로우와 자동화를 안정적으로 보여준다', async ({ page }) => {
+  await mockApi(page)
+  await page.setViewportSize({ width: 390, height: 844 })
+  const statuses = [
+    { id: 'ps-1', project_id: project.id, key: 'todo', name: '할 일', position: 0 },
+    { id: 'ps-2', project_id: project.id, key: 'in_review', name: '검토 중', position: 1 },
+    { id: 'ps-3', project_id: project.id, key: 'done', name: '완료', position: 2 },
+  ]
+  const types = [
+    { id: 'pt-1', project_id: project.id, key: 'task', name: '작업', position: 0, is_active: true },
+    { id: 'pt-2', project_id: project.id, key: 'bug', name: '버그', position: 1, is_active: true },
+    {
+      id: 'pt-3',
+      project_id: project.id,
+      key: 'feature',
+      name: '기능',
+      position: 2,
+      is_active: false,
+    },
+  ]
+  await page.route(`**/api/v1/projects/${project.id}/statuses`, (route) =>
+    route.fulfill({ json: { items: statuses, total: statuses.length } }),
+  )
+  await page.route(`**/api/v1/projects/${project.id}/types`, (route) =>
+    route.fulfill({ json: { items: types, total: types.length } }),
+  )
+  await page.route(`**/api/v1/projects/${project.id}/automation-rules`, (route) =>
+    route.fulfill({
+      json: {
+        items: [
+          {
+            id: 'r1',
+            project_id: project.id,
+            name: '검수 시 긴급',
+            trigger_type: 'status_changed_to',
+            trigger_value: 'in_review',
+            action_type: 'set_priority',
+            action_value: 'urgent',
+            condition_field: 'type',
+            condition_value: 'bug',
+            position: 0,
+            is_active: true,
+            last_fired_at: '2026-07-06T09:00:00Z',
+            fired_count: 3,
+            created_at: '2026-07-06T00:00:00Z',
+          },
+        ],
+        total: 1,
+      },
+    }),
+  )
+  await page.route(`**/api/v1/projects/${project.id}/automation-rules/runs**`, (route) =>
+    route.fulfill({ json: { items: [], total: 0 } }),
+  )
+
+  await page.goto(`/projects/${project.id}/settings?tab=workflow`)
+  await expect(page.getByRole('region', { name: '워크플로우 거버넌스' })).toBeVisible()
+  await expect(page.getByLabel('in_review 상태 이름')).toHaveValue('검토 중')
+  await expect(page.getByRole('region', { name: '워크 아이템 타입' })).toContainText('2/3 활성')
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/governance-ui/mobile-workflow.png',
+    fullPage: true,
+  })
+
+  await page.getByRole('tab', { name: '자동화' }).click()
+  await expect(page.getByRole('region', { name: '자동화 규칙' })).toContainText('검수 시 긴급')
+  await expect(page.getByText(/그리고 타입이\(가\) '버그'일 때/)).toBeVisible()
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/governance-ui/mobile-automation.png',
+    fullPage: true,
+  })
+})
+
 test('AI 요약 플래그가 켜지면 드로어에서 요약을 생성한다', async ({ page }) => {
   await mockApi(page)
   // flag ON (registered after mockApi → precedence over the default OFF)
