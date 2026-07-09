@@ -518,7 +518,11 @@ async def bulk_update_work_packages(
         for t, f in (("status_changed_to", "status"), ("priority_changed_to", "priority"))
         if f in patch_fields
     }
-    candidates_cache: dict[frozenset, dict] = {}
+    # Keyed on the fired subset AND the row's pre_automation status/type/priority
+    # (v81.1 R1-③): rows with the same fired map but different pre-automation
+    # state can resolve an AND secondary condition differently, so a candidate
+    # set must never be reused across differing pre-automation state.
+    candidates_cache: dict[tuple, dict] = {}
 
     updated: list[uuid.UUID] = []
     unchanged: list[uuid.UUID] = []
@@ -528,9 +532,17 @@ async def bulk_update_work_packages(
             continue
         changes = {f: v for f, v in patch_fields.items() if getattr(wp, f) != v}
         row_fired = {t: patch_fields[f] for t, f in bulk_triggers.items() if f in changes}
-        cache_key = frozenset(row_fired.items())
+        pre_state = {f: changes.get(f, getattr(wp, f)) for f in ("status", "type", "priority")}
+        cache_key = (
+            frozenset(row_fired.items()),
+            pre_state["status"],
+            pre_state["type"],
+            pre_state["priority"],
+        )
         if cache_key not in candidates_cache:
-            candidates_cache[cache_key] = await change_candidates(session, project_id, row_fired)
+            candidates_cache[cache_key] = await change_candidates(
+                session, project_id, row_fired, pre_state
+            )
         auto_candidates = candidates_cache[cache_key]
         row_auto: list = []  # automation fills unset fields only (user wins)
         for field, candidate in auto_candidates.items():
@@ -781,7 +793,14 @@ async def patch_work_package(
     ):
         if changes.get(field) is not None and changes[field] != getattr(wp, field):
             fired[trigger_type] = changes[field]
-    auto_candidates: dict = await change_candidates(session, wp.project_id, fired)
+    # pre_automation state for an optional AND secondary condition (Pass 81):
+    # the WP's status/type/priority AFTER the user's change, BEFORE automation.
+    pre_automation_state = {
+        f: changes.get(f, getattr(wp, f)) for f in ("status", "type", "priority")
+    }
+    auto_candidates: dict = await change_candidates(
+        session, wp.project_id, fired, pre_automation_state
+    )
     for field, candidate in auto_candidates.items():
         changes.setdefault(field, candidate.value)
 

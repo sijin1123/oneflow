@@ -39,19 +39,28 @@ async def change_candidates(
     session: AsyncSession,
     project_id: uuid.UUID,
     fired: dict[str, str],
+    pre_automation_state: dict[str, str] | None = None,
 ) -> dict[str, AutomationCandidate]:
     """Winning candidate per target field for the USER-initiated changes in
     `fired` — a {trigger_type: new_value} map built ONLY from real (old≠new)
     changes (v41.1 R1-②; a no-op field never fires).
 
-    Pure computation — no counters, no log rows. Rules from ALL fired
-    triggers merge into ONE global order (created_at asc, id asc — no
-    inter-trigger precedence, v41.1 R1-⑤); the LAST rule per field wins
-    (reduced in memory, so a multi-rule pile-up can never emit intermediate
-    values downstream). Single-pass stays intact: candidates come only from
+    `pre_automation_state` (Pass 81) is the WP's {status,type,priority} AFTER the
+    user's change but BEFORE any automation write — the state an optional AND
+    secondary condition is evaluated against (v81.1 R1-②). A read-only equality
+    check, so single-pass stays intact.
+
+    Pure computation — no counters, no log rows. Rules from ALL fired triggers
+    merge into ONE global order (created_at asc, id asc). Winner policy
+    (v81.1 R1-①, specificity-first): per target field a CONDITIONAL rule whose
+    condition matches always beats an UNCONDITIONAL rule regardless of
+    created_at; within equal specificity the LAST rule wins. Implemented as two
+    ordered passes (unconditional first, then condition-matched) so the
+    conditional overwrites. Single-pass stays intact: candidates come only from
     the user's change, so priority_changed_to + set_priority cannot chain."""
     if not fired:
         return {}
+    state = pre_automation_state or {}
     match = sa_or(
         *[
             sa_and(
@@ -76,8 +85,20 @@ async def change_candidates(
         .scalars()
         .all()
     )
+
+    def _condition_holds(rule: AutomationRule) -> bool:
+        if rule.condition_field is None:
+            return True
+        return state.get(rule.condition_field) == rule.condition_value
+
+    # Only rules whose secondary condition (if any) holds are eligible.
+    eligible = [r for r in rules if _condition_holds(r)]
     candidates: dict[str, AutomationCandidate] = {}
-    for rule in rules:
+    # Two passes: unconditional first, then conditional — so a matched
+    # conditional rule wins its target field over any unconditional rule.
+    for rule in [r for r in eligible if r.condition_field is None] + [
+        r for r in eligible if r.condition_field is not None
+    ]:
         # Every action writes a field OTHER than status, so a rule can never
         # re-trigger itself or another status rule.
         if rule.action_type == "set_priority":

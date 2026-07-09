@@ -16,6 +16,22 @@ from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
+from app.models.work_package import WP_PRIORITIES, WP_STATUSES, WP_TYPES
+
+
+def _sql_in(values: tuple[str, ...]) -> str:
+    return ", ".join(f"'{v}'" for v in values)
+
+
+# Field-specific value vocabulary, fully closed at the DB level (v81.1 R1-④):
+# both-or-neither is absorbed — a NULL condition_value satisfies none of the OR
+# branches, so `condition_field IS NULL` is required whenever the value is NULL.
+_CONDITION_CHECK = (
+    "condition_field IS NULL"
+    f" OR (condition_field = 'status' AND condition_value IN ({_sql_in(WP_STATUSES)}))"
+    f" OR (condition_field = 'type' AND condition_value IN ({_sql_in(WP_TYPES)}))"
+    f" OR (condition_field = 'priority' AND condition_value IN ({_sql_in(WP_PRIORITIES)}))"
+)
 
 # Supported trigger/action vocabulary. Kept a closed CHECK-constrained set; the
 # columns are generic so more (trigger, action) pairs are additive later. Every
@@ -25,6 +41,12 @@ from app.db.base import Base
 # ruling required the audit trail first).
 TRIGGER_TYPES = ("status_changed_to", "type_changed_to", "priority_changed_to")
 ACTION_TYPES = ("set_priority", "set_assignee")
+# Optional AND secondary condition (Pass 81): a rule may require the WP's
+# pre_automation state (post-user-change, pre-automation-write) to equal
+# condition_value on condition_field. Closed vocabulary — same fields the
+# triggers watch, evaluated as read-only equality (never a write, so single-pass
+# stays intact). Both columns NULL = no secondary condition (legacy behavior).
+CONDITION_FIELDS = ("status", "type", "priority")
 
 
 class AutomationRule(Base):
@@ -42,6 +64,7 @@ class AutomationRule(Base):
         CheckConstraint(
             "action_type IN ('set_priority', 'set_assignee')", name="automation_action_allowed"
         ),
+        CheckConstraint(_CONDITION_CHECK, name="automation_condition_allowed"),
         Index("ix_automation_rules_project", "project_id"),
     )
 
@@ -55,6 +78,10 @@ class AutomationRule(Base):
     action_type: Mapped[str] = mapped_column(String(30), nullable=False)
     # 64: wide enough for a UUID string (set_assignee) — widened in 0036.
     action_value: Mapped[str] = mapped_column(String(64), nullable=False)
+    # Optional AND secondary condition (Pass 81) — both NULL = none. Evaluated as
+    # equality on the pre_automation state; a read-only check, never a write.
+    condition_field: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    condition_value: Mapped[str | None] = mapped_column(String(30), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     # Fire-audit surface. Since Pass 16: fired = the rule's change was ACTUALLY
     # applied (candidate selection alone no longer counts) — kept in lockstep

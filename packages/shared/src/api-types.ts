@@ -2288,6 +2288,10 @@ export interface components {
             action_type: string;
             /** Action Value */
             action_value: string;
+            /** Condition Field */
+            condition_field?: string | null;
+            /** Condition Value */
+            condition_value?: string | null;
             /**
              * Is Active
              * @default true
@@ -2316,6 +2320,10 @@ export interface components {
             action_type: string;
             /** Action Value */
             action_value: string;
+            /** Condition Field */
+            condition_field: string | null;
+            /** Condition Value */
+            condition_value: string | null;
             /**
              * Created At
              * Format: date-time
@@ -2394,6 +2402,10 @@ export interface components {
         AutomationRuleUpdate: {
             /** Action Value */
             action_value?: string | null;
+            /** Condition Field */
+            condition_field?: string | null;
+            /** Condition Value */
+            condition_value?: string | null;
             /** Is Active */
             is_active?: boolean | null;
             /** Name */

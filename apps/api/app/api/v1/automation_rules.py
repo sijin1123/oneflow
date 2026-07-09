@@ -128,6 +128,8 @@ async def create_automation_rule(
         trigger_value=body.trigger_value,
         action_type=body.action_type,
         action_value=body.action_value,
+        condition_field=body.condition_field,
+        condition_value=body.condition_value,
         is_active=body.is_active,
     )
     session.add(rule)
@@ -148,7 +150,17 @@ async def update_automation_rule(
 ) -> AutomationRuleRead:
     await require_role(session, project_id, user, {"owner"}, write=True)
     rule = await _get_owned_rule(session, project_id, rule_id)
-    provided = {k: v for k, v in body.model_dump(exclude_unset=True).items() if v is not None}
+    dumped = body.model_dump(exclude_unset=True)
+    cond_keys = {"condition_field", "condition_value"}
+    # Non-condition fields keep the "None means keep current" convention (v13.1).
+    provided = {k: v for k, v in dumped.items() if v is not None and k not in cond_keys}
+    # Condition pair (Pass 81): explicit presence of EITHER side replaces the
+    # whole pair — this is how a condition is cleared (send both null) or set
+    # (send both). Absent side defaults to null; the merged Create then enforces
+    # both-or-neither, so setting only one side 422s.
+    if cond_keys & dumped.keys():
+        provided["condition_field"] = dumped.get("condition_field")
+        provided["condition_value"] = dumped.get("condition_value")
     # Validate the MERGED rule with the same fan-in as create (v13.1 R1-③) —
     # a partial edit can never leave the trigger/action pair invalid.
     merged = {
@@ -157,6 +169,8 @@ async def update_automation_rule(
         "trigger_value": rule.trigger_value,
         "action_type": rule.action_type,
         "action_value": rule.action_value,
+        "condition_field": rule.condition_field,
+        "condition_value": rule.condition_value,
         "is_active": rule.is_active,
         **provided,
     }

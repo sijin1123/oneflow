@@ -10,6 +10,8 @@ export type AutomationRule = {
   trigger_value: string
   action_type: string
   action_value: string
+  condition_field: string | null
+  condition_value: string | null
   is_active: boolean
   last_fired_at: string | null
   fired_count: number
@@ -24,6 +26,8 @@ export type AutomationRuleInput = {
   trigger_value: string
   action_type: 'set_priority' | 'set_assignee'
   action_value: string
+  condition_field?: string | null
+  condition_value?: string | null
   is_active: boolean
 }
 

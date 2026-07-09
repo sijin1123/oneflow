@@ -2999,6 +2999,95 @@ test('설정에서 자동화 규칙을 보여주고 새 규칙을 추가한다',
   expect(typeSent.trigger_value).toBe('bug')
 })
 
+test('자동화 AND 보조 조건: 요약을 표시하고 조건을 담아 POST한다', async ({ page }) => {
+  await page.route('**/api/v1/projects', (route) => route.fulfill({ json: projects }))
+  await page.route('**/api/v1/me', (route) =>
+    route.fulfill({
+      json: { id: 'me-1', email: 'dev@oneflow.local', display_name: 'Dev User', is_active: true },
+    }),
+  )
+  await page.route('**/api/v1/me/notifications', (route) =>
+    route.fulfill({ json: { items: [], total: 0, unread: 0 } }),
+  )
+  await page.route(`**/api/v1/projects/${project.id}`, (route) =>
+    route.fulfill({ json: project }),
+  )
+  await page.route(`**/api/v1/projects/${project.id}/milestones`, (route) =>
+    route.fulfill({ json: { items: [], total: 0 } }),
+  )
+  await page.route(`**/api/v1/projects/${project.id}/statuses`, (route) =>
+    route.fulfill({ json: { items: [], total: 0 } }),
+  )
+  await page.route(`**/api/v1/projects/${project.id}/members`, (route) =>
+    route.fulfill({
+      json: {
+        items: [
+          { user_id: 'me-1', email: 'dev@oneflow.local', display_name: 'Dev User', role: 'owner' },
+        ],
+        total: 1,
+      },
+    }),
+  )
+  await page.route(`**/api/v1/projects/${project.id}/automation-rules`, async (route) => {
+    if (route.request().method() === 'POST') {
+      await route.fulfill({ status: 201, json: { id: 'r-new' } })
+      return
+    }
+    await route.fulfill({
+      json: {
+        items: [
+          {
+            id: 'r1',
+            project_id: project.id,
+            name: '검수+버그 시 긴급',
+            trigger_type: 'status_changed_to',
+            trigger_value: 'in_review',
+            action_type: 'set_priority',
+            action_value: 'urgent',
+            condition_field: 'type',
+            condition_value: 'bug',
+            is_active: true,
+            last_fired_at: null,
+            fired_count: 0,
+          },
+        ],
+        total: 1,
+      },
+    })
+  })
+  await page.route(`**/api/v1/projects/${project.id}/automation-rules/runs**`, (route) =>
+    route.fulfill({ json: { items: [], total: 0 } }),
+  )
+
+  await page.goto(`/projects/${project.id}/settings`)
+  await page.getByRole('tab', { name: '자동화' }).click()
+  // The conditional rule summary shows the AND clause.
+  await expect(page.getByText(/그리고 타입이\(가\) '버그'일 때/)).toBeVisible()
+
+  // Setting a secondary condition carries it into the POST.
+  await page.getByLabel('보조 조건 필드').selectOption('type')
+  await page.getByLabel('보조 조건 값').selectOption('bug')
+  const post = page.waitForRequest(
+    (r) => r.method() === 'POST' && r.url().includes('/automation-rules'),
+  )
+  await page.getByRole('button', { name: '규칙 추가' }).click()
+  const sent = (await post).postDataJSON() as {
+    condition_field: string | null
+    condition_value: string | null
+  }
+  expect(sent.condition_field).toBe('type')
+  expect(sent.condition_value).toBe('bug')
+
+  // Regression: '조건 없음' sends null condition (legacy unconditional rule).
+  await page.getByLabel('보조 조건 필드').selectOption('')
+  const plain = page.waitForRequest(
+    (r) => r.method() === 'POST' && r.url().includes('/automation-rules'),
+  )
+  await page.getByRole('button', { name: '규칙 추가' }).click()
+  const plainSent = (await plain).postDataJSON() as { condition_field: string | null }
+  expect(plainSent.condition_field).toBeNull()
+})
+
 test('AI 요약 플래그가 켜지면 드로어에서 요약을 생성한다', async ({ page }) => {
   await mockApi(page)
   // flag ON (registered after mockApi → precedence over the default OFF)
