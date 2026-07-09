@@ -538,6 +538,106 @@ test('보드 뷰가 상태 컬럼으로 그려진다', async ({ page }) => {
   await expect(page.getByTestId('board-lane')).toHaveCount(1)
 })
 
+test('보드 카드 액션 메뉴가 링크·복제·이동·전체 페이지 흐름을 연결한다', async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: {
+        writeText: async (text: string) => window.localStorage.setItem('__copied_board_card_link', text),
+      },
+    })
+  })
+  await mockApi(page)
+  await page.route(`**/api/v1/work-packages/${wpA.id}/duplicate`, (route) =>
+    route.fulfill({
+      status: 201,
+      json: {
+        work_package: { ...wpA, id: 'dup-board', subject: '(복사) 워크패키지 API 구현' },
+        skipped_custom_values: 0,
+      },
+    }),
+  )
+
+  const openCardActions = async () => {
+    const card = page.locator('article').filter({ hasText: '워크패키지 API 구현' }).first()
+    await card.hover()
+    const trigger = card.getByRole('button', { name: '카드 작업' })
+    await expect(trigger).toBeVisible()
+    await trigger.click()
+  }
+
+  await page.goto(`/projects/${project.id}/board`)
+
+  await openCardActions()
+  await page.getByRole('menuitem', { name: /링크 복사/ }).click()
+  await expect(page.getByRole('status')).toContainText('링크를 복사했습니다')
+  await expect
+    .poll(() => page.evaluate(() => window.localStorage.getItem('__copied_board_card_link')))
+    .toContain(`/projects/${project.id}/work-packages/${wpA.id}`)
+
+  await openCardActions()
+  const duplicatePost = page.waitForRequest(
+    (r) => r.method() === 'POST' && r.url().includes(`/work-packages/${wpA.id}/duplicate`),
+  )
+  await page.getByRole('menuitem', { name: '복제' }).click()
+  await duplicatePost
+  await expect(page.getByRole('status')).toContainText("'(복사) 워크패키지 API 구현' 생성됨")
+
+  await openCardActions()
+  await page.getByRole('menuitem', { name: '이동' }).click()
+  await expect(page).toHaveURL(new RegExp(`wp=${wpA.id}`))
+  await expect(page).toHaveURL(/move=1/)
+  await expect(page.getByRole('dialog').getByLabel('이동 대상 프로젝트')).toBeVisible()
+
+  await page.goto(`/projects/${project.id}/board`)
+  await openCardActions()
+  await page.getByRole('menuitem', { name: /전체 페이지/ }).click()
+  await expect(page).toHaveURL(new RegExp(`/projects/${project.id}/work-packages/${wpA.id}$`))
+})
+
+test('모바일 보드 카드 액션 메뉴는 hover 없이 열리고 폭을 넘지 않는다', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await mockApi(page)
+
+  await page.goto(`/projects/${project.id}/board`)
+  const card = page.locator('article').filter({ hasText: '워크패키지 API 구현' }).first()
+  const trigger = card.getByRole('button', { name: '카드 작업' })
+  await expect(trigger).toBeVisible()
+  await trigger.click()
+  await expect(page.getByRole('menuitem', { name: /상세 드로어/ })).toBeVisible()
+  await expect(page.getByRole('menuitem', { name: /링크 복사/ })).toBeVisible()
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)
+  expect(overflow).toBeLessThanOrEqual(1)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/board-card-actions-ui/mobile.png',
+    fullPage: true,
+  })
+})
+
+test('뷰어 보드 카드 액션 메뉴는 쓰기 액션 없이 읽기 전용으로 표시된다', async ({ page }) => {
+  await mockApi(page)
+  await page.route(`**/api/v1/projects/${project.id}/members`, (route) =>
+    route.fulfill({
+      json: {
+        items: [
+          { user_id: 'me-1', email: 'dev@oneflow.local', display_name: 'Dev User', role: 'viewer' },
+        ],
+        total: 1,
+      },
+    }),
+  )
+  await page.route(`**/api/v1/projects/${project.id}`, (route) => route.fulfill({ json: project }))
+
+  await page.goto(`/projects/${project.id}/board`)
+  const card = page.locator('article').filter({ hasText: '워크패키지 API 구현' }).first()
+  await card.hover()
+  await card.getByRole('button', { name: '카드 작업' }).click()
+  const menu = page.getByRole('menu')
+  await expect(menu.getByText('읽기 전용', { exact: true })).toBeVisible()
+  await expect(page.getByRole('menuitem', { name: '복제' })).toHaveCount(0)
+  await expect(page.getByRole('menuitem', { name: '이동' })).toHaveCount(0)
+})
+
 test('드로어에서 상태 변경 PATCH가 expected_version을 동봉한다', async ({ page }) => {
   await mockApi(page)
   await page.goto(`/projects/${project.id}/work-packages`)
