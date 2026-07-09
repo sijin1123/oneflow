@@ -5215,6 +5215,78 @@ test('사용자 이름을 클릭하면 프로젝트 멤버십 패널이 열린�
   await expect(panel).toBeHidden()
 })
 
+test('사용자 디렉터리는 모바일에서 계정 카드와 멤버십을 유지한다', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await mockApi(page)
+  const admin = {
+    id: 'me-1',
+    email: 'dev@oneflow.local',
+    display_name: 'Dev User',
+    is_active: true,
+    is_admin: true,
+    created_at: '2026-07-01T00:00:00Z',
+  }
+  const alex = {
+    id: 'u-alex',
+    email: 'alex@oneflow.local',
+    display_name: 'Alex Kim',
+    is_active: true,
+    is_admin: false,
+    created_at: '2026-07-02T00:00:00Z',
+  }
+  const oldUser = {
+    id: 'u-old',
+    email: 'old@oneflow.local',
+    display_name: 'Old Member',
+    is_active: false,
+    is_admin: false,
+    created_at: '2026-07-03T00:00:00Z',
+  }
+  await page.route('**/api/v1/users', (route) =>
+    route.fulfill({ json: { items: [admin, alex, oldUser], total: 3 } }),
+  )
+  await page.route('**/api/v1/users/u-alex/memberships', (route) =>
+    route.fulfill({
+      json: {
+        items: [
+          {
+            project_id: project.id,
+            project_key: project.key,
+            project_name: project.name,
+            role: 'member',
+            archived: false,
+          },
+        ],
+        total: 1,
+      },
+    }),
+  )
+
+  await page.goto('/admin/users')
+  await expect(page.getByRole('heading', { name: '사용자 관리' })).toBeVisible()
+  await expect(page.getByLabel('사용자 카드 목록')).toBeVisible()
+  await expect(page.getByText('alex@oneflow.local')).toBeVisible()
+  await expect(page.getByText('old@oneflow.local')).toBeVisible()
+
+  await page.getByRole('button', { name: '관리자' }).click()
+  await expect(page.getByText('dev@oneflow.local')).toBeVisible()
+  await expect(page.getByText('alex@oneflow.local')).toBeHidden()
+  await page.getByRole('button', { name: '전체' }).click()
+
+  const membershipsGet = page.waitForRequest((r) => r.url().includes('/users/u-alex/memberships'))
+  await page.getByRole('button', { name: 'Alex Kim' }).click()
+  await membershipsGet
+  const panel = page.getByLabel('프로젝트 멤버십')
+  await expect(panel.getByText('OneFlow 도입')).toBeVisible()
+  await expect(panel.getByText('· 멤버')).toBeVisible()
+  await expectNoHorizontalOverflow(page)
+  await page.evaluate(() => document.querySelector('main')?.scrollTo(0, 0))
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/user-directory-ui/mobile.png',
+    fullPage: true,
+  })
+})
+
 test('프로젝트 상태 보고를 저장하면 목록에 헬스 칩이 보인다', async ({ page }) => {
   await mockApi(page)
   const atRisk = {
