@@ -3,6 +3,7 @@ import {
   useNotificationSettings,
   useUpdateNotificationSettings,
 } from '@/features/notifications/api'
+import { cn } from '@/lib/utils'
 
 const TOGGLES: Array<{ key: keyof NotificationSettings; label: string; hint: string }> = [
   { key: 'assigned', label: '배정 알림', hint: '작업이 나에게 배정되면 알립니다.' },
@@ -28,14 +29,19 @@ const TOGGLES: Array<{ key: keyof NotificationSettings; label: string; hint: str
 /* Personal notification preferences (PR-E2) — applies to NEW notifications
    only; the existing inbox is never retro-hidden. Not owner-gated: everyone
    edits their own. */
-export function NotificationsPanel() {
+export function NotificationsPanel({ framed = true }: { framed?: boolean }) {
   const settings = useNotificationSettings()
   const update = useUpdateNotificationSettings()
 
   if (!settings.data) return null
 
   return (
-    <div className="space-y-2 rounded-of border border-of-border bg-of-surface p-3">
+    <div
+      className={cn(
+        'space-y-2',
+        framed && 'rounded-of border border-of-border bg-of-surface p-3',
+      )}
+    >
       <p className="text-xs font-medium">알림 설정 (내 계정)</p>
       <p className="text-xs text-of-muted">
         끄면 그 종류의 새 알림이 생성되지 않습니다. 이미 받은 알림은 그대로 남습니다.

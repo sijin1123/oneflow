@@ -1,6 +1,8 @@
+import type * as React from 'react'
 import { useQuery } from '@tanstack/react-query'
 
 import { ErrorState, ListSkeleton } from '@/components/shell/states'
+import { SettingsFrame } from '@/features/settings/SettingsShell'
 import { api } from '@/lib/api'
 
 type StatusRead = {
@@ -48,8 +50,12 @@ export function StatusPage() {
   if (isError) return <ErrorState error={error} onRetry={() => refetch()} />
 
   return (
-    <div className="mx-auto max-w-3xl space-y-4 p-6">
-      <h1 className="text-base font-semibold">시스템 상태</h1>
+    <SettingsFrame
+      eyebrow="Operations"
+      title="시스템 상태"
+      description="운영자가 배포 상태, 데이터베이스 리비전, 스토리지 한도와 워크스페이스 규모를 빠르게 확인하는 읽기 전용 화면입니다."
+      className="max-w-5xl"
+    >
       <div className="grid gap-3 sm:grid-cols-2">
         <Card title="애플리케이션">
           <Row label="버전" value={data.version} />
@@ -74,6 +80,6 @@ export function StatusPage() {
           <Row label="워크패키지" value={data.counts.work_packages?.toString() ?? '—'} />
         </Card>
       </div>
-    </div>
+    </SettingsFrame>
   )
 }

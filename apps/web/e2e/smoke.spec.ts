@@ -1977,6 +1977,106 @@ test('개인 설정에서 알림 토글이 PUT을 보내고 구 딥링크가 리
   expect(((await duePut).postDataJSON() as { due_alerts: boolean }).due_alerts).toBe(false)
 })
 
+test('settings/admin IA는 모바일 폭에서 표면별 탐색을 유지한다', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await mockApi(page)
+  await page.route(`**/api/v1/projects/${project.id}/permissions`, (route) =>
+    route.fulfill({
+      json: {
+        my_role: 'owner',
+        verbs: [
+          {
+            key: 'member.manage',
+            label: '멤버 추가·역할 변경·제거',
+            owner: 'always',
+            member: 'never',
+            viewer: 'never',
+            condition: null,
+            note: null,
+          },
+        ],
+      },
+    }),
+  )
+  await page.route('**/api/v1/users', (route) =>
+    route.fulfill({
+      json: {
+        items: [
+          {
+            id: 'me-1',
+            email: 'dev@oneflow.local',
+            display_name: 'Dev User',
+            is_active: true,
+            is_admin: true,
+            created_at: '2026-07-01T00:00:00Z',
+          },
+          {
+            id: 'u-alex',
+            email: 'alex@oneflow.local',
+            display_name: 'Alex Kim',
+            is_active: true,
+            is_admin: false,
+            created_at: '2026-07-02T00:00:00Z',
+          },
+        ],
+        total: 2,
+      },
+    }),
+  )
+  await page.route('**/api/v1/ops/status', (route) =>
+    route.fulfill({
+      json: {
+        version: '0.1.0',
+        database: { status: 'ok', current_revision: '0060' },
+        counts: { projects: 3, work_packages: 42 },
+        config: {
+          auth_mode: 'dev',
+          ai_summary_enabled: false,
+          storage_backend: 'local',
+          upload_max_bytes: 10485760,
+          project_storage_quota_bytes: 1073741824,
+        },
+      },
+    }),
+  )
+
+  await page.goto(`/projects/${project.id}/settings?tab=members`)
+  await expect(page.getByRole('heading', { name: '프로젝트 설정' })).toBeVisible()
+  await expect(page.getByRole('tab', { name: '멤버' })).toHaveAttribute('aria-selected', 'true')
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/settings-ia/project-settings-mobile.png',
+    fullPage: true,
+  })
+
+  await page.goto('/settings')
+  await expect(page.getByRole('heading', { name: '개인 설정' })).toBeVisible()
+  await expect(page.getByText('알림 설정 (내 계정)')).toBeVisible()
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/settings-ia/personal-settings-mobile.png',
+    fullPage: true,
+  })
+
+  await page.goto('/admin/users')
+  await expect(page.getByRole('heading', { name: '사용자 관리' })).toBeVisible()
+  await expect(page.getByText('alex@oneflow.local')).toBeVisible()
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/settings-ia/admin-users-mobile.png',
+    fullPage: true,
+  })
+
+  await page.goto('/status')
+  await expect(page.getByRole('heading', { name: '시스템 상태' })).toBeVisible()
+  await expect(page.getByText('0060')).toBeVisible()
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/settings-ia/status-mobile.png',
+    fullPage: true,
+  })
+})
+
 test('위험 구역에서 보관 확인 후 POST /archive를 보낸다', async ({ page }) => {
   await mockApi(page)
   await page.route('**/api/v1/me', (route) =>

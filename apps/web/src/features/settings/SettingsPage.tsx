@@ -1,3 +1,13 @@
+import {
+  Bot,
+  Database,
+  Flag,
+  GitBranch,
+  ListChecks,
+  Settings2,
+  ShieldAlert,
+  UsersRound,
+} from 'lucide-react'
 import { useCallback, useState } from 'react'
 import { Navigate, useParams, useSearchParams } from 'react-router-dom'
 
@@ -14,19 +24,20 @@ import { GeneralPanel } from './GeneralPanel'
 import { StoragePanel } from './StoragePanel'
 import { MembersPanel } from './MembersPanel'
 import { MilestonesPanel } from './MilestonesPanel'
+import { SettingsFrame, SettingsTabList, type SettingsNavItem } from './SettingsShell'
 
 /* Project settings as a tabbed control surface (expansion PLAN Pass 1 PR-A).
    Tabs live in the `?tab=` query so deep links and refreshes keep the section. */
 const TABS = [
-  { key: 'general', label: '일반' },
-  { key: 'members', label: '멤버' },
-  { key: 'workflow', label: '워크플로우' },
-  { key: 'milestones', label: '마일스톤' },
-  { key: 'fields', label: '필드' },
-  { key: 'automation', label: '자동화' },
-  { key: 'storage', label: '스토리지' },
-  { key: 'danger', label: '위험 구역' },
-] as const
+  { key: 'general', label: '일반', description: '프로젝트 정보와 상태', icon: Settings2 },
+  { key: 'members', label: '멤버', description: '역할과 권한', icon: UsersRound },
+  { key: 'workflow', label: '워크플로우', description: '상태와 타입', icon: GitBranch },
+  { key: 'milestones', label: '마일스톤', description: '릴리스 기준점', icon: Flag },
+  { key: 'fields', label: '필드', description: '커스텀 속성', icon: ListChecks },
+  { key: 'automation', label: '자동화', description: '규칙과 실행 조건', icon: Bot },
+  { key: 'storage', label: '스토리지', description: '용량과 파일 수', icon: Database },
+  { key: 'danger', label: '위험 구역', description: '보관과 파괴적 조치', icon: ShieldAlert },
+] as const satisfies readonly SettingsNavItem[]
 
 type TabKey = (typeof TABS)[number]['key']
 
@@ -56,43 +67,26 @@ export function SettingsPage() {
   const isOwner = myRole === 'owner'
 
   return (
-    <div className="mx-auto max-w-4xl p-6">
-      <h1 className="mb-1 text-base font-semibold">프로젝트 설정</h1>
-      <p className="mb-4 text-xs text-of-muted">
-        {isOwner ? '소유자는 모든 설정을 관리할 수 있습니다.' : '읽기 전용 — 관리는 소유자만 가능합니다.'}
-      </p>
-
-      <div className="flex flex-col gap-4 sm:flex-row">
-        <nav
-          role="tablist"
-          aria-label="설정 섹션"
-          className="flex shrink-0 gap-1 overflow-x-auto sm:w-40 sm:flex-col"
-        >
-          {TABS.map((t) => (
-            <button
-              key={t.key}
-              type="button"
-              role="tab"
-              id={`settings-tab-${t.key}`}
-              aria-selected={tab === t.key}
-              aria-controls="settings-panel"
-              className={`rounded-of px-3 py-1.5 text-left text-xs font-medium whitespace-nowrap ${
-                tab === t.key
-                  ? 'bg-of-accent-soft text-of-accent'
-                  : 'text-of-muted hover:bg-of-surface-2 hover:text-of-text'
-              }`}
-              onClick={() => setSearchParams(t.key === 'general' ? {} : { tab: t.key })}
-            >
-              {t.label}
-            </button>
-          ))}
-        </nav>
-
+    <SettingsFrame
+      eyebrow="Project settings"
+      title="프로젝트 설정"
+      description="프로젝트 기본 정보, 구성원, 워크플로우, 자동화, 스토리지와 위험 조치를 한 곳에서 관리합니다."
+      meta={isOwner ? '소유자 권한' : '읽기 전용'}
+    >
+      <div className="flex min-w-0 flex-col gap-4 lg:flex-row">
+        <SettingsTabList
+          items={TABS}
+          activeKey={tab}
+          ariaLabel="설정 섹션"
+          panelId="settings-panel"
+          tabIdPrefix="settings-tab"
+          onSelect={(key) => setSearchParams(key === 'general' ? {} : { tab: key })}
+        />
         <div
           id="settings-panel"
           role="tabpanel"
           aria-labelledby={`settings-tab-${tab}`}
-          className="min-w-0 flex-1"
+          className="min-w-0 flex-1 pb-8"
         >
           {tab === 'general' ? (
             <GeneralPanel projectId={projectId} isOwner={isOwner} onDirtyChange={onDirtyChange} />
@@ -119,6 +113,6 @@ export function SettingsPage() {
           {tab === 'danger' ? <DangerPanel isOwner={isOwner} /> : null}
         </div>
       </div>
-    </div>
+    </SettingsFrame>
   )
 }
