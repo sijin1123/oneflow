@@ -1,6 +1,14 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { Loader2, Search, X } from 'lucide-react'
-import { type KeyboardEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import {
+  type KeyboardEvent,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 
 import { Button } from '@/components/ui/button'
@@ -87,7 +95,7 @@ export function CommandPalette() {
     }
   }, [open])
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!open) return
     const onEscape = (event: globalThis.KeyboardEvent) => {
       if (event.key !== 'Escape') return

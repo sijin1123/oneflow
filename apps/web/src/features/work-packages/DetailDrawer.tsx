@@ -75,7 +75,7 @@ function DrawerBody({ wpId, projectId }: { wpId: string; projectId: string }) {
   const { data: wp, isPending, isError, error, refetch } = useWorkPackage(wpId)
 
   return (
-    <SheetContent title={wp ? wp.subject : '작업 상세'}>
+    <SheetContent title={wp ? wp.subject : '작업 상세'} className="max-w-4xl">
       {isPending ? (
         <ListSkeleton rows={4} />
       ) : isError ? (
@@ -183,6 +183,7 @@ function DrawerForm({ wp, projectId }: { wp: WorkPackage; projectId: string }) {
   const duplicate = useDuplicateWorkPackage(projectId)
   const canWrite = useCanWrite(projectId)
   const [moveOpen, setMoveOpen] = useState(false)
+  const [activeTab, setActiveTab] = useState<'overview' | 'activity'>('overview')
 
   // All editable fields are controlled and resynced from server data, so a 409
   // invalidate+refetch really does reload every field (review finding #2).
@@ -217,311 +218,344 @@ function DrawerForm({ wp, projectId }: { wp: WorkPackage; projectId: string }) {
         ? decideOnPatchError(409).message
         : patch.error.message
       : null
+  const createdByName = wp.created_by
+    ? members.data?.items.find((m) => m.user_id === wp.created_by)?.display_name ?? '알 수 없음'
+    : null
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-4">
       {saveError ? (
         <p role="alert" className="rounded-of bg-of-danger/10 px-3 py-2 text-xs text-of-danger">
           저장하지 못했습니다: {saveError}
         </p>
       ) : null}
-      {canWrite ? (
-        <div className="flex items-center justify-between">
-          <WatchRow wpId={wp.id} />
+      <header className="space-y-3 border-b border-of-border pb-4">
+        <div className="space-y-1.5">
+          <label htmlFor="wp-subject" className="text-xs font-medium text-of-muted">
+            제목
+          </label>
+          <Input
+            id="wp-subject"
+            readOnly={!canWrite}
+            value={subject}
+            disabled={!canWrite || patch.isPending}
+            className="h-9 text-base font-semibold"
+            onChange={(e) => setSubject(e.target.value)}
+            onBlur={() => {
+              const trimmed = subject.trim()
+              if (trimmed && trimmed !== wp.subject) send({ subject: trimmed })
+            }}
+          />
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2 text-xs text-of-muted">
+          <StatusChip status={wp.status} label={statusLabel(wp.status)} />
+          <PriorityChip priority={wp.priority} />
+          {createdByName ? <span>만든 사람: {createdByName}</span> : null}
+          <span>v{wp.version}</span>
+        </div>
+
+        {canWrite ? (
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="min-w-[220px] flex-1">
+              <WatchRow wpId={wp.id} />
+            </div>
+            <button
+              type="button"
+              className="rounded-of border border-of-border px-2 py-1 text-xs text-of-muted hover:bg-of-surface-2"
+              disabled={duplicate.isPending}
+              onClick={() => duplicate.mutate(wp.id)}
+            >
+              복제
+            </button>
+            <button
+              type="button"
+              className="rounded-of border border-of-border px-2 py-1 text-xs text-of-muted hover:bg-of-surface-2"
+              onClick={() => setMoveOpen((v) => !v)}
+            >
+              이동
+            </button>
+          </div>
+        ) : (
+          <ReadOnlyNotice />
+        )}
+        {canWrite && moveOpen ? <MoveSection wp={wp} projectId={projectId} /> : null}
+        {duplicate.isSuccess ? (
+          <p role="status" className="text-xs text-of-muted">
+            '{duplicate.data.work_package.subject}' 생성됨
+            {duplicate.data.skipped_custom_values > 0
+              ? ` · 복사되지 않은 커스텀 값 ${duplicate.data.skipped_custom_values}건`
+              : ''}
+          </p>
+        ) : null}
+        {duplicate.isError ? (
+          <p role="alert" className="text-xs text-of-danger">복제하지 못했습니다.</p>
+        ) : null}
+      </header>
+
+      <div role="tablist" aria-label="작업 상세 탭" className="flex gap-1 border-b border-of-border">
+        {[
+          ['overview', '개요'],
+          ['activity', '활동'],
+        ].map(([key, label]) => (
           <button
+            key={key}
             type="button"
-            className="rounded-of border border-of-border px-2 py-1 text-xs text-of-muted hover:bg-of-surface-2"
-            disabled={duplicate.isPending}
-            onClick={() => duplicate.mutate(wp.id)}
+            role="tab"
+            aria-selected={activeTab === key}
+            className={`border-b-2 px-3 py-2 text-xs font-medium transition-colors ${
+              activeTab === key
+                ? 'border-of-accent text-of-accent'
+                : 'border-transparent text-of-muted hover:text-of-fg'
+            }`}
+            onClick={() => setActiveTab(key as 'overview' | 'activity')}
           >
-            복제
+            {label}
           </button>
-          <button
-            type="button"
-            className="rounded-of border border-of-border px-2 py-1 text-xs text-of-muted hover:bg-of-surface-2"
-            onClick={() => setMoveOpen((v) => !v)}
-          >
-            이동
-          </button>
+        ))}
+      </div>
+
+      {activeTab === 'overview' ? (
+        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_18rem]">
+          <div className="space-y-4">
+            <div className="space-y-1.5">
+              <span className="text-xs font-medium text-of-muted">설명</span>
+              <Suspense
+                fallback={
+                  <div className="h-24 rounded-of border border-of-border bg-of-surface-2/40" />
+                }
+              >
+                <RichTextEditor
+                  editable={canWrite}
+                  value={wp.description ?? ''}
+                  ariaLabel="설명"
+                  onSave={(html) => {
+                    const next = html === '' ? null : html
+                    if (next !== (wp.description ?? null)) send({ description: next })
+                  }}
+                />
+              </Suspense>
+            </div>
+
+            <AiSummarySection wpId={wp.id} />
+
+            <TimeTrackingSection wp={wp} canWrite={canWrite} />
+
+            <CostSection wpId={wp.id} canWrite={canWrite} />
+
+            <CustomFieldsSection
+              wpId={wp.id}
+              projectId={projectId}
+              wpType={wp.type}
+              canWrite={canWrite}
+            />
+
+            <RelationsSection wpId={wp.id} projectId={projectId} canWrite={canWrite} />
+
+            <PagesSection wpId={wp.id} projectId={projectId} />
+
+            <AttachmentsSection wpId={wp.id} projectId={projectId} />
+          </div>
+
+          <aside className="order-first space-y-3 rounded-of border border-of-border bg-of-surface-2/35 p-3 lg:order-none">
+            <h3 className="text-xs font-semibold text-of-muted">속성</h3>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-1 [&>*]:min-w-0">
+              <div className="space-y-1.5">
+                <label htmlFor="wp-status" className="text-xs font-medium text-of-muted">
+                  상태
+                </label>
+                <Select
+                  id="wp-status"
+                  value={wp.status}
+                  disabled={!canWrite || patch.isPending}
+                  onChange={(e) => send({ status: e.target.value as WpStatus })}
+                >
+                  {WP_STATUSES.map((s) => (
+                    <option key={s} value={s}>
+                      {statusLabel(s)}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <label htmlFor="wp-priority" className="text-xs font-medium text-of-muted">
+                  우선순위
+                </label>
+                <Select
+                  id="wp-priority"
+                  value={wp.priority}
+                  disabled={!canWrite || patch.isPending}
+                  onChange={(e) => send({ priority: e.target.value as WpPriority })}
+                >
+                  {WP_PRIORITIES.map((p) => (
+                    <option key={p} value={p}>
+                      {PRIORITY_LABELS[p]}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <label htmlFor="wp-start" className="text-xs font-medium text-of-muted">
+                  시작일
+                </label>
+                {/* date-only string round-trip — never through JS Date (§6.1) */}
+                <Input
+                  id="wp-start"
+                  readOnly={!canWrite}
+                  type="date"
+                  value={startDate}
+                  disabled={!canWrite || patch.isPending}
+                  onChange={(e) => setStartDate(e.target.value)}
+                  onBlur={() => {
+                    const v = startDate || null
+                    if (v !== wp.start_date) send({ start_date: v })
+                  }}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label htmlFor="wp-due" className="text-xs font-medium text-of-muted">
+                  기한
+                </label>
+                <Input
+                  id="wp-due"
+                  readOnly={!canWrite}
+                  type="date"
+                  value={dueDate}
+                  disabled={!canWrite || patch.isPending}
+                  onChange={(e) => setDueDate(e.target.value)}
+                  onBlur={() => {
+                    const v = dueDate || null
+                    if (v !== wp.due_date) send({ due_date: v })
+                  }}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label htmlFor="wp-estimate" className="text-xs font-medium text-of-muted">
+                  예상 시간(h)
+                </label>
+                <Input
+                  id="wp-estimate"
+                  readOnly={!canWrite}
+                  type="number"
+                  step="0.5"
+                  min="0"
+                  value={estimate}
+                  disabled={!canWrite || patch.isPending}
+                  onChange={(e) => setEstimate(e.target.value)}
+                  onBlur={() => {
+                    const v = estimate.trim() === '' ? null : Number(estimate)
+                    if (v !== (wp.estimated_hours ?? null)) send({ estimated_hours: v })
+                  }}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label htmlFor="wp-type" className="text-xs font-medium text-of-muted">
+                  타입
+                </label>
+                <Select
+                  id="wp-type"
+                  value={wp.type}
+                  disabled={!canWrite || patch.isPending}
+                  onChange={(e) => send({ type: e.target.value })}
+                >
+                  {(projectTypes.data?.items ?? [])
+                    .sort((a, b) => a.position - b.position)
+                    .filter((t) => t.is_active || t.key === wp.type)
+                    .map((t) => (
+                      <option key={t.key} value={t.key}>
+                        {t.name}
+                        {t.is_active ? '' : ' (비활성)'}
+                      </option>
+                    ))}
+                  {projectTypes.data && projectTypes.data.total > 0 ? null : (
+                    <option value={wp.type}>{wp.type}</option>
+                  )}
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <label htmlFor="wp-milestone" className="text-xs font-medium text-of-muted">
+                  마일스톤
+                </label>
+                <Select
+                  id="wp-milestone"
+                  value={wp.milestone_id ?? ''}
+                  disabled={!canWrite || patch.isPending}
+                  onChange={(e) => send({ milestone_id: e.target.value || null })}
+                >
+                  <option value="">없음</option>
+                  {milestones.data?.items.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.name}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <label htmlFor="wp-cycle" className="text-xs font-medium text-of-muted">
+                  사이클
+                </label>
+                <Select
+                  id="wp-cycle"
+                  value={wp.cycle_id ?? ''}
+                  disabled={!canWrite || patch.isPending}
+                  onChange={(e) => send({ cycle_id: e.target.value || null })}
+                >
+                  <option value="">없음</option>
+                  {cycles.data?.items.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <label htmlFor="wp-module" className="text-xs font-medium text-of-muted">
+                  모듈
+                </label>
+                <Select
+                  id="wp-module"
+                  value={wp.module_id ?? ''}
+                  disabled={!canWrite || patch.isPending}
+                  onChange={(e) => send({ module_id: e.target.value || null })}
+                >
+                  <option value="">없음</option>
+                  {modules.data?.items.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.name}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <label htmlFor="wp-assignee" className="text-xs font-medium text-of-muted">
+                  담당자
+                </label>
+                <Select
+                  id="wp-assignee"
+                  value={wp.assignee_id ?? ''}
+                  disabled={!canWrite || patch.isPending}
+                  onChange={(e) => send({ assignee_id: e.target.value || null })}
+                >
+                  <option value="">미배정</option>
+                  {members.data?.items.map((m) => (
+                    <option key={m.user_id} value={m.user_id}>
+                      {m.display_name}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+            </div>
+          </aside>
         </div>
       ) : (
-        <ReadOnlyNotice />
+        <HistorySection wpId={wp.id} projectId={projectId} />
       )}
-      {canWrite && moveOpen ? <MoveSection wp={wp} projectId={projectId} /> : null}
-      {duplicate.isSuccess ? (
-        <p role="status" className="text-xs text-of-muted">
-          '{duplicate.data.work_package.subject}' 생성됨
-          {duplicate.data.skipped_custom_values > 0
-            ? ` · 복사되지 않은 커스텀 값 ${duplicate.data.skipped_custom_values}건`
-            : ''}
-        </p>
-      ) : null}
-      {duplicate.isError ? (
-        <p role="alert" className="text-xs text-of-danger">복제하지 못했습니다.</p>
-      ) : null}
-      <div className="space-y-1.5">
-        <label htmlFor="wp-subject" className="text-xs font-medium text-of-muted">
-          제목
-        </label>
-        <Input
-          id="wp-subject"
-          readOnly={!canWrite}
-          value={subject}
-          disabled={!canWrite || patch.isPending}
-          onChange={(e) => setSubject(e.target.value)}
-          onBlur={() => {
-            const trimmed = subject.trim()
-            if (trimmed && trimmed !== wp.subject) send({ subject: trimmed })
-          }}
-        />
-      </div>
-
-      <div className="grid grid-cols-2 gap-3">
-        <div className="space-y-1.5">
-          <label htmlFor="wp-status" className="text-xs font-medium text-of-muted">
-            상태
-          </label>
-          <Select
-            id="wp-status"
-            value={wp.status}
-            disabled={!canWrite || patch.isPending}
-            onChange={(e) => send({ status: e.target.value as WpStatus })}
-          >
-            {WP_STATUSES.map((s) => (
-              <option key={s} value={s}>
-                {statusLabel(s)}
-              </option>
-            ))}
-          </Select>
-        </div>
-        <div className="space-y-1.5">
-          <label htmlFor="wp-priority" className="text-xs font-medium text-of-muted">
-            우선순위
-          </label>
-          <Select
-            id="wp-priority"
-            value={wp.priority}
-            disabled={!canWrite || patch.isPending}
-            onChange={(e) => send({ priority: e.target.value as WpPriority })}
-          >
-            {WP_PRIORITIES.map((p) => (
-              <option key={p} value={p}>
-                {PRIORITY_LABELS[p]}
-              </option>
-            ))}
-          </Select>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-2 gap-3">
-        <div className="space-y-1.5">
-          <label htmlFor="wp-start" className="text-xs font-medium text-of-muted">
-            시작일
-          </label>
-          {/* date-only string round-trip — never through JS Date (§6.1) */}
-          <Input
-            id="wp-start"
-            readOnly={!canWrite}
-            type="date"
-            value={startDate}
-            disabled={!canWrite || patch.isPending}
-            onChange={(e) => setStartDate(e.target.value)}
-            onBlur={() => {
-              const v = startDate || null
-              if (v !== wp.start_date) send({ start_date: v })
-            }}
-          />
-        </div>
-        <div className="space-y-1.5">
-          <label htmlFor="wp-due" className="text-xs font-medium text-of-muted">
-            기한
-          </label>
-          <Input
-            id="wp-due"
-            readOnly={!canWrite}
-            type="date"
-            value={dueDate}
-            disabled={!canWrite || patch.isPending}
-            onChange={(e) => setDueDate(e.target.value)}
-            onBlur={() => {
-              const v = dueDate || null
-              if (v !== wp.due_date) send({ due_date: v })
-            }}
-          />
-        </div>
-      </div>
-
-      <div className="grid grid-cols-2 gap-3">
-        <div className="space-y-1.5">
-          <label htmlFor="wp-estimate" className="text-xs font-medium text-of-muted">
-            예상 시간(h)
-          </label>
-          <Input
-            id="wp-estimate"
-            readOnly={!canWrite}
-            type="number"
-            step="0.5"
-            min="0"
-            value={estimate}
-            disabled={!canWrite || patch.isPending}
-            onChange={(e) => setEstimate(e.target.value)}
-            onBlur={() => {
-              const v = estimate.trim() === '' ? null : Number(estimate)
-              if (v !== (wp.estimated_hours ?? null)) send({ estimated_hours: v })
-            }}
-          />
-        </div>
-        <div className="space-y-1.5">
-          <label htmlFor="wp-type" className="text-xs font-medium text-of-muted">
-            타입
-          </label>
-          <Select
-            id="wp-type"
-            value={wp.type}
-            disabled={!canWrite || patch.isPending}
-            onChange={(e) => send({ type: e.target.value })}
-          >
-            {(projectTypes.data?.items ?? [])
-              .sort((a, b) => a.position - b.position)
-              .filter((t) => t.is_active || t.key === wp.type)
-              .map((t) => (
-                <option key={t.key} value={t.key}>
-                  {t.name}
-                  {t.is_active ? '' : ' (비활성)'}
-                </option>
-              ))}
-            {projectTypes.data && projectTypes.data.total > 0 ? null : (
-              <option value={wp.type}>{wp.type}</option>
-            )}
-          </Select>
-        </div>
-        <div className="space-y-1.5">
-          <label htmlFor="wp-milestone" className="text-xs font-medium text-of-muted">
-            마일스톤
-          </label>
-          <Select
-            id="wp-milestone"
-            value={wp.milestone_id ?? ''}
-            disabled={!canWrite || patch.isPending}
-            onChange={(e) => send({ milestone_id: e.target.value || null })}
-          >
-            <option value="">없음</option>
-            {milestones.data?.items.map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.name}
-              </option>
-            ))}
-          </Select>
-        </div>
-        <div className="space-y-1.5">
-          <label htmlFor="wp-cycle" className="text-xs font-medium text-of-muted">
-            사이클
-          </label>
-          <Select
-            id="wp-cycle"
-            value={wp.cycle_id ?? ''}
-            disabled={!canWrite || patch.isPending}
-            onChange={(e) => send({ cycle_id: e.target.value || null })}
-          >
-            <option value="">없음</option>
-            {cycles.data?.items.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </Select>
-        </div>
-        <div className="space-y-1.5">
-          <label htmlFor="wp-module" className="text-xs font-medium text-of-muted">
-            모듈
-          </label>
-          <Select
-            id="wp-module"
-            value={wp.module_id ?? ''}
-            disabled={!canWrite || patch.isPending}
-            onChange={(e) => send({ module_id: e.target.value || null })}
-          >
-            <option value="">없음</option>
-            {modules.data?.items.map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.name}
-              </option>
-            ))}
-          </Select>
-        </div>
-      </div>
-
-      <div className="space-y-1.5">
-        <label htmlFor="wp-assignee" className="text-xs font-medium text-of-muted">
-          담당자
-        </label>
-        <Select
-          id="wp-assignee"
-          value={wp.assignee_id ?? ''}
-          disabled={!canWrite || patch.isPending}
-          onChange={(e) => send({ assignee_id: e.target.value || null })}
-        >
-          <option value="">미배정</option>
-          {members.data?.items.map((m) => (
-            <option key={m.user_id} value={m.user_id}>
-              {m.display_name}
-            </option>
-          ))}
-        </Select>
-      </div>
-
-      <div className="space-y-1.5">
-        <span className="text-xs font-medium text-of-muted">설명</span>
-        <Suspense
-          fallback={<div className="h-24 rounded-of border border-of-border bg-of-surface-2/40" />}
-        >
-          <RichTextEditor
-            editable={canWrite}
-            value={wp.description ?? ''}
-            ariaLabel="설명"
-            onSave={(html) => {
-              const next = html === '' ? null : html
-              if (next !== (wp.description ?? null)) send({ description: next })
-            }}
-          />
-        </Suspense>
-      </div>
-
-      <div className="flex items-center gap-2 border-t border-of-border pt-3 text-xs text-of-muted">
-        <StatusChip status={wp.status} label={statusLabel(wp.status)} />
-        <PriorityChip priority={wp.priority} />
-        <span className="ml-auto">
-          {wp.created_by
-            ? `만든 사람: ${
-                members.data?.items.find((m) => m.user_id === wp.created_by)?.display_name ??
-                '알 수 없음'
-              } · `
-            : ''}
-          v{wp.version}
-        </span>
-      </div>
-
-      <AiSummarySection wpId={wp.id} />
-
-      <TimeTrackingSection wp={wp} canWrite={canWrite} />
-
-      <CostSection wpId={wp.id} canWrite={canWrite} />
-
-      <CustomFieldsSection wpId={wp.id} projectId={projectId} wpType={wp.type} canWrite={canWrite} />
-
-      <RelationsSection wpId={wp.id} projectId={projectId} canWrite={canWrite} />
-
-      <PagesSection wpId={wp.id} projectId={projectId} />
-
-      <AttachmentsSection wpId={wp.id} projectId={projectId} />
 
       {patch.isPending ? (
         <p role="status" aria-live="polite" className="text-xs text-of-muted">
           저장 중…
         </p>
       ) : null}
-
-      <HistorySection wpId={wp.id} projectId={projectId} />
     </div>
   )
 }
@@ -532,14 +566,14 @@ function WatchRow({ wpId }: { wpId: string }) {
   const watching = watchers.data?.me_watching ?? false
   return (
     <div className="flex items-center justify-between rounded-of border border-of-border bg-of-surface px-3 py-2">
-      <span className="text-xs text-of-muted">
+      <span className="min-w-0 text-xs text-of-muted">
         워처 {watchers.data?.total ?? 0}명 — 상태·댓글·담당자 변경 알림을 받습니다.
       </span>
       <button
         type="button"
         aria-pressed={watching}
         disabled={setWatching.isPending || watchers.isPending}
-        className="flex items-center gap-1.5 rounded-of border border-of-border px-2 py-1 text-xs font-medium hover:bg-of-surface-2"
+        className="flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-of border border-of-border px-2 py-1 text-xs font-medium hover:bg-of-surface-2"
         onClick={() => setWatching.mutate(!watching)}
       >
         {watching ? <BellOff size={13} /> : <Bell size={13} />}
