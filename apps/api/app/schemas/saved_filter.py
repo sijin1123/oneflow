@@ -23,8 +23,20 @@ class SavedFilterParams(BaseModel):
     module_id: str | None = None
     q: str | None = None
     columns: str | None = None
+    # Custom-field filter (Pass 80): cf_field uuid + cf_op eq|has (+ cf_value
+    # only meaningful for eq; the client drops it for has, v80.1 R1-②).
+    cf_field: str | None = None
+    cf_op: str | None = None
+    cf_value: str | None = None
 
-    @field_validator("assignee_id", "cycle_id", "module_id")
+    @field_validator("cf_op")
+    @classmethod
+    def _cf_op(cls, v: str | None) -> str | None:
+        if v is not None and v not in ("eq", "has"):
+            raise ValueError("cf_op must be 'eq' or 'has'")
+        return v
+
+    @field_validator("assignee_id", "cycle_id", "module_id", "cf_field")
     @classmethod
     def _uuid_like(cls, v: str | None) -> str | None:
         if v is None:
