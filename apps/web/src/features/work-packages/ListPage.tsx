@@ -120,6 +120,7 @@ export function ListPage() {
   }
   const sort = parseWorkPackageSort(searchParams.get('sort'))
   const query = searchParams.get('q') ?? ''
+  const importOpen = searchParams.get('ops') === 'import'
   const [queryDraft, setQueryDraft] = useState(query)
 
   useEffect(() => {
@@ -168,6 +169,18 @@ export function ListPage() {
       (prev) => {
         const next = new URLSearchParams(prev)
         VIEW_CONTROL_KEYS.forEach((key) => next.delete(key))
+        next.delete('ops')
+        return next
+      },
+      { replace: true },
+    )
+  }
+  const setImportOpen = (nextOpen: boolean) => {
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev)
+        if (nextOpen) next.set('ops', 'import')
+        else next.delete('ops')
         return next
       },
       { replace: true },
@@ -288,7 +301,7 @@ export function ListPage() {
               >
                 <Download size={14} /> 내보내기
               </Button>
-              <ImportDialog projectId={projectId} />
+              <ImportDialog projectId={projectId} open={importOpen} onOpenChange={setImportOpen} />
             </div>
           </div>
 

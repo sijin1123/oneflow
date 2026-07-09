@@ -16,6 +16,7 @@ import { ModulesPage } from '@/features/modules/ModulesPage'
 import { MyWorkPage } from '@/features/my-work/MyWorkPage'
 import { ProjectsPage } from '@/features/projects/ProjectsPage'
 import { SearchPage } from '@/features/search/SearchPage'
+import { OperationsPage } from '@/features/ops/OperationsPage'
 import { StatusPage } from '@/features/ops/StatusPage'
 import { UsersPage } from '@/features/admin/UsersPage'
 import { PersonalSettingsPage } from '@/features/settings/PersonalSettingsPage'
@@ -60,6 +61,7 @@ export const router = createBrowserRouter([
           </Suspense>
         ),
       },
+      { path: 'operations', element: <OperationsPage /> },
       { path: 'status', element: <StatusPage /> },
       { path: 'admin/users', element: <UsersPage /> },
       { path: 'settings', element: <PersonalSettingsPage /> },

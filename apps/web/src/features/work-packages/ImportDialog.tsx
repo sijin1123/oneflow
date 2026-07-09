@@ -1,4 +1,5 @@
 import { Upload } from 'lucide-react'
+import type * as React from 'react'
 import { useState } from 'react'
 
 import { Button } from '@/components/ui/button'
@@ -15,12 +16,24 @@ const SAMPLE = 'subject,type,status,priority,start_date,due_date,estimated_hours
 const JIRA_SAMPLE = 'Issue key,Summary,Issue Type,Status,Priority,Due date'
 const LINEAR_SAMPLE = 'ID,Title,Status,Priority,Due Date'
 
-export function ImportDialog({ projectId }: { projectId: string }) {
-  const [open, setOpen] = useState(false)
+export function ImportDialog({
+  projectId,
+  open,
+  onOpenChange: onControlledOpenChange,
+  trigger,
+}: {
+  projectId: string
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
+  trigger?: React.ReactNode
+}) {
+  const [internalOpen, setInternalOpen] = useState(false)
   const [source, setSource] = useState<ImportSource>('oneflow')
   const [content, setContent] = useState('')
   const [result, setResult] = useState<CsvImportResult | null>(null)
   const importCsv = useImportCsv(projectId)
+  const actualOpen = open ?? internalOpen
+  const setOpen = onControlledOpenChange ?? setInternalOpen
 
   const reset = () => {
     setSource('oneflow')
@@ -44,11 +57,13 @@ export function ImportDialog({ projectId }: { projectId: string }) {
   const err = importCsv.error instanceof ApiError ? importCsv.error.message : null
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
+    <Sheet open={actualOpen} onOpenChange={onOpenChange}>
       <SheetTrigger asChild>
-        <Button variant="outline" size="sm">
-          <Upload size={14} /> 가져오기
-        </Button>
+        {trigger ?? (
+          <Button variant="outline" size="sm">
+            <Upload size={14} /> 가져오기
+          </Button>
+        )}
       </SheetTrigger>
       <SheetContent title="CSV 가져오기">
         <div className="space-y-4">

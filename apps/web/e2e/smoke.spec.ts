@@ -2077,6 +2077,42 @@ test('settings/admin IA는 모바일 폭에서 표면별 탐색을 유지한다'
   })
 })
 
+test('운영 허브는 import/export 진입을 모바일에서 유지한다', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await mockApi(page)
+  await page.route(`**/api/v1/projects/${project.id}/work-packages/export.csv`, (route) =>
+    route.fulfill({
+      body: 'subject,status\n워크패키지 API 구현,todo\n보드 뷰 구현,in_progress\n',
+      headers: {
+        'content-type': 'text/csv; charset=utf-8',
+        'x-oneflow-row-count': '2',
+        'x-oneflow-checksum': 'abc123',
+      },
+    }),
+  )
+
+  await page.goto('/operations')
+  await expect(page.getByRole('heading', { name: '운영 허브' })).toBeVisible()
+  await expect(page.getByLabel('데이터 작업').getByText('OneFlow 도입')).toBeVisible()
+  await expect(page.getByRole('link', { name: /시스템 상태/ })).toBeVisible()
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/operations-hub/mobile.png',
+    fullPage: true,
+  })
+
+  await page.getByRole('link', { name: /가져오기/ }).click()
+  await expect(page).toHaveURL(/ops=import/)
+  await expect(page.getByRole('dialog', { name: 'CSV 가져오기' })).toBeVisible()
+  await page.getByRole('button', { name: '닫기' }).click()
+  await expect(page).not.toHaveURL(/ops=import/)
+
+  await page.goto('/operations')
+  const exportReq = page.waitForRequest((req) => req.url().includes('/work-packages/export.csv'))
+  await page.getByRole('button', { name: /내보내기/ }).click()
+  await exportReq
+})
+
 test('위험 구역에서 보관 확인 후 POST /archive를 보낸다', async ({ page }) => {
   await mockApi(page)
   await page.route('**/api/v1/me', (route) =>

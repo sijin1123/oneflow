@@ -14,6 +14,7 @@ export type ExportSummary = { rowCount: number; checksum: string }
 async function downloadCsv(projectId: string): Promise<ExportSummary> {
   const res = await fetch(
     `${BASE_URL}/api/v1/projects/${projectId}/work-packages/export.csv`,
+    { credentials: 'include' },
   )
   if (!res.ok) {
     const requestId = res.headers.get('x-request-id')

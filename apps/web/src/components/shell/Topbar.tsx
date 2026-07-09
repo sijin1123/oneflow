@@ -19,6 +19,7 @@ const workspaceRouteLabels: Array<{ path: string; title: string; parent: string 
   { path: '/initiatives', title: '이니셔티브', parent: '워크스페이스' },
   { path: '/search', title: '검색', parent: '워크스페이스' },
   { path: '/reports', title: '리포트', parent: '워크스페이스' },
+  { path: '/operations', title: '운영 허브', parent: '운영' },
   { path: '/status', title: '시스템 상태', parent: '운영' },
   { path: '/admin/users', title: '사용자 관리', parent: '운영' },
   { path: '/settings', title: '개인 설정', parent: '설정' },
