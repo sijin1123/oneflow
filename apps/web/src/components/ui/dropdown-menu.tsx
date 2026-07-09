@@ -53,6 +53,18 @@ export function DropdownMenuCheckboxItem({
   )
 }
 
+export function DropdownMenuLabel({
+  className,
+  ...props
+}: React.ComponentPropsWithoutRef<typeof DropdownPrimitive.Label>) {
+  return (
+    <DropdownPrimitive.Label
+      className={cn('px-2 pb-1 pt-1.5 text-[11px] font-medium text-of-muted', className)}
+      {...props}
+    />
+  )
+}
+
 export function DropdownMenuItem({
   className,
   ...props
@@ -63,6 +75,18 @@ export function DropdownMenuItem({
         'cursor-default select-none rounded-[4px] px-2 py-1.5 outline-none data-[highlighted]:bg-of-surface-2',
         className,
       )}
+      {...props}
+    />
+  )
+}
+
+export function DropdownMenuSeparator({
+  className,
+  ...props
+}: React.ComponentPropsWithoutRef<typeof DropdownPrimitive.Separator>) {
+  return (
+    <DropdownPrimitive.Separator
+      className={cn('my-1 h-px bg-of-border', className)}
       {...props}
     />
   )

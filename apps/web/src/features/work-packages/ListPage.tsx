@@ -1,15 +1,9 @@
-import { Columns3, Download } from 'lucide-react'
+import { Download } from 'lucide-react'
 import { useState } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
 
 import { EmptyState, ErrorState, ListSkeleton } from '@/components/shell/states'
 import { Button } from '@/components/ui/button'
-import {
-  DropdownMenu,
-  DropdownMenuCheckboxItem,
-  DropdownMenuContent,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
 import { Select } from '@/components/ui/select'
 import { useCustomFields } from '@/features/custom-fields/api'
 import { ReadOnlyNotice } from '@/components/shell/ReadOnlyNotice'
@@ -17,8 +11,6 @@ import { useMemberNames, useMembers } from '@/features/members/api'
 import { useCanWrite } from '@/features/members/useCanWrite'
 
 import {
-  COLUMN_LABELS,
-  LIST_COLUMNS,
   MAX_CUSTOM_COLUMNS,
   parseCustomColumns,
   type ListColumn,
@@ -26,6 +18,12 @@ import {
   serializeColumns,
 } from './columns'
 import { DetailDrawer } from './DetailDrawer'
+import { DisplayMenu } from './DisplayMenu'
+import {
+  parseWorkPackageSort,
+  serializeWorkPackageSort,
+  type WorkPackageSort,
+} from './displayOptions'
 import { Filters } from './Filters'
 import { ImportDialog } from './ImportDialog'
 import { SavedFilters } from './SavedFilters'
@@ -105,12 +103,13 @@ export function ListPage() {
     if (next.length > MAX_CUSTOM_COLUMNS) return // deterministic cap (v67.1 R1-①)
     writeColumns(columns, next)
   }
-  const sort = searchParams.get('sort') ?? 'created'
-  const setSort = (value: string) => {
+  const sort = parseWorkPackageSort(searchParams.get('sort'))
+  const setSort = (value: WorkPackageSort) => {
     setSearchParams(
       (prev) => {
         const next = new URLSearchParams(prev)
-        if (value && value !== 'created') next.set('sort', value)
+        const serialized = serializeWorkPackageSort(value)
+        if (serialized) next.set('sort', serialized)
         else next.delete('sort')
         return next
       },
@@ -181,54 +180,15 @@ export function ListPage() {
                 : `${data.total}건`}
             </span>
           ) : null}
-          <Select
-            aria-label="정렬"
-            className="h-7 w-28 text-xs"
-            value={sort}
-            onChange={(e) => setSort(e.target.value)}
-          >
-            <option value="created">생성순</option>
-            <option value="subject">제목순 (가나다)</option>
-          </Select>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm">
-                <Columns3 size={14} /> 표시 열
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              {LIST_COLUMNS.map((key) => (
-                <DropdownMenuCheckboxItem
-                  key={key}
-                  checked={show(key)}
-                  // The last remaining column cannot be turned off (R1-①).
-                  disabled={show(key) && columns.length === 1}
-                  onCheckedChange={() => toggleColumn(key)}
-                  aria-label={`${COLUMN_LABELS[key]} 열 표시`}
-                >
-                  {COLUMN_LABELS[key]}
-                </DropdownMenuCheckboxItem>
-              ))}
-              {(customFields.data?.items ?? [])
-                .filter((f) => f.is_active)
-                .map((f) => {
-                  const lower = f.id.toLowerCase()
-                  const on = customColumns.includes(lower)
-                  return (
-                    <DropdownMenuCheckboxItem
-                      key={f.id}
-                      checked={on}
-                      // Cap: five custom columns per view (v67.1 R1-①).
-                      disabled={!on && customColumns.length >= MAX_CUSTOM_COLUMNS}
-                      onCheckedChange={() => toggleCustomColumn(f.id)}
-                      aria-label={`${f.name} 열 표시`}
-                    >
-                      {f.name} <span className="text-of-muted">(커스텀)</span>
-                    </DropdownMenuCheckboxItem>
-                  )
-                })}
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <DisplayMenu
+            sort={sort}
+            columns={columns}
+            customColumns={customColumns}
+            customFields={customFields.data?.items ?? []}
+            onSortChange={setSort}
+            onToggleColumn={toggleColumn}
+            onToggleCustomColumn={toggleCustomColumn}
+          />
           <Button
             variant="outline"
             size="sm"
