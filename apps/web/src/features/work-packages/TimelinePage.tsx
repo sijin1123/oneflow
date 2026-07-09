@@ -15,6 +15,7 @@ import { todayISO } from '@/lib/datetime'
 import { cn } from '@/lib/utils'
 
 import { DetailDrawer } from './DetailDrawer'
+import { TimelineItemActions } from './TimelineItemActions'
 import { ganttDatesToPatch, nextDay } from './ganttDates'
 import { usePatchWorkPackage, useProjectRelations, useWorkPackages } from './api'
 import { type ProjectRelation, ZOOM_LABELS, ZOOM_LEVELS, type ZoomLevel } from './timeline'
@@ -107,6 +108,7 @@ function GanttChart({
   zoom,
   editable,
   onOpen,
+  onAction,
   onReschedule,
 }: {
   items: WorkPackage[]
@@ -115,6 +117,7 @@ function GanttChart({
   zoom: ZoomLevel
   editable: boolean
   onOpen: (id: string) => void
+  onAction: (id: string, rect: DOMRect) => void
   onReschedule: (
     id: string,
     patch: { start_date: string; due_date: string },
@@ -124,6 +127,8 @@ function GanttChart({
   const container = useRef<HTMLDivElement>(null)
   const openRef = useRef(onOpen)
   openRef.current = onOpen
+  const actionRef = useRef(onAction)
+  actionRef.current = onAction
   const rescheduleRef = useRef(onReschedule)
   rescheduleRef.current = onReschedule
   const editableRef = useRef(editable)
@@ -145,7 +150,12 @@ function GanttChart({
     gantt.config.row_height = 32
     gantt.config.bar_height = 18
     gantt.config.columns = [{ name: 'text', label: '작업', tree: false, width: 220 }]
-    gantt.templates.task_text = (_s, _e, task) => esc(String(task.text ?? ''))
+    gantt.templates.task_text = (_s, _e, task) => {
+      const text = esc(String(task.text ?? ''))
+      if (task.of_kind !== 'wp') return text
+      const id = esc(String(task.id))
+      return `<span class="of-gantt-task-inner"><span class="of-gantt-task-title">${text}</span><button type="button" class="of-gantt-action" data-of-gantt-action-id="${id}" aria-label="${text} 타임라인 항목 작업">...</button></span>`
+    }
     gantt.templates.grid_row_class = () => 'of-gantt-row'
     gantt.templates.tooltip_text = () => '' // no HTML tooltip surface
     gantt.templates.link_class = (link) => String((link as { css?: string }).css ?? '')
@@ -198,8 +208,32 @@ function GanttChart({
         })
     })
     const initedContainer = container.current
+    const findActionButton = (event: Event) => {
+      const target = event.target instanceof HTMLElement ? event.target : null
+      return target?.closest<HTMLButtonElement>('[data-of-gantt-action-id]') ?? null
+    }
+    const suppressActionDrag = (event: Event) => {
+      if (!findActionButton(event)) return
+      event.preventDefault()
+      event.stopPropagation()
+    }
+    const openAction = (event: MouseEvent | KeyboardEvent) => {
+      const button = findActionButton(event)
+      if (!button) return
+      if (event instanceof KeyboardEvent && event.key !== 'Enter' && event.key !== ' ') return
+      event.preventDefault()
+      event.stopPropagation()
+      const id = button.dataset.ofGanttActionId
+      if (id) actionRef.current(id, button.getBoundingClientRect())
+    }
+    initedContainer.addEventListener('pointerdown', suppressActionDrag, true)
+    initedContainer.addEventListener('click', openAction, true)
+    initedContainer.addEventListener('keydown', openAction, true)
     gantt.init(initedContainer)
     return () => {
+      initedContainer.removeEventListener('pointerdown', suppressActionDrag, true)
+      initedContainer.removeEventListener('click', openAction, true)
+      initedContainer.removeEventListener('keydown', openAction, true)
       gantt.detachEvent(clickId)
       gantt.detachEvent(dblId)
       gantt.detachEvent(beforeDragId)
@@ -271,6 +305,15 @@ export function TimelinePage() {
   const patch = usePatchWorkPackage(projectId)
   const queryClient = useQueryClient()
   const [dragNotice, setDragNotice] = useState<string | null>(null)
+  const [itemActionMessage, setItemActionMessage] = useState<{
+    text: string
+    tone: 'info' | 'success' | 'error'
+  } | null>(null)
+  const [activeAction, setActiveAction] = useState<{
+    wpId: string
+    top: number
+    left: number
+  } | null>(null)
   const [zoom, setZoom] = useState<ZoomLevel>(loadZoom)
   const changeZoom = (next: ZoomLevel) => {
     setZoom(next)
@@ -319,16 +362,27 @@ export function TimelinePage() {
   const drawableIds = new Set(dated.map((w) => w.id))
   const { omitted } = toLinks(relations.data?.items ?? [], drawableIds)
 
-  const openDrawer = (id: string) => {
+  const openDrawer = (id: string, opts: { move?: boolean } = {}) => {
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev)
       next.set('wp', id)
+      if (opts.move) next.set('move', '1')
+      else next.delete('move')
       return next
     })
   }
 
+  const openActionMenu = (id: string, rect: DOMRect) => {
+    const width = 224
+    const left = Math.min(Math.max(8, rect.right - width), window.innerWidth - width - 8)
+    const top = Math.min(rect.bottom + 6, window.innerHeight - 216)
+    setActiveAction({ wpId: id, top: Math.max(8, top), left })
+  }
+
+  const activeWp = activeAction ? data.items.find((w) => w.id === activeAction.wpId) : null
+
   return (
-    <div className="flex h-full flex-col">
+    <div className="relative flex h-full flex-col">
       <div className="flex items-center gap-1.5 border-b border-of-border px-4 py-1.5 text-xs text-of-muted">
         <span>줌</span>
         {ZOOM_LEVELS.map((z) => (
@@ -346,6 +400,14 @@ export function TimelinePage() {
           </button>
         ))}
         <span className="ml-auto flex items-center gap-3">
+          {itemActionMessage ? (
+            <span
+              role={itemActionMessage.tone === 'error' ? 'alert' : 'status'}
+              className={itemActionMessage.tone === 'error' ? 'text-of-danger' : 'text-of-muted'}
+            >
+              {itemActionMessage.text}
+            </span>
+          ) : null}
           {dragNotice ? <span role="alert" className="text-of-danger">{dragNotice}</span> : null}
           {editable ? <span>막대를 드래그해 일정을 조정할 수 있습니다</span> : null}
           {omitted > 0 ? (
@@ -364,9 +426,23 @@ export function TimelinePage() {
           zoom={zoom}
           editable={editable}
           onOpen={openDrawer}
+          onAction={openActionMenu}
           onReschedule={reschedule}
         />
       </div>
+      {activeWp && activeAction ? (
+        <TimelineItemActions
+          wp={activeWp}
+          projectId={projectId}
+          canWrite={editable}
+          top={activeAction.top}
+          left={activeAction.left}
+          onOpen={openDrawer}
+          onOpenMove={(id) => openDrawer(id, { move: true })}
+          onMessage={(text, tone = 'info') => setItemActionMessage({ text, tone })}
+          onClose={() => setActiveAction(null)}
+        />
+      ) : null}
       <DetailDrawer projectId={projectId} />
     </div>
   )
