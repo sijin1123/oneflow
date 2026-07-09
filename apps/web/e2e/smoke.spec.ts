@@ -1960,6 +1960,44 @@ test('드로어에서 워치 토글이 PUT/DELETE를 보낸다', async ({ page }
   await del
 })
 
+test('워처 구독 표면은 모바일에서 알림 단서와 참여자를 유지한다', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await mockApi(page)
+  await page.route(`**/api/v1/work-packages/${wpA.id}/watchers`, (route) =>
+    route.fulfill({
+      json: {
+        items: [
+          { user_id: 'u-dev', display_name: 'Dev User' },
+          { user_id: 'u-ops', display_name: 'Ops Lead' },
+          { user_id: 'u-qa', display_name: 'QA Owner' },
+          { user_id: 'u-pm', display_name: 'PM Lead' },
+        ],
+        total: 4,
+        me_watching: true,
+      },
+    }),
+  )
+
+  await page.goto(`/projects/${project.id}/work-packages`)
+  await page.getByRole('button', { name: '워크패키지 API 구현' }).click()
+
+  const section = page.getByRole('region', { name: '워처 구독' })
+  await expect(section.getByText('내가 구독 중')).toBeVisible()
+  await expect(section.getByRole('button', { name: '워치 해제' })).toBeVisible()
+  await expect(section.getByText('상태 변경')).toBeVisible()
+  await expect(section.getByText('댓글', { exact: true })).toBeVisible()
+  await expect(section.getByText('담당자', { exact: true })).toBeVisible()
+  await expect(section.getByText('Dev User')).toBeVisible()
+  await expect(section.getByText('Ops Lead')).toBeVisible()
+  await expect(section.getByText('QA Owner')).toBeVisible()
+  await expect(section.getByText('+1')).toBeVisible()
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/watchers-ui/mobile.png',
+    fullPage: true,
+  })
+})
+
 test('개인 설정에서 알림 토글이 PUT을 보내고 구 딥링크가 리다이렉트된다', async ({ page }) => {
   await mockApi(page)
   await page.route('**/api/v1/me', (route) =>
