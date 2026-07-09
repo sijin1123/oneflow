@@ -1,6 +1,8 @@
-import { ChevronDown, ChevronUp } from 'lucide-react'
+import { Archive, CheckCircle2, ChevronDown, ChevronUp, Pencil, Save } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
+import { InlineActionMenu } from '@/components/ui/action-menu'
+import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { ApiError } from '@/lib/api'
 
@@ -51,6 +53,8 @@ export function TypeManager({ projectId, isOwner }: { projectId: string; isOwner
             isOwner={isOwner}
             onRename={(name) => update.mutate({ typeId: t.id, name })}
             onToggle={(active) => update.mutate({ typeId: t.id, is_active: active })}
+            isFirst={i === 0}
+            isLast={i === sorted.length - 1}
             onMoveUp={() => move(i, -1)}
             onMoveDown={() => move(i, 1)}
           />
@@ -74,6 +78,8 @@ function TypeRow({
   isOwner,
   onRename,
   onToggle,
+  isFirst,
+  isLast,
   onMoveUp,
   onMoveDown,
 }: {
@@ -81,60 +87,117 @@ function TypeRow({
   isOwner: boolean
   onRename: (name: string) => void
   onToggle: (active: boolean) => void
+  isFirst: boolean
+  isLast: boolean
   onMoveUp: () => void
   onMoveDown: () => void
 }) {
   const [name, setName] = useState(type.name)
+  const [editing, setEditing] = useState(false)
   useEffect(() => setName(type.name), [type.name])
 
-  return (
-    <li className="flex items-center gap-2 rounded-of border border-of-border px-2 py-1.5">
-      {isOwner ? (
-        <>
+  if (editing) {
+    return (
+      <li className="rounded-of border border-of-border px-2 py-2">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <span className="w-24 shrink-0 font-mono text-[11px] uppercase text-of-muted">
+            {type.key}
+          </span>
           <Input
             value={name}
-            aria-label={`${type.key} 타입 이름`}
-            onChange={(e) => setName(e.target.value)}
-            onBlur={() => {
-              const trimmed = name.trim()
-              if (trimmed && trimmed !== type.name) onRename(trimmed)
-              else setName(type.name)
-            }}
-            className={`h-7 flex-1 text-xs ${type.is_active ? '' : 'text-of-muted line-through'}`}
+            aria-label={`${type.key} 타입 이름 편집`}
+            onChange={(event) => setName(event.target.value)}
+            className="h-7 min-w-0 flex-1 text-xs"
           />
-          <label className="flex shrink-0 items-center gap-1 text-[11px] text-of-muted">
-            <input
-              type="checkbox"
-              aria-label={`${type.key} 타입 활성`}
-              checked={type.is_active}
-              onChange={(e) => onToggle(e.target.checked)}
-              className="h-3 w-3 accent-of-accent"
-            />
-            활성
-          </label>
-          <button
-            type="button"
-            aria-label={`${type.key} 위로`}
-            className="shrink-0 rounded-of p-1 text-of-muted hover:bg-of-surface-2"
-            onClick={onMoveUp}
-          >
-            <ChevronUp size={13} />
-          </button>
-          <button
-            type="button"
-            aria-label={`${type.key} 아래로`}
-            className="shrink-0 rounded-of p-1 text-of-muted hover:bg-of-surface-2"
-            onClick={onMoveDown}
-          >
-            <ChevronDown size={13} />
-          </button>
-        </>
-      ) : (
-        <span className={`flex-1 text-xs ${type.is_active ? '' : 'text-of-muted line-through'}`}>
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              disabled={!name.trim()}
+              onClick={() => {
+                const trimmed = name.trim()
+                if (trimmed && trimmed !== type.name) onRename(trimmed)
+                else setName(type.name)
+                setEditing(false)
+              }}
+            >
+              <Save size={14} />
+              저장
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                setName(type.name)
+                setEditing(false)
+              }}
+            >
+              취소
+            </Button>
+          </div>
+        </div>
+      </li>
+    )
+  }
+
+  return (
+    <li className="rounded-of border border-of-border px-2 py-2">
+      <div className="flex min-w-0 items-center gap-2">
+        <span className="w-24 shrink-0 font-mono text-[11px] uppercase text-of-muted">
+          {type.key}
+        </span>
+        <span
+          className={`min-w-0 flex-1 truncate text-xs font-medium ${type.is_active ? '' : 'text-of-muted line-through'}`}
+        >
           {type.name}
         </span>
-      )}
-      <span className="shrink-0 text-[10px] uppercase text-of-muted">{type.key}</span>
+        <span
+          className={`hidden shrink-0 rounded-full px-2 py-0.5 text-[10px] sm:inline ${
+            type.is_active ? 'bg-of-accent-soft text-of-accent' : 'bg-of-surface-2 text-of-muted'
+          }`}
+        >
+          {type.is_active ? '활성' : '비활성'}
+        </span>
+        <InlineActionMenu
+          label={`${type.key} 타입 작업`}
+          menuLabel={`${type.key} 타입 작업 메뉴`}
+          note={isOwner ? undefined : '읽기 전용'}
+          items={
+            isOwner
+              ? [
+                  {
+                    label: '편집',
+                    ariaLabel: `${type.key} 타입 편집`,
+                    icon: <Pencil size={14} />,
+                    onSelect: () => setEditing(true),
+                  },
+                  {
+                    label: type.is_active ? '비활성화' : '활성화',
+                    ariaLabel: `${type.key} 타입 ${type.is_active ? '비활성화' : '활성화'}`,
+                    icon: type.is_active ? <Archive size={14} /> : <CheckCircle2 size={14} />,
+                    onSelect: () => onToggle(!type.is_active),
+                  },
+                  {
+                    label: '위로 이동',
+                    ariaLabel: `${type.key} 위로`,
+                    icon: <ChevronUp size={14} />,
+                    disabled: isFirst,
+                    onSelect: onMoveUp,
+                  },
+                  {
+                    label: '아래로 이동',
+                    ariaLabel: `${type.key} 아래로`,
+                    icon: <ChevronDown size={14} />,
+                    disabled: isLast,
+                    onSelect: onMoveDown,
+                  },
+                ]
+              : []
+          }
+        />
+      </div>
+      <div className="mt-1 text-[11px] text-of-muted sm:hidden">
+        {type.is_active ? '활성' : '비활성'} · 위치 {type.position + 1}
+      </div>
     </li>
   )
 }
