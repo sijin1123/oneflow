@@ -19,6 +19,7 @@ import {
   Search,
   Settings,
   SlidersHorizontal,
+  SquareActivity,
   SquareKanban,
   UsersRound,
   X,
@@ -54,6 +55,7 @@ const workspaceNav: WorkspaceNavItem[] = [
 ]
 
 const operationsNav: WorkspaceNavItem[] = [
+  { to: '/operations', label: '운영 허브', icon: SquareActivity },
   { to: '/settings', label: '개인 설정', icon: SlidersHorizontal },
   { to: '/status', label: '시스템 상태', icon: Activity },
 ]
