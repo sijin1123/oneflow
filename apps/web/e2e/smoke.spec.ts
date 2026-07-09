@@ -535,6 +535,10 @@ test('드로어에서 상태 변경 PATCH가 expected_version을 동봉한다', 
   const statusSelect = page.getByRole('dialog').getByLabel('상태', { exact: true })
   await expect(statusSelect).toBeVisible()
   await page.screenshot({ path: '../../docs/screenshots/web-drawer.png', fullPage: true })
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/detail-ui/desktop.png',
+    fullPage: true,
+  })
 
   const patchRequest = page.waitForRequest(
     (req) => req.method() === 'PATCH' && req.url().includes(`/work-packages/${wpA.id}`),
@@ -544,6 +548,30 @@ test('드로어에서 상태 변경 PATCH가 expected_version을 동봉한다', 
   const body = req.postDataJSON() as { expected_version: number; status: string }
   expect(body.expected_version).toBe(0) // integer token echoed exactly (§6.2)
   expect(body.status).toBe('in_progress')
+})
+
+test('모바일 작업 상세 드로어가 속성과 활동 탭을 유지한다', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await mockApi(page)
+  await page.goto(`/projects/${project.id}/work-packages`)
+  await page.getByRole('button', { name: '워크패키지 API 구현' }).click()
+  const drawer = page.getByRole('dialog', { name: '워크패키지 API 구현' })
+
+  await expect
+    .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth))
+    .toBe(true)
+  await expect(drawer.getByText('속성')).toBeVisible()
+  await expect(drawer.getByRole('tab', { name: '개요' })).toHaveAttribute('aria-selected', 'true')
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/detail-ui/mobile.png',
+    fullPage: true,
+  })
+  await drawer.getByRole('tab', { name: '활동' }).click()
+  await expect(drawer.getByText('작업을 생성했습니다')).toBeVisible()
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/detail-ui/mobile-activity.png',
+    fullPage: true,
+  })
 })
 
 test('드로어에서 활동 이력을 보여주고 댓글을 추가한다', async ({ page }) => {
@@ -578,10 +606,11 @@ test('드로어에서 활동 이력을 보여주고 댓글을 추가한다', asy
   await page.goto(`/projects/${project.id}/work-packages`)
   await page.getByRole('button', { name: '워크패키지 API 구현' }).click()
   const drawer = page.getByRole('dialog')
+  await expect(drawer.getByText('만든 사람: Dev User', { exact: false })).toBeVisible()
+  await drawer.getByRole('tab', { name: '활동' }).click()
   await expect(drawer.getByText('작업을 생성했습니다')).toBeVisible() // activity feed
   // Cycle assignment history renders NAME snapshots (Pass 71).
   await expect(drawer.getByText('사이클: 스프린트 1 → 스프린트 2')).toBeVisible()
-  await expect(drawer.getByText('만든 사람: Dev User', { exact: false })).toBeVisible()
 
   const commentPost = page.waitForRequest(
     (req) => req.method() === 'POST' && req.url().includes(`/work-packages/${wpA.id}/comments`),
@@ -592,6 +621,7 @@ test('드로어에서 활동 이력을 보여주고 댓글을 추가한다', asy
   expect((req.postDataJSON() as { body: string }).body).toBe('검토 완료했습니다')
 
   // 첨부 section shows the anchored file with a download affordance
+  await drawer.getByRole('tab', { name: '개요' }).click()
   await expect(drawer.getByText('설계서.pdf')).toBeVisible()
   await expect(drawer.getByLabel('설계서.pdf 다운로드')).toBeVisible()
 })
@@ -640,6 +670,7 @@ test('댓글 스레드: 답글이 루트 아래 들여쓰기로 붙고 parent_id
   await page.goto(`/projects/${project.id}/work-packages`)
   await page.getByRole('button', { name: '워크패키지 API 구현' }).click()
   const drawer = page.getByRole('dialog')
+  await drawer.getByRole('tab', { name: '활동' }).click()
   await expect(drawer.getByText('루트 코멘트')).toBeVisible()
   await expect(drawer.getByText('기존 답글')).toBeVisible()
 
@@ -809,6 +840,7 @@ test('댓글 멘션: 멤버 체크 후 작성하면 mentioned_user_ids를 보낸
   await page.getByRole('button', { name: '워크패키지 API 구현' }).click()
   const drawer = page.getByRole('dialog')
 
+  await drawer.getByRole('tab', { name: '활동' }).click()
   await drawer.getByLabel('댓글 입력').fill('알렉스 확인 부탁합니다')
   await drawer.getByLabel('Alex Kim 멘션').check()
   const post = page.waitForRequest(
