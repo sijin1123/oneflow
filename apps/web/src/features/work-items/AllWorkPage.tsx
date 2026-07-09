@@ -44,7 +44,7 @@ export function AllWorkPage() {
   }
 
   const openWorkItem = (projectId: string, workPackageId: string) => {
-    navigate(`/projects/${projectId}/work-packages?wp=${workPackageId}`)
+    navigate(`/projects/${projectId}/work-packages/${workPackageId}`)
   }
 
   const countText = data

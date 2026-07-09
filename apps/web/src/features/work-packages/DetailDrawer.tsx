@@ -1,7 +1,7 @@
-import { Bell, BellOff } from 'lucide-react'
+import { Bell, BellOff, ExternalLink } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
 import { Suspense, lazy, useEffect, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 
 import { ErrorState, ListSkeleton } from '@/components/shell/states'
 import { Input } from '@/components/ui/input'
@@ -81,7 +81,7 @@ function DrawerBody({ wpId, projectId }: { wpId: string; projectId: string }) {
       ) : isError ? (
         <ErrorState error={error} onRetry={() => refetch()} />
       ) : (
-        <DrawerForm wp={wp} projectId={projectId} />
+        <WorkPackageDetailPanel wp={wp} projectId={projectId} />
       )}
     </SheetContent>
   )
@@ -171,7 +171,15 @@ function MoveSection({ wp, projectId }: { wp: WorkPackage; projectId: string }) 
   )
 }
 
-function DrawerForm({ wp, projectId }: { wp: WorkPackage; projectId: string }) {
+export function WorkPackageDetailPanel({
+  wp,
+  projectId,
+  showFullPageLink = true,
+}: {
+  wp: WorkPackage
+  projectId: string
+  showFullPageLink?: boolean
+}) {
   const patch = usePatchWorkPackage(projectId)
   const queryClient = useQueryClient()
   const milestones = useMilestones(projectId)
@@ -221,6 +229,14 @@ function DrawerForm({ wp, projectId }: { wp: WorkPackage; projectId: string }) {
   const createdByName = wp.created_by
     ? members.data?.items.find((m) => m.user_id === wp.created_by)?.display_name ?? '알 수 없음'
     : null
+  const fullPageLink = showFullPageLink ? (
+    <Link
+      to={`/projects/${projectId}/work-packages/${wp.id}`}
+      className="inline-flex items-center gap-1.5 rounded-of border border-of-border px-2 py-1 text-xs font-medium text-of-muted hover:bg-of-surface-2 hover:text-of-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus"
+    >
+      <ExternalLink size={13} /> 전체 페이지
+    </Link>
+  ) : null
 
   return (
     <div className="space-y-4">
@@ -275,9 +291,13 @@ function DrawerForm({ wp, projectId }: { wp: WorkPackage; projectId: string }) {
             >
               이동
             </button>
+            {fullPageLink}
           </div>
         ) : (
-          <ReadOnlyNotice />
+          <div className="flex flex-wrap items-center gap-2">
+            <ReadOnlyNotice className="min-w-[220px] flex-1" />
+            {fullPageLink}
+          </div>
         )}
         {canWrite && moveOpen ? <MoveSection wp={wp} projectId={projectId} /> : null}
         {duplicate.isSuccess ? (

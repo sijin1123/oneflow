@@ -112,7 +112,7 @@ test('flattenCommandPaletteResults maps every group to a stable route', () => {
   assert.deepEqual(
     flattenCommandPaletteResults(data).map((item) => [item.kind, item.href]),
     [
-      ['work_packages', '/projects/p-1/work-packages?wp=wp-1'],
+      ['work_packages', '/projects/p-1/work-packages/wp-1'],
       ['documents', '/projects/p-1/documents/doc-1'],
       ['meetings', '/projects/p-1/meetings/mt-1'],
       ['cycles', '/projects/p-1/cycles'],
