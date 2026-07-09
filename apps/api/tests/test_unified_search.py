@@ -7,8 +7,22 @@ ordering — WPs updated_at desc, documents/meetings title asc, cycles/modules/
 initiatives name asc, ties on id asc; %/_ are matched literally (autoescape);
 q shorter than 2 chars is 422 (load control)."""
 
-import pytest
+from datetime import UTC, date, datetime
 
+import pytest
+from sqlalchemy import delete as sa_delete
+
+from app.models import (
+    Cycle,
+    Initiative,
+    InitiativeProject,
+    Meeting,
+    Module,
+    Project,
+    ProjectDocument,
+    ProjectMember,
+)
+from app.services.snippet import MAX_SNIPPET
 from tests.conftest import create_project, create_wp
 
 
@@ -69,6 +83,102 @@ async def test_scope_excludes_foreign_and_archived(client, project, foreign_proj
     await client.post(f"/api/v1/projects/{pid}/unarchive")
     body = (await search(client, "스코프")).json()
     assert body["documents"]["returned"] == 1
+
+
+async def test_hidden_only_matches_do_not_leak_counts_or_truncation(client, app, foreign_project):
+    """Command-palette hardening (B-030 Pass 1A): hidden-only matches across
+    every grouped kind must look like no matches, including returned counts and
+    truncation probes."""
+    token = "극비전역"
+    foreign_pid = foreign_project["project_id"]
+    foreign_user = foreign_project["user_id"]
+    async with app.state.sessionmaker() as session, session.begin():
+        session.add_all(
+            [
+                ProjectDocument(
+                    project_id=foreign_pid,
+                    title="숨김 문서",
+                    body=f"<p>{token} 본문</p>",
+                ),
+                Meeting(project_id=foreign_pid, title="숨김 회의", agenda=f"<p>{token} 안건</p>"),
+                Cycle(
+                    project_id=foreign_pid,
+                    name=f"{token} 사이클",
+                    start_date=date(2026, 7, 1),
+                    end_date=date(2026, 7, 14),
+                ),
+                Module(project_id=foreign_pid, name=f"{token} 모듈"),
+            ]
+        )
+        initiative = Initiative(name=f"{token} 이니셔티브", owner_id=foreign_user)
+        session.add(initiative)
+        await session.flush()
+        session.add(InitiativeProject(initiative_id=initiative.id, project_id=foreign_pid))
+
+    body = (await search(client, token, limit=1)).json()
+    for group in ("work_packages", "documents", "meetings", "cycles", "modules", "initiatives"):
+        assert body[group]["items"] == []
+        assert body[group]["returned"] == 0
+        assert body[group]["truncated"] is False
+
+
+async def test_query_time_membership_removal_hides_previous_results(client, app, member_project):
+    """Search visibility is evaluated at query time. If membership is removed
+    after a result was visible, the next response must not retain it."""
+    pid = member_project["project_id"]
+    dev_id = member_project["dev_id"]
+    token = "멤버십제거"
+    async with app.state.sessionmaker() as session, session.begin():
+        session.add(ProjectDocument(project_id=pid, title=f"{token} 문서"))
+
+    assert (await search(client, token)).json()["documents"]["returned"] == 1
+
+    async with app.state.sessionmaker() as session, session.begin():
+        await session.execute(
+            sa_delete(ProjectMember).where(
+                ProjectMember.project_id == pid,
+                ProjectMember.user_id == dev_id,
+            )
+        )
+
+    body = (await search(client, token)).json()
+    assert body["documents"]["returned"] == 0
+
+
+async def test_initiative_search_respects_mixed_visibility(client, app, member_project):
+    """An initiative connected only to foreign projects is hidden. Connecting
+    one visible project makes the initiative itself visible without exposing
+    project rollup/count details through search."""
+    token = "혼합가시성"
+    owner_id = member_project["owner_id"]
+    visible_pid = member_project["project_id"]
+    async with app.state.sessionmaker() as session, session.begin():
+        private = Project(key="MXV", name="검색 숨김 프로젝트")
+        session.add(private)
+        await session.flush()
+        hidden = Initiative(name=f"{token} 숨김", owner_id=owner_id)
+        visible = Initiative(name=f"{token} 표시", owner_id=owner_id)
+        session.add_all([hidden, visible])
+        await session.flush()
+        session.add_all(
+            [
+                InitiativeProject(initiative_id=hidden.id, project_id=private.id),
+                InitiativeProject(initiative_id=visible.id, project_id=private.id),
+                InitiativeProject(initiative_id=visible.id, project_id=visible_pid),
+            ]
+        )
+
+    names = [i["name"] for i in (await search(client, token)).json()["initiatives"]["items"]]
+    assert f"{token} 표시" in names
+    assert f"{token} 숨김" not in names
+
+    async with app.state.sessionmaker() as session, session.begin():
+        project = await session.get(Project, visible_pid)
+        assert project is not None
+        project.archived_at = datetime.now(UTC)
+
+    names = [i["name"] for i in (await search(client, token)).json()["initiatives"]["items"]]
+    assert f"{token} 표시" not in names
 
 
 async def test_truncation_probe_and_ordering(client, project):
@@ -157,6 +267,23 @@ async def test_content_match_and_snippet(client, app):
     res3 = (await client.get("/api/v1/search?q=파이프라인")).json()
     both = next(i for i in res3["work_packages"]["items"] if i["id"] == wp2["id"])
     assert (both["matched_in"], both["snippet"]) == ("primary", None)
+
+
+async def test_snippet_is_plain_text_bounded_and_control_free(client, project):
+    pid = project["id"]
+    token = "안전스니펫"
+    noisy = "\x00" + ("앞" * 120) + f"<script>alert(1)</script><p>{token}&amp;확인</p>"
+    await client.post(f"/api/v1/projects/{pid}/documents", json={"title": "스니펫", "body": noisy})
+
+    doc = (await search(client, token)).json()["documents"]["items"][0]
+    snippet = doc["snippet"]
+    assert doc["matched_in"] == "content"
+    assert snippet is not None
+    assert token in snippet
+    assert "<script" not in snippet
+    assert "alert(1)" not in snippet
+    assert "\x00" not in snippet
+    assert len(snippet) <= MAX_SNIPPET
 
 
 async def test_content_never_leaks_foreign_projects(client, app, foreign_project):

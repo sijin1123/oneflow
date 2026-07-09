@@ -39,6 +39,9 @@ class Settings(BaseSettings):
     # AI summary feature flag (PLAN §3 Phase 3 AI/RAG). Default OFF; exactly "true"
     # enables the work-package summary endpoint. Uses a local, no-secret provider.
     ai_summary: str = "false"
+    # Command palette rollout flag (B-030 Pass 1A). Default OFF for staged
+    # rollout; the UI must fail closed unless this is exactly "true".
+    command_palette_enabled: str = "false"
     # Seed --reset unlock token; valid only when it equals DESTRUCTIVE_RESET_TOKEN.
     allow_destructive_reset: str | None = None
     db_pool_size: int = 10
@@ -70,6 +73,10 @@ class Settings(BaseSettings):
     @property
     def ai_summary_enabled(self) -> bool:
         return self.ai_summary == "true"
+
+    @property
+    def command_palette_is_enabled(self) -> bool:
+        return self.command_palette_enabled == "true"
 
     @property
     def destructive_reset_enabled(self) -> bool:
@@ -130,6 +137,8 @@ class Settings(BaseSettings):
             raise ValueError("ONEFLOW_DEV_ALLOW_NONLOCAL accepts exactly 'true' or 'false'")
         if self.ai_summary not in {"true", "false"}:
             raise ValueError("ONEFLOW_AI_SUMMARY accepts exactly 'true' or 'false'")
+        if self.command_palette_enabled not in {"true", "false"}:
+            raise ValueError("ONEFLOW_COMMAND_PALETTE_ENABLED accepts exactly 'true' or 'false'")
         # Guard (4) companion: the non-local escape hatch is dev/test-only (v5.1).
         if self.dev_allow_nonlocal_enabled and self.env not in {"development", "test"}:
             raise ValueError(

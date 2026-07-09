@@ -7,6 +7,7 @@ export type AuthConfig = {
   oidc_issuer: string | null
   oidc_client_id: string | null
   has_client_secret: boolean
+  command_palette_enabled: boolean
 }
 
 export function useAuthConfig() {

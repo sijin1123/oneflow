@@ -36,17 +36,22 @@ class AuthConfigRead(BaseModel):
     oidc_issuer: str | None = None
     oidc_client_id: str | None = None
     has_client_secret: bool = False
+    command_palette_enabled: bool = False
 
 
 @router.get("/auth/config", response_model=AuthConfigRead)
 async def auth_config(settings: Settings = Depends(get_settings)) -> AuthConfigRead:
     if settings.auth_mode != "oidc":
-        return AuthConfigRead(auth_mode=settings.auth_mode)
+        return AuthConfigRead(
+            auth_mode=settings.auth_mode,
+            command_palette_enabled=settings.command_palette_is_enabled,
+        )
     return AuthConfigRead(
         auth_mode="oidc",
         oidc_issuer=settings.oidc_issuer,
         oidc_client_id=settings.oidc_client_id,
         has_client_secret=bool(settings.oidc_client_secret),
+        command_palette_enabled=settings.command_palette_is_enabled,
     )
 
 

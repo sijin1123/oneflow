@@ -2293,6 +2293,11 @@ export interface components {
             /** Auth Mode */
             auth_mode: string;
             /**
+             * Command Palette Enabled
+             * @default false
+             */
+            command_palette_enabled: boolean;
+            /**
              * Has Client Secret
              * @default false
              */

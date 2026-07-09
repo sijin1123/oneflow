@@ -10,13 +10,17 @@ import html
 import re
 
 _TAG_RE = re.compile(r"<[^>]*>")
+_CONTROL_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 _WS_RE = re.compile(r"\s+")
 RADIUS = 60
+MAX_SNIPPET = (RADIUS * 2) + 40
 
 
 def strip_tags(value: str) -> str:
     """Markup → readable plain text (NOT a sanitizer — display excerpts only)."""
-    return _WS_RE.sub(" ", html.unescape(_TAG_RE.sub(" ", value))).strip()
+    unescaped = html.unescape(_TAG_RE.sub(" ", value))
+    cleaned = _CONTROL_RE.sub("", unescaped)
+    return _WS_RE.sub(" ", cleaned).strip()
 
 
 def extract_snippet(value: str, q: str, radius: int = RADIUS) -> str | None:
@@ -31,4 +35,5 @@ def extract_snippet(value: str, q: str, radius: int = RADIUS) -> str | None:
     end = min(len(plain), pos + len(q) + radius)
     prefix = "…" if start > 0 else ""
     suffix = "…" if end < len(plain) else ""
-    return f"{prefix}{plain[start:end]}{suffix}"
+    snippet = f"{prefix}{plain[start:end]}{suffix}"
+    return snippet[:MAX_SNIPPET]
