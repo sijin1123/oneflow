@@ -23,6 +23,7 @@
 | 옵티미스틱 동시성 UX(409 → 알림+재로드) | 일반 웹 관례 | — | 편집 충돌 시 사용자 통지 후 최신화 | 순수 함수 `decideOnPatchError` + node --test 유닛 |
 | 시간/비용 기록의 `spent_on` 컬럼명(time_entries·cost_entries) | OpenProject/Redmine 공개 스키마·API v3 관찰 | `openproject/app/models/**` | 일자 컬럼에 `_on` 접미사를 쓰는 관례(Rails/Redmine 유래) | 개별 식별자는 저작권 대상이 아니며 공개 API에서 관찰 가능. 컬럼 의미·타입·제약은 본 저장소에서 독자 설계(Numeric 스케일·CHECK·인덱스 자체 정의) — attested-independent-derivation |
 | Reverse Spec 기반 검색/커맨드 팔레트 준비 | `docs/plane-poc-reverse-spec/`의 전역 검색/커맨드 팔레트 행동 관찰 | `plane/apps/**`, `plane/packages/**` | 전역 진입점이 여러 리소스 검색 결과를 빠르게 노출 | Plane 코드/스타일/카피 없이 기존 OneFlow `/api/v1/search`를 강화. 멤버십·아카이브 가시성, snippet plain-text 경계, default-off 운영 flag를 독자 구현·테스트로 고정 |
+| Reverse Spec 기반 전역 단축키/오버레이 가드 | `docs/plane-poc-reverse-spec/`의 전역 검색 진입과 키보드 접근성 요구 | `plane/apps/**`, `plane/packages/**` | 전역 검색은 앱 chrome에서는 빠르게 열리되 입력/에디터/모달 조작을 침범하지 않아야 함 | OneFlow 자체 `shortcuts.ts` helper와 overlay registry를 신규 작성. DOM 구조·CSS·컴포넌트 복사 없이 editable/Tiptap/IME/overlay guard를 node unit test로 고정 |
 
 ## 게이트 실행 증적
 

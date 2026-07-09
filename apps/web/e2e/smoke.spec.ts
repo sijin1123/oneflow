@@ -186,7 +186,13 @@ async function mockApi(page: Page, opts: { conflictOnPatch?: boolean } = {}) {
   // The sidebar footer shows the auth mode.
   await page.route('**/api/v1/auth/config', (route) =>
     route.fulfill({
-      json: { auth_mode: 'dev', oidc_issuer: null, oidc_client_id: null, has_client_secret: false },
+      json: {
+        auth_mode: 'dev',
+        oidc_issuer: null,
+        oidc_client_id: null,
+        has_client_secret: false,
+        command_palette_enabled: false,
+      },
     }),
   )
   // The drawer custom-fields section reads definitions + values.
@@ -2113,6 +2119,7 @@ test('OIDC 모드면 사이드바 푸터가 발급자를 표시한다', async ({
         oidc_issuer: 'https://idp.example.com/realms/company',
         oidc_client_id: 'oneflow-web',
         has_client_secret: true,
+        command_palette_enabled: false,
       },
     }),
   )
@@ -4284,6 +4291,7 @@ test('로그인 화면에서 이메일 로그인 후 이동하고 OIDC 모드는
         oidc_issuer: 'https://idp.example.com',
         oidc_client_id: 'oneflow',
         has_client_secret: true,
+        command_palette_enabled: false,
       },
     }),
   )
