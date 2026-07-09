@@ -582,6 +582,53 @@ test('모바일 작업 상세 드로어가 속성과 활동 탭을 유지한다'
   })
 })
 
+test('활동 댓글 표면은 모바일에서 피드와 composer를 유지한다', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await mockApi(page)
+  const at = (d: string) => ({ created_at: d, updated_at: d })
+  const rootComment: Comment = {
+    id: 'c-mobile-root',
+    work_package_id: wpA.id,
+    parent_id: null,
+    author_id: 'me-1',
+    body: '모바일 QA 기준 확인',
+    mentions: ['u-alex'],
+    reactions: [{ key: '❤️', count: 1, me: false }],
+    ...at('2026-07-03T00:00:00Z'),
+  }
+  const reply: Comment = {
+    id: 'c-mobile-reply',
+    work_package_id: wpA.id,
+    parent_id: 'c-mobile-root',
+    author_id: 'u-alex',
+    body: '모바일 답글',
+    mentions: null,
+    reactions: [],
+    ...at('2026-07-03T01:00:00Z'),
+  }
+  await page.route(`**/api/v1/work-packages/${wpA.id}/comments`, (route) =>
+    route.fulfill({ json: { items: [rootComment, reply], total: 2 } }),
+  )
+
+  await page.goto(`/projects/${project.id}/work-packages`)
+  await page.getByRole('button', { name: '워크패키지 API 구현' }).click()
+  const drawer = page.getByRole('dialog', { name: '워크패키지 API 구현' })
+  await drawer.getByRole('tab', { name: '활동' }).click()
+  const activitySection = drawer.getByRole('region', { name: '활동 및 댓글' })
+
+  await activitySection.scrollIntoViewIfNeeded()
+  await expect(activitySection.getByText('모바일 QA 기준 확인')).toBeVisible()
+  await expect(activitySection.getByText('모바일 답글')).toBeVisible()
+  await expect(activitySection.getByText('@Alex Kim')).toBeVisible()
+  await expect(activitySection.getByLabel('댓글 입력')).toBeVisible()
+  await expect(activitySection.getByRole('button', { name: '댓글 추가' })).toBeVisible()
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/activity-comments-ui/mobile.png',
+    fullPage: true,
+  })
+})
+
 test('작업 상세 전체 페이지가 드로어 IA와 활동 탭을 재사용한다', async ({ page }) => {
   await mockApi(page)
   await page.goto(`/projects/${project.id}/work-packages`)
