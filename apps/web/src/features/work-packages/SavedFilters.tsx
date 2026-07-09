@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 
 import { parseColumns, serializeColumns } from './columns'
+import { parseWorkPackageSort, serializeWorkPackageSort } from './displayOptions'
 
 import {
   type SavedFilter,
@@ -71,7 +72,7 @@ export function SavedFilters({ projectId }: { projectId: string }) {
     if (k === 'columns' && v !== null) v = serializeColumns(parseColumns(v))
     if (v) current[k] = v
   }
-  const sort = searchParams.get('sort')
+  const sort = serializeWorkPackageSort(parseWorkPackageSort(searchParams.get('sort')))
   const hasActive = Object.keys(current).length > 0 || sort !== null
 
   const apply = (view: SavedFilter) => {
@@ -80,7 +81,8 @@ export function SavedFilters({ projectId }: { projectId: string }) {
       const v = view.params[k]
       if (v) next.set(k, v)
     }
-    if (view.sort && view.sort !== 'created') next.set('sort', view.sort)
+    const sort = serializeWorkPackageSort(parseWorkPackageSort(view.sort))
+    if (sort) next.set('sort', sort)
     navigate(`/projects/${projectId}/${LAYOUT_ROUTES[view.layout]}?${next.toString()}`)
   }
 

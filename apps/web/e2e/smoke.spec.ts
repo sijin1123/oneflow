@@ -2812,7 +2812,7 @@ test('표시 열 구성이 URL을 따르고 저장 시 정규화된다', async (
 
   // Toggling 타입 off leaves 생성일 as the last column — which cannot be
   // turned off (min-1, R1-①).
-  await page.getByRole('button', { name: '표시 열' }).click()
+  await page.getByRole('button', { name: '표시' }).click()
   await page.getByRole('menuitemcheckbox', { name: '타입 열 표시' }).click()
   await expect(page.getByRole('columnheader', { name: '타입' })).toBeHidden()
   await expect(page).toHaveURL(/columns=created_at/)
@@ -2874,7 +2874,7 @@ test('커스텀 필드 열을 켜면 목록이 값과 함께 렌더된다', asyn
 
   await page.goto(`/projects/${project.id}/work-packages`)
   const listGet = page.waitForRequest((r) => r.url().includes(`custom_fields=${FIELD_ID}`))
-  await page.getByRole('button', { name: '표시 열' }).click()
+  await page.getByRole('button', { name: '표시' }).click()
   await page.getByRole('menuitemcheckbox', { name: '환경 열 표시' }).click()
   await listGet
   await page.keyboard.press('Escape')
@@ -3336,14 +3336,16 @@ test('드로어 설명이 리치 텍스트 에디터(툴바 포함)로 표시된
   await expect(drawer.getByLabel('설명')).toBeVisible()
 })
 
-test('제목순 정렬 선택이 목록 쿼리에 sort=subject를 반영한다', async ({ page }) => {
+test('표시 메뉴에서 제목순 정렬을 선택하면 목록 쿼리에 sort=subject를 반영한다', async ({ page }) => {
   await mockApi(page)
   await page.goto(`/projects/${project.id}/work-packages`)
   const req = page.waitForRequest(
     (r) => r.url().includes('/work-packages') && r.url().includes('sort=subject'),
   )
-  await page.getByLabel('정렬').selectOption('subject')
+  await page.getByRole('button', { name: '표시' }).click()
+  await page.getByRole('menuitem', { name: '정렬 제목순 (가나다)' }).click()
   await req
+  await expect(page).toHaveURL(/sort=subject/)
 })
 
 const asViewer = (page: import('@playwright/test').Page) =>
