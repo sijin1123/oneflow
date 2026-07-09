@@ -1,21 +1,27 @@
-import {Activity, BarChart3, Boxes, SlidersHorizontal,
-  UsersRound,
-  Compass,
-  ClipboardList,
+import {
+  Activity,
+  BarChart3,
+  Boxes,
   CalendarClock,
-  IterationCcw,
   CalendarDays,
   CalendarRange,
+  ClipboardList,
+  Compass,
   FileText,
   FolderKanban,
   Inbox,
+  IterationCcw,
   LayoutDashboard,
   List,
+  ListChecks,
   ListTree,
   Paperclip,
   Search,
   Settings,
-  SquareKanban, } from 'lucide-react'
+  SlidersHorizontal,
+  SquareKanban,
+  UsersRound,
+} from 'lucide-react'
 import { NavLink, useParams } from 'react-router-dom'
 
 import { cn } from '@/lib/utils'
@@ -51,6 +57,9 @@ export function Sidebar() {
           </p>
           <NavLink to="/my" className={navLinkClass}>
             <Inbox /> 내 작업
+          </NavLink>
+          <NavLink to="/work-items" className={navLinkClass}>
+            <ListChecks /> 전체 작업
           </NavLink>
           <NavLink to="/projects" end className={navLinkClass}>
             <FolderKanban /> 프로젝트

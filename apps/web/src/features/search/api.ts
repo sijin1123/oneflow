@@ -12,7 +12,12 @@ export type SearchResultItem = {
   status: WpStatus
   priority: WpPriority
   type: WpType
+  assignee_id?: string | null
+  assignee_name?: string | null
+  start_date?: string | null
   due_date: string | null
+  created_at?: string | null
+  updated_at?: string | null
   matched_in: 'primary' | 'content'
   snippet: string | null
 }
@@ -30,6 +35,18 @@ export function useSearch(q: string) {
     queryFn: () =>
       api<SearchResults>(`/api/v1/search/work-packages?q=${encodeURIComponent(query)}`),
     enabled: query.length > 0,
+  })
+}
+
+export function useWorkspaceWorkItems(q: string) {
+  const query = q.trim()
+  return useQuery({
+    queryKey: ['workspace-work-items', query],
+    queryFn: () => {
+      const params = new URLSearchParams({ limit: '200' })
+      if (query) params.set('q', query)
+      return api<SearchResults>(`/api/v1/search/work-packages?${params.toString()}`)
+    },
   })
 }
 

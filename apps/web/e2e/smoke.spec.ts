@@ -8,6 +8,7 @@
 import { expect, test, type Page } from '@playwright/test'
 
 import type { Project, ProjectList } from '../src/features/projects/types'
+import type { SearchResults } from '../src/features/search/api'
 import type {
   ActivityList,
   Comment,
@@ -75,6 +76,66 @@ const projectRollups = {
 }
 const projects: ProjectList = { items: [{ ...project, ...projectRollups }], total: 1 }
 const workPackages: WorkPackageList = { items: [wpA, wpB], total: 2 }
+const allWorkItems: SearchResults = {
+  query: '',
+  total: 3,
+  items: [
+    {
+      id: wpA.id,
+      project_id: project.id,
+      project_key: project.key,
+      project_name: project.name,
+      subject: wpA.subject,
+      status: wpA.status,
+      priority: wpA.priority,
+      type: wpA.type,
+      assignee_id: null,
+      assignee_name: 'Dev User',
+      start_date: wpA.start_date,
+      due_date: wpA.due_date,
+      created_at: wpA.created_at,
+      updated_at: wpA.updated_at,
+      matched_in: 'primary',
+      snippet: null,
+    },
+    {
+      id: wpB.id,
+      project_id: project.id,
+      project_key: project.key,
+      project_name: project.name,
+      subject: wpB.subject,
+      status: wpB.status,
+      priority: wpB.priority,
+      type: wpB.type,
+      assignee_id: null,
+      assignee_name: null,
+      start_date: wpB.start_date,
+      due_date: wpB.due_date,
+      created_at: wpB.created_at,
+      updated_at: wpB.updated_at,
+      matched_in: 'primary',
+      snippet: null,
+    },
+    {
+      id: '44444444-4444-4444-8444-444444444444',
+      project_id: '99999999-9999-4999-8999-999999999999',
+      project_key: 'OPS',
+      project_name: '운영 개선',
+      subject: '외부 API 조율',
+      status: 'in_review',
+      priority: 'urgent',
+      type: 'feature',
+      assignee_id: null,
+      assignee_name: 'Ops Lead',
+      start_date: '2026-07-04',
+      due_date: '2026-07-20',
+      created_at: '2026-07-03T00:00:00Z',
+      updated_at: '2026-07-04T00:00:00Z',
+      matched_in: 'primary',
+      snippet: null,
+    },
+  ],
+}
 const relations: RelationList = { items: [], total: 0 }
 const activities: ActivityList = {
   items: [
@@ -107,6 +168,14 @@ async function mockApi(page: Page, opts: { conflictOnPatch?: boolean } = {}) {
   await page.route('**/api/v1/projects', (route) =>
     route.fulfill({ json: projects }),
   )
+  await page.route('**/api/v1/search/work-packages**', (route) => {
+    const url = new URL(route.request().url())
+    const query = url.searchParams.get('q')?.trim() ?? ''
+    const items = query
+      ? allWorkItems.items.filter((item) => item.subject.includes(query))
+      : allWorkItems.items
+    route.fulfill({ json: { query, items, total: items.length } })
+  })
   // Single-project GET — the write-access gate (Pass 76) reads archived_at
   // from here; default to the unarchived fixture so owner flows stay editable.
   await page.route(`**/api/v1/projects/${project.id}`, (route) =>
@@ -371,6 +440,43 @@ test('앱 셸과 프로젝트/워크패키지 목록이 렌더링된다', async 
   // date-only string displayed verbatim — no timezone off-by-one (§6.1)
   await expect(page.getByText('2026-07-15')).toBeVisible()
   await page.screenshot({ path: '../../docs/screenshots/web-list.png', fullPage: true })
+})
+
+test('전체 작업 그리드가 프로젝트를 가로질러 보여주고 검색·딥링크가 동작한다', async ({ page }) => {
+  await mockApi(page)
+  await page.goto('/work-items')
+
+  await expect(page.getByRole('heading', { name: '전체 작업' })).toBeVisible()
+  await expect(page.getByRole('link', { name: /전체 작업/ })).toBeVisible()
+  await expect(page.getByRole('columnheader', { name: '프로젝트' })).toBeVisible()
+  await expect(page.getByRole('columnheader', { name: '수정일' })).toBeVisible()
+  await expect(page.getByRole('button', { name: '워크패키지 API 구현' })).toBeVisible()
+  await expect(page.getByText('운영 개선')).toBeVisible()
+  await expect(page.getByText('Dev User')).toBeVisible()
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/all-work-grid/desktop.png',
+    fullPage: true,
+  })
+
+  await page.setViewportSize({ width: 390, height: 844 })
+  await expect(page.getByLabel('전체 작업 검색어')).toBeVisible()
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/all-work-grid/mobile.png',
+    fullPage: true,
+  })
+
+  const req = page.waitForRequest(
+    (r) => r.url().includes('/search/work-packages') && r.url().includes('q='),
+  )
+  await page.getByLabel('전체 작업 검색어').fill('보드')
+  await page.getByRole('button', { name: '검색' }).click()
+  await req
+  await expect(page).toHaveURL(/\/work-items\?q=%EB%B3%B4%EB%93%9C/)
+  await expect(page.getByRole('button', { name: '보드 뷰 구현' })).toBeVisible()
+  await expect(page.getByRole('button', { name: '워크패키지 API 구현' })).toHaveCount(0)
+
+  await page.getByRole('button', { name: '보드 뷰 구현' }).click()
+  await expect(page).toHaveURL(new RegExp(`/projects/${project.id}/work-packages\\?wp=${wpB.id}`))
 })
 
 test('보드 뷰가 상태 컬럼으로 그려진다', async ({ page }) => {

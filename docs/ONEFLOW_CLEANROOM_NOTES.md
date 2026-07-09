@@ -26,6 +26,7 @@
 | Reverse Spec 기반 전역 단축키/오버레이 가드 | `docs/plane-poc-reverse-spec/`의 전역 검색 진입과 키보드 접근성 요구 | `plane/apps/**`, `plane/packages/**` | 전역 검색은 앱 chrome에서는 빠르게 열리되 입력/에디터/모달 조작을 침범하지 않아야 함 | OneFlow 자체 `shortcuts.ts` helper와 overlay registry를 신규 작성. DOM 구조·CSS·컴포넌트 복사 없이 editable/Tiptap/IME/overlay guard를 node unit test로 고정 |
 | Reverse Spec 기반 커맨드 팔레트 UI | `docs/plane-poc-reverse-spec/`의 S002/S003 검색 focused/results 상태와 RSP-001 backlog | `plane/apps/**`, `plane/packages/**` | 전역 검색 modal이 그룹 결과, 범위 전환, advanced search row, keyboard navigation을 제공 | OneFlow 자체 shell component와 result mapper를 신규 작성. 기존 OneFlow `/api/v1/search` 응답만 사용하고 Plane DOM/CSS/카피/아이콘/색상/소스는 열람·이식하지 않음 |
 | Reverse Spec 기반 Display menu | `docs/plane-poc-reverse-spec/`의 Display popover와 RSP-002 backlog | `plane/apps/**`, `plane/packages/**` | 목록 표시 설정은 열/정렬 같은 view option을 한 메뉴에서 조정하고 URL/view state로 지속됨 | 기존 OneFlow `columns`/`sort` URL 계약 위에 자체 `DisplayMenu` 컴포넌트를 신규 작성. Plane DOM/CSS/카피/에셋 없이 Radix primitive와 자체 canonicalizer로 열·정렬·커스텀 필드 열을 통합 |
+| Reverse Spec 기반 workspace all-work grid | `docs/plane-poc-reverse-spec/`의 D004/S009-S015 all work items grid와 RSP-003 backlog | `plane/apps/**`, `plane/packages/**` | 워크스페이스 단위로 접근 가능한 모든 작업을 프로젝트/상태/우선순위/담당자/일정 컬럼의 가로 스크롤 표로 탐색 | 기존 OneFlow search membership boundary를 확장한 `/search/work-packages` 계약과 신규 `/work-items` 페이지를 자체 구현. Plane table DOM/CSS/컬럼 메뉴/카피/에셋 없이 OneFlow table/chip primitives와 API tests로 독립 구현 |
 
 ## 게이트 실행 증적
 

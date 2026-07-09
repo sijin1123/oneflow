@@ -20,6 +20,7 @@ import { StatusPage } from '@/features/ops/StatusPage'
 import { UsersPage } from '@/features/admin/UsersPage'
 import { PersonalSettingsPage } from '@/features/settings/PersonalSettingsPage'
 import { SettingsPage } from '@/features/settings/SettingsPage'
+import { AllWorkPage } from '@/features/work-items/AllWorkPage'
 import { BacklogPage } from '@/features/work-packages/BacklogPage'
 import { BoardPage } from '@/features/work-packages/BoardPage'
 import { CyclesPage } from '@/features/cycles/CyclesPage'
@@ -46,6 +47,7 @@ export const router = createBrowserRouter([
     children: [
       { index: true, element: <Navigate to="/projects" replace /> },
       { path: 'my', element: <MyWorkPage /> },
+      { path: 'work-items', element: <AllWorkPage /> },
       { path: 'initiatives', element: <InitiativesPage /> },
       { path: 'projects', element: <ProjectsPage /> },
       { path: 'search', element: <SearchPage /> },
