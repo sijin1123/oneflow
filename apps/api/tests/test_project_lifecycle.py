@@ -97,3 +97,5 @@ async def test_my_work_and_search_rest_quietly(client, archived):
 
     res = await client.get("/api/v1/search/work-packages", params={"q": "보관 전"})
     assert res.json()["total"] == 0
+    res = await client.get("/api/v1/search/work-packages")
+    assert all(i["project_id"] != pid for i in res.json()["items"])

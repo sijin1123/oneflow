@@ -33,6 +33,8 @@ async def test_search_is_case_insensitive_and_scoped(client, two_projects):
     body = res.json()
     assert body["total"] == 1
     assert body["items"][0]["project_name"] == "알파"
+    assert body["items"][0]["assignee_name"] is None
+    assert body["items"][0]["updated_at"] is not None
 
 
 async def test_search_excludes_non_member_projects(client, foreign_project):
@@ -42,9 +44,26 @@ async def test_search_excludes_non_member_projects(client, foreign_project):
     assert res.json()["total"] == 0
 
 
-async def test_search_requires_a_query(client):
-    # empty q → 422 (min_length=1)
+async def test_search_without_query_lists_all_member_work(client, two_projects):
+    res = await client.get("/api/v1/search/work-packages")
+    assert res.status_code == 200
+    body = res.json()
+    assert body["query"] == ""
+    assert body["total"] == 3
+    assert {i["project_key"] for i in body["items"]} == {"ALPHA", "BETA"}
+
+
+async def test_search_empty_query_is_still_rejected(client):
+    # q omitted powers the all-work grid; explicit empty q stays invalid.
     assert (await client.get("/api/v1/search/work-packages?q=")).status_code == 422
+
+
+async def test_search_paginates_with_actual_total(client, two_projects):
+    res = await client.get("/api/v1/search/work-packages?limit=1&offset=1")
+    assert res.status_code == 200
+    body = res.json()
+    assert body["total"] == 3
+    assert len(body["items"]) == 1
 
 
 async def test_search_wildcards_are_escaped(client, two_projects):

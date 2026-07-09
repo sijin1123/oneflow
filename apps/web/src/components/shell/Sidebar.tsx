@@ -13,6 +13,7 @@ import {
   IterationCcw,
   LayoutDashboard,
   List,
+  ListChecks,
   ListTree,
   Paperclip,
   Search,
@@ -45,6 +46,7 @@ type ProjectNavItem = {
 
 const workspaceNav: WorkspaceNavItem[] = [
   { to: '/my', label: '내 작업', icon: Inbox },
+  { to: '/work-items', label: '전체 작업', icon: ListChecks },
   { to: '/projects', label: '프로젝트', icon: FolderKanban, end: true },
   { to: '/initiatives', label: '이니셔티브', icon: Compass },
   { to: '/search', label: '검색', icon: Search },
