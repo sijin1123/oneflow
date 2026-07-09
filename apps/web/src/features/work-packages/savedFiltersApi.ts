@@ -11,6 +11,9 @@ export type SavedFilterParams = {
   module_id?: string | null
   q?: string | null
   columns?: string | null
+  cf_field?: string | null
+  cf_op?: string | null
+  cf_value?: string | null
 }
 
 export type ViewLayout = 'list' | 'board' | 'tree' | 'timeline' | 'calendar'

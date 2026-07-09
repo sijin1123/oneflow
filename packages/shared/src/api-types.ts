@@ -4601,6 +4601,12 @@ export interface components {
         SavedFilterParams: {
             /** Assignee Id */
             assignee_id?: string | null;
+            /** Cf Field */
+            cf_field?: string | null;
+            /** Cf Op */
+            cf_op?: string | null;
+            /** Cf Value */
+            cf_value?: string | null;
             /** Columns */
             columns?: string | null;
             /** Cycle Id */
@@ -8967,6 +8973,9 @@ export interface operations {
                 module_id?: string | null;
                 q?: string | null;
                 custom_fields?: string | null;
+                cf_field?: string | null;
+                cf_op?: string | null;
+                cf_value?: string | null;
                 sort?: "created" | "subject";
                 limit?: number;
                 offset?: number;

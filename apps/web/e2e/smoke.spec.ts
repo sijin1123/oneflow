@@ -2739,6 +2739,76 @@ test('커스텀 필드 열을 켜면 목록이 값과 함께 렌더된다', asyn
   await expect(page.getByRole('cell', { name: '스테이징' })).toBeVisible()
 })
 
+test('커스텀 필드 필터가 목록을 좁히고 op 전환·저장 뷰로 왕복한다', async ({ page }) => {
+  await mockApi(page)
+  const FIELD_ID = '11111111-2222-3333-4444-555555555555'
+  await page.route(`**/api/v1/projects/${project.id}/custom-fields**`, (route) =>
+    route.fulfill({
+      json: {
+        items: [
+          {
+            id: FIELD_ID,
+            project_id: project.id,
+            name: '환경',
+            field_type: 'text',
+            is_active: true,
+            applies_to: null,
+            options: null,
+            position: 0,
+          },
+        ],
+        total: 1,
+      },
+    }),
+  )
+  // The list narrows to wpA when the custom filter is present.
+  await page.route(`**/api/v1/projects/${project.id}/work-packages**`, (route) => {
+    const url = route.request().url()
+    if (url.includes(`cf_field=${FIELD_ID}`)) {
+      route.fulfill({ json: { items: [wpA], total: 1 } })
+      return
+    }
+    route.fulfill({ json: workPackages })
+  })
+
+  await page.goto(`/projects/${project.id}/work-packages`)
+  await expect(page.getByRole('button', { name: '보드 뷰 구현' })).toBeVisible()
+
+  // Selecting the field defaults the op to 'has' (no value) — the list refetches.
+  const hasReq = page.waitForRequest(
+    (r) => r.url().includes('/work-packages?') && r.url().includes(`cf_field=${FIELD_ID}`),
+  )
+  await page.getByLabel('커스텀 필드 필터').selectOption({ label: '환경' })
+  await hasReq
+  await expect(page).toHaveURL(new RegExp(`cf_field=${FIELD_ID}`))
+  await expect(page).toHaveURL(/cf_op=has/)
+  // The list narrowed — the second WP is gone.
+  await expect(page.getByRole('button', { name: '보드 뷰 구현' })).toBeHidden()
+  await expect(page.getByRole('button', { name: '워크패키지 API 구현' })).toBeVisible()
+
+  // Switching to '값 일치' reveals a value input and drops the stale value from the URL.
+  await page.getByLabel('커스텀 필드 연산').selectOption('eq')
+  await expect(page).not.toHaveURL(/cf_value=/)
+  const eqReq = page.waitForRequest((r) => r.url().includes('cf_value=%EC%9A%B4%EC%98%81'))
+  await page.getByLabel('커스텀 필드 값').fill('운영')
+  await eqReq
+  await expect(page).toHaveURL(/cf_op=eq/)
+
+  // Saving the current filter carries the custom-field params into the view.
+  await page.getByRole('button', { name: '현재 필터를 뷰로 저장' }).click()
+  await page.getByLabel('뷰 이름').fill('운영 환경 뷰')
+  const post = page.waitForRequest(
+    (r) => r.method() === 'POST' && r.url().includes('/saved-filters'),
+  )
+  await page.getByRole('button', { name: '저장', exact: true }).click()
+  const sent = (await post).postDataJSON() as {
+    params: { cf_field?: string; cf_op?: string; cf_value?: string }
+  }
+  expect(sent.params.cf_field).toBe(FIELD_ID)
+  expect(sent.params.cf_op).toBe('eq')
+  expect(sent.params.cf_value).toBe('운영')
+})
+
 test('보드가 프로젝트 워크플로우 설정의 라벨과 순서를 반영한다', async ({ page }) => {
   await mockApi(page)
   // custom labels for the two statuses the fixtures use (after mockApi → precedence)

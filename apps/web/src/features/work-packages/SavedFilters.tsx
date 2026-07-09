@@ -27,6 +27,9 @@ const KEYS = [
   'module_id',
   'q',
   'columns',
+  'cf_field',
+  'cf_op',
+  'cf_value',
 ] as const
 
 const LAYOUT_ROUTES: Record<ViewLayout, string> = {

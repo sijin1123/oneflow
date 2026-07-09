@@ -31,6 +31,9 @@ async def test_saved_filter_crud(client, project):
         "module_id": None,
         "q": None,
         "columns": None,
+        "cf_field": None,
+        "cf_op": None,
+        "cf_value": None,
     }
 
     listed = (await client.get(f"/api/v1/projects/{pid}/saved-filters")).json()

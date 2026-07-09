@@ -1,7 +1,9 @@
 import logging
+import re
 import uuid
 from typing import Literal
 
+import sqlalchemy as sa
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
@@ -181,6 +183,84 @@ CUSTOM_FIELD_COLUMN_CAP = 5
 _CUSTOM_FIELDS_422 = "custom_fields must be up to 5 active field ids of this project"
 
 
+_CF_FILTER_FIELD_422 = "cf_field must be an active custom field of this project"
+_CF_FILTER_OP_422 = "cf_op must be 'eq' or 'has'"
+
+
+def _normalize_cf_value(field_type: str, raw: str) -> str:
+    """Type-appropriate canonical text for an eq filter (v80.1 R1-①). Bad
+    input for a typed field is a 422 (distinct from the field-existence 422);
+    text/dropdown/url pass through and simply may not match."""
+    if field_type == "number":
+        try:
+            f = float(raw)
+        except ValueError:
+            raise HTTPException(status_code=422, detail="cf_value must be a number") from None
+        return str(int(f)) if f.is_integer() else str(f)
+    if field_type == "boolean":
+        if raw not in ("true", "false"):
+            raise HTTPException(status_code=422, detail="cf_value must be 'true' or 'false'")
+        return raw
+    if field_type == "date":
+        if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", raw):
+            raise HTTPException(status_code=422, detail="cf_value must be YYYY-MM-DD")
+        return raw
+    if field_type == "member":
+        try:
+            return str(uuid.UUID(raw))
+        except ValueError:
+            raise HTTPException(status_code=422, detail="cf_value must be a user id") from None
+    return raw
+
+
+async def _custom_value_filter(
+    session: AsyncSession,
+    project_id: uuid.UUID,
+    cf_field: uuid.UUID | None,
+    cf_op: str | None,
+    cf_value: str | None,
+):
+    """Returns an EXISTS predicate (no join multiplication) or None. Field is
+    validated project-scoped (generic 422, Pass 67 parity); op/value follow."""
+    if cf_field is None:
+        return None
+    from app.models.custom_field import CustomField, WpCustomValue
+
+    field_type = (
+        await session.execute(
+            select(CustomField.field_type).where(
+                CustomField.id == cf_field,
+                CustomField.project_id == project_id,
+                CustomField.is_active.is_(True),
+            )
+        )
+    ).scalar_one_or_none()
+    if field_type is None:
+        raise HTTPException(status_code=422, detail=_CF_FILTER_FIELD_422)
+    if cf_op not in ("eq", "has"):
+        raise HTTPException(status_code=422, detail=_CF_FILTER_OP_422)
+    base = (WpCustomValue.work_package_id == WorkPackage.id) & (WpCustomValue.field_id == cf_field)
+    if cf_op == "has":
+        return select(WpCustomValue.id).where(base).exists()
+    if cf_value is None:
+        raise HTTPException(status_code=422, detail="cf_value is required when cf_op is 'eq'")
+    norm = _normalize_cf_value(field_type, cf_value)
+    # JSONB scalar → text: numbers/booleans/strings compare by canonical text.
+    return (
+        select(WpCustomValue.id)
+        .where(base, func.cast(WpCustomValue.value, sa.Text) == _jsonb_text(norm, field_type))
+        .exists()
+    )
+
+
+def _jsonb_text(norm: str, field_type: str) -> str:
+    """The stored JSONB rendered as text: strings are quoted, number/boolean
+    are bare — mirror PG's ::text output so the comparison lands."""
+    if field_type in ("number", "boolean"):
+        return norm
+    return f'"{norm}"'
+
+
 async def _parse_custom_fields(
     session: AsyncSession, project_id: uuid.UUID, raw: str | None
 ) -> list[uuid.UUID] | None:
@@ -287,6 +367,9 @@ async def list_work_packages(
     module_id: uuid.UUID | None = Query(default=None),
     q: str | None = Query(default=None, max_length=255),
     custom_fields: str | None = Query(default=None, max_length=255),
+    cf_field: uuid.UUID | None = Query(default=None),
+    cf_op: str | None = Query(default=None),
+    cf_value: str | None = Query(default=None, max_length=255),
     sort: SortField = Query(default="created"),
     limit: int = Query(default=200, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
@@ -295,7 +378,10 @@ async def list_work_packages(
 ) -> WorkPackageList:
     await require_member(session, project_id, user)
     requested_fields = await _parse_custom_fields(session, project_id, custom_fields)
+    cf_predicate = await _custom_value_filter(session, project_id, cf_field, cf_op, cf_value)
     stmt = select(WorkPackage).where(WorkPackage.project_id == project_id)
+    if cf_predicate is not None:
+        stmt = stmt.where(cf_predicate)
     if status is not None:
         stmt = stmt.where(WorkPackage.status == status)
     if priority is not None:

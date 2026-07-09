@@ -64,6 +64,9 @@ export function ListPage() {
     module_id: searchParams.get('module_id') ?? undefined,
     q: searchParams.get('q') ?? undefined,
     sort: searchParams.get('sort') ?? undefined,
+    cf_field: searchParams.get('cf_field') ?? undefined,
+    cf_op: searchParams.get('cf_op') ?? undefined,
+    cf_value: searchParams.get('cf_value') ?? undefined,
   }
   // placed after columns parsing below (custom_fields follows the visible columns)
   const customFields = useCustomFields(projectId)
