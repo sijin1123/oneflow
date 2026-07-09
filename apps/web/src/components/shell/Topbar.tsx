@@ -44,11 +44,14 @@ const projectRouteLabels: Array<{ suffix: string; title: string; parent: string 
 function getShellContext(pathname: string, projectName?: string) {
   if (projectName) {
     const projectRoute = projectRouteLabels.find((item) => pathname.endsWith(item.suffix))
-    const nestedRoute = pathname.includes('/documents/')
-      ? { title: 'Document', parent: '협업' }
-      : pathname.includes('/meetings/')
-        ? { title: 'Meeting', parent: '협업' }
-        : null
+    let nestedRoute: { title: string; parent: string } | null = null
+    if (pathname.includes('/work-packages/')) {
+      nestedRoute = { title: 'Work Package', parent: '작업' }
+    } else if (pathname.includes('/documents/')) {
+      nestedRoute = { title: 'Document', parent: '협업' }
+    } else if (pathname.includes('/meetings/')) {
+      nestedRoute = { title: 'Meeting', parent: '협업' }
+    }
 
     const route = nestedRoute ?? projectRoute ?? { title: 'Work Packages', parent: '작업' }
     return {

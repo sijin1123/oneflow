@@ -87,7 +87,7 @@ export function SearchPage() {
               <ResultRow
                 key={item.id}
                 projectKey={item.project_key}
-                onClick={() => navigate(`/projects/${item.project_id}/work-packages?wp=${item.id}`)}
+                onClick={() => navigate(`/projects/${item.project_id}/work-packages/${item.id}`)}
               >
                 <TypeChip type={item.type} />
                 <span className="min-w-0 flex-1 truncate text-sm font-medium">{item.subject}</span>

@@ -117,7 +117,7 @@ function fromWorkPackage(item: SearchResultItem): CommandPaletteItem {
     kind: 'work_packages',
     label: item.subject,
     detail: item.project_name,
-    href: `/projects/${item.project_id}/work-packages?wp=${item.id}`,
+    href: `/projects/${item.project_id}/work-packages/${item.id}`,
     projectKey: item.project_key,
     snippet: item.snippet,
     matchedIn: item.matched_in,
