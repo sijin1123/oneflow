@@ -293,6 +293,73 @@ async function mockApi(page: Page, opts: { conflictOnPatch?: boolean } = {}) {
   })
 }
 
+async function enableCommandPalette(page: Page) {
+  await page.route('**/api/v1/auth/config', (route) =>
+    route.fulfill({
+      json: {
+        auth_mode: 'dev',
+        oidc_issuer: null,
+        oidc_client_id: null,
+        has_client_secret: false,
+        command_palette_enabled: true,
+      },
+    }),
+  )
+}
+
+async function mockCommandPaletteSearch(page: Page) {
+  const emptyGroup = { items: [], returned: 0, truncated: false }
+  await page.route('**/api/v1/search?**', (route) =>
+    route.fulfill({
+      json: {
+        query: '구현',
+        work_packages: {
+          items: [
+            {
+              id: wpA.id,
+              project_id: project.id,
+              project_key: 'ONE',
+              project_name: 'OneFlow 도입',
+              subject: '워크패키지 API 구현',
+              status: 'todo',
+              priority: 'high',
+              type: 'task',
+              due_date: '2026-07-15',
+              matched_in: 'content',
+              snippet: '수직 슬라이스 구현',
+            },
+          ],
+          returned: 1,
+          truncated: false,
+        },
+        documents: {
+          items: [
+            {
+              id: 'd-77',
+              project_id: project.id,
+              project_key: 'ONE',
+              project_name: 'OneFlow 도입',
+              title: '구현 가이드 문서',
+              matched_in: 'primary',
+              snippet: null,
+            },
+          ],
+          returned: 1,
+          truncated: false,
+        },
+        meetings: emptyGroup,
+        cycles: emptyGroup,
+        modules: emptyGroup,
+        initiatives: {
+          items: [{ id: 'ini-9', name: '플랫폼 전략', state: 'in_progress' }],
+          returned: 1,
+          truncated: false,
+        },
+      },
+    }),
+  )
+}
+
 test('앱 셸과 프로젝트/워크패키지 목록이 렌더링된다', async ({ page }) => {
   await mockApi(page)
   await page.goto('/')
@@ -2597,6 +2664,76 @@ test('전체 검색이 그룹 결과를 보여주고 문서로 이동한다', as
   // navigation contract: a document result opens the editor
   await page.getByRole('button', { name: /구현 가이드 문서/ }).click()
   await expect(page.getByLabel('문서 제목')).toHaveValue('구현 가이드 문서')
+})
+
+test('커맨드 팔레트는 flag OFF에서 렌더링되지 않는다', async ({ page }) => {
+  await mockApi(page)
+  await page.goto('/projects')
+  await expect(page.getByRole('button', { name: '전체 검색 열기' })).toHaveCount(0)
+  await page.keyboard.press('/')
+  await expect(page.getByRole('dialog', { name: '전체 검색' })).toHaveCount(0)
+})
+
+test('커맨드 팔레트가 flag ON에서 검색 결과를 열고 키보드로 이동한다', async ({ page }) => {
+  await mockApi(page)
+  await enableCommandPalette(page)
+  await mockCommandPaletteSearch(page)
+  await page.goto('/projects')
+
+  await page.getByRole('button', { name: '전체 검색 열기' }).first().click()
+  const dialog = page.getByRole('dialog', { name: '전체 검색' })
+  await expect(dialog).toBeVisible()
+  await dialog.getByLabel('전체 검색어').fill('구현')
+  await expect(dialog.getByRole('option', { name: /워크패키지 API 구현/ })).toBeVisible()
+  await expect(dialog.getByRole('tab', { name: /작업/ })).toBeVisible()
+
+  await page.keyboard.press('Enter')
+  await expect(page).toHaveURL(new RegExp(`/projects/${project.id}/work-packages\\?wp=${wpA.id}`))
+  const drawer = page.getByRole('dialog', { name: '워크패키지 API 구현' })
+  await drawer.getByLabel('닫기').click()
+  await expect(drawer).toHaveCount(0)
+
+  await page.getByRole('button', { name: '전체 검색 열기' }).first().click()
+  await expect(dialog).toBeVisible()
+  await dialog.getByLabel('전체 검색어').fill('구현')
+  await expect(dialog.getByRole('option', { name: /워크패키지 API 구현/ })).toBeVisible()
+  await page.keyboard.press('ArrowDown')
+  await page.keyboard.press('ArrowDown')
+  await page.keyboard.press('ArrowDown')
+  await page.keyboard.press('Enter')
+  await expect(page).toHaveURL(/\/search\?q=%EA%B5%AC%ED%98%84$/)
+})
+
+test('커맨드 팔레트 단축키는 편집 필드를 침범하지 않는다', async ({ page }) => {
+  await mockApi(page)
+  await enableCommandPalette(page)
+  await mockCommandPaletteSearch(page)
+  await page.goto(`/projects/${project.id}/work-packages`)
+
+  await page.getByLabel('워크패키지 검색').focus()
+  await page.keyboard.press('Control+K')
+  await expect(page.getByRole('dialog', { name: '전체 검색' })).toHaveCount(0)
+
+  await page.getByRole('button', { name: '워크패키지 API 구현' }).focus()
+  await page.keyboard.press('Control+K')
+  await expect(page.getByRole('dialog', { name: '전체 검색' })).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(page.getByRole('dialog', { name: '전체 검색' })).toHaveCount(0)
+})
+
+test('커맨드 팔레트는 모바일 폭에서 결과와 닫기 버튼이 보인다', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await mockApi(page)
+  await enableCommandPalette(page)
+  await mockCommandPaletteSearch(page)
+  await page.goto('/projects')
+
+  await page.getByRole('button', { name: '전체 검색 열기' }).first().click()
+  const dialog = page.getByRole('dialog', { name: '전체 검색' })
+  await expect(dialog).toBeVisible()
+  await dialog.getByLabel('전체 검색어').fill('구현')
+  await expect(dialog.getByRole('option', { name: /워크패키지 API 구현/ })).toBeVisible()
+  await expect(dialog.getByRole('button', { name: '전체 검색 닫기' })).toBeVisible()
 })
 
 test('저장된 필터를 적용하면 목록 쿼리에 반영된다', async ({ page }) => {
