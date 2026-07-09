@@ -51,12 +51,28 @@ export function AutomationManager({ projectId, isOwner }: { projectId: string; i
     return `상태가 '${statusLabel(rule.trigger_value)}'(으)로 바뀌면`
   }
 
+  const CONDITION_FIELD_LABELS: Record<string, string> = {
+    status: '상태',
+    type: '타입',
+    priority: '우선순위',
+  }
+  const conditionValueLabel = (field: string, value: string): string => {
+    if (field === 'status') return statusLabel(value)
+    if (field === 'type') return typeLabel(value)
+    return PRIORITY_LABELS[value as WpPriority] ?? value
+  }
+  const conditionText = (rule: AutomationRule): string => {
+    if (!rule.condition_field || !rule.condition_value) return ''
+    const f = CONDITION_FIELD_LABELS[rule.condition_field] ?? rule.condition_field
+    return ` (그리고 ${f}이(가) '${conditionValueLabel(rule.condition_field, rule.condition_value)}'일 때)`
+  }
+
   const ruleText = (rule: AutomationRule): string => {
     if (rule.action_type === 'set_assignee') {
-      return `${triggerText(rule)} → 담당자를 '${memberName(rule.action_value)}'(으)로 지정`
+      return `${triggerText(rule)}${conditionText(rule)} → 담당자를 '${memberName(rule.action_value)}'(으)로 지정`
     }
     const priority = PRIORITY_LABELS[rule.action_value as WpPriority] ?? rule.action_value
-    return `${triggerText(rule)} → 우선순위를 '${priority}'(으)로 설정`
+    return `${triggerText(rule)}${conditionText(rule)} → 우선순위를 '${priority}'(으)로 설정`
   }
 
   type TriggerType = 'status_changed_to' | 'type_changed_to' | 'priority_changed_to'
@@ -64,6 +80,16 @@ export function AutomationManager({ projectId, isOwner }: { projectId: string; i
   const [triggerValue, setTriggerValue] = useState<string>('in_review')
   const [actionType, setActionType] = useState<'set_priority' | 'set_assignee'>('set_priority')
   const [actionValue, setActionValue] = useState<string>('high')
+  // Optional AND secondary condition (Pass 81) — '' = none.
+  type ConditionField = '' | 'status' | 'type' | 'priority'
+  const [conditionField, setConditionField] = useState<ConditionField>('')
+  const [conditionValue, setConditionValue] = useState<string>('')
+  const conditionValueOptions =
+    conditionField === 'type'
+      ? WP_TYPES.map((t) => [t, typeLabel(t)] as const)
+      : conditionField === 'priority'
+        ? WP_PRIORITIES.map((p) => [p, PRIORITY_LABELS[p]] as const)
+        : WP_STATUSES.map((s) => [s, statusLabel(s)] as const)
 
   const add = () => {
     if (!actionValue) return
@@ -77,14 +103,25 @@ export function AutomationManager({ projectId, isOwner }: { projectId: string; i
         : triggerType === 'priority_changed_to'
           ? (PRIORITY_LABELS[triggerValue as WpPriority] ?? triggerValue)
           : statusLabel(triggerValue)
-    create.mutate({
-      name: `${triggerLabel} → ${target}`,
-      trigger_type: triggerType,
-      trigger_value: triggerValue,
-      action_type: actionType,
-      action_value: actionValue,
-      is_active: true,
-    })
+    const hasCondition = conditionField !== '' && conditionValue !== ''
+    create.mutate(
+      {
+        name: `${triggerLabel} → ${target}`,
+        trigger_type: triggerType,
+        trigger_value: triggerValue,
+        action_type: actionType,
+        action_value: actionValue,
+        condition_field: hasCondition ? conditionField : null,
+        condition_value: hasCondition ? conditionValue : null,
+        is_active: true,
+      },
+      {
+        onSuccess: () => {
+          setConditionField('')
+          setConditionValue('')
+        },
+      },
+    )
   }
 
   return (
@@ -269,6 +306,39 @@ export function AutomationManager({ projectId, isOwner }: { projectId: string; i
               ))}
             </Select>
           )}
+          <span className="text-xs text-of-muted">그리고</span>
+          <Select
+            aria-label="보조 조건 필드"
+            className="h-7 w-28 text-xs"
+            value={conditionField}
+            onChange={(e) => {
+              const next = e.target.value as ConditionField
+              setConditionField(next)
+              // Reset the value to the first option of the new field's vocabulary.
+              setConditionValue(
+                next === '' ? '' : next === 'type' ? 'bug' : next === 'priority' ? 'high' : 'in_review',
+              )
+            }}
+          >
+            <option value="">조건 없음</option>
+            <option value="status">상태가</option>
+            <option value="type">타입이</option>
+            <option value="priority">우선순위가</option>
+          </Select>
+          {conditionField !== '' ? (
+            <Select
+              aria-label="보조 조건 값"
+              className="h-7 w-28 text-xs"
+              value={conditionValue}
+              onChange={(e) => setConditionValue(e.target.value)}
+            >
+              {conditionValueOptions.map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
+            </Select>
+          ) : null}
           <Button size="sm" disabled={create.isPending} onClick={add}>
             규칙 추가
           </Button>

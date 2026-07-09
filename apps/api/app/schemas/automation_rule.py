@@ -3,8 +3,11 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
-from app.models.automation_rule import ACTION_TYPES, TRIGGER_TYPES
+from app.models.automation_rule import ACTION_TYPES, CONDITION_FIELDS, TRIGGER_TYPES
 from app.models.work_package import WP_PRIORITIES, WP_STATUSES, WP_TYPES
+
+# Value vocabulary per condition field (v81.1 R1-④) — mirrors the DB CHECK.
+_CONDITION_VOCAB = {"status": WP_STATUSES, "type": WP_TYPES, "priority": WP_PRIORITIES}
 
 
 class AutomationRuleCreate(BaseModel):
@@ -13,6 +16,9 @@ class AutomationRuleCreate(BaseModel):
     trigger_value: str
     action_type: str = "set_priority"
     action_value: str
+    # Optional AND secondary condition (Pass 81) — both set or both omitted.
+    condition_field: str | None = None
+    condition_value: str | None = None
     is_active: bool = True
 
     @field_validator("name")
@@ -54,6 +60,15 @@ class AutomationRuleCreate(BaseModel):
                 uuid.UUID(self.action_value)
             except ValueError as exc:  # membership is checked in the router (DB)
                 raise ValueError("action_value must be a user id") from exc
+        # Secondary condition: both-or-neither, then field/value vocabulary.
+        if (self.condition_field is None) != (self.condition_value is None):
+            raise ValueError("condition_field and condition_value must be set together")
+        if self.condition_field is not None:
+            if self.condition_field not in CONDITION_FIELDS:
+                raise ValueError(f"condition_field must be one of {CONDITION_FIELDS}")
+            vocab = _CONDITION_VOCAB[self.condition_field]
+            if self.condition_value not in vocab:
+                raise ValueError(f"condition_value must be one of {vocab}")
         return self
 
 
@@ -65,6 +80,10 @@ class AutomationRuleUpdate(BaseModel):
     name: str | None = None
     trigger_value: str | None = None
     action_value: str | None = None
+    # Pass 81: send both to set/change, both null to clear (router replaces the
+    # pair when either key is explicitly present).
+    condition_field: str | None = None
+    condition_value: str | None = None
     is_active: bool | None = None
 
 
@@ -78,6 +97,8 @@ class AutomationRuleRead(BaseModel):
     trigger_value: str
     action_type: str
     action_value: str
+    condition_field: str | None
+    condition_value: str | None
     is_active: bool
     last_fired_at: datetime | None
     fired_count: int
