@@ -85,17 +85,17 @@ async def test_fire_audit_counts_only_when_rule_wins(client, project):
     assert listed["items"][0]["fired_count"] == 1
     assert listed["items"][0]["last_fired_at"] is not None
 
-    # Two rules on the same field: only the LAST (winner) fires.
+    # Two rules on the same field: only the TOPMOST (winner) fires (Pass 82).
     late = (await create_rule(client, pid, name="나중 규칙", action_value="low")).json()
     wp2 = await create_wp(client, pid, subject="승자 확인")
     res = await client.patch(
         f"/api/v1/work-packages/{wp2['id']}", json={"expected_version": 0, "status": "done"}
     )
-    assert res.json()["priority"] == "low"  # created_at asc — last wins
+    assert res.json()["priority"] == "urgent"  # position asc — topmost (older) wins
     listed = (await client.get(f"/api/v1/projects/{pid}/automation-rules")).json()
     by_id = {r["id"]: r for r in listed["items"]}
-    assert by_id[late["id"]]["fired_count"] == 1
-    assert by_id[rule["id"]]["fired_count"] == 1  # unchanged — it lost this round
+    assert by_id[late["id"]]["fired_count"] == 0  # newer rule lost — never fired
+    assert by_id[rule["id"]]["fired_count"] == 2  # won again this round
 
 
 async def test_user_explicit_field_beats_automation(client, project):

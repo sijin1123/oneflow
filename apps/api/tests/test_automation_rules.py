@@ -98,18 +98,19 @@ async def test_rule_only_fires_on_actual_change(client, project):
 
 
 async def test_multiple_rules_resolve_deterministically(client, project):
-    # Two active rules on the same status: the most recently created one wins,
-    # every time (fable5 audit: nondeterministic multi-rule precedence).
+    # Two active rules on the same status: the TOPMOST (lowest position — the
+    # first-created after backfill) wins, every time (Pass 82: owner-set
+    # priority; ties broken by position asc, then created_at asc).
     pid = project["id"]
-    await _make_rule(client, pid, trigger="in_review", action="low")
-    await _make_rule(client, pid, trigger="in_review", action="urgent")  # newer → wins
+    await _make_rule(client, pid, trigger="in_review", action="low")  # position 0 → wins
+    await _make_rule(client, pid, trigger="in_review", action="urgent")
     for _ in range(3):
         wp = await create_wp(client, pid, subject="다중 규칙", priority="none")
         patched = await client.patch(
             f"/api/v1/work-packages/{wp['id']}",
             json={"expected_version": wp["version"], "status": "in_review"},
         )
-        assert patched.json()["priority"] == "urgent"
+        assert patched.json()["priority"] == "low"
 
 
 async def test_create_requires_owner_and_valid_values(client, project, foreign_project):
@@ -205,10 +206,12 @@ async def test_type_and_priority_triggers(client, project):
 
 
 async def test_multi_trigger_merge_order_and_bulk(client, project):
-    """Two triggers firing in ONE request merge in global created_at order —
-    the LAST rule per field wins; bulk fires per-row real changes only."""
+    """Two triggers firing in ONE request merge in ONE global order — the
+    TOPMOST rule per field wins (Pass 82: position asc, first-match); bulk fires
+    per-row real changes only."""
     pid = project["id"]
-    # Older rule (status) then newer rule (type): the newer wins the field.
+    # Topmost rule (status, position 0) then a later rule (type, position 1):
+    # the topmost wins the shared field, even across different triggers (R1-②).
     await _rule(client, pid, "검수 높음", "status_changed_to", "in_review", action="high")
     await _rule(client, pid, "버그 긴급", "type_changed_to", "bug", action="urgent")
 
@@ -217,7 +220,7 @@ async def test_multi_trigger_merge_order_and_bulk(client, project):
         f"/api/v1/work-packages/{wp['id']}",
         json={"expected_version": 0, "status": "in_review", "type": "bug"},
     )
-    assert res.json()["priority"] == "urgent"  # newer rule per field wins
+    assert res.json()["priority"] == "high"  # topmost rule per field wins
 
     # Bulk: priority change fires per row; a row already at the target
     # priority is a no-op row (no fire).

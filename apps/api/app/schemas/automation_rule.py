@@ -99,6 +99,7 @@ class AutomationRuleRead(BaseModel):
     action_value: str
     condition_field: str | None
     condition_value: str | None
+    position: int
     is_active: bool
     last_fired_at: datetime | None
     fired_count: int
@@ -108,6 +109,12 @@ class AutomationRuleRead(BaseModel):
 class AutomationRuleList(BaseModel):
     items: list[AutomationRuleRead]
     total: int
+
+
+class AutomationRuleReorder(BaseModel):
+    """Exactly this project's rule ids (active + inactive), new order (Pass 82)."""
+
+    ordered_ids: list[uuid.UUID]
 
 
 class AutomationRuleRunRead(BaseModel):

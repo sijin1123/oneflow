@@ -12,6 +12,7 @@ export type AutomationRule = {
   action_value: string
   condition_field: string | null
   condition_value: string | null
+  position: number
   is_active: boolean
   last_fired_at: string | null
   fired_count: number
@@ -68,6 +69,20 @@ export function useSetAutomationRuleActive(projectId: string) {
         body: JSON.stringify(patch),
       })
     },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['automation-rules', projectId] })
+    },
+  })
+}
+
+export function useReorderAutomationRules(projectId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (orderedIds: string[]) =>
+      api<AutomationRuleList>(`/api/v1/projects/${projectId}/automation-rules/order`, {
+        method: 'PUT',
+        body: JSON.stringify({ ordered_ids: orderedIds }),
+      }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['automation-rules', projectId] })
     },

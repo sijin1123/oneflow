@@ -118,6 +118,10 @@ tar xzf backup/uploads-<timestamp>.tar.gz -C apps/api
 - 블롭은 DB 백업 **직후** 촬영해 시점 차를 최소화. 보존 기간은 조직 정책에 따르되 최소 마지막 2세대.
 - 복구 리허설을 분기 1회 권고(위 검증 3단계 포함).
 
+### 코드 롤백 시 자동화 규칙 우선순위
+
+자동화 규칙 우선순위는 `automation_rules.position`(Pass 82)으로 결정됩니다. 이 열을 도입한 배포를 **코드만 이전 버전으로 롤백**하면 열 자체는 DB에 잔존하지만 구버전 코드는 이를 무시하고 승자 정책이 `created_at` 순서로 임시 회귀합니다(보안 경계 아님 — 자동화 실행 결과의 승자만 달라짐). 롤백 후에는 순서 의존 규칙의 동작을 스모크 확인하고, 재배포로 최신 코드를 복원하면 `position` 기반 우선순위가 다시 적용됩니다. 마이그레이션(0060)까지 되돌릴 필요는 없습니다(열 잔존은 무해).
+
 CI(`.github/workflows/ci.yml`)는 `backend`/`frontend`/`cleanroom`/`security-audit` 4개 잡으로 검증합니다. 앞의 3개(`backend`/`frontend`/`cleanroom`)를 main 브랜치의 required status checks로 등록하며, `security-audit`(pip-audit·npm audit)는 자문용 비차단 잡입니다.
 
 ## Layout

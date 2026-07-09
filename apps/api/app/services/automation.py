@@ -51,13 +51,15 @@ async def change_candidates(
     check, so single-pass stays intact.
 
     Pure computation — no counters, no log rows. Rules from ALL fired triggers
-    merge into ONE global order (created_at asc, id asc). Winner policy
-    (v81.1 R1-①, specificity-first): per target field a CONDITIONAL rule whose
-    condition matches always beats an UNCONDITIONAL rule regardless of
-    created_at; within equal specificity the LAST rule wins. Implemented as two
-    ordered passes (unconditional first, then condition-matched) so the
-    conditional overwrites. Single-pass stays intact: candidates come only from
-    the user's change, so priority_changed_to + set_priority cannot chain."""
+    merge into ONE global order (v41.1 R1-⑤). Winner policy (v81.1 R1-① /
+    v82.1 R1-②/⑤): per target field a CONDITIONAL rule whose condition matches
+    always beats an UNCONDITIONAL rule (specificity-first); within equal
+    specificity the TOPMOST rule (lowest owner-set `position`) wins. Implemented
+    as first-match-wins over rules sorted by (conditional-first, position,
+    created_at, id) — so a matched conditional at any position beats every
+    unconditional, and within a tier the smallest position applies. Single-pass
+    stays intact: candidates come only from the user's change, so
+    priority_changed_to + set_priority cannot chain."""
     if not fired:
         return {}
     state = pre_automation_state or {}
@@ -79,7 +81,11 @@ async def change_candidates(
                     AutomationRule.is_active.is_(True),
                     match,
                 )
-                .order_by(AutomationRule.created_at.asc(), AutomationRule.id.asc())
+                .order_by(
+                    AutomationRule.position.asc(),
+                    AutomationRule.created_at.asc(),
+                    AutomationRule.id.asc(),
+                )
             )
         )
         .scalars()
@@ -91,26 +97,35 @@ async def change_candidates(
             return True
         return state.get(rule.condition_field) == rule.condition_value
 
-    # Only rules whose secondary condition (if any) holds are eligible.
-    eligible = [r for r in rules if _condition_holds(r)]
+    # Only rules whose secondary condition (if any) holds are eligible; sort so
+    # conditional-matched rules come first (specificity-first), then by the
+    # position/created_at/id order the query already applied.
+    eligible = sorted(
+        (r for r in rules if _condition_holds(r)),
+        key=lambda r: 0 if r.condition_field is not None else 1,
+    )
     candidates: dict[str, AutomationCandidate] = {}
-    # Two passes: unconditional first, then conditional — so a matched
-    # conditional rule wins its target field over any unconditional rule.
-    for rule in [r for r in eligible if r.condition_field is None] + [
-        r for r in eligible if r.condition_field is not None
-    ]:
+    # First match per target field wins — the topmost eligible rule of the
+    # highest-specificity tier applies.
+    for rule in eligible:
         # Every action writes a field OTHER than status, so a rule can never
         # re-trigger itself or another status rule.
         if rule.action_type == "set_priority":
-            candidates["priority"] = AutomationCandidate(
-                rule_id=rule.id, rule_name=rule.name, field="priority", value=rule.action_value
+            candidates.setdefault(
+                "priority",
+                AutomationCandidate(
+                    rule_id=rule.id, rule_name=rule.name, field="priority", value=rule.action_value
+                ),
             )
         elif rule.action_type == "set_assignee":
-            candidates["assignee_id"] = AutomationCandidate(
-                rule_id=rule.id,
-                rule_name=rule.name,
-                field="assignee_id",
-                value=uuid.UUID(rule.action_value),
+            candidates.setdefault(
+                "assignee_id",
+                AutomationCandidate(
+                    rule_id=rule.id,
+                    rule_name=rule.name,
+                    field="assignee_id",
+                    value=uuid.UUID(rule.action_value),
+                ),
             )
     # Fire-time recheck (v16.1 R1-④, v61.1 R1-⑥): the WINNING assignee must
     # still be a member with a writable role — the same predicate the ordinary
