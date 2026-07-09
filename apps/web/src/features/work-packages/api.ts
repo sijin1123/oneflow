@@ -21,6 +21,7 @@ export type WpFilters = {
   priority?: string
   type?: string
   assignee_id?: string
+  milestone_id?: string
   cycle_id?: string
   module_id?: string
   q?: string
