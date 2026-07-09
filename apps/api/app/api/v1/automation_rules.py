@@ -8,7 +8,7 @@ import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from pydantic import ValidationError
-from sqlalchemy import select
+from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import get_current_user
@@ -20,12 +20,17 @@ from app.schemas.automation_rule import (
     AutomationRuleCreate,
     AutomationRuleList,
     AutomationRuleRead,
+    AutomationRuleReorder,
     AutomationRuleRunList,
     AutomationRuleRunRead,
     AutomationRuleUpdate,
 )
 
 router = APIRouter()
+
+# Serializes concurrent create/reorder per project so positions stay a total
+# order (Pass 82 R1-①; 427002 member-lock precedent — one project → one key).
+AUTOMATION_ORDER_LOCK_CLASSID = 427011
 
 
 async def _get_owned_rule(
@@ -70,7 +75,11 @@ async def list_automation_rules(
             await session.execute(
                 select(AutomationRule)
                 .where(AutomationRule.project_id == project_id)
-                .order_by(AutomationRule.created_at.asc(), AutomationRule.id.asc())
+                .order_by(
+                    AutomationRule.position.asc(),
+                    AutomationRule.created_at.asc(),
+                    AutomationRule.id.asc(),
+                )
             )
         )
         .scalars()
@@ -121,6 +130,20 @@ async def create_automation_rule(
 ) -> AutomationRuleRead:
     await require_role(session, project_id, user, {"owner"}, write=True)
     await _require_assignee_value_member(session, project_id, body)
+    # Serialize with reorder so positions stay a total order (R1-①); new rules
+    # append at MAX(position)+1.
+    await session.execute(
+        text("SELECT pg_advisory_xact_lock(:classid, hashtext(:pid))").bindparams(
+            classid=AUTOMATION_ORDER_LOCK_CLASSID, pid=str(project_id)
+        )
+    )
+    next_position = (
+        await session.execute(
+            select(func.coalesce(func.max(AutomationRule.position), -1) + 1).where(
+                AutomationRule.project_id == project_id
+            )
+        )
+    ).scalar_one()
     rule = AutomationRule(
         project_id=project_id,
         name=body.name,
@@ -130,12 +153,67 @@ async def create_automation_rule(
         action_value=body.action_value,
         condition_field=body.condition_field,
         condition_value=body.condition_value,
+        position=next_position,
         is_active=body.is_active,
     )
     session.add(rule)
     await session.flush()
     await session.commit()
     return AutomationRuleRead.model_validate(rule)
+
+
+@router.put("/projects/{project_id}/automation-rules/order", response_model=AutomationRuleList)
+async def reorder_automation_rules(
+    project_id: uuid.UUID,
+    body: AutomationRuleReorder,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+) -> AutomationRuleList:
+    """Owner-only atomic reorder (Pass 82 — the custom-fields /order contract):
+    ordered_ids must list EXACTLY this project's rules (active + inactive);
+    positions rewrite 0..n-1 in one transaction under the project order lock so
+    a concurrent create can't interleave a duplicate position."""
+    await require_role(session, project_id, user, {"owner"}, write=True)
+    await session.execute(
+        text("SELECT pg_advisory_xact_lock(:classid, hashtext(:pid))").bindparams(
+            classid=AUTOMATION_ORDER_LOCK_CLASSID, pid=str(project_id)
+        )
+    )
+    rows = (
+        (
+            await session.execute(
+                select(AutomationRule).where(AutomationRule.project_id == project_id)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    by_id = {r.id: r for r in rows}
+    if set(body.ordered_ids) != set(by_id):
+        raise HTTPException(
+            status_code=422, detail="ordered_ids must list exactly this project's rules"
+        )
+    for position, rule_id in enumerate(body.ordered_ids):
+        by_id[rule_id].position = position
+    await session.commit()
+    ordered = (
+        (
+            await session.execute(
+                select(AutomationRule)
+                .where(AutomationRule.project_id == project_id)
+                .order_by(
+                    AutomationRule.position.asc(),
+                    AutomationRule.created_at.asc(),
+                    AutomationRule.id.asc(),
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return AutomationRuleList(
+        items=[AutomationRuleRead.model_validate(r) for r in ordered], total=len(ordered)
+    )
 
 
 @router.patch(

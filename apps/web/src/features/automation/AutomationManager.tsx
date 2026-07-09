@@ -1,4 +1,4 @@
-import { Trash2 } from 'lucide-react'
+import { ChevronDown, ChevronUp, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 
 import { Button } from '@/components/ui/button'
@@ -22,6 +22,7 @@ import {
   useAutomationRules,
   useCreateAutomationRule,
   useDeleteAutomationRule,
+  useReorderAutomationRules,
   useSetAutomationRuleActive,
 } from './api'
 
@@ -31,6 +32,7 @@ export function AutomationManager({ projectId, isOwner }: { projectId: string; i
   const { data } = useAutomationRules(projectId)
   const create = useCreateAutomationRule(projectId)
   const setActive = useSetAutomationRuleActive(projectId)
+  const reorder = useReorderAutomationRules(projectId)
   const del = useDeleteAutomationRule(projectId)
   const statusLabel = useStatusLabels(projectId)
   const typeLabel = useTypeLabels(projectId)
@@ -91,6 +93,17 @@ export function AutomationManager({ projectId, isOwner }: { projectId: string; i
         ? WP_PRIORITIES.map((p) => [p, PRIORITY_LABELS[p]] as const)
         : WP_STATUSES.map((s) => [s, statusLabel(s)] as const)
 
+  // Reorder by swapping a rule with its neighbour and sending the full order
+  // (the /order contract rewrites 0..n-1). Topmost rule wins its field.
+  const move = (index: number, delta: number) => {
+    const items = data?.items ?? []
+    const target = index + delta
+    if (target < 0 || target >= items.length) return
+    const ids = items.map((r) => r.id)
+    ;[ids[index], ids[target]] = [ids[target], ids[index]]
+    reorder.mutate(ids)
+  }
+
   const add = () => {
     if (!actionValue) return
     const target =
@@ -128,12 +141,13 @@ export function AutomationManager({ projectId, isOwner }: { projectId: string; i
     <div className="mb-4 space-y-2 rounded-of border border-of-border bg-of-surface p-3">
       <p className="text-xs font-medium">자동화 규칙</p>
       <p className="text-xs text-of-muted">
-        상태 변경 시 우선순위를 자동으로 설정합니다{isOwner ? '' : ' (소유자만 편집 가능)'}.
+        상태 변경 시 우선순위를 자동으로 설정합니다{isOwner ? '' : ' (소유자만 편집 가능)'}. 위에 있는
+        규칙이 먼저 적용됩니다(조건 있는 규칙이 조건 없는 규칙보다 우선).
       </p>
 
       {data && data.total > 0 ? (
         <ul className="space-y-1">
-          {data.items.map((rule) => (
+          {data.items.map((rule, index) => (
             <li
               key={rule.id}
               className="flex items-center gap-2 rounded-of border border-of-border px-2 py-1.5 text-xs"
@@ -195,6 +209,24 @@ export function AutomationManager({ projectId, isOwner }: { projectId: string; i
               ) : null}
               {isOwner ? (
                 <>
+                  <button
+                    type="button"
+                    aria-label={`${rule.name} 위로`}
+                    disabled={index === 0 || reorder.isPending}
+                    className="shrink-0 rounded-of p-1 text-of-muted hover:bg-of-surface-2 disabled:opacity-30"
+                    onClick={() => move(index, -1)}
+                  >
+                    <ChevronUp size={13} />
+                  </button>
+                  <button
+                    type="button"
+                    aria-label={`${rule.name} 아래로`}
+                    disabled={index === data.items.length - 1 || reorder.isPending}
+                    className="shrink-0 rounded-of p-1 text-of-muted hover:bg-of-surface-2 disabled:opacity-30"
+                    onClick={() => move(index, 1)}
+                  >
+                    <ChevronDown size={13} />
+                  </button>
                   <label className="flex shrink-0 items-center gap-1 text-[11px] text-of-muted">
                     <input
                       type="checkbox"

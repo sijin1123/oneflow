@@ -238,6 +238,7 @@ ENDPOINT_VERBS: dict[str, str] = {
     "POST /api/v1/projects/{project_id}/automation-rules": "automation.manage",
     "PATCH /api/v1/projects/{project_id}/automation-rules/{rule_id}": "automation.manage",
     "DELETE /api/v1/projects/{project_id}/automation-rules/{rule_id}": "automation.manage",
+    "PUT /api/v1/projects/{project_id}/automation-rules/order": "automation.manage",
     "POST /api/v1/projects/{project_id}/intake/{item_id}/triage": "intake.triage",
     # work.write
     "POST /api/v1/projects/{project_id}/work-packages": "work.write",

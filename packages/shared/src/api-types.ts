@@ -791,6 +791,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{project_id}/automation-rules/order": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Reorder Automation Rules
+         * @description Owner-only atomic reorder (Pass 82 — the custom-fields /order contract):
+         *     ordered_ids must list EXACTLY this project's rules (active + inactive);
+         *     positions rewrite 0..n-1 in one transaction under the project order lock so
+         *     a concurrent create can't interleave a duplicate position.
+         */
+        put: operations["reorder_automation_rules_api_v1_projects__project_id__automation_rules_order_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{project_id}/automation-rules/runs": {
         parameters: {
             query?: never;
@@ -2342,6 +2365,8 @@ export interface components {
             last_fired_at: string | null;
             /** Name */
             name: string;
+            /** Position */
+            position: number;
             /**
              * Project Id
              * Format: uuid
@@ -2351,6 +2376,14 @@ export interface components {
             trigger_type: string;
             /** Trigger Value */
             trigger_value: string;
+        };
+        /**
+         * AutomationRuleReorder
+         * @description Exactly this project's rule ids (active + inactive), new order (Pass 82).
+         */
+        AutomationRuleReorder: {
+            /** Ordered Ids */
+            ordered_ids: string[];
         };
         /** AutomationRuleRunList */
         AutomationRuleRunList: {
@@ -7027,6 +7060,43 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AutomationRuleRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reorder_automation_rules_api_v1_projects__project_id__automation_rules_order_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AutomationRuleReorder"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AutomationRuleList"];
                 };
             };
             /** @description Validation Error */

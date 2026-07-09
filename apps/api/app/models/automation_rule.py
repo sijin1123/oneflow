@@ -83,6 +83,10 @@ class AutomationRule(Base):
     condition_field: Mapped[str | None] = mapped_column(String(30), nullable=True)
     condition_value: Mapped[str | None] = mapped_column(String(30), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    # Explicit owner-controlled priority (Pass 82) — lower position wins within a
+    # specificity tier (topmost rule applies). Global order across the project's
+    # rules; specificity-first (conditional > unconditional) still dominates.
+    position: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0", default=0)
     # Fire-audit surface. Since Pass 16: fired = the rule's change was ACTUALLY
     # applied (candidate selection alone no longer counts) — kept in lockstep
     # with automation_rule_runs, updated in the applying transaction.
