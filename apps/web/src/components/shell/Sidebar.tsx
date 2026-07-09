@@ -1,6 +1,7 @@
 import {
   Activity,
   BarChart3,
+  BellRing,
   Boxes,
   CalendarClock,
   CalendarDays,
@@ -47,6 +48,7 @@ type ProjectNavItem = {
 
 const workspaceNav: WorkspaceNavItem[] = [
   { to: '/my', label: '내 작업', icon: Inbox },
+  { to: '/inbox', label: '인박스', icon: BellRing },
   { to: '/work-items', label: '전체 작업', icon: ListChecks },
   { to: '/projects', label: '프로젝트', icon: FolderKanban, end: true },
   { to: '/initiatives', label: '이니셔티브', icon: Compass },
