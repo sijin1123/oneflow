@@ -3,6 +3,10 @@ import { useNavigate } from 'react-router-dom'
 import { EmptyState, ErrorState, ListSkeleton } from '@/components/shell/states'
 import { Badge } from '@/components/ui/badge'
 import { useNotifications } from '@/features/notifications/api'
+import {
+  getNotificationMessage,
+  getNotificationTargetPath,
+} from '@/features/notifications/view'
 import { FIELD_LABELS } from '@/features/work-packages/activityLabels'
 import { PriorityChip, StatusChip } from '@/features/work-packages/chips'
 import { formatDateTime } from '@/lib/datetime'
@@ -157,7 +161,16 @@ export function MyWorkPage() {
 
           <div className="grid gap-6 lg:grid-cols-2">
             <section aria-label="알림" className="rounded-of border border-of-border bg-of-surface p-4">
-              <h2 className="mb-3 text-sm font-semibold">알림</h2>
+              <div className="mb-3 flex items-center justify-between gap-2">
+                <h2 className="text-sm font-semibold">알림</h2>
+                <button
+                  type="button"
+                  className="rounded-of px-1.5 py-1 text-xs text-of-muted hover:bg-of-surface-2 hover:text-of-text"
+                  onClick={() => navigate('/inbox')}
+                >
+                  전체 보기
+                </button>
+              </div>
               {inbox.length === 0 ? (
                 <p className="text-xs text-of-muted">새 알림이 없습니다.</p>
               ) : (
@@ -167,14 +180,13 @@ export function MyWorkPage() {
                       <button
                         type="button"
                         className="flex w-full items-baseline gap-2 text-left text-xs hover:underline"
-                        onClick={() =>
-                          n.work_package_id
-                            ? navigate(`/projects/${n.project_id}/work-packages?wp=${n.work_package_id}`)
-                            : undefined
-                        }
+                        onClick={() => {
+                          const target = getNotificationTargetPath(n)
+                          if (target) navigate(target)
+                        }}
                       >
                         <span className={n.read ? 'text-of-muted' : 'font-medium'}>
-                          {n.actor_name ?? '시스템'}: {n.work_package_subject ?? '작업'}
+                          {getNotificationMessage(n)}
                         </span>
                         <span className="ml-auto shrink-0 text-[11px] text-of-muted">
                           {formatDateTime(n.created_at)}

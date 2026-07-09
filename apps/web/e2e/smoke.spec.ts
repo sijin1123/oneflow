@@ -2882,6 +2882,90 @@ test('알림 벨이 미확인 개수를 보여주고 모두 읽음을 보낸다'
   await readAll
 })
 
+test('인박스는 알림 센터를 모바일에서도 정리된 표면으로 보여준다', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await mockApi(page)
+  const inbox = {
+    items: [
+      {
+        id: 'n1',
+        kind: 'assigned',
+        project_id: project.id,
+        work_package_id: wpA.id,
+        work_package_subject: '워크패키지 API 구현',
+        actor_name: 'Dev User',
+        read: false,
+        created_at: '2026-07-05T09:00:00Z',
+      },
+      {
+        id: 'n2',
+        kind: 'mention',
+        project_id: project.id,
+        work_package_id: wpB.id,
+        work_package_subject: '보드 뷰 구현',
+        actor_name: 'Ops Lead',
+        read: true,
+        created_at: '2026-07-04T09:00:00Z',
+      },
+      {
+        id: 'n3',
+        kind: 'intake_declined',
+        project_id: project.id,
+        work_package_id: null,
+        intake_item_id: 'ii-1',
+        work_package_subject: null,
+        actor_name: 'Dev User',
+        read: false,
+        created_at: '2026-07-03T09:00:00Z',
+      },
+    ],
+    total: 3,
+    unread: 2,
+  }
+  await page.route('**/api/v1/me/notifications/**', (route) =>
+    route.fulfill({ status: 204, body: '' }),
+  )
+  await page.route('**/api/v1/me/notifications', (route) => route.fulfill({ json: inbox }))
+
+  await page.goto(`/projects/${project.id}/work-packages`)
+  await page.getByRole('button', { name: '알림 2건 읽지 않음' }).click()
+  await page.getByRole('button', { name: /인박스 열기/ }).click()
+  await expect(page).toHaveURL(/\/inbox$/)
+
+  await expect(page.getByRole('heading', { name: '인박스' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '읽지 않음' })).toBeVisible()
+  await expect(page.getByText(/회원님을 배정했습니다/)).toBeVisible()
+  await expect(page.getByText(/멘션했습니다/)).toBeVisible()
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/inbox-ui/mobile.png',
+    fullPage: true,
+  })
+
+  const readReq = page.waitForRequest(
+    (req) => req.method() === 'POST' && req.url().includes('/me/notifications/n1/read'),
+  )
+  await page.getByRole('button', { name: '읽음', exact: true }).first().click()
+  await readReq
+
+  await page.getByRole('tab', { name: '읽음' }).click()
+  await expect(page.getByText(/보드 뷰 구현/)).toBeVisible()
+
+  const readAllReq = page.waitForRequest(
+    (req) => req.method() === 'POST' && req.url().includes('/me/notifications/read-all'),
+  )
+  await page.getByRole('button', { name: /전체 읽음/ }).click()
+  await readAllReq
+
+  await page.getByRole('tab', { name: '전체' }).click()
+  const declinedReadReq = page.waitForRequest(
+    (req) => req.method() === 'POST' && req.url().includes('/me/notifications/n3/read'),
+  )
+  await page.getByText(/반영되지 않았습니다/).click()
+  await declinedReadReq
+  await expect(page).toHaveURL(new RegExp(`/projects/${project.id}/intake\\?item=ii-1`))
+})
+
 test('새 프로젝트 폼에서 템플릿을 고르면 template_project_id를 보낸다', async ({ page }) => {
   await mockApi(page)
   await page.route('**/api/v1/projects', async (route) => {
