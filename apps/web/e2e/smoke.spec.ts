@@ -232,6 +232,10 @@ async function mockApi(page: Page, opts: { conflictOnPatch?: boolean } = {}) {
   await page.route('**/api/v1/work-packages/*/documents', (route) =>
     route.fulfill({ json: { items: [], total: 0 } }),
   )
+  // File/document surfaces use the project document list for attachment anchors.
+  await page.route('**/api/v1/projects/*/documents', (route) =>
+    route.fulfill({ json: { items: [], total: 0 } }),
+  )
   // The timeline reads project-wide relations for dependency connectors.
   await page.route('**/api/v1/projects/*/relations**', (route) =>
     route.fulfill({ json: { items: [], total: 0, truncated: false } }),
@@ -4725,6 +4729,79 @@ test('첨부 URL이 http(s)가 아니면 클라이언트에서 거부한다', as
   // The client rejects a non-http(s) scheme before it can be stored.
   await expect(page.getByText('http:// 또는 https://')).toBeVisible()
   await expect(page.getByRole('button', { name: '추가' })).toBeDisabled()
+})
+
+test('파일 페이지는 스토리지 허브와 모바일 안전 목록을 보여준다', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await mockApi(page)
+  await page.route(`**/api/v1/projects/${project.id}/documents`, (route) =>
+    route.fulfill({
+      json: {
+        items: [
+          {
+            id: 'doc-file',
+            project_id: project.id,
+            title: '온보딩 위키',
+            body: '<p>문서</p>',
+            parent_id: null,
+            version: 1,
+            created_at: '2026-07-01T00:00:00Z',
+            updated_at: '2026-07-02T00:00:00Z',
+          },
+        ],
+        total: 1,
+      },
+    }),
+  )
+  await page.route(`**/api/v1/projects/${project.id}/attachments`, (route) =>
+    route.fulfill({
+      json: {
+        items: [
+          {
+            id: 'file-upload',
+            project_id: project.id,
+            filename: '설계서.txt',
+            url: 'oneflow://attachments/file-upload',
+            content_type: 'text/plain',
+            size_bytes: 1100,
+            work_package_id: wpA.id,
+            document_id: null,
+            has_file: true,
+            uploaded_by: 'u-dev',
+            created_at: '2026-07-07T00:00:00Z',
+          },
+          {
+            id: 'file-link',
+            project_id: project.id,
+            filename: '온보딩 위키 링크',
+            url: 'https://files.example.com/wiki',
+            content_type: null,
+            size_bytes: null,
+            work_package_id: null,
+            document_id: 'doc-file',
+            has_file: false,
+            uploaded_by: null,
+            created_at: '2026-07-08T00:00:00Z',
+          },
+        ],
+        total: 2,
+      },
+    }),
+  )
+
+  await page.goto(`/projects/${project.id}/files`)
+  await expect(page.getByText('Storage surface')).toBeVisible()
+  await expect(page.getByLabel('파일 요약')).toContainText('전체 파일')
+  await expect(page.getByText('작업: 워크패키지 API 구현')).toBeVisible()
+  await expect(page.getByText('문서: 온보딩 위키')).toBeVisible()
+  await page.getByLabel('파일 검색').fill('위키')
+  await expect(page.getByRole('link', { name: /온보딩 위키 링크/ })).toBeVisible()
+  await expect(page.getByRole('link', { name: /설계서\.txt/ })).toHaveCount(0)
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/files-ui/mobile-list.png',
+    fullPage: true,
+  })
 })
 
 test('빈 목록은 모바일에서도 안정적인 빈 상태를 보여준다', async ({ page }) => {
