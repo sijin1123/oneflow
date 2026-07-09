@@ -10,6 +10,8 @@ import { useCanWrite } from '@/features/members/useCanWrite'
 import { NotificationBell } from '@/features/notifications/NotificationBell'
 import { useProjects } from '@/features/projects/api'
 
+import { CommandPalette } from './CommandPalette'
+
 function AccountMenu() {
   const me = useMe()
   const logout = useLogout()
@@ -124,10 +126,11 @@ export function Topbar() {
             <span className="text-of-muted">/</span>
           </>
         ) : null}
-        <span className="font-medium">{section}</span>
+        <span className="truncate font-medium">{section}</span>
       </nav>
 
       <div className="ml-auto flex items-center gap-2">
+        <CommandPalette />
         {onListView ? (
           <div className="relative">
             <Search

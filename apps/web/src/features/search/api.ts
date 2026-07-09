@@ -76,3 +76,14 @@ export function useUnifiedSearch(q: string) {
     enabled: query.length >= 2,
   })
 }
+
+export function useCommandPaletteSearch(q: string, enabled: boolean) {
+  const query = q.trim()
+  return useQuery({
+    queryKey: ['command-palette-search', query],
+    queryFn: () => api<UnifiedSearchResults>(`/api/v1/search?q=${encodeURIComponent(query)}`),
+    enabled: enabled && query.length >= 2,
+    staleTime: 0,
+    gcTime: 30_000,
+  })
+}
