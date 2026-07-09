@@ -32,6 +32,7 @@ import { NewWorkPackageInline } from './NewWorkPackageInline'
 import { PriorityChip, StatusChip, TypeChip } from './chips'
 import { useBulkUpdate, useWorkPackages } from './api'
 import { useExportCsv } from './csv'
+import { WorkPackageRowActions, type RowActionMessage } from './RowActions'
 import { PRIORITY_LABELS, STATUS_LABELS } from './types'
 import { useStatusLabels } from './useStatusLabels'
 import { useTypeLabels } from './useTypeLabels'
@@ -201,6 +202,7 @@ export function ListPage() {
   const [bulkStatus, setBulkStatus] = useState('')
   const [bulkPriority, setBulkPriority] = useState('')
   const [bulkAssignee, setBulkAssignee] = useState('')
+  const [actionMessage, setActionMessage] = useState<RowActionMessage | null>(null)
 
   const toggleSelected = (id: string) => {
     setSelected((prev) => {
@@ -230,10 +232,12 @@ export function ListPage() {
     )
   }
 
-  const openDrawer = (id: string) => {
+  const openDrawer = (id: string, options: { move?: boolean } = {}) => {
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev)
       next.set('wp', id)
+      if (options.move) next.set('move', '1')
+      else next.delete('move')
       return next
     })
   }
@@ -315,6 +319,19 @@ export function ListPage() {
 
       {canWrite ? <NewWorkPackageInline projectId={projectId} /> : null}
 
+      {actionMessage ? (
+        <div
+          role={actionMessage.kind === 'error' ? 'alert' : 'status'}
+          className={`border-b border-of-border px-4 py-2 text-xs ${
+            actionMessage.kind === 'error'
+              ? 'bg-of-danger/10 text-of-danger'
+              : 'bg-of-surface-2/50 text-of-muted'
+          }`}
+        >
+          {actionMessage.text}
+        </div>
+      ) : null}
+
       {canWrite && selected.size > 0 ? (
         <div className="flex flex-wrap items-center gap-2 border-b border-of-border bg-of-surface-2/40 px-4 py-2 text-xs">
           <span className="font-medium">{selected.size}건 선택</span>
@@ -386,7 +403,7 @@ export function ListPage() {
         <EmptyState title="조건에 맞는 작업이 없습니다" hint="필터를 조정하거나 새 작업을 만들어 보세요." />
       ) : (
         <div className="min-w-0 overflow-x-auto">
-          <table className="w-full min-w-[720px] border-collapse text-sm">
+          <table className="w-full min-w-[760px] border-collapse text-sm">
             <thead>
               <tr className="border-b border-of-border text-left text-xs text-of-muted">
                 {canWrite ? <th className="w-8 px-2 py-2" aria-label="선택 열" /> : null}
@@ -403,13 +420,16 @@ export function ListPage() {
                     {fieldById.get(id)?.name ?? '커스텀'}
                   </th>
                 ))}
+                <th className="sticky right-0 w-12 bg-of-surface px-2 py-2 text-right font-medium">
+                  <span className="sr-only">행 작업</span>
+                </th>
               </tr>
             </thead>
             <tbody>
               {data.items.map((wp) => (
                 <tr
                   key={wp.id}
-                  className="cursor-pointer border-b border-of-border hover:bg-of-surface-2"
+                  className="group cursor-pointer border-b border-of-border hover:bg-of-surface-2 focus-within:bg-of-surface-2"
                   onClick={() => openDrawer(wp.id)}
                 >
                   {canWrite ? (
@@ -474,6 +494,16 @@ export function ListPage() {
                       {renderCustomCell(wp, id, fieldById.get(id)?.field_type)}
                     </td>
                   ))}
+                  <td className="sticky right-0 bg-of-surface px-2 py-2 text-right group-hover:bg-of-surface-2 group-focus-within:bg-of-surface-2">
+                    <WorkPackageRowActions
+                      projectId={projectId}
+                      wp={wp}
+                      canWrite={canWrite}
+                      onOpenDrawer={(id) => openDrawer(id)}
+                      onOpenMove={(id) => openDrawer(id, { move: true })}
+                      onMessage={setActionMessage}
+                    />
+                  </td>
                 </tr>
               ))}
             </tbody>
