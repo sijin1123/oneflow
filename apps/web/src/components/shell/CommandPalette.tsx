@@ -90,12 +90,13 @@ export function CommandPalette() {
   useEffect(() => {
     if (!open) return
     const onEscape = (event: globalThis.KeyboardEvent) => {
-      if (event.defaultPrevented || event.key !== 'Escape') return
+      if (event.key !== 'Escape') return
       event.preventDefault()
+      event.stopPropagation()
       close()
     }
-    window.addEventListener('keydown', onEscape)
-    return () => window.removeEventListener('keydown', onEscape)
+    window.addEventListener('keydown', onEscape, { capture: true })
+    return () => window.removeEventListener('keydown', onEscape, { capture: true })
   }, [close, open])
 
   useEffect(() => {

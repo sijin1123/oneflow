@@ -4812,6 +4812,12 @@ export interface components {
         };
         /** SearchResultItem */
         SearchResultItem: {
+            /** Assignee Id */
+            assignee_id?: string | null;
+            /** Assignee Name */
+            assignee_name?: string | null;
+            /** Created At */
+            created_at?: string | null;
             /** Due Date */
             due_date: string | null;
             /**
@@ -4837,12 +4843,16 @@ export interface components {
             project_name: string;
             /** Snippet */
             snippet?: string | null;
+            /** Start Date */
+            start_date?: string | null;
             /** Status */
             status: string;
             /** Subject */
             subject: string;
             /** Type */
             type: string;
+            /** Updated At */
+            updated_at?: string | null;
         };
         /** SearchResults */
         SearchResults: {
@@ -9454,9 +9464,10 @@ export interface operations {
     };
     search_work_packages_api_v1_search_work_packages_get: {
         parameters: {
-            query: {
-                q: string;
+            query?: {
+                q?: string | null;
                 limit?: number;
+                offset?: number;
             };
             header?: never;
             path?: never;

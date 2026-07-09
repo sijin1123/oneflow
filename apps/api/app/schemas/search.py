@@ -1,5 +1,5 @@
 import uuid
-from datetime import date
+from datetime import date, datetime
 
 from pydantic import BaseModel
 
@@ -13,7 +13,12 @@ class SearchResultItem(BaseModel):
     status: str
     priority: str
     type: str
+    assignee_id: uuid.UUID | None = None
+    assignee_name: str | None = None
+    start_date: date | None = None
     due_date: date | None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
     # Content search (Pass 39): "primary" = the UI's main label (subject/
     # title/name); a primary match wins when both match (snippet stays null).
     matched_in: str = "primary"

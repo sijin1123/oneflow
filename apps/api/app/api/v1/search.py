@@ -9,8 +9,9 @@ probe (v14.1 — never a silent cut). Documents/meetings match on TITLE only
 """
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 
 from app.core.auth import get_current_user
 from app.db.session import get_session
@@ -57,23 +58,35 @@ def _visible_member_project_ids(user: User):
 
 @router.get("/search/work-packages", response_model=SearchResults)
 async def search_work_packages(
-    q: str = Query(min_length=1, max_length=255),
+    q: str | None = Query(default=None, min_length=1, max_length=255),
     limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
     session: AsyncSession = Depends(get_session),
     user: User = Depends(get_current_user),
 ) -> SearchResults:
+    Assignee = aliased(User)
     member_projects = _member_project_ids(user)
     stmt = (
-        select(WorkPackage, Project.key, Project.name)
+        select(WorkPackage, Project.key, Project.name, Assignee.display_name)
         .join(Project, WorkPackage.project_id == Project.id)
+        .outerjoin(Assignee, WorkPackage.assignee_id == Assignee.id)
         .where(WorkPackage.project_id.in_(member_projects))
         .where(Project.archived_at.is_(None))
-        # Case-insensitive substring; %/_ wildcards autoescaped (§6.1).
-        .where(WorkPackage.subject.icontains(q, autoescape=True))
-        .order_by(WorkPackage.updated_at.desc(), WorkPackage.id.asc())
-        .limit(limit)
     )
-    rows = (await session.execute(stmt)).all()
+    if q is not None:
+        # Case-insensitive substring; %/_ wildcards autoescaped (§6.1).
+        stmt = stmt.where(WorkPackage.subject.icontains(q, autoescape=True))
+
+    total = (
+        await session.execute(select(func.count()).select_from(stmt.order_by(None).subquery()))
+    ).scalar_one()
+    rows = (
+        await session.execute(
+            stmt.order_by(WorkPackage.updated_at.desc(), WorkPackage.id.asc())
+            .limit(limit)
+            .offset(offset)
+        )
+    ).all()
     items = [
         SearchResultItem(
             id=wp.id,
@@ -84,11 +97,16 @@ async def search_work_packages(
             status=wp.status,
             priority=wp.priority,
             type=wp.type,
+            assignee_id=wp.assignee_id,
+            assignee_name=assignee_name,
+            start_date=wp.start_date,
             due_date=wp.due_date,
+            created_at=wp.created_at,
+            updated_at=wp.updated_at,
         )
-        for wp, key, name in rows
+        for wp, key, name, assignee_name in rows
     ]
-    return SearchResults(items=items, total=len(items), query=q)
+    return SearchResults(items=items, total=total, query=q or "")
 
 
 @router.get("/search", response_model=UnifiedSearchResults)
