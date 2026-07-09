@@ -36,8 +36,8 @@ export function LinkedWorkPackagesSection({
   }
 
   return (
-    <section aria-label="연결된 작업" className="mt-4 space-y-2 border-t border-of-border pt-3">
-      <h3 className="text-xs font-semibold text-of-muted">연결된 작업</h3>
+    <section aria-label="연결된 작업" className="space-y-2 rounded-of border border-of-border bg-of-surface p-3">
+      <h3 className="text-sm font-semibold">연결된 작업</h3>
 
       {links.isPending ? (
         <p className="text-xs text-of-muted">불러오는 중…</p>
@@ -70,10 +70,10 @@ export function LinkedWorkPackagesSection({
 
       {canWrite ? (
         <>
-          <div className="flex items-center gap-1.5">
+          <div className="grid min-w-0 gap-1.5 sm:grid-cols-[minmax(0,1fr)_auto]">
             <Select
               aria-label="연결할 작업"
-              className="h-7 flex-1 text-xs"
+              className="h-7 min-w-0 text-xs"
               value={wpId}
               onChange={(e) => setWpId(e.target.value)}
             >

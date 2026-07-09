@@ -11,8 +11,8 @@ export function DocumentAttachments({ docId, projectId }: { docId: string; proje
   if (attachments.data.total === 0) return null
 
   return (
-    <section aria-label="문서 첨부" className="mt-4 space-y-2 border-t border-of-border pt-3">
-      <h3 className="text-xs font-semibold text-of-muted">첨부</h3>
+    <section aria-label="문서 첨부" className="space-y-2 rounded-of border border-of-border bg-of-surface p-3">
+      <h3 className="text-sm font-semibold">첨부</h3>
       <ul className="space-y-1">
         {attachments.data.items.map((a) => (
           <li

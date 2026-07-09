@@ -1,27 +1,30 @@
-import { ArrowLeft, Trash2 } from 'lucide-react'
+import { ArrowLeft, Clock3, FileText, FolderTree, Save, Trash2 } from 'lucide-react'
 import { Suspense, lazy, useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 
-import { ErrorState, ListSkeleton } from '@/components/shell/states'
 import { ReadOnlyNotice } from '@/components/shell/ReadOnlyNotice'
-import { useUploadAttachment } from '@/features/attachments/api'
-import { useCanWrite } from '@/features/members/useCanWrite'
+import { ErrorState, ListSkeleton } from '@/components/shell/states'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
-import { ApiError } from '@/lib/api'
-import { confirmDestructive, useUnsavedChangesPrompt } from '@/lib/guards'
+import { useUploadAttachment } from '@/features/attachments/api'
+import { useCanWrite } from '@/features/members/useCanWrite'
 import { useMe, useMemberNames, useMembers } from '@/features/members/api'
+import { useProject } from '@/features/projects/api'
+import { ApiError } from '@/lib/api'
+import { formatDateTime } from '@/lib/datetime'
+import { confirmDestructive, useUnsavedChangesPrompt } from '@/lib/guards'
 
 import {
   conflictOf,
+  useCreateDocumentComment,
   useDeleteDocument,
+  useDeleteDocumentComment,
   useDocument,
+  useDocumentComments,
   useDocuments,
   useUpdateDocument,
-  useCreateDocumentComment,
-  useDeleteDocumentComment,
-  useDocumentComments,
 } from './api'
 import { DocumentAttachments } from './DocumentAttachments'
 import { LinkedWorkPackagesSection } from './LinkedWorkPackagesSection'
@@ -36,6 +39,7 @@ export function DocumentEditorPage() {
   const navigate = useNavigate()
   const { data: doc, isPending, isError, error, refetch } = useDocument(docId)
   const siblings = useDocuments(projectId)
+  const project = useProject(projectId)
   const update = useUpdateDocument(projectId)
   const del = useDeleteDocument(projectId)
 
@@ -44,9 +48,7 @@ export function DocumentEditorPage() {
   const [parentId, setParentId] = useState<string | null>(null)
   const upload = useUploadAttachment(projectId)
   const canWrite = useCanWrite(projectId)
-  // Resync when the server doc changes (load / save / 409 reload). react-query's
-  // structural sharing keeps `doc`'s reference stable, so local edits aren't
-  // clobbered until the cached document actually changes.
+
   useEffect(() => {
     if (doc) {
       setTitle(doc.title)
@@ -55,7 +57,6 @@ export function DocumentEditorPage() {
     }
   }, [doc])
 
-  // Warn before navigating away with an unsaved draft (save-on-click editor).
   const dirty =
     !!doc &&
     !update.isPending &&
@@ -71,8 +72,6 @@ export function DocumentEditorPage() {
   const save = () => {
     const trimmed = title.trim()
     if (!trimmed || update.isPending) return
-    // After a conflict, retry against the server's current version so the user's
-    // (preserved) draft overwrites it; otherwise the normal optimistic token.
     update.mutate({
       docId: doc.id,
       expected_version: conflict ? conflict.current.version : doc.version,
@@ -82,10 +81,13 @@ export function DocumentEditorPage() {
     })
   }
 
-  // A page cannot nest under itself or its own subtree (server enforces; the
-  // select simply doesn't offer those).
   const excluded = subtreeIds(siblings.data?.items ?? [], doc.id)
   const parentOptions = (siblings.data?.items ?? []).filter((d) => !excluded.has(d.id))
+  const parentTitle =
+    parentId === null
+      ? '최상위'
+      : siblings.data?.items.find((d) => d.id === parentId)?.title ?? '상위 문서'
+  const archived = project.data?.archived_at !== null && project.data?.archived_at !== undefined
 
   const remove = () => {
     if (!confirmDestructive('이 문서를 삭제할까요? 되돌릴 수 없습니다.')) return
@@ -98,103 +100,138 @@ export function DocumentEditorPage() {
     update.error instanceof ApiError && update.error.status !== 409 ? update.error.message : null
 
   return (
-    <div className="mx-auto flex h-full max-w-3xl flex-col p-6">
-      <div className="mb-3 flex items-center gap-2">
-        <button
-          type="button"
-          aria-label="문서 목록"
-          className="rounded-of p-1 text-of-muted hover:bg-of-surface-2"
-          onClick={() => navigate(`/projects/${projectId}/documents`)}
-        >
-          <ArrowLeft size={16} />
-        </button>
-        <Input
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          readOnly={!canWrite}
-          aria-label="문서 제목"
-          className="flex-1 text-sm font-medium"
-        />
-        {canWrite ? (
-          <>
-            <Button size="sm" disabled={!title.trim() || update.isPending} onClick={save}>
-              저장
-            </Button>
-            <button
-              type="button"
-              aria-label="문서 삭제"
-              className="rounded-of p-1.5 text-of-muted hover:bg-of-surface-2 hover:text-of-danger"
-              onClick={remove}
-            >
-              <Trash2 size={15} />
-            </button>
-          </>
-        ) : null}
-      </div>
-      {!canWrite ? <ReadOnlyNotice className="mb-3" /> : null}
+    <div className="mx-auto flex w-full max-w-6xl min-w-0 flex-col gap-4 px-4 py-5 sm:px-6">
+      <header className="border-b border-of-border pb-4">
+        <div className="mb-3 flex min-w-0 items-center gap-2">
+          <button
+            type="button"
+            aria-label="문서 목록"
+            className="rounded-of p-1.5 text-of-muted hover:bg-of-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus"
+            onClick={() => navigate(`/projects/${projectId}/documents`)}
+          >
+            <ArrowLeft size={16} />
+          </button>
+          <div className="min-w-0 flex-1">
+            <p className="text-[11px] font-medium uppercase text-of-muted">Document detail</p>
+            <p className="truncate text-xs text-of-muted">{project.data?.name ?? '프로젝트'}</p>
+          </div>
+          <div className="hidden shrink-0 flex-wrap items-center gap-2 sm:flex">
+            <Badge variant={canWrite ? 'accent' : 'outline'}>
+              {canWrite ? '편집 가능' : '읽기 전용'}
+            </Badge>
+            <Badge variant={archived ? 'outline' : 'neutral'}>{archived ? '보관됨' : `v${doc.version}`}</Badge>
+          </div>
+        </div>
 
-      <div className="mb-3 flex items-center gap-2">
-        <label htmlFor="doc-parent" className="shrink-0 text-xs font-medium text-of-muted">
-          상위 페이지
-        </label>
-        <Select
-          id="doc-parent"
-          className="h-7 max-w-xs text-xs"
-          value={parentId ?? ''}
-          disabled={!canWrite}
-          onChange={(e) => setParentId(e.target.value === '' ? null : e.target.value)}
-        >
-          <option value="">(없음 — 최상위)</option>
-          {parentOptions.map((d) => (
-            <option key={d.id} value={d.id}>
-              {d.title}
-            </option>
-          ))}
-        </Select>
-      </div>
+        <div className="grid min-w-0 gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
+          <Input
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            readOnly={!canWrite}
+            aria-label="문서 제목"
+            className="h-10 min-w-0 text-base font-semibold"
+          />
+          {canWrite ? (
+            <div className="flex min-w-0 flex-wrap items-center gap-2">
+              <Button size="sm" disabled={!title.trim() || update.isPending} onClick={save}>
+                <Save size={14} /> 저장
+              </Button>
+              <button
+                type="button"
+                aria-label="문서 삭제"
+                className="rounded-of p-1.5 text-of-muted hover:bg-of-surface-2 hover:text-of-danger focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus"
+                onClick={remove}
+              >
+                <Trash2 size={15} />
+              </button>
+            </div>
+          ) : null}
+        </div>
+      </header>
+
+      {!canWrite ? <ReadOnlyNotice /> : null}
 
       {conflict ? (
-        <p role="alert" className="mb-2 text-xs text-of-danger">
-          다른 사용자가 먼저 수정했습니다. 작성 중인 내용은 유지했으니, 다시 저장하면 최신 내용
-          위에 덮어씁니다.
+        <p role="alert" className="rounded-of border border-of-danger/30 bg-of-danger/5 px-3 py-2 text-xs text-of-danger">
+          다른 사용자가 먼저 수정했습니다. 작성 중인 내용은 유지했으니, 다시 저장하면 최신 내용 위에 덮어씁니다.
         </p>
       ) : null}
       {otherError ? (
-        <p role="alert" className="mb-2 text-xs text-of-danger">
+        <p role="alert" className="rounded-of border border-of-danger/30 bg-of-danger/5 px-3 py-2 text-xs text-of-danger">
           저장하지 못했습니다: {otherError}
         </p>
       ) : null}
 
-      <Suspense
-        fallback={<div className="h-64 rounded-of border border-of-border bg-of-surface-2/40" />}
-      >
-        <RichTextEditor
-          value={doc.body ?? ''}
-          ariaLabel="문서 본문"
-          editable={canWrite}
-          onSave={setBody}
-          // Inline image (Pass 68): upload anchored to THIS document, then
-          // insert the canonical download URL — the server re-validates
-          // ownership + content type on save (v68.1 R1-①). Only writers get
-          // the image button (Pass 77).
-          onImageUpload={
-            canWrite
-              ? async (file) => {
-                  const att = await upload.mutateAsync({ file, documentId: doc.id })
-                  return `/api/v1/attachments/${att.id}/download`
+      <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1fr)_20rem]">
+        <main className="min-w-0 space-y-4">
+          <section aria-label="문서 내용" className="min-w-0">
+            <Suspense
+              fallback={<div className="h-64 rounded-of border border-of-border bg-of-surface-2/40" />}
+            >
+              <RichTextEditor
+                value={doc.body ?? ''}
+                ariaLabel="문서 본문"
+                editable={canWrite}
+                onSave={setBody}
+                onImageUpload={
+                  canWrite
+                    ? async (file) => {
+                        const att = await upload.mutateAsync({ file, documentId: doc.id })
+                        return `/api/v1/attachments/${att.id}/download`
+                      }
+                    : undefined
                 }
-              : undefined
-          }
-        />
-      </Suspense>
+              />
+            </Suspense>
+          </section>
 
-      <p className="mt-2 text-right text-[11px] text-of-muted">v{doc.version}</p>
+          <DocumentComments docId={doc.id} projectId={projectId} canWrite={canWrite} />
+        </main>
 
-      <LinkedWorkPackagesSection docId={doc.id} projectId={projectId} canWrite={canWrite} />
+        <aside aria-label="문서 속성" className="grid min-w-0 gap-3 self-start">
+          <section aria-label="문서 메타" className="rounded-of border border-of-border bg-of-surface p-3">
+            <div className="mb-3 flex items-center gap-2">
+              <FileText size={15} className="text-of-muted" aria-hidden="true" />
+              <h2 className="text-sm font-semibold">속성</h2>
+            </div>
+            <div className="grid gap-3 text-xs">
+              <label className="grid gap-1">
+                <span className="font-medium text-of-muted">상위 페이지</span>
+                <Select
+                  id="doc-parent"
+                  className="h-8 min-w-0 text-xs"
+                  value={parentId ?? ''}
+                  disabled={!canWrite}
+                  onChange={(e) => setParentId(e.target.value === '' ? null : e.target.value)}
+                  aria-label="상위 페이지"
+                >
+                  <option value="">(없음 — 최상위)</option>
+                  {parentOptions.map((d) => (
+                    <option key={d.id} value={d.id}>
+                      {d.title}
+                    </option>
+                  ))}
+                </Select>
+              </label>
+              <div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-2 text-of-muted">
+                <FolderTree size={14} aria-hidden="true" />
+                <span className="truncate">{parentTitle}</span>
+              </div>
+              <div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-2 text-of-muted">
+                <Clock3 size={14} aria-hidden="true" />
+                <span className="truncate">{formatDateTime(doc.updated_at)}</span>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge variant="outline">버전 {doc.version}</Badge>
+                {doc.author_id ? <Badge variant="outline">작성자 있음</Badge> : null}
+              </div>
+            </div>
+          </section>
 
-      <DocumentAttachments docId={doc.id} projectId={projectId} />
-
-      <DocumentComments docId={doc.id} projectId={projectId} canWrite={canWrite} />
+          <LinkedWorkPackagesSection docId={doc.id} projectId={projectId} canWrite={canWrite} />
+          <DocumentAttachments docId={doc.id} projectId={projectId} />
+        </aside>
+      </div>
     </div>
   )
 }
@@ -232,20 +269,26 @@ function DocumentComments({
   }
 
   return (
-    <div className="mt-4 space-y-2 rounded-of border border-of-border bg-of-surface p-3">
-      <p className="text-xs font-medium">코멘트{data ? ` ${data.total}건` : ''}</p>
+    <section aria-label="문서 코멘트" className="space-y-3 rounded-of border border-of-border bg-of-surface p-3">
+      <div className="flex min-w-0 items-center justify-between gap-2">
+        <h2 className="text-sm font-semibold">코멘트{data ? ` ${data.total}건` : ''}</h2>
+        <Badge variant="outline">plain text</Badge>
+      </div>
       {data && data.items.length > 0 ? (
-        <ul className="space-y-1.5">
+        <ul className="space-y-2">
           {data.items.map((c) => (
-            <li key={c.id} className="flex items-baseline gap-2 text-xs">
-              <span className="shrink-0 font-medium text-of-muted">{authorLabel(c.author_id)}</span>
-              <span className="min-w-0 flex-1 whitespace-pre-wrap break-words">{c.body}</span>
-              <span className="shrink-0 text-[11px] text-of-muted">{c.created_at.slice(0, 10)}</span>
+            <li
+              key={c.id}
+              className="grid min-w-0 gap-1 rounded-of border border-of-border px-3 py-2 text-xs sm:grid-cols-[auto_minmax(0,1fr)_auto_auto] sm:items-baseline"
+            >
+              <span className="font-medium text-of-muted">{authorLabel(c.author_id)}</span>
+              <span className="min-w-0 whitespace-pre-wrap break-words">{c.body}</span>
+              <span className="text-[11px] text-of-muted">{c.created_at.slice(0, 10)}</span>
               {canWrite && c.author_id === me.data?.id ? (
                 <button
                   type="button"
                   aria-label="코멘트 삭제"
-                  className="shrink-0 text-of-muted hover:text-of-danger"
+                  className="justify-self-start rounded-of p-1 text-of-muted hover:bg-of-surface-2 hover:text-of-danger sm:justify-self-auto"
                   disabled={del.isPending}
                   onClick={() => del.mutate(c.id)}
                 >
@@ -260,7 +303,7 @@ function DocumentComments({
       )}
       {canWrite ? (
         <>
-          <div className="flex items-center gap-2">
+          <div className="grid min-w-0 gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
             <Input
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
@@ -269,7 +312,7 @@ function DocumentComments({
               }}
               placeholder="코멘트 남기기 (plain text)"
               aria-label="새 코멘트"
-              className="h-8 flex-1 text-xs"
+              className="h-8 min-w-0 text-xs"
               maxLength={4000}
             />
             <Button size="sm" disabled={!draft.trim() || create.isPending} onClick={submit}>
@@ -283,6 +326,6 @@ function DocumentComments({
           ) : null}
         </>
       ) : null}
-    </div>
+    </section>
   )
 }
