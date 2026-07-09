@@ -53,8 +53,8 @@ export function DisplayMenu({
           <Settings2 size={14} /> 표시
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-56">
-        <DropdownMenuLabel className="flex items-center gap-1.5">
+      <DropdownMenuContent align="end" className="w-64">
+        <DropdownMenuLabel className="flex items-center gap-1.5 text-[11px] uppercase tracking-normal text-of-muted">
           <ArrowDownAZ size={12} /> 정렬
         </DropdownMenuLabel>
         {WORK_PACKAGE_SORTS.map((key) => (
@@ -70,8 +70,11 @@ export function DisplayMenu({
         ))}
 
         <DropdownMenuSeparator />
-        <DropdownMenuLabel className="flex items-center gap-1.5">
-          <Columns3 size={12} /> 열
+        <DropdownMenuLabel className="flex items-center justify-between gap-2 text-[11px] uppercase tracking-normal text-of-muted">
+          <span className="flex items-center gap-1.5">
+            <Columns3 size={12} /> 표시 열
+          </span>
+          <span className="font-normal tabular-nums">{columns.length}</span>
         </DropdownMenuLabel>
         {LIST_COLUMNS.map((key) => (
           <DropdownMenuCheckboxItem
@@ -88,7 +91,12 @@ export function DisplayMenu({
         {activeCustomFields.length > 0 ? (
           <>
             <DropdownMenuSeparator />
-            <DropdownMenuLabel>커스텀 필드</DropdownMenuLabel>
+            <DropdownMenuLabel className="flex items-center justify-between gap-2 text-[11px] uppercase tracking-normal text-of-muted">
+              <span>커스텀 열</span>
+              <span className="font-normal tabular-nums">
+                {customColumns.length}/{MAX_CUSTOM_COLUMNS}
+              </span>
+            </DropdownMenuLabel>
             {activeCustomFields.map((field) => {
               const lower = field.id.toLowerCase()
               const on = customColumns.includes(lower)

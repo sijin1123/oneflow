@@ -49,10 +49,20 @@ const LAYOUT_LABELS: Record<ViewLayout, string> = {
   calendar: '캘린더',
 }
 
+type SavedFiltersProps = {
+  projectId: string
+  activeControlCount?: number
+  onClearCurrentView?: () => void
+}
+
 /* Named views (expansion Pass 2 PR-F): a saved filter now carries a layout,
    sort, and optional member-wide sharing. Applying a view navigates to its
    layout route with the captured filter params. */
-export function SavedFilters({ projectId }: { projectId: string }) {
+export function SavedFilters({
+  projectId,
+  activeControlCount = 0,
+  onClearCurrentView,
+}: SavedFiltersProps) {
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
   const { data } = useSavedFilters(projectId)
@@ -101,74 +111,87 @@ export function SavedFilters({ projectId }: { projectId: string }) {
   }
 
   return (
-    <div className="flex flex-wrap items-center gap-1.5 border-b border-of-border px-4 py-1.5">
-      <span className="flex items-center gap-1 text-xs text-of-muted">
-        <Bookmark size={12} /> 뷰
+    <div className="flex min-w-0 flex-wrap items-center gap-1.5 border-t border-of-border/70 pt-2">
+      <span className="flex shrink-0 items-center gap-1 text-xs font-medium text-of-muted">
+        <Bookmark size={12} /> 저장 뷰
       </span>
 
       {data && data.total > 0 ? (
-        data.items.map((f) => (
-          <span
-            key={f.id}
-            className="flex items-center gap-1 rounded-of border border-of-border bg-of-surface px-1.5 py-0.5 text-xs"
-          >
-            <button
-              type="button"
-              className="hover:text-of-accent"
-              title={`${LAYOUT_LABELS[f.layout]}${f.is_mine ? '' : ` · ${f.owner_name}`}`}
-              onClick={() => apply(f)}
+        <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+          {data.items.map((f) => (
+            <span
+              key={f.id}
+              className="flex max-w-full items-center gap-1 rounded-of border border-of-border bg-of-surface px-1.5 py-0.5 text-xs shadow-[var(--of-shadow-hairline)]"
             >
-              {f.name}
-              {f.is_mine ? null : (
-                <span className="ml-1 text-[10px] text-of-muted">({f.owner_name})</span>
-              )}
-            </button>
-            {f.is_mine ? (
-              <>
-                <button
-                  type="button"
-                  aria-label={`${f.name} 잠금 ${f.is_locked ? '해제' : '설정'}`}
-                  aria-pressed={f.is_locked}
-                  title={f.is_locked ? '잠긴 뷰 — 해제해야 수정/삭제할 수 있습니다' : '실수 방지 잠금'}
-                  className={f.is_locked ? 'text-of-accent' : 'text-of-muted hover:text-of-accent'}
-                  onClick={() => update.mutate({ id: f.id, is_locked: !f.is_locked })}
-                >
-                  {f.is_locked ? <Lock size={11} /> : <LockOpen size={11} />}
-                </button>
-                {!f.is_locked ? (
-                  <>
-                    <button
-                      type="button"
-                      aria-label={`${f.name} 공유 ${f.is_shared ? '해제' : '설정'}`}
-                      aria-pressed={f.is_shared}
-                      className={
-                        f.is_shared ? 'text-of-accent' : 'text-of-muted hover:text-of-accent'
-                      }
-                      onClick={() => update.mutate({ id: f.id, is_shared: !f.is_shared })}
-                    >
-                      <Share2 size={11} />
-                    </button>
-                    <button
-                      type="button"
-                      aria-label={`${f.name} 삭제`}
-                      className="text-of-muted hover:text-of-danger"
-                      onClick={() => del.mutate(f.id)}
-                    >
-                      <X size={11} />
-                    </button>
-                  </>
-                ) : null}
-              </>
-            ) : null}
-          </span>
-        ))
+              <button
+                type="button"
+                className="max-w-44 truncate hover:text-of-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus"
+                title={`${LAYOUT_LABELS[f.layout]}${f.is_mine ? '' : ` · ${f.owner_name}`}`}
+                onClick={() => apply(f)}
+              >
+                {f.name}
+                {f.is_mine ? null : (
+                  <span className="ml-1 text-[10px] text-of-muted">({f.owner_name})</span>
+                )}
+              </button>
+              {f.is_mine ? (
+                <>
+                  <button
+                    type="button"
+                    aria-label={`${f.name} 잠금 ${f.is_locked ? '해제' : '설정'}`}
+                    aria-pressed={f.is_locked}
+                    title={f.is_locked ? '잠긴 뷰 — 해제해야 수정/삭제할 수 있습니다' : '실수 방지 잠금'}
+                    className={f.is_locked ? 'text-of-accent' : 'text-of-muted hover:text-of-accent'}
+                    onClick={() => update.mutate({ id: f.id, is_locked: !f.is_locked })}
+                  >
+                    {f.is_locked ? <Lock size={11} /> : <LockOpen size={11} />}
+                  </button>
+                  {!f.is_locked ? (
+                    <>
+                      <button
+                        type="button"
+                        aria-label={`${f.name} 공유 ${f.is_shared ? '해제' : '설정'}`}
+                        aria-pressed={f.is_shared}
+                        className={
+                          f.is_shared ? 'text-of-accent' : 'text-of-muted hover:text-of-accent'
+                        }
+                        onClick={() => update.mutate({ id: f.id, is_shared: !f.is_shared })}
+                      >
+                        <Share2 size={11} />
+                      </button>
+                      <button
+                        type="button"
+                        aria-label={`${f.name} 삭제`}
+                        className="text-of-muted hover:text-of-danger"
+                        onClick={() => del.mutate(f.id)}
+                      >
+                        <X size={11} />
+                      </button>
+                    </>
+                  ) : null}
+                </>
+              ) : null}
+            </span>
+          ))}
+        </div>
       ) : (
-        <span className="text-xs text-of-muted">없음</span>
+        <span className="text-xs text-of-muted">저장 뷰 없음</span>
       )}
 
-      <div className="ml-auto">
+      {onClearCurrentView && activeControlCount > 0 ? (
+        <Button
+          variant="ghost"
+          size="sm"
+          aria-label="현재 보기 초기화"
+          onClick={onClearCurrentView}
+        >
+          <X size={13} /> 초기화 {activeControlCount}
+        </Button>
+      ) : null}
+
+      <div className="ml-auto flex shrink-0">
         {saving ? (
-          <span className="flex items-center gap-1">
+          <span className="flex flex-wrap items-center gap-1">
             <Input
               value={name}
               onChange={(e) => setName(e.target.value)}
