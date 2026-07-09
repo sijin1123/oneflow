@@ -5414,6 +5414,128 @@ test('백로그에서 사이클을 배정하면 PATCH 후 행이 사라진다', 
 })
 
 
+test('백로그 항목 액션 메뉴가 링크·복제·이동·전체 페이지 흐름을 연결한다', async ({ page }) => {
+  await mockApi(page)
+  await page.route('**/api/v1/projects', (route) =>
+    route.fulfill({
+      json: {
+        items: [project, { ...project, id: 'p-2', key: 'TWO', name: '두번째 프로젝트' }],
+        total: 2,
+      },
+    }),
+  )
+  await page.route(`**/api/v1/projects/${project.id}/work-packages**`, (route) => {
+    const url = new URL(route.request().url())
+    if (url.searchParams.get('no_cycle') === 'true') {
+      return route.fulfill({ json: { items: [wpA], total: 1 } })
+    }
+    return route.fulfill({ json: { items: [wpA, wpB], total: 2 } })
+  })
+  await page.route(`**/api/v1/work-packages/${wpA.id}/duplicate`, (route) =>
+    route.fulfill({
+      status: 201,
+      json: {
+        work_package: { ...wpA, id: 'dup-backlog', subject: '(복사) 워크패키지 API 구현' },
+        skipped_custom_values: 1,
+      },
+    }),
+  )
+
+  await page.goto(`/projects/${project.id}/backlog`)
+  const action = page.getByRole('button', { name: '워크패키지 API 구현 백로그 항목 작업' })
+  await expect(action).toBeVisible()
+
+  await action.click()
+  await page.getByRole('menuitem', { name: '링크 복사' }).click()
+  await expect
+    .poll(() => page.evaluate(() => localStorage.getItem('__copied_backlog_item_link')))
+    .toContain(`/projects/${project.id}/work-packages/${wpA.id}`)
+  await expect(page.getByText('링크', { exact: false })).toBeVisible()
+
+  await action.click()
+  const duplicatePost = page.waitForRequest(
+    (r) => r.method() === 'POST' && r.url().includes(`/work-packages/${wpA.id}/duplicate`),
+  )
+  await page.getByRole('menuitem', { name: '복제' }).click()
+  await duplicatePost
+  await expect(page.getByText("'(복사) 워크패키지 API 구현' 생성됨", { exact: false })).toBeVisible()
+
+  await action.click()
+  await page.getByRole('menuitem', { name: '이동 패널 열기' }).click()
+  await expect(page).toHaveURL(new RegExp(`wp=${wpA.id}`))
+  await expect(page).toHaveURL(/move=1/)
+  const drawer = page.getByRole('dialog')
+  await expect(drawer.getByLabel('이동 대상 프로젝트')).toBeVisible()
+  await drawer.getByRole('button', { name: '닫기' }).click()
+  await expect(page).not.toHaveURL(/move=1/)
+
+  await action.click()
+  await page.getByRole('menuitem', { name: '전체 페이지 열기' }).click()
+  await expect(page).toHaveURL(new RegExp(`/projects/${project.id}/work-packages/${wpA.id}$`))
+})
+
+
+test('모바일 백로그 항목 액션 메뉴는 cycle select와 충돌하지 않고 폭을 넘지 않는다', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await mockApi(page)
+  await page.route(`**/api/v1/projects/${project.id}/work-packages**`, (route) => {
+    const url = new URL(route.request().url())
+    if (url.searchParams.get('no_cycle') === 'true') {
+      return route.fulfill({ json: { items: [wpA], total: 1 } })
+    }
+    return route.fulfill({ json: { items: [wpA, wpB], total: 2 } })
+  })
+
+  await page.goto(`/projects/${project.id}/backlog`)
+  await expect(page.getByLabel('워크패키지 API 구현 사이클 배정')).toBeVisible()
+  await page.getByRole('button', { name: '워크패키지 API 구현 백로그 항목 작업' }).click()
+
+  const menu = page.getByRole('menu', { name: '워크패키지 API 구현 백로그 항목 작업' })
+  await expect(menu).toBeVisible()
+  await expect(menu.getByText('백로그 항목')).toBeVisible()
+  const box = await menu.boundingBox()
+  expect(box).not.toBeNull()
+  expect(box!.x).toBeGreaterThanOrEqual(0)
+  expect(box!.x + box!.width).toBeLessThanOrEqual(390)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/backlog-item-actions-ui/mobile.png',
+    fullPage: true,
+  })
+})
+
+
+test('뷰어 백로그 항목 액션 메뉴는 쓰기 액션 없이 읽기 전용으로 표시된다', async ({ page }) => {
+  await mockApi(page)
+  await page.route(`**/api/v1/projects/${project.id}/work-packages**`, (route) => {
+    const url = new URL(route.request().url())
+    if (url.searchParams.get('no_cycle') === 'true') {
+      return route.fulfill({ json: { items: [wpA], total: 1 } })
+    }
+    return route.fulfill({ json: { items: [wpA, wpB], total: 2 } })
+  })
+  await page.route(`**/api/v1/projects/${project.id}/members`, (route) =>
+    route.fulfill({
+      json: {
+        items: [
+          { user_id: 'me-1', email: 'dev@oneflow.local', display_name: 'Dev User', role: 'viewer' },
+        ],
+        total: 1,
+      },
+    }),
+  )
+
+  await page.goto(`/projects/${project.id}/backlog`)
+  await expect(page.getByLabel('워크패키지 API 구현 사이클 배정')).toHaveCount(0)
+  await page.getByRole('button', { name: '워크패키지 API 구현 백로그 항목 작업' }).click()
+  const menu = page.getByRole('menu', { name: '워크패키지 API 구현 백로그 항목 작업' })
+
+  await expect(menu.getByText('쓰기 권한 없음')).toBeVisible()
+  await expect(menu.getByRole('menuitem', { name: '복제' })).toHaveCount(0)
+  await expect(menu.getByRole('menuitem', { name: '이동 패널 열기' })).toHaveCount(0)
+  await expect(menu.getByRole('menuitem', { name: '전체 페이지 열기' })).toBeVisible()
+})
+
+
 test('잠긴 뷰는 공유/삭제가 숨고 해제하면 복원된다', async ({ page }) => {
   await mockApi(page)
   let locked = true
