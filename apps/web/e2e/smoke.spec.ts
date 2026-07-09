@@ -429,6 +429,12 @@ async function mockCommandPaletteSearch(page: Page) {
   )
 }
 
+async function expectNoHorizontalOverflow(page: Page) {
+  await expect
+    .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth))
+    .toBe(true)
+}
+
 test('앱 셸과 프로젝트/워크패키지 목록이 렌더링된다', async ({ page }) => {
   await mockApi(page)
   await page.goto('/')
@@ -557,9 +563,7 @@ test('모바일 작업 상세 드로어가 속성과 활동 탭을 유지한다'
   await page.getByRole('button', { name: '워크패키지 API 구현' }).click()
   const drawer = page.getByRole('dialog', { name: '워크패키지 API 구현' })
 
-  await expect
-    .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth))
-    .toBe(true)
+  await expectNoHorizontalOverflow(page)
   await expect(drawer.getByText('속성')).toBeVisible()
   await expect(drawer.getByRole('tab', { name: '개요' })).toHaveAttribute('aria-selected', 'true')
   await page.screenshot({
@@ -598,9 +602,7 @@ test('모바일 작업 상세 전체 페이지가 속성과 활동 탭을 유지
   await mockApi(page)
   await page.goto(`/projects/${project.id}/work-packages/${wpA.id}`)
 
-  await expect
-    .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth))
-    .toBe(true)
+  await expectNoHorizontalOverflow(page)
   await expect(page.getByRole('heading', { name: '워크패키지 API 구현' })).toBeVisible()
   await expect(page.getByText('속성')).toBeVisible()
   await page.getByRole('tab', { name: '활동' }).click()
@@ -4442,22 +4444,66 @@ test('첨부 URL이 http(s)가 아니면 클라이언트에서 거부한다', as
   await expect(page.getByRole('button', { name: '추가' })).toBeDisabled()
 })
 
-test('빈 목록은 빈 상태를 보여준다', async ({ page }) => {
-  await page.route('**/api/v1/projects', (route) =>
-    route.fulfill({ json: { items: [{ ...project, ...projectRollups }], total: 1 } satisfies ProjectList }),
-  )
+test('빈 목록은 모바일에서도 안정적인 빈 상태를 보여준다', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await mockApi(page)
   await page.route('**/api/v1/projects/*/work-packages**', (route) =>
     route.fulfill({ json: { items: [], total: 0 } satisfies WorkPackageList }),
   )
-  await page.route('**/api/v1/projects/*/saved-filters', (route) =>
-    route.fulfill({ json: { items: [], total: 0 } }),
-  )
-  await page.route('**/api/v1/me/notifications', (route) =>
-    route.fulfill({ json: { items: [], total: 0, unread: 0 } }),
-  )
   await page.goto(`/projects/${project.id}/work-packages`)
   await expect(page.getByText('조건에 맞는 작업이 없습니다')).toBeVisible()
+  await expect(page.getByText('필터를 조정하거나 새 작업을 만들어 보세요.')).toBeVisible()
+  await expectNoHorizontalOverflow(page)
   await page.screenshot({ path: '../../docs/screenshots/web-empty.png', fullPage: true })
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/states-mobile/empty-list.png',
+    fullPage: true,
+  })
+})
+
+test('목록 로딩 스켈레톤은 모바일에서 콘텐츠 폭을 넘지 않는다', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await mockApi(page)
+  await page.route('**/api/v1/projects/*/work-packages**', async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 750))
+    await route.fulfill({ json: workPackages })
+  })
+
+  await page.goto(`/projects/${project.id}/work-packages`)
+  await expect(page.getByRole('status', { name: '불러오는 중' })).toBeVisible()
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/states-mobile/list-skeleton.png',
+    fullPage: true,
+  })
+  await expect(page.getByRole('button', { name: '워크패키지 API 구현' })).toBeVisible()
+})
+
+test('목록 오류 상태는 모바일에서 재시도와 요청 정보를 유지한다', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await mockApi(page)
+  await page.route('**/api/v1/projects/*/work-packages**', (route) =>
+    route.fulfill({
+      status: 500,
+      headers: {
+        'access-control-expose-headers': 'x-request-id',
+        'x-request-id': 'req-state-mobile',
+      },
+      json: { detail: '작업 목록을 불러올 수 없습니다' },
+    }),
+  )
+
+  await page.goto(`/projects/${project.id}/work-packages`)
+  await expect(page.getByRole('alert')).toBeVisible()
+  await expect(page.getByText('데이터를 불러오지 못했습니다')).toBeVisible()
+  await expect(page.getByText('작업 목록을 불러올 수 없습니다')).toBeVisible()
+  await expect(page.getByText('요청 ID: req-state-mobile')).toBeVisible()
+  await expect(page.getByRole('button', { name: '다시 시도' })).toBeVisible()
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/states-mobile/error-list.png',
+    fullPage: true,
+  })
 })
 
 test('목록이 여러 페이지를 모두 불러온다 (200건 무성 절단 없음)', async ({ page }) => {
