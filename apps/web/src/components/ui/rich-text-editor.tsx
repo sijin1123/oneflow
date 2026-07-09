@@ -57,14 +57,14 @@ export function RichTextEditor({ value, onSave, ariaLabel, onImageUpload, editab
 
   const btn = (active: boolean) =>
     cn(
-      'rounded p-1 text-of-muted hover:bg-of-surface-2',
+      'rounded-of p-1 text-of-muted transition-colors hover:bg-of-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus',
       active && 'bg-of-surface-2 text-of-text',
     )
 
   return (
     <div className="rounded-of border border-of-border bg-of-surface">
       {editable ? (
-      <div className="flex items-center gap-0.5 border-b border-of-border px-1 py-0.5">
+      <div className="flex items-center gap-0.5 border-b border-of-border bg-of-surface-2/40 px-1 py-0.5">
         <button
           type="button"
           aria-label="굵게"

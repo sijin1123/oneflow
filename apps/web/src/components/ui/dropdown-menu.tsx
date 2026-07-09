@@ -16,7 +16,7 @@ export function DropdownMenuContent({
       <DropdownPrimitive.Content
         sideOffset={4}
         className={cn(
-          'z-50 min-w-36 rounded-of border border-of-border bg-of-surface p-1 text-sm shadow-md',
+          'z-50 min-w-36 rounded-of border border-of-border bg-of-surface p-1 text-sm shadow-[var(--of-shadow-popover)]',
           className,
         )}
         {...props}
@@ -38,7 +38,7 @@ export function DropdownMenuCheckboxItem({
     <DropdownPrimitive.CheckboxItem
       onSelect={(e) => e.preventDefault()}
       className={cn(
-        'flex cursor-default select-none items-center gap-2 rounded-[4px] px-2 py-1.5 text-xs outline-none data-[highlighted]:bg-of-surface-2 data-[disabled]:opacity-50',
+        'flex min-h-7 cursor-default select-none items-center gap-2 rounded-[4px] px-2 py-1.5 text-xs outline-none transition-colors data-[disabled]:opacity-50 data-[highlighted]:bg-of-surface-hover data-[highlighted]:text-of-text',
         className,
       )}
       {...props}
@@ -72,7 +72,7 @@ export function DropdownMenuItem({
   return (
     <DropdownPrimitive.Item
       className={cn(
-        'cursor-default select-none rounded-[4px] px-2 py-1.5 outline-none data-[highlighted]:bg-of-surface-2',
+        'min-h-7 cursor-default select-none rounded-[4px] px-2 py-1.5 outline-none transition-colors data-[highlighted]:bg-of-surface-hover data-[highlighted]:text-of-text',
         className,
       )}
       {...props}

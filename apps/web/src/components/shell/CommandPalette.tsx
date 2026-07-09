@@ -88,6 +88,17 @@ export function CommandPalette() {
   }, [open])
 
   useEffect(() => {
+    if (!open) return
+    const onEscape = (event: globalThis.KeyboardEvent) => {
+      if (event.defaultPrevented || event.key !== 'Escape') return
+      event.preventDefault()
+      close()
+    }
+    window.addEventListener('keydown', onEscape)
+    return () => window.removeEventListener('keydown', onEscape)
+  }, [close, open])
+
+  useEffect(() => {
     if (lastLocationKey.current === locationKey) return
     lastLocationKey.current = locationKey
     if (open) close()
@@ -159,7 +170,7 @@ export function CommandPalette() {
       {open ? (
         <div
           role="presentation"
-          className="fixed inset-0 z-50 bg-black/25"
+          className="fixed inset-0 z-50 bg-of-overlay"
           onMouseDown={(event) => {
             if (event.target === event.currentTarget) close()
           }}
@@ -168,7 +179,7 @@ export function CommandPalette() {
             role="dialog"
             aria-modal="true"
             aria-label="전체 검색"
-            className="fixed inset-x-3 top-14 mx-auto flex max-h-[min(78vh,640px)] max-w-2xl flex-col overflow-hidden rounded-of border border-of-border bg-of-surface shadow-xl sm:top-20"
+            className="fixed inset-x-3 top-14 mx-auto flex max-h-[min(78vh,640px)] max-w-2xl flex-col overflow-hidden rounded-of border border-of-border bg-of-surface shadow-[var(--of-shadow-popover)] sm:top-20"
             onKeyDown={onKeyDown}
           >
             <div className="flex items-center gap-2 border-b border-of-border px-3 py-2">
@@ -184,7 +195,7 @@ export function CommandPalette() {
               <button
                 type="button"
                 aria-label="전체 검색 닫기"
-                className="shrink-0 rounded-of p-1 text-of-muted hover:bg-of-surface-2"
+                className="shrink-0 rounded-of p-1 text-of-muted transition-colors hover:bg-of-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus"
                 onClick={close}
               >
                 <X size={16} />
@@ -203,7 +214,7 @@ export function CommandPalette() {
                   role="tab"
                   aria-selected={activeTab === tab.key}
                   className={cn(
-                    'shrink-0 rounded-of px-2 py-1 text-xs text-of-muted hover:bg-of-surface-2',
+                    'shrink-0 rounded-of px-2 py-1 text-xs text-of-muted transition-colors hover:bg-of-surface-hover',
                     activeTab === tab.key && 'bg-of-accent-soft font-medium text-of-accent',
                   )}
                   onClick={() => setActiveTab(tab.key)}
