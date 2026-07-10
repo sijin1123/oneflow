@@ -9,6 +9,7 @@ import {
   ClipboardList,
   Compass,
   FileText,
+  FilePenLine,
   FolderKanban,
   Inbox,
   IterationCcw,
@@ -51,6 +52,7 @@ type ProjectNavItem = {
 const workspaceNav: WorkspaceNavItem[] = [
   { to: '/my', label: '내 작업', icon: Inbox },
   { to: '/notes', label: '개인 메모', icon: StickyNote },
+  { to: '/drafts', label: '작업 초안', icon: FilePenLine },
   { to: '/inbox', label: '인박스', icon: BellRing },
   { to: '/work-items', label: '전체 작업', icon: ListChecks },
   { to: '/projects', label: '프로젝트', icon: FolderKanban, end: true },

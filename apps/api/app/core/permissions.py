@@ -242,6 +242,9 @@ ENDPOINT_VERBS: dict[str, str] = {
     "POST /api/v1/projects/{project_id}/intake/{item_id}/triage": "intake.triage",
     # work.write
     "POST /api/v1/projects/{project_id}/work-packages": "work.write",
+    "POST /api/v1/projects/{project_id}/work-item-drafts": "work.write",
+    "PUT /api/v1/work-item-drafts/{draft_id}": "work.write",
+    "POST /api/v1/work-item-drafts/{draft_id}/submit": "work.write",
     "PATCH /api/v1/work-packages/{wp_id}": "work.write",
     "POST /api/v1/projects/{project_id}/work-packages/bulk-update": "work.write",
     "POST /api/v1/work-packages/{wp_id}/duplicate": "work.write",
@@ -312,6 +315,9 @@ ENDPOINT_ALLOWLIST: dict[str, str] = {
     "PATCH /api/v1/me/personal-notes/{note_id}": "개인 메모 — 사용자 스코프",
     "PUT /api/v1/me/personal-notes/order": "개인 메모 순서 — 사용자 스코프",
     "DELETE /api/v1/me/personal-notes/{note_id}": "개인 메모 — 사용자 스코프",
+    "DELETE /api/v1/work-item-drafts/{draft_id}": (
+        "개인 초안 정리 — 프로젝트 멤버십 상실 뒤에도 소유자만 삭제 가능"
+    ),
     "PUT /api/v1/me/notification-settings": "개인 알림 설정 — 사용자 스코프",
     "POST /api/v1/me/access-tokens": "개인 개발자 토큰 — 사용자 스코프",
     "DELETE /api/v1/me/access-tokens/{token_id}": "개인 개발자 토큰 폐기 — 사용자 스코프",

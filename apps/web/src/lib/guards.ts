@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, type RefObject } from 'react'
 import { useBlocker } from 'react-router-dom'
 
 function useNavigationPrompt(
@@ -42,10 +42,20 @@ export function useUnsavedChangesPrompt(dirty: boolean, message: string) {
  *  (e.g. `?tab=` switches on the settings page) so tab clicks and browser
  *  back/forward can't silently discard a dirty section. */
 export function useUnsavedLocationPrompt(dirty: boolean, message: string) {
+  useUnsavedLocationPromptWithBypass(dirty, message)
+}
+
+export function useUnsavedLocationPromptWithBypass(
+  dirty: boolean,
+  message: string,
+  bypass: RefObject<boolean> | null = null,
+) {
   useNavigationPrompt(
     dirty,
     message,
-    (current, next) => current.pathname !== next.pathname || current.search !== next.search,
+    (current, next) =>
+      !bypass?.current &&
+      (current.pathname !== next.pathname || current.search !== next.search),
   )
 }
 

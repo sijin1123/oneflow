@@ -28,6 +28,7 @@ from app.models.time_entry import TimeEntry
 from app.models.user import User
 from app.models.watcher import WpWatcher
 from app.models.webhook import WebhookDelivery, WebhookEndpoint, WebhookSecretRotation
+from app.models.work_item_draft import WorkItemDraft
 from app.models.work_package import WorkPackage
 
 __all__ = [
@@ -36,6 +37,7 @@ __all__ = [
     "Project",
     "ProjectMember",
     "WorkPackage",
+    "WorkItemDraft",
     "WorkPackageRelation",
     "WorkPackageComment",
     "Activity",

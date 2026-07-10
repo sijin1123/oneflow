@@ -449,18 +449,15 @@ async def list_work_packages(
     return WorkPackageList(items=items, total=total)
 
 
-@router.post(
-    "/projects/{project_id}/work-packages", response_model=WorkPackageRead, status_code=201
-)
-async def create_work_package(
+async def stage_work_package_create(
+    session: AsyncSession,
     project_id: uuid.UUID,
     body: WorkPackageCreate,
-    background_tasks: BackgroundTasks,
-    request: Request,
-    session: AsyncSession = Depends(get_session),
-    user: User = Depends(get_current_user),
-    settings: Settings = Depends(get_settings),
-) -> WorkPackageRead:
+    user: User,
+    settings: Settings,
+) -> tuple[WorkPackage, uuid.UUID | None]:
+    """Validate and stage every creation side effect without committing it."""
+
     await require_member(session, project_id, user, write=True)
     # New usage of a disabled work-item type is rejected (Pass 7 PR-R).
     await require_type_enabled(session, project_id, body.type)
@@ -500,6 +497,24 @@ async def create_work_package(
         "work_package.created",
         wp,
         list(body.model_fields_set),
+    )
+    return wp, webhook_event_id
+
+
+@router.post(
+    "/projects/{project_id}/work-packages", response_model=WorkPackageRead, status_code=201
+)
+async def create_work_package(
+    project_id: uuid.UUID,
+    body: WorkPackageCreate,
+    background_tasks: BackgroundTasks,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+    settings: Settings = Depends(get_settings),
+) -> WorkPackageRead:
+    wp, webhook_event_id = await stage_work_package_create(
+        session, project_id, body, user, settings
     )
     await session.commit()
     _schedule_webhook(background_tasks, request, webhook_event_id)

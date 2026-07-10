@@ -630,6 +630,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/me/work-item-drafts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Work Item Drafts */
+        get: operations["list_work_item_drafts_api_v1_me_work_item_drafts_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/meeting-templates/{template_id}": {
         parameters: {
             query?: never;
@@ -1629,6 +1646,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{project_id}/work-item-drafts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Work Item Draft */
+        post: operations["create_work_item_draft_api_v1_projects__project_id__work_item_drafts_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{project_id}/work-packages": {
         parameters: {
             query?: never;
@@ -2010,6 +2044,42 @@ export interface paths {
         put?: never;
         /** Test Webhook */
         post: operations["test_webhook_api_v1_webhooks__endpoint_id__test_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/work-item-drafts/{draft_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Work Item Draft */
+        get: operations["get_work_item_draft_api_v1_work_item_drafts__draft_id__get"];
+        /** Replace Work Item Draft */
+        put: operations["replace_work_item_draft_api_v1_work_item_drafts__draft_id__put"];
+        post?: never;
+        /** Delete Work Item Draft */
+        delete: operations["delete_work_item_draft_api_v1_work_item_drafts__draft_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/work-item-drafts/{draft_id}/submit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Submit Work Item Draft */
+        post: operations["submit_work_item_draft_api_v1_work_item_drafts__draft_id__submit_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -5609,6 +5679,99 @@ export interface components {
             /** Signing Key Id */
             signing_key_id: string;
         };
+        /** WorkItemDraftConflict */
+        WorkItemDraftConflict: {
+            current: components["schemas"]["WorkItemDraftRead"];
+            /**
+             * Detail
+             * @default draft was changed elsewhere
+             */
+            detail: string;
+        };
+        /** WorkItemDraftContent */
+        WorkItemDraftContent: {
+            /** Assignee Id */
+            assignee_id?: string | null;
+            /** Due Date */
+            due_date?: string | null;
+            /**
+             * Priority
+             * @default none
+             */
+            priority: string;
+            /**
+             * Status
+             * @default backlog
+             */
+            status: string;
+            /**
+             * Subject
+             * @default
+             */
+            subject: string;
+            /**
+             * Type
+             * @default task
+             */
+            type: string;
+        };
+        /** WorkItemDraftCreate */
+        WorkItemDraftCreate: {
+            content?: components["schemas"]["WorkItemDraftContent"];
+        };
+        /** WorkItemDraftError */
+        WorkItemDraftError: {
+            /** Detail */
+            detail: string;
+        };
+        /** WorkItemDraftList */
+        WorkItemDraftList: {
+            /** Items */
+            items: components["schemas"]["WorkItemDraftRead"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Total */
+            total: number;
+        };
+        /** WorkItemDraftRead */
+        WorkItemDraftRead: {
+            content: components["schemas"]["WorkItemDraftContent"];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Version */
+            version: number;
+        };
+        /** WorkItemDraftReplace */
+        WorkItemDraftReplace: {
+            content: components["schemas"]["WorkItemDraftContent"];
+            /** Expected Version */
+            expected_version: number;
+        };
+        /** WorkItemDraftSubmit */
+        WorkItemDraftSubmit: {
+            /** Expected Version */
+            expected_version: number;
+        };
         /** WorkPackageCreate */
         WorkPackageCreate: {
             /** Assignee Id */
@@ -7373,6 +7536,42 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MeWorkRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_work_item_drafts_api_v1_me_work_item_drafts_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkItemDraftList"];
                 };
             };
             /** @description Validation Error */
@@ -10141,6 +10340,63 @@ export interface operations {
             };
         };
     };
+    create_work_item_draft_api_v1_projects__project_id__work_item_drafts_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkItemDraftCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkItemDraftRead"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkItemDraftError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkItemDraftError"];
+                };
+            };
+        };
+    };
     list_work_packages_api_v1_projects__project_id__work_packages_get: {
         parameters: {
             query?: {
@@ -11027,6 +11283,181 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["WebhookDeliveryRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_work_item_draft_api_v1_work_item_drafts__draft_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                draft_id: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkItemDraftRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    replace_work_item_draft_api_v1_work_item_drafts__draft_id__put: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                draft_id: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkItemDraftReplace"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkItemDraftRead"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkItemDraftConflict"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_work_item_draft_api_v1_work_item_drafts__draft_id__delete: {
+        parameters: {
+            query: {
+                expected_version: number;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                draft_id: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkItemDraftConflict"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    submit_work_item_draft_api_v1_work_item_drafts__draft_id__submit_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                draft_id: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkItemDraftSubmit"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkPackageRead"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkItemDraftConflict"];
                 };
             };
             /** @description Validation Error */
