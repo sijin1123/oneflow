@@ -3,12 +3,13 @@ import {
   KeyRound,
   Pencil,
   Play,
+  RefreshCw,
   RefreshCcw,
   RotateCw,
   Trash2,
   Webhook,
 } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 
 import { EmptyState, ErrorState, ListSkeleton } from '@/components/shell/states'
 import { Badge } from '@/components/ui/badge'
@@ -20,6 +21,7 @@ import { formatDateTime } from '@/lib/datetime'
 
 import {
   WEBHOOK_EVENTS,
+  type WebhookDelivery,
   type WebhookEndpoint,
   type WebhookEndpointCreated,
   type WebhookEvent,
@@ -36,6 +38,20 @@ import {
 const EVENT_LABELS: Record<WebhookEvent, string> = {
   'work_package.created': '작업 생성',
   'work_package.updated': '작업 변경',
+}
+
+const DELIVERY_LABELS: Record<WebhookDelivery['status'], string> = {
+  pending: '대기',
+  sending: '전송 중',
+  retrying: '재시도 예정',
+  succeeded: '성공',
+  failed: '실패',
+  dead_letter: '처리 필요',
+  skipped: '건너뜀',
+}
+
+function deliveryLabel(status: string) {
+  return DELIVERY_LABELS[status as WebhookDelivery['status']] ?? '알 수 없는 상태'
 }
 
 function EventSelector({ value, onChange }: { value: WebhookEvent[]; onChange: (next: WebhookEvent[]) => void }) {
@@ -81,7 +97,21 @@ function SecretNotice({ created, onDismiss }: { created: WebhookEndpointCreated;
   )
 }
 
-function EndpointRow({ endpoint, onSecret }: { endpoint: WebhookEndpoint; onSecret: (result: WebhookEndpointCreated) => void }) {
+function EndpointRow({
+  endpoint,
+  onSecret,
+  enabled,
+  testResult,
+  onTestStart,
+  onTestResult,
+}: {
+  endpoint: WebhookEndpoint
+  onSecret: (result: WebhookEndpointCreated) => void
+  enabled: boolean
+  testResult?: WebhookDelivery
+  onTestStart: () => void
+  onTestResult: (result: WebhookDelivery) => void
+}) {
   const update = useUpdateWebhook()
   const remove = useDeleteWebhook()
   const rotate = useRotateWebhookSecret()
@@ -130,13 +160,15 @@ function EndpointRow({ endpoint, onSecret }: { endpoint: WebhookEndpoint; onSecr
         </div>
       </div>
       <div className="flex min-w-0 flex-wrap items-center gap-1">
-        <Button size="icon" variant="ghost" title="편집" aria-label={`${endpoint.name} webhook 편집`} onClick={() => setEditing(true)}><Pencil size={14} /></Button>
-        <Button size="icon" variant="ghost" title={endpoint.is_active ? '중지' : '활성화'} aria-label={`${endpoint.name} webhook ${endpoint.is_active ? '중지' : '활성화'}`} disabled={update.isPending} onClick={() => update.mutate({ id: endpoint.id, is_active: !endpoint.is_active })}><RefreshCcw size={14} /></Button>
-        <Button size="icon" variant="ghost" title="secret 회전" aria-label={`${endpoint.name} secret 회전`} disabled={rotate.isPending} onClick={() => rotate.mutate(endpoint.id, { onSuccess: onSecret })}><RotateCw size={14} /></Button>
-        <Button size="icon" variant="ghost" title="테스트 전송" aria-label={`${endpoint.name} 테스트 전송`} disabled={!endpoint.is_active || test.isPending} onClick={() => test.mutate(endpoint.id)}><Play size={14} /></Button>
+        {enabled ? <>
+          <Button size="icon" variant="ghost" title="편집" aria-label={`${endpoint.name} webhook 편집`} onClick={() => setEditing(true)}><Pencil size={14} /></Button>
+          <Button size="icon" variant="ghost" title={endpoint.is_active ? '중지' : '활성화'} aria-label={`${endpoint.name} webhook ${endpoint.is_active ? '중지' : '활성화'}`} disabled={update.isPending} onClick={() => update.mutate({ id: endpoint.id, is_active: !endpoint.is_active })}><RefreshCcw size={14} /></Button>
+          <Button size="icon" variant="ghost" title="secret 회전" aria-label={`${endpoint.name} secret 회전`} disabled={rotate.isPending} onClick={() => rotate.mutate(endpoint.id, { onSuccess: onSecret })}><RotateCw size={14} /></Button>
+          <Button size="icon" variant="ghost" title="테스트 전송" aria-label={`${endpoint.name} 테스트 전송`} disabled={!endpoint.is_active || test.isPending} onClick={() => { onTestStart(); test.mutate(endpoint.id, { onSuccess: onTestResult }) }}><Play size={14} /></Button>
+        </> : null}
         <Button size="icon" variant="ghost" title="삭제" aria-label={`${endpoint.name} webhook 삭제`} disabled={remove.isPending} onClick={() => { if (window.confirm(`${endpoint.name} webhook을 삭제할까요?`)) remove.mutate(endpoint.id) }}><Trash2 size={14} /></Button>
       </div>
-      {test.data ? <p role="status" className="text-xs text-of-muted lg:col-span-2">테스트 전송: {test.data.status === 'succeeded' ? '성공' : `실패 ${test.data.error ?? ''}`}</p> : null}
+      {testResult ? <p role="status" className="text-xs text-of-muted lg:col-span-2">테스트 전송: {testResult.status === 'succeeded' ? '성공' : `실패 ${testResult.error ?? ''}`}</p> : null}
       {update.isError || rotate.isError || test.isError || remove.isError ? <p role="alert" className="text-xs text-of-danger lg:col-span-2">요청을 완료하지 못했습니다.</p> : null}
     </li>
   )
@@ -151,6 +183,9 @@ export function WebhooksPage() {
   const [url, setUrl] = useState('')
   const [events, setEvents] = useState<WebhookEvent[]>(['work_package.created'])
   const [secret, setSecret] = useState<WebhookEndpointCreated | null>(null)
+  const [testResults, setTestResults] = useState<Record<string, WebhookDelivery>>({})
+  const [retryError, setRetryError] = useState(false)
+  useEffect(() => setRetryError(false), [deliveries.dataUpdatedAt])
   const endpointsById = useMemo(
     () => new Map((webhooks.data?.items ?? []).map((endpoint) => [endpoint.id, endpoint])),
     [webhooks.data?.items],
@@ -204,11 +239,44 @@ export function WebhooksPage() {
         {webhooks.data.items.length === 0 ? (
           <EmptyState title="등록된 webhook이 없습니다" hint="운영 allowlist에 포함된 HTTPS endpoint를 추가하세요." />
         ) : (
-          <ul className="grid gap-2">{webhooks.data.items.map((endpoint) => <EndpointRow key={endpoint.id} endpoint={endpoint} onSecret={setSecret} />)}</ul>
+          <ul className="grid gap-2">{webhooks.data.items.map((endpoint) => (
+            <EndpointRow
+              key={endpoint.id}
+              endpoint={endpoint}
+              onSecret={setSecret}
+              enabled={webhooks.data.enabled}
+              testResult={testResults[endpoint.id]}
+              onTestStart={() => setTestResults((current) => {
+                if (!(endpoint.id in current)) return current
+                const next = { ...current }
+                delete next[endpoint.id]
+                return next
+              })}
+              onTestResult={(result) => setTestResults((current) => ({ ...current, [endpoint.id]: result }))}
+            />
+          ))}</ul>
         )}
       </SettingsSection>
 
-      <SettingsSection title="Delivery audit" description="최근 전송 결과와 실패 원인을 확인하고 실패 건을 다시 보냅니다." actions={<Badge variant="outline">{deliveries.data?.total ?? 0}건</Badge>}>
+      <SettingsSection
+        title="Delivery audit"
+        description="최근 전송 결과와 실패 원인을 확인하고 실패 건을 다시 보냅니다. 이 탭이 보이는 동안 자동으로 갱신됩니다."
+        actions={
+          <div className="flex items-center gap-1">
+            <Badge variant="outline">{deliveries.data?.total ?? 0}건</Badge>
+            <Button
+              size="icon"
+              variant="ghost"
+              title="전송 감사 새로고침"
+              aria-label="전송 감사 새로고침"
+              disabled={deliveries.isFetching}
+              onClick={() => { setRetryError(false); void deliveries.refetch() }}
+            >
+              <RefreshCw size={14} />
+            </Button>
+          </div>
+        }
+      >
         {deliveries.isError ? (
           <ErrorState error={deliveries.error} onRetry={() => deliveries.refetch()} />
         ) : deliveries.data.items.length === 0 ? (
@@ -221,20 +289,33 @@ export function WebhooksPage() {
                 <li key={delivery.id} className="grid min-w-0 gap-2 py-2 text-xs sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
                   <div className="min-w-0">
                     <div className="flex min-w-0 flex-wrap items-center gap-2">
-                      <Badge variant={delivery.status === 'succeeded' ? 'accent' : delivery.status === 'failed' ? 'outline' : 'neutral'}>{delivery.status}</Badge>
+                      <Badge variant={delivery.status === 'succeeded' ? 'accent' : delivery.status === 'failed' || delivery.status === 'dead_letter' ? 'outline' : 'neutral'}>{deliveryLabel(delivery.status)}</Badge>
                       <span className="truncate font-medium">{endpoint?.name ?? '삭제된 endpoint'}</span>
                       <span className="font-mono text-[11px] text-of-muted">{delivery.event_type}</span>
                     </div>
                     <p className="mt-1 text-[11px] text-of-muted">{formatDateTime(delivery.created_at)} · 시도 {delivery.attempt_count} · {delivery.response_status ? `HTTP ${delivery.response_status}` : delivery.error ?? '대기 중'}{delivery.duration_ms !== null ? ` · ${delivery.duration_ms}ms` : ''}</p>
+                    {delivery.status === 'retrying' && delivery.next_attempt_at ? <p className="mt-1 text-[11px] text-of-muted">다음 시도 {formatDateTime(delivery.next_attempt_at)}</p> : null}
                   </div>
-                  {delivery.status === 'failed' && endpoint?.is_active && webhooks.data.enabled ? (
-                    <Button size="sm" variant="outline" disabled={retry.isPending} aria-label={`${endpoint.name} delivery 재시도`} onClick={() => retry.mutate(delivery.id)}><RotateCw size={13} /> 재시도</Button>
+                  {(delivery.status === 'failed' || delivery.status === 'dead_letter') && endpoint?.is_active && webhooks.data.enabled ? (
+                    <Button size="sm" variant="outline" disabled={retry.isPending} aria-label={`${endpoint.name} delivery 재시도`} onClick={() => {
+                      setRetryError(false)
+                      retry.mutate(delivery.id, {
+                        onError: () => setRetryError(true),
+                        onSuccess: (result) => setTestResults((current) => {
+                          if (!(result.endpoint_id in current)) return current
+                          const next = { ...current }
+                          delete next[result.endpoint_id]
+                          return next
+                        }),
+                      })
+                    }}><RotateCw size={13} /> 재시도</Button>
                   ) : null}
                 </li>
               )
             })}
           </ul>
         )}
+        {retryError ? <p role="alert" className="mt-2 text-xs text-of-danger">전송 재시도를 완료하지 못했습니다. 잠시 후 다시 시도해 주세요.</p> : null}
       </SettingsSection>
     </SettingsFrame>
   )

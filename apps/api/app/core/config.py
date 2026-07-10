@@ -46,6 +46,9 @@ class Settings(BaseSettings):
     # an explicit outbound host allowlist are required before the surface is enabled.
     webhook_signing_key: str | None = None
     webhook_allowed_hosts: str = ""
+    webhook_poll_interval_seconds: float = 5.0
+    webhook_lease_seconds: int = 30
+    webhook_max_attempts: int = 5
     # Seed --reset unlock token; valid only when it equals DESTRUCTIVE_RESET_TOKEN.
     allow_destructive_reset: str | None = None
     db_pool_size: int = 10
@@ -160,6 +163,12 @@ class Settings(BaseSettings):
                 raise ValueError(
                     "ONEFLOW_WEBHOOK_ALLOWED_HOSTS entries must be exact host or host:port values"
                 )
+        if not 1 <= self.webhook_poll_interval_seconds <= 60:
+            raise ValueError("ONEFLOW_WEBHOOK_POLL_INTERVAL_SECONDS must be between 1 and 60")
+        if not 30 <= self.webhook_lease_seconds <= 300:
+            raise ValueError("ONEFLOW_WEBHOOK_LEASE_SECONDS must be between 30 and 300")
+        if not 1 <= self.webhook_max_attempts <= 20:
+            raise ValueError("ONEFLOW_WEBHOOK_MAX_ATTEMPTS must be between 1 and 20")
         # Guard (4) companion: the non-local escape hatch is dev/test-only (v5.1).
         if self.dev_allow_nonlocal_enabled and self.env not in {"development", "test"}:
             raise ValueError(

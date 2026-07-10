@@ -72,6 +72,9 @@ def test_webhook_configuration_is_fail_closed_and_validated():
         webhook_allowed_hosts="example.com,hooks.example.com:8443",
     )
     assert configured.webhooks_enabled
+    _expect_invalid(webhook_poll_interval_seconds=0.5)
+    _expect_invalid(webhook_lease_seconds=5)
+    _expect_invalid(webhook_max_attempts=0)
 
 
 def test_dev_allow_nonlocal_forbidden_outside_dev_test():

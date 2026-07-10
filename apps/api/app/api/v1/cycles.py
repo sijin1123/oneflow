@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import get_current_user
 from app.core.authz import require_member, require_role
+from app.core.config import Settings, get_settings
 from app.core.dates import utc_today
 from app.db.session import get_session
 from app.models.activity import Activity
@@ -23,6 +24,7 @@ from app.schemas.cycle import (
     CycleRead,
     CycleUpdate,
 )
+from app.services.webhooks import enqueue_work_package_event
 
 router = APIRouter()
 
@@ -178,6 +180,7 @@ async def rollover_cycle(
     body: RolloverRequest,
     session: AsyncSession = Depends(get_session),
     user: User = Depends(get_current_user),
+    settings: Settings = Depends(get_settings),
 ) -> RolloverResult:
     """Move the source cycle's OPEN work packages to the target cycle
     (PLAN P6-2). One UPDATE statement = statement-time snapshot (plain PG
@@ -208,8 +211,12 @@ async def rollover_cycle(
                     WorkPackage.cycle_id == cycle_id,
                     WorkPackage.status.not_in(WP_CLOSED_STATUSES),
                 )
-                .values(cycle_id=body.target_cycle_id)
-                .returning(WorkPackage.id)
+                .values(
+                    cycle_id=body.target_cycle_id,
+                    version=WorkPackage.version + 1,
+                    updated_at=func.now(),
+                )
+                .returning(WorkPackage)
             )
         )
         .scalars()
@@ -217,16 +224,19 @@ async def rollover_cycle(
     )
     # Assignment history (Pass 71, v71.1 R1-④): one activity per moved WP with
     # NAME snapshots — a later rename/delete never distorts this record.
-    for wp_id in moved_ids:
+    for wp in moved_ids:
         session.add(
             Activity(
-                work_package_id=wp_id,
+                work_package_id=wp.id,
                 actor_id=user.id,
                 action="field_changed",
                 field="cycle_id",
                 old_value=src.name,
                 new_value=target.name,
             )
+        )
+        await enqueue_work_package_event(
+            session, settings, "work_package.updated", wp, ["cycle_id"]
         )
     await session.commit()
     return RolloverResult(moved=len(moved_ids))
