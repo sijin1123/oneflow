@@ -1,4 +1,6 @@
-import { useParams } from 'react-router-dom'
+import { MoreHorizontal } from 'lucide-react'
+import { useState } from 'react'
+import { useParams, useSearchParams } from 'react-router-dom'
 
 import { EmptyState, ErrorState, ListSkeleton } from '@/components/shell/states'
 import { Select } from '@/components/ui/select'
@@ -13,6 +15,7 @@ import { PriorityChip, StatusChip, TypeChip } from './chips'
 import { usePatchWorkPackage, useWorkPackages } from './api'
 import { useStatusLabels } from './useStatusLabels'
 import { useTypeLabels } from './useTypeLabels'
+import { BacklogItemActions } from './BacklogItemActions'
 
 /* Backlog (Pass 52 PR-BR): open work without a cycle, with per-row sprint
    assignment. Assigning PATCHes cycle_id with the version token; success
@@ -20,6 +23,7 @@ import { useTypeLabels } from './useTypeLabels'
    (v52.1 R1-②); archived projects surface the ordinary 409 as an error line. */
 export function BacklogPage() {
   const { projectId } = useParams() as { projectId: string }
+  const [, setSearchParams] = useSearchParams()
   const { data, isPending, isError, error, refetch } = useWorkPackages(projectId, {
     no_cycle: 'true',
     open_only: 'true',
@@ -30,6 +34,15 @@ export function BacklogPage() {
   const typeLabel = useTypeLabels(projectId)
   const memberName = useMemberNames(projectId)
   const canWrite = useCanWrite(projectId)
+  const [itemActionMessage, setItemActionMessage] = useState<{
+    text: string
+    tone: 'info' | 'success' | 'error'
+  } | null>(null)
+  const [activeAction, setActiveAction] = useState<{
+    wpId: string
+    top: number
+    left: number
+  } | null>(null)
   const description =
     '사이클에 배정되지 않은 미완료 작업을 정리하고, 다음 반복 계획으로 바로 끌어올립니다.'
 
@@ -51,6 +64,24 @@ export function BacklogPage() {
   const assignable = (cycles.data?.items ?? []).filter((c) => c.status !== 'completed')
   const assignedOwnerCount = data.items.filter((wp) => wp.assignee_id !== null).length
   const urgentCount = data.items.filter((wp) => wp.priority === 'urgent' || wp.priority === 'high').length
+  const activeWp = activeAction ? data.items.find((wp) => wp.id === activeAction.wpId) : null
+
+  const openDrawer = (id: string, opts: { move?: boolean } = {}) => {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev)
+      next.set('wp', id)
+      if (opts.move) next.set('move', '1')
+      else next.delete('move')
+      return next
+    })
+  }
+
+  const openActionMenu = (id: string, rect: DOMRect) => {
+    const width = 224
+    const left = Math.min(Math.max(8, rect.right - width), window.innerWidth - width - 8)
+    const top = Math.min(rect.bottom + 6, window.innerHeight - 216)
+    setActiveAction({ wpId: id, top: Math.max(8, top), left })
+  }
 
   return (
     <PlanningSurface
@@ -67,6 +98,18 @@ export function BacklogPage() {
     >
       <div className="space-y-3">
         {!canWrite ? <ReadOnlyNotice /> : null}
+        {itemActionMessage ? (
+          <p
+            role={itemActionMessage.tone === 'error' ? 'alert' : 'status'}
+            className={
+              itemActionMessage.tone === 'error'
+                ? 'rounded-of border border-of-danger/30 bg-of-surface px-3 py-2 text-xs text-of-danger'
+                : 'rounded-of border border-of-border bg-of-surface px-3 py-2 text-xs text-of-muted'
+            }
+          >
+            {itemActionMessage.text}
+          </p>
+        ) : null}
         {update.isError ? (
           <p
             role="alert"
@@ -88,7 +131,7 @@ export function BacklogPage() {
           >
             {data.items.map((wp) => (
               <li key={wp.id} className="min-w-0 px-3 py-3 hover:bg-of-surface-2/60">
-                <div className="grid min-w-0 gap-2 sm:grid-cols-[auto_minmax(0,1fr)_auto_auto] sm:items-center">
+                <div className="grid min-w-0 gap-2 sm:grid-cols-[auto_minmax(0,1fr)_auto_auto_auto] sm:items-center">
                   <TypeChip type={wp.type} label={typeLabel(wp.type)} />
                   <div className="min-w-0">
                     <p className="truncate text-[13px] font-medium">{wp.subject}</p>
@@ -100,6 +143,16 @@ export function BacklogPage() {
                     <StatusChip status={wp.status} label={statusLabel(wp.status)} />
                     <PriorityChip priority={wp.priority} />
                   </div>
+                  <button
+                    type="button"
+                    aria-label={`${wp.subject} 백로그 항목 작업`}
+                    className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-of border border-of-border text-of-muted hover:bg-of-surface-2 hover:text-of-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus"
+                    onClick={(event) =>
+                      openActionMenu(wp.id, event.currentTarget.getBoundingClientRect())
+                    }
+                  >
+                    <MoreHorizontal size={14} />
+                  </button>
                   {canWrite ? (
                     <Select
                       aria-label={`${wp.subject} 사이클 배정`}
@@ -128,6 +181,19 @@ export function BacklogPage() {
           </ul>
         )}
       </div>
+      {activeWp && activeAction ? (
+        <BacklogItemActions
+          wp={activeWp}
+          projectId={projectId}
+          canWrite={canWrite}
+          top={activeAction.top}
+          left={activeAction.left}
+          onOpen={openDrawer}
+          onOpenMove={(id) => openDrawer(id, { move: true })}
+          onMessage={(text, tone = 'info') => setItemActionMessage({ text, tone })}
+          onClose={() => setActiveAction(null)}
+        />
+      ) : null}
       <DetailDrawer projectId={projectId} />
     </PlanningSurface>
   )
