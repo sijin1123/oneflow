@@ -19,11 +19,11 @@ export function SheetContent({
 }: React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> & { title: string }) {
   return (
     <DialogPrimitive.Portal>
-      <DialogPrimitive.Overlay className="fixed inset-0 z-40 bg-black/20 data-[state=open]:animate-in data-[state=open]:fade-in" />
+      <DialogPrimitive.Overlay className="fixed inset-0 z-40 bg-of-overlay data-[state=open]:animate-in data-[state=open]:fade-in" />
       <DialogPrimitive.Content
         aria-describedby={undefined}
         className={cn(
-          'fixed inset-y-0 right-0 z-50 flex w-full max-w-xl flex-col border-l border-of-border bg-of-surface shadow-xl outline-none',
+          'fixed inset-y-0 right-0 z-50 flex w-full max-w-xl flex-col border-l border-of-border bg-of-surface shadow-[var(--of-shadow-popover)] outline-none',
           className,
         )}
         {...props}
@@ -32,7 +32,7 @@ export function SheetContent({
           <DialogPrimitive.Title className="text-sm font-semibold">{title}</DialogPrimitive.Title>
           <DialogPrimitive.Close
             aria-label="닫기"
-            className="rounded-of p-1 text-of-muted hover:bg-of-surface-2"
+            className="rounded-of p-1 text-of-muted transition-colors hover:bg-of-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus"
           >
             <X size={16} />
           </DialogPrimitive.Close>

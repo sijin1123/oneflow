@@ -7,6 +7,7 @@ export type Notification = {
   kind: string
   project_id: string
   work_package_id: string | null
+  intake_item_id?: string | null
   work_package_subject: string | null
   actor_name: string | null
   read: boolean
@@ -45,6 +46,36 @@ export function useMarkAllNotificationsRead() {
     mutationFn: () => api<void>('/api/v1/me/notifications/read-all', { method: 'POST' }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['notifications'] })
+    },
+  })
+}
+
+export type NotificationSettings = {
+  assigned: boolean
+  watched: boolean
+  commented: boolean
+  mention: boolean
+  due_alerts: boolean
+  intake: boolean
+}
+
+export function useNotificationSettings() {
+  return useQuery({
+    queryKey: ['notification-settings'],
+    queryFn: () => api<NotificationSettings>('/api/v1/me/notification-settings'),
+  })
+}
+
+export function useUpdateNotificationSettings() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (input: Partial<NotificationSettings>) =>
+      api<NotificationSettings>('/api/v1/me/notification-settings', {
+        method: 'PUT',
+        body: JSON.stringify(input),
+      }),
+    onSuccess: (data) => {
+      queryClient.setQueryData(['notification-settings'], data)
     },
   })
 }

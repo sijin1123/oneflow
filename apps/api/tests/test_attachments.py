@@ -68,3 +68,43 @@ async def test_attachments_are_member_scoped(client, foreign_project):
 async def test_delete_unknown_attachment_404(client, project):
     missing = "00000000-0000-4000-8000-000000000000"
     assert (await client.delete(f"/api/v1/attachments/{missing}")).status_code == 404
+
+
+async def test_project_storage_snapshot(client, project, foreign_project):
+    """Pass 57 PR-BW (v57.1): one self-consistent aggregate — stored blobs
+    sum into used_bytes, links don't; the SAME function feeds the upload
+    quota check (shared-source contract)."""
+    pid = project["id"]
+
+    empty = (await client.get(f"/api/v1/projects/{pid}/storage")).json()
+    assert empty == {
+        "used_bytes": 0,
+        "quota_bytes": empty["quota_bytes"],
+        "attachment_count": 0,
+        "link_count": 0,
+    }
+    assert empty["quota_bytes"] > 0
+
+    # One real upload + one link-only attachment.
+    up = await client.post(
+        f"/api/v1/projects/{pid}/attachments/upload?filename=a.txt",
+        content=b"hello world",
+        headers={"content-type": "application/octet-stream", "content-length": "11"},
+    )
+    assert up.status_code == 201, up.text
+    link = await client.post(
+        f"/api/v1/projects/{pid}/attachments",
+        json={"filename": "링크", "url": "https://example.com/doc"},
+    )
+    assert link.status_code == 201, link.text
+
+    body = (await client.get(f"/api/v1/projects/{pid}/storage")).json()
+    assert body["used_bytes"] == 11  # blob bytes only — the link adds nothing
+    assert (body["attachment_count"], body["link_count"]) == (1, 1)
+
+    # Non-member: existence hidden; archived project stays readable.
+    foreign = str(foreign_project["project_id"])
+    assert (await client.get(f"/api/v1/projects/{foreign}/storage")).status_code == 404
+    assert (await client.post(f"/api/v1/projects/{pid}/archive")).status_code == 200
+    assert (await client.get(f"/api/v1/projects/{pid}/storage")).status_code == 200
+    await client.post(f"/api/v1/projects/{pid}/unarchive")

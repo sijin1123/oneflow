@@ -3,7 +3,7 @@ import { useMemo } from 'react'
 
 import { api } from '@/lib/api'
 
-import type { Me, Member, MemberList } from './types'
+import type { Me, Member, MemberList, PermissionReport } from './types'
 
 export function useMe() {
   return useQuery({
@@ -30,6 +30,14 @@ export function useMemberNames(projectId: string): (userId: string | null) => st
     return m
   }, [data])
   return (userId: string | null) => (userId ? (map[userId] ?? '알 수 없음') : '미배정')
+}
+
+export function usePermissionReport(projectId: string) {
+  return useQuery({
+    queryKey: ['permissions', projectId],
+    queryFn: () => api<PermissionReport>(`/api/v1/projects/${projectId}/permissions`),
+    staleTime: Infinity, // fixed matrix — changes only with a deploy
+  })
 }
 
 export function useAddMember(projectId: string) {

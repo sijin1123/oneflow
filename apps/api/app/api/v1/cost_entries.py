@@ -1,5 +1,4 @@
 import uuid
-from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy import select
@@ -8,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.v1.work_packages import require_wp_member
 from app.core.auth import get_current_user
 from app.core.authz import member_role
+from app.core.dates import utc_today
 from app.db.session import get_session
 from app.models.cost_entry import CostEntry
 from app.models.user import User
@@ -49,13 +49,13 @@ async def log_cost(
     session: AsyncSession = Depends(get_session),
     user: User = Depends(get_current_user),
 ) -> CostEntryRead:
-    await require_wp_member(session, wp_id, user)
+    await require_wp_member(session, wp_id, user, write=True)
     entry = CostEntry(
         work_package_id=wp_id,
         user_id=user.id,
         amount=body.amount,
         kind=body.kind,
-        spent_on=body.spent_on or date.today(),
+        spent_on=body.spent_on or utc_today(),  # UTC boundary (Pass 46)
         comment=body.comment,
     )
     session.add(entry)
@@ -70,7 +70,7 @@ async def delete_cost_entry(
     session: AsyncSession = Depends(get_session),
     user: User = Depends(get_current_user),
 ) -> Response:
-    wp = await require_wp_member(session, wp_id, user)
+    wp = await require_wp_member(session, wp_id, user, write=True)
     entry = (
         await session.execute(
             select(CostEntry).where(CostEntry.id == entry_id, CostEntry.work_package_id == wp_id)

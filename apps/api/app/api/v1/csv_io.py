@@ -15,12 +15,13 @@ from decimal import Decimal, InvalidOperation
 
 from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import ValidationError
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import get_current_user
 from app.core.authz import require_member
 from app.db.session import get_session
+from app.models.project_type import ProjectType
 from app.models.user import User
 from app.models.work_package import WorkPackage
 from app.schemas.csv_io import (
@@ -32,9 +33,14 @@ from app.schemas.csv_io import (
 )
 from app.schemas.work_package import WorkPackageCreate
 from app.services.activity import record_created
+from app.services.importers import JiraMapResult, map_jira_csv, map_linear_csv
 from app.services.sanitize import sanitize_html
 
 router = APIRouter()
+
+# Advisory-lock classid serializing import WRITES per project (Pass 42 PR-BH;
+# 427003 belongs to project_types).
+IMPORT_LOCK_CLASSID = 427008
 
 # Excel/LibreOffice read a leading U+FEFF as a BOM and open UTF-8 correctly; without
 # it, Korean text opens mojibake'd on Windows Excel (the tool a real migration uses).
@@ -196,7 +202,18 @@ async def import_work_packages_csv(
     session: AsyncSession = Depends(get_session),
     user: User = Depends(get_current_user),
 ) -> CsvImportResult:
-    await require_member(session, project_id, user)
+    await require_member(session, project_id, user, write=True)
+    # Disabled work-item types are invalid for NEW rows (Pass 7 PR-R) — fetch
+    # once, then judge per row so a bad type isolates that row, not the import.
+    disabled_types = set(
+        (
+            await session.execute(
+                select(ProjectType.key).where(
+                    ProjectType.project_id == project_id, ProjectType.is_active.is_(False)
+                )
+            )
+        ).scalars()
+    )
 
     reader = csv.reader(io.StringIO(body.content))
     try:
@@ -230,17 +247,33 @@ async def import_work_packages_csv(
                 CsvRowError(row=total, message=f"{loc}: {first['msg']}", raw=_reserialize(row))
             )
             continue
+        if model.type in disabled_types:
+            errors.append(
+                CsvRowError(
+                    row=total,
+                    message=f"type: '{model.type}' is disabled in this project",
+                    raw=_reserialize(row),
+                )
+            )
+            continue
         valid_models.append(model)
         valid_dicts.append({c: getattr(model, c) for c in IMPORT_COLUMNS})
 
     inserted = 0
     if not body.dry_run and valid_models:
+        # Same per-project import serialization as the adapter pipeline
+        # (Pass 42 PR-BH) — cheap, and keeps every import write path uniform.
+        await session.execute(
+            text("SELECT pg_advisory_xact_lock(:classid, hashtext(:pid))").bindparams(
+                classid=IMPORT_LOCK_CLASSID, pid=str(project_id)
+            )
+        )
         for model in valid_models:
             data = model.model_dump()
             # The server is the authoritative XSS boundary: sanitize rich-text HTML
             # on this write path too, exactly like the create/patch endpoints.
             data["description"] = sanitize_html(data["description"])
-            wp = WorkPackage(project_id=project_id, **data)
+            wp = WorkPackage(project_id=project_id, created_by=user.id, **data)
             session.add(wp)
             await session.flush()  # assign wp.id for the activity FK
             record_created(session, wp.id, user.id)
@@ -256,4 +289,159 @@ async def import_work_packages_csv(
         inserted=inserted,
         checksum=_checksum(valid_dicts),
         errors=errors,
+    )
+
+
+async def _run_mapped_import(
+    session: AsyncSession,
+    user: User,
+    project_id: uuid.UUID,
+    mapped: JiraMapResult,
+    dry_run: bool,
+) -> CsvImportResult:
+    """Shared adapter-import pipeline (Jira #77 / Linear Pass 25): row
+    isolation, duplicate guard, disabled-type rejection, dry-run — the
+    response shape is identical for every adapter (v25.1 R1-②)."""
+    disabled_types = set(
+        (
+            await session.execute(
+                select(ProjectType.key).where(
+                    ProjectType.project_id == project_id, ProjectType.is_active.is_(False)
+                )
+            )
+        ).scalars()
+    )
+
+    if mapped.header_error:
+        raise HTTPException(status_code=422, detail=mapped.header_error)
+    if len(mapped.rows) > MAX_IMPORT_ROWS:
+        raise HTTPException(
+            status_code=422, detail=f"import exceeds the {MAX_IMPORT_ROWS}-row limit"
+        )
+
+    # Serialize imports per project (Pass 42 PR-BH): the duplicate guard is
+    # read-then-write — without the lock, two concurrent uploads of the same
+    # file both pass the SELECT and insert duplicates. Blocking (not 409):
+    # the later request proceeds after the first commits and skips its rows
+    # as duplicates. Dry-run is read-only and takes no lock.
+    if not dry_run:
+        await session.execute(
+            text("SELECT pg_advisory_xact_lock(:classid, hashtext(:pid))").bindparams(
+                classid=IMPORT_LOCK_CLASSID, pid=str(project_id)
+            )
+        )
+
+    # Duplicate guard (idempotent re-upload): one query for existing subjects,
+    # plus batch-internal dedupe.
+    candidate_subjects = [p["subject"] for (_, p, err, _) in mapped.rows if p and not err]
+    existing: set[str] = set()
+    if candidate_subjects:
+        existing = set(
+            (
+                await session.execute(
+                    select(WorkPackage.subject).where(
+                        WorkPackage.project_id == project_id,
+                        WorkPackage.subject.in_(candidate_subjects),
+                    )
+                )
+            ).scalars()
+        )
+    seen_in_batch: set[str] = set()
+
+    valid_models: list[WorkPackageCreate] = []
+    valid_dicts: list[dict] = []
+    errors: list[CsvRowError] = []
+    total = 0
+
+    for row_number, payload, map_error, raw in mapped.rows:
+        total += 1
+        if map_error:
+            errors.append(CsvRowError(row=row_number, message=map_error, raw=raw))
+            continue
+        assert payload is not None
+        subject = payload["subject"]
+        if subject in existing or subject in seen_in_batch:
+            errors.append(
+                CsvRowError(
+                    row=row_number,
+                    message="이미 가져온 이슈입니다(동일 제목 존재)",
+                    raw=raw,
+                )
+            )
+            continue
+        try:
+            model = WorkPackageCreate(**payload)
+        except ValidationError as exc:
+            first = exc.errors()[0]
+            loc = ".".join(str(p) for p in first.get("loc", ())) or "row"
+            errors.append(CsvRowError(row=row_number, message=f"{loc}: {first['msg']}", raw=raw))
+            continue
+        if model.type in disabled_types:
+            errors.append(
+                CsvRowError(
+                    row=row_number,
+                    message=f"type: '{model.type}' is disabled in this project",
+                    raw=raw,
+                )
+            )
+            continue
+        seen_in_batch.add(subject)
+        valid_models.append(model)
+        valid_dicts.append({c: getattr(model, c) for c in IMPORT_COLUMNS})
+
+    inserted = 0
+    if not dry_run and valid_models:
+        for model in valid_models:
+            data = model.model_dump()
+            data["description"] = sanitize_html(data["description"])
+            wp = WorkPackage(project_id=project_id, created_by=user.id, **data)
+            session.add(wp)
+            await session.flush()
+            record_created(session, wp.id, user.id)
+        await session.flush()
+        await session.commit()
+        inserted = len(valid_models)
+
+    return CsvImportResult(
+        dry_run=dry_run,
+        total_rows=total,
+        valid=len(valid_models),
+        invalid=len(errors),
+        inserted=inserted,
+        checksum=_checksum(valid_dicts),
+        errors=errors,
+        notes=mapped.notes,
+    )
+
+
+@router.post("/projects/{project_id}/work-packages/import/jira", response_model=CsvImportResult)
+async def import_jira_csv(
+    project_id: uuid.UUID,
+    body: CsvImportRequest,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+) -> CsvImportResult:
+    """Jira CSV export → work packages (Pass 8 PR-T, PLAN v8.1 contract).
+
+    The adapter maps columns/values deterministically; the shared pipeline
+    applies row-level isolation, disabled-type rejection, dry-run preview and
+    the idempotent-re-upload duplicate guard ("[KEY] Summary" subjects)."""
+    await require_member(session, project_id, user, write=True)
+    return await _run_mapped_import(
+        session, user, project_id, map_jira_csv(body.content), body.dry_run
+    )
+
+
+@router.post("/projects/{project_id}/work-packages/import/linear", response_model=CsvImportResult)
+async def import_linear_csv(
+    project_id: uuid.UUID,
+    body: CsvImportRequest,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+) -> CsvImportResult:
+    """Linear CSV export → work packages (Pass 25 PR-AQ, PLAN v25.1 contract —
+    same pipeline and response shape as the Jira adapter)."""
+    await require_member(session, project_id, user, write=True)
+    return await _run_mapped_import(
+        session, user, project_id, map_linear_csv(body.content), body.dry_run
     )
