@@ -582,6 +582,52 @@ test('모바일 작업 상세 드로어가 속성과 활동 탭을 유지한다'
   })
 })
 
+test('관계 표면은 모바일에서 의존 카드와 composer를 유지한다', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await mockApi(page)
+  await page.route(`**/api/v1/work-packages/${wpA.id}/relations`, (route) =>
+    route.fulfill({
+      json: {
+        items: [
+          {
+            id: 'rel-mobile-1',
+            source_id: wpA.id,
+            target_id: wpB.id,
+            relation_type: 'blocks',
+            direction: 'outgoing',
+          },
+          {
+            id: 'rel-mobile-2',
+            source_id: wpB.id,
+            target_id: wpA.id,
+            relation_type: 'precedes',
+            direction: 'incoming',
+          },
+        ],
+        total: 2,
+      },
+    }),
+  )
+
+  await page.goto(`/projects/${project.id}/work-packages`)
+  await page.getByRole('button', { name: '워크패키지 API 구현' }).click()
+  const drawer = page.getByRole('dialog', { name: '워크패키지 API 구현' })
+  const relationSection = drawer.getByRole('region', { name: '관계' })
+
+  await relationSection.scrollIntoViewIfNeeded()
+  await expect(relationSection.getByText('의존', { exact: true })).toBeVisible()
+  await expect(relationSection.getByRole('list').getByText('차단함')).toBeVisible()
+  await expect(relationSection.getByRole('list').getByText('선행')).toBeVisible()
+  await expect(relationSection.getByText('보드 뷰 구현').first()).toBeVisible()
+  await expect(relationSection.getByLabel('관계 유형')).toBeVisible()
+  await expect(relationSection.getByLabel('대상 작업')).toBeVisible()
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/relations-ui/mobile.png',
+    fullPage: true,
+  })
+})
+
 test('시간·비용 표면은 모바일에서 기록 카드와 ledger를 유지한다', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 })
   await mockApi(page)
