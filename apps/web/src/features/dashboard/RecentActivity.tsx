@@ -28,13 +28,13 @@ export function RecentActivity({ projectId }: { projectId: string }) {
   })
 
   return (
-    <div className="rounded-of border border-of-border bg-of-surface p-4">
-      <div className="mb-3 flex items-center justify-between gap-2">
+    <div className="min-w-0 rounded-of border border-of-border bg-of-surface p-4">
+      <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <h2 className="text-sm font-semibold">최근 활동</h2>
-        <div className="flex items-center gap-1.5">
+        <div className="grid min-w-0 grid-cols-1 gap-1.5 sm:flex sm:items-center">
           <Select
             aria-label="활동 종류"
-            className="h-6 w-24 text-[11px]"
+            className="h-7 w-full text-[11px] sm:w-24"
             value={action}
             onChange={(e) => setAction(e.target.value)}
           >
@@ -45,7 +45,7 @@ export function RecentActivity({ projectId }: { projectId: string }) {
           </Select>
           <Select
             aria-label="활동 멤버"
-            className="h-6 w-24 text-[11px]"
+            className="h-7 w-full text-[11px] sm:w-24"
             value={actor}
             onChange={(e) => setActor(e.target.value)}
           >
@@ -58,7 +58,7 @@ export function RecentActivity({ projectId }: { projectId: string }) {
           </Select>
           <Select
             aria-label="활동 정렬"
-            className="h-6 w-20 text-[11px]"
+            className="h-7 w-full text-[11px] sm:w-20"
             value={order}
             onChange={(e) => setOrder(e.target.value as 'asc' | 'desc')}
           >
@@ -77,7 +77,7 @@ export function RecentActivity({ projectId }: { projectId: string }) {
         <>
           <ul className="space-y-1.5">
             {activities.data.items.slice(0, 12).map((a) => (
-              <li key={a.id} className="flex items-baseline gap-2 text-xs">
+              <li key={a.id} className="flex min-w-0 items-baseline gap-2 text-xs">
                 <span className="shrink-0 font-medium text-of-muted">
                   {a.actor_name ?? '시스템'}
                 </span>
