@@ -1,3 +1,4 @@
+from app.models.access_token import PersonalAccessToken
 from app.models.activity import Activity
 from app.models.attachment import Attachment
 from app.models.auth_session import AuthSession
@@ -29,6 +30,7 @@ from app.models.work_package import WorkPackage
 
 __all__ = [
     "User",
+    "PersonalAccessToken",
     "Project",
     "ProjectMember",
     "WorkPackage",

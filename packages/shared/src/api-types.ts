@@ -416,6 +416,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/me/access-tokens": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Access Tokens */
+        get: operations["list_access_tokens_api_v1_me_access_tokens_get"];
+        put?: never;
+        /** Create Access Token */
+        post: operations["create_access_token_api_v1_me_access_tokens_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/me/access-tokens/{token_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Revoke Access Token */
+        delete: operations["revoke_access_token_api_v1_me_access_tokens__token_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/me/notification-settings": {
         parameters: {
             query?: never;
@@ -4069,6 +4104,55 @@ export interface components {
              */
             viewer: "always" | "never" | "conditional";
         };
+        /** PersonalAccessTokenCreate */
+        PersonalAccessTokenCreate: {
+            /**
+             * Expires In Days
+             * @default 90
+             */
+            expires_in_days: number;
+            /** Name */
+            name: string;
+        };
+        /** PersonalAccessTokenCreated */
+        PersonalAccessTokenCreated: {
+            item: components["schemas"]["PersonalAccessTokenRead"];
+            /** Token */
+            token: string;
+        };
+        /** PersonalAccessTokenList */
+        PersonalAccessTokenList: {
+            /** Items */
+            items: components["schemas"]["PersonalAccessTokenRead"][];
+            /** Total */
+            total: number;
+        };
+        /** PersonalAccessTokenRead */
+        PersonalAccessTokenRead: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Last Used At */
+            last_used_at: string | null;
+            /** Name */
+            name: string;
+            /** Revoked At */
+            revoked_at: string | null;
+            /** Token Prefix */
+            token_prefix: string;
+        };
         /**
          * PortfolioItem
          * @description One project row of the portfolio report (Pass 63, v63.1).
@@ -5288,7 +5372,9 @@ export interface operations {
     delete_action_item_api_v1_action_items__item_id__delete: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 item_id: string;
             };
@@ -5319,7 +5405,9 @@ export interface operations {
     update_action_item_api_v1_action_items__item_id__patch: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 item_id: string;
             };
@@ -5356,7 +5444,9 @@ export interface operations {
     convert_action_item_api_v1_action_items__item_id__convert_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 item_id: string;
             };
@@ -5389,7 +5479,9 @@ export interface operations {
     delete_attachment_api_v1_attachments__attachment_id__delete: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 attachment_id: string;
             };
@@ -5420,7 +5512,9 @@ export interface operations {
     download_attachment_api_v1_attachments__attachment_id__download_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 attachment_id: string;
             };
@@ -5535,7 +5629,9 @@ export interface operations {
     capabilities_api_v1_capabilities_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path?: never;
             cookie?: {
                 oneflow_session?: string | null;
@@ -5566,7 +5662,9 @@ export interface operations {
     put_reaction_api_v1_comments__comment_id__reactions__emoji__put: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 comment_id: string;
                 emoji: string;
@@ -5600,7 +5698,9 @@ export interface operations {
     delete_reaction_api_v1_comments__comment_id__reactions__emoji__delete: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 comment_id: string;
                 emoji: string;
@@ -5632,7 +5732,9 @@ export interface operations {
     delete_document_comment_api_v1_document_comments__comment_id__delete: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 comment_id: string;
             };
@@ -5663,7 +5765,9 @@ export interface operations {
     get_document_api_v1_documents__doc_id__get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 doc_id: string;
             };
@@ -5696,7 +5800,9 @@ export interface operations {
     delete_document_api_v1_documents__doc_id__delete: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 doc_id: string;
             };
@@ -5727,7 +5833,9 @@ export interface operations {
     update_document_api_v1_documents__doc_id__patch: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 doc_id: string;
             };
@@ -5776,7 +5884,9 @@ export interface operations {
                 limit?: number;
                 offset?: number;
             };
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 doc_id: string;
             };
@@ -5809,7 +5919,9 @@ export interface operations {
     create_document_comment_api_v1_documents__doc_id__comments_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 doc_id: string;
             };
@@ -5846,7 +5958,9 @@ export interface operations {
     list_document_links_api_v1_documents__doc_id__work_package_links_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 doc_id: string;
             };
@@ -5879,7 +5993,9 @@ export interface operations {
     create_document_link_api_v1_documents__doc_id__work_package_links_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 doc_id: string;
             };
@@ -5916,7 +6032,9 @@ export interface operations {
     delete_document_link_api_v1_documents__doc_id__work_package_links__link_id__delete: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 doc_id: string;
                 link_id: string;
@@ -5990,7 +6108,9 @@ export interface operations {
     list_initiatives_api_v1_initiatives_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path?: never;
             cookie?: {
                 oneflow_session?: string | null;
@@ -6021,7 +6141,9 @@ export interface operations {
     create_initiative_api_v1_initiatives_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path?: never;
             cookie?: {
                 oneflow_session?: string | null;
@@ -6056,7 +6178,9 @@ export interface operations {
     delete_initiative_api_v1_initiatives__initiative_id__delete: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 initiative_id: string;
             };
@@ -6087,7 +6211,9 @@ export interface operations {
     update_initiative_api_v1_initiatives__initiative_id__patch: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 initiative_id: string;
             };
@@ -6124,7 +6250,9 @@ export interface operations {
     connect_project_api_v1_initiatives__initiative_id__projects_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 initiative_id: string;
             };
@@ -6161,7 +6289,9 @@ export interface operations {
     disconnect_project_api_v1_initiatives__initiative_id__projects__project_id__delete: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 initiative_id: string;
                 project_id: string;
@@ -6195,7 +6325,9 @@ export interface operations {
     me_api_v1_me_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path?: never;
             cookie?: {
                 oneflow_session?: string | null;
@@ -6223,10 +6355,115 @@ export interface operations {
             };
         };
     };
+    list_access_tokens_api_v1_me_access_tokens_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PersonalAccessTokenList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_access_token_api_v1_me_access_tokens_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PersonalAccessTokenCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PersonalAccessTokenCreated"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    revoke_access_token_api_v1_me_access_tokens__token_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                token_id: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_notification_settings_api_v1_me_notification_settings_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path?: never;
             cookie?: {
                 oneflow_session?: string | null;
@@ -6257,7 +6494,9 @@ export interface operations {
     update_notification_settings_api_v1_me_notification_settings_put: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path?: never;
             cookie?: {
                 oneflow_session?: string | null;
@@ -6295,7 +6534,9 @@ export interface operations {
                 unread_only?: boolean;
                 limit?: number;
             };
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path?: never;
             cookie?: {
                 oneflow_session?: string | null;
@@ -6326,7 +6567,9 @@ export interface operations {
     mark_all_notifications_read_api_v1_me_notifications_read_all_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path?: never;
             cookie?: {
                 oneflow_session?: string | null;
@@ -6355,7 +6598,9 @@ export interface operations {
     mark_notification_read_api_v1_me_notifications__notification_id__read_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 notification_id: string;
             };
@@ -6391,7 +6636,9 @@ export interface operations {
                 limit?: number;
                 offset?: number;
             };
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path?: never;
             cookie?: {
                 oneflow_session?: string | null;
@@ -6422,7 +6669,9 @@ export interface operations {
     my_work_api_v1_me_work_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path?: never;
             cookie?: {
                 oneflow_session?: string | null;
@@ -6453,7 +6702,9 @@ export interface operations {
     delete_meeting_template_api_v1_meeting_templates__template_id__delete: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 template_id: string;
             };
@@ -6484,7 +6735,9 @@ export interface operations {
     get_meeting_api_v1_meetings__meeting_id__get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 meeting_id: string;
             };
@@ -6517,7 +6770,9 @@ export interface operations {
     delete_meeting_api_v1_meetings__meeting_id__delete: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 meeting_id: string;
             };
@@ -6548,7 +6803,9 @@ export interface operations {
     update_meeting_api_v1_meetings__meeting_id__patch: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 meeting_id: string;
             };
@@ -6594,7 +6851,9 @@ export interface operations {
     create_action_item_api_v1_meetings__meeting_id__action_items_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 meeting_id: string;
             };
@@ -6631,7 +6890,9 @@ export interface operations {
     create_follow_up_api_v1_meetings__meeting_id__follow_up_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 meeting_id: string;
             };
@@ -6668,7 +6929,9 @@ export interface operations {
     ops_status_api_v1_ops_status_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path?: never;
             cookie?: {
                 oneflow_session?: string | null;
@@ -6703,7 +6966,9 @@ export interface operations {
                 offset?: number;
                 include_archived?: boolean;
             };
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path?: never;
             cookie?: {
                 oneflow_session?: string | null;
@@ -6734,7 +6999,9 @@ export interface operations {
     create_project_api_v1_projects_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path?: never;
             cookie?: {
                 oneflow_session?: string | null;
@@ -6769,7 +7036,9 @@ export interface operations {
     get_project_api_v1_projects__project_id__get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 project_id: string;
             };
@@ -6802,7 +7071,9 @@ export interface operations {
     update_project_api_v1_projects__project_id__patch: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 project_id: string;
             };
@@ -6845,7 +7116,9 @@ export interface operations {
                 actor_id?: string | null;
                 order?: string;
             };
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 project_id: string;
             };
@@ -6878,7 +7151,9 @@ export interface operations {
     archive_project_api_v1_projects__project_id__archive_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 project_id: string;
             };
@@ -6914,7 +7189,9 @@ export interface operations {
                 work_package_id?: string | null;
                 document_id?: string | null;
             };
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 project_id: string;
             };
@@ -6947,7 +7224,9 @@ export interface operations {
     create_attachment_api_v1_projects__project_id__attachments_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 project_id: string;
             };
@@ -6988,7 +7267,9 @@ export interface operations {
                 work_package_id?: string | null;
                 document_id?: string | null;
             };
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 project_id: string;
             };
@@ -7021,7 +7302,9 @@ export interface operations {
     list_automation_rules_api_v1_projects__project_id__automation_rules_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 project_id: string;
             };
@@ -7054,7 +7337,9 @@ export interface operations {
     create_automation_rule_api_v1_projects__project_id__automation_rules_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 project_id: string;
             };
@@ -7091,7 +7376,9 @@ export interface operations {
     reorder_automation_rules_api_v1_projects__project_id__automation_rules_order_put: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 project_id: string;
             };
@@ -7130,7 +7417,9 @@ export interface operations {
             query?: {
                 limit?: number;
             };
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 project_id: string;
             };
@@ -7163,7 +7452,9 @@ export interface operations {
     delete_automation_rule_api_v1_projects__project_id__automation_rules__rule_id__delete: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 project_id: string;
                 rule_id: string;
@@ -7195,7 +7486,9 @@ export interface operations {
     update_automation_rule_api_v1_projects__project_id__automation_rules__rule_id__patch: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 project_id: string;
                 rule_id: string;
@@ -7235,7 +7528,9 @@ export interface operations {
             query?: {
                 include_inactive?: boolean;
             };
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 project_id: string;
             };
@@ -7268,7 +7563,9 @@ export interface operations {
     create_custom_field_api_v1_projects__project_id__custom_fields_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 project_id: string;
             };
@@ -7305,7 +7602,9 @@ export interface operations {
     reorder_custom_fields_api_v1_projects__project_id__custom_fields_order_put: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 project_id: string;
             };
@@ -7342,7 +7641,9 @@ export interface operations {
     delete_custom_field_api_v1_projects__project_id__custom_fields__field_id__delete: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 project_id: string;
                 field_id: string;
@@ -7374,7 +7675,9 @@ export interface operations {
     update_custom_field_api_v1_projects__project_id__custom_fields__field_id__patch: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 project_id: string;
                 field_id: string;
@@ -7412,7 +7715,9 @@ export interface operations {
     list_cycles_api_v1_projects__project_id__cycles_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 project_id: string;
             };
@@ -7445,7 +7750,9 @@ export interface operations {
     create_cycle_api_v1_projects__project_id__cycles_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 project_id: string;
             };
@@ -7482,7 +7789,9 @@ export interface operations {
     delete_cycle_api_v1_projects__project_id__cycles__cycle_id__delete: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 project_id: string;
                 cycle_id: string;
@@ -7514,7 +7823,9 @@ export interface operations {
     update_cycle_api_v1_projects__project_id__cycles__cycle_id__patch: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 project_id: string;
                 cycle_id: string;
@@ -7552,7 +7863,9 @@ export interface operations {
     cycle_burndown_api_v1_projects__project_id__cycles__cycle_id__burndown_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 project_id: string;
                 cycle_id: string;
@@ -7586,7 +7899,9 @@ export interface operations {
     rollover_cycle_api_v1_projects__project_id__cycles__cycle_id__rollover_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 project_id: string;
                 cycle_id: string;
@@ -7624,7 +7939,9 @@ export interface operations {
     project_dashboard_api_v1_projects__project_id__dashboard_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 project_id: string;
             };
@@ -7657,7 +7974,9 @@ export interface operations {
     export_dashboard_csv_api_v1_projects__project_id__dashboard_export_csv_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 project_id: string;
             };
@@ -7690,7 +8009,9 @@ export interface operations {
     get_dashboard_layout_api_v1_projects__project_id__dashboard_layout_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 project_id: string;
             };
@@ -7723,7 +8044,9 @@ export interface operations {
     put_dashboard_layout_api_v1_projects__project_id__dashboard_layout_put: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 project_id: string;
             };
@@ -7760,7 +8083,9 @@ export interface operations {
     list_documents_api_v1_projects__project_id__documents_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 project_id: string;
             };
@@ -7793,7 +8118,9 @@ export interface operations {
     create_document_api_v1_projects__project_id__documents_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 project_id: string;
             };
@@ -7830,7 +8157,9 @@ export interface operations {
     list_intake_api_v1_projects__project_id__intake_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 project_id: string;
             };
@@ -7863,7 +8192,9 @@ export interface operations {
     submit_intake_api_v1_projects__project_id__intake_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 project_id: string;
             };
@@ -7900,7 +8231,9 @@ export interface operations {
     triage_intake_api_v1_projects__project_id__intake__item_id__triage_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 project_id: string;
                 item_id: string;
@@ -7938,7 +8271,9 @@ export interface operations {
     list_meeting_templates_api_v1_projects__project_id__meeting_templates_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 project_id: string;
             };
@@ -7971,7 +8306,9 @@ export interface operations {
     create_meeting_template_api_v1_projects__project_id__meeting_templates_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 project_id: string;
             };
@@ -8008,7 +8345,9 @@ export interface operations {
     list_meetings_api_v1_projects__project_id__meetings_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 project_id: string;
             };
@@ -8041,7 +8380,9 @@ export interface operations {
     create_meeting_api_v1_projects__project_id__meetings_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 project_id: string;
             };
@@ -8078,7 +8419,9 @@ export interface operations {
     list_members_api_v1_projects__project_id__members_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 project_id: string;
             };
@@ -8111,7 +8454,9 @@ export interface operations {
     add_member_api_v1_projects__project_id__members_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 project_id: string;
             };
@@ -8148,7 +8493,9 @@ export interface operations {
     remove_member_api_v1_projects__project_id__members__user_id__delete: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 project_id: string;
                 user_id: string;
@@ -8180,7 +8527,9 @@ export interface operations {
     update_member_role_api_v1_projects__project_id__members__user_id__patch: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 project_id: string;
                 user_id: string;
@@ -8218,7 +8567,9 @@ export interface operations {
     list_milestones_api_v1_projects__project_id__milestones_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 project_id: string;
             };
@@ -8251,7 +8602,9 @@ export interface operations {
     create_milestone_api_v1_projects__project_id__milestones_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 project_id: string;
             };
@@ -8288,7 +8641,9 @@ export interface operations {
     delete_milestone_api_v1_projects__project_id__milestones__milestone_id__delete: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 project_id: string;
                 milestone_id: string;
@@ -8320,7 +8675,9 @@ export interface operations {
     update_milestone_api_v1_projects__project_id__milestones__milestone_id__patch: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 project_id: string;
                 milestone_id: string;
@@ -8358,7 +8715,9 @@ export interface operations {
     list_modules_api_v1_projects__project_id__modules_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 project_id: string;
             };
@@ -8391,7 +8750,9 @@ export interface operations {
     create_module_api_v1_projects__project_id__modules_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 project_id: string;
             };
@@ -8428,7 +8789,9 @@ export interface operations {
     delete_module_api_v1_projects__project_id__modules__module_id__delete: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 project_id: string;
                 module_id: string;
@@ -8460,7 +8823,9 @@ export interface operations {
     update_module_api_v1_projects__project_id__modules__module_id__patch: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 project_id: string;
                 module_id: string;
@@ -8498,7 +8863,9 @@ export interface operations {
     list_module_members_api_v1_projects__project_id__modules__module_id__members_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 project_id: string;
                 module_id: string;
@@ -8532,7 +8899,9 @@ export interface operations {
     replace_module_members_api_v1_projects__project_id__modules__module_id__members_put: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 project_id: string;
                 module_id: string;
@@ -8570,7 +8939,9 @@ export interface operations {
     permission_report_api_v1_projects__project_id__permissions_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 project_id: string;
             };
@@ -8605,7 +8976,9 @@ export interface operations {
             query?: {
                 limit?: number;
             };
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 project_id: string;
             };
@@ -8638,7 +9011,9 @@ export interface operations {
     list_saved_filters_api_v1_projects__project_id__saved_filters_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 project_id: string;
             };
@@ -8671,7 +9046,9 @@ export interface operations {
     create_saved_filter_api_v1_projects__project_id__saved_filters_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 project_id: string;
             };
@@ -8708,7 +9085,9 @@ export interface operations {
     delete_saved_filter_api_v1_projects__project_id__saved_filters__filter_id__delete: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 project_id: string;
                 filter_id: string;
@@ -8740,7 +9119,9 @@ export interface operations {
     update_saved_filter_api_v1_projects__project_id__saved_filters__filter_id__patch: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 project_id: string;
                 filter_id: string;
@@ -8778,7 +9159,9 @@ export interface operations {
     list_project_statuses_api_v1_projects__project_id__statuses_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 project_id: string;
             };
@@ -8811,7 +9194,9 @@ export interface operations {
     reorder_project_statuses_api_v1_projects__project_id__statuses_order_put: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 project_id: string;
             };
@@ -8848,7 +9233,9 @@ export interface operations {
     update_project_status_api_v1_projects__project_id__statuses__status_id__patch: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 project_id: string;
                 status_id: string;
@@ -8886,7 +9273,9 @@ export interface operations {
     project_storage_api_v1_projects__project_id__storage_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 project_id: string;
             };
@@ -8919,7 +9308,9 @@ export interface operations {
     list_project_types_api_v1_projects__project_id__types_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 project_id: string;
             };
@@ -8952,7 +9343,9 @@ export interface operations {
     reorder_project_types_api_v1_projects__project_id__types_order_put: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 project_id: string;
             };
@@ -8989,7 +9382,9 @@ export interface operations {
     update_project_type_api_v1_projects__project_id__types__type_id__patch: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 project_id: string;
                 type_id: string;
@@ -9027,7 +9422,9 @@ export interface operations {
     unarchive_project_api_v1_projects__project_id__unarchive_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 project_id: string;
             };
@@ -9077,7 +9474,9 @@ export interface operations {
                 limit?: number;
                 offset?: number;
             };
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 project_id: string;
             };
@@ -9110,7 +9509,9 @@ export interface operations {
     create_work_package_api_v1_projects__project_id__work_packages_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 project_id: string;
             };
@@ -9147,7 +9548,9 @@ export interface operations {
     bulk_update_work_packages_api_v1_projects__project_id__work_packages_bulk_update_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 project_id: string;
             };
@@ -9184,7 +9587,9 @@ export interface operations {
     export_work_packages_csv_api_v1_projects__project_id__work_packages_export_csv_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 project_id: string;
             };
@@ -9217,7 +9622,9 @@ export interface operations {
     import_work_packages_csv_api_v1_projects__project_id__work_packages_import_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 project_id: string;
             };
@@ -9254,7 +9661,9 @@ export interface operations {
     import_jira_csv_api_v1_projects__project_id__work_packages_import_jira_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 project_id: string;
             };
@@ -9291,7 +9700,9 @@ export interface operations {
     import_linear_csv_api_v1_projects__project_id__work_packages_import_linear_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 project_id: string;
             };
@@ -9332,7 +9743,9 @@ export interface operations {
                 limit?: number;
                 offset?: number;
             };
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path?: never;
             cookie?: {
                 oneflow_session?: string | null;
@@ -9365,7 +9778,9 @@ export interface operations {
             query?: {
                 include_archived?: boolean;
             };
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path?: never;
             cookie?: {
                 oneflow_session?: string | null;
@@ -9400,7 +9815,9 @@ export interface operations {
                 limit?: number;
                 offset?: number;
             };
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path?: never;
             cookie?: {
                 oneflow_session?: string | null;
@@ -9434,7 +9851,9 @@ export interface operations {
                 q: string;
                 limit?: number;
             };
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path?: never;
             cookie?: {
                 oneflow_session?: string | null;
@@ -9469,7 +9888,9 @@ export interface operations {
                 limit?: number;
                 offset?: number;
             };
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path?: never;
             cookie?: {
                 oneflow_session?: string | null;
@@ -9500,7 +9921,9 @@ export interface operations {
     list_users_api_v1_users_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path?: never;
             cookie?: {
                 oneflow_session?: string | null;
@@ -9531,7 +9954,9 @@ export interface operations {
     create_user_api_v1_users_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path?: never;
             cookie?: {
                 oneflow_session?: string | null;
@@ -9566,7 +9991,9 @@ export interface operations {
     update_user_api_v1_users__user_id__patch: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 user_id: string;
             };
@@ -9606,7 +10033,9 @@ export interface operations {
                 limit?: number;
                 offset?: number;
             };
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 user_id: string;
             };
@@ -9639,7 +10068,9 @@ export interface operations {
     get_work_package_api_v1_work_packages__wp_id__get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 wp_id: string;
             };
@@ -9672,7 +10103,9 @@ export interface operations {
     patch_work_package_api_v1_work_packages__wp_id__patch: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 wp_id: string;
             };
@@ -9725,7 +10158,9 @@ export interface operations {
                 actor_id?: string | null;
                 order?: string;
             };
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 wp_id: string;
             };
@@ -9761,7 +10196,9 @@ export interface operations {
                 limit?: number;
                 offset?: number;
             };
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 wp_id: string;
             };
@@ -9794,7 +10231,9 @@ export interface operations {
     create_comment_api_v1_work_packages__wp_id__comments_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 wp_id: string;
             };
@@ -9831,7 +10270,9 @@ export interface operations {
     list_cost_entries_api_v1_work_packages__wp_id__cost_entries_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 wp_id: string;
             };
@@ -9864,7 +10305,9 @@ export interface operations {
     log_cost_api_v1_work_packages__wp_id__cost_entries_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 wp_id: string;
             };
@@ -9901,7 +10344,9 @@ export interface operations {
     delete_cost_entry_api_v1_work_packages__wp_id__cost_entries__entry_id__delete: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 wp_id: string;
                 entry_id: string;
@@ -9933,7 +10378,9 @@ export interface operations {
     list_custom_values_api_v1_work_packages__wp_id__custom_values_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 wp_id: string;
             };
@@ -9966,7 +10413,9 @@ export interface operations {
     put_custom_values_api_v1_work_packages__wp_id__custom_values_put: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 wp_id: string;
             };
@@ -10003,7 +10452,9 @@ export interface operations {
     list_work_package_documents_api_v1_work_packages__wp_id__documents_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 wp_id: string;
             };
@@ -10036,7 +10487,9 @@ export interface operations {
     duplicate_work_package_api_v1_work_packages__wp_id__duplicate_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 wp_id: string;
             };
@@ -10069,7 +10522,9 @@ export interface operations {
     move_work_package_api_v1_work_packages__wp_id__move_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 wp_id: string;
             };
@@ -10106,7 +10561,9 @@ export interface operations {
     list_relations_api_v1_work_packages__wp_id__relations_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 wp_id: string;
             };
@@ -10139,7 +10596,9 @@ export interface operations {
     create_relation_api_v1_work_packages__wp_id__relations_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 wp_id: string;
             };
@@ -10176,7 +10635,9 @@ export interface operations {
     delete_relation_api_v1_work_packages__wp_id__relations__relation_id__delete: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 wp_id: string;
                 relation_id: string;
@@ -10208,7 +10669,9 @@ export interface operations {
     summarize_api_v1_work_packages__wp_id__summary_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 wp_id: string;
             };
@@ -10241,7 +10704,9 @@ export interface operations {
     list_time_entries_api_v1_work_packages__wp_id__time_entries_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 wp_id: string;
             };
@@ -10274,7 +10739,9 @@ export interface operations {
     log_time_api_v1_work_packages__wp_id__time_entries_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 wp_id: string;
             };
@@ -10311,7 +10778,9 @@ export interface operations {
     delete_time_entry_api_v1_work_packages__wp_id__time_entries__entry_id__delete: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 wp_id: string;
                 entry_id: string;
@@ -10343,7 +10812,9 @@ export interface operations {
     list_watchers_api_v1_work_packages__wp_id__watchers_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 wp_id: string;
             };
@@ -10376,7 +10847,9 @@ export interface operations {
     watch_api_v1_work_packages__wp_id__watchers_me_put: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 wp_id: string;
             };
@@ -10407,7 +10880,9 @@ export interface operations {
     unwatch_api_v1_work_packages__wp_id__watchers_me_delete: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 wp_id: string;
             };

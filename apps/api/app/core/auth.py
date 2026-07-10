@@ -5,19 +5,22 @@ user, auto-provisioned via an atomic upsert — session cookies are IGNORED so
 tests and scripts stay deterministic (v72.1 R1-④).
 dev mode, flag on: a valid `oneflow_session` cookie is REQUIRED — missing,
 unknown, expired or revoked all yield 401.
-oidc mode: explicit 501 — never a silent bypass.
+Bearer access tokens are validated before the interactive auth-mode branch.
+oidc mode without a valid Bearer token: explicit 501 — never a silent bypass.
 """
 
 import hashlib
 from datetime import UTC, datetime
 
-from fastapi import Cookie, Depends, HTTPException
+from fastapi import Cookie, Depends, Header, HTTPException
 from sqlalchemy import select
+from sqlalchemy import update as sa_update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings, get_settings
 from app.db.session import get_session
+from app.models.access_token import PersonalAccessToken
 from app.models.auth_session import AuthSession
 from app.models.user import User
 
@@ -51,11 +54,53 @@ async def session_user(session: AsyncSession, token: str | None) -> User | None:
     return row
 
 
+def bearer_token(authorization: str | None) -> str | None:
+    if not authorization:
+        return None
+    scheme, _, value = authorization.partition(" ")
+    token = value.strip()
+    if scheme.lower() != "bearer" or not token:
+        raise HTTPException(status_code=401, detail="invalid bearer token")
+    return token
+
+
+async def access_token_user(session: AsyncSession, authorization: str | None) -> User | None:
+    raw = bearer_token(authorization)
+    if raw is None:
+        return None
+    row = (
+        await session.execute(
+            select(User, PersonalAccessToken)
+            .join(PersonalAccessToken, PersonalAccessToken.user_id == User.id)
+            .where(
+                PersonalAccessToken.token_hash == token_hash(raw),
+                PersonalAccessToken.revoked_at.is_(None),
+                PersonalAccessToken.expires_at > datetime.now(UTC),
+            )
+        )
+    ).one_or_none()
+    if row is None:
+        raise HTTPException(status_code=401, detail="invalid bearer token")
+    user, token_row = row
+    if not user.is_active:
+        raise HTTPException(status_code=403, detail="account disabled")
+    await session.execute(
+        sa_update(PersonalAccessToken)
+        .where(PersonalAccessToken.id == token_row.id)
+        .values(last_used_at=datetime.now(UTC))
+    )
+    await session.commit()
+    return user
+
+
 async def get_current_user(
     session: AsyncSession = Depends(get_session),
     settings: Settings = Depends(get_settings),
     oneflow_session: str | None = Cookie(default=None),
+    authorization: str | None = Header(default=None),
 ) -> User:
+    if authorization:
+        return await access_token_user(session, authorization)
     if settings.auth_mode == "oidc":
         raise HTTPException(status_code=501, detail="oidc auth mode is not implemented yet")
     if settings.dev_login_required_enabled:

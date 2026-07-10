@@ -309,6 +309,8 @@ ENDPOINT_ALLOWLIST: dict[str, str] = {
     "POST /api/v1/me/notifications/read-all": "개인 알림 — 사용자 스코프",
     "POST /api/v1/me/notifications/{notification_id}/read": "개인 알림 — 사용자 스코프",
     "PUT /api/v1/me/notification-settings": "개인 알림 설정 — 사용자 스코프",
+    "POST /api/v1/me/access-tokens": "개인 개발자 토큰 — 사용자 스코프",
+    "DELETE /api/v1/me/access-tokens/{token_id}": "개인 개발자 토큰 폐기 — 사용자 스코프",
     "POST /api/v1/initiatives": "워크스페이스 리소스 — creator-only 축",
     "PATCH /api/v1/initiatives/{initiative_id}": "워크스페이스 리소스 — creator-only 축",
     "DELETE /api/v1/initiatives/{initiative_id}": "워크스페이스 리소스 — creator-only 축",
