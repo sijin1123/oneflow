@@ -26,7 +26,7 @@ from app.models.saved_filter import SavedFilter
 from app.models.time_entry import TimeEntry
 from app.models.user import User
 from app.models.watcher import WpWatcher
-from app.models.webhook import WebhookDelivery, WebhookEndpoint
+from app.models.webhook import WebhookDelivery, WebhookEndpoint, WebhookSecretRotation
 from app.models.work_package import WorkPackage
 
 __all__ = [
@@ -60,6 +60,7 @@ __all__ = [
     "WpWatcher",
     "WebhookEndpoint",
     "WebhookDelivery",
+    "WebhookSecretRotation",
     "UserNotificationSettings",
     "IntakeItem",
     "CustomField",

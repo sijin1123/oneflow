@@ -9,7 +9,7 @@ from app.core.auth import get_current_user
 from app.core.config import Settings, get_settings
 from app.db.session import get_session
 from app.models.user import User
-from app.models.webhook import WebhookDelivery, WebhookEndpoint
+from app.models.webhook import WebhookDelivery, WebhookEndpoint, WebhookSecretRotation
 from app.schemas.webhook import (
     WebhookDeliveryList,
     WebhookDeliveryRead,
@@ -18,6 +18,7 @@ from app.schemas.webhook import (
     WebhookEndpointList,
     WebhookEndpointRead,
     WebhookEndpointUpdate,
+    WebhookRotateSecret,
 )
 from app.services.webhooks import (
     attempt_delivery,
@@ -42,7 +43,7 @@ def _require_enabled(settings: Settings) -> None:
 
 async def _validated_url(url: str, settings: Settings) -> str:
     try:
-        return await validate_webhook_url(url, settings)
+        return (await validate_webhook_url(url, settings)).url
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
@@ -103,7 +104,25 @@ async def list_webhooks(
         .scalars()
         .all()
     )
-    return WebhookEndpointList(items=list(rows), total=len(rows), enabled=settings.webhooks_enabled)
+    rotations = (
+        (
+            await session.execute(
+                select(WebhookSecretRotation)
+                .order_by(WebhookSecretRotation.created_at.desc(), WebhookSecretRotation.id.desc())
+                .limit(100)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return WebhookEndpointList(
+        items=list(rows),
+        total=len(rows),
+        enabled=settings.webhooks_enabled,
+        active_signing_key_id=settings.webhook_active_signing_key_id_effective,
+        available_signing_key_ids=list(settings.webhook_signing_key_ids),
+        rotations=list(rotations),
+    )
 
 
 @router.post("/webhooks", response_model=WebhookEndpointCreated, status_code=201)
@@ -122,6 +141,7 @@ async def create_webhook(
         event_types=body.event_types,
         is_active=True,
         secret_version=1,
+        signing_key_id=settings.webhook_active_signing_key_id_effective or "legacy-v1",
         created_by=user.id,
     )
     session.add(row)
@@ -129,7 +149,7 @@ async def create_webhook(
     await session.refresh(row)
     return WebhookEndpointCreated(
         item=WebhookEndpointRead.model_validate(row),
-        secret=derive_signing_secret(settings, row.id, row.secret_version),
+        secret=derive_signing_secret(settings, row.id, row.secret_version, row.signing_key_id),
     )
 
 
@@ -171,19 +191,48 @@ async def delete_webhook(
 @router.post("/webhooks/{endpoint_id}/rotate-secret", response_model=WebhookEndpointCreated)
 async def rotate_webhook_secret(
     endpoint_id: uuid.UUID,
+    body: WebhookRotateSecret,
     session: AsyncSession = Depends(get_session),
     user: User = Depends(get_current_user),
     settings: Settings = Depends(get_settings),
 ) -> WebhookEndpointCreated:
     _require_admin(user)
     _require_enabled(settings)
-    row = await _endpoint(session, endpoint_id)
-    row.secret_version += 1
+    if body.target_signing_key_id not in settings.webhook_signing_key_ids:
+        raise HTTPException(status_code=422, detail="target signing key is not configured")
+    row = (
+        await session.execute(
+            select(WebhookEndpoint)
+            .where(WebhookEndpoint.id == endpoint_id, WebhookEndpoint.deleted_at.is_(None))
+            .with_for_update()
+        )
+    ).scalar_one_or_none()
+    if row is None:
+        raise HTTPException(status_code=404, detail="not found")
+    if row.secret_version != body.expected_secret_version:
+        raise HTTPException(status_code=409, detail="secret version is stale")
+    # Version increments even for same-key rotation; the reason is bounded at
+    # the public API boundary and no key material is accepted from clients.
+    previous_key_id = row.signing_key_id
+    previous_version = row.secret_version
+    row.signing_key_id = body.target_signing_key_id
+    row.secret_version = previous_version + 1
+    session.add(
+        WebhookSecretRotation(
+            endpoint_id=row.id,
+            previous_signing_key_id=previous_key_id,
+            signing_key_id=row.signing_key_id,
+            previous_secret_version=previous_version,
+            secret_version=row.secret_version,
+            reason=body.reason,
+            created_by=user.id,
+        )
+    )
     await session.commit()
     await session.refresh(row)
     return WebhookEndpointCreated(
         item=WebhookEndpointRead.model_validate(row),
-        secret=derive_signing_secret(settings, row.id, row.secret_version),
+        secret=derive_signing_secret(settings, row.id, row.secret_version, row.signing_key_id),
     )
 
 
@@ -219,6 +268,8 @@ async def test_webhook(
             "occurred_at": now.isoformat(),
             "data": {"message": "OneFlow webhook test"},
         },
+        signing_key_id=row.signing_key_id,
+        secret_version=row.secret_version,
     )
     session.add(delivery)
     await session.commit()

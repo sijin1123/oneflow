@@ -101,6 +101,7 @@ function EndpointRow({
   endpoint,
   onSecret,
   enabled,
+  availableKeyIds,
   testResult,
   onTestStart,
   onTestResult,
@@ -108,6 +109,7 @@ function EndpointRow({
   endpoint: WebhookEndpoint
   onSecret: (result: WebhookEndpointCreated) => void
   enabled: boolean
+  availableKeyIds: string[]
   testResult?: WebhookDelivery
   onTestStart: () => void
   onTestResult: (result: WebhookDelivery) => void
@@ -120,6 +122,12 @@ function EndpointRow({
   const [name, setName] = useState(endpoint.name)
   const [url, setUrl] = useState(endpoint.url)
   const [events, setEvents] = useState<WebhookEvent[]>(endpoint.event_types)
+  const [rotating, setRotating] = useState(false)
+  const [targetKeyId, setTargetKeyId] = useState(endpoint.signing_key_id)
+  const [reason, setReason] = useState('')
+  const keyAvailable = availableKeyIds.includes(endpoint.signing_key_id)
+  const defaultTargetKeyId = keyAvailable ? endpoint.signing_key_id : availableKeyIds[0] ?? ''
+  const rotateConflict = rotate.error instanceof ApiError && rotate.error.status === 409
 
   if (editing) {
     return (
@@ -153,6 +161,8 @@ function EndpointRow({
           <span className="truncate text-sm font-medium">{endpoint.name}</span>
           <Badge variant={endpoint.is_active ? 'accent' : 'outline'}>{endpoint.is_active ? '활성' : '중지'}</Badge>
           <Badge variant="outline">secret v{endpoint.secret_version}</Badge>
+          <Badge variant="outline">key {endpoint.signing_key_id}</Badge>
+          {!keyAvailable ? <Badge variant="outline">configured key 없음</Badge> : null}
         </div>
         <p className="mt-1 truncate font-mono text-[11px] text-of-muted">{endpoint.url}</p>
         <div className="mt-2 flex flex-wrap gap-1.5">
@@ -163,13 +173,22 @@ function EndpointRow({
         {enabled ? <>
           <Button size="icon" variant="ghost" title="편집" aria-label={`${endpoint.name} webhook 편집`} onClick={() => setEditing(true)}><Pencil size={14} /></Button>
           <Button size="icon" variant="ghost" title={endpoint.is_active ? '중지' : '활성화'} aria-label={`${endpoint.name} webhook ${endpoint.is_active ? '중지' : '활성화'}`} disabled={update.isPending} onClick={() => update.mutate({ id: endpoint.id, is_active: !endpoint.is_active })}><RefreshCcw size={14} /></Button>
-          <Button size="icon" variant="ghost" title="secret 회전" aria-label={`${endpoint.name} secret 회전`} disabled={rotate.isPending} onClick={() => rotate.mutate(endpoint.id, { onSuccess: onSecret })}><RotateCw size={14} /></Button>
+          <Button size="icon" variant="ghost" title="secret 회전" aria-label={`${endpoint.name} secret 회전`} disabled={availableKeyIds.length === 0 || rotate.isPending} onClick={() => { setTargetKeyId(defaultTargetKeyId); setRotating(true) }}><RotateCw size={14} /></Button>
           <Button size="icon" variant="ghost" title="테스트 전송" aria-label={`${endpoint.name} 테스트 전송`} disabled={!endpoint.is_active || test.isPending} onClick={() => { onTestStart(); test.mutate(endpoint.id, { onSuccess: onTestResult }) }}><Play size={14} /></Button>
         </> : null}
         <Button size="icon" variant="ghost" title="삭제" aria-label={`${endpoint.name} webhook 삭제`} disabled={remove.isPending} onClick={() => { if (window.confirm(`${endpoint.name} webhook을 삭제할까요?`)) remove.mutate(endpoint.id) }}><Trash2 size={14} /></Button>
       </div>
       {testResult ? <p role="status" className="text-xs text-of-muted lg:col-span-2">테스트 전송: {testResult.status === 'succeeded' ? '성공' : `실패 ${testResult.error ?? ''}`}</p> : null}
-      {update.isError || rotate.isError || test.isError || remove.isError ? <p role="alert" className="text-xs text-of-danger lg:col-span-2">요청을 완료하지 못했습니다.</p> : null}
+      {rotating ? <div className="grid gap-2 rounded-of border border-of-border p-2 text-xs lg:col-span-2">
+        <label className="grid gap-1">Signing key
+          <select aria-label={`${endpoint.name} signing key`} value={targetKeyId} onChange={(event) => setTargetKeyId(event.target.value)} className="h-8 rounded-of border border-of-border bg-of-surface px-2">
+            {availableKeyIds.map((keyId) => <option key={keyId} value={keyId}>{keyId}</option>)}
+          </select>
+        </label>
+        <Input aria-label={`${endpoint.name} secret rotation reason`} value={reason} maxLength={240} placeholder="회전 사유" onChange={(event) => setReason(event.target.value)} />
+        <div className="flex justify-end gap-2"><Button size="sm" variant="ghost" onClick={() => setRotating(false)}>취소</Button><Button size="sm" disabled={!targetKeyId || !reason.trim() || rotate.isPending} onClick={() => rotate.mutate({ id: endpoint.id, target_signing_key_id: targetKeyId, expected_secret_version: endpoint.secret_version, reason: reason.trim() }, { onSuccess: (result) => { setRotating(false); setReason(''); onSecret(result) } })}>확인 및 새 secret 발급</Button></div>
+      </div> : null}
+      {update.isError || rotate.isError || test.isError || remove.isError ? <p role="alert" className="text-xs text-of-danger lg:col-span-2">{rotateConflict ? '다른 관리자가 먼저 secret을 변경했습니다. 최신 상태를 확인해 다시 시도해 주세요.' : '요청을 완료하지 못했습니다.'}</p> : null}
     </li>
   )
 }
@@ -233,6 +252,8 @@ export function WebhooksPage() {
         </SettingsSection>
       )}
 
+      {webhooks.data.enabled ? <p className="text-xs text-of-muted">활성 기본 key: <code>{webhooks.data.active_signing_key_id}</code> · 사용 가능 key: {webhooks.data.available_signing_key_ids.join(', ')}</p> : null}
+
       {secret ? <SecretNotice created={secret} onDismiss={() => setSecret(null)} /> : null}
 
       <SettingsSection title="Endpoints" description="전달 대상, 이벤트, 활성 상태와 signing secret 버전을 관리합니다.">
@@ -245,6 +266,7 @@ export function WebhooksPage() {
               endpoint={endpoint}
               onSecret={setSecret}
               enabled={webhooks.data.enabled}
+              availableKeyIds={webhooks.data.available_signing_key_ids}
               testResult={testResults[endpoint.id]}
               onTestStart={() => setTestResults((current) => {
                 if (!(endpoint.id in current)) return current
@@ -255,6 +277,24 @@ export function WebhooksPage() {
               onTestResult={(result) => setTestResults((current) => ({ ...current, [endpoint.id]: result }))}
             />
           ))}</ul>
+        )}
+      </SettingsSection>
+
+      <SettingsSection title="Key change audit" description="최근 signing key 전환과 secret 재발급 사유를 확인합니다.">
+        {webhooks.data.rotations.length === 0 ? (
+          <p className="text-xs text-of-muted">아직 key 변경 기록이 없습니다.</p>
+        ) : (
+          <ul className="divide-y divide-of-border border-y border-of-border">
+            {webhooks.data.rotations.map((rotation) => (
+              <li key={rotation.id} className="grid min-w-0 gap-1 py-2 text-xs sm:grid-cols-[minmax(0,1fr)_auto]">
+                <div className="min-w-0">
+                  <p className="truncate font-medium">{endpointsById.get(rotation.endpoint_id)?.name ?? '삭제된 endpoint'}</p>
+                  <p className="break-words text-of-muted">{rotation.reason}</p>
+                </div>
+                <p className="font-mono text-[11px] text-of-muted">{rotation.previous_signing_key_id} v{rotation.previous_secret_version} → {rotation.signing_key_id} v{rotation.secret_version} · {formatDateTime(rotation.created_at)}</p>
+              </li>
+            ))}
+          </ul>
         )}
       </SettingsSection>
 
@@ -291,7 +331,8 @@ export function WebhooksPage() {
                     <div className="flex min-w-0 flex-wrap items-center gap-2">
                       <Badge variant={delivery.status === 'succeeded' ? 'accent' : delivery.status === 'failed' || delivery.status === 'dead_letter' ? 'outline' : 'neutral'}>{deliveryLabel(delivery.status)}</Badge>
                       <span className="truncate font-medium">{endpoint?.name ?? '삭제된 endpoint'}</span>
-                      <span className="font-mono text-[11px] text-of-muted">{delivery.event_type}</span>
+                      <span className="font-mono text-[11px] text-of-muted">{delivery.event_type} · {delivery.signing_key_id} v{delivery.secret_version}</span>
+                      {delivery.signing_snapshot_source === 'migrated_current' ? <Badge variant="outline">migration estimate</Badge> : null}
                     </div>
                     <p className="mt-1 text-[11px] text-of-muted">{formatDateTime(delivery.created_at)} · 시도 {delivery.attempt_count} · {delivery.response_status ? `HTTP ${delivery.response_status}` : delivery.error ?? '대기 중'}{delivery.duration_ms !== null ? ` · ${delivery.duration_ms}ms` : ''}</p>
                     {delivery.status === 'retrying' && delivery.next_attempt_at ? <p className="mt-1 text-[11px] text-of-muted">다음 시도 {formatDateTime(delivery.next_attempt_at)}</p> : null}

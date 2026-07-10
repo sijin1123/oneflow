@@ -77,6 +77,39 @@ def test_webhook_configuration_is_fail_closed_and_validated():
     _expect_invalid(webhook_max_attempts=0)
 
 
+def test_webhook_key_ring_keeps_legacy_identity_and_rejects_invalid_combinations():
+    legacy = make_test_settings(webhook_signing_key="x" * 32, webhook_allowed_hosts="example.com")
+    assert legacy.webhook_active_signing_key_id_effective == "legacy-v1"
+    assert legacy.webhook_signing_key_ids == ("legacy-v1",)
+    ring = make_test_settings(
+        webhook_signing_keys={"key-2026": "y" * 32},
+        webhook_active_signing_key_id="key-2026",
+        webhook_allowed_hosts="example.com",
+    )
+    assert ring.webhooks_enabled and ring.webhook_signing_key_for("key-2026") == "y" * 32
+    _expect_invalid(
+        webhook_signing_keys={"bad id": "y" * 32}, webhook_active_signing_key_id="bad id"
+    )
+    _expect_invalid(webhook_signing_keys={"key": "short"}, webhook_active_signing_key_id="key")
+    _expect_invalid(webhook_signing_keys={"key": "y" * 32})
+    _expect_invalid(
+        webhook_signing_key="x" * 32,
+        webhook_signing_keys={"legacy-v1": "y" * 32},
+        webhook_active_signing_key_id="legacy-v1",
+    )
+
+
+def test_webhook_key_ring_validation_never_echoes_secret_input():
+    sentinel = "DO_NOT_LOG_WEBHOOK_SECRET_0123456789"
+    with pytest.raises(ValueError) as exc_info:
+        make_test_settings(
+            webhook_signing_keys={"key-2026": sentinel},
+            webhook_active_signing_key_id="missing",
+            webhook_allowed_hosts="example.com",
+        )
+    assert sentinel not in str(exc_info.value)
+
+
 def test_dev_allow_nonlocal_forbidden_outside_dev_test():
     _expect_invalid(
         env="production",

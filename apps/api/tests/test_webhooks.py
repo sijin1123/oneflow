@@ -2,19 +2,25 @@ import asyncio
 import hashlib
 import hmac
 import json
+import socket
+import ssl
 import uuid
 from datetime import UTC, datetime, timedelta
 
 import pytest
+import trustme
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import func, select, text, update
 
 from app.main import create_app
 from app.models.webhook import WebhookDelivery
 from app.services.webhooks import (
+    ResolvedWebhookTarget,
     claim_due_delivery_ids,
+    default_sender,
     dispatch_due_deliveries,
     enqueue_event,
+    validate_webhook_url,
 )
 from tests.conftest import create_project, make_test_settings
 
@@ -24,6 +30,8 @@ async def webhook_app(_clean_tables):
     application = create_app(
         make_test_settings(
             webhook_signing_key="test-signing-key-that-is-at-least-32-bytes",
+            webhook_signing_keys={"2026-q3": "next-signing-key-that-is-at-least-32-bytes"},
+            webhook_active_signing_key_id="2026-q3",
             webhook_allowed_hosts="example.com",
         )
     )
@@ -78,6 +86,9 @@ async def test_create_list_rotate_and_signed_test_delivery(webhook_app, webhook_
     listed = (await webhook_client.get("/api/v1/webhooks")).json()
     assert listed["enabled"] is True
     assert listed["total"] == 1
+    assert listed["active_signing_key_id"] == "2026-q3"
+    assert listed["available_signing_key_ids"] == ["2026-q3", "legacy-v1"]
+    assert listed["rotations"] == []
     assert "secret" not in listed["items"][0]
 
     delivery = await webhook_client.post(f"/api/v1/webhooks/{endpoint['id']}/test")
@@ -90,11 +101,44 @@ async def test_create_list_rotate_and_signed_test_delivery(webhook_app, webhook_
         hashlib.sha256,
     ).hexdigest()
     assert headers["x-oneflow-signature"] == f"sha256={signed}"
+    assert headers["x-oneflow-key-id"] == "2026-q3"
+    assert headers["x-oneflow-secret-version"] == "1"
 
-    rotated = await webhook_client.post(f"/api/v1/webhooks/{endpoint['id']}/rotate-secret")
+    rotated = await webhook_client.post(
+        f"/api/v1/webhooks/{endpoint['id']}/rotate-secret",
+        json={
+            "target_signing_key_id": "legacy-v1",
+            "expected_secret_version": 1,
+            "reason": "scheduled rotation",
+        },
+    )
     assert rotated.status_code == 200
     assert rotated.json()["secret"] != first_secret
     assert rotated.json()["item"]["secret_version"] == 2
+    assert rotated.json()["item"]["signing_key_id"] == "legacy-v1"
+
+    rotations = (await webhook_client.get("/api/v1/webhooks")).json()["rotations"]
+    assert rotations[0]["previous_signing_key_id"] == "2026-q3"
+    assert rotations[0]["signing_key_id"] == "legacy-v1"
+    assert rotations[0]["reason"] == "scheduled rotation"
+    stale = await webhook_client.post(
+        f"/api/v1/webhooks/{endpoint['id']}/rotate-secret",
+        json={
+            "target_signing_key_id": "2026-q3",
+            "expected_secret_version": 1,
+            "reason": "stale request",
+        },
+    )
+    assert stale.status_code == 409
+    unknown = await webhook_client.post(
+        f"/api/v1/webhooks/{endpoint['id']}/rotate-secret",
+        json={
+            "target_signing_key_id": "unknown",
+            "expected_secret_version": 2,
+            "reason": "invalid target",
+        },
+    )
+    assert unknown.status_code == 422
 
 
 async def test_admin_guard_and_url_policy(webhook_app, webhook_client):
@@ -123,6 +167,385 @@ async def test_admin_guard_and_url_policy(webhook_app, webhook_client):
         },
     )
     assert blocked_port.status_code == 422
+
+
+async def test_webhook_dns_result_is_a_single_pinned_transport_contract(monkeypatch):
+    settings = make_test_settings(
+        webhook_signing_key="x" * 32,
+        webhook_allowed_hosts="hooks.example.com",
+    )
+
+    def resolved(*_args, **_kwargs):
+        return [
+            (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("8.8.8.8", 443)),
+            (socket.AF_INET6, socket.SOCK_STREAM, 6, "", ("2001:4860:4860::8888", 443, 0, 0)),
+        ]
+
+    monkeypatch.setattr("app.services.webhooks.socket.getaddrinfo", resolved)
+    target = await validate_webhook_url("https://hooks.example.com:443/oneflow", settings)
+    assert target.authority == "hooks.example.com:443"
+    assert target.hostname == "hooks.example.com"
+    assert target.candidates == ("2001:4860:4860::8888", "8.8.8.8")
+
+
+async def test_webhook_rejects_mixed_public_and_private_dns_answers(monkeypatch):
+    settings = make_test_settings(
+        webhook_signing_key="x" * 32,
+        webhook_allowed_hosts="hooks.example.com",
+    )
+    monkeypatch.setattr(
+        "app.services.webhooks.socket.getaddrinfo",
+        lambda *_args, **_kwargs: [
+            (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("8.8.8.8", 443)),
+            (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("10.0.0.1", 443)),
+        ],
+    )
+    with pytest.raises(ValueError, match="non-public"):
+        await validate_webhook_url("https://hooks.example.com/oneflow", settings)
+
+
+@pytest.mark.parametrize(
+    "address",
+    [
+        "64:ff9b::a00:1",
+        "::ffff:8.8.8.8",
+        "2002:0808:0808::1",
+        "2001:0000:4136:e378:8000:63bf:3fff:fdd2",
+    ],
+)
+async def test_webhook_rejects_nat64_and_ipv4_transition_answers(monkeypatch, address):
+    settings = make_test_settings(
+        webhook_signing_key="x" * 32,
+        webhook_allowed_hosts="hooks.example.com",
+    )
+    monkeypatch.setattr(
+        "app.services.webhooks.socket.getaddrinfo",
+        lambda *_args, **_kwargs: [
+            (socket.AF_INET6, socket.SOCK_STREAM, 6, "", (address, 443, 0, 0))
+        ],
+    )
+    with pytest.raises(ValueError, match="non-public"):
+        await validate_webhook_url("https://hooks.example.com/oneflow", settings)
+
+
+async def test_default_sender_pins_literal_but_keeps_host_sni_and_no_proxy(monkeypatch):
+    observed: dict[str, object] = {}
+
+    class Response:
+        status_code = 204
+
+        async def aclose(self):
+            return None
+
+    class Client:
+        def __init__(self, **kwargs):
+            observed["client"] = kwargs
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+        def build_request(self, method, url, **kwargs):
+            import httpx
+
+            return httpx.Request(method, url, **kwargs)
+
+        async def send(self, request, *, stream):
+            observed["request"] = request
+            observed["stream"] = stream
+            return Response()
+
+    monkeypatch.setattr("app.services.webhooks.httpx.AsyncClient", Client)
+    target = ResolvedWebhookTarget(
+        "https://hooks.example.com:443/oneflow",
+        "hooks.example.com",
+        "hooks.example.com:443",
+        443,
+        ("8.8.8.8",),
+    )
+    assert await default_sender(target, b"{}", {"x-test": "1"}) == 204
+    request = observed["request"]
+    assert str(request.url).startswith("https://8.8.8.8")
+    assert request.headers["host"] == "hooks.example.com:443"
+    assert request.extensions["sni_hostname"] == "hooks.example.com"
+    client_options = observed["client"]
+    assert client_options["follow_redirects"] is False
+    assert client_options["trust_env"] is False
+    assert client_options["http2"] is False
+
+
+async def test_default_sender_real_tls_uses_literal_dial_with_original_sni_and_host(monkeypatch):
+    ca = trustme.CA()
+    cert = ca.issue_cert("hooks.example.com")
+    server_context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    cert.configure_cert(server_context)
+    observed_sni: list[str | None] = []
+    observed_request: list[str] = []
+    server_context.set_servername_callback(
+        lambda _socket, server_name, _context: observed_sni.append(server_name)
+    )
+
+    async def handle(reader, writer):
+        request = await reader.readuntil(b"\r\n\r\n")
+        observed_request.append(request.decode("ascii"))
+        writer.write(b"HTTP/1.1 204 No Content\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
+        await writer.drain()
+        writer.close()
+        await writer.wait_closed()
+
+    server = await asyncio.start_server(handle, "127.0.0.1", 0, ssl=server_context)
+    port = server.sockets[0].getsockname()[1]
+    client_context = ssl.create_default_context()
+    ca.configure_trust(client_context)
+    monkeypatch.setattr(
+        "httpx._transports.default.create_ssl_context", lambda **_kwargs: client_context
+    )
+    target = ResolvedWebhookTarget(
+        f"https://hooks.example.com:{port}/oneflow",
+        "hooks.example.com",
+        f"hooks.example.com:{port}",
+        port,
+        ("127.0.0.1",),
+    )
+    try:
+        assert await default_sender(target, b"{}", {"x-test": "1"}) == 204
+    finally:
+        server.close()
+        await server.wait_closed()
+    assert observed_sni == ["hooks.example.com"]
+    assert f"host: hooks.example.com:{port}\r\n" in observed_request[0].lower()
+
+
+async def test_default_sender_enforces_one_total_deadline_without_failover(monkeypatch):
+    attempts = 0
+
+    class Client:
+        def __init__(self, **_kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+        def build_request(self, method, url, **kwargs):
+            import httpx
+
+            return httpx.Request(method, url, **kwargs)
+
+        async def send(self, _request, *, stream):
+            nonlocal attempts
+            attempts += 1
+            await asyncio.sleep(1)
+
+    monkeypatch.setattr("app.services.webhooks.httpx.AsyncClient", Client)
+    monkeypatch.setattr("app.services.webhooks.WEBHOOK_DELIVERY_DEADLINE_SECONDS", 0.02)
+    target = ResolvedWebhookTarget(
+        "https://hooks.example.com/x",
+        "hooks.example.com",
+        "hooks.example.com",
+        443,
+        ("8.8.8.8", "1.1.1.1"),
+    )
+    with pytest.raises(TimeoutError):
+        await default_sender(target, b"{}", {})
+    assert attempts == 1
+
+
+async def test_default_sender_does_not_fail_over_after_a_read_error(monkeypatch):
+    attempts = 0
+
+    class Client:
+        def __init__(self, **_kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+        def build_request(self, method, url, **kwargs):
+            import httpx
+
+            return httpx.Request(method, url, **kwargs)
+
+        async def send(self, _request, *, stream):
+            nonlocal attempts
+            attempts += 1
+            import httpx
+
+            raise httpx.ReadError("ambiguous write/read outcome")
+
+    monkeypatch.setattr("app.services.webhooks.httpx.AsyncClient", Client)
+    target = ResolvedWebhookTarget(
+        "https://hooks.example.com/x",
+        "hooks.example.com",
+        "hooks.example.com",
+        443,
+        ("8.8.8.8", "1.1.1.1"),
+    )
+    with pytest.raises(Exception, match="ambiguous"):
+        await default_sender(target, b"{}", {})
+    assert attempts == 1
+
+
+async def test_default_sender_fails_over_only_for_connect_errors(monkeypatch):
+    attempts: list[str] = []
+
+    class Response:
+        status_code = 202
+
+        async def aclose(self):
+            return None
+
+    class Client:
+        def __init__(self, **_kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+        def build_request(self, method, url, **kwargs):
+            import httpx
+
+            return httpx.Request(method, url, **kwargs)
+
+        async def send(self, request, *, stream):
+            import httpx
+
+            attempts.append(request.url.host)
+            if len(attempts) == 1:
+                raise httpx.ConnectError("first address unavailable", request=request)
+            return Response()
+
+    monkeypatch.setattr("app.services.webhooks.httpx.AsyncClient", Client)
+    target = ResolvedWebhookTarget(
+        "https://hooks.example.com/x",
+        "hooks.example.com",
+        "hooks.example.com",
+        443,
+        ("8.8.8.8", "1.1.1.1"),
+    )
+    assert await default_sender(target, b"{}", {}) == 202
+    assert attempts == ["8.8.8.8", "1.1.1.1"]
+
+
+async def test_delivery_snapshot_survives_rotation_and_missing_key_is_recoverable(
+    webhook_app, webhook_client, monkeypatch
+):
+    endpoint = (await create_endpoint(webhook_client))["item"]
+    event_id = uuid.uuid4()
+    async with webhook_app.state.sessionmaker() as session, session.begin():
+        await enqueue_event(
+            session,
+            "work_package.created",
+            event_id,
+            {"id": str(event_id), "event": "work_package.created", "data": {}},
+        )
+
+    rotated = await webhook_client.post(
+        f"/api/v1/webhooks/{endpoint['id']}/rotate-secret",
+        json={
+            "target_signing_key_id": "legacy-v1",
+            "expected_secret_version": 1,
+            "reason": "switch endpoint key",
+        },
+    )
+    assert rotated.status_code == 200
+
+    calls: list[dict[str, str]] = []
+
+    async def sender(_target, _body, headers):
+        calls.append(headers)
+        return 204
+
+    missing_settings = webhook_app.state.settings.model_copy(
+        update={"webhook_signing_keys": None, "webhook_active_signing_key_id": None}
+    )
+    with monkeypatch.context() as context:
+        context.setattr(
+            "app.services.webhooks.socket.getaddrinfo",
+            lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("DNS must not run")),
+        )
+        assert (
+            await dispatch_due_deliveries(
+                webhook_app.state.sessionmaker,
+                missing_settings,
+                sender,
+                event_id=event_id,
+            )
+            == 1
+        )
+    assert calls == []
+    async with webhook_app.state.sessionmaker() as session, session.begin():
+        delivery = (
+            await session.execute(
+                select(WebhookDelivery).where(WebhookDelivery.event_id == event_id)
+            )
+        ).scalar_one()
+        assert delivery.signing_key_id == "2026-q3"
+        assert delivery.secret_version == 1
+        assert delivery.status == "failed"
+        assert delivery.error == "signing_key_unavailable:2026-q3"
+        delivery.status = "pending"
+        delivery.next_attempt_at = datetime.now(UTC) - timedelta(seconds=1)
+        delivery.completed_at = None
+
+    assert (
+        await dispatch_due_deliveries(
+            webhook_app.state.sessionmaker,
+            webhook_app.state.settings,
+            sender,
+            event_id=event_id,
+        )
+        == 1
+    )
+    assert calls[0]["x-oneflow-key-id"] == "2026-q3"
+    assert calls[0]["x-oneflow-secret-version"] == "1"
+
+
+async def test_migration_trigger_snapshots_inserts_from_pre_0064_writers(webhook_app):
+    endpoint_id = uuid.uuid4()
+    delivery_id = uuid.uuid4()
+    event_id = uuid.uuid4()
+    async with webhook_app.state.sessionmaker() as session, session.begin():
+        await session.execute(
+            text("""
+                INSERT INTO webhook_endpoints
+                    (id, name, url, event_types, is_active, secret_version)
+                VALUES
+                    (:id, 'rolling writer', 'https://example.com/hook',
+                     '["work_package.created"]'::jsonb, true, 7)
+            """),
+            {"id": endpoint_id},
+        )
+        await session.execute(
+            text("""
+                INSERT INTO webhook_deliveries
+                    (id, endpoint_id, event_id, event_type, payload, status, attempt_count)
+                VALUES
+                    (:id, :endpoint_id, :event_id, 'work_package.created',
+                     '{}'::jsonb, 'pending', 0)
+            """),
+            {"id": delivery_id, "endpoint_id": endpoint_id, "event_id": event_id},
+        )
+        snapshot = (
+            await session.execute(
+                text("""
+                    SELECT signing_key_id, secret_version, signing_snapshot_source
+                      FROM webhook_deliveries WHERE id = :id
+                """),
+                {"id": delivery_id},
+            )
+        ).one()
+        assert snapshot == ("legacy-v1", 7, "captured")
 
 
 @pytest.mark.parametrize("field", ["name", "url", "event_types", "is_active"])

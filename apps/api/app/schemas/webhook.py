@@ -33,6 +33,7 @@ class WebhookEndpointRead(BaseModel):
     event_types: list[str]
     is_active: bool
     secret_version: int
+    signing_key_id: str
     created_at: datetime
     updated_at: datetime
     deleted_at: datetime | None
@@ -42,6 +43,9 @@ class WebhookEndpointList(BaseModel):
     items: list[WebhookEndpointRead]
     total: int
     enabled: bool
+    active_signing_key_id: str | None
+    available_signing_key_ids: list[str]
+    rotations: list["WebhookSecretRotationRead"]
 
 
 class WebhookEndpointCreate(BaseModel):
@@ -110,6 +114,37 @@ class WebhookDeliveryRead(BaseModel):
     next_attempt_at: datetime | None
     leased_until: datetime | None
     completed_at: datetime | None
+    signing_key_id: str
+    secret_version: int
+    signing_snapshot_source: Literal["captured", "migrated_current"]
+
+
+class WebhookRotateSecret(BaseModel):
+    target_signing_key_id: str
+    expected_secret_version: int = Field(ge=1)
+    reason: str = Field(min_length=1, max_length=240)
+
+    @field_validator("reason")
+    @classmethod
+    def validate_reason(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("reason must not be blank")
+        return value
+
+
+class WebhookSecretRotationRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    endpoint_id: uuid.UUID
+    previous_signing_key_id: str
+    signing_key_id: str
+    previous_secret_version: int
+    secret_version: int
+    reason: str
+    created_by: uuid.UUID | None
+    created_at: datetime
 
 
 class WebhookDeliveryList(BaseModel):
