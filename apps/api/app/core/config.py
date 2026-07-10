@@ -42,6 +42,10 @@ class Settings(BaseSettings):
     # Command palette rollout flag (B-030 Pass 1A). Default OFF for staged
     # rollout; the UI must fail closed unless this is exactly "true".
     command_palette_enabled: str = "false"
+    # Workspace webhook delivery is fail-closed. Both a stable signing key and
+    # an explicit outbound host allowlist are required before the surface is enabled.
+    webhook_signing_key: str | None = None
+    webhook_allowed_hosts: str = ""
     # Seed --reset unlock token; valid only when it equals DESTRUCTIVE_RESET_TOKEN.
     allow_destructive_reset: str | None = None
     db_pool_size: int = 10
@@ -77,6 +81,16 @@ class Settings(BaseSettings):
     @property
     def command_palette_is_enabled(self) -> bool:
         return self.command_palette_enabled == "true"
+
+    @property
+    def webhook_allowed_host_list(self) -> list[str]:
+        return [
+            host.strip().lower() for host in self.webhook_allowed_hosts.split(",") if host.strip()
+        ]
+
+    @property
+    def webhooks_enabled(self) -> bool:
+        return bool(self.webhook_signing_key and self.webhook_allowed_host_list)
 
     @property
     def destructive_reset_enabled(self) -> bool:
@@ -139,6 +153,13 @@ class Settings(BaseSettings):
             raise ValueError("ONEFLOW_AI_SUMMARY accepts exactly 'true' or 'false'")
         if self.command_palette_enabled not in {"true", "false"}:
             raise ValueError("ONEFLOW_COMMAND_PALETTE_ENABLED accepts exactly 'true' or 'false'")
+        if self.webhook_signing_key is not None and len(self.webhook_signing_key) < 32:
+            raise ValueError("ONEFLOW_WEBHOOK_SIGNING_KEY must be at least 32 characters")
+        for host in self.webhook_allowed_host_list:
+            if "://" in host or "/" in host or "@" in host:
+                raise ValueError(
+                    "ONEFLOW_WEBHOOK_ALLOWED_HOSTS entries must be exact host or host:port values"
+                )
         # Guard (4) companion: the non-local escape hatch is dev/test-only (v5.1).
         if self.dev_allow_nonlocal_enabled and self.env not in {"development", "test"}:
             raise ValueError(
