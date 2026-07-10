@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import get_current_user
 from app.core.authz import member_role, require_member, require_role
+from app.core.config import Settings, get_settings
 from app.db.session import get_session
 from app.models.intake import INTAKE_OPEN_STATUSES, IntakeItem
 from app.models.user import User
@@ -15,6 +16,7 @@ from app.schemas.intake import IntakeCreate, IntakeList, IntakeRead, IntakeTriag
 from app.services.activity import record_created
 from app.services.notification import record_intake_triage
 from app.services.sanitize import sanitize_html
+from app.services.webhooks import enqueue_work_package_event
 
 router = APIRouter()
 
@@ -90,6 +92,7 @@ async def triage_intake(
     body: IntakeTriage,
     session: AsyncSession = Depends(get_session),
     user: User = Depends(get_current_user),
+    settings: Settings = Depends(get_settings),
 ) -> IntakeRead:
     """Owner decision on an OPEN (pending/snoozed) item.
 
@@ -140,6 +143,14 @@ async def triage_intake(
         # including the just-inserted work package.
         await session.rollback()
         raise HTTPException(status_code=409, detail="item was already triaged")
+    if body.status == "accepted":
+        await enqueue_work_package_event(
+            session,
+            settings,
+            "work_package.created",
+            wp,
+            ["subject", "description"],
+        )
     # Notify the submitter of a FINAL verdict only (Pass 49, v49.1 R1-③ —
     # after the conditional UPDATE succeeded, inside the same transaction, so
     # a concurrent triage can never leave an orphan or duplicate notification;

@@ -1,9 +1,13 @@
 import uuid
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 WEBHOOK_EVENTS = ("work_package.created", "work_package.updated")
+WebhookDeliveryStatus = Literal[
+    "pending", "sending", "retrying", "succeeded", "failed", "dead_letter", "skipped"
+]
 
 
 def _name(value: str) -> str:
@@ -94,14 +98,18 @@ class WebhookDeliveryRead(BaseModel):
 
     id: uuid.UUID
     endpoint_id: uuid.UUID
+    event_id: uuid.UUID
     event_type: str
-    status: str
+    status: WebhookDeliveryStatus
     attempt_count: int
     response_status: int | None
     duration_ms: int | None
     error: str | None
     created_at: datetime
     attempted_at: datetime | None
+    next_attempt_at: datetime | None
+    leased_until: datetime | None
+    completed_at: datetime | None
 
 
 class WebhookDeliveryList(BaseModel):

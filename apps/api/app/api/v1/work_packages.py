@@ -54,7 +54,7 @@ from app.services.activity import record_created, record_field_changes
 from app.services.automation import bump_fired, change_candidates, record_applied
 from app.services.notification import notify_watchers, record_assignment
 from app.services.sanitize import sanitize_html
-from app.services.webhooks import deliver_event_to_all
+from app.services.webhooks import dispatch_event, enqueue_work_package_event
 
 logger = logging.getLogger("oneflow.work_packages")
 
@@ -89,41 +89,28 @@ PATCH_DATA_FIELDS = (
 )
 
 
-def _webhook_payload(wp: WorkPackage, event_type: str, changed_fields: list[str]) -> dict:
-    return jsonable_encoder(
-        {
-            "id": str(uuid.uuid4()),
-            "event": event_type,
-            "occurred_at": wp.updated_at,
-            "data": {
-                "id": wp.id,
-                "project_id": wp.project_id,
-                "subject": wp.subject,
-                "status": wp.status,
-                "priority": wp.priority,
-                "version": wp.version,
-                "changed_fields": sorted(changed_fields),
-            },
-        }
-    )
+async def _enqueue_webhook(
+    session: AsyncSession,
+    settings: Settings,
+    event_type: str,
+    wp: WorkPackage,
+    changed_fields: list[str],
+) -> uuid.UUID | None:
+    return await enqueue_work_package_event(session, settings, event_type, wp, changed_fields)
 
 
 def _schedule_webhook(
     background_tasks: BackgroundTasks,
     request: Request,
-    event_type: str,
-    wp: WorkPackage,
-    changed_fields: list[str],
+    event_id: uuid.UUID | None,
 ) -> None:
-    settings: Settings = request.app.state.settings
-    if not settings.webhooks_enabled:
+    if event_id is None:
         return
     background_tasks.add_task(
-        deliver_event_to_all,
+        dispatch_event,
         request.app.state.sessionmaker,
-        settings,
-        event_type,
-        _webhook_payload(wp, event_type, changed_fields),
+        request.app.state.settings,
+        event_id,
         getattr(request.app.state, "webhook_sender", None),
     )
 
@@ -472,6 +459,7 @@ async def create_work_package(
     request: Request,
     session: AsyncSession = Depends(get_session),
     user: User = Depends(get_current_user),
+    settings: Settings = Depends(get_settings),
 ) -> WorkPackageRead:
     await require_member(session, project_id, user, write=True)
     # New usage of a disabled work-item type is rejected (Pass 7 PR-R).
@@ -506,14 +494,15 @@ async def create_work_package(
             wp_id=wp.id,
         )
     await session.flush()
-    await session.commit()
-    _schedule_webhook(
-        background_tasks,
-        request,
+    webhook_event_id = await _enqueue_webhook(
+        session,
+        settings,
         "work_package.created",
         wp,
         list(body.model_fields_set),
     )
+    await session.commit()
+    _schedule_webhook(background_tasks, request, webhook_event_id)
     return WorkPackageRead.model_validate(wp)
 
 
@@ -523,6 +512,7 @@ async def bulk_update_work_packages(
     body: BulkUpdateRequest,
     session: AsyncSession = Depends(get_session),
     user: User = Depends(get_current_user),
+    settings: Settings = Depends(get_settings),
 ) -> BulkUpdateResult:
     """Bulk simple-assignment update (Pass 12 PR-AB, PLAN v12.1 R1-①②⑥).
 
@@ -637,6 +627,13 @@ async def bulk_update_work_packages(
                 project_id=project_id,
                 wp_id=wp_id,
             )
+        await _enqueue_webhook(
+            session,
+            settings,
+            "work_package.updated",
+            wp,
+            list(changes),
+        )
         updated.append(wp_id)
     await session.commit()
     return BulkUpdateResult(updated_ids=updated, unchanged_ids=unchanged, skipped_ids=skipped)
@@ -651,6 +648,7 @@ async def duplicate_work_package(
     wp_id: uuid.UUID,
     session: AsyncSession = Depends(get_session),
     user: User = Depends(get_current_user),
+    settings: Settings = Depends(get_settings),
 ) -> WorkPackageDuplicateResult:
     """Same-project duplicate (Pass 12 PR-AA, PLAN v12.1).
 
@@ -738,6 +736,13 @@ async def duplicate_work_package(
             session.add(WpCustomValue(work_package_id=dup.id, field_id=field.id, value=normalized))
 
     await session.flush()
+    await _enqueue_webhook(
+        session,
+        settings,
+        "work_package.created",
+        dup,
+        ["subject", "description", "type", "status", "priority"],
+    )
     await session.commit()
     return WorkPackageDuplicateResult(
         work_package=WorkPackageRead.model_validate(dup), skipped_custom_values=skipped
@@ -798,6 +803,7 @@ async def patch_work_package(
     request: Request,
     session: AsyncSession = Depends(get_session),
     user: User = Depends(get_current_user),
+    settings: Settings = Depends(get_settings),
 ):
     wp = await _get_wp_scoped(session, wp_id, user, write=True)
 
@@ -865,6 +871,7 @@ async def patch_work_package(
     parent_changing = "parent_id" in changes and changes["parent_id"] is not None
     # Single transaction (autobegin → commit): optional advisory lock + guards +
     # the single atomic conditional UPDATE (§6.2). read-compare-write is forbidden.
+    webhook_event_id: uuid.UUID | None = None
     try:
         if parent_changing:
             # Serialize parent changes per project (PLAN §6.2): exactly one
@@ -943,6 +950,13 @@ async def patch_work_package(
                     kind="watch_assigned",
                     exclude=(new_assignee,),
                 )
+            webhook_event_id = await _enqueue_webhook(
+                session,
+                settings,
+                "work_package.updated",
+                updated,
+                list(changes),
+            )
             await session.flush()
         await session.commit()
     except HTTPException:
@@ -958,13 +972,7 @@ async def patch_work_package(
         raise
 
     if updated is not None:
-        _schedule_webhook(
-            background_tasks,
-            request,
-            "work_package.updated",
-            updated,
-            list(changes),
-        )
+        _schedule_webhook(background_tasks, request, webhook_event_id)
         return WorkPackageRead.model_validate(updated)
 
     # 0 rows affected: distinguish 404 vs 409 by re-select.
@@ -1362,8 +1370,17 @@ async def move_work_package(
             )
         ).all()
     )
-    await session.execute(
-        sa_update(WorkPackage).where(WorkPackage.parent_id == wp_id).values(parent_id=None)
+    detached_children = (
+        (
+            await session.execute(
+                sa_update(WorkPackage)
+                .where(WorkPackage.parent_id == wp_id)
+                .values(parent_id=None, version=WorkPackage.version + 1, updated_at=func.now())
+                .returning(WorkPackage)
+            )
+        )
+        .scalars()
+        .all()
     )
     await session.execute(
         sa_delete(WorkPackageRelation).where(
@@ -1412,6 +1429,31 @@ async def move_work_package(
     wp.project_id = body.target_project_id
     wp.version += 1
     await session.flush()  # WP row moves before attachments re-anchor
+    move_changed_fields = ["project_id"]
+    for changed, field in (
+        (cleared.parent, "parent_id"),
+        (cleared.milestone, "milestone_id"),
+        (cleared.cycle, "cycle_id"),
+        (cleared.module, "module_id"),
+        (cleared.assignee_cleared, "assignee_id"),
+    ):
+        if changed:
+            move_changed_fields.append(field)
+    await _enqueue_webhook(
+        session,
+        settings,
+        "work_package.updated",
+        wp,
+        move_changed_fields,
+    )
+    for child in detached_children:
+        await _enqueue_webhook(
+            session,
+            settings,
+            "work_package.updated",
+            child,
+            ["parent_id"],
+        )
     if moved_attachment_ids:
         await session.execute(
             sa_update(Attachment)

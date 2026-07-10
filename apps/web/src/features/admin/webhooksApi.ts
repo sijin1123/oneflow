@@ -28,14 +28,18 @@ export type WebhookEndpointCreated = { item: WebhookEndpoint; secret: string }
 export type WebhookDelivery = {
   id: string
   endpoint_id: string
+  event_id: string
   event_type: string
-  status: 'pending' | 'sending' | 'succeeded' | 'failed' | 'skipped'
+  status: 'pending' | 'sending' | 'retrying' | 'succeeded' | 'failed' | 'dead_letter' | 'skipped'
   attempt_count: number
   response_status: number | null
   duration_ms: number | null
   error: string | null
   created_at: string
   attempted_at: string | null
+  next_attempt_at: string | null
+  leased_until: string | null
+  completed_at: string | null
 }
 
 export type WebhookDeliveryList = { items: WebhookDelivery[]; total: number }
@@ -56,6 +60,9 @@ export function useWebhookDeliveries() {
   return useQuery({
     queryKey: ['admin-webhook-deliveries'],
     queryFn: () => api<WebhookDeliveryList>('/api/v1/webhook-deliveries'),
+    // Keep the operational audit current while the tab is visible without
+    // spending background requests on hidden tabs.
+    refetchInterval: () => (document.visibilityState === 'visible' ? 5_000 : false),
   })
 }
 

@@ -2,7 +2,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import get_current_user
@@ -19,7 +19,12 @@ from app.schemas.webhook import (
     WebhookEndpointRead,
     WebhookEndpointUpdate,
 )
-from app.services.webhooks import attempt_delivery, derive_signing_secret, validate_webhook_url
+from app.services.webhooks import (
+    attempt_delivery,
+    database_now,
+    derive_signing_secret,
+    validate_webhook_url,
+)
 
 router = APIRouter()
 MANUAL_LIMIT_PER_MINUTE = 5
@@ -56,19 +61,28 @@ async def _endpoint(session: AsyncSession, endpoint_id: uuid.UUID) -> WebhookEnd
 
 
 async def _manual_rate_limit(session: AsyncSession, endpoint_id: uuid.UUID) -> None:
-    since = datetime.now(UTC) - timedelta(minutes=1)
-    count = (
+    endpoint = (
         await session.execute(
-            select(func.count(WebhookDelivery.id)).where(
-                WebhookDelivery.endpoint_id == endpoint_id,
-                WebhookDelivery.created_at >= since,
-            )
+            select(WebhookEndpoint)
+            .where(WebhookEndpoint.id == endpoint_id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
         )
     ).scalar_one()
-    if count >= MANUAL_LIMIT_PER_MINUTE:
+    # Lock plus the database clock makes six concurrent requests share one
+    # authoritative window instead of racing application-local timestamps.
+    now = await database_now(session)
+    if (
+        endpoint.manual_window_started_at is None
+        or endpoint.manual_window_started_at <= now - timedelta(minutes=1)
+    ):
+        endpoint.manual_window_started_at = now
+        endpoint.manual_attempt_count = 0
+    if endpoint.manual_attempt_count >= MANUAL_LIMIT_PER_MINUTE:
         raise HTTPException(
             status_code=429, detail="manual delivery limit reached; retry in one minute"
         )
+    endpoint.manual_attempt_count += 1
 
 
 @router.get("/webhooks", response_model=WebhookEndpointList)
@@ -185,14 +199,24 @@ async def test_webhook(
     _require_enabled(settings)
     row = await _endpoint(session, endpoint_id)
     await _manual_rate_limit(session, endpoint_id)
+    now = await database_now(session)
+    event_id = uuid.uuid4()
     delivery = WebhookDelivery(
         endpoint_id=row.id,
+        event_id=event_id,
         event_type="oneflow.test",
-        status="pending",
+        # The rate counter and durable claim are one commit. A process crash
+        # after that commit is recovered as a manual-retryable failed test.
+        status="sending",
+        attempt_count=1,
+        attempted_at=now,
+        lease_owner=f"manual:{uuid.uuid4()}",
+        lease_token=uuid.uuid4(),
+        leased_until=now + timedelta(seconds=settings.webhook_lease_seconds),
         payload={
-            "id": str(uuid.uuid4()),
+            "id": str(event_id),
             "event": "oneflow.test",
-            "occurred_at": datetime.now(UTC).isoformat(),
+            "occurred_at": now.isoformat(),
             "data": {"message": "OneFlow webhook test"},
         },
     )
@@ -200,7 +224,7 @@ async def test_webhook(
     await session.commit()
     await session.refresh(delivery)
     sender = getattr(request.app.state, "webhook_sender", None)
-    return await attempt_delivery(session, row, delivery, settings, sender)
+    return await attempt_delivery(session, row, delivery, settings, sender, claimed=True)
 
 
 @router.get("/webhook-deliveries", response_model=WebhookDeliveryList)
@@ -246,17 +270,19 @@ async def retry_delivery(
     if delivery is None:
         raise HTTPException(status_code=404, detail="not found")
     if delivery.status == "sending":
-        raise HTTPException(status_code=409, detail="delivery is already in progress")
+        now = await database_now(session)
+        if delivery.leased_until is None or delivery.leased_until > now:
+            raise HTTPException(status_code=409, detail="delivery is already in progress")
+        delivery.status = "failed"
+    if delivery.status not in {"failed", "dead_letter"}:
+        raise HTTPException(status_code=409, detail="delivery is not retryable")
     row = await _endpoint(session, delivery.endpoint_id)
     await _manual_rate_limit(session, row.id)
-    retry = WebhookDelivery(
-        endpoint_id=row.id,
-        event_type=delivery.event_type,
-        status="pending",
-        payload=delivery.payload,
-    )
-    session.add(retry)
-    await session.commit()
-    await session.refresh(retry)
+    delivery.status = "pending"
+    delivery.next_attempt_at = await database_now(session)
+    delivery.completed_at = None
+    delivery.error = None
+    delivery.response_status = None
+    delivery.duration_ms = None
     sender = getattr(request.app.state, "webhook_sender", None)
-    return await attempt_delivery(session, row, retry, settings, sender)
+    return await attempt_delivery(session, row, delivery, settings, sender)

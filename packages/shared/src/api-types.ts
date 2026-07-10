@@ -5298,6 +5298,8 @@ export interface components {
             attempt_count: number;
             /** Attempted At */
             attempted_at: string | null;
+            /** Completed At */
+            completed_at: string | null;
             /**
              * Created At
              * Format: date-time
@@ -5312,6 +5314,11 @@ export interface components {
             endpoint_id: string;
             /** Error */
             error: string | null;
+            /**
+             * Event Id
+             * Format: uuid
+             */
+            event_id: string;
             /** Event Type */
             event_type: string;
             /**
@@ -5319,10 +5326,17 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            /** Leased Until */
+            leased_until: string | null;
+            /** Next Attempt At */
+            next_attempt_at: string | null;
             /** Response Status */
             response_status: number | null;
-            /** Status */
-            status: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "pending" | "sending" | "retrying" | "succeeded" | "failed" | "dead_letter" | "skipped";
         };
         /** WebhookEndpointCreate */
         WebhookEndpointCreate: {

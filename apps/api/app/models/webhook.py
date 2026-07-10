@@ -1,7 +1,18 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, String, Text, func
+from sqlalchemy import (
+    Boolean,
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    func,
+)
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -31,6 +42,10 @@ class WebhookEndpoint(Base):
         DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
     )
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    manual_window_started_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    manual_attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
 
 class WebhookDelivery(Base):
@@ -38,12 +53,20 @@ class WebhookDelivery(Base):
     __table_args__ = (
         Index("ix_webhook_deliveries_endpoint_created", "endpoint_id", "created_at"),
         Index("ix_webhook_deliveries_status", "status", "created_at"),
+        Index("ix_webhook_deliveries_due", "status", "next_attempt_at", "leased_until"),
+        UniqueConstraint("endpoint_id", "event_id", name="uq_webhook_delivery_endpoint_event"),
+        CheckConstraint(
+            "status IN "
+            "('pending','sending','retrying','succeeded','failed','dead_letter','skipped')",
+            name="status",
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     endpoint_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("webhook_endpoints.id", ondelete="RESTRICT"), nullable=False
     )
+    event_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
     event_type: Mapped[str] = mapped_column(String(80), nullable=False)
     payload: Mapped[dict] = mapped_column(JSONB, nullable=False)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
@@ -55,3 +78,10 @@ class WebhookDelivery(Base):
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
     attempted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    next_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    lease_owner: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # A new random token is written for every claim. Workers must present it
+    # when finalizing so an expired worker can never overwrite its reclaimer.
+    lease_token: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    leased_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

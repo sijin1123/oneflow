@@ -20,6 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import get_current_user
 from app.core.authz import require_member
+from app.core.config import Settings, get_settings
 from app.db.session import get_session
 from app.models.project_type import ProjectType
 from app.models.user import User
@@ -35,6 +36,7 @@ from app.schemas.work_package import WorkPackageCreate
 from app.services.activity import record_created
 from app.services.importers import JiraMapResult, map_jira_csv, map_linear_csv
 from app.services.sanitize import sanitize_html
+from app.services.webhooks import enqueue_work_package_event
 
 router = APIRouter()
 
@@ -201,6 +203,7 @@ async def import_work_packages_csv(
     body: CsvImportRequest,
     session: AsyncSession = Depends(get_session),
     user: User = Depends(get_current_user),
+    settings: Settings = Depends(get_settings),
 ) -> CsvImportResult:
     await require_member(session, project_id, user, write=True)
     # Disabled work-item types are invalid for NEW rows (Pass 7 PR-R) — fetch
@@ -277,6 +280,9 @@ async def import_work_packages_csv(
             session.add(wp)
             await session.flush()  # assign wp.id for the activity FK
             record_created(session, wp.id, user.id)
+            await enqueue_work_package_event(
+                session, settings, "work_package.created", wp, list(data)
+            )
         await session.flush()
         await session.commit()
         inserted = len(valid_models)
@@ -298,6 +304,7 @@ async def _run_mapped_import(
     project_id: uuid.UUID,
     mapped: JiraMapResult,
     dry_run: bool,
+    settings: Settings,
 ) -> CsvImportResult:
     """Shared adapter-import pipeline (Jira #77 / Linear Pass 25): row
     isolation, duplicate guard, disabled-type rejection, dry-run — the
@@ -398,6 +405,9 @@ async def _run_mapped_import(
             session.add(wp)
             await session.flush()
             record_created(session, wp.id, user.id)
+            await enqueue_work_package_event(
+                session, settings, "work_package.created", wp, list(data)
+            )
         await session.flush()
         await session.commit()
         inserted = len(valid_models)
@@ -420,6 +430,7 @@ async def import_jira_csv(
     body: CsvImportRequest,
     session: AsyncSession = Depends(get_session),
     user: User = Depends(get_current_user),
+    settings: Settings = Depends(get_settings),
 ) -> CsvImportResult:
     """Jira CSV export → work packages (Pass 8 PR-T, PLAN v8.1 contract).
 
@@ -428,7 +439,7 @@ async def import_jira_csv(
     the idempotent-re-upload duplicate guard ("[KEY] Summary" subjects)."""
     await require_member(session, project_id, user, write=True)
     return await _run_mapped_import(
-        session, user, project_id, map_jira_csv(body.content), body.dry_run
+        session, user, project_id, map_jira_csv(body.content), body.dry_run, settings
     )
 
 
@@ -438,10 +449,11 @@ async def import_linear_csv(
     body: CsvImportRequest,
     session: AsyncSession = Depends(get_session),
     user: User = Depends(get_current_user),
+    settings: Settings = Depends(get_settings),
 ) -> CsvImportResult:
     """Linear CSV export → work packages (Pass 25 PR-AQ, PLAN v25.1 contract —
     same pipeline and response shape as the Jira adapter)."""
     await require_member(session, project_id, user, write=True)
     return await _run_mapped_import(
-        session, user, project_id, map_linear_csv(body.content), body.dry_run
+        session, user, project_id, map_linear_csv(body.content), body.dry_run, settings
     )

@@ -1,6 +1,7 @@
 """OneFlow API application factory."""
 
-from contextlib import asynccontextmanager
+import asyncio
+from contextlib import asynccontextmanager, suppress
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -49,6 +50,7 @@ from app.core.middleware import (
     RequestLogMiddleware,
 )
 from app.db.session import build_engine, build_sessionmaker, get_session
+from app.services.webhooks import webhook_worker_loop
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -59,9 +61,28 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     sessionmaker = build_sessionmaker(engine)
 
     @asynccontextmanager
-    async def lifespan(_: FastAPI):
-        yield
-        await engine.dispose()
+    async def lifespan(application: FastAPI):
+        stop = asyncio.Event()
+        worker = None
+        if settings.webhooks_enabled:
+            worker = asyncio.create_task(
+                webhook_worker_loop(
+                    sessionmaker,
+                    settings,
+                    stop,
+                    getattr(application.state, "webhook_sender", None),
+                ),
+                name="oneflow-webhook-worker",
+            )
+        try:
+            yield
+        finally:
+            stop.set()
+            if worker is not None:
+                worker.cancel()
+                with suppress(asyncio.CancelledError):
+                    await worker
+            await engine.dispose()
 
     is_production = settings.env == "production"
     app = FastAPI(

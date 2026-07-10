@@ -24,6 +24,7 @@ from app.core.authz import (
     require_member,
     require_writer,
 )
+from app.core.config import Settings, get_settings
 from app.db.session import get_session
 from app.models.meeting import Meeting, MeetingActionItem
 from app.models.meeting_template import MeetingAgendaTemplate
@@ -48,6 +49,7 @@ from app.schemas.meeting import (
 from app.services.activity import record_created
 from app.services.notification import record_assignment
 from app.services.sanitize import sanitize_html
+from app.services.webhooks import enqueue_work_package_event
 
 router = APIRouter()
 
@@ -418,6 +420,7 @@ async def convert_action_item(
     item_id: uuid.UUID,
     session: AsyncSession = Depends(get_session),
     user: User = Depends(get_current_user),
+    settings: Settings = Depends(get_settings),
 ) -> ActionItemRead:
     """Turn a meeting action item into a work package (Pass 6 PR-O).
 
@@ -468,6 +471,13 @@ async def convert_action_item(
     if result.rowcount == 0:
         await session.rollback()  # the WP insert rolls back with the transaction
         raise HTTPException(status_code=409, detail="action item was already converted")
+    await enqueue_work_package_event(
+        session,
+        settings,
+        "work_package.created",
+        wp,
+        ["subject", "description", "assignee_id"],
+    )
     await session.commit()
     await session.refresh(item)
     return ActionItemRead.model_validate(item)
