@@ -7,6 +7,7 @@ export type SavedFilterParams = {
   priority?: string | null
   type?: string | null
   assignee_id?: string | null
+  milestone_id?: string | null
   cycle_id?: string | null
   module_id?: string | null
   q?: string | null

@@ -19,6 +19,7 @@ class SavedFilterParams(BaseModel):
     priority: str | None = None
     type: str | None = None
     assignee_id: str | None = None
+    milestone_id: str | None = None
     cycle_id: str | None = None
     module_id: str | None = None
     q: str | None = None
@@ -36,7 +37,7 @@ class SavedFilterParams(BaseModel):
             raise ValueError("cf_op must be 'eq' or 'has'")
         return v
 
-    @field_validator("assignee_id", "cycle_id", "module_id", "cf_field")
+    @field_validator("assignee_id", "milestone_id", "cycle_id", "module_id", "cf_field")
     @classmethod
     def _uuid_like(cls, v: str | None) -> str | None:
         if v is None:

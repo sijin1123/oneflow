@@ -1,7 +1,8 @@
-import { ChevronDown, ChevronUp, Pencil, Save } from 'lucide-react'
+import { ChevronDown, ChevronUp, GitBranch, Pencil, Save } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
 import { InlineActionMenu } from '@/components/ui/action-menu'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 
@@ -35,18 +36,31 @@ export function StatusManager({ projectId, isOwner }: { projectId: string; isOwn
   const failed = update.isError || reorder.isError
 
   return (
-    <div className="mb-4 space-y-2 rounded-of border border-of-border bg-of-surface p-3">
-      <p className="text-xs font-medium">워크플로우 상태</p>
-      <p className="text-xs text-of-muted">
-        상태 이름과 순서를 조정합니다. 이름은 보드·목록·필터·대시보드 전체에 반영됩니다
-        {isOwner ? '' : ' (소유자만 편집 가능)'}.
-      </p>
+    <section
+      aria-label="워크플로우 상태"
+      className="space-y-3 rounded-of border border-of-border bg-of-surface p-4"
+    >
+      <div className="flex min-w-0 items-start gap-3">
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-of bg-of-accent-soft text-of-accent">
+          <GitBranch size={16} aria-hidden="true" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            <h3 className="text-sm font-semibold">워크플로우 상태</h3>
+            <Badge variant="outline">{sorted.length}개 상태</Badge>
+          </div>
+          <p className="mt-1 text-xs leading-5 text-of-muted">
+            상태 이름과 순서를 조정합니다. 이름은 보드·목록·필터·대시보드 전체에 반영됩니다
+            {isOwner ? '' : ' (소유자만 편집 가능)'}.
+          </p>
+        </div>
+      </div>
       {failed ? (
         <p role="alert" className="text-xs text-of-danger">
           변경을 저장하지 못했습니다. 다시 시도해 주세요.
         </p>
       ) : null}
-      <ul className="space-y-1">
+      <ul className="grid gap-2">
         {sorted.map((status, index) => (
           <StatusRow
             key={status.id}
@@ -61,7 +75,7 @@ export function StatusManager({ projectId, isOwner }: { projectId: string; isOwn
           />
         ))}
       </ul>
-    </div>
+    </section>
   )
 }
 
@@ -89,86 +103,85 @@ function StatusRow({
 
   if (editing) {
     return (
-      <li className="rounded-of border border-of-border px-2 py-2">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-          <span className="w-24 shrink-0 font-mono text-[11px] text-of-muted">{status.key}</span>
-          <Input
-            value={name}
-            onChange={(event) => setName(event.target.value)}
-            aria-label={`${status.key} 상태 이름 편집`}
-            className="h-7 min-w-0 flex-1 text-xs"
-          />
-          <div className="flex items-center gap-2">
-            <Button
-              size="sm"
-              disabled={!name.trim()}
-              onClick={() => {
-                const trimmed = name.trim()
-                if (trimmed && trimmed !== status.name) onRename(trimmed)
-                else setName(status.name)
-                setEditing(false)
-              }}
-            >
-              <Save size={14} />
-              저장
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => {
-                setName(status.name)
-                setEditing(false)
-              }}
-            >
-              취소
-            </Button>
-          </div>
-        </div>
+      <li className="grid min-w-0 gap-2 rounded-of border border-of-border bg-of-surface-2 px-3 py-2 sm:grid-cols-[5rem_minmax(0,1fr)_auto] sm:items-center">
+        <Badge variant="neutral" className="max-w-full truncate font-mono uppercase">
+          {status.key}
+        </Badge>
+        <Input
+          value={name}
+          onChange={(event) => setName(event.target.value)}
+          aria-label={`${status.key} 상태 이름 편집`}
+          className="h-8 min-w-0 text-xs"
+        />
+        <span className="flex items-center justify-end gap-2">
+          <Button
+            size="sm"
+            disabled={!name.trim()}
+            onClick={() => {
+              const trimmed = name.trim()
+              if (trimmed && trimmed !== status.name) onRename(trimmed)
+              else setName(status.name)
+              setEditing(false)
+            }}
+          >
+            <Save size={14} aria-hidden="true" />
+            저장
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => {
+              setName(status.name)
+              setEditing(false)
+            }}
+          >
+            취소
+          </Button>
+        </span>
       </li>
     )
   }
 
   return (
-    <li className="rounded-of border border-of-border px-2 py-2">
-      <div className="flex min-w-0 items-center gap-2">
-        <span className="w-24 shrink-0 font-mono text-[11px] text-of-muted">{status.key}</span>
-        <span className="min-w-0 flex-1 truncate text-xs font-medium">{status.name}</span>
-        <span className="hidden shrink-0 rounded-full bg-of-surface-2 px-2 py-0.5 text-[10px] text-of-muted sm:inline">
-          위치 {status.position + 1}
-        </span>
-        <InlineActionMenu
-          label={`${status.key} 상태 작업`}
-          menuLabel={`${status.key} 상태 작업 메뉴`}
-          note={isOwner ? '고정 상태 키라 삭제/비활성화는 제공하지 않습니다.' : '읽기 전용'}
-          items={
-            isOwner
-              ? [
-                  {
-                    label: '편집',
-                    ariaLabel: `${status.key} 상태 편집`,
-                    icon: <Pencil size={14} />,
-                    onSelect: () => setEditing(true),
-                  },
-                  {
-                    label: '위로 이동',
-                    ariaLabel: `${status.key} 위로`,
-                    icon: <ChevronUp size={14} />,
-                    disabled: isFirst,
-                    onSelect: () => onMove(-1),
-                  },
-                  {
-                    label: '아래로 이동',
-                    ariaLabel: `${status.key} 아래로`,
-                    icon: <ChevronDown size={14} />,
-                    disabled: isLast,
-                    onSelect: () => onMove(1),
-                  },
-                ]
-              : []
-          }
-        />
-      </div>
-      <div className="mt-1 text-[11px] text-of-muted sm:hidden">위치 {status.position + 1}</div>
+    <li className="grid min-w-0 gap-2 rounded-of border border-of-border bg-of-surface-2 px-3 py-2 sm:grid-cols-[5rem_minmax(0,1fr)_auto] sm:items-center">
+      <Badge variant="neutral" className="max-w-full truncate font-mono uppercase">
+        {status.key}
+      </Badge>
+      <span className="min-w-0">
+        <span className="block truncate text-sm font-medium">{status.name}</span>
+        <span className="text-[11px] text-of-muted">위치 {status.position + 1}</span>
+      </span>
+      <InlineActionMenu
+        label={`${status.key} 상태 작업`}
+        menuLabel={`${status.key} 상태 작업 메뉴`}
+        note={isOwner ? '고정 상태 키라 삭제/비활성화는 제공하지 않습니다.' : '읽기 전용'}
+        items={
+          isOwner
+            ? [
+                {
+                  label: '편집',
+                  ariaLabel: `${status.key} 상태 편집`,
+                  icon: <Pencil size={14} />,
+                  onSelect: () => setEditing(true),
+                },
+                {
+                  label: '위로 이동',
+                  ariaLabel: `${status.key} 위로`,
+                  icon: <ChevronUp size={14} />,
+                  disabled: isFirst,
+                  onSelect: () => onMove(-1),
+                },
+                {
+                  label: '아래로 이동',
+                  ariaLabel: `${status.key} 아래로`,
+                  icon: <ChevronDown size={14} />,
+                  disabled: isLast,
+                  onSelect: () => onMove(1),
+                },
+              ]
+            : []
+        }
+      />
     </li>
   )
 }

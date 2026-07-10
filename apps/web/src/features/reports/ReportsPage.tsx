@@ -1,4 +1,4 @@
-import { Download } from 'lucide-react'
+import { Download, Table2, Timeline } from 'lucide-react'
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
@@ -8,6 +8,13 @@ import { PortfolioTimelineChart, usePortfolioTimeline } from './PortfolioTimelin
 import { Button } from '@/components/ui/button'
 import { HEALTH_LABELS, HEALTH_STYLES, type ProjectHealth } from '@/features/projects/types'
 import { api } from '@/lib/api'
+import {
+  ReportingMetricCard,
+  ReportingSection,
+  ReportingSegmentedControl,
+  ReportingSummaryGrid,
+  ReportingSurface,
+} from './ReportingSurface'
 
 type PortfolioItem = {
   project_id: string
@@ -63,45 +70,29 @@ export function ReportsPage() {
   const { items, totals } = report.data
   const budgetRatio = (i: PortfolioItem) =>
     i.budget && i.budget > 0 ? `${Math.round((i.cost_total / i.budget) * 100)}%` : '—'
+  const overdueTone = totals.overdue > 0 ? 'danger' : 'neutral'
 
   return (
-    <div className="mx-auto max-w-5xl p-6">
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-        <div>
-          <h1 className="text-base font-semibold">포트폴리오 리포트</h1>
-          <p className="text-xs text-of-muted">
-            내가 속한 프로젝트 전체를 한 화면에서 비교합니다. 합계는 표시 범위 기준입니다.
-          </p>
-        </div>
-        <div className="flex items-center gap-3">
-          <div className="flex overflow-hidden rounded-of border border-of-border text-xs">
-            {(
-              [
-                ['table', '요약 표'],
-                ['timeline', '타임라인'],
-              ] as const
-            ).map(([key, label]) => (
-              <button
-                key={key}
-                type="button"
-                aria-pressed={view === key}
-                className={
-                  view === key
-                    ? 'bg-of-accent-soft px-2.5 py-1 font-medium text-of-accent'
-                    : 'px-2.5 py-1 text-of-muted hover:bg-of-surface-2'
-                }
-                onClick={() => setView(key)}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-          <label className="flex items-center gap-1.5 text-xs">
+    <ReportingSurface
+      title="포트폴리오 리포트"
+      description="내가 속한 프로젝트 전체를 같은 기준으로 비교합니다. 합계는 현재 표시 범위 기준입니다."
+      actions={
+        <>
+          <ReportingSegmentedControl
+            ariaLabel="포트폴리오 보기"
+            value={view}
+            onChange={setView}
+            options={[
+              { value: 'table', label: '요약 표', icon: Table2 },
+              { value: 'timeline', label: '타임라인', icon: Timeline },
+            ]}
+          />
+          <label className="inline-flex h-7 items-center gap-1.5 rounded-of border border-of-border bg-of-surface px-2.5 text-xs font-medium text-of-muted">
             <input
               type="checkbox"
               checked={includeArchived}
               onChange={(e) => setIncludeArchived(e.target.checked)}
-              className="h-3 w-3 accent-of-accent"
+              className="h-3.5 w-3.5 accent-of-accent"
             />
             아카이브 포함
           </label>
@@ -114,11 +105,32 @@ export function ReportsPage() {
           >
             <Download size={14} /> CSV
           </Button>
-        </div>
-      </div>
+        </>
+      }
+    >
+      <ReportingSummaryGrid>
+        <ReportingMetricCard label="프로젝트" value={`${totals.projects}개`} detail="표시 범위" />
+        <ReportingMetricCard
+          label="미완료 작업"
+          value={num(totals.open)}
+          detail={`${num(totals.work_packages)}개 중`}
+          tone={totals.open > 0 ? 'accent' : 'neutral'}
+        />
+        <ReportingMetricCard
+          label="지연"
+          value={num(totals.overdue)}
+          detail="기한을 지난 미완료 작업"
+          tone={overdueTone}
+        />
+        <ReportingMetricCard
+          label="비용 / 예산"
+          value={`${num(totals.cost_total)} / ${num(totals.budget)}`}
+          detail={`${num(totals.hours_total)}h 기록`}
+        />
+      </ReportingSummaryGrid>
 
       {view === 'timeline' ? (
-        <div>
+        <ReportingSection title="포트폴리오 타임라인">
           {(timeline.data?.items ?? []).some((p) => !p.start_date) ? (
             <p className="mb-2 text-[11px] text-of-muted">
               일정 없음{' '}
@@ -134,14 +146,15 @@ export function ReportsPage() {
           ) : (
             <PortfolioTimelineChart items={timeline.data?.items ?? []} />
           )}
-        </div>
+        </ReportingSection>
       ) : items.length === 0 ? (
         <EmptyState
           title="표시할 프로젝트가 없습니다"
           hint="프로젝트 멤버가 되면 여기에 집계됩니다."
         />
       ) : (
-        <div className="overflow-x-auto rounded-of border border-of-border">
+        <ReportingSection title="프로젝트 비교">
+        <div className="max-w-full overflow-x-auto rounded-of border border-of-border bg-of-surface">
           <table className="w-full min-w-[44rem] bg-of-surface text-xs">
             <thead>
               <tr className="border-b border-of-border text-left text-[11px] text-of-muted">
@@ -226,7 +239,8 @@ export function ReportsPage() {
             </tfoot>
           </table>
         </div>
+        </ReportingSection>
       )}
-    </div>
+    </ReportingSurface>
   )
 }

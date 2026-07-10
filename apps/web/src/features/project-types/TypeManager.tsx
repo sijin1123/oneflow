@@ -1,10 +1,20 @@
-import { Archive, CheckCircle2, ChevronDown, ChevronUp, Pencil, Save } from 'lucide-react'
+import {
+  Archive,
+  CheckCircle2,
+  ChevronDown,
+  ChevronUp,
+  ListChecks,
+  Pencil,
+  Save,
+} from 'lucide-react'
 import { useEffect, useState } from 'react'
 
 import { InlineActionMenu } from '@/components/ui/action-menu'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { ApiError } from '@/lib/api'
+import { cn } from '@/lib/utils'
 
 import {
   type ProjectType,
@@ -39,13 +49,28 @@ export function TypeManager({ projectId, isOwner }: { projectId: string; isOwner
   if (sorted.length === 0) return null
 
   return (
-    <div className="mt-4 space-y-2 rounded-of border border-of-border bg-of-surface p-3">
-      <p className="text-xs font-medium">워크 아이템 타입</p>
-      <p className="text-xs text-of-muted">
-        타입 이름과 순서를 조정하고, 쓰지 않는 타입은 비활성화합니다(기존 작업은 유지)
-        {isOwner ? '' : ' (소유자만 편집 가능)'}.
-      </p>
-      <ul className="space-y-1">
+    <section
+      aria-label="워크 아이템 타입"
+      className="space-y-3 rounded-of border border-of-border bg-of-surface p-4"
+    >
+      <div className="flex min-w-0 items-start gap-3">
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-of bg-of-accent-soft text-of-accent">
+          <ListChecks size={16} aria-hidden="true" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            <h3 className="text-sm font-semibold">워크 아이템 타입</h3>
+            <Badge variant="outline">
+              {sorted.filter((type) => type.is_active).length}/{sorted.length} 활성
+            </Badge>
+          </div>
+          <p className="mt-1 text-xs leading-5 text-of-muted">
+            타입 이름과 순서를 조정하고, 쓰지 않는 타입은 비활성화합니다(기존 작업은 유지)
+            {isOwner ? '' : ' (소유자만 편집 가능)'}.
+          </p>
+        </div>
+      </div>
+      <ul className="grid gap-2">
         {sorted.map((t, i) => (
           <TypeRow
             key={t.id}
@@ -69,7 +94,7 @@ export function TypeManager({ projectId, isOwner }: { projectId: string; isOwner
           저장하지 못했습니다.
         </p>
       ) : null}
-    </div>
+    </section>
   )
 }
 
@@ -98,106 +123,102 @@ function TypeRow({
 
   if (editing) {
     return (
-      <li className="rounded-of border border-of-border px-2 py-2">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-          <span className="w-24 shrink-0 font-mono text-[11px] uppercase text-of-muted">
-            {type.key}
-          </span>
-          <Input
-            value={name}
-            aria-label={`${type.key} 타입 이름 편집`}
-            onChange={(event) => setName(event.target.value)}
-            className="h-7 min-w-0 flex-1 text-xs"
-          />
-          <div className="flex items-center gap-2">
-            <Button
-              size="sm"
-              disabled={!name.trim()}
-              onClick={() => {
-                const trimmed = name.trim()
-                if (trimmed && trimmed !== type.name) onRename(trimmed)
-                else setName(type.name)
-                setEditing(false)
-              }}
-            >
-              <Save size={14} />
-              저장
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => {
-                setName(type.name)
-                setEditing(false)
-              }}
-            >
-              취소
-            </Button>
-          </div>
-        </div>
+      <li className="grid min-w-0 gap-2 rounded-of border border-of-border bg-of-surface-2 px-3 py-2 sm:grid-cols-[5rem_minmax(0,1fr)_auto] sm:items-center">
+        <Badge variant="neutral" className="max-w-full truncate font-mono uppercase">
+          {type.key}
+        </Badge>
+        <Input
+          value={name}
+          aria-label={`${type.key} 타입 이름 편집`}
+          onChange={(event) => setName(event.target.value)}
+          className="h-8 min-w-0 text-xs"
+        />
+        <span className="flex items-center justify-end gap-2">
+          <Button
+            size="sm"
+            disabled={!name.trim()}
+            onClick={() => {
+              const trimmed = name.trim()
+              if (trimmed && trimmed !== type.name) onRename(trimmed)
+              else setName(type.name)
+              setEditing(false)
+            }}
+          >
+            <Save size={14} aria-hidden="true" />
+            저장
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => {
+              setName(type.name)
+              setEditing(false)
+            }}
+          >
+            취소
+          </Button>
+        </span>
       </li>
     )
   }
 
   return (
-    <li className="rounded-of border border-of-border px-2 py-2">
-      <div className="flex min-w-0 items-center gap-2">
-        <span className="w-24 shrink-0 font-mono text-[11px] uppercase text-of-muted">
+    <li
+      className={cn(
+        'grid min-w-0 gap-2 rounded-of border border-of-border bg-of-surface-2 px-3 py-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center',
+        !type.is_active && 'text-of-muted',
+      )}
+    >
+      <span className="flex min-w-0 items-center gap-2">
+        <Badge variant="neutral" className="shrink-0 font-mono uppercase">
           {type.key}
+        </Badge>
+        <span className="min-w-0">
+          <span className={`block truncate text-sm font-medium ${type.is_active ? '' : 'line-through'}`}>
+            {type.name}
+          </span>
+          <span className="text-[11px] text-of-muted">
+            {type.is_active ? '활성' : '비활성'} · 위치 {type.position + 1}
+          </span>
         </span>
-        <span
-          className={`min-w-0 flex-1 truncate text-xs font-medium ${type.is_active ? '' : 'text-of-muted line-through'}`}
-        >
-          {type.name}
-        </span>
-        <span
-          className={`hidden shrink-0 rounded-full px-2 py-0.5 text-[10px] sm:inline ${
-            type.is_active ? 'bg-of-accent-soft text-of-accent' : 'bg-of-surface-2 text-of-muted'
-          }`}
-        >
-          {type.is_active ? '활성' : '비활성'}
-        </span>
-        <InlineActionMenu
-          label={`${type.key} 타입 작업`}
-          menuLabel={`${type.key} 타입 작업 메뉴`}
-          note={isOwner ? undefined : '읽기 전용'}
-          items={
-            isOwner
-              ? [
-                  {
-                    label: '편집',
-                    ariaLabel: `${type.key} 타입 편집`,
-                    icon: <Pencil size={14} />,
-                    onSelect: () => setEditing(true),
-                  },
-                  {
-                    label: type.is_active ? '비활성화' : '활성화',
-                    ariaLabel: `${type.key} 타입 ${type.is_active ? '비활성화' : '활성화'}`,
-                    icon: type.is_active ? <Archive size={14} /> : <CheckCircle2 size={14} />,
-                    onSelect: () => onToggle(!type.is_active),
-                  },
-                  {
-                    label: '위로 이동',
-                    ariaLabel: `${type.key} 위로`,
-                    icon: <ChevronUp size={14} />,
-                    disabled: isFirst,
-                    onSelect: onMoveUp,
-                  },
-                  {
-                    label: '아래로 이동',
-                    ariaLabel: `${type.key} 아래로`,
-                    icon: <ChevronDown size={14} />,
-                    disabled: isLast,
-                    onSelect: onMoveDown,
-                  },
-                ]
-              : []
-          }
-        />
-      </div>
-      <div className="mt-1 text-[11px] text-of-muted sm:hidden">
-        {type.is_active ? '활성' : '비활성'} · 위치 {type.position + 1}
-      </div>
+      </span>
+      <InlineActionMenu
+        label={`${type.key} 타입 작업`}
+        menuLabel={`${type.key} 타입 작업 메뉴`}
+        note={isOwner ? undefined : '읽기 전용'}
+        items={
+          isOwner
+            ? [
+                {
+                  label: '편집',
+                  ariaLabel: `${type.key} 타입 편집`,
+                  icon: <Pencil size={14} />,
+                  onSelect: () => setEditing(true),
+                },
+                {
+                  label: type.is_active ? '비활성화' : '활성화',
+                  ariaLabel: `${type.key} 타입 ${type.is_active ? '비활성화' : '활성화'}`,
+                  icon: type.is_active ? <Archive size={14} /> : <CheckCircle2 size={14} />,
+                  onSelect: () => onToggle(!type.is_active),
+                },
+                {
+                  label: '위로 이동',
+                  ariaLabel: `${type.key} 위로`,
+                  icon: <ChevronUp size={14} />,
+                  disabled: isFirst,
+                  onSelect: onMoveUp,
+                },
+                {
+                  label: '아래로 이동',
+                  ariaLabel: `${type.key} 아래로`,
+                  icon: <ChevronDown size={14} />,
+                  disabled: isLast,
+                  onSelect: onMoveDown,
+                },
+              ]
+            : []
+        }
+      />
     </li>
   )
 }

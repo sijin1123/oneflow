@@ -37,6 +37,27 @@ export function useCreateMilestone(projectId: string) {
   })
 }
 
+export function useUpdateMilestone(projectId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({
+      milestoneId,
+      ...input
+    }: {
+      milestoneId: string
+      name?: string
+      due_date?: string | null
+    }) =>
+      api<Milestone>(`/api/v1/projects/${projectId}/milestones/${milestoneId}`, {
+        method: 'PATCH',
+        body: JSON.stringify(input),
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['milestones', projectId] })
+    },
+  })
+}
+
 export function useDeleteMilestone(projectId: string) {
   const queryClient = useQueryClient()
   return useMutation({

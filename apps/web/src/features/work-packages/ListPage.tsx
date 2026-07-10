@@ -1,8 +1,9 @@
-import { Download, Search, X } from 'lucide-react'
+import { AlertCircle, CheckCircle2, ClipboardList, Download, RotateCcw, Search, X } from 'lucide-react'
 import { type FormEvent, useEffect, useState } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
 
 import { EmptyState, ErrorState, ListSkeleton } from '@/components/shell/states'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
@@ -30,9 +31,10 @@ import { ImportDialog } from './ImportDialog'
 import { SavedFilters } from './SavedFilters'
 import { NewWorkPackageInline } from './NewWorkPackageInline'
 import { PriorityChip, StatusChip, TypeChip } from './chips'
-import { useBulkUpdate, useWorkPackages } from './api'
+import { type BulkUpdateResult, useBulkUpdate, useWorkPackages } from './api'
 import { useExportCsv } from './csv'
-import { PRIORITY_LABELS, STATUS_LABELS } from './types'
+import { WorkPackageRowActions, type RowActionMessage } from './RowActions'
+import { PRIORITY_LABELS, WP_PRIORITIES, WP_STATUSES } from './types'
 import { useStatusLabels } from './useStatusLabels'
 import { useTypeLabels } from './useTypeLabels'
 
@@ -41,6 +43,7 @@ const VIEW_CONTROL_KEYS = [
   'priority',
   'type',
   'assignee_id',
+  'milestone_id',
   'cycle_id',
   'module_id',
   'q',
@@ -50,6 +53,8 @@ const VIEW_CONTROL_KEYS = [
   'cf_op',
   'cf_value',
 ] as const
+
+const UNASSIGNED_BULK_VALUE = '__unassigned'
 
 /* Custom-column cell (Pass 67): the requested field list is the source of
    truth — a missing value renders as an empty cell (v67.1 R1-⑥). */
@@ -73,6 +78,7 @@ export function ListPage() {
     priority: searchParams.get('priority') ?? undefined,
     type: searchParams.get('type') ?? undefined,
     assignee_id: searchParams.get('assignee_id') ?? undefined,
+    milestone_id: searchParams.get('milestone_id') ?? undefined,
     cycle_id: searchParams.get('cycle_id') ?? undefined,
     module_id: searchParams.get('module_id') ?? undefined,
     q: searchParams.get('q') ?? undefined,
@@ -201,8 +207,27 @@ export function ListPage() {
   const [bulkStatus, setBulkStatus] = useState('')
   const [bulkPriority, setBulkPriority] = useState('')
   const [bulkAssignee, setBulkAssignee] = useState('')
+  const [actionMessage, setActionMessage] = useState<RowActionMessage | null>(null)
+  const [bulkNotice, setBulkNotice] = useState<BulkUpdateResult | null>(null)
+  const visibleItems = data?.items ?? []
+  const selectedVisibleItems = visibleItems.filter((wp) => selected.has(wp.id))
+  const allVisibleSelected = visibleItems.length > 0 && selectedVisibleItems.length === visibleItems.length
+  const selectedPreview = selectedVisibleItems
+    .slice(0, 3)
+    .map((wp) => wp.subject)
+    .join(', ')
+
+  useEffect(() => {
+    if (!data) return
+    const visibleIds = new Set(data.items.map((wp) => wp.id))
+    setSelected((prev) => {
+      const next = new Set([...prev].filter((id) => visibleIds.has(id)))
+      return next.size === prev.size ? prev : next
+    })
+  }, [data])
 
   const toggleSelected = (id: string) => {
+    setBulkNotice(null)
     setSelected((prev) => {
       const next = new Set(prev)
       if (next.has(id)) next.delete(id)
@@ -210,17 +235,37 @@ export function ListPage() {
       return next
     })
   }
+  const toggleAllVisible = () => {
+    setBulkNotice(null)
+    setSelected((prev) => {
+      const next = new Set(prev)
+      if (allVisibleSelected) {
+        visibleItems.forEach((wp) => next.delete(wp.id))
+      } else {
+        visibleItems.forEach((wp) => next.add(wp.id))
+      }
+      return next
+    })
+  }
+  const clearBulkSelection = () => {
+    setSelected(new Set())
+    setBulkStatus('')
+    setBulkPriority('')
+    setBulkAssignee('')
+    bulk.reset()
+  }
 
   const applyBulk = () => {
-    const patch: { status?: string; assignee_id?: string; priority?: string } = {}
+    const patch: { status?: string; assignee_id?: string | null; priority?: string } = {}
     if (bulkStatus) patch.status = bulkStatus
     if (bulkPriority) patch.priority = bulkPriority
-    if (bulkAssignee) patch.assignee_id = bulkAssignee
+    if (bulkAssignee) patch.assignee_id = bulkAssignee === UNASSIGNED_BULK_VALUE ? null : bulkAssignee
     if (selected.size === 0 || Object.keys(patch).length === 0) return
     bulk.mutate(
       { ids: [...selected], patch },
       {
-        onSuccess: () => {
+        onSuccess: (result) => {
+          setBulkNotice(result)
           setSelected(new Set())
           setBulkStatus('')
           setBulkPriority('')
@@ -230,10 +275,12 @@ export function ListPage() {
     )
   }
 
-  const openDrawer = (id: string) => {
+  const openDrawer = (id: string, options: { move?: boolean } = {}) => {
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev)
       next.set('wp', id)
+      if (options.move) next.set('move', '1')
+      else next.delete('move')
       return next
     })
   }
@@ -315,67 +362,131 @@ export function ListPage() {
 
       {canWrite ? <NewWorkPackageInline projectId={projectId} /> : null}
 
-      {canWrite && selected.size > 0 ? (
-        <div className="flex flex-wrap items-center gap-2 border-b border-of-border bg-of-surface-2/40 px-4 py-2 text-xs">
-          <span className="font-medium">{selected.size}건 선택</span>
-          <Select
-            aria-label="일괄 상태"
-            className="h-7 w-28 text-xs"
-            value={bulkStatus}
-            onChange={(e) => setBulkStatus(e.target.value)}
-          >
-            <option value="">상태 유지</option>
-            {Object.entries(STATUS_LABELS).map(([key]) => (
-              <option key={key} value={key}>
-                {statusLabel(key)}
-              </option>
-            ))}
-          </Select>
-          <Select
-            aria-label="일괄 우선순위"
-            className="h-7 w-28 text-xs"
-            value={bulkPriority}
-            onChange={(e) => setBulkPriority(e.target.value)}
-          >
-            <option value="">우선순위 유지</option>
-            {Object.entries(PRIORITY_LABELS).map(([key, label]) => (
-              <option key={key} value={key}>
-                {label}
-              </option>
-            ))}
-          </Select>
-          <Select
-            aria-label="일괄 담당자"
-            className="h-7 w-32 text-xs"
-            value={bulkAssignee}
-            onChange={(e) => setBulkAssignee(e.target.value)}
-          >
-            <option value="">담당자 유지</option>
-            {(members.data?.items ?? []).map((m) => (
-              <option key={m.user_id} value={m.user_id}>
-                {m.display_name}
-              </option>
-            ))}
-          </Select>
-          <Button
-            size="sm"
-            disabled={bulk.isPending || (!bulkStatus && !bulkPriority && !bulkAssignee)}
-            onClick={applyBulk}
-          >
-            적용
-          </Button>
+      {actionMessage ? (
+        <div
+          role={actionMessage.kind === 'error' ? 'alert' : 'status'}
+          className={`border-b border-of-border px-4 py-2 text-xs ${
+            actionMessage.kind === 'error'
+              ? 'bg-of-danger/10 text-of-danger'
+              : 'bg-of-surface-2/50 text-of-muted'
+          }`}
+        >
+          {actionMessage.text}
+        </div>
+      ) : null}
+
+      {bulkNotice ? (
+        <div
+          role="status"
+          aria-label="일괄 작업 결과"
+          className="flex flex-col gap-2 border-b border-of-border bg-of-accent-soft px-4 py-2 text-xs text-of-fg sm:flex-row sm:items-center sm:justify-between"
+        >
+          <div className="flex flex-wrap items-center gap-2">
+            <CheckCircle2 size={14} className="text-of-accent" aria-hidden="true" />
+            <span className="font-medium">일괄 변경 완료</span>
+            <Badge variant="outline">변경 {bulkNotice.updated_ids.length}건</Badge>
+            <Badge variant="outline">유지 {bulkNotice.unchanged_ids.length}건</Badge>
+            {bulkNotice.skipped_ids.length > 0 ? (
+              <Badge variant="outline">건너뜀 {bulkNotice.skipped_ids.length}건</Badge>
+            ) : null}
+          </div>
           <button
             type="button"
-            className="text-of-muted hover:text-of-fg"
-            onClick={() => setSelected(new Set())}
+            aria-label="일괄 작업 결과 닫기"
+            className="w-fit text-of-muted hover:text-of-fg"
+            onClick={() => setBulkNotice(null)}
           >
-            선택 해제
+            닫기
           </button>
-          {bulk.isError ? <span className="text-of-danger">일괄 변경 실패</span> : null}
-          {bulk.isSuccess && bulk.data.skipped_ids.length > 0 ? (
-            <span className="text-of-muted">건너뜀 {bulk.data.skipped_ids.length}건</span>
-          ) : null}
         </div>
+      ) : null}
+
+      {canWrite && selected.size > 0 ? (
+        <section
+          aria-label="일괄 작업"
+          className="border-b border-of-border bg-of-surface-2/65 px-4 py-3 text-xs"
+        >
+          <div className="mx-auto grid max-w-6xl gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
+            <div className="min-w-0 space-y-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge variant="accent">
+                  <ClipboardList size={12} aria-hidden="true" />
+                  {selected.size}건 선택
+                </Badge>
+                {selectedPreview ? (
+                  <span className="min-w-0 truncate text-of-muted">
+                    {selectedPreview}
+                    {selected.size > selectedVisibleItems.length ? ` 외 ${selected.size - selectedVisibleItems.length}건` : ''}
+                    {selectedVisibleItems.length > 3 ? ` 외 ${selectedVisibleItems.length - 3}건` : ''}
+                  </span>
+                ) : null}
+              </div>
+              {bulk.isError ? (
+                <p role="alert" className="flex items-center gap-1 text-of-danger">
+                  <AlertCircle size={13} aria-hidden="true" />
+                  일괄 변경 실패
+                </p>
+              ) : bulk.isPending ? (
+                <p role="status" className="text-of-muted">
+                  적용 중…
+                </p>
+              ) : null}
+            </div>
+
+            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-[9rem_9rem_10rem_auto_auto] lg:items-end">
+              <Select
+                aria-label="일괄 상태"
+                className="h-8 text-xs"
+                value={bulkStatus}
+                onChange={(e) => setBulkStatus(e.target.value)}
+              >
+                <option value="">상태 유지</option>
+                {WP_STATUSES.map((key) => (
+                  <option key={key} value={key}>
+                    {statusLabel(key)}
+                  </option>
+                ))}
+              </Select>
+              <Select
+                aria-label="일괄 우선순위"
+                className="h-8 text-xs"
+                value={bulkPriority}
+                onChange={(e) => setBulkPriority(e.target.value)}
+              >
+                <option value="">우선순위 유지</option>
+                {WP_PRIORITIES.map((key) => (
+                  <option key={key} value={key}>
+                    {PRIORITY_LABELS[key]}
+                  </option>
+                ))}
+              </Select>
+              <Select
+                aria-label="일괄 담당자"
+                className="h-8 text-xs"
+                value={bulkAssignee}
+                onChange={(e) => setBulkAssignee(e.target.value)}
+              >
+                <option value="">담당자 유지</option>
+                <option value={UNASSIGNED_BULK_VALUE}>미배정으로 변경</option>
+                {(members.data?.items ?? []).map((m) => (
+                  <option key={m.user_id} value={m.user_id}>
+                    {m.display_name}
+                  </option>
+                ))}
+              </Select>
+              <Button
+                size="sm"
+                disabled={bulk.isPending || (!bulkStatus && !bulkPriority && !bulkAssignee)}
+                onClick={applyBulk}
+              >
+                <CheckCircle2 size={14} /> 적용
+              </Button>
+              <Button size="sm" variant="ghost" onClick={clearBulkSelection}>
+                <RotateCcw size={14} /> 선택 해제
+              </Button>
+            </div>
+          </div>
+        </section>
       ) : null}
 
       {isPending ? (
@@ -386,10 +497,20 @@ export function ListPage() {
         <EmptyState title="조건에 맞는 작업이 없습니다" hint="필터를 조정하거나 새 작업을 만들어 보세요." />
       ) : (
         <div className="min-w-0 overflow-x-auto">
-          <table className="w-full min-w-[720px] border-collapse text-sm">
+          <table className="w-full min-w-[760px] border-collapse text-sm">
             <thead>
               <tr className="border-b border-of-border text-left text-xs text-of-muted">
-                {canWrite ? <th className="w-8 px-2 py-2" aria-label="선택 열" /> : null}
+                {canWrite ? (
+                  <th className="w-8 px-2 py-2" aria-label="선택 열">
+                    <input
+                      type="checkbox"
+                      aria-label="현재 페이지 작업 선택"
+                      checked={allVisibleSelected}
+                      onChange={toggleAllVisible}
+                      className="h-3.5 w-3.5 accent-of-accent"
+                    />
+                  </th>
+                ) : null}
                 <th className="px-4 py-2 font-medium">제목</th>
                 {show('type') ? <th className="w-24 px-2 py-2 font-medium">타입</th> : null}
                 {show('status') ? <th className="w-28 px-2 py-2 font-medium">상태</th> : null}
@@ -403,13 +524,16 @@ export function ListPage() {
                     {fieldById.get(id)?.name ?? '커스텀'}
                   </th>
                 ))}
+                <th className="sticky right-0 w-12 bg-of-surface px-2 py-2 text-right font-medium">
+                  <span className="sr-only">행 작업</span>
+                </th>
               </tr>
             </thead>
             <tbody>
               {data.items.map((wp) => (
                 <tr
                   key={wp.id}
-                  className="cursor-pointer border-b border-of-border hover:bg-of-surface-2"
+                  className="group cursor-pointer border-b border-of-border hover:bg-of-surface-2 focus-within:bg-of-surface-2"
                   onClick={() => openDrawer(wp.id)}
                 >
                   {canWrite ? (
@@ -474,6 +598,16 @@ export function ListPage() {
                       {renderCustomCell(wp, id, fieldById.get(id)?.field_type)}
                     </td>
                   ))}
+                  <td className="sticky right-0 bg-of-surface px-2 py-2 text-right group-hover:bg-of-surface-2 group-focus-within:bg-of-surface-2">
+                    <WorkPackageRowActions
+                      projectId={projectId}
+                      wp={wp}
+                      canWrite={canWrite}
+                      onOpenDrawer={(id) => openDrawer(id)}
+                      onOpenMove={(id) => openDrawer(id, { move: true })}
+                      onMessage={setActionMessage}
+                    />
+                  </td>
                 </tr>
               ))}
             </tbody>
