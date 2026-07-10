@@ -22,6 +22,12 @@ class MyWorkPackage(BaseModel):
     assignee_name: str | None = None
 
 
+class MyWorkItemRead(MyWorkPackage):
+    """Paginated cross-project work row for the Your work tabs."""
+
+    updated_at: datetime
+
+
 class MyActivityRead(BaseModel):
     """Recent activity across the caller's projects, enriched for display."""
 
@@ -49,6 +55,20 @@ class MeWorkRead(BaseModel):
     # (unassigned or assigned to someone else).
     created_by_me: list[MyWorkPackage]
     recent_activity: list[MyActivityRead]
+
+
+class MyWorkItemList(BaseModel):
+    items: list[MyWorkItemRead]
+    total: int
+    limit: int
+    offset: int
+
+
+class MyActivityList(BaseModel):
+    items: list[MyActivityRead]
+    total: int
+    limit: int
+    offset: int
 
 
 class MyTimeEntry(BaseModel):

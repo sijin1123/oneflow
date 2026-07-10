@@ -1,6 +1,8 @@
 import {
   ArrowUpRight,
   BellRing,
+  ChevronLeft,
+  ChevronRight,
   FolderKanban,
   Gauge,
   ListChecks,
@@ -13,10 +15,13 @@ import {
   TimerReset,
   type LucideIcon,
 } from 'lucide-react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom'
 
 import { EmptyState, ErrorState, ListSkeleton } from '@/components/shell/states'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Select } from '@/components/ui/select'
 import { useCapabilities } from '@/features/ai/api'
 import { useNotifications } from '@/features/notifications/api'
 import {
@@ -30,7 +35,17 @@ import { PriorityChip, StatusChip } from '@/features/work-packages/chips'
 import { formatDateTime } from '@/lib/datetime'
 import { cn } from '@/lib/utils'
 
-import { type MyActivity, type MyWorkPackage, useMyWork, useMyTime } from './api'
+import {
+  type MyActivity,
+  type MyWorkItemRelationship,
+  type MyWorkItemSort,
+  type MyWorkItemState,
+  type MyWorkPackage,
+  useMyActivities,
+  useMyWork,
+  useMyWorkItems,
+  useMyTime,
+} from './api'
 
 function actionText(a: MyActivity): string {
   if (a.action === 'created') return '생성'
@@ -39,14 +54,293 @@ function actionText(a: MyActivity): string {
   return `${field} ${a.old_value ?? '없음'} → ${a.new_value ?? '없음'}`
 }
 
+type MyWorkTab = 'overview' | 'assigned' | 'created' | 'subscribed' | 'activity'
+
+const MY_WORK_TABS: Array<{ key: MyWorkTab; label: string }> = [
+  { key: 'overview', label: '개요' },
+  { key: 'assigned', label: '배정됨' },
+  { key: 'created', label: '생성함' },
+  { key: 'subscribed', label: '구독' },
+  { key: 'activity', label: '활동' },
+]
+
+function MyWorkTabs({ active }: { active: MyWorkTab }) {
+  return (
+    <nav aria-label="내 작업 보기" className="mt-4 overflow-x-auto">
+      <div className="flex min-w-max gap-1 border-b border-of-border">
+        {MY_WORK_TABS.map((tab) => (
+          <Link
+            key={tab.key}
+            to={tab.key === 'overview' ? '/my' : `/my?tab=${tab.key}`}
+            aria-current={active === tab.key ? 'page' : undefined}
+            className={cn(
+              'min-h-9 border-b-2 border-transparent px-3 py-2 text-xs font-medium text-of-muted hover:text-of-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus',
+              active === tab.key && 'border-of-accent text-of-accent',
+            )}
+          >
+            {tab.label}
+          </Link>
+        ))}
+      </div>
+    </nav>
+  )
+}
+
+const PROFILE_PAGE_SIZE = 25
+
+function MyWorkProfileSurface({
+  tab,
+}: {
+  tab: Exclude<MyWorkTab, 'overview'>
+}) {
+  const [params, setParams] = useSearchParams()
+  const navigate = useNavigate()
+  const q = params.get('q')?.trim() ?? ''
+  const state: MyWorkItemState = params.get('state') === 'all' ? 'all' : 'open'
+  const sort: MyWorkItemSort = params.get('sort') === 'due' ? 'due' : 'updated'
+  const parsedOffset = Number(params.get('offset') ?? 0)
+  const offset =
+    Number.isInteger(parsedOffset) && parsedOffset >= 0 ? parsedOffset : 0
+  const activityTab = tab === 'activity'
+  const relationship: MyWorkItemRelationship =
+    tab === 'created' || tab === 'subscribed' ? tab : 'assigned'
+  const workItems = useMyWorkItems({
+    relationship,
+    state,
+    sort,
+    q,
+    limit: PROFILE_PAGE_SIZE,
+    offset,
+    enabled: !activityTab,
+  })
+  const activities = useMyActivities({
+    q,
+    limit: PROFILE_PAGE_SIZE,
+    offset,
+    enabled: activityTab,
+  })
+  const query = activityTab ? activities : workItems
+  const activityItems = activities.data?.items ?? []
+  const workItemItems = workItems.data?.items ?? []
+  const total = query.data?.total ?? 0
+
+  const updateParams = (updates: Record<string, string | null>) => {
+    const next = new URLSearchParams(window.location.search)
+    next.set('tab', tab)
+    for (const [key, value] of Object.entries(updates)) {
+      if (value) next.set(key, value)
+      else next.delete(key)
+    }
+    setParams(next)
+  }
+
+  const labels = {
+    assigned: {
+      title: '나에게 배정된 작업',
+      description: '현재 담당자로 지정된 작업을 프로젝트 경계 안에서 모아봅니다.',
+      empty: '조건에 맞는 배정 작업이 없습니다.',
+    },
+    created: {
+      title: '내가 생성한 작업',
+      description: '담당자와 관계없이 내가 만든 작업을 추적합니다.',
+      empty: '조건에 맞는 생성 작업이 없습니다.',
+    },
+    subscribed: {
+      title: '구독 중인 작업',
+      description: '변경 알림을 받도록 구독한 작업을 모아봅니다.',
+      empty: '조건에 맞는 구독 작업이 없습니다.',
+    },
+    activity: {
+      title: '내 프로젝트 활동',
+      description: '현재 참여 중인 활성 프로젝트의 작업 변경을 최신순으로 봅니다.',
+      empty: '조건에 맞는 활동이 없습니다.',
+    },
+  }[tab]
+
+  return (
+    <div className="mx-auto flex w-full max-w-6xl min-w-0 flex-col gap-4 px-4 py-5 sm:px-6">
+      <header className="min-w-0">
+        <p className="mb-1 text-[11px] font-medium uppercase text-of-muted">Your work</p>
+        <div className="flex min-w-0 flex-wrap items-end justify-between gap-3">
+          <div className="min-w-0">
+            <h1 className="text-base font-semibold">{labels.title}</h1>
+            <p className="mt-1 max-w-2xl text-xs leading-5 text-of-muted">
+              {labels.description}
+            </p>
+          </div>
+          {query.data ? (
+            <Badge variant={total > 0 ? 'accent' : 'outline'}>{total}건</Badge>
+          ) : null}
+        </div>
+        <MyWorkTabs active={tab} />
+      </header>
+
+      <section
+        aria-label="내 작업 필터"
+        className="flex min-w-0 flex-col gap-2 border-y border-of-border py-3 md:flex-row md:items-end"
+      >
+        <form
+          className="min-w-0 flex-1"
+          onSubmit={(event) => {
+            event.preventDefault()
+            const value = String(new FormData(event.currentTarget).get('q') ?? '').trim()
+            updateParams({ q: value || null, offset: null })
+          }}
+        >
+          <label className="block">
+            <span className="mb-1 block text-xs font-medium text-of-muted">검색</span>
+            <Input
+              key={q}
+              name="q"
+              defaultValue={q}
+              maxLength={255}
+              placeholder={activityTab ? '작업 또는 프로젝트 검색' : '작업 제목 검색'}
+              aria-label="내 작업 검색"
+            />
+          </label>
+        </form>
+        {!activityTab ? (
+          <>
+            <label className="min-w-36">
+              <span className="mb-1 block text-xs font-medium text-of-muted">범위</span>
+              <Select
+                aria-label="작업 범위"
+                value={state}
+                onChange={(event) =>
+                  updateParams({
+                    state: event.target.value === 'all' ? 'all' : null,
+                    offset: null,
+                  })
+                }
+              >
+                <option value="open">열린 작업</option>
+                <option value="all">전체 작업</option>
+              </Select>
+            </label>
+            <label className="min-w-36">
+              <span className="mb-1 block text-xs font-medium text-of-muted">정렬</span>
+              <Select
+                aria-label="작업 정렬"
+                value={sort}
+                onChange={(event) =>
+                  updateParams({
+                    sort: event.target.value === 'due' ? 'due' : null,
+                    offset: null,
+                  })
+                }
+              >
+                <option value="updated">최근 변경순</option>
+                <option value="due">기한순</option>
+              </Select>
+            </label>
+          </>
+        ) : null}
+        <Button
+          variant="outline"
+          onClick={() => updateParams({ q: null, state: null, sort: null, offset: null })}
+          disabled={!q && state === 'open' && sort === 'updated' && offset === 0}
+        >
+          초기화
+        </Button>
+      </section>
+
+      {query.isPending ? (
+        <ListSkeleton rows={6} />
+      ) : query.isError ? (
+        <ErrorState error={query.error} onRetry={() => query.refetch()} />
+      ) : activityTab ? (
+        activityItems.length === 0 ? (
+          <EmptyState title={labels.empty} hint="검색을 지우거나 다른 탭을 확인해 보세요." />
+        ) : (
+          <ul
+            aria-label="내 프로젝트 활동 목록"
+            className="divide-y divide-of-border border-y border-of-border"
+          >
+            {activityItems.map((activity) => (
+              <li key={activity.id}>
+                <button
+                  type="button"
+                  className="grid min-h-12 w-full min-w-0 gap-1 px-3 py-2 text-left hover:bg-of-surface-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"
+                  onClick={() =>
+                    navigate(
+                      `/projects/${activity.project_id}/work-packages?wp=${activity.work_package_id}`,
+                    )
+                  }
+                >
+                  <span className="min-w-0 truncate text-[13px]">
+                    <strong className="font-medium">{activity.actor_name ?? '시스템'}</strong>{' '}
+                    <span className="text-of-muted">
+                      {activity.project_name} · {activity.work_package_subject}
+                    </span>{' '}
+                    · {actionText(activity)}
+                  </span>
+                  <span className="text-[11px] text-of-muted">
+                    {formatDateTime(activity.created_at)}
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )
+      ) : workItemItems.length === 0 ? (
+        <EmptyState title={labels.empty} hint="검색이나 작업 범위를 조정해 보세요." />
+      ) : (
+        <WorkList
+          items={workItemItems}
+          emptyText={labels.empty}
+          showAssignee={tab !== 'assigned'}
+          showUpdated={sort === 'updated'}
+        />
+      )}
+
+      {query.data && (offset > 0 || offset + query.data.items.length < total) ? (
+        <nav aria-label="내 작업 페이지" className="flex items-center justify-between gap-3">
+          <span className="text-xs tabular-nums text-of-muted">
+            {total === 0 ? 0 : offset + 1}-
+            {Math.min(offset + query.data.items.length, total)} / {total}
+          </span>
+          <div className="flex gap-1">
+            <Button
+              size="icon"
+              variant="outline"
+              aria-label="이전 페이지"
+              disabled={offset === 0}
+              onClick={() =>
+                updateParams({
+                  offset: offset > PROFILE_PAGE_SIZE ? String(offset - PROFILE_PAGE_SIZE) : null,
+                })
+              }
+            >
+              <ChevronLeft />
+            </Button>
+            <Button
+              size="icon"
+              variant="outline"
+              aria-label="다음 페이지"
+              disabled={offset + query.data.items.length >= total}
+              onClick={() =>
+                updateParams({ offset: String(offset + PROFILE_PAGE_SIZE) })
+              }
+            >
+              <ChevronRight />
+            </Button>
+          </div>
+        </nav>
+      ) : null}
+    </div>
+  )
+}
+
 function WorkList({
   items,
   emptyText,
   showAssignee = false,
+  showUpdated = false,
 }: {
   items: MyWorkPackage[]
   emptyText: string
   showAssignee?: boolean
+  showUpdated?: boolean
 }) {
   const navigate = useNavigate()
   if (items.length === 0) return <p className="px-1 py-2 text-xs text-of-muted">{emptyText}</p>
@@ -73,7 +367,11 @@ function WorkList({
                   {wp.assignee_name ?? '미배정'}
                 </span>
               ) : null}
-              <span className="text-[11px] text-of-muted">{wp.due_date ?? '기한 없음'}</span>
+              <span className="text-[11px] text-of-muted">
+                {showUpdated && 'updated_at' in wp && typeof wp.updated_at === 'string'
+                  ? formatDateTime(wp.updated_at)
+                  : (wp.due_date ?? '기한 없음')}
+              </span>
             </span>
           </button>
         </li>
@@ -301,7 +599,7 @@ function AiWorkspacePanel({
 
 /* Personal cross-project home (expansion PLAN Pass 1 PR-B): what is on my
    plate, what is due this week, my inbox, and what changed around me. */
-export function MyWorkPage() {
+function MyWorkOverview() {
   const myWork = useMyWork()
   const myTime = useMyTime()
   const notifications = useNotifications()
@@ -338,6 +636,7 @@ export function MyWorkPage() {
             <Badge variant="outline">프로젝트 {projects.data?.total ?? 0}</Badge>
           </div>
         </div>
+        <MyWorkTabs active="overview" />
       </header>
 
       <section aria-label="빠른 이동" className="min-w-0">
@@ -607,4 +906,13 @@ export function MyWorkPage() {
       )}
     </div>
   )
+}
+
+export function MyWorkPage() {
+  const [params] = useSearchParams()
+  const requested = params.get('tab') ?? 'overview'
+  const tab = MY_WORK_TABS.find((item) => item.key === requested)?.key
+  if (!tab) return <Navigate to="/my" replace />
+  if (tab === 'overview') return <MyWorkOverview />
+  return <MyWorkProfileSurface tab={tab} />
 }

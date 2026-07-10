@@ -1,5 +1,6 @@
 import uuid
 from datetime import date, timedelta
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy import func, select
@@ -16,13 +17,17 @@ from app.models.notification_setting import UserNotificationSettings
 from app.models.project import Project
 from app.models.time_entry import TimeEntry
 from app.models.user import User
+from app.models.watcher import WpWatcher
 from app.models.work_package import WP_CLOSED_STATUSES, WorkPackage
 from app.schemas.me_work import (
     MeWorkRead,
+    MyActivityList,
     MyActivityRead,
     MyTimeEntry,
     MyTimeProjectSum,
     MyTimeRead,
+    MyWorkItemList,
+    MyWorkItemRead,
     MyWorkPackage,
 )
 from app.schemas.notification import NotificationList, NotificationRead
@@ -165,6 +170,145 @@ async def my_work(
             )
             for (a, subject, pid, pname, actor_name) in activity_rows
         ],
+    )
+
+
+@router.get("/me/work-items", response_model=MyWorkItemList)
+async def my_work_items(
+    relationship: Literal["assigned", "created", "subscribed"],
+    state: Literal["open", "all"] = "open",
+    sort: Literal["updated", "due"] = "updated",
+    q: str | None = Query(default=None, max_length=255),
+    limit: int = Query(default=50, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+) -> MyWorkItemList:
+    """The paginated assigned, created, or subscribed work tab for the caller."""
+    assignee = User.__table__.alias("assignee")
+    stmt = (
+        select(WorkPackage, Project.name, assignee.c.display_name)
+        .join(Project, WorkPackage.project_id == Project.id)
+        .join(
+            ProjectMember,
+            (ProjectMember.project_id == Project.id) & (ProjectMember.user_id == user.id),
+        )
+        .outerjoin(assignee, WorkPackage.assignee_id == assignee.c.id)
+        .where(Project.archived_at.is_(None))
+    )
+    if relationship == "assigned":
+        stmt = stmt.where(WorkPackage.assignee_id == user.id)
+    elif relationship == "created":
+        # Unlike the legacy /me/work delegation card, this tab includes the
+        # caller's own assignments as well as work assigned to others.
+        stmt = stmt.where(WorkPackage.created_by == user.id)
+    else:
+        stmt = stmt.join(
+            WpWatcher,
+            (WpWatcher.work_package_id == WorkPackage.id) & (WpWatcher.user_id == user.id),
+        )
+    if state == "open":
+        stmt = stmt.where(WorkPackage.status.not_in(WP_CLOSED_STATUSES))
+    if q is not None:
+        stmt = stmt.where(WorkPackage.subject.icontains(q, autoescape=True))
+
+    total = (
+        await session.execute(select(func.count()).select_from(stmt.order_by(None).subquery()))
+    ).scalar_one()
+    if sort == "due":
+        stmt = stmt.order_by(
+            WorkPackage.due_date.asc().nulls_last(),
+            WorkPackage.updated_at.desc(),
+            WorkPackage.id.desc(),
+        )
+    else:
+        stmt = stmt.order_by(WorkPackage.updated_at.desc(), WorkPackage.id.desc())
+    rows = (await session.execute(stmt.limit(limit).offset(offset))).all()
+    return MyWorkItemList(
+        items=[
+            MyWorkItemRead(
+                id=wp.id,
+                project_id=wp.project_id,
+                project_name=project_name,
+                subject=wp.subject,
+                type=wp.type,
+                status=wp.status,
+                priority=wp.priority,
+                due_date=wp.due_date,
+                assignee_id=wp.assignee_id,
+                assignee_name=assignee_name,
+                updated_at=wp.updated_at,
+            )
+            for wp, project_name, assignee_name in rows
+        ],
+        total=total,
+        limit=limit,
+        offset=offset,
+    )
+
+
+@router.get("/me/activities", response_model=MyActivityList)
+async def my_activities(
+    q: str | None = Query(default=None, max_length=255),
+    limit: int = Query(default=50, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+) -> MyActivityList:
+    """Paginated activity across projects where the caller is currently a member."""
+    actor = User.__table__.alias("actor")
+    stmt = (
+        select(
+            Activity,
+            WorkPackage.subject,
+            Project.id.label("pid"),
+            Project.name.label("pname"),
+            actor.c.display_name,
+        )
+        .join(WorkPackage, Activity.work_package_id == WorkPackage.id)
+        .join(Project, WorkPackage.project_id == Project.id)
+        .join(
+            ProjectMember,
+            (ProjectMember.project_id == Project.id) & (ProjectMember.user_id == user.id),
+        )
+        .outerjoin(actor, Activity.actor_id == actor.c.id)
+        .where(Project.archived_at.is_(None))
+    )
+    if q is not None:
+        stmt = stmt.where(
+            WorkPackage.subject.icontains(q, autoescape=True)
+            | Project.name.icontains(q, autoescape=True)
+        )
+    total = (
+        await session.execute(select(func.count()).select_from(stmt.order_by(None).subquery()))
+    ).scalar_one()
+    rows = (
+        await session.execute(
+            stmt.order_by(Activity.created_at.desc(), Activity.id.desc())
+            .limit(limit)
+            .offset(offset)
+        )
+    ).all()
+    return MyActivityList(
+        items=[
+            MyActivityRead(
+                id=activity.id,
+                project_id=project_id,
+                project_name=project_name,
+                work_package_id=activity.work_package_id,
+                work_package_subject=subject,
+                actor_name=actor_name,
+                action=activity.action,
+                field=activity.field,
+                old_value=activity.old_value,
+                new_value=activity.new_value,
+                created_at=activity.created_at,
+            )
+            for activity, subject, project_id, project_name, actor_name in rows
+        ],
+        total=total,
+        limit=limit,
+        offset=offset,
     )
 
 

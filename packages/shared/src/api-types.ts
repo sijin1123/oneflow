@@ -451,6 +451,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/me/activities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * My Activities
+         * @description Paginated activity across projects where the caller is currently a member.
+         */
+        get: operations["my_activities_api_v1_me_activities_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/me/notification-settings": {
         parameters: {
             query?: never;
@@ -639,6 +659,26 @@ export interface paths {
         };
         /** List Work Item Drafts */
         get: operations["list_work_item_drafts_api_v1_me_work_item_drafts_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/me/work-items": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * My Work Items
+         * @description The paginated assigned, created, or subscribed work tab for the caller.
+         */
+        get: operations["my_work_items_api_v1_me_work_items_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -4042,6 +4082,17 @@ export interface components {
              */
             overflow: number;
         };
+        /** MyActivityList */
+        MyActivityList: {
+            /** Items */
+            items: components["schemas"]["MyActivityRead"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Total */
+            total: number;
+        };
         /**
          * MyActivityRead
          * @description Recent activity across the caller's projects, enriched for display.
@@ -4150,6 +4201,54 @@ export interface components {
             total: number;
             /** Total Hours */
             total_hours: number;
+        };
+        /** MyWorkItemList */
+        MyWorkItemList: {
+            /** Items */
+            items: components["schemas"]["MyWorkItemRead"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Total */
+            total: number;
+        };
+        /**
+         * MyWorkItemRead
+         * @description Paginated cross-project work row for the Your work tabs.
+         */
+        MyWorkItemRead: {
+            /** Assignee Id */
+            assignee_id?: string | null;
+            /** Assignee Name */
+            assignee_name?: string | null;
+            /** Due Date */
+            due_date: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Priority */
+            priority: string;
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            /** Project Name */
+            project_name: string;
+            /** Status */
+            status: string;
+            /** Subject */
+            subject: string;
+            /** Type */
+            type: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
         };
         /**
          * MyWorkPackage
@@ -7051,6 +7150,43 @@ export interface operations {
             };
         };
     };
+    my_activities_api_v1_me_activities_get: {
+        parameters: {
+            query?: {
+                q?: string | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MyActivityList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_notification_settings_api_v1_me_notification_settings_get: {
         parameters: {
             query?: never;
@@ -7572,6 +7708,46 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["WorkItemDraftList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    my_work_items_api_v1_me_work_items_get: {
+        parameters: {
+            query: {
+                relationship: "assigned" | "created" | "subscribed";
+                state?: "open" | "all";
+                sort?: "updated" | "due";
+                q?: string | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MyWorkItemList"];
                 };
             };
             /** @description Validation Error */

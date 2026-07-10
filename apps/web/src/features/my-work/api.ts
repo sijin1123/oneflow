@@ -16,6 +16,21 @@ export type MyWorkPackage = {
   assignee_name: string | null
 }
 
+export type MyWorkItem = MyWorkPackage & {
+  updated_at: string
+}
+
+export type MyWorkItemRelationship = 'assigned' | 'created' | 'subscribed'
+export type MyWorkItemState = 'open' | 'all'
+export type MyWorkItemSort = 'updated' | 'due'
+
+export type MyWorkItemList = {
+  items: MyWorkItem[]
+  total: number
+  limit: number
+  offset: number
+}
+
 export type MyActivity = {
   id: string
   project_id: string
@@ -37,10 +52,76 @@ export type MeWork = {
   recent_activity: MyActivity[]
 }
 
+export type MyActivityList = {
+  items: MyActivity[]
+  total: number
+  limit: number
+  offset: number
+}
+
 export function useMyWork() {
   return useQuery({
     queryKey: ['me-work'],
     queryFn: () => api<MeWork>('/api/v1/me/work'),
+  })
+}
+
+export function useMyWorkItems({
+  relationship,
+  state,
+  sort,
+  q,
+  limit = 50,
+  offset = 0,
+  enabled = true,
+}: {
+  relationship: MyWorkItemRelationship
+  state: MyWorkItemState
+  sort: MyWorkItemSort
+  q: string
+  limit?: number
+  offset?: number
+  enabled?: boolean
+}) {
+  return useQuery({
+    queryKey: ['me-work-items', relationship, state, sort, q, limit, offset],
+    queryFn: () => {
+      const params = new URLSearchParams({
+        relationship,
+        state,
+        sort,
+        limit: String(limit),
+        offset: String(offset),
+      })
+      if (q) params.set('q', q)
+      return api<MyWorkItemList>(`/api/v1/me/work-items?${params.toString()}`)
+    },
+    enabled,
+  })
+}
+
+export function useMyActivities({
+  q,
+  limit = 50,
+  offset = 0,
+  enabled = true,
+}: {
+  q: string
+  limit?: number
+  offset?: number
+  enabled?: boolean
+}) {
+  return useQuery({
+    queryKey: ['me-activities', q, limit, offset],
+    queryFn: () => {
+      const params = new URLSearchParams({
+        limit: String(limit),
+        offset: String(offset),
+      })
+      if (q) params.set('q', q)
+      return api<MyActivityList>(`/api/v1/me/activities?${params.toString()}`)
+    },
+    enabled,
   })
 }
 
