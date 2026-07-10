@@ -10,11 +10,13 @@ import { useQueryClient } from '@tanstack/react-query'
 import { EmptyState, ErrorState, ListSkeleton } from '@/components/shell/states'
 import { useCanWrite } from '@/features/members/useCanWrite'
 import { useMilestones } from '@/features/milestones/api'
+import { PlanningSurface } from '@/features/planning/PlanningSurface'
 import { ApiError } from '@/lib/api'
 import { todayISO } from '@/lib/datetime'
 import { cn } from '@/lib/utils'
 
 import { DetailDrawer } from './DetailDrawer'
+import { TimelineItemActions } from './TimelineItemActions'
 import { ganttDatesToPatch, nextDay } from './ganttDates'
 import { usePatchWorkPackage, useProjectRelations, useWorkPackages } from './api'
 import { type ProjectRelation, ZOOM_LABELS, ZOOM_LEVELS, type ZoomLevel } from './timeline'
@@ -107,6 +109,7 @@ function GanttChart({
   zoom,
   editable,
   onOpen,
+  onAction,
   onReschedule,
 }: {
   items: WorkPackage[]
@@ -115,6 +118,7 @@ function GanttChart({
   zoom: ZoomLevel
   editable: boolean
   onOpen: (id: string) => void
+  onAction: (id: string, rect: DOMRect) => void
   onReschedule: (
     id: string,
     patch: { start_date: string; due_date: string },
@@ -124,6 +128,8 @@ function GanttChart({
   const container = useRef<HTMLDivElement>(null)
   const openRef = useRef(onOpen)
   openRef.current = onOpen
+  const actionRef = useRef(onAction)
+  actionRef.current = onAction
   const rescheduleRef = useRef(onReschedule)
   rescheduleRef.current = onReschedule
   const editableRef = useRef(editable)
@@ -145,7 +151,12 @@ function GanttChart({
     gantt.config.row_height = 32
     gantt.config.bar_height = 18
     gantt.config.columns = [{ name: 'text', label: '작업', tree: false, width: 220 }]
-    gantt.templates.task_text = (_s, _e, task) => esc(String(task.text ?? ''))
+    gantt.templates.task_text = (_s, _e, task) => {
+      const text = esc(String(task.text ?? ''))
+      if (task.of_kind !== 'wp') return text
+      const id = esc(String(task.id))
+      return `<span class="of-gantt-task-inner"><span class="of-gantt-task-title">${text}</span><button type="button" class="of-gantt-action" data-of-gantt-action-id="${id}" aria-label="${text} 타임라인 항목 작업">...</button></span>`
+    }
     gantt.templates.grid_row_class = () => 'of-gantt-row'
     gantt.templates.tooltip_text = () => '' // no HTML tooltip surface
     gantt.templates.link_class = (link) => String((link as { css?: string }).css ?? '')
@@ -198,8 +209,32 @@ function GanttChart({
         })
     })
     const initedContainer = container.current
+    const findActionButton = (event: Event) => {
+      const target = event.target instanceof HTMLElement ? event.target : null
+      return target?.closest<HTMLButtonElement>('[data-of-gantt-action-id]') ?? null
+    }
+    const suppressActionDrag = (event: Event) => {
+      if (!findActionButton(event)) return
+      event.preventDefault()
+      event.stopPropagation()
+    }
+    const openAction = (event: MouseEvent | KeyboardEvent) => {
+      const button = findActionButton(event)
+      if (!button) return
+      if (event instanceof KeyboardEvent && event.key !== 'Enter' && event.key !== ' ') return
+      event.preventDefault()
+      event.stopPropagation()
+      const id = button.dataset.ofGanttActionId
+      if (id) actionRef.current(id, button.getBoundingClientRect())
+    }
+    initedContainer.addEventListener('pointerdown', suppressActionDrag, true)
+    initedContainer.addEventListener('click', openAction, true)
+    initedContainer.addEventListener('keydown', openAction, true)
     gantt.init(initedContainer)
     return () => {
+      initedContainer.removeEventListener('pointerdown', suppressActionDrag, true)
+      initedContainer.removeEventListener('click', openAction, true)
+      initedContainer.removeEventListener('keydown', openAction, true)
       gantt.detachEvent(clickId)
       gantt.detachEvent(dblId)
       gantt.detachEvent(beforeDragId)
@@ -271,11 +306,22 @@ export function TimelinePage() {
   const patch = usePatchWorkPackage(projectId)
   const queryClient = useQueryClient()
   const [dragNotice, setDragNotice] = useState<string | null>(null)
+  const [itemActionMessage, setItemActionMessage] = useState<{
+    text: string
+    tone: 'info' | 'success' | 'error'
+  } | null>(null)
+  const [activeAction, setActiveAction] = useState<{
+    wpId: string
+    top: number
+    left: number
+  } | null>(null)
   const [zoom, setZoom] = useState<ZoomLevel>(loadZoom)
   const changeZoom = (next: ZoomLevel) => {
     setZoom(next)
     saveZoom(next)
   }
+  const description =
+    '시작일과 기한이 있는 작업을 막대와 의존선으로 보고, 큰 일정 흐름을 계획 표면에서 조정합니다.'
 
   const reschedule = async (
     id: string,
@@ -302,72 +348,138 @@ export function TimelinePage() {
     }
   }
 
-  if (isPending) return <ListSkeleton />
-  if (isError) return <ErrorState error={error} onRetry={() => refetch()} />
+  if (isPending) {
+    return (
+      <PlanningSurface projectId={projectId} active="timeline" title="타임라인" description={description} wide>
+        <ListSkeleton />
+      </PlanningSurface>
+    )
+  }
+  if (isError) {
+    return (
+      <PlanningSurface projectId={projectId} active="timeline" title="타임라인" description={description} wide>
+        <ErrorState error={error} onRetry={() => refetch()} />
+      </PlanningSurface>
+    )
+  }
 
   const dated = data.items.filter((w) => w.start_date || w.due_date)
   const undated = data.items.filter((w) => !w.start_date && !w.due_date)
   if (dated.length === 0) {
     return (
-      <EmptyState
-        title="일정이 있는 작업이 없습니다"
-        hint="작업에 시작일/기한을 지정하면 타임라인에 표시됩니다."
-      />
+      <PlanningSurface projectId={projectId} active="timeline" title="타임라인" description={description} wide>
+        <EmptyState
+          title="일정이 있는 작업이 없습니다"
+          hint="작업에 시작일/기한을 지정하면 타임라인에 표시됩니다."
+          className="rounded-of border border-of-border bg-of-surface"
+        />
+      </PlanningSurface>
     )
   }
 
   const drawableIds = new Set(dated.map((w) => w.id))
   const { omitted } = toLinks(relations.data?.items ?? [], drawableIds)
 
-  const openDrawer = (id: string) => {
+  const openDrawer = (id: string, opts: { move?: boolean } = {}) => {
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev)
       next.set('wp', id)
+      if (opts.move) next.set('move', '1')
+      else next.delete('move')
       return next
     })
   }
 
+  const openActionMenu = (id: string, rect: DOMRect) => {
+    const width = 224
+    const left = Math.min(Math.max(8, rect.right - width), window.innerWidth - width - 8)
+    const top = Math.min(rect.bottom + 6, window.innerHeight - 216)
+    setActiveAction({ wpId: id, top: Math.max(8, top), left })
+  }
+
+  const activeWp = activeAction ? data.items.find((w) => w.id === activeAction.wpId) : null
+
   return (
-    <div className="flex h-full flex-col">
-      <div className="flex items-center gap-1.5 border-b border-of-border px-4 py-1.5 text-xs text-of-muted">
-        <span>줌</span>
-        {ZOOM_LEVELS.map((z) => (
-          <button
-            key={z}
-            type="button"
-            aria-pressed={zoom === z}
-            className={cn(
-              'rounded-of px-2 py-0.5',
-              zoom === z ? 'bg-of-accent-soft font-medium text-of-accent' : 'hover:bg-of-surface-2',
-            )}
-            onClick={() => changeZoom(z)}
-          >
-            {ZOOM_LABELS[z]}
-          </button>
-        ))}
-        <span className="ml-auto flex items-center gap-3">
-          {dragNotice ? <span role="alert" className="text-of-danger">{dragNotice}</span> : null}
-          {editable ? <span>막대를 드래그해 일정을 조정할 수 있습니다</span> : null}
-          {omitted > 0 ? (
-            <span>일정 미정으로 표시되지 않은 의존 {omitted}건 (연관(relates)은 의존이 아니라 표시하지 않음)</span>
-          ) : null}
-          {undated.length > 0 ? (
-            <span>일정 미정 {undated.length}건</span>
-          ) : null}
-        </span>
+    <PlanningSurface
+      projectId={projectId}
+      active="timeline"
+      title="타임라인"
+      description={description}
+      wide
+      bodyClassName="flex min-h-0 flex-col"
+      metrics={[
+        { label: '작업', value: data.total, hint: '전체 범위' },
+        { label: '일정 있음', value: dated.length, hint: `${undated.length}건 미정` },
+        { label: '마일스톤', value: milestones.data?.items.length ?? '-', hint: '표시 가능한 기준점' },
+        { label: '줌', value: ZOOM_LABELS[zoom], hint: editable ? '드래그 가능' : '읽기 전용' },
+      ]}
+    >
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-of border border-of-border bg-of-surface">
+        <div className="flex flex-wrap items-center gap-1.5 border-b border-of-border px-3 py-2 text-xs text-of-muted">
+          <span>줌</span>
+          {ZOOM_LEVELS.map((z) => (
+            <button
+              key={z}
+              type="button"
+              aria-pressed={zoom === z}
+              className={cn(
+                'rounded-of px-2 py-0.5',
+                zoom === z
+                  ? 'bg-of-accent-soft font-medium text-of-accent'
+                  : 'hover:bg-of-surface-2',
+              )}
+              onClick={() => changeZoom(z)}
+            >
+              {ZOOM_LABELS[z]}
+            </button>
+          ))}
+          <span className="ml-auto flex items-center gap-3">
+            {itemActionMessage ? (
+              <span
+                role={itemActionMessage.tone === 'error' ? 'alert' : 'status'}
+                className={itemActionMessage.tone === 'error' ? 'text-of-danger' : 'text-of-muted'}
+              >
+                {itemActionMessage.text}
+              </span>
+            ) : null}
+            {dragNotice ? <span role="alert" className="text-of-danger">{dragNotice}</span> : null}
+            {editable ? <span>막대를 드래그해 일정을 조정할 수 있습니다</span> : null}
+            {omitted > 0 ? (
+              <span>
+                일정 미정으로 표시되지 않은 의존 {omitted}건 (연관(relates)은 의존이 아니라
+                표시하지 않음)
+              </span>
+            ) : null}
+            {undated.length > 0 ? <span>일정 미정 {undated.length}건</span> : null}
+          </span>
+        </div>
+        <div className="min-h-0 flex-1">
+          <GanttChart
+            items={data.items}
+            milestones={milestones.data?.items ?? []}
+            relations={relations.data?.items ?? []}
+            zoom={zoom}
+            editable={editable}
+            onOpen={openDrawer}
+            onAction={openActionMenu}
+            onReschedule={reschedule}
+          />
+        </div>
       </div>
-      <div className="min-h-0 flex-1">
-        <GanttChart
-          items={data.items}
-          milestones={milestones.data?.items ?? []}
-          relations={relations.data?.items ?? []}
-          zoom={zoom}
-          editable={editable}
+      {activeWp && activeAction ? (
+        <TimelineItemActions
+          wp={activeWp}
+          projectId={projectId}
+          canWrite={editable}
+          top={activeAction.top}
+          left={activeAction.left}
           onOpen={openDrawer}
-          onReschedule={reschedule}
+          onOpenMove={(id) => openDrawer(id, { move: true })}
+          onMessage={(text, tone = 'info') => setItemActionMessage({ text, tone })}
+          onClose={() => setActiveAction(null)}
         />
-      </div>
+      ) : null}
       <DetailDrawer projectId={projectId} />
-    </div>
+    </PlanningSurface>
   )
 }

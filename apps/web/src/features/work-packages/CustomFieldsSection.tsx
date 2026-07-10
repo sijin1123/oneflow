@@ -1,16 +1,82 @@
+import {
+  CalendarDays,
+  CheckSquare,
+  Hash,
+  Link2,
+  ListChecks,
+  SlidersHorizontal,
+  TextCursorInput,
+  ToggleLeft,
+  UserRound,
+  type LucideIcon,
+} from 'lucide-react'
 import type React from 'react'
 import { useState } from 'react'
 
+import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import {
   type CustomField,
+  FIELD_TYPE_LABELS,
   useCustomFields,
   useCustomValues,
   usePutCustomValue,
 } from '@/features/custom-fields/api'
 import { useMembers } from '@/features/members/api'
 import { ApiError } from '@/lib/api'
+import { cn } from '@/lib/utils'
+
+import { TYPE_LABELS, type WpType } from './types'
+
+const FIELD_TYPE_ICONS: Record<CustomField['field_type'], LucideIcon> = {
+  text: TextCursorInput,
+  number: Hash,
+  boolean: ToggleLeft,
+  date: CalendarDays,
+  dropdown: ListChecks,
+  member: UserRound,
+  url: Link2,
+}
+
+function FieldMetric({
+  icon: Icon,
+  label,
+  value,
+  tone = 'neutral',
+}: {
+  icon: LucideIcon
+  label: string
+  value: string
+  tone?: 'accent' | 'neutral'
+}) {
+  return (
+    <div className="flex min-w-0 items-center gap-3 rounded-of border border-of-border bg-of-surface px-3 py-3">
+      <span
+        className={cn(
+          'flex h-8 w-8 shrink-0 items-center justify-center rounded-of',
+          tone === 'accent' ? 'bg-of-accent-soft text-of-accent' : 'bg-of-surface-2 text-of-muted',
+        )}
+      >
+        <Icon size={15} aria-hidden="true" />
+      </span>
+      <span className="min-w-0">
+        <span className="block text-[11px] text-of-muted">{label}</span>
+        <span className="block text-sm font-semibold tabular-nums">{value}</span>
+      </span>
+    </div>
+  )
+}
+
+function hasCustomValue(value: unknown) {
+  return value !== undefined && value !== null && value !== ''
+}
+
+function scopeLabel(field: CustomField) {
+  return field.applies_to
+    ? field.applies_to.map((k) => TYPE_LABELS[k as WpType] ?? k).join(' · ')
+    : '모든 타입'
+}
 
 function FieldInput({
   field,
@@ -51,8 +117,8 @@ function FieldInput({
   if (!editable) {
     // Inactive with a stored value: read-only + a clear affordance.
     control = (
-      <div className="flex items-center gap-2 text-xs">
-        <span className="text-of-muted">
+      <div className="flex flex-wrap items-center gap-2 text-xs">
+        <span className="min-w-0 text-of-muted">
           {String(value)} {field.is_active ? '(다른 타입 필드)' : '(비활성 필드)'}
         </span>
         {canWrite ? (
@@ -78,7 +144,7 @@ function FieldInput({
           checked={value === true}
           disabled={put.isPending}
           onChange={(e) => save(e.target.checked)}
-          className="h-3.5 w-3.5 accent-of-accent"
+          className="h-4 w-4 accent-of-accent"
         />
       )
       break
@@ -87,7 +153,7 @@ function FieldInput({
       control = (
         <Select
           aria-label={field.name}
-          className="h-7 text-xs"
+          className="h-8 text-xs"
           value={typeof value === 'string' ? value : ''}
           disabled={put.isPending}
           onChange={(e) => save(e.target.value || null)}
@@ -109,7 +175,7 @@ function FieldInput({
       control = (
         <Select
           aria-label={field.name}
-          className="h-7 text-xs"
+          className="h-8 text-xs"
           value={typeof value === 'string' ? value : ''}
           disabled={put.isPending}
           onChange={(e) => save(e.target.value || null)}
@@ -128,7 +194,7 @@ function FieldInput({
         <Input
           type="date"
           aria-label={field.name}
-          className="h-7 w-36 text-xs"
+          className="h-8 w-full text-xs sm:w-40"
           value={typeof value === 'string' ? value : ''}
           disabled={put.isPending}
           onChange={(e) => save(e.target.value || null)}
@@ -141,7 +207,7 @@ function FieldInput({
         <Input
           type={field.field_type === 'number' ? 'number' : 'text'}
           aria-label={field.name}
-          className="h-7 text-xs"
+          className="h-8 text-xs"
           value={draft ?? (value == null ? '' : String(value))}
           disabled={put.isPending}
           onChange={(e) => setDraft(e.target.value)}
@@ -192,24 +258,61 @@ export function CustomFieldsSection({
     (f) => (f.is_active && bound(f)) || valueMap.has(f.id),
   )
   if (visible.length === 0) return null
+  const filled = visible.filter((f) => hasCustomValue(valueMap.get(f.id))).length
+  const editableCount = visible.filter((f) => canWrite && f.is_active && bound(f)).length
 
   return (
-    <section aria-label="커스텀 필드" className="space-y-3 border-t border-of-border pt-3">
-      <h3 className="text-xs font-semibold text-of-muted">커스텀 필드</h3>
-      <div className="grid gap-2 sm:grid-cols-2">
-        {visible.map((f) => (
-          <div key={f.id} className="space-y-1">
-            <label className="text-xs font-medium text-of-muted">{f.name}</label>
+    <section aria-label="커스텀 필드" className="rounded-of border border-of-border bg-of-surface p-4">
+      <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
+          <h3 className="text-sm font-semibold">커스텀 필드</h3>
+          <p className="mt-1 text-xs leading-5 text-of-muted">
+            프로젝트별 속성과 저장된 값을 한 곳에서 확인합니다.
+          </p>
+        </div>
+        <Badge variant={canWrite ? 'accent' : 'outline'} className="self-start">
+          {canWrite ? '편집 가능' : '읽기 전용'}
+        </Badge>
+      </div>
+
+      <div className="mt-3 grid gap-2 sm:grid-cols-3">
+        <FieldMetric icon={SlidersHorizontal} label="필드" value={`${visible.length}개`} tone="accent" />
+        <FieldMetric icon={CheckSquare} label="값 있음" value={`${filled}개`} />
+        <FieldMetric icon={ListChecks} label="편집 가능" value={`${editableCount}개`} />
+      </div>
+
+      <div className="mt-3 grid gap-2 sm:grid-cols-2">
+        {visible.map((f) => {
+          const Icon = FIELD_TYPE_ICONS[f.field_type]
+          const value = valueMap.get(f.id)
+          const editable = canWrite && f.is_active && bound(f)
+          return (
+          <div key={f.id} className="rounded-of border border-of-border bg-of-surface-2/35 p-3">
+            <div className="mb-3 flex min-w-0 items-start justify-between gap-3">
+              <div className="min-w-0">
+                <label className="block truncate text-xs font-semibold">{f.name}</label>
+                <p className="mt-1 truncate text-[11px] text-of-muted">{scopeLabel(f)}</p>
+              </div>
+              <div className="flex shrink-0 flex-wrap justify-end gap-1">
+                <Badge variant="neutral">
+                  <Icon size={12} aria-hidden="true" /> {FIELD_TYPE_LABELS[f.field_type]}
+                </Badge>
+                <Badge variant={editable ? 'accent' : 'outline'}>
+                  {editable ? '입력' : hasCustomValue(value) ? '보존값' : '읽기'}
+                </Badge>
+              </div>
+            </div>
             <FieldInput
               field={f}
-              value={valueMap.get(f.id)}
+              value={value}
               wpId={wpId}
               projectId={projectId}
-              editable={canWrite && f.is_active && bound(f)}
+              editable={editable}
               canWrite={canWrite}
             />
           </div>
-        ))}
+          )
+        })}
       </div>
     </section>
   )
