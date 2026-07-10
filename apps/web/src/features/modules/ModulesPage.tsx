@@ -1,4 +1,4 @@
-import { Trash2 } from 'lucide-react'
+import { MoreHorizontal } from 'lucide-react'
 import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 
@@ -8,22 +8,22 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { useMe, useMemberNames, useMembers } from '@/features/members/api'
+import type { Member } from '@/features/members/types'
 import { PlanningSurface } from '@/features/planning/PlanningSurface'
 import { dayIndex, pct } from '@/features/work-packages/timeline'
 import { todayISO } from '@/lib/datetime'
-import { confirmDestructive } from '@/lib/guards'
 
 import {
   MODULE_STATE_LABELS,
   type ModuleState,
   type ProjectModule,
   useCreateModule,
-  useDeleteModule,
   useModuleMembers,
   useReplaceModuleMembers,
   useModules,
   useUpdateModule,
 } from './api'
+import { ModuleItemActions } from './ModuleItemActions'
 import { moduleBars } from './moduleTimeline'
 
 const STATE_ORDER: ModuleState[] = ['in_progress', 'planned', 'paused', 'completed', 'cancelled']
@@ -47,7 +47,6 @@ function ProgressBar({ done, total }: { done: number; total: number }) {
     </div>
   )
 }
-
 
 /* Roster panel (Pass 65): the count shows currently-ELIGIBLE participants;
    owners edit via full-replace PUT (viewers are shown disabled — they cannot
@@ -131,77 +130,161 @@ function ModuleRow({
   module,
   isOwner,
   projectId,
+  members,
+  onMessage,
 }: {
   module: ProjectModule
   isOwner: boolean
   projectId: string
+  members: Member[]
+  onMessage: (message: string, tone?: 'info' | 'success' | 'error') => void
 }) {
   const navigate = useNavigate()
   const update = useUpdateModule(projectId)
-  const remove = useDeleteModule(projectId)
   const memberName = useMemberNames(projectId)
+  const [editing, setEditing] = useState(false)
   const [showMembers, setShowMembers] = useState(false)
+  const [activeAction, setActiveAction] = useState<{ top: number; left: number } | null>(null)
+  const [name, setName] = useState(module.name)
+  const [lead, setLead] = useState(module.lead_id ?? '')
+  const [state, setState] = useState<ModuleState>(module.state)
+
+  const openActionMenu = (rect: DOMRect) => {
+    const width = 240
+    const height = 216
+    const maxLeft = Math.max(8, window.innerWidth - width - 8)
+    const maxTop = Math.max(8, window.innerHeight - height)
+    const left = Math.min(Math.max(8, rect.right - width), maxLeft)
+    const top = Math.min(Math.max(8, rect.bottom + 6), maxTop)
+    setActiveAction({ top, left })
+  }
+
+  const cancelEdit = () => {
+    setName(module.name)
+    setLead(module.lead_id ?? '')
+    setState(module.state)
+    setEditing(false)
+  }
+
+  if (editing) {
+    return (
+      <li className="flex flex-wrap items-center gap-2 px-3 py-2">
+        <Input
+          value={name}
+          onChange={(event) => setName(event.target.value)}
+          aria-label="모듈 이름 편집"
+          className="h-7 w-44 text-xs"
+        />
+        <Select
+          aria-label="모듈 리드 편집"
+          className="h-7 w-36 text-xs"
+          value={lead}
+          onChange={(event) => setLead(event.target.value)}
+        >
+          <option value="">리드 없음</option>
+          {members.map((m) => (
+            <option key={m.user_id} value={m.user_id}>
+              {m.display_name}
+            </option>
+          ))}
+        </Select>
+        <Select
+          aria-label="모듈 상태 편집"
+          className="h-7 w-32 text-xs"
+          value={state}
+          onChange={(event) => setState(event.target.value as ModuleState)}
+        >
+          {STATE_ORDER.map((s) => (
+            <option key={s} value={s}>
+              {MODULE_STATE_LABELS[s]}
+            </option>
+          ))}
+        </Select>
+        <Button
+          size="sm"
+          disabled={!name.trim() || update.isPending}
+          onClick={() =>
+            update.mutate(
+              {
+                moduleId: module.id,
+                name: name.trim(),
+                lead_id: lead || null,
+                state,
+              },
+              {
+                onSuccess: () => {
+                  setEditing(false)
+                  onMessage(`'${name.trim()}' 모듈을 저장했습니다.`, 'success')
+                },
+                onError: () => onMessage('모듈을 저장하지 못했습니다.', 'error'),
+              },
+            )
+          }
+        >
+          저장
+        </Button>
+        <Button size="sm" variant="outline" onClick={cancelEdit}>
+          취소
+        </Button>
+        {update.isError ? (
+          <p role="alert" className="w-full text-xs text-of-danger">
+            저장하지 못했습니다.
+          </p>
+        ) : null}
+      </li>
+    )
+  }
 
   return (
     <li className="px-3 py-2">
-      <div className="flex items-center gap-3">
-      <button
-        type="button"
-        className="min-w-0 flex-1 truncate text-left text-[13px] font-medium hover:underline"
-        onClick={() => navigate(`/projects/${projectId}/work-packages?module_id=${module.id}`)}
-      >
-        {module.name}
-      </button>
-      <span className="shrink-0 text-[11px] text-of-muted">
-        리드: {module.lead_id ? memberName(module.lead_id) : '없음'}
-      </span>
-      <button
-        type="button"
-        className="shrink-0 text-[11px] text-of-muted hover:text-of-accent hover:underline"
-        onClick={() => setShowMembers((v) => !v)}
-      >
-        참여자 {module.member_count}
-      </button>
-      <ProgressBar done={module.done_work_package_count} total={module.work_package_count} />
-      {isOwner ? (
-        <>
-          <Select
-            aria-label={`${module.name} 상태`}
-            className="h-7 w-28 text-xs"
-            value={module.state}
-            disabled={update.isPending}
-            onChange={(e) =>
-              update.mutate({ moduleId: module.id, state: e.target.value as ModuleState })
+      <div className="flex flex-wrap items-start gap-3">
+        <div className="min-w-0 flex-1 space-y-1">
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            <button
+              type="button"
+              className="min-w-0 max-w-full truncate text-left text-[13px] font-medium hover:underline"
+              onClick={() =>
+                navigate(`/projects/${projectId}/work-packages?module_id=${module.id}`)
+              }
+            >
+              {module.name}
+            </button>
+            <Badge variant="neutral">{MODULE_STATE_LABELS[module.state]}</Badge>
+          </div>
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            <span className="shrink-0 text-[11px] text-of-muted">
+              리드: {module.lead_id ? memberName(module.lead_id) : '없음'}
+            </span>
+            <span className="shrink-0 text-[11px] text-of-muted">
+              참여자 {module.member_count}
+            </span>
+            <ProgressBar done={module.done_work_package_count} total={module.work_package_count} />
+          </div>
+        </div>
+        <button
+          type="button"
+          aria-label={`${module.name} 모듈 작업`}
+          className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-of border border-of-border text-of-muted hover:bg-of-surface-2 hover:text-of-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus"
+          onClick={(event) => openActionMenu(event.currentTarget.getBoundingClientRect())}
+        >
+          <MoreHorizontal size={14} />
+        </button>
+        {activeAction ? (
+          <ModuleItemActions
+            module={module}
+            projectId={projectId}
+            isOwner={isOwner}
+            top={activeAction.top}
+            left={activeAction.left}
+            onOpenWorkItems={(moduleId) =>
+              navigate(`/projects/${projectId}/work-packages?module_id=${moduleId}`)
             }
-          >
-            {STATE_ORDER.map((s) => (
-              <option key={s} value={s}>
-                {MODULE_STATE_LABELS[s]}
-              </option>
-            ))}
-          </Select>
-          <button
-            type="button"
-            aria-label={`${module.name} 삭제`}
-            disabled={remove.isPending}
-            className="shrink-0 rounded-of p-1 text-of-muted hover:bg-of-surface-2 hover:text-of-danger"
-            onClick={() => {
-              if (
-                confirmDestructive(
-                  `'${module.name}' 모듈을 삭제할까요?\n연결된 작업 ${module.work_package_count}건은 삭제되지 않고 모듈 배정만 해제됩니다.`,
-                )
-              )
-                remove.mutate(module.id)
-            }}
-          >
-            <Trash2 size={13} />
-          </button>
-        </>
-      ) : (
-        <span className="shrink-0 text-[11px] text-of-muted">
-          {MODULE_STATE_LABELS[module.state]}
-        </span>
-      )}
+            onEdit={() => setEditing(true)}
+            onToggleMembers={() => setShowMembers((v) => !v)}
+            onMessage={onMessage}
+            onClose={() => setActiveAction(null)}
+          />
+        ) : null}
       </div>
       {showMembers ? (
         <ModuleMembersPanel module={module} projectId={projectId} isOwner={isOwner} />
@@ -272,7 +355,6 @@ function ModuleCard({ module, projectId }: { module: ProjectModule; projectId: s
   )
 }
 
-
 /* Timeline-lite (Pass 59): bars from start→target reusing the WP timeline's
    UTC day helpers; modules without both dates list below. */
 function ModuleTimeline({ modules, projectId }: { modules: ProjectModule[]; projectId: string }) {
@@ -295,7 +377,10 @@ function ModuleTimeline({ modules, projectId }: { modules: ProjectModule[]; proj
     <div className="space-y-2">
       <div className="overflow-hidden rounded-of border border-of-border bg-of-surface">
         {model.bars.map((b) => (
-          <div key={b.module.id} className="flex items-center border-b border-of-border/60 last:border-b-0">
+          <div
+            key={b.module.id}
+            className="flex items-center border-b border-of-border/60 last:border-b-0"
+          >
             <button
               type="button"
               className="w-40 shrink-0 truncate border-r border-of-border px-3 py-2 text-left text-[13px] hover:text-of-accent"
@@ -346,6 +431,10 @@ export function ModulesPage() {
     saveLayout(next)
   }
   const create = useCreateModule(projectId)
+  const [actionMessage, setActionMessage] = useState<{
+    text: string
+    tone: 'info' | 'success' | 'error'
+  } | null>(null)
   const description =
     '기능이나 릴리스 단위의 작업 묶음을 관리하고, 범위 상태를 계획 화면에서 이어 봅니다.'
 
@@ -367,10 +456,10 @@ export function ModulesPage() {
   const myRole = members.data?.items.find((m) => m.user_id === me.data?.id)?.role
   const isOwner = myRole === 'owner'
   const items = modules.data.items
-  const inFlight = items.filter((m) => m.state === 'in_progress').length
-  const scoped = items.reduce((total, m) => total + m.work_package_count, 0)
-  const done = items.reduce((total, m) => total + m.done_work_package_count, 0)
-  const participants = items.reduce((total, m) => total + m.member_count, 0)
+  const inFlight = items.filter((module) => module.state === 'in_progress').length
+  const scoped = items.reduce((total, module) => total + module.work_package_count, 0)
+  const done = items.reduce((total, module) => total + module.done_work_package_count, 0)
+  const participants = items.reduce((total, module) => total + module.member_count, 0)
 
   return (
     <PlanningSurface
@@ -388,114 +477,128 @@ export function ModulesPage() {
       <div className="space-y-5">
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-of border border-of-border bg-of-surface px-3 py-2">
           <p className="text-xs text-of-muted">보기 방식</p>
-          <div className="flex shrink-0 items-center gap-1 text-xs">
-            {(['list', 'gallery', 'timeline'] as const).map((l) => (
-              <button
-                key={l}
-                type="button"
-                aria-pressed={layout === l}
-                className={`rounded-of border px-2 py-1 ${
-                  layout === l
-                    ? 'border-of-accent bg-of-accent-soft text-of-accent'
-                    : 'border-of-border text-of-muted hover:bg-of-surface-2'
-                }`}
-                onClick={() => changeLayout(l)}
-              >
-                {l === 'list' ? '목록' : l === 'gallery' ? '갤러리' : '타임라인'}
-              </button>
-            ))}
-          </div>
+        <div className="flex shrink-0 items-center gap-1 text-xs">
+          {(['list', 'gallery', 'timeline'] as const).map((l) => (
+            <button
+              key={l}
+              type="button"
+              aria-pressed={layout === l}
+              className={`rounded-of border px-2 py-1 ${
+                layout === l
+                  ? 'border-of-accent bg-of-accent-soft text-of-accent'
+                  : 'border-of-border text-of-muted hover:bg-of-surface-2'
+              }`}
+              onClick={() => changeLayout(l)}
+            >
+              {l === 'list' ? '목록' : l === 'gallery' ? '갤러리' : '타임라인'}
+            </button>
+          ))}
         </div>
+        </div>
+        {actionMessage ? (
+        <p
+          role={actionMessage.tone === 'error' ? 'alert' : 'status'}
+          className={
+            actionMessage.tone === 'error'
+              ? 'mb-3 text-xs text-of-danger'
+              : 'mb-3 text-xs text-of-muted'
+          }
+        >
+          {actionMessage.text}
+        </p>
+        ) : null}
 
         {isOwner ? (
-          <div className="flex flex-wrap items-center gap-2 rounded-of border border-of-border bg-of-surface p-3">
-            <Input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="모듈 이름"
-              aria-label="새 모듈 이름"
-              className="h-8 w-44 text-xs"
-            />
-            <Select
-              aria-label="새 모듈 리드"
-              className="h-8 w-36 text-xs"
-              value={lead}
-              onChange={(e) => setLead(e.target.value)}
-            >
-              <option value="">리드 없음</option>
-              {members.data?.items.map((m) => (
-                <option key={m.user_id} value={m.user_id}>
-                  {m.display_name}
-                </option>
-              ))}
-            </Select>
-            <Button
-              size="sm"
-              disabled={!name.trim() || create.isPending}
-              onClick={() =>
-                create.mutate(
-                  { name: name.trim(), lead_id: lead || null },
-                  {
-                    onSuccess: () => {
-                      setName('')
-                      setLead('')
-                    },
+        <div className="flex flex-wrap items-center gap-2 rounded-of border border-of-border bg-of-surface p-3">
+          <Input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="모듈 이름"
+            aria-label="새 모듈 이름"
+            className="h-8 w-44 text-xs"
+          />
+          <Select
+            aria-label="새 모듈 리드"
+            className="h-8 w-36 text-xs"
+            value={lead}
+            onChange={(e) => setLead(e.target.value)}
+          >
+            <option value="">리드 없음</option>
+            {members.data?.items.map((m) => (
+              <option key={m.user_id} value={m.user_id}>
+                {m.display_name}
+              </option>
+            ))}
+          </Select>
+          <Button
+            size="sm"
+            disabled={!name.trim() || create.isPending}
+            onClick={() =>
+              create.mutate(
+                { name: name.trim(), lead_id: lead || null },
+                {
+                  onSuccess: () => {
+                    setName('')
+                    setLead('')
                   },
-                )
-              }
-            >
-              모듈 추가
-            </Button>
-            {create.isError ? (
-              <p role="alert" className="w-full text-xs text-of-danger">
-                생성하지 못했습니다.
-              </p>
-            ) : null}
-          </div>
+                },
+              )
+            }
+          >
+            모듈 추가
+          </Button>
+          {create.isError ? (
+            <p role="alert" className="w-full text-xs text-of-danger">
+              생성하지 못했습니다.
+            </p>
+          ) : null}
+        </div>
         ) : null}
 
         {items.length === 0 ? (
-          <EmptyState
-            title="모듈이 없습니다"
-            hint={isOwner ? '위에서 첫 모듈을 만들어 보세요.' : '소유자가 모듈을 만들 수 있습니다.'}
-          />
+        <EmptyState
+          title="모듈이 없습니다"
+          hint={isOwner ? '위에서 첫 모듈을 만들어 보세요.' : '소유자가 모듈을 만들 수 있습니다.'}
+        />
         ) : (
-          <div className="space-y-5">
-            {layout === 'timeline' ? (
-              <ModuleTimeline modules={items} projectId={projectId} />
-            ) : null}
-            {layout !== 'timeline' &&
-              STATE_ORDER.map((state) => {
-                const group = items.filter((m) => m.state === state)
-                if (group.length === 0) return null
-                return (
-                  <section key={state} aria-label={MODULE_STATE_LABELS[state]}>
-                    <h2 className="mb-1.5 text-sm font-semibold">
-                      {MODULE_STATE_LABELS[state]}{' '}
-                      <span className="text-xs font-normal text-of-muted">{group.length}</span>
-                    </h2>
-                    {layout === 'gallery' ? (
-                      <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                        {group.map((m) => (
-                          <ModuleCard key={m.id} module={m} projectId={projectId} />
-                        ))}
-                      </ul>
-                    ) : (
-                      <ul className="divide-y divide-of-border overflow-hidden rounded-of border border-of-border bg-of-surface">
-                        {group.map((m) => (
-                          <ModuleRow
-                            key={m.id}
-                            module={m}
-                            isOwner={isOwner}
-                            projectId={projectId}
-                          />
-                        ))}
-                      </ul>
-                    )}
-                  </section>
-                )
-              })}
-          </div>
+        <div className="space-y-5">
+          {layout === 'timeline' ? (
+            <ModuleTimeline modules={items} projectId={projectId} />
+          ) : null}
+          {layout !== 'timeline' &&
+            STATE_ORDER.map((state) => {
+            const group = items.filter((m) => m.state === state)
+            if (group.length === 0) return null
+            return (
+              <section key={state} aria-label={MODULE_STATE_LABELS[state]}>
+                <h2 className="mb-1.5 text-sm font-semibold">
+                  {MODULE_STATE_LABELS[state]}{' '}
+                  <span className="text-xs font-normal text-of-muted">{group.length}</span>
+                </h2>
+                {layout === 'gallery' ? (
+                  <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                    {group.map((m) => (
+                      <ModuleCard key={m.id} module={m} projectId={projectId} />
+                    ))}
+                  </ul>
+                ) : (
+                  <ul className="divide-y divide-of-border overflow-hidden rounded-of border border-of-border bg-of-surface">
+                    {group.map((m) => (
+                      <ModuleRow
+                        key={m.id}
+                        module={m}
+                        isOwner={isOwner}
+                        projectId={projectId}
+                        members={members.data?.items ?? []}
+                        onMessage={(text, tone = 'info') => setActionMessage({ text, tone })}
+                      />
+                    ))}
+                  </ul>
+                )}
+              </section>
+            )
+          })}
+        </div>
         )}
       </div>
     </PlanningSurface>
