@@ -58,7 +58,7 @@ async def reorder_project_statuses(
 ) -> ProjectStatusList:
     """Owner-only atomic reorder. The body must list exactly the project's status
     ids; positions are rewritten 0..n-1 in one transaction."""
-    await require_role(session, project_id, user, {"owner"})
+    await require_role(session, project_id, user, {"owner"}, write=True)
     rows = (
         (await session.execute(select(ProjectStatus).where(ProjectStatus.project_id == project_id)))
         .scalars()
@@ -87,7 +87,7 @@ async def update_project_status(
     user: User = Depends(get_current_user),
 ) -> ProjectStatusRead:
     # Owner-only: 404 for non-members, 403 for members without the owner role.
-    await require_role(session, project_id, user, {"owner"})
+    await require_role(session, project_id, user, {"owner"}, write=True)
     row = (
         await session.execute(
             select(ProjectStatus).where(

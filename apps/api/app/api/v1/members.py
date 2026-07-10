@@ -67,12 +67,18 @@ async def add_member(
     session: AsyncSession = Depends(get_session),
     user: User = Depends(get_current_user),
 ) -> MemberRead:
-    await require_role(session, project_id, user, {"owner"})  # 404 non-member / 403 non-owner
+    await require_role(
+        session, project_id, user, {"owner"}, write=True
+    )  # 404 non-member / 403 non-owner
     target = (
         await session.execute(select(User).where(User.email == body.email))
     ).scalar_one_or_none()
     if target is None:
         raise HTTPException(status_code=404, detail="no user with that email")
+    # Deactivated accounts keep existing memberships and history, but never
+    # enter NEW projects (v33.1 R1-(5) -- the one new-reference write closed).
+    if not target.is_active:
+        raise HTTPException(status_code=409, detail="user is deactivated")
     existing = (
         await session.execute(
             select(ProjectMember).where(
@@ -103,7 +109,7 @@ async def update_member_role(
     session: AsyncSession = Depends(get_session),
     user: User = Depends(get_current_user),
 ) -> MemberRead:
-    await require_role(session, project_id, user, {"owner"})
+    await require_role(session, project_id, user, {"owner"}, write=True)
     # Serialize membership mutations per project before the count-then-write.
     await _lock_project_members(session, project_id)
     membership = (
@@ -134,7 +140,7 @@ async def remove_member(
     session: AsyncSession = Depends(get_session),
     user: User = Depends(get_current_user),
 ) -> Response:
-    await require_role(session, project_id, user, {"owner"})
+    await require_role(session, project_id, user, {"owner"}, write=True)
     # Serialize membership mutations per project before the count-then-write.
     await _lock_project_members(session, project_id)
     membership = (

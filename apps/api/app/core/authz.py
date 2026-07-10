@@ -12,6 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.member import ProjectMember
+from app.models.project import Project
 from app.models.user import User
 
 
@@ -36,8 +37,24 @@ async def member_role(
     ).scalar_one_or_none()
 
 
+async def require_active_project(session: AsyncSession, project_id: uuid.UUID) -> None:
+    """Archived projects are read-only: every project-scoped WRITE calls this
+    (write=True on the membership guards) and gets a 409. Reads, exports and
+    the danger-zone restore endpoint stay available (Pass 2 PR-G)."""
+    archived = (
+        await session.execute(select(Project.archived_at).where(Project.id == project_id))
+    ).scalar_one_or_none()
+    if archived is not None:
+        raise HTTPException(status_code=409, detail="project is archived")
+
+
 async def require_role(
-    session: AsyncSession, project_id: uuid.UUID, user: User, roles: set[str]
+    session: AsyncSession,
+    project_id: uuid.UUID,
+    user: User,
+    roles: set[str],
+    *,
+    write: bool = False,
 ) -> str:
     """Membership + role gate (PLAN §5 Phase 2).
 
@@ -48,13 +65,31 @@ async def require_role(
         raise HTTPException(status_code=404, detail="not found")
     if role not in roles:
         raise HTTPException(status_code=403, detail="insufficient project role")
+    if write:
+        await require_active_project(session, project_id)
     return role
 
 
-async def require_member(session: AsyncSession, project_id: uuid.UUID, user: User) -> None:
-    if not await is_member(session, project_id, user.id):
+async def require_member(
+    session: AsyncSession, project_id: uuid.UUID, user: User, *, write: bool = False
+) -> None:
+    role = await member_role(session, project_id, user.id)
+    if role is None:
         # Existence hiding: non-members cannot distinguish "absent" from "forbidden".
         raise HTTPException(status_code=404, detail="not found")
+    if write:
+        # A viewer is a full member for reads but never writes (Pass 61).
+        if role == "viewer":
+            raise HTTPException(status_code=403, detail="read-only role")
+        await require_active_project(session, project_id)
+
+
+async def require_writer(session: AsyncSession, project_id: uuid.UUID, user_id) -> None:
+    """Viewer write-guard for helpers that scope by is_member() and add
+    require_active_project() themselves (WP/meeting/document scoped fetches).
+    Call it in every write branch alongside the archive guard (Pass 61)."""
+    if await member_role(session, project_id, user_id) == "viewer":
+        raise HTTPException(status_code=403, detail="read-only role")
 
 
 def authorize(user: User, action: str, resource: object | None = None) -> bool:

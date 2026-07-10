@@ -3,6 +3,7 @@ from datetime import date, datetime
 
 from sqlalchemy import (
     Boolean,
+    CheckConstraint,
     Date,
     DateTime,
     ForeignKey,
@@ -26,7 +27,12 @@ class Meeting(Base):
     optimistic-concurrency token."""
 
     __tablename__ = "meetings"
-    __table_args__ = (Index("ix_meetings_project_scheduled", "project_id", "scheduled_on"),)
+    __table_args__ = (
+        Index("ix_meetings_project_scheduled", "project_id", "scheduled_on"),
+        CheckConstraint(
+            "recurrence IN ('weekly', 'biweekly', 'monthly')", name="recurrence_allowed"
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     project_id: Mapped[uuid.UUID] = mapped_column(
@@ -38,6 +44,19 @@ class Meeting(Base):
     minutes: Mapped[str | None] = mapped_column(Text, nullable=True)
     author_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    # Recurrence lives on the CHAIN TAIL only (Pass 69): the sweep hands it to
+    # each new occurrence and clears it here — one active tail per chain.
+    recurrence: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    # Sweep-generated occurrences anchor to their origin — idempotency probes
+    # use this id, never title+date heuristics (v69.1 R1-①).
+    recurrence_source_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("meetings.id", ondelete="SET NULL"), nullable=True
+    )
+    # Manual follow-up's IMMEDIATE parent (Pass 79) — distinct axis from the
+    # recurrence chain above; SET NULL keeps the follow-up if the source dies.
+    follow_up_source_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("meetings.id", ondelete="SET NULL"), nullable=True
     )
     version: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     created_at: Mapped[datetime] = mapped_column(
@@ -63,6 +82,11 @@ class MeetingActionItem(Base):
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
     done: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    # Set once when the item is converted to a work package (Pass 6 PR-O);
+    # SET NULL keeps the item if that WP is later deleted.
+    converted_wp_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("work_packages.id", ondelete="SET NULL"), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

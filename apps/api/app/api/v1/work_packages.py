@@ -1,35 +1,58 @@
 import logging
+import re
 import uuid
 from typing import Literal
 
+import sqlalchemy as sa
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
+from sqlalchemy import delete as sa_delete
 from sqlalchemy import func, select, text
 from sqlalchemy import update as sa_update
 from sqlalchemy.exc import DBAPIError, IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.v1.project_types import require_type_enabled
 from app.core.auth import get_current_user
-from app.core.authz import is_member, require_member
+from app.core.authz import (
+    is_member,
+    member_role,
+    require_active_project,
+    require_member,
+    require_role,
+    require_writer,
+)
+from app.core.config import Settings, get_settings
 from app.db.session import get_session
+from app.models.cycle import Cycle
 from app.models.milestone import Milestone
+from app.models.module import Module
 from app.models.relation import WorkPackageRelation
 from app.models.user import User
-from app.models.work_package import WorkPackage
+from app.models.work_package import WP_CLOSED_STATUSES, WorkPackage
 from app.schemas.work_package import (
+    BulkUpdateRequest,
+    BulkUpdateResult,
     ConflictResponse,
+    MoveCleared,
+    MoveRefSummary,
+    ProjectRelationList,
+    ProjectRelationRead,
     RelationCreate,
     RelationList,
     RelationRead,
     WorkPackageCreate,
+    WorkPackageDuplicateResult,
     WorkPackageList,
+    WorkPackageMove,
+    WorkPackageMoveResult,
     WorkPackagePatch,
     WorkPackageRead,
 )
 from app.services.activity import record_created, record_field_changes
-from app.services.automation import extra_changes_for_status
-from app.services.notification import record_assignment
+from app.services.automation import bump_fired, change_candidates, record_applied
+from app.services.notification import notify_watchers, record_assignment
 from app.services.sanitize import sanitize_html
 
 logger = logging.getLogger("oneflow.work_packages")
@@ -57,33 +80,73 @@ PATCH_DATA_FIELDS = (
     "assignee_id",
     "parent_id",
     "milestone_id",
+    "cycle_id",
+    "module_id",
     "start_date",
     "due_date",
     "estimated_hours",
 )
 
 
-async def _get_wp_scoped(session: AsyncSession, wp_id: uuid.UUID, user: User) -> WorkPackage:
+async def _get_wp_scoped(
+    session: AsyncSession, wp_id: uuid.UUID, user: User, *, write: bool = False
+) -> WorkPackage:
     wp = (
         await session.execute(select(WorkPackage).where(WorkPackage.id == wp_id))
     ).scalar_one_or_none()
     if wp is None or not await is_member(session, wp.project_id, user.id):
         raise HTTPException(status_code=404, detail="not found")
+    if write:
+        await require_writer(session, wp.project_id, user.id)
+        await require_active_project(session, wp.project_id)
     return wp
 
 
-async def require_wp_member(session: AsyncSession, wp_id: uuid.UUID, user: User) -> WorkPackage:
+async def require_wp_member(
+    session: AsyncSession, wp_id: uuid.UUID, user: User, *, write: bool = False
+) -> WorkPackage:
     """Public membership guard for work-package sub-resources (comments/activities).
 
-    Returns the work package or raises 404 (existence hiding for non-members)."""
-    return await _get_wp_scoped(session, wp_id, user)
+    Returns the work package or raises 404 (existence hiding for non-members);
+    write=True additionally rejects archived projects with 409."""
+    return await _get_wp_scoped(session, wp_id, user, write=write)
+
+
+# Display-log snapshots (Pass 71, v71.1 R1-①): activities store TEXT renderings,
+# so project-scoped references record their NAME at change time — deletion,
+# rename or a cross-project move can never distort past history. assignee_id
+# stays a uuid (the web resolves member names — the existing contract).
+_NAMED_REF_FIELDS = {"cycle_id": Cycle, "module_id": Module, "milestone_id": Milestone}
+
+
+async def _display_values(
+    session: AsyncSession, old_values: dict, changes: dict
+) -> tuple[dict, dict]:
+    touched = [f for f in _NAMED_REF_FIELDS if f in changes]
+    if not touched:
+        return old_values, changes
+    disp_old, disp_new = dict(old_values), dict(changes)
+    for field in touched:
+        model = _NAMED_REF_FIELDS[field]
+        ids = {v for v in (old_values.get(field), changes.get(field)) if v is not None}
+        names: dict = {}
+        if ids:
+            names = dict(
+                (await session.execute(select(model.id, model.name).where(model.id.in_(ids)))).all()
+            )
+        disp_old[field] = names.get(old_values.get(field)) if old_values.get(field) else None
+        disp_new[field] = names.get(changes.get(field)) if changes.get(field) else None
+    return disp_old, disp_new
 
 
 async def _require_assignee_member(
     session: AsyncSession, project_id: uuid.UUID, assignee_id: uuid.UUID
 ) -> None:
-    if not await is_member(session, project_id, assignee_id):
+    role = await member_role(session, project_id, assignee_id)
+    if role is None:
         raise HTTPException(status_code=422, detail="assignee must be a member of the project")
+    if role == "viewer":
+        raise HTTPException(status_code=422, detail="assignee must not have a read-only role")
 
 
 async def _require_milestone_in_project(
@@ -96,6 +159,198 @@ async def _require_milestone_in_project(
         raise HTTPException(status_code=422, detail="milestone must belong to the same project")
 
 
+async def _require_cycle_in_project(
+    session: AsyncSession, project_id: uuid.UUID, cycle_id: uuid.UUID
+) -> None:
+    # Clean 422 for the UI; the composite FK is the authoritative DB-level guard.
+    c = (await session.execute(select(Cycle).where(Cycle.id == cycle_id))).scalar_one_or_none()
+    if c is None or c.project_id != project_id:
+        raise HTTPException(status_code=422, detail="cycle must belong to the same project")
+
+
+async def _require_module_in_project(
+    session: AsyncSession, project_id: uuid.UUID, module_id: uuid.UUID
+) -> None:
+    # Clean 422 for the UI; the composite FK is the authoritative DB-level guard.
+    m = (await session.execute(select(Module).where(Module.id == module_id))).scalar_one_or_none()
+    if m is None or m.project_id != project_id:
+        raise HTTPException(status_code=422, detail="module must belong to the same project")
+
+
+# Custom-field list columns (Pass 67, v67.1): the list accepts up to five
+# ACTIVE project fields and batch-attaches their stored values to the page.
+CUSTOM_FIELD_COLUMN_CAP = 5
+_CUSTOM_FIELDS_422 = "custom_fields must be up to 5 active field ids of this project"
+
+
+_CF_FILTER_FIELD_422 = "cf_field must be an active custom field of this project"
+_CF_FILTER_OP_422 = "cf_op must be 'eq' or 'has'"
+
+
+def _normalize_cf_value(field_type: str, raw: str) -> str:
+    """Type-appropriate canonical text for an eq filter (v80.1 R1-①). Bad
+    input for a typed field is a 422 (distinct from the field-existence 422);
+    text/dropdown/url pass through and simply may not match."""
+    if field_type == "number":
+        try:
+            f = float(raw)
+        except ValueError:
+            raise HTTPException(status_code=422, detail="cf_value must be a number") from None
+        return str(int(f)) if f.is_integer() else str(f)
+    if field_type == "boolean":
+        if raw not in ("true", "false"):
+            raise HTTPException(status_code=422, detail="cf_value must be 'true' or 'false'")
+        return raw
+    if field_type == "date":
+        if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", raw):
+            raise HTTPException(status_code=422, detail="cf_value must be YYYY-MM-DD")
+        return raw
+    if field_type == "member":
+        try:
+            return str(uuid.UUID(raw))
+        except ValueError:
+            raise HTTPException(status_code=422, detail="cf_value must be a user id") from None
+    return raw
+
+
+async def _custom_value_filter(
+    session: AsyncSession,
+    project_id: uuid.UUID,
+    cf_field: uuid.UUID | None,
+    cf_op: str | None,
+    cf_value: str | None,
+):
+    """Returns an EXISTS predicate (no join multiplication) or None. Field is
+    validated project-scoped (generic 422, Pass 67 parity); op/value follow."""
+    if cf_field is None:
+        return None
+    from app.models.custom_field import CustomField, WpCustomValue
+
+    field_type = (
+        await session.execute(
+            select(CustomField.field_type).where(
+                CustomField.id == cf_field,
+                CustomField.project_id == project_id,
+                CustomField.is_active.is_(True),
+            )
+        )
+    ).scalar_one_or_none()
+    if field_type is None:
+        raise HTTPException(status_code=422, detail=_CF_FILTER_FIELD_422)
+    if cf_op not in ("eq", "has"):
+        raise HTTPException(status_code=422, detail=_CF_FILTER_OP_422)
+    base = (WpCustomValue.work_package_id == WorkPackage.id) & (WpCustomValue.field_id == cf_field)
+    if cf_op == "has":
+        return select(WpCustomValue.id).where(base).exists()
+    if cf_value is None:
+        raise HTTPException(status_code=422, detail="cf_value is required when cf_op is 'eq'")
+    norm = _normalize_cf_value(field_type, cf_value)
+    # JSONB scalar → text: numbers/booleans/strings compare by canonical text.
+    return (
+        select(WpCustomValue.id)
+        .where(base, func.cast(WpCustomValue.value, sa.Text) == _jsonb_text(norm, field_type))
+        .exists()
+    )
+
+
+def _jsonb_text(norm: str, field_type: str) -> str:
+    """The stored JSONB rendered as text: strings are quoted, number/boolean
+    are bare — mirror PG's ::text output so the comparison lands."""
+    if field_type in ("number", "boolean"):
+        return norm
+    return f'"{norm}"'
+
+
+async def _parse_custom_fields(
+    session: AsyncSession, project_id: uuid.UUID, raw: str | None
+) -> list[uuid.UUID] | None:
+    """v67.1 R1-④ normalization: split → trim → empty token 422 → UUID parse
+    422 → first-occurrence dedup → cap AFTER dedup → request order kept.
+    Validation is project-scoped ONLY, and every rejection (missing / foreign
+    / inactive / malformed) is the SAME generic 422 — a foreign field id is
+    indistinguishable from a random one (R1-②/③)."""
+    if raw is None:
+        return None
+    ids: list[uuid.UUID] = []
+    for token in raw.split(","):
+        token = token.strip()
+        if not token:
+            raise HTTPException(status_code=422, detail=_CUSTOM_FIELDS_422)
+        try:
+            fid = uuid.UUID(token)
+        except ValueError:
+            raise HTTPException(status_code=422, detail=_CUSTOM_FIELDS_422) from None
+        if fid not in ids:
+            ids.append(fid)
+    if len(ids) > CUSTOM_FIELD_COLUMN_CAP:
+        raise HTTPException(status_code=422, detail=_CUSTOM_FIELDS_422)
+    from app.models.custom_field import CustomField
+
+    known = set(
+        (
+            await session.execute(
+                select(CustomField.id).where(
+                    CustomField.project_id == project_id,
+                    CustomField.id.in_(ids),
+                    CustomField.is_active.is_(True),
+                )
+            )
+        ).scalars()
+    )
+    if len(known) != len(ids):
+        raise HTTPException(status_code=422, detail=_CUSTOM_FIELDS_422)
+    return ids
+
+
+async def _attach_custom_values(
+    session: AsyncSession, items: list[WorkPackageRead], field_ids: list[uuid.UUID]
+) -> None:
+    """ONE batch SELECT for page×fields (never per-row); member names resolve
+    in a second tiny query (the single-WP endpoint's exact shape). A field
+    deleted between validation and here converges to empty cells (R1-⑤)."""
+    from app.models.custom_field import CustomField, WpCustomValue
+    from app.schemas.custom_field import CustomValueRead
+
+    if not items or not field_ids:
+        for item in items:
+            item.custom_values = []
+        return
+    wp_ids = [item.id for item in items]
+    rows = (
+        await session.execute(
+            select(WpCustomValue, CustomField.field_type)
+            .join(CustomField, WpCustomValue.field_id == CustomField.id)
+            .where(
+                WpCustomValue.work_package_id.in_(wp_ids),
+                WpCustomValue.field_id.in_(field_ids),
+            )
+        )
+    ).all()
+    member_ids = {uuid.UUID(v.value) for v, ftype in rows if ftype == "member"}
+    names: dict[uuid.UUID, str] = {}
+    if member_ids:
+        names = dict(
+            (
+                await session.execute(
+                    select(User.id, User.display_name).where(User.id.in_(member_ids))
+                )
+            ).all()
+        )
+    by_wp: dict[uuid.UUID, list] = {}
+    for v, ftype in rows:
+        by_wp.setdefault(v.work_package_id, []).append(
+            CustomValueRead(
+                field_id=v.field_id,
+                value=v.value,
+                member_display_name=(
+                    names.get(uuid.UUID(v.value), "(삭제된 사용자)") if ftype == "member" else None
+                ),
+            )
+        )
+    for item in items:
+        item.custom_values = by_wp.get(item.id, [])
+
+
 @router.get("/projects/{project_id}/work-packages", response_model=WorkPackageList)
 async def list_work_packages(
     project_id: uuid.UUID,
@@ -103,7 +358,19 @@ async def list_work_packages(
     priority: PriorityFilter | None = Query(default=None),
     type: TypeFilter | None = Query(default=None),
     assignee_id: uuid.UUID | None = Query(default=None),
+    milestone_id: uuid.UUID | None = Query(default=None),
+    cycle_id: uuid.UUID | None = Query(default=None),
+    # Backlog filters (Pass 52, v52.1): pure additive ANDs inside the scoped
+    # WHERE. no_cycle=true is cycle_id IS NULL (contradictory with cycle_id →
+    # 422); open_only=true excludes the fixed closed vocabulary.
+    no_cycle: bool = Query(default=False),
+    open_only: bool = Query(default=False),
+    module_id: uuid.UUID | None = Query(default=None),
     q: str | None = Query(default=None, max_length=255),
+    custom_fields: str | None = Query(default=None, max_length=255),
+    cf_field: uuid.UUID | None = Query(default=None),
+    cf_op: str | None = Query(default=None),
+    cf_value: str | None = Query(default=None, max_length=255),
     sort: SortField = Query(default="created"),
     limit: int = Query(default=200, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
@@ -111,7 +378,11 @@ async def list_work_packages(
     user: User = Depends(get_current_user),
 ) -> WorkPackageList:
     await require_member(session, project_id, user)
+    requested_fields = await _parse_custom_fields(session, project_id, custom_fields)
+    cf_predicate = await _custom_value_filter(session, project_id, cf_field, cf_op, cf_value)
     stmt = select(WorkPackage).where(WorkPackage.project_id == project_id)
+    if cf_predicate is not None:
+        stmt = stmt.where(cf_predicate)
     if status is not None:
         stmt = stmt.where(WorkPackage.status == status)
     if priority is not None:
@@ -120,6 +391,18 @@ async def list_work_packages(
         stmt = stmt.where(WorkPackage.type == type)
     if assignee_id is not None:
         stmt = stmt.where(WorkPackage.assignee_id == assignee_id)
+    if milestone_id is not None:
+        stmt = stmt.where(WorkPackage.milestone_id == milestone_id)
+    if no_cycle and cycle_id is not None:
+        raise HTTPException(status_code=422, detail="no_cycle contradicts cycle_id")
+    if cycle_id is not None:
+        stmt = stmt.where(WorkPackage.cycle_id == cycle_id)
+    if no_cycle:
+        stmt = stmt.where(WorkPackage.cycle_id.is_(None))
+    if open_only:
+        stmt = stmt.where(WorkPackage.status.not_in(WP_CLOSED_STATUSES))
+    if module_id is not None:
+        stmt = stmt.where(WorkPackage.module_id == module_id)
     if q:
         # Case-insensitive substring; % and _ wildcards are autoescaped (§6.1).
         stmt = stmt.where(WorkPackage.subject.icontains(q, autoescape=True))
@@ -133,7 +416,10 @@ async def list_work_packages(
     rows = (
         (await session.execute(stmt.order_by(*order).limit(limit).offset(offset))).scalars().all()
     )
-    return WorkPackageList(items=[WorkPackageRead.model_validate(w) for w in rows], total=total)
+    items = [WorkPackageRead.model_validate(w) for w in rows]
+    if requested_fields is not None:
+        await _attach_custom_values(session, items, requested_fields)
+    return WorkPackageList(items=items, total=total)
 
 
 @router.post(
@@ -145,11 +431,17 @@ async def create_work_package(
     session: AsyncSession = Depends(get_session),
     user: User = Depends(get_current_user),
 ) -> WorkPackageRead:
-    await require_member(session, project_id, user)
+    await require_member(session, project_id, user, write=True)
+    # New usage of a disabled work-item type is rejected (Pass 7 PR-R).
+    await require_type_enabled(session, project_id, body.type)
     if body.assignee_id is not None:
         await _require_assignee_member(session, project_id, body.assignee_id)
     if body.milestone_id is not None:
         await _require_milestone_in_project(session, project_id, body.milestone_id)
+    if body.cycle_id is not None:
+        await _require_cycle_in_project(session, project_id, body.cycle_id)
+    if body.module_id is not None:
+        await _require_module_in_project(session, project_id, body.module_id)
     if body.parent_id is not None:
         parent = (
             await session.execute(select(WorkPackage).where(WorkPackage.id == body.parent_id))
@@ -159,12 +451,12 @@ async def create_work_package(
     data = body.model_dump()
     # Rich-text description is sanitized at the write boundary (§ Tiptap XSS).
     data["description"] = sanitize_html(data["description"])
-    wp = WorkPackage(project_id=project_id, **data)
+    wp = WorkPackage(project_id=project_id, created_by=user.id, **data)
     session.add(wp)
     await session.flush()  # assigns wp.id for the activity FK
     record_created(session, wp.id, user.id)
     if body.assignee_id is not None:
-        record_assignment(
+        await record_assignment(
             session,
             recipient_id=body.assignee_id,
             actor_id=user.id,
@@ -174,6 +466,233 @@ async def create_work_package(
     await session.flush()
     await session.commit()
     return WorkPackageRead.model_validate(wp)
+
+
+@router.post("/projects/{project_id}/work-packages/bulk-update", response_model=BulkUpdateResult)
+async def bulk_update_work_packages(
+    project_id: uuid.UUID,
+    body: BulkUpdateRequest,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+) -> BulkUpdateResult:
+    """Bulk simple-assignment update (Pass 12 PR-AB, PLAN v12.1 R1-①②⑥).
+
+    Single transaction, all-or-nothing over the rows found: SELECT..FOR UPDATE
+    the project-scoped rows, validate the uniform patch ONCE up front (422
+    before any write), then per row: snapshot old values, skip unchanged rows,
+    assign + version+1, record field changes and assignment notifications for
+    real changes only. ids not found in this project return as opaque
+    skipped_ids (missing and cross-project look identical — existence hiding).
+    Deliberate §6.2 exception: no per-row version token (simple assignments,
+    list-scale cleanup; the drawer's precision PATCH keeps the token)."""
+    await require_member(session, project_id, user, write=True)
+
+    provided = body.patch.model_fields_set
+    if not provided:
+        raise HTTPException(status_code=422, detail="patch must set at least one field")
+    if "status" in provided and body.patch.status is None:
+        raise HTTPException(status_code=422, detail="status cannot be null")
+    if "priority" in provided and body.patch.priority is None:
+        raise HTTPException(status_code=422, detail="priority cannot be null")
+    if body.patch.assignee_id is not None:
+        await _require_assignee_member(session, project_id, body.patch.assignee_id)
+
+    rows = (
+        (
+            await session.execute(
+                select(WorkPackage)
+                .where(WorkPackage.id.in_(body.ids), WorkPackage.project_id == project_id)
+                .with_for_update()
+            )
+        )
+        .scalars()
+        .all()
+    )
+    by_id = {row.id: row for row in rows}
+    skipped = [i for i in body.ids if i not in by_id]
+
+    patch_fields = {f: getattr(body.patch, f) for f in provided}
+    # Bulk supports status/priority/assignee — status AND priority changes
+    # fire automation (type is not bulk-editable). Fired sets are PER ROW
+    # (old≠new only — v41.1 R1-①/②); candidates are cached per distinct
+    # fired subset (at most 4 for two triggers).
+    bulk_triggers = {
+        t: f
+        for t, f in (("status_changed_to", "status"), ("priority_changed_to", "priority"))
+        if f in patch_fields
+    }
+    # Keyed on the fired subset AND the row's pre_automation status/type/priority
+    # (v81.1 R1-③): rows with the same fired map but different pre-automation
+    # state can resolve an AND secondary condition differently, so a candidate
+    # set must never be reused across differing pre-automation state.
+    candidates_cache: dict[tuple, dict] = {}
+
+    updated: list[uuid.UUID] = []
+    unchanged: list[uuid.UUID] = []
+    for wp_id in body.ids:
+        wp = by_id.get(wp_id)
+        if wp is None:
+            continue
+        changes = {f: v for f, v in patch_fields.items() if getattr(wp, f) != v}
+        row_fired = {t: patch_fields[f] for t, f in bulk_triggers.items() if f in changes}
+        pre_state = {f: changes.get(f, getattr(wp, f)) for f in ("status", "type", "priority")}
+        cache_key = (
+            frozenset(row_fired.items()),
+            pre_state["status"],
+            pre_state["type"],
+            pre_state["priority"],
+        )
+        if cache_key not in candidates_cache:
+            candidates_cache[cache_key] = await change_candidates(
+                session, project_id, row_fired, pre_state
+            )
+        auto_candidates = candidates_cache[cache_key]
+        row_auto: list = []  # automation fills unset fields only (user wins)
+        for field, candidate in auto_candidates.items():
+            if (
+                field not in patch_fields
+                and field not in changes
+                and getattr(wp, field) != candidate.value
+            ):
+                changes[field] = candidate.value
+                row_auto.append(candidate)
+        if not changes:
+            unchanged.append(wp_id)
+            continue
+        old_values = {f: getattr(wp, f) for f in changes}
+        for field, value in changes.items():
+            setattr(wp, field, value)
+        wp.version += 1
+        disp_old, disp_new = await _display_values(session, old_values, changes)
+        record_field_changes(session, wp_id, user.id, disp_old, disp_new)
+        applied_rules: set[uuid.UUID] = set()
+        for candidate in row_auto:
+            record_applied(
+                session,
+                candidate=candidate,
+                project_id=project_id,
+                wp_id=wp_id,
+                wp_subject=wp.subject,
+                actor_id=user.id,
+                old_value=old_values.get(candidate.field),
+                new_value=candidate.value,
+            )
+            applied_rules.add(candidate.rule_id)
+        await bump_fired(session, applied_rules)
+        new_assignee = changes.get("assignee_id")
+        if new_assignee is not None:
+            await record_assignment(
+                session,
+                recipient_id=new_assignee,
+                actor_id=user.id,
+                project_id=project_id,
+                wp_id=wp_id,
+            )
+        updated.append(wp_id)
+    await session.commit()
+    return BulkUpdateResult(updated_ids=updated, unchanged_ids=unchanged, skipped_ids=skipped)
+
+
+@router.post(
+    "/work-packages/{wp_id}/duplicate",
+    response_model=WorkPackageDuplicateResult,
+    status_code=201,
+)
+async def duplicate_work_package(
+    wp_id: uuid.UUID,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+) -> WorkPackageDuplicateResult:
+    """Same-project duplicate (Pass 12 PR-AA, PLAN v12.1).
+
+    Copied: subject('(복사) ' prefix), description, type, priority, dates,
+    estimate, milestone/cycle/module, assignee (only if STILL a member — R1-⑤),
+    and custom values that pass the current write validation (active + bound +
+    valid option/member — R1-④; the rest are counted, not copied).
+    Not copied: status (→backlog — a duplicate starts over), parent (no tree
+    duplication), relations, watchers, comments, activities, attachments,
+    time/cost entries."""
+    src = await _get_wp_scoped(session, wp_id, user, write=True)
+    # A duplicate is NEW usage of the type — the disabled-type gate applies.
+    await require_type_enabled(session, src.project_id, src.type)
+
+    assignee = None
+    if src.assignee_id is not None and await is_member(session, src.project_id, src.assignee_id):
+        assignee = src.assignee_id
+
+    subject = f"(복사) {src.subject}"[:255]
+    dup = WorkPackage(
+        project_id=src.project_id,
+        subject=subject,
+        description=src.description,
+        type=src.type,
+        status="backlog",
+        priority=src.priority,
+        assignee_id=assignee,
+        milestone_id=src.milestone_id,
+        cycle_id=src.cycle_id,
+        module_id=src.module_id,
+        start_date=src.start_date,
+        due_date=src.due_date,
+        estimated_hours=src.estimated_hours,
+        created_by=user.id,
+    )
+    session.add(dup)
+    await session.flush()
+    record_created(session, dup.id, user.id)
+    if assignee is not None:
+        await record_assignment(
+            session,
+            recipient_id=assignee,
+            actor_id=user.id,
+            project_id=src.project_id,
+            wp_id=dup.id,
+        )
+
+    # Custom values: re-run the same checks the write fan-in applies — a value
+    # that would be rejected as a new write today is skipped, not smuggled.
+    from app.api.v1.custom_fields import _validate_value
+    from app.models.custom_field import CustomField, WpCustomValue
+    from app.models.member import ProjectMember
+
+    rows = (
+        (
+            await session.execute(
+                select(WpCustomValue, CustomField)
+                .join(CustomField, CustomField.id == WpCustomValue.field_id)
+                .where(WpCustomValue.work_package_id == src.id)
+            )
+        )
+        .tuples()
+        .all()
+    )
+    skipped = 0
+    if rows:
+        member_ids: set[uuid.UUID] = set(
+            (
+                await session.execute(
+                    select(ProjectMember.user_id).where(ProjectMember.project_id == src.project_id)
+                )
+            ).scalars()
+        )
+        for value_row, field in rows:
+            if not field.is_active or (
+                field.applies_to is not None and dup.type not in field.applies_to
+            ):
+                skipped += 1
+                continue
+            try:
+                normalized = _validate_value(field, value_row.value, member_ids)
+            except HTTPException:
+                skipped += 1
+                continue
+            session.add(WpCustomValue(work_package_id=dup.id, field_id=field.id, value=normalized))
+
+    await session.flush()
+    await session.commit()
+    return WorkPackageDuplicateResult(
+        work_package=WorkPackageRead.model_validate(dup), skipped_custom_values=skipped
+    )
 
 
 @router.get("/work-packages/{wp_id}", response_model=WorkPackageRead)
@@ -229,7 +748,7 @@ async def patch_work_package(
     session: AsyncSession = Depends(get_session),
     user: User = Depends(get_current_user),
 ):
-    wp = await _get_wp_scoped(session, wp_id, user)
+    wp = await _get_wp_scoped(session, wp_id, user, write=True)
 
     provided = body.model_fields_set - {"expected_version"}
     for field in provided & NON_NULLABLE_PATCH_FIELDS:
@@ -251,19 +770,42 @@ async def patch_work_package(
         return WorkPackageRead.model_validate(fresh)
 
     _effective_dates(wp, changes)
+    if changes.get("type") is not None and changes["type"] != wp.type:
+        # Enablement bites only on a REAL type change — a drawer echoing the
+        # current (possibly disabled) type back must not block other edits.
+        await require_type_enabled(session, wp.project_id, changes["type"])
     if changes.get("assignee_id") is not None:
         await _require_assignee_member(session, wp.project_id, changes["assignee_id"])
     if changes.get("milestone_id") is not None:
         await _require_milestone_in_project(session, wp.project_id, changes["milestone_id"])
+    if changes.get("cycle_id") is not None:
+        await _require_cycle_in_project(session, wp.project_id, changes["cycle_id"])
+    if changes.get("module_id") is not None:
+        await _require_module_in_project(session, wp.project_id, changes["module_id"])
 
-    # Automation (§3 Phase 3): a real status change can imply further field writes
-    # from active project rules. Single-pass and only fills fields the user did not
-    # set explicitly, so it never overrides user input or re-triggers itself.
-    if changes.get("status") is not None and changes["status"] != wp.status:
-        for field, value in (
-            await extra_changes_for_status(session, wp.project_id, changes["status"])
-        ).items():
-            changes.setdefault(field, value)
+    # Automation (§3 Phase 3): a real status/type/priority change can imply
+    # further field writes from active project rules. Single-pass and only
+    # fills fields the user did not set explicitly, so it never overrides
+    # user input or re-triggers itself. `fired` holds REAL changes only —
+    # a no-op field never fires (v41.1 R1-②).
+    fired: dict[str, str] = {}
+    for trigger_type, field in (
+        ("status_changed_to", "status"),
+        ("type_changed_to", "type"),
+        ("priority_changed_to", "priority"),
+    ):
+        if changes.get(field) is not None and changes[field] != getattr(wp, field):
+            fired[trigger_type] = changes[field]
+    # pre_automation state for an optional AND secondary condition (Pass 81):
+    # the WP's status/type/priority AFTER the user's change, BEFORE automation.
+    pre_automation_state = {
+        f: changes.get(f, getattr(wp, f)) for f in ("status", "type", "priority")
+    }
+    auto_candidates: dict = await change_candidates(
+        session, wp.project_id, fired, pre_automation_state
+    )
+    for field, candidate in auto_candidates.items():
+        changes.setdefault(field, candidate.value)
 
     # Capture pre-update values for the activity log BEFORE the UPDATE (the
     # populate_existing UPDATE below refreshes the identity-mapped wp in place).
@@ -295,16 +837,60 @@ async def patch_work_package(
         updated = (await session.execute(stmt)).scalar_one_or_none()
         if updated is not None:
             # Record field changes in the same transaction as the update.
-            record_field_changes(session, wp_id, user.id, old_values, changes)
+            disp_old, disp_new = await _display_values(session, old_values, changes)
+            record_field_changes(session, wp_id, user.id, disp_old, disp_new)
+            # Automation accounting (v16.1: fired = run = ACTUALLY APPLIED) —
+            # only candidates that survived the setdefault merge, really
+            # changed the value, and rode the successful conditional UPDATE.
+            applied_rules: set[uuid.UUID] = set()
+            for field, candidate in auto_candidates.items():
+                if (
+                    changes.get(field) == candidate.value
+                    and old_values.get(field) != candidate.value
+                ):
+                    record_applied(
+                        session,
+                        candidate=candidate,
+                        project_id=wp.project_id,
+                        wp_id=wp_id,
+                        wp_subject=updated.subject,
+                        actor_id=user.id,
+                        old_value=old_values.get(field),
+                        new_value=candidate.value,
+                    )
+                    applied_rules.add(candidate.rule_id)
+            await bump_fired(session, applied_rules)
             # Notify on a real (re)assignment to a new user.
             new_assignee = changes.get("assignee_id")
-            if new_assignee is not None and old_values.get("assignee_id") != new_assignee:
-                record_assignment(
+            assignee_changed = (
+                new_assignee is not None and old_values.get("assignee_id") != new_assignee
+            )
+            if assignee_changed:
+                await record_assignment(
                     session,
                     recipient_id=new_assignee,
                     actor_id=user.id,
                     project_id=wp.project_id,
                     wp_id=wp_id,
+                )
+            # Watcher fan-out (same transaction; PR-E1). The new assignee already
+            # got the richer 'assigned' notification → excluded from watch_assigned.
+            if changes.get("status") is not None and changes["status"] != old_values.get("status"):
+                await notify_watchers(
+                    session,
+                    wp_id=wp_id,
+                    project_id=wp.project_id,
+                    actor_id=user.id,
+                    kind="watch_status",
+                )
+            if assignee_changed:
+                await notify_watchers(
+                    session,
+                    wp_id=wp_id,
+                    project_id=wp.project_id,
+                    actor_id=user.id,
+                    kind="watch_assigned",
+                    exclude=(new_assignee,),
                 )
             await session.flush()
         await session.commit()
@@ -355,6 +941,39 @@ def _conflict_response(current: WorkPackage) -> JSONResponse:
     return JSONResponse(status_code=409, content=jsonable_encoder(payload))
 
 
+@router.get("/projects/{project_id}/relations", response_model=ProjectRelationList)
+async def list_project_relations(
+    project_id: uuid.UUID,
+    limit: int = Query(default=500, ge=1, le=1000),
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+) -> ProjectRelationList:
+    """Every relation in the project (member read) — the timeline draws
+    dependency connectors from this. Deterministic order, limit+1 truncation
+    probe (v20.1 R1-① — relations are few per WP; a hard 1000 cap bounds the
+    payload, revisit with pagination if projects outgrow it)."""
+    await require_member(session, project_id, user)
+    rows = (
+        (
+            await session.execute(
+                select(WorkPackageRelation)
+                .where(WorkPackageRelation.project_id == project_id)
+                .order_by(WorkPackageRelation.created_at.asc(), WorkPackageRelation.id.asc())
+                .limit(limit + 1)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    truncated = len(rows) > limit
+    rows = rows[:limit]
+    return ProjectRelationList(
+        items=[ProjectRelationRead.model_validate(r) for r in rows],
+        total=len(rows),
+        truncated=truncated,
+    )
+
+
 @router.get("/work-packages/{wp_id}/relations", response_model=RelationList)
 async def list_relations(
     wp_id: uuid.UUID,
@@ -399,7 +1018,7 @@ async def create_relation(
     session: AsyncSession = Depends(get_session),
     user: User = Depends(get_current_user),
 ) -> RelationRead:
-    wp = await _get_wp_scoped(session, wp_id, user)
+    wp = await _get_wp_scoped(session, wp_id, user, write=True)
     if body.target_id == wp_id:
         raise HTTPException(status_code=422, detail="a work package cannot relate to itself")
     target = (
@@ -437,7 +1056,7 @@ async def delete_relation(
     session: AsyncSession = Depends(get_session),
     user: User = Depends(get_current_user),
 ) -> Response:
-    wp = await _get_wp_scoped(session, wp_id, user)
+    wp = await _get_wp_scoped(session, wp_id, user, write=True)
     relation = (
         await session.execute(
             select(WorkPackageRelation).where(WorkPackageRelation.id == relation_id)
@@ -453,3 +1072,306 @@ async def delete_relation(
     await session.delete(relation)
     await session.commit()
     return Response(status_code=204)
+
+
+# Cross-project move locks (Pass 66, v66.1 R1-③): acquired on BOTH projects in
+# UUID order (deadlock-free), before the WP row lock and any quota lock.
+MOVE_LOCK_CLASSID = 427009
+
+_MOVE_NAME_CAP = 3
+
+
+def _summary(names: list[str]) -> MoveRefSummary:
+    return MoveRefSummary(
+        count=len(names),
+        names=names[:_MOVE_NAME_CAP],
+        overflow=max(0, len(names) - _MOVE_NAME_CAP),
+    )
+
+
+@router.post("/work-packages/{wp_id}/move", response_model=WorkPackageMoveResult)
+async def move_work_package(
+    wp_id: uuid.UUID,
+    body: WorkPackageMove,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+    settings: Settings = Depends(get_settings),
+):
+    """Move a work package to another project (Pass 66 PR-CF, v66.1).
+
+    A move is a FULL transfer of ownership and visibility — comments, time,
+    cost and history travel with the item (internal trust model; the source
+    OWNER gate is the control). Project-scoped references cannot travel:
+    parent/children links detach, relations / custom values / document links
+    are deleted (previewed via dry_run first), watchers and the assignee are
+    re-checked against target eligibility. Blob storage keys are immutable —
+    quota and sweeps follow the DB project_id, never the key prefix."""
+    from app.models.activity import Activity
+    from app.models.attachment import Attachment
+    from app.models.custom_field import CustomField, WpCustomValue
+    from app.models.document import DocumentWorkPackageLink, ProjectDocument
+    from app.models.member import ProjectMember
+    from app.models.notification import Notification
+    from app.models.project import Project
+    from app.models.watcher import WpWatcher
+    from app.services.storage_usage import used_bytes
+
+    wp = (
+        await session.execute(select(WorkPackage).where(WorkPackage.id == wp_id))
+    ).scalar_one_or_none()
+    if wp is None or not await is_member(session, wp.project_id, user.id):
+        raise HTTPException(status_code=404, detail="not found")
+    # Source OWNER (v66.1 R1-② — destructive cleanup + visibility transfer),
+    # archived source refuses writes; then target membership/write.
+    await require_role(session, wp.project_id, user, {"owner"}, write=True)
+    await require_member(session, body.target_project_id, user, write=True)
+    if body.target_project_id == wp.project_id:
+        raise HTTPException(status_code=422, detail="target must be a different project")
+    # The stored type key must be usable in the target (duplicate precedent —
+    # explicit refusal beats a silent fallback).
+    await require_type_enabled(session, body.target_project_id, wp.type)
+
+    if not body.dry_run:
+        # Deterministic two-project serialization, then the row itself.
+        for pid in sorted((wp.project_id, body.target_project_id), key=str):
+            await session.execute(
+                text("SELECT pg_advisory_xact_lock(:classid, hashtext(:pid))").bindparams(
+                    classid=MOVE_LOCK_CLASSID, pid=str(pid)
+                )
+            )
+        wp = (
+            await session.execute(
+                select(WorkPackage).where(WorkPackage.id == wp_id).with_for_update()
+            )
+        ).scalar_one()
+    if wp.version != body.expected_version:
+        fresh = await _reselect_fresh(session, wp_id)
+        return _conflict_response(fresh)
+
+    # ---- gather the cleared-reference summaries (shared by dry_run) --------
+    children = (
+        (
+            await session.execute(
+                select(WorkPackage.subject)
+                .where(WorkPackage.parent_id == wp_id)
+                .order_by(WorkPackage.subject.asc())
+            )
+        )
+        .scalars()
+        .all()
+    )
+    rel_rows = (
+        (
+            await session.execute(
+                select(WorkPackage.subject)
+                .join(
+                    WorkPackageRelation,
+                    (
+                        (WorkPackageRelation.source_id == wp_id)
+                        & (WorkPackageRelation.target_id == WorkPackage.id)
+                    )
+                    | (
+                        (WorkPackageRelation.target_id == wp_id)
+                        & (WorkPackageRelation.source_id == WorkPackage.id)
+                    ),
+                )
+                .order_by(WorkPackage.subject.asc())
+            )
+        )
+        .scalars()
+        .all()
+    )
+    cv_rows = (
+        (
+            await session.execute(
+                select(CustomField.name)
+                .join(WpCustomValue, WpCustomValue.field_id == CustomField.id)
+                .where(WpCustomValue.work_package_id == wp_id)
+                .order_by(CustomField.name.asc())
+            )
+        )
+        .scalars()
+        .all()
+    )
+    link_rows = (
+        (
+            await session.execute(
+                select(ProjectDocument.title)
+                .join(
+                    DocumentWorkPackageLink,
+                    DocumentWorkPackageLink.document_id == ProjectDocument.id,
+                )
+                .where(DocumentWorkPackageLink.work_package_id == wp_id)
+                .order_by(ProjectDocument.title.asc())
+            )
+        )
+        .scalars()
+        .all()
+    )
+    # Watchers keep only target-eligible users (member AND not viewer AND active).
+    eligible_watchers = set(
+        (
+            await session.execute(
+                select(WpWatcher.user_id)
+                .join(
+                    ProjectMember,
+                    (ProjectMember.user_id == WpWatcher.user_id)
+                    & (ProjectMember.project_id == body.target_project_id),
+                )
+                .join(User, User.id == WpWatcher.user_id)
+                .where(
+                    WpWatcher.work_package_id == wp_id,
+                    ProjectMember.role != "viewer",
+                    User.is_active.is_(True),
+                )
+            )
+        ).scalars()
+    )
+    removed_watchers = (
+        (
+            await session.execute(
+                select(User.display_name)
+                .join(WpWatcher, WpWatcher.user_id == User.id)
+                .where(
+                    WpWatcher.work_package_id == wp_id,
+                    User.id.notin_(eligible_watchers) if eligible_watchers else True,
+                )
+                .order_by(User.display_name.asc())
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assignee_cleared = False
+    if wp.assignee_id is not None:
+        role = await member_role(session, body.target_project_id, wp.assignee_id)
+        active = (
+            await session.execute(select(User.is_active).where(User.id == wp.assignee_id))
+        ).scalar_one_or_none()
+        assignee_cleared = role is None or role == "viewer" or active is not True
+
+    cleared = MoveCleared(
+        parent=wp.parent_id is not None,
+        children=_summary(list(children)),
+        milestone=wp.milestone_id is not None,
+        cycle=wp.cycle_id is not None,
+        module=wp.module_id is not None,
+        relations=_summary(list(rel_rows)),
+        custom_values=_summary(list(cv_rows)),
+        document_links=_summary(list(link_rows)),
+        watchers_removed=_summary(list(removed_watchers)),
+        assignee_cleared=assignee_cleared,
+    )
+    if body.dry_run:
+        return WorkPackageMoveResult(work_package=None, cleared=cleared, dry_run=True)
+
+    # ---- attachment quota (target upload lock — the upload contract) -------
+    moving_bytes = (
+        await session.execute(
+            select(func.coalesce(func.sum(Attachment.size_bytes), 0)).where(
+                Attachment.work_package_id == wp_id
+            )
+        )
+    ).scalar_one()
+    att_count = (
+        await session.execute(
+            select(func.count()).select_from(Attachment).where(Attachment.work_package_id == wp_id)
+        )
+    ).scalar_one()
+    if att_count:
+        from app.api.v1.attachments import UPLOAD_LOCK_CLASSID
+
+        await session.execute(
+            text("SELECT pg_advisory_xact_lock(:classid, hashtext(:pid))").bindparams(
+                classid=UPLOAD_LOCK_CLASSID, pid=str(body.target_project_id)
+            )
+        )
+        # Settings via Depends — a direct get_settings() call would split-brain
+        # against the app's explicit Settings (house review finding #5).
+        if await used_bytes(session, body.target_project_id) + int(moving_bytes) > (
+            settings.project_storage_quota_bytes
+        ):
+            raise HTTPException(status_code=413, detail="target project storage quota exceeded")
+
+    # ---- apply (one transaction) --------------------------------------------
+    old_project_id = wp.project_id
+    names = dict(
+        (
+            await session.execute(
+                select(Project.id, Project.name).where(
+                    Project.id.in_([old_project_id, body.target_project_id])
+                )
+            )
+        ).all()
+    )
+    await session.execute(
+        sa_update(WorkPackage).where(WorkPackage.parent_id == wp_id).values(parent_id=None)
+    )
+    await session.execute(
+        sa_delete(WorkPackageRelation).where(
+            (WorkPackageRelation.source_id == wp_id) | (WorkPackageRelation.target_id == wp_id)
+        )
+    )
+    await session.execute(sa_delete(WpCustomValue).where(WpCustomValue.work_package_id == wp_id))
+    await session.execute(
+        sa_delete(DocumentWorkPackageLink).where(DocumentWorkPackageLink.work_package_id == wp_id)
+    )
+    if eligible_watchers:
+        await session.execute(
+            sa_delete(WpWatcher).where(
+                WpWatcher.work_package_id == wp_id,
+                WpWatcher.user_id.notin_(eligible_watchers),
+            )
+        )
+    else:
+        await session.execute(sa_delete(WpWatcher).where(WpWatcher.work_package_id == wp_id))
+    # Composite FK dance: attachments reference (work_package_id, project_id),
+    # so neither side can change first. Detach the anchor, move the WP below,
+    # re-anchor with the new project — one transaction, constraint never trips.
+    moved_attachment_ids = (
+        (await session.execute(select(Attachment.id).where(Attachment.work_package_id == wp_id)))
+        .scalars()
+        .all()
+    )
+    if moved_attachment_ids:
+        await session.execute(
+            sa_update(Attachment)
+            .where(Attachment.id.in_(moved_attachment_ids))
+            .values(work_package_id=None)
+        )
+    # Old notifications must deep-link into the CURRENT project (R1-⑤).
+    await session.execute(
+        sa_update(Notification)
+        .where(Notification.work_package_id == wp_id)
+        .values(project_id=body.target_project_id)
+    )
+    wp.parent_id = None
+    wp.milestone_id = None
+    wp.cycle_id = None
+    wp.module_id = None
+    if assignee_cleared:
+        wp.assignee_id = None
+    wp.project_id = body.target_project_id
+    wp.version += 1
+    await session.flush()  # WP row moves before attachments re-anchor
+    if moved_attachment_ids:
+        await session.execute(
+            sa_update(Attachment)
+            .where(Attachment.id.in_(moved_attachment_ids))
+            .values(work_package_id=wp_id, project_id=body.target_project_id)
+        )
+    session.add(
+        Activity(
+            work_package_id=wp_id,
+            actor_id=user.id,
+            action="field_changed",
+            field="project",
+            old_value=names.get(old_project_id),
+            new_value=names.get(body.target_project_id),
+        )
+    )
+    await session.commit()
+    fresh = await _reselect_fresh(session, wp_id)
+    return WorkPackageMoveResult(
+        work_package=WorkPackageRead.model_validate(fresh), cleared=cleared, dry_run=False
+    )

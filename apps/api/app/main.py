@@ -6,24 +6,37 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.v1 import (
+    access_tokens,
     ai,
     attachments,
+    auth,
     automation_rules,
     comments,
     cost_entries,
     csv_io,
+    custom_fields,
+    cycles,
     dashboard,
     documents,
     health,
+    initiatives,
+    intake,
     me,
     meetings,
     members,
     milestones,
+    modules,
+    ops,
+    permissions,
     project_statuses,
+    project_types,
     projects,
+    reports,
     saved_filters,
     search,
     time_entries,
+    users,
+    watchers,
     work_packages,
 )
 from app.core.config import Settings, get_settings
@@ -89,24 +102,37 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.add_middleware(RequestIdMiddleware)
 
     app.include_router(health.router, prefix="/api/v1", tags=["health"])
+    app.include_router(ops.router, prefix="/api/v1", tags=["ops"])
+    app.include_router(auth.router, prefix="/api/v1", tags=["auth"])
+    app.include_router(access_tokens.router, prefix="/api/v1", tags=["access-tokens"])
     app.include_router(projects.router, prefix="/api/v1/projects", tags=["projects"])
     app.include_router(work_packages.router, prefix="/api/v1", tags=["work-packages"])
     app.include_router(csv_io.router, prefix="/api/v1", tags=["csv"])
     app.include_router(comments.router, prefix="/api/v1", tags=["comments"])
     app.include_router(members.router, prefix="/api/v1", tags=["members"])
+    app.include_router(permissions.router, prefix="/api/v1", tags=["permissions"])
+    app.include_router(reports.router, prefix="/api/v1", tags=["reports"])
     app.include_router(me.router, prefix="/api/v1", tags=["me"])
     app.include_router(time_entries.router, prefix="/api/v1", tags=["time-entries"])
     app.include_router(dashboard.router, prefix="/api/v1", tags=["dashboard"])
     app.include_router(cost_entries.router, prefix="/api/v1", tags=["cost-entries"])
     app.include_router(milestones.router, prefix="/api/v1", tags=["milestones"])
+    app.include_router(cycles.router, prefix="/api/v1", tags=["cycles"])
+    app.include_router(modules.router, prefix="/api/v1", tags=["modules"])
     app.include_router(search.router, prefix="/api/v1", tags=["search"])
     app.include_router(saved_filters.router, prefix="/api/v1", tags=["saved-filters"])
     app.include_router(project_statuses.router, prefix="/api/v1", tags=["project-statuses"])
+    app.include_router(project_types.router, prefix="/api/v1", tags=["project-types"])
     app.include_router(automation_rules.router, prefix="/api/v1", tags=["automation-rules"])
     app.include_router(ai.router, prefix="/api/v1", tags=["ai"])
     app.include_router(documents.router, prefix="/api/v1", tags=["documents"])
     app.include_router(meetings.router, prefix="/api/v1", tags=["meetings"])
     app.include_router(attachments.router, prefix="/api/v1", tags=["attachments"])
+    app.include_router(watchers.router, prefix="/api/v1", tags=["watchers"])
+    app.include_router(intake.router, prefix="/api/v1", tags=["intake"])
+    app.include_router(custom_fields.router, prefix="/api/v1", tags=["custom-fields"])
+    app.include_router(initiatives.router, prefix="/api/v1", tags=["initiatives"])
+    app.include_router(users.router, prefix="/api/v1", tags=["users"])
     return app
 
 

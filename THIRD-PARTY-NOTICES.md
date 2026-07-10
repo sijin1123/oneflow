@@ -33,6 +33,11 @@ the lockfiles:
 
 ### Frontend (JavaScript/TypeScript)
 
+- **dhtmlx-gantt 10.0.0** — MIT (Community Edition; © XB Software). NOTE:
+  versions **9.x and below are GPL-2.0** — the dependency is pinned to the
+  exact MIT release and the cleanroom license gate fails closed on any GPL
+  resolution, so a downgrade or future license drift cannot land silently.
+
 | Package | License |
 |---|---|
 | React, React DOM, React Router | MIT |

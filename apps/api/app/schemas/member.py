@@ -3,7 +3,7 @@ import uuid
 
 from pydantic import BaseModel, field_validator
 
-ROLES = ("owner", "member")
+ROLES = ("owner", "member", "viewer")
 _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 

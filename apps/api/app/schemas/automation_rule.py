@@ -3,8 +3,11 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
-from app.models.automation_rule import ACTION_TYPES, TRIGGER_TYPES
-from app.models.work_package import WP_PRIORITIES, WP_STATUSES
+from app.models.automation_rule import ACTION_TYPES, CONDITION_FIELDS, TRIGGER_TYPES
+from app.models.work_package import WP_PRIORITIES, WP_STATUSES, WP_TYPES
+
+# Value vocabulary per condition field (v81.1 R1-④) — mirrors the DB CHECK.
+_CONDITION_VOCAB = {"status": WP_STATUSES, "type": WP_TYPES, "priority": WP_PRIORITIES}
 
 
 class AutomationRuleCreate(BaseModel):
@@ -13,6 +16,9 @@ class AutomationRuleCreate(BaseModel):
     trigger_value: str
     action_type: str = "set_priority"
     action_value: str
+    # Optional AND secondary condition (Pass 81) — both set or both omitted.
+    condition_field: str | None = None
+    condition_value: str | None = None
     is_active: bool = True
 
     @field_validator("name")
@@ -40,15 +46,45 @@ class AutomationRuleCreate(BaseModel):
     @model_validator(mode="after")
     def _values(self) -> "AutomationRuleCreate":
         # Validate each value against the vocabulary its type implies.
-        if self.trigger_type == "status_changed_to" and self.trigger_value not in WP_STATUSES:
-            raise ValueError(f"trigger_value must be one of {WP_STATUSES}")
+        trigger_vocab = {
+            "status_changed_to": WP_STATUSES,
+            "type_changed_to": WP_TYPES,
+            "priority_changed_to": WP_PRIORITIES,
+        }[self.trigger_type]
+        if self.trigger_value not in trigger_vocab:
+            raise ValueError(f"trigger_value must be one of {trigger_vocab}")
         if self.action_type == "set_priority" and self.action_value not in WP_PRIORITIES:
             raise ValueError(f"action_value must be one of {WP_PRIORITIES}")
+        if self.action_type == "set_assignee":
+            try:
+                uuid.UUID(self.action_value)
+            except ValueError as exc:  # membership is checked in the router (DB)
+                raise ValueError("action_value must be a user id") from exc
+        # Secondary condition: both-or-neither, then field/value vocabulary.
+        if (self.condition_field is None) != (self.condition_value is None):
+            raise ValueError("condition_field and condition_value must be set together")
+        if self.condition_field is not None:
+            if self.condition_field not in CONDITION_FIELDS:
+                raise ValueError(f"condition_field must be one of {CONDITION_FIELDS}")
+            vocab = _CONDITION_VOCAB[self.condition_field]
+            if self.condition_value not in vocab:
+                raise ValueError(f"condition_value must be one of {vocab}")
         return self
 
 
 class AutomationRuleUpdate(BaseModel):
-    is_active: bool
+    """Partial rule edit (v13.1) — omitted fields keep their current value.
+    Validation runs on the MERGED rule (router builds an AutomationRuleCreate
+    from current+patch), so a value change can never leave the pair invalid."""
+
+    name: str | None = None
+    trigger_value: str | None = None
+    action_value: str | None = None
+    # Pass 81: send both to set/change, both null to clear (router replaces the
+    # pair when either key is explicitly present).
+    condition_field: str | None = None
+    condition_value: str | None = None
+    is_active: bool | None = None
 
 
 class AutomationRuleRead(BaseModel):
@@ -61,10 +97,45 @@ class AutomationRuleRead(BaseModel):
     trigger_value: str
     action_type: str
     action_value: str
+    condition_field: str | None
+    condition_value: str | None
+    position: int
     is_active: bool
+    last_fired_at: datetime | None
+    fired_count: int
     created_at: datetime
 
 
 class AutomationRuleList(BaseModel):
     items: list[AutomationRuleRead]
+    total: int
+
+
+class AutomationRuleReorder(BaseModel):
+    """Exactly this project's rule ids (active + inactive), new order (Pass 82)."""
+
+    ordered_ids: list[uuid.UUID]
+
+
+class AutomationRuleRunRead(BaseModel):
+    """Execution-log row (v16.1 R1-⑤). Deleted references read via snapshots:
+    rule_id/work_package_id/actor_id may be null while rule_name and
+    work_package_subject stay readable."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    rule_id: uuid.UUID | None
+    rule_name: str
+    work_package_id: uuid.UUID | None
+    work_package_subject: str
+    field: str
+    old_value: str | None
+    new_value: str | None
+    actor_id: uuid.UUID | None
+    created_at: datetime
+
+
+class AutomationRuleRunList(BaseModel):
+    items: list[AutomationRuleRunRead]
     total: int
