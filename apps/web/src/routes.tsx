@@ -25,6 +25,7 @@ import { WebhooksPage } from '@/features/admin/WebhooksPage'
 import { PersonalSettingsPage } from '@/features/settings/PersonalSettingsPage'
 import { SettingsPage } from '@/features/settings/SettingsPage'
 import { AllWorkPage } from '@/features/work-items/AllWorkPage'
+import { WorkItemDraftsPage } from '@/features/work-item-drafts/WorkItemDraftsPage'
 import { BacklogPage } from '@/features/work-packages/BacklogPage'
 import { BoardPage } from '@/features/work-packages/BoardPage'
 import { CyclesPage } from '@/features/cycles/CyclesPage'
@@ -53,6 +54,7 @@ export const router = createBrowserRouter([
       { index: true, element: <Navigate to="/projects" replace /> },
       { path: 'my', element: <MyWorkPage /> },
       { path: 'notes', element: <PersonalNotesPage /> },
+      { path: 'drafts', element: <WorkItemDraftsPage /> },
       { path: 'inbox', element: <InboxPage /> },
       { path: 'work-items', element: <AllWorkPage /> },
       { path: 'initiatives', element: <InitiativesPage /> },

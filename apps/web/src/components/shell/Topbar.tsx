@@ -15,6 +15,7 @@ import { CommandPalette } from './CommandPalette'
 const workspaceRouteLabels: Array<{ path: string; title: string; parent: string }> = [
   { path: '/my', title: '내 작업', parent: '워크스페이스' },
   { path: '/notes', title: '개인 메모', parent: '워크스페이스' },
+  { path: '/drafts', title: '작업 초안', parent: '워크스페이스' },
   { path: '/inbox', title: '인박스', parent: '워크스페이스' },
   { path: '/work-items', title: '전체 작업', parent: '워크스페이스' },
   { path: '/projects', title: '프로젝트', parent: '워크스페이스' },

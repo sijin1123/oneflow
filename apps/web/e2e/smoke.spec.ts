@@ -11,6 +11,10 @@ import type { Milestone } from '../src/features/milestones/api'
 import type { Project, ProjectList } from '../src/features/projects/types'
 import type { SearchResults } from '../src/features/search/api'
 import type {
+  WorkItemDraft,
+  WorkItemDraftContent,
+} from '../src/features/work-item-drafts/api'
+import type {
   ActivityList,
   Comment,
   CommentList,
@@ -8490,4 +8494,350 @@ test('보고 표면은 모바일에서 포트폴리오와 이니셔티브를 넘
     path: '../../docs/screenshots/redevelopment/reporting-ui/mobile-initiatives.png',
     fullPage: true,
   })
+})
+
+function draftFixture(
+  overrides: Partial<WorkItemDraft> & { id: string },
+): WorkItemDraft {
+  return {
+    project_id: project.id,
+    content: {
+      subject: 'API 정리 초안',
+      type: 'task',
+      status: 'backlog',
+      priority: 'none',
+      assignee_id: null,
+      due_date: null,
+    },
+    version: 0,
+    created_at: '2026-07-11T00:00:00Z',
+    updated_at: '2026-07-11T00:00:00Z',
+    ...overrides,
+  }
+}
+
+async function mockWorkItemDraftApi(
+  page: Page,
+  initial: WorkItemDraft[] = [],
+  options: { conflictFirstSave?: boolean } = {},
+) {
+  let drafts = [...initial]
+  let conflictPending = options.conflictFirstSave ?? false
+
+  await page.route('**/api/v1/projects?include_archived=true', (route) =>
+    route.fulfill({ json: projects }),
+  )
+
+  await page.route('**/api/v1/me/work-item-drafts**', async (route) => {
+    const url = new URL(route.request().url())
+    const limit = Number(url.searchParams.get('limit') ?? 50)
+    const offset = Number(url.searchParams.get('offset') ?? 0)
+    await route.fulfill({
+      json: {
+        items: drafts.slice(offset, offset + limit),
+        total: drafts.length,
+        limit,
+        offset,
+      },
+    })
+  })
+  await page.route('**/api/v1/projects/*/work-item-drafts', async (route) => {
+    const body = route.request().postDataJSON() as { content: WorkItemDraftContent }
+    const created = draftFixture({
+      id: `draft-${drafts.length + 1}`,
+      content: body.content,
+      updated_at: '2026-07-11T01:00:00Z',
+    })
+    drafts = [created, ...drafts]
+    await route.fulfill({ status: 201, json: created })
+  })
+  await page.route('**/api/v1/work-item-drafts/**', async (route) => {
+    const request = route.request()
+    const url = new URL(request.url())
+    const parts = url.pathname.split('/')
+    const draftId = parts.at(-1) === 'submit' ? parts.at(-2)! : parts.at(-1)!
+    const current = drafts.find((item) => item.id === draftId)
+    if (!current) {
+      await route.fulfill({ status: 404, json: { detail: 'not found' } })
+      return
+    }
+    if (request.method() === 'GET') {
+      await route.fulfill({ json: current })
+      return
+    }
+    if (request.method() === 'DELETE') {
+      drafts = drafts.filter((item) => item.id !== draftId)
+      await route.fulfill({ status: 204, body: '' })
+      return
+    }
+    if (request.method() === 'PUT') {
+      const body = request.postDataJSON() as {
+        expected_version: number
+        content: WorkItemDraftContent
+      }
+      if (conflictPending) {
+        conflictPending = false
+        const serverCurrent = {
+          ...current,
+          version: current.version + 1,
+          content: { ...current.content, subject: '서버에서 갱신된 초안' },
+          updated_at: '2026-07-11T01:10:00Z',
+        }
+        drafts = drafts.map((item) => (item.id === draftId ? serverCurrent : item))
+        await route.fulfill({
+          status: 409,
+          json: { detail: 'draft was changed elsewhere', current: serverCurrent },
+        })
+        return
+      }
+      const saved = {
+        ...current,
+        content: body.content,
+        version: body.expected_version + 1,
+        updated_at: '2026-07-11T01:20:00Z',
+      }
+      drafts = drafts.map((item) => (item.id === draftId ? saved : item))
+      await route.fulfill({ json: saved })
+      return
+    }
+    if (request.method() === 'POST' && parts.at(-1) === 'submit') {
+      drafts = drafts.filter((item) => item.id !== draftId)
+      await route.fulfill({
+        json: {
+          ...wpA,
+          id: 'draft-created-work-package',
+          subject: current.content.subject,
+          type: current.content.type,
+          status: current.content.status,
+          priority: current.content.priority,
+          assignee_id: current.content.assignee_id,
+          due_date: current.content.due_date,
+        },
+      })
+      return
+    }
+    await route.abort()
+  })
+}
+
+test('작업 초안은 삭제·저장·이어쓰기·최종 제출 흐름을 연결한다', async ({ page }) => {
+  await mockApi(page)
+  await mockWorkItemDraftApi(page, [draftFixture({ id: 'draft-existing' })])
+  await page.goto('/drafts')
+  await expect(page.getByRole('heading', { name: '작업 초안' })).toBeVisible()
+  await expect(page.getByText('API 정리 초안')).toBeVisible()
+
+  const deleteRequest = page.waitForRequest(
+    (request) =>
+      request.method() === 'DELETE' && request.url().includes('/draft-existing'),
+  )
+  await page.getByRole('button', { name: '초안 삭제' }).click()
+  await page.getByRole('button', { name: '삭제', exact: true }).click()
+  await deleteRequest
+  await expect(page.getByText('저장된 작업 초안이 없습니다.')).toBeVisible()
+
+  await page.goto(`/projects/${project.id}/work-packages?new=1`)
+  await page.getByLabel('작업 제목').fill('새로 저장한 초안')
+  const createRequest = page.waitForRequest(
+    (request) =>
+      request.method() === 'POST' &&
+      request.url().includes(`/projects/${project.id}/work-item-drafts`),
+  )
+  await page.getByRole('button', { name: '초안 저장' }).click()
+  expect((await createRequest).postDataJSON()).toMatchObject({
+    content: { subject: '새로 저장한 초안', type: 'task', status: 'backlog' },
+  })
+  await expect(page).toHaveURL(/\/drafts$/)
+  await page.getByText('새로 저장한 초안').click()
+  await expect(page.getByRole('heading', { name: '작업 초안 이어쓰기' })).toBeVisible()
+  await expect(page.getByLabel('작업 제목')).toHaveValue('새로 저장한 초안')
+  await page.getByLabel('작업 제목').fill('제출할 최종 작업')
+  page.once('dialog', (dialog) => dialog.dismiss())
+  await page.getByRole('button', { name: '저장하지 않고 닫기' }).click()
+  await expect(page.getByRole('heading', { name: '작업 초안 이어쓰기' })).toBeVisible()
+
+  const saveRequest = page.waitForRequest(
+    (request) =>
+      request.method() === 'PUT' && request.url().includes('/work-item-drafts/draft-1'),
+  )
+  const submitRequest = page.waitForRequest(
+    (request) =>
+      request.method() === 'POST' &&
+      request.url().includes('/work-item-drafts/draft-1/submit'),
+  )
+  await page.getByRole('button', { name: '작업 만들기' }).click()
+  expect((await saveRequest).postDataJSON()).toMatchObject({
+    expected_version: 0,
+    content: { subject: '제출할 최종 작업' },
+  })
+  expect((await submitRequest).postDataJSON()).toEqual({ expected_version: 1 })
+  await expect(page).toHaveURL(
+    new RegExp(`/projects/${project.id}/work-packages$`),
+  )
+  await page.goto('/drafts')
+  await expect(page.getByText('저장된 작업 초안이 없습니다.')).toBeVisible()
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/work-item-drafts-ui/desktop.png',
+    fullPage: true,
+  })
+})
+
+test('작업 초안 충돌은 입력을 보존하고 최신 버전으로 다시 저장한다', async ({ page }) => {
+  await mockApi(page)
+  await mockWorkItemDraftApi(
+    page,
+    [draftFixture({ id: 'draft-conflict' })],
+    { conflictFirstSave: true },
+  )
+  await page.goto(
+    `/projects/${project.id}/work-packages?new=1&draft=draft-conflict`,
+  )
+  await page.getByLabel('작업 제목').fill('내가 작성 중인 제목')
+  await page.getByRole('button', { name: '초안 저장' }).click()
+  await expect(page.getByRole('alert')).toContainText('다른 창에서 초안이 변경되었습니다')
+  await expect(page.getByRole('alert')).toContainText('서버에서 갱신된 초안')
+  await expect(page.getByLabel('작업 제목')).toHaveValue('내가 작성 중인 제목')
+  await expect(page.getByRole('button', { name: '초안 저장' })).toBeDisabled()
+
+  const retryRequest = page.waitForRequest(
+    (request) =>
+      request.method() === 'PUT' && request.url().includes('/draft-conflict'),
+  )
+  await page.getByRole('button', { name: '내 입력으로 다시 저장' }).click()
+  expect((await retryRequest).postDataJSON()).toMatchObject({
+    expected_version: 1,
+    content: { subject: '내가 작성 중인 제목' },
+  })
+  await expect(page).toHaveURL(/\/drafts$/)
+})
+
+test('모바일 작업 초안 목록은 sidebar 진입과 빈·목록 상태를 안정적으로 표시한다', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await mockApi(page)
+  await mockWorkItemDraftApi(page, [draftFixture({ id: 'draft-mobile' })])
+  await page.goto('/my')
+  await page.getByRole('button', { name: '사이드바 열기' }).click()
+  await page
+    .getByRole('dialog', { name: '모바일 내비게이션' })
+    .getByRole('link', { name: '작업 초안' })
+    .click()
+  await expect(page).toHaveURL(/\/drafts$/)
+  await expect(page.getByText('API 정리 초안')).toBeVisible()
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/work-item-drafts-ui/mobile.png',
+    fullPage: true,
+  })
+})
+
+test('작업 초안 목록 오류는 명시적 재시도로 복구한다', async ({ page }) => {
+  await mockApi(page)
+  await page.route('**/api/v1/projects?include_archived=true', (route) =>
+    route.fulfill({ json: projects }),
+  )
+  let calls = 0
+  await page.route('**/api/v1/me/work-item-drafts**', async (route) => {
+    calls += 1
+    if (calls <= 2) {
+      await route.fulfill({ status: 500, json: { detail: 'drafts unavailable' } })
+      return
+    }
+    await route.fulfill({
+      json: { items: [], total: 0, limit: 50, offset: 0 },
+    })
+  })
+  await page.goto('/drafts')
+  await expect(page.getByRole('alert')).toContainText('초안을 불러오지 못했습니다')
+  await page.getByRole('button', { name: '다시 시도' }).click()
+  await expect(page.getByText('저장된 작업 초안이 없습니다.')).toBeVisible()
+})
+
+test('작업 초안 dirty 상태는 sidebar와 전역 Escape 이탈을 확인한다', async ({ page }) => {
+  await mockApi(page)
+  await mockWorkItemDraftApi(page, [draftFixture({ id: 'draft-dirty' })])
+  await page.goto(
+    `/projects/${project.id}/work-packages?new=1&draft=draft-dirty`,
+  )
+  await page.getByLabel('작업 제목').fill('저장하지 않은 제목')
+
+  const sidebarDialog = page.waitForEvent('dialog')
+  await page.getByRole('link', { name: '개인 메모' }).click()
+  await (await sidebarDialog).dismiss()
+  await expect(page).toHaveURL(/draft=draft-dirty/)
+  await expect(page.getByLabel('작업 제목')).toHaveValue('저장하지 않은 제목')
+
+  const dismissedEscape = page.waitForEvent('dialog')
+  const dismissPress = page.keyboard.press('Escape')
+  await (await dismissedEscape).dismiss()
+  await dismissPress
+  await expect(page.getByRole('heading', { name: '작업 초안 이어쓰기' })).toBeVisible()
+
+  const acceptedEscape = page.waitForEvent('dialog')
+  const acceptPress = page.keyboard.press('Escape')
+  await (await acceptedEscape).accept()
+  await acceptPress
+  await expect(page).toHaveURL(
+    new RegExp(`/projects/${project.id}/work-packages$`),
+  )
+  await expect(page.getByRole('region', { name: '작업 초안 이어쓰기' })).toHaveCount(0)
+
+  await page.goto(
+    `/projects/${project.id}/work-packages?new=1&draft=draft-dirty`,
+  )
+  await page.getByLabel('작업 제목').fill('다시 연 뒤 저장하지 않은 제목')
+  const reopenedDialog = page.waitForEvent('dialog')
+  await page.getByRole('link', { name: '개인 메모' }).click()
+  await (await reopenedDialog).dismiss()
+  await expect(page).toHaveURL(/draft=draft-dirty/)
+})
+
+test('읽기 전용 프로젝트 초안은 재개 control 없이 삭제만 제공한다', async ({ page }) => {
+  await mockApi(page)
+  await mockWorkItemDraftApi(page, [draftFixture({ id: 'draft-viewer' })])
+  await page.route(`**/api/v1/projects/${project.id}/members`, (route) =>
+    route.fulfill({
+      json: {
+        items: [
+          {
+            user_id: 'me-1',
+            email: 'dev@oneflow.local',
+            display_name: 'Dev User',
+            role: 'viewer',
+          },
+        ],
+        total: 1,
+      },
+    }),
+  )
+  await page.goto('/drafts')
+  await expect(page.getByText(/읽기 전용 · 삭제만 가능/)).toBeVisible()
+  await expect(page.getByRole('button', { name: '초안 이어쓰기' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: '초안 삭제' })).toBeVisible()
+})
+
+test('초안 URL 프로젝트가 다르면 올바른 프로젝트 경로로 교정한다', async ({ page }) => {
+  await mockApi(page)
+  await mockWorkItemDraftApi(page, [draftFixture({ id: 'draft-mismatch' })])
+  const wrongProjectId = '99999999-9999-4999-8999-999999999998'
+  await page.goto(
+    `/projects/${wrongProjectId}/work-packages?new=1&draft=draft-mismatch`,
+  )
+  await expect(page.getByRole('alert')).toContainText(
+    '현재 URL의 프로젝트에 속하지 않습니다',
+  )
+  await page.getByRole('button', { name: '올바른 프로젝트에서 열기' }).click()
+  await expect(page).toHaveURL(
+    new RegExp(
+      `/projects/${project.id}/work-packages\\?new=1&draft=draft-mismatch$`,
+    ),
+  )
+  await expect(page.getByRole('heading', { name: '작업 초안 이어쓰기' })).toBeVisible()
+  await page.getByLabel('작업 제목').fill('교정 후 저장하지 않은 제목')
+  const correctedDialog = page.waitForEvent('dialog')
+  await page.getByRole('link', { name: '개인 메모' }).click()
+  await (await correctedDialog).dismiss()
+  await expect(page).toHaveURL(/draft=draft-mismatch/)
 })

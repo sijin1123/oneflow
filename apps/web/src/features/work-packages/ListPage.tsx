@@ -360,7 +360,9 @@ export function ListPage() {
         </div>
       </div>
 
-      {canWrite ? <NewWorkPackageInline projectId={projectId} /> : null}
+      {canWrite || searchParams.has('draft') ? (
+        <NewWorkPackageInline projectId={projectId} canWrite={canWrite} />
+      ) : null}
 
       {actionMessage ? (
         <div
