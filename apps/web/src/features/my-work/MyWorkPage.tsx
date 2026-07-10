@@ -5,6 +5,7 @@ import {
   Gauge,
   ListChecks,
   Search,
+  Sparkles,
   SquareActivity,
   TimerReset,
   type LucideIcon,
@@ -13,6 +14,7 @@ import { Link, useNavigate } from 'react-router-dom'
 
 import { EmptyState, ErrorState, ListSkeleton } from '@/components/shell/states'
 import { Badge } from '@/components/ui/badge'
+import { useCapabilities } from '@/features/ai/api'
 import { useNotifications } from '@/features/notifications/api'
 import {
   getNotificationMessage,
@@ -114,6 +116,129 @@ function QuickLink({
   )
 }
 
+function AiWorkspacePanel({
+  assigned,
+  dueSoon,
+  created,
+}: {
+  assigned: MyWorkPackage[]
+  dueSoon: MyWorkPackage[]
+  created: MyWorkPackage[]
+}) {
+  const caps = useCapabilities()
+  const candidate = dueSoon[0] ?? assigned[0] ?? created[0]
+  const scopedIds = new Set([...assigned, ...dueSoon, ...created].map((wp) => wp.id))
+  const enabled = caps.data?.ai_summary_enabled === true
+  const disabled = caps.data?.ai_summary_enabled === false
+
+  return (
+    <section
+      id="ai-workspace"
+      aria-label="AI workspace"
+      className="grid min-w-0 gap-3 rounded-of border border-of-border bg-of-surface p-4 lg:grid-cols-[minmax(0,1fr)_auto]"
+    >
+      <div className="min-w-0 space-y-3">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-of bg-of-accent-soft text-of-accent">
+            <Sparkles size={15} aria-hidden="true" />
+          </span>
+          <div className="min-w-0 flex-1">
+            <h2 className="truncate text-sm font-semibold">AI workspace</h2>
+            <p className="text-xs leading-5 text-of-muted">
+              현재 사용자에게 보이는 작업만 대상으로 요약 진입점을 제공합니다.
+            </p>
+          </div>
+          {enabled ? (
+            <Badge variant="accent">사용 가능</Badge>
+          ) : caps.isPending ? (
+            <Badge variant="outline">확인 중</Badge>
+          ) : (
+            <Badge variant="outline">{disabled ? '꺼짐' : '상태 오류'}</Badge>
+          )}
+        </div>
+
+        <div className="grid gap-2 text-xs sm:grid-cols-3">
+          <span className="rounded-of border border-of-border bg-of-surface-2 px-2.5 py-2">
+            배정 <strong className="font-semibold">{assigned.length}</strong>
+          </span>
+          <span className="rounded-of border border-of-border bg-of-surface-2 px-2.5 py-2">
+            기한 <strong className="font-semibold">{dueSoon.length}</strong>
+          </span>
+          <span className="rounded-of border border-of-border bg-of-surface-2 px-2.5 py-2">
+            후보 <strong className="font-semibold">{scopedIds.size}</strong>
+          </span>
+        </div>
+
+        {caps.isError ? (
+          <div className="flex flex-wrap items-center gap-2 text-xs text-of-muted">
+            <span>AI 기능 상태를 확인하지 못했습니다.</span>
+            <button
+              type="button"
+              className="rounded-of border border-of-border bg-of-surface px-2 py-1 font-medium text-of-text hover:bg-of-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus"
+              onClick={() => caps.refetch()}
+            >
+              다시 시도
+            </button>
+          </div>
+        ) : null}
+
+        {enabled && candidate ? (
+          <div className="min-w-0 rounded-of border border-of-border bg-of-surface-2 px-3 py-2">
+            <p className="mb-1 text-[11px] font-medium uppercase text-of-muted">추천 요약 대상</p>
+            <div className="flex min-w-0 flex-wrap items-center gap-2">
+              <Badge variant="neutral" className="max-w-28 truncate">
+                {candidate.project_name}
+              </Badge>
+              <span className="min-w-0 flex-1 truncate text-sm font-medium">
+                {candidate.subject}
+              </span>
+            </div>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <StatusChip status={candidate.status} />
+              <PriorityChip priority={candidate.priority} />
+              <span className="text-[11px] text-of-muted">{candidate.due_date ?? '기한 없음'}</span>
+            </div>
+          </div>
+        ) : enabled ? (
+          <p className="rounded-of border border-of-border bg-of-surface-2 px-3 py-2 text-xs text-of-muted">
+            요약할 열린 작업 후보가 없습니다.
+          </p>
+        ) : (
+          <p className="text-xs leading-5 text-of-muted">
+            AI 요약은 운영 설정이 켜진 경우에만 작업 상세에서 실행됩니다.
+          </p>
+        )}
+      </div>
+
+      <div className="flex min-w-0 flex-wrap items-end gap-2 lg:w-44 lg:flex-col lg:justify-end">
+        {enabled && candidate ? (
+          <Link
+            to={`/projects/${candidate.project_id}/work-packages?wp=${candidate.id}`}
+            className="inline-flex h-8 min-w-0 items-center justify-center gap-1.5 rounded-of bg-of-accent px-3 text-sm font-medium text-white hover:bg-of-accent-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus"
+          >
+            <Sparkles size={14} aria-hidden="true" />
+            <span className="truncate">AI 요약 열기</span>
+          </Link>
+        ) : enabled ? (
+          <Link
+            to="/work-items"
+            className="inline-flex h-8 items-center justify-center rounded-of border border-of-border bg-of-surface px-3 text-sm font-medium hover:bg-of-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus"
+          >
+            전체 작업
+          </Link>
+        ) : (
+          <Link
+            to="/status"
+            className="inline-flex h-8 items-center justify-center rounded-of border border-of-border bg-of-surface px-3 text-sm font-medium hover:bg-of-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus"
+          >
+            시스템 상태
+          </Link>
+        )}
+      </div>
+    </section>
+  )
+}
+
 /* Personal cross-project home (expansion PLAN Pass 1 PR-B): what is on my
    plate, what is due this week, my inbox, and what changed around me. */
 export function MyWorkPage() {
@@ -189,6 +314,8 @@ export function MyWorkPage() {
           />
         </div>
       </section>
+
+      <AiWorkspacePanel assigned={assigned_to_me} dueSoon={due_soon} created={created_by_me} />
 
       <section aria-label="프로젝트 바로가기" className="min-w-0">
         <div className="mb-2 flex items-center justify-between gap-2 px-1">
