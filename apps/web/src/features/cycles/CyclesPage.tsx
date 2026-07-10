@@ -1,24 +1,21 @@
-import { Pencil, Trash2 } from 'lucide-react'
+import { MoreHorizontal } from 'lucide-react'
 import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 
 import { EmptyState, ErrorState, ListSkeleton } from '@/components/shell/states'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Select } from '@/components/ui/select'
 import { useMe, useMembers } from '@/features/members/api'
 import { PlanningSurface } from '@/features/planning/PlanningSurface'
-import { confirmDestructive } from '@/lib/guards'
 
 import {
   type Cycle,
   useCreateCycle,
   useCycles,
-  useDeleteCycle,
-  useRolloverCycle,
   useUpdateCycle,
   useCycleBurndown,
 } from './api'
+import { CycleItemActions } from './CycleItemActions'
 import { recentVelocity } from './velocity'
 
 const GROUPS: Array<{ status: Cycle['status']; label: string }> = [
@@ -84,21 +81,32 @@ function CycleRow({
   isOwner,
   projectId,
   others,
+  onMessage,
 }: {
   cycle: Cycle
   isOwner: boolean
   projectId: string
   others: Cycle[]
+  onMessage: (message: string, tone?: 'info' | 'success' | 'error') => void
 }) {
   const navigate = useNavigate()
   const update = useUpdateCycle(projectId)
-  const remove = useDeleteCycle(projectId)
-  const rollover = useRolloverCycle(projectId)
   const [editing, setEditing] = useState(false)
   const [showBurndown, setShowBurndown] = useState(false)
+  const [activeAction, setActiveAction] = useState<{ top: number; left: number } | null>(null)
   const [name, setName] = useState(cycle.name)
   const [start, setStart] = useState(cycle.start_date)
   const [end, setEnd] = useState(cycle.end_date)
+
+  const openActionMenu = (rect: DOMRect) => {
+    const width = 240
+    const height = 248
+    const maxLeft = Math.max(8, window.innerWidth - width - 8)
+    const maxTop = Math.max(8, window.innerHeight - height)
+    const left = Math.min(Math.max(8, rect.right - width), maxLeft)
+    const top = Math.min(Math.max(8, rect.bottom + 6), maxTop)
+    setActiveAction({ top, left })
+  }
 
   if (editing) {
     return (
@@ -148,79 +156,46 @@ function CycleRow({
   }
 
   return (
-    <li className="flex items-center gap-3 px-3 py-2">
-      <button
-        type="button"
-        className="min-w-0 flex-1 truncate text-left text-[13px] font-medium hover:underline"
-        onClick={() => navigate(`/projects/${projectId}/work-packages?cycle_id=${cycle.id}`)}
-      >
-        {cycle.name}
-      </button>
-      <span className="shrink-0 text-[11px] text-of-muted">
-        {cycle.start_date} ~ {cycle.end_date}
-      </span>
-      <ProgressBar done={cycle.done_work_package_count} total={cycle.work_package_count} />
-      {isOwner && cycle.status === 'completed' && others.length > 0 ? (
-        <Select
-          aria-label={`${cycle.name} 미완료 이월`}
-          className="h-7 w-36 text-xs"
-          value=""
-          disabled={rollover.isPending}
-          onChange={(e) => {
-            const target = others.find((c) => c.id === e.target.value)
-            if (!target) return
-            const openCount = cycle.work_package_count - cycle.done_work_package_count
-            if (
-              confirmDestructive(
-                `'${cycle.name}'의 미완료 작업 ${openCount}건을 '${target.name}'(으)로 이월할까요?\n(반대 방향 이월로 언제든 되돌릴 수 있습니다)`,
-              )
-            )
-              rollover.mutate({ cycleId: cycle.id, targetCycleId: target.id })
-          }}
+    <li className="flex flex-wrap items-start gap-3 px-3 py-2">
+      <div className="min-w-0 flex-1 space-y-1">
+        <button
+          type="button"
+          className="block w-full truncate text-left text-[13px] font-medium hover:underline"
+          onClick={() => navigate(`/projects/${projectId}/work-packages?cycle_id=${cycle.id}`)}
         >
-          <option value="">미완료 이월…</option>
-          {others.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.name}
-            </option>
-          ))}
-        </Select>
-      ) : null}
+          {cycle.name}
+        </button>
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+          <span className="shrink-0 text-[11px] text-of-muted">
+            {cycle.start_date} ~ {cycle.end_date}
+          </span>
+          <ProgressBar done={cycle.done_work_package_count} total={cycle.work_package_count} />
+        </div>
+      </div>
       <button
         type="button"
-        aria-label={`${cycle.name} 번다운`}
-        className="shrink-0 rounded-of border border-of-border px-1.5 py-0.5 text-[11px] text-of-muted hover:bg-of-surface-2"
-        onClick={() => setShowBurndown((v) => !v)}
+        aria-label={`${cycle.name} 사이클 작업`}
+        className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-of border border-of-border text-of-muted hover:bg-of-surface-2 hover:text-of-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus"
+        onClick={(event) => openActionMenu(event.currentTarget.getBoundingClientRect())}
       >
-        번다운
+        <MoreHorizontal size={14} />
       </button>
-      {isOwner ? (
-        <>
-          <button
-            type="button"
-            aria-label={`${cycle.name} 편집`}
-            className="shrink-0 rounded-of p-1 text-of-muted hover:bg-of-surface-2"
-            onClick={() => setEditing(true)}
-          >
-            <Pencil size={13} />
-          </button>
-          <button
-            type="button"
-            aria-label={`${cycle.name} 삭제`}
-            disabled={remove.isPending}
-            className="shrink-0 rounded-of p-1 text-of-muted hover:bg-of-surface-2 hover:text-of-danger"
-            onClick={() => {
-              if (
-                confirmDestructive(
-                  `'${cycle.name}' 사이클을 삭제할까요?\n연결된 작업 ${cycle.work_package_count}건은 삭제되지 않고 사이클 배정만 해제됩니다.`,
-                )
-              )
-                remove.mutate(cycle.id)
-            }}
-          >
-            <Trash2 size={13} />
-          </button>
-        </>
+      {activeAction ? (
+        <CycleItemActions
+          cycle={cycle}
+          projectId={projectId}
+          isOwner={isOwner}
+          others={others}
+          top={activeAction.top}
+          left={activeAction.left}
+          onOpenWorkItems={(cycleId) =>
+            navigate(`/projects/${projectId}/work-packages?cycle_id=${cycleId}`)
+          }
+          onEdit={() => setEditing(true)}
+          onToggleBurndown={() => setShowBurndown((value) => !value)}
+          onMessage={onMessage}
+          onClose={() => setActiveAction(null)}
+        />
       ) : null}
       {showBurndown ? (
         <div className="w-full">
@@ -244,6 +219,10 @@ export function CyclesPage() {
   const [start, setStart] = useState('')
   const [end, setEnd] = useState('')
   const create = useCreateCycle(projectId)
+  const [actionMessage, setActionMessage] = useState<{
+    text: string
+    tone: 'info' | 'success' | 'error'
+  } | null>(null)
   const description =
     '반복 기간으로 작업 범위를 묶고, 진행률과 이월 흐름을 계획 화면 안에서 이어 봅니다.'
 
@@ -288,6 +267,18 @@ export function CyclesPage() {
       ]}
     >
       <div className="space-y-5">
+        {actionMessage ? (
+          <p
+            role={actionMessage.tone === 'error' ? 'alert' : 'status'}
+            className={
+              actionMessage.tone === 'error'
+                ? 'rounded-of border border-of-danger/30 bg-of-surface px-3 py-2 text-xs text-of-danger'
+                : 'rounded-of border border-of-border bg-of-surface px-3 py-2 text-xs text-of-muted'
+            }
+          >
+            {actionMessage.text}
+          </p>
+        ) : null}
         {velocity ? (
           <section
             aria-label="벨로시티"
@@ -392,6 +383,7 @@ export function CyclesPage() {
                         isOwner={isOwner}
                         projectId={projectId}
                         others={items.filter((o) => o.id !== c.id)}
+                        onMessage={(text, tone = 'info') => setActionMessage({ text, tone })}
                       />
                     ))}
                   </ul>
