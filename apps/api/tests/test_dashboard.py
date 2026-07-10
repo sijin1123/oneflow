@@ -1,7 +1,11 @@
 """Project dashboard aggregation (PLAN §3 Phase 3 reporting)."""
 
+import uuid
+from datetime import UTC, datetime, timedelta
+
 import pytest
 
+from app.models import ProjectMember, User, WorkPackage
 from tests.conftest import create_project, create_wp
 
 
@@ -22,6 +26,7 @@ async def test_dashboard_counts_and_overdue(client, project):
     d = (await client.get(f"/api/v1/projects/{pid}/dashboard")).json()
     assert d["total_work_packages"] == 4
     assert d["open_work_packages"] == 2  # todo + in_progress (done x2 excluded)
+    assert d["completion_percent"] == 50.0
     assert d["overdue_count"] == 1  # only the open past-due one
     status = {b["key"]: b["count"] for b in d["status_counts"]}
     assert status["todo"] == 1 and status["done"] == 2 and status["in_progress"] == 1
@@ -48,9 +53,76 @@ async def test_dashboard_hours_rollup(client, project):
 async def test_dashboard_empty_project(client, project):
     d = (await client.get(f"/api/v1/projects/{project['id']}/dashboard")).json()
     assert d["total_work_packages"] == 0
+    assert d["completion_percent"] == 0.0
     assert d["overdue_count"] == 0
     assert d["total_estimated_hours"] == 0.0
     assert d["total_spent_hours"] == 0.0
+
+
+async def test_dashboard_exposes_project_metadata_and_archived_projects_remain_readable(
+    client, project
+):
+    pid = project["id"]
+    updated = await client.patch(
+        f"/api/v1/projects/{pid}",
+        json={"description": "프로젝트 개요", "health": "at_risk", "health_note": "일정 지연"},
+    )
+    assert updated.status_code == 200, updated.text
+    assert (await client.post(f"/api/v1/projects/{pid}/archive")).status_code == 200
+
+    dashboard = (await client.get(f"/api/v1/projects/{pid}/dashboard")).json()
+    assert {
+        key: dashboard[key] for key in ("id", "key", "name", "description", "health", "health_note")
+    } == {
+        "id": pid,
+        "key": "DASH",
+        "name": "대시보드",
+        "description": "프로젝트 개요",
+        "health": "at_risk",
+        "health_note": "일정 지연",
+    }
+    assert dashboard["archived_at"] is not None
+
+
+async def test_dashboard_recent_work_packages_are_capped_ordered_and_assignee_enriched(
+    client, app, project
+):
+    pid = project["id"]
+    stamp = datetime(2026, 1, 1, tzinfo=UTC)
+    async with app.state.sessionmaker() as session, session.begin():
+        assignee = User(email="recent@oneflow.local", display_name="Recent Assignee")
+        session.add(assignee)
+        await session.flush()
+        session.add(ProjectMember(project_id=uuid.UUID(pid), user_id=assignee.id, role="member"))
+        session.add_all(
+            [
+                WorkPackage(
+                    id=uuid.UUID(int=index),
+                    project_id=uuid.UUID(pid),
+                    subject=f"recent-{index}",
+                    status="in_progress" if index == 6 else "todo",
+                    priority="high" if index == 6 else "none",
+                    assignee_id=assignee.id if index == 6 else None,
+                    updated_at=stamp + timedelta(seconds=min(index, 5)),
+                )
+                for index in range(1, 7)
+            ]
+        )
+
+    items = (await client.get(f"/api/v1/projects/{pid}/dashboard")).json()["recent_work_packages"]
+    assert [item["subject"] for item in items] == [
+        "recent-6",
+        "recent-5",
+        "recent-4",
+        "recent-3",
+        "recent-2",
+    ]
+    assert (items[0]["status"], items[0]["priority"], items[0]["assignee_name"]) == (
+        "in_progress",
+        "high",
+        "Recent Assignee",
+    )
+    assert all(item["updated_at"] for item in items)
 
 
 async def test_dashboard_nonmember_404(client, foreign_project):

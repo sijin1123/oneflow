@@ -27,7 +27,13 @@ from app.models.work_package import (
     WorkPackage,
 )
 from app.schemas.comment import ProjectActivityList, ProjectActivityRead
-from app.schemas.dashboard import Bucket, DashboardLayoutPut, DashboardLayoutRead, DashboardRead
+from app.schemas.dashboard import (
+    Bucket,
+    DashboardLayoutPut,
+    DashboardLayoutRead,
+    DashboardRead,
+    RecentWorkPackageRead,
+)
 
 router = APIRouter()
 
@@ -48,6 +54,7 @@ async def project_dashboard(
 ) -> DashboardRead:
     await require_member(session, project_id, user)
     today = utc_today()  # UTC boundary (v21.1 — unified in Pass 46)
+    project = (await session.execute(select(Project).where(Project.id == project_id))).scalar_one()
 
     async def group(col) -> dict[str, int]:
         rows = (
@@ -102,21 +109,47 @@ async def project_dashboard(
             .where(WorkPackage.project_id == project_id)
         )
     ).scalar_one()
-    budget = (
-        await session.execute(select(Project.budget).where(Project.id == project_id))
-    ).scalar_one_or_none()
+    recent_rows = (
+        await session.execute(
+            select(WorkPackage, User.display_name)
+            .outerjoin(User, WorkPackage.assignee_id == User.id)
+            .where(WorkPackage.project_id == project_id)
+            .order_by(WorkPackage.updated_at.desc(), WorkPackage.id.desc())
+            .limit(5)
+        )
+    ).all()
+    closed_count = total - open_count
 
     return DashboardRead(
+        id=project.id,
+        key=project.key,
+        name=project.name,
+        description=project.description,
+        health=project.health,
+        health_note=project.health_note,
+        archived_at=project.archived_at,
         total_work_packages=total,
         open_work_packages=open_count,
+        completion_percent=round((closed_count / total) * 100, 2) if total else 0.0,
         overdue_count=overdue,
         status_counts=_ordered_buckets(status_counts, WP_STATUSES),
         priority_counts=_ordered_buckets(priority_counts, WP_PRIORITIES),
         type_counts=_ordered_buckets(type_counts, WP_TYPES),
         total_estimated_hours=round(float(estimated), 2),
         total_spent_hours=round(float(spent), 2),
-        budget=round(float(budget), 2) if budget is not None else None,
+        budget=round(float(project.budget), 2) if project.budget is not None else None,
         total_cost=round(float(cost), 2),
+        recent_work_packages=[
+            RecentWorkPackageRead(
+                id=wp.id,
+                subject=wp.subject,
+                status=wp.status,
+                priority=wp.priority,
+                assignee_name=assignee_name,
+                updated_at=wp.updated_at,
+            )
+            for wp, assignee_name in recent_rows
+        ],
     )
 
 

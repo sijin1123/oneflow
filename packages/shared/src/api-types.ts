@@ -3197,14 +3197,35 @@ export interface components {
         };
         /** DashboardRead */
         DashboardRead: {
+            /** Archived At */
+            archived_at: string | null;
             /** Budget */
             budget: number | null;
+            /** Completion Percent */
+            completion_percent: number;
+            /** Description */
+            description: string | null;
+            /** Health */
+            health: string | null;
+            /** Health Note */
+            health_note: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Key */
+            key: string;
+            /** Name */
+            name: string;
             /** Open Work Packages */
             open_work_packages: number;
             /** Overdue Count */
             overdue_count: number;
             /** Priority Counts */
             priority_counts: components["schemas"]["Bucket"][];
+            /** Recent Work Packages */
+            recent_work_packages: components["schemas"]["RecentWorkPackageRead"][];
             /** Status Counts */
             status_counts: components["schemas"]["Bucket"][];
             /** Total Cost */
@@ -5071,6 +5092,30 @@ export interface components {
         ReactionList: {
             /** Items */
             items: components["schemas"]["ReactionAgg"][];
+        };
+        /**
+         * RecentWorkPackageRead
+         * @description Compact work-package row for the project overview's recent-work panel.
+         */
+        RecentWorkPackageRead: {
+            /** Assignee Name */
+            assignee_name: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Priority */
+            priority: string;
+            /** Status */
+            status: string;
+            /** Subject */
+            subject: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
         };
         /** RelationCreate */
         RelationCreate: {

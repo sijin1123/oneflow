@@ -1675,8 +1675,16 @@ test('대시보드가 집계 타일과 분포를 보여준다', async ({ page })
   await page.route(`**/api/v1/projects/${project.id}/dashboard`, (route) =>
     route.fulfill({
       json: {
+        id: project.id,
+        key: project.key,
+        name: project.name,
+        description: project.description,
+        health: 'at_risk',
+        health_note: '일정 위험을 우선 확인하세요.',
+        archived_at: null,
         total_work_packages: 5,
         open_work_packages: 3,
+        completion_percent: 40,
         overdue_count: 1,
         status_counts: [
           { key: 'backlog', count: 1 },
@@ -1701,6 +1709,16 @@ test('대시보드가 집계 타일과 분포를 보여준다', async ({ page })
         total_spent_hours: 10.5,
         budget: 1000000,
         total_cost: 250000,
+        recent_work_packages: [
+          {
+            id: wpA.id,
+            subject: wpA.subject,
+            status: wpA.status,
+            priority: wpA.priority,
+            assignee_name: 'Dev User',
+            updated_at: wpA.updated_at,
+          },
+        ],
       },
     }),
   )
@@ -1756,13 +1774,31 @@ test('대시보드가 집계 타일과 분포를 보여준다', async ({ page })
 
   await page.goto(`/projects/${project.id}/dashboard`)
   const main = page.getByRole('main')
+  await expect(main.getByRole('heading', { name: project.name })).toBeVisible()
+  await expect(main.getByText('주의')).toBeVisible()
+  await expect(main.getByText('일정 위험을 우선 확인하세요.')).toBeVisible()
   await expect(main.getByText('전체 작업')).toBeVisible()
+  await expect(main.getByText('완료율')).toBeVisible()
+  await expect(main.getByText('40%')).toBeVisible()
   await expect(main.getByText('최근 활동')).toBeVisible()
   await expect(main.getByText('기한 초과')).toBeVisible()
   await expect(main.getByText('10.5 / 40h')).toBeVisible()
   await expect(main.getByText('상태별')).toBeVisible()
   // Type distribution widget (Pass 58): renders from the existing payload.
   await expect(main.getByText('타입별')).toBeVisible()
+  const recentWork = main.getByRole('region', { name: '최근 작업' })
+  await expect(recentWork.getByText(wpA.subject)).toBeVisible()
+  await expect(recentWork.getByText('Dev User')).toBeVisible()
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/project-overview-ui/desktop.png',
+    fullPage: true,
+  })
+  await page.setViewportSize({ width: 390, height: 844 })
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/project-overview-ui/mobile.png',
+    fullPage: true,
+  })
 
   // activity filter: only comments remain; order flip puts the change first
   await expect(page.getByText('· 댓글')).toBeVisible()
@@ -1794,6 +1830,49 @@ test('대시보드가 집계 타일과 분포를 보여준다', async ({ page })
     'type_distribution', // Pass 58: the default set grew by one
     'recent_activity',
   ])
+
+  await recentWork.getByRole('button', { name: wpA.subject }).click()
+  await expect(page).toHaveURL(new RegExp(`/projects/${project.id}/work-packages\\?wp=${wpA.id}`))
+  await page.goBack()
+  await main.getByRole('button', { name: '전체 보기' }).click()
+  await expect(page).toHaveURL(`/projects/${project.id}/work-packages`)
+})
+
+test('보관된 빈 프로젝트 개요가 읽기 상태와 empty state를 표시한다', async ({ page }) => {
+  await mockApi(page)
+  await page.route(`**/api/v1/projects/${project.id}/dashboard`, (route) =>
+    route.fulfill({
+      json: {
+        id: project.id,
+        key: project.key,
+        name: project.name,
+        description: null,
+        health: null,
+        health_note: null,
+        archived_at: '2026-07-11T00:00:00Z',
+        total_work_packages: 0,
+        open_work_packages: 0,
+        completion_percent: 0,
+        overdue_count: 0,
+        status_counts: [],
+        priority_counts: [],
+        type_counts: [],
+        total_estimated_hours: 0,
+        total_spent_hours: 0,
+        budget: null,
+        total_cost: 0,
+        recent_work_packages: [],
+      },
+    }),
+  )
+  await page.route(`**/api/v1/projects/${project.id}/dashboard/layout`, (route) =>
+    route.fulfill({ json: { widgets: ['summary'], updated_at: null, is_default: true } }),
+  )
+
+  await page.goto(`/projects/${project.id}/dashboard`)
+  await expect(page.getByText('보관됨')).toBeVisible()
+  await expect(page.getByText('아직 작업이 없습니다.')).toBeVisible()
+  await expect(page.getByText('0%')).toBeVisible()
 })
 
 test('뷰어는 목록에서 생성·벌크 컨트롤이 없고 읽기 전용 안내를 본다', async ({ page }) => {
