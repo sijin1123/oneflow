@@ -1623,6 +1623,10 @@ test('내 작업 홈이 배정·기한임박·활동을 모아 보여주고 딥�
   await expect(quickLinks.getByRole('link', { name: /인박스/ })).toContainText('읽지 않음 1건')
   await expect(quickLinks.getByRole('link', { name: /운영 허브/ })).toBeVisible()
   await expect(page.getByRole('region', { name: '프로젝트 바로가기' }).getByText(project.name)).toBeVisible()
+  const aiWorkspace = page.getByRole('region', { name: 'AI workspace' })
+  await expect(aiWorkspace.getByText('꺼짐')).toBeVisible()
+  await expect(aiWorkspace.getByRole('link', { name: '시스템 상태' })).toBeVisible()
+  await expect(aiWorkspace.getByRole('link', { name: 'AI 요약 열기' })).toHaveCount(0)
   const dueSoon = page.getByRole('region', { name: '기한 임박' })
   await expect(dueSoon.getByText(wpA.subject)).toBeVisible()
   await expect(page.getByRole('region', { name: '최근 활동' }).getByText(/생성/)).toBeVisible()
@@ -1650,6 +1654,67 @@ test('내 작업 홈이 배정·기한임박·활동을 모아 보여주고 딥�
     .getByRole('button', { name: new RegExp(wpA.subject) })
     .click()
   await expect(page).toHaveURL(new RegExp(`/projects/${project.id}/work-packages\\?wp=${wpA.id}`))
+})
+
+test('AI workspace가 켜진 AI 요약 기능을 보이는 작업 상세로 연결한다', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await mockApi(page)
+  await page.route('**/api/v1/capabilities', (route) =>
+    route.fulfill({ json: { ai_summary_enabled: true } }),
+  )
+  await page.route('**/api/v1/me/work', (route) =>
+    route.fulfill({
+      json: {
+        assigned_to_me: [
+          {
+            id: wpA.id,
+            project_id: project.id,
+            project_name: project.name,
+            subject: wpA.subject,
+            type: wpA.type,
+            status: wpA.status,
+            priority: wpA.priority,
+            due_date: wpA.due_date,
+            assignee_id: 'me-1',
+            assignee_name: 'Dev User',
+          },
+        ],
+        due_soon: [],
+        created_by_me: [],
+        recent_activity: [],
+      },
+    }),
+  )
+  await page.route('**/api/v1/me/time-entries**', (route) =>
+    route.fulfill({
+      json: {
+        from_date: '2026-07-02',
+        to_date: '2026-07-08',
+        items: [],
+        total: 0,
+        total_hours: 0,
+        by_project: [],
+      },
+    }),
+  )
+
+  await page.goto('/my')
+  const aiWorkspace = page.getByRole('region', { name: 'AI workspace' })
+  await expect(aiWorkspace.getByText('사용 가능')).toBeVisible()
+  await expect(aiWorkspace.getByText(wpA.subject)).toBeVisible()
+  await expect(aiWorkspace.getByRole('link', { name: 'AI 요약 열기' })).toBeVisible()
+  await expectNoHorizontalOverflow(page)
+  await aiWorkspace.scrollIntoViewIfNeeded()
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/ai-workspace-ui/mobile.png',
+    fullPage: true,
+  })
+
+  await aiWorkspace.getByRole('link', { name: 'AI 요약 열기' }).click()
+  await expect(page).toHaveURL(new RegExp(`/projects/${project.id}/work-packages\\?wp=${wpA.id}`))
+  const drawer = page.getByRole('dialog')
+  await expect(drawer.getByText('AI 요약')).toBeVisible()
+  await expect(drawer.getByRole('button', { name: '요약 생성' })).toBeVisible()
 })
 
 test('사이클 페이지가 상태 그룹·진행률을 보여주고 소유자가 생성한다', async ({ page }) => {
