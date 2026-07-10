@@ -3594,6 +3594,24 @@ test('설정에서 자동화 규칙을 보여주고 새 규칙을 추가한다',
       },
     }),
   )
+  const rules = [
+    {
+      id: 'r1',
+      project_id: project.id,
+      name: '검수 시 긴급',
+      trigger_type: 'status_changed_to',
+      trigger_value: 'in_review',
+      action_type: 'set_priority',
+      action_value: 'urgent',
+      condition_field: null,
+      condition_value: null,
+      position: 0,
+      is_active: true,
+      last_fired_at: '2026-07-06T09:00:00Z',
+      fired_count: 3,
+      created_at: '2026-07-06T08:00:00Z',
+    },
+  ]
   await page.route(`**/api/v1/projects/${project.id}/automation-rules`, async (route) => {
     if (route.request().method() === 'POST') {
       await route.fulfill({ status: 201, json: { id: 'r-new' } })
@@ -3601,27 +3619,26 @@ test('설정에서 자동화 규칙을 보여주고 새 규칙을 추가한다',
     }
     await route.fulfill({
       json: {
-        items: [
-          {
-            id: 'r1',
-            project_id: project.id,
-            name: '검수 시 긴급',
-            trigger_type: 'status_changed_to',
-            trigger_value: 'in_review',
-            action_type: 'set_priority',
-            action_value: 'urgent',
-            is_active: true,
-            last_fired_at: '2026-07-06T09:00:00Z',
-            fired_count: 3,
-          },
-        ],
-        total: 1,
+        items: rules,
+        total: rules.length,
       },
     })
   })
-  await page.route(`**/api/v1/projects/${project.id}/automation-rules/r1`, (route) =>
-    route.fulfill({ json: { id: 'r1' } }),
-  )
+  await page.route(`**/api/v1/projects/${project.id}/automation-rules/r1`, async (route) => {
+    if (route.request().method() === 'DELETE') {
+      rules.splice(0, rules.length)
+      await route.fulfill({ status: 204 })
+      return
+    }
+    const sent = route.request().postDataJSON() as {
+      name?: string
+      trigger_value?: string
+      action_value?: string
+      is_active?: boolean
+    }
+    Object.assign(rules[0], sent)
+    await route.fulfill({ json: { ...rules[0] } })
+  })
   await page.route(`**/api/v1/projects/${project.id}/automation-rules/runs**`, (route) =>
     route.fulfill({
       json: {
@@ -3651,12 +3668,30 @@ test('설정에서 자동화 규칙을 보여주고 새 규칙을 추가한다',
   // fire-audit surface renders per rule
   await expect(page.getByText('발화 3회', { exact: false })).toBeVisible()
 
-  // inline edit sends a partial PATCH with the changed value only
+  // action-menu edit sends the changed value through PATCH
+  await page.getByLabel('검수 시 긴급 자동화 규칙 작업').click()
+  await page.getByLabel('검수 시 긴급 규칙 편집').click()
   const rulePatch = page.waitForRequest(
     (r) => r.method() === 'PATCH' && r.url().includes('/automation-rules/r1'),
   )
-  await page.getByLabel('검수 시 긴급 우선순위 값').selectOption('high')
+  await page.getByLabel('검수 시 긴급 우선순위 값 편집').selectOption('high')
+  await page.getByRole('button', { name: '저장' }).click()
   expect(((await rulePatch).postDataJSON() as { action_value: string }).action_value).toBe('high')
+
+  await page.getByLabel('검수 시 긴급 자동화 규칙 작업').click()
+  const toggle = page.waitForRequest(
+    (r) => r.method() === 'PATCH' && r.url().includes('/automation-rules/r1'),
+  )
+  await page.getByLabel('검수 시 긴급 규칙 사용 중지').click()
+  expect(((await toggle).postDataJSON() as { is_active: boolean }).is_active).toBe(false)
+
+  page.once('dialog', (dialog) => void dialog.accept())
+  await page.getByLabel('검수 시 긴급 자동화 규칙 작업').click()
+  const deleteReq = page.waitForRequest(
+    (r) => r.method() === 'DELETE' && r.url().includes('/automation-rules/r1'),
+  )
+  await page.getByLabel('검수 시 긴급 규칙 삭제').click()
+  await deleteReq
 
   // execution log renders behind the details toggle
   await page.getByText('실행 로그', { exact: false }).click()
@@ -3845,9 +3880,84 @@ test('자동화 규칙 우선순위: 아래로 이동하면 순서를 담아 PUT
   const put = page.waitForRequest(
     (r) => r.method() === 'PUT' && r.url().includes('/automation-rules/order'),
   )
-  await page.getByRole('button', { name: '긴급 규칙 아래로' }).click()
+  await page.getByLabel('긴급 규칙 자동화 규칙 작업').click()
+  await page.getByLabel('긴급 규칙 아래로').click()
   const sent = (await put).postDataJSON() as { ordered_ids: string[] }
   expect(sent.ordered_ids).toEqual(['r2', 'r1'])
+})
+
+test('모바일 자동화 규칙 액션 메뉴는 읽기 전용 상태를 안전하게 보여준다', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 760 })
+  await page.route('**/api/v1/projects', (route) => route.fulfill({ json: projects }))
+  await page.route('**/api/v1/me', (route) =>
+    route.fulfill({
+      json: { id: 'me-1', email: 'dev@oneflow.local', display_name: 'Dev User', is_active: true },
+    }),
+  )
+  await page.route('**/api/v1/me/notifications', (route) =>
+    route.fulfill({ json: { items: [], total: 0, unread: 0 } }),
+  )
+  await page.route(`**/api/v1/projects/${project.id}`, (route) =>
+    route.fulfill({ json: project }),
+  )
+  await page.route(`**/api/v1/projects/${project.id}/milestones`, (route) =>
+    route.fulfill({ json: { items: [], total: 0 } }),
+  )
+  await page.route(`**/api/v1/projects/${project.id}/statuses`, (route) =>
+    route.fulfill({ json: { items: [], total: 0 } }),
+  )
+  await page.route(`**/api/v1/projects/${project.id}/members`, (route) =>
+    route.fulfill({
+      json: {
+        items: [
+          { user_id: 'me-1', email: 'dev@oneflow.local', display_name: 'Dev User', role: 'viewer' },
+        ],
+        total: 1,
+      },
+    }),
+  )
+  await page.route(`**/api/v1/projects/${project.id}/automation-rules`, (route) =>
+    route.fulfill({
+      json: {
+        items: [
+          {
+            id: 'r1',
+            project_id: project.id,
+            name: '검수 시 긴급',
+            trigger_type: 'status_changed_to',
+            trigger_value: 'in_review',
+            action_type: 'set_priority',
+            action_value: 'urgent',
+            condition_field: null,
+            condition_value: null,
+            position: 0,
+            is_active: true,
+            last_fired_at: null,
+            fired_count: 0,
+            created_at: '2026-07-06T08:00:00Z',
+          },
+        ],
+        total: 1,
+      },
+    }),
+  )
+  await page.route(`**/api/v1/projects/${project.id}/automation-rules/runs**`, (route) =>
+    route.fulfill({ json: { items: [], total: 0 } }),
+  )
+
+  await page.goto(`/projects/${project.id}/settings?tab=automation`)
+  await page.getByLabel('검수 시 긴급 자동화 규칙 작업').click()
+  const menu = page.getByRole('menu', { name: '검수 시 긴급 자동화 규칙 작업 메뉴' })
+  await expect(menu).toBeVisible()
+  await expect(menu.getByText('읽기 전용')).toBeVisible()
+  await expect(menu.getByLabel('검수 시 긴급 규칙 편집')).toBeHidden()
+  const box = await menu.boundingBox()
+  expect(box).not.toBeNull()
+  expect((box?.x ?? 0) + (box?.width ?? 0)).toBeLessThanOrEqual(390)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/automation-rule-actions-ui/mobile.png',
+    fullPage: true,
+  })
 })
 
 test('AI 요약 플래그가 켜지면 드로어에서 요약을 생성한다', async ({ page }) => {
@@ -4388,7 +4498,7 @@ test('회의 상세가 안건·액션 아이템을 보여주고 액션 아이템
 
   await expect(page.getByLabel('회의 제목')).toHaveValue('스프린트 회의')
   await expect(page.getByText('배포 점검')).toBeVisible()
-  await expect(page.getByLabel('안건')).toBeVisible()
+  await expect(page.getByLabel('안건', { exact: true })).toBeVisible()
   await expect(page.getByText('Meeting detail')).toBeVisible()
   await expect(page.getByLabel('회의 속성')).toBeVisible()
   await expectNoHorizontalOverflow(page)
