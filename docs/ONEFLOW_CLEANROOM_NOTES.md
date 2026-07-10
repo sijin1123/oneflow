@@ -73,6 +73,12 @@
 | UI-first webhook operations/reliability surface | `docs/plane-poc-reverse-spec/`의 webhook delivery audit/retry 상태와 RSP-012 운영 신뢰성 요구 관찰 | `plane/apps/**`, `plane/packages/**` | 보장은 durable audit와 bounded automatic attempts이며, process crash·동시 worker·일시 실패 뒤에도 운영자가 queued/retrying/dead-letter를 구분·복구할 수 있어야 함 | OneFlow 자체 transactional outbox, immutable event UUID, PostgreSQL `FOR UPDATE SKIP LOCKED` lease와 fencing token, bounded retry/dead-letter state machine, atomic manual retry, admin audit labels를 신규 구현. Pending saturation은 시도 0회의 operator-retryable `dead_letter`가 될 수 있고 실제 전송 시도는 중복될 수 있으므로 consumer는 `x-oneflow-delivery`와 payload `id`(event ID)로 중복 제거해야 한다. Plane 소스/DOM/CSS/카피/에셋/패키지 없이 기존 OneFlow models/routes/tokens와 PostgreSQL 동시성 계약으로 독립 검증 |
 ## 게이트 실행 증적
 
+### UI-44 personal notes / RSP-014
+
+- 관찰: reverse spec D009의 독립 navigation, title search, add entry, empty CTA와 workspace-home 요약 IA만 기능 요구로 사용했다.
+- 금지 경계: `plane/apps/**`, `plane/packages/**`의 source/CSS/DOM/assets/copy를 열람·이식하지 않았다.
+- OneFlow 구현: 자체 `/notes` route, plain-text textarea, owner-only PostgreSQL note model/API, version CAS, user advisory transaction lock, pin-first full-set order contract, `/my` independent 3-note summary query를 OneFlow token·lucide·React Query로 작성했다.
+
 - 로컬: `bash scripts/check_cleanroom.sh` → PASS (실행 로그는 `docs/VERIFICATION.md`).
 - CI: `.github/workflows/ci.yml`의 `cleanroom` 잡에서 동일 스크립트 실행.
 - 게이트 4번(파일명 교집합) 보고 항목 검토: `button.tsx`·`badge.tsx`·`input.tsx` 등 UI 프리미티브 관례명과 `health.py`·`projects.py` 등 도메인 관례명은 이름만 겹칠 뿐이며, 내용은 전부 본 저장소에서 신규 작성(shadcn 스타일 프리미티브는 MIT 패턴의 자체 구현). — filename-overlap-reviewed

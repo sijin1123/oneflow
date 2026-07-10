@@ -165,7 +165,81 @@ const activities: ActivityList = {
 }
 const noComments: CommentList = { items: [], total: 0 }
 
+type PersonalNoteFixture = {
+  id: string
+  title: string
+  body: string
+  is_pinned: boolean
+  position: number
+  version: number
+  created_at: string
+  updated_at: string
+}
+
 async function mockApi(page: Page, opts: { conflictOnPatch?: boolean } = {}) {
+  // Default mutable personal-note store lets all notes routes exercise real
+  // request wiring without relying on a backend fixture.
+  let personalNotes: PersonalNoteFixture[] = []
+  await page.route('**/api/v1/me/personal-notes**', async (route) => {
+    const request = route.request()
+    const url = new URL(request.url())
+    if (request.method() === 'POST') {
+      const body = request.postDataJSON() as { title: string; body: string; is_pinned?: boolean }
+      const note: PersonalNoteFixture = {
+        id: `note-${personalNotes.length + 1}`,
+        title: body.title,
+        body: body.body,
+        is_pinned: body.is_pinned ?? false,
+        position: personalNotes.filter((item) => item.is_pinned === (body.is_pinned ?? false)).length,
+        version: 0,
+        created_at: '2026-07-10T00:00:00Z',
+        updated_at: '2026-07-10T00:00:00Z',
+      }
+      personalNotes = [...personalNotes, note]
+      await route.fulfill({ status: 201, json: note })
+      return
+    }
+    if (request.method() === 'PATCH') {
+      const id = url.pathname.split('/').at(-1)!
+      const body = request.postDataJSON() as Partial<PersonalNoteFixture> & { expected_version: number }
+      personalNotes = personalNotes.map((note) =>
+        note.id === id ? { ...note, ...body, version: body.expected_version + 1 } : note,
+      )
+      await route.fulfill({ json: personalNotes.find((note) => note.id === id) })
+      return
+    }
+    if (request.method() === 'PUT') {
+      const body = request.postDataJSON() as { items: Array<{ id: string; expected_version: number }> }
+      personalNotes = body.items.map((item, position) => {
+        const note = personalNotes.find((current) => current.id === item.id)!
+        return { ...note, position, version: item.expected_version + 1 }
+      })
+      await route.fulfill({
+        json: {
+          items: personalNotes,
+          total: personalNotes.length,
+          limit: 200,
+          offset: 0,
+        },
+      })
+      return
+    }
+    if (request.method() === 'DELETE') {
+      personalNotes = personalNotes.filter((note) => note.id !== url.pathname.split('/').at(-1))
+      await route.fulfill({ status: 204, body: '' })
+      return
+    }
+    const q = url.searchParams.get('q') ?? ''
+    const items = personalNotes.filter((note) => note.title.includes(q))
+    await route.fulfill({
+      json: {
+        items,
+        total: items.length,
+        limit: Number(url.searchParams.get('limit') ?? 50),
+        offset: Number(url.searchParams.get('offset') ?? 0),
+      },
+    })
+  })
   await page.route('**/api/v1/projects', (route) =>
     route.fulfill({ json: projects }),
   )
@@ -510,6 +584,185 @@ test('모바일 앱 셸에서 사이드바가 drawer로 열린다', async ({ pag
   await drawer.getByRole('link', { name: /Board/ }).click()
   await expect(drawer).toBeHidden()
   await expect(page).toHaveURL(new RegExp(`/projects/${project.id}/board$`))
+})
+
+test('개인 메모는 모바일 sidebar/home entry에서 생성·편집·고정·순서·삭제 요청을 연결한다', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await mockApi(page)
+  await page.goto('/my')
+  await page.getByRole('button', { name: '사이드바 열기' }).click()
+  await page.getByRole('dialog', { name: '모바일 내비게이션' }).getByRole('link', { name: '개인 메모' }).click()
+  await expect(page).toHaveURL(/\/notes$/)
+  await expect(page.getByText('첫 개인 메모를 남겨보세요.')).toBeVisible()
+
+  const createRequest = page.waitForRequest((request) => request.method() === 'POST' && request.url().includes('/personal-notes'))
+  await page.getByLabel('메모 제목', { exact: true }).fill('모바일 메모')
+  await page.getByLabel('메모 내용').fill('plain text body')
+  await page.getByRole('button', { name: '추가' }).click()
+  expect((await createRequest).postDataJSON()).toMatchObject({ title: '모바일 메모', body: 'plain text body' })
+  await expect(page.getByRole('button', { name: '모바일 메모' })).toBeVisible()
+
+  const pinRequest = page.waitForRequest((request) => request.method() === 'PATCH' && request.url().includes('/personal-notes/note-1'))
+  await page.getByRole('button', { name: '고정', exact: true }).click()
+  expect((await pinRequest).postDataJSON()).toMatchObject({ expected_version: 0, is_pinned: true })
+  await page.getByLabel('메모 제목', { exact: true }).fill('두번째 메모')
+  await page.getByRole('button', { name: '추가' }).click()
+  await expect(page.getByRole('button', { name: '두번째 메모' })).toBeVisible()
+  const secondPin = page.waitForRequest((request) => request.method() === 'PATCH' && request.url().includes('/personal-notes/note-2'))
+  await page.getByRole('button', { name: '고정', exact: true }).click()
+  await secondPin
+  const orderRequest = page.waitForRequest((request) => request.method() === 'PUT' && request.url().includes('/personal-notes/order'))
+  await page.getByRole('button', { name: '위로 이동' }).nth(1).click()
+  const orderBody = (await orderRequest).postDataJSON() as { items: Array<{ id: string; expected_version: number }> }
+  expect(orderBody.items).toEqual(expect.arrayContaining([{ id: 'note-2', expected_version: 1 }]))
+  await page.getByRole('button', { name: '모바일 메모' }).click()
+  await page.getByLabel('메모 제목', { exact: true }).fill('수정된 메모')
+  const editRequest = page.waitForRequest((request) => request.method() === 'PATCH' && request.url().includes('/personal-notes/note-1'))
+  await page.getByRole('button', { name: '저장' }).click()
+  expect((await editRequest).postDataJSON()).toMatchObject({ expected_version: 2, title: '수정된 메모' })
+
+  page.once('dialog', (dialog) => dialog.accept())
+  const deleteRequest = page.waitForRequest((request) => request.method() === 'DELETE' && request.url().includes('/personal-notes/note-1'))
+  await page.getByRole('button', { name: '메모 삭제' }).nth(1).click()
+  await deleteRequest
+  await expect(page.getByRole('button', { name: '두번째 메모' })).toBeVisible()
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({ path: '../../docs/screenshots/redevelopment/personal-notes-ui/mobile.png', fullPage: true })
+})
+
+test('개인 메모 목록 오류는 재시도로 독립 복구한다', async ({ page }) => {
+  await mockApi(page)
+  await page.unroute('**/api/v1/me/personal-notes**')
+  let calls = 0
+  await page.route('**/api/v1/me/personal-notes**', async (route) => {
+    calls += 1
+    // Initial fetch plus one automatic retry fail; the explicit retry recovers.
+    if (calls <= 2) {
+      await route.fulfill({ status: 500, json: { detail: 'notes unavailable' } })
+      return
+    }
+    await route.fulfill({ json: { items: [], total: 0, limit: 200, offset: 0 } })
+  })
+  await page.goto('/notes')
+  await expect(page.getByRole('alert')).toContainText('데이터를 불러오지 못했습니다')
+  const retryRequest = page.waitForRequest((request) => request.url().includes('/api/v1/me/personal-notes'))
+  await page.getByRole('button', { name: '다시 시도' }).click()
+  await retryRequest
+  await expect(page.getByText('첫 개인 메모를 남겨보세요.')).toBeVisible()
+})
+
+test('개인 메모 충돌은 초안을 보존하고 최신 버전으로 명시적 재저장한다', async ({ page }) => {
+  await mockApi(page)
+  await page.goto('/notes')
+  await page.getByLabel('메모 제목', { exact: true }).fill('충돌 메모')
+  await page.getByLabel('메모 내용').fill('처음 내용')
+  await page.getByRole('button', { name: '추가' }).click()
+  await page.getByRole('button', { name: '충돌 메모' }).click()
+  await page.getByLabel('메모 제목', { exact: true }).fill('보존할 내 초안')
+
+  let conflictPending = true
+  const current = {
+    id: 'note-1',
+    title: '서버에서 바뀐 제목',
+    body: '서버 최신 내용',
+    is_pinned: false,
+    position: 0,
+    version: 1,
+    created_at: '2026-07-10T00:00:00Z',
+    updated_at: '2026-07-10T00:01:00Z',
+  }
+  await page.route('**/api/v1/me/personal-notes/note-1', async (route) => {
+    if (route.request().method() === 'PATCH' && conflictPending) {
+      conflictPending = false
+      await route.fulfill({
+        status: 409,
+        json: { detail: 'note was changed elsewhere', current },
+      })
+      return
+    }
+    await route.fallback()
+  })
+
+  await page.getByRole('button', { name: '저장' }).click()
+  await expect(page.getByRole('alert')).toContainText('작성 중인 내용은 유지됩니다')
+  await expect(page.getByLabel('메모 제목', { exact: true })).toHaveValue('보존할 내 초안')
+
+  const overwriteRequest = page.waitForRequest(
+    (request) =>
+      request.method() === 'PATCH' && request.url().includes('/personal-notes/note-1'),
+  )
+  await page.getByRole('button', { name: '내 내용으로 다시 저장' }).click()
+  expect((await overwriteRequest).postDataJSON()).toMatchObject({
+    expected_version: 1,
+    title: '보존할 내 초안',
+  })
+  await expect(page.getByRole('alert')).toHaveCount(0)
+  await expect(page.getByRole('button', { name: '보존할 내 초안' })).toBeVisible()
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/personal-notes-ui/desktop.png',
+    fullPage: true,
+  })
+})
+
+test('사용자 전환 로그인은 이전 사용자의 개인 메모 캐시를 즉시 제거한다', async ({ page }) => {
+  await mockApi(page)
+  await page.unroute('**/api/v1/me/personal-notes**')
+  let identity: 'a' | 'b' = 'a'
+  let releaseUserB: (() => void) | undefined
+  let markUserBRequested: (() => void) | undefined
+  const userBGate = new Promise<void>((resolve) => {
+    releaseUserB = resolve
+  })
+  const userBRequested = new Promise<void>((resolve) => {
+    markUserBRequested = resolve
+  })
+
+  await page.route('**/api/v1/me/personal-notes**', async (route) => {
+    if (identity === 'a') {
+      await route.fulfill({
+        json: {
+          items: [
+            {
+              id: 'user-a-note',
+              title: 'A 사용자 비공개 메모',
+              body: 'A 사용자만 볼 수 있음',
+              is_pinned: false,
+              position: 0,
+              version: 0,
+              created_at: '2026-07-10T00:00:00Z',
+              updated_at: '2026-07-10T00:00:00Z',
+            },
+          ],
+          total: 1,
+          limit: 200,
+          offset: 0,
+        },
+      })
+      return
+    }
+    markUserBRequested?.()
+    await userBGate
+    await route.fulfill({ json: { items: [], total: 0, limit: 200, offset: 0 } })
+  })
+  await page.route('**/api/v1/auth/login', async (route) => {
+    identity = 'b'
+    await route.fulfill({
+      json: { user_id: 'user-b', email: 'user-b@oneflow.local', display_name: 'User B' },
+    })
+  })
+
+  await page.goto('/notes')
+  await expect(page.getByRole('button', { name: 'A 사용자 비공개 메모' })).toBeVisible()
+  await page.goto('/login?next=/notes')
+  await page.getByLabel('이메일').fill('user-b@oneflow.local')
+  await page.getByRole('button', { name: '로그인' }).click()
+  await expect(page).toHaveURL(/\/notes$/)
+  await userBRequested
+  await expect(page.getByText('A 사용자 비공개 메모')).toHaveCount(0)
+
+  releaseUserB?.()
+  await expect(page.getByText('첫 개인 메모를 남겨보세요.')).toBeVisible()
 })
 
 test('새 작업 생성 composer는 모바일에서 핵심 속성과 payload를 유지한다', async ({ page }) => {

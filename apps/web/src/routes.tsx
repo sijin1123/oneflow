@@ -14,6 +14,7 @@ import { MeetingDetailPage } from '@/features/meetings/MeetingDetailPage'
 import { MeetingsPage } from '@/features/meetings/MeetingsPage'
 import { ModulesPage } from '@/features/modules/ModulesPage'
 import { MyWorkPage } from '@/features/my-work/MyWorkPage'
+import { PersonalNotesPage } from '@/features/personal-notes/PersonalNotesPage'
 import { InboxPage } from '@/features/notifications/InboxPage'
 import { ProjectsPage } from '@/features/projects/ProjectsPage'
 import { SearchPage } from '@/features/search/SearchPage'
@@ -51,6 +52,7 @@ export const router = createBrowserRouter([
     children: [
       { index: true, element: <Navigate to="/projects" replace /> },
       { path: 'my', element: <MyWorkPage /> },
+      { path: 'notes', element: <PersonalNotesPage /> },
       { path: 'inbox', element: <InboxPage /> },
       { path: 'work-items', element: <AllWorkPage /> },
       { path: 'initiatives', element: <InitiativesPage /> },
