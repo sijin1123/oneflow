@@ -630,6 +630,389 @@ healthz/health 분리(DB 다운 스텁: healthz 200 ∧ health 503) · 기동 �
 
 ---
 
+# UI-first 재개발 UI-13 검증 (2026-07-09 · B-030)
+
+> 브랜치: `feature/redevelopment-planning-ui`
+> 범위: planning/schedule surface 1차. Backlog, Board, Timeline, Calendar, Cycles, Modules를 공통 planning shell, planning mode navigation, project/archive context, summary tiles, mobile-safe navigation으로 정리. API/DB/env/migration 변경 없음.
+
+| 항목 | 명령 | 결과 |
+|---|---|---:|
+| Frontend typecheck/lint/build | `make web-build` | **PASS** (기존 oxlint Fast Refresh 경고 3건, Vite chunk 경고) |
+| Focused planning e2e | `cd apps/web && npm run test:e2e -- --grep "계획 표면"` | **PASS — 1** |
+| Focused planning regression e2e | `cd apps/web && npm run test:e2e -- --grep "백로그\|보드\|캘린더\|타임라인\|사이클\|모듈"` | **PASS — 18** |
+| Calendar regression rerun | `cd apps/web && npm run test:e2e -- --grep "캘린더가 기한"` | **PASS — 1** |
+| Frontend unit | `make web-unit` | **PASS — 62** |
+| Playwright smoke | `make web-e2e` | **PASS — 111** |
+| Backend lint/format | `make api-lint` | **PASS** |
+| OpenAPI 타입 드리프트 | `make check-types` | **PASS** |
+| Backend full tests | `make api-test` | **PASS — 513** (Alembic config deprecation warning 1건, 기존 경고) |
+| Migration smoke | `make api-migrate-smoke` | **PASS — 0001~0060 up/base/up** |
+| Clean-room gate | `make cleanroom-check` | **PASS** |
+| Security audit | `make audit` | **PASS** — pip-audit 0, npm audit high 0. 최초 1회는 PyPI read timeout으로 실패 후 동일 명령 재실행 PASS |
+| Whitespace gate | `git diff --check` | **PASS** |
+| Visual QA | Playwright screenshot + manual inspection | **PASS** — `docs/screenshots/redevelopment/planning-ui/mobile-backlog.png` |
+
+## UI-13 Notes
+
+- `/projects/:projectId/backlog`, `board`, `timeline`, `calendar`, `cycles`, `modules` now share a `PlanningSurface` with project context, active/archive state, planning mode navigation, and dense summary tiles.
+- Existing backlog cycle assignment, board drag/drop, timeline drag scheduling, calendar month navigation, cycle CRUD/rollover, module layout/member management contracts remain unchanged.
+- Mobile QA covers a 390x844 backlog planning entry, verifies mode navigation to board and calendar, and asserts no page-level horizontal overflow.
+- No feature flag, environment variable, backend, database, migration, or API contract change.
+
+---
+
+# UI-first 재개발 UI-14 검증 (2026-07-10 · B-030)
+
+> 브랜치: `feature/redevelopment-reporting-ui`
+> 범위: reporting/portfolio surface 1차. `/reports`, project dashboard, `/initiatives`를 공통 reporting shell, summary cards, view controls, health/progress hierarchy, 390px 모바일 screenshot QA로 정리. API/DB/env/migration 변경 없음.
+
+| 항목 | 명령 | 결과 |
+|---|---|---:|
+| Frontend typecheck/unit | `cd apps/web && npm run typecheck`, `cd apps/web && npm run test:unit` | **PASS — unit 62** |
+| Frontend typecheck/lint/build | `make web-build` | **PASS** (기존 oxlint Fast Refresh 경고 3건, Vite chunk 경고) |
+| Focused reporting e2e | `cd apps/web && npm run test:e2e -- --grep "대시보드|포트폴리오|이니셔티브|보고 표면"` | **PASS — 6** |
+| Playwright smoke | `make web-e2e` | **PASS — 111** |
+| Backend lint/format | `make api-lint` | **PASS** |
+| OpenAPI 타입 드리프트 | `make check-types` | **PASS** |
+| Backend full tests | `make api-test` | **PASS — 513** (Alembic config deprecation warning 1건, 기존 경고) |
+| Migration smoke | `make api-migrate-smoke` | **PASS — 0001~0060 up/base/up** |
+| Clean-room gate | `make cleanroom-check` | **PASS** |
+| Security audit | `make audit` | **PASS** — pip-audit 0, npm audit high 0 |
+| Whitespace gate | `git diff --check` | **PASS** |
+| Visual QA | Playwright screenshots + no-overflow assertion | **PASS** — `docs/screenshots/redevelopment/reporting-ui/mobile-reports.png`, `mobile-initiatives.png` |
+
+## UI-14 Notes
+
+- Added `ReportingSurface` as a small OneFlow-owned shell for reporting pages, with compact navigation, summary metric cards, section framing, and segmented view controls.
+- `/reports` keeps the existing portfolio report, timeline, archive toggle, project dashboard deep link, and CSV export contracts while adding a top-level portfolio summary and mobile-safe overflow containment.
+- `/projects/:projectId/dashboard` keeps the existing widget layout persistence, CSV export, activity filters, and distribution widgets while aligning the page chrome and metric cards with the reporting surface.
+- `/initiatives` keeps owner-only state/health mutations, project connect/disconnect, hidden connected-project count behavior, and highlight deep links while adding summary cards and mobile-stacked controls.
+- No feature flag, environment variable, backend, database, migration, or API contract change.
+
+---
+
+# UI-first 재개발 UI-15 검증 (2026-07-10 · B-030)
+
+> 브랜치: `feature/redevelopment-intake-ui`
+> 범위: intake/triage surface 1차. 기존 `/projects/:projectId/intake`를 request inbox 구조로 재구성하고, status summary, submit composer, owner decision controls, notification highlight, 390px 모바일 screenshot QA를 정리. API/DB/env/migration 변경 없음.
+
+| 항목 | 명령 | 결과 |
+|---|---|---:|
+| Frontend typecheck/lint/build | `make web-build` | **PASS** (기존 oxlint Fast Refresh 경고 3건, Vite chunk 경고) |
+| Focused intake e2e | `cd apps/web && npm run test:e2e -- --grep "인테이크"` | **PASS — 3** |
+| Frontend unit | `make web-unit` | **PASS — 62** |
+| Playwright smoke | `make web-e2e` | **PASS — 111** |
+| Backend lint/format | `make api-lint` | **PASS** |
+| OpenAPI 타입 드리프트 | `make check-types` | **PASS** |
+| Backend full tests | `make api-test` | **PASS — 513** (Alembic config deprecation warning 1건, 기존 경고) |
+| Migration smoke | `make api-migrate-smoke` | **PASS — 0001~0060 up/base/up** |
+| Clean-room gate | `make cleanroom-check` | **PASS** |
+| Security audit | `make audit` | **PASS** — pip-audit 0, npm audit high 0 |
+| Whitespace gate | `git diff --check` | **PASS** |
+| Visual QA | Playwright screenshot + no-overflow assertion | **PASS** — `docs/screenshots/redevelopment/intake-ui/mobile.png` |
+
+## UI-15 Notes
+
+- `/projects/:projectId/intake` now reads as a request inbox with summary cards for open/pending/accepted/closed states.
+- Member submit, viewer read-only, owner-only triage, accepted work-package deep link, triage notes, and notification highlight behavior remain on the existing API contracts.
+- Owner decision controls now stack safely on mobile while preserving the existing `accepted`, `declined`, `duplicate`, and `snoozed` mutation payloads.
+- No feature flag, environment variable, backend, database, migration, or API contract change.
+
+---
+
+# UI-first 재개발 UI-16 검증 (2026-07-10 · B-030)
+
+> 브랜치: `feature/redevelopment-project-directory-ui`
+> 범위: project directory surface 1차. 기존 `/projects`를 workspace-level directory로 재구성하고, summary metrics, project search, archived toggle, Display menu column controls, health/archive/initiative cues, project creation composer, 390px mobile card QA를 정리. API/DB/env/migration 변경 없음.
+
+| 항목 | 명령 | 결과 |
+|---|---|---:|
+| Frontend typecheck | `cd apps/web && npm run typecheck` | **PASS** |
+| Focused project directory e2e | `cd apps/web && npm run test:e2e -- --grep "프로젝트 (목록\|디렉터리)\|새 프로젝트 폼\|빈 프로젝트 목록"` | **PASS — 5** |
+| Focused mobile screenshot e2e | `cd apps/web && npm run test:e2e -- --grep "프로젝트 디렉터리는 모바일"` | **PASS — 1** |
+| Frontend typecheck/lint/build | `make web-build` | **PASS** (기존 oxlint Fast Refresh 경고 3건, Vite chunk 경고) |
+| Frontend unit | `make web-unit` | **PASS — 62** |
+| Playwright smoke | `make web-e2e` | **PASS — 111** |
+| Backend lint/format | `make api-lint` | **PASS** |
+| OpenAPI 타입 드리프트 | `make check-types` | **PASS** |
+| Backend full tests | `make api-test` | **PASS — 513** (Alembic config deprecation warning 1건, 기존 경고) |
+| Migration smoke | `make api-migrate-smoke` | **PASS — 0001~0060 up/base/up** |
+| Clean-room gate | `make cleanroom-check` | **PASS** |
+| Security audit | `make audit` | **PASS** — pip-audit 0, npm audit high 0 |
+| Whitespace gate | `git diff --check` | **PASS** |
+| Visual QA | Playwright screenshot + manual inspection | **PASS** — `docs/screenshots/redevelopment/project-directory-ui/mobile.png` |
+
+## UI-16 Notes
+
+- `/projects` now reads as a workspace directory rather than a compact link list: header metadata, summary metrics, local project search, archived inclusion, sort direction, Display menu column controls, refresh, and creation composer share one surface.
+- Existing project creation/template payload contract, client-side project sorting, localStorage column preferences, health chip, archived toggle, initiative highlight routing, and member-scoped project visibility remain unchanged.
+- The project directory search is client-side only over already-visible project rows and does not widen API visibility or add a server query contract.
+- Mobile QA covers 390x844 summary/controls/card layout and asserts no horizontal overflow.
+- No feature flag, environment variable, backend, database, migration, or API contract change.
+
+---
+
+# UI-first 재개발 UI-17 검증 (2026-07-10 · B-030)
+
+> 브랜치: `feature/redevelopment-search-discovery-ui`
+> 범위: search/discovery surface 1차. 기존 `/search`를 workspace discovery page로 재구성하고, query controls, grouped result summaries, result cards by type, content-match snippets, empty/loading/error states, 390px mobile screenshot QA를 정리. API/DB/env/migration 변경 없음.
+
+| 항목 | 명령 | 결과 |
+|---|---|---:|
+| Frontend typecheck | `cd apps/web && npm run typecheck` | **PASS** |
+| Focused search/command e2e | `cd apps/web && npm run test:e2e -- --grep "전체 검색\|커맨드 팔레트"` | **PASS — 6** |
+| Visual QA | Playwright screenshot + manual inspection | **PASS** — `docs/screenshots/redevelopment/search-discovery-ui/mobile.png` |
+
+## UI-17 Notes
+
+- `/search` now has a workspace search header, query control card, result count badge, grouped summary cards, and dense result cards for work packages, documents, meetings, cycles, modules, and initiatives.
+- Existing `GET /api/v1/search?q=` response, 2+ character load guard, content snippet rendering as text, hidden empty groups, document result navigation, and command palette advanced-search route remain unchanged.
+- Result summaries use only authorized group counts already returned by the server and do not infer hidden resources.
+- Mobile QA covers 390x844 query/result layout and asserts no horizontal overflow.
+- No feature flag, environment variable, backend, database, migration, or API contract change.
+
+---
+
+# UI-first 재개발 UI-18 검증 (2026-07-10 · B-030)
+
+> 브랜치: `feature/redevelopment-governance-ui`
+> 범위: project governance surface 1차. 프로젝트 설정의 workflow/status/type/automation controls를 governance overview, 상태/타입 패널, 자동화 규칙 카드, rule builder, read-only/owner cues, 390px 모바일 screenshot QA로 재구성. API/DB/env/migration 변경 없음.
+
+| 항목 | 명령 | 결과 |
+|---|---|---:|
+| Frontend typecheck | `cd apps/web && npm run typecheck` | **PASS** |
+| Focused governance e2e | `cd apps/web && npm run test:e2e -- --grep "governance\|타입 관리\|자동화\|워크플로우 라벨\|보드가 프로젝트 워크플로우"` | **PASS — 7** |
+| Frontend typecheck/lint/build | `make web-build` | **PASS** (기존 oxlint Fast Refresh 경고 3건, Vite chunk 경고) |
+| Frontend unit | `make web-unit` | **PASS — 62** |
+| Playwright smoke | `make web-e2e` | **PASS — 111** |
+| Backend lint/format | `make api-lint` | **PASS** |
+| OpenAPI 타입 드리프트 | `make check-types` | **PASS** |
+| Backend full tests | `make api-test` | **PASS — 513** (Alembic config deprecation warning 1건, 기존 경고) |
+| Migration smoke | `make api-migrate-smoke` | **PASS — 0001~0060 up/base/up** |
+| Clean-room gate | `make cleanroom-check` | **PASS** |
+| Security audit | `make audit` | **PASS** — pip-audit 0, npm audit high 0 |
+| Whitespace gate | `git diff --check` | **PASS** |
+| Visual QA | Playwright screenshots + manual inspection | **PASS** — `docs/screenshots/redevelopment/governance-ui/mobile-workflow.png`, `mobile-automation.png` |
+
+## UI-18 Notes
+
+- `projects/:projectId/settings?tab=workflow` now has a governance overview with owner/read-only cues and summary cards for state flow, work item types, and automation.
+- Status/type management keeps the existing rename, reorder, active toggle, and API mutation contracts while using mobile-safe dense rows.
+- The automation tab keeps existing rule PATCH/POST/order/run-log behavior while showing rule names, precedence, active state, rule builder, and execution logs as a cohesive governance panel.
+- Mobile QA covers 390x844 workflow and automation states and asserts no horizontal overflow.
+- No feature flag, environment variable, backend, database, migration, or API contract change.
+
+---
+
+# UI-first 재개발 UI-19 검증 (2026-07-10 · B-030)
+
+> 브랜치: `feature/redevelopment-user-directory-ui`
+> 범위: user directory surface 1차. 기존 `/admin/users`를 workspace account directory로 재구성해 계정 요약, 검색/상태 필터, add-user composer, 관리자/비활성화 controls, 프로젝트 멤버십 drilldown, desktop table, 390px mobile account cards를 정리. API/DB/env/migration 변경 없음.
+
+| 항목 | 명령 | 결과 |
+|---|---|---:|
+| Frontend typecheck/lint/build | `make web-build` | **PASS** (기존 oxlint Fast Refresh 경고 3건, Vite chunk 경고) |
+| Focused user directory e2e | `cd apps/web && npm run test:e2e -- --grep "사용자"` | **PASS — 3** |
+| Frontend unit | `make web-unit` | **PASS — 62** |
+| Playwright smoke | `make web-e2e` | **PASS — 111** |
+| Backend lint/format | `make api-lint` | **PASS** |
+| OpenAPI 타입 드리프트 | `make check-types` | **PASS** |
+| Backend full tests | `make api-test` | **PASS — 513** (Alembic config deprecation warning 1건, 기존 경고) |
+| Migration smoke | `make api-migrate-smoke` | **PASS — 0001~0060 up/base/up** |
+| Clean-room gate | `make cleanroom-check` | **PASS** |
+| Security audit | `make audit` | **PASS** — pip-audit 0, npm audit high 0 |
+| Whitespace gate | `git diff --check` | **PASS** |
+| Visual QA | Playwright screenshot + manual inspection | **PASS** — `docs/screenshots/redevelopment/user-directory-ui/mobile.png` |
+
+## UI-19 Notes
+
+- `/admin/users` now reads as a workspace account directory with summary cards for total, active, admin, and inactive users.
+- The desktop table preserves existing add-user, self-deactivation, last-active-admin, admin-toggle, and membership drilldown contracts.
+- Mobile QA renders a card-only directory surface to avoid duplicate hidden table/card accessibility targets, while keeping membership drilldown and action controls reachable.
+- No feature flag, environment variable, backend, database, migration, or API contract change.
+
+---
+
+# UI-first 재개발 UI-20 검증 (2026-07-10 · B-030)
+
+> 브랜치: `feature/redevelopment-team-members-ui`
+> 범위: project team/members surface 1차. 기존 프로젝트 설정의 멤버 탭을 팀 디렉터리와 역할별 권한 surface로 재구성하고, 역할 요약, 멤버 추가, last-owner 보호, 권한 matrix, 390px 모바일 screenshot QA를 정리. API/DB/env/migration 변경 없음.
+
+| 항목 | 명령 | 결과 |
+|---|---|---:|
+| Frontend typecheck/lint/build | `make web-build` | **PASS** (기존 oxlint Fast Refresh 경고 2건, Vite chunk 경고) |
+| Focused members/team e2e | `cd apps/web && npm run test:e2e -- --grep "멤버\|프로젝트 팀"` | **PASS — 6** |
+| Focused team mobile e2e | `cd apps/web && npm run test:e2e -- --grep "프로젝트 팀 표면"` | **PASS — 1** |
+| Frontend unit | `make web-unit` | **PASS — 62** |
+| Playwright smoke | `make web-e2e` | **PASS — 111** |
+| Backend lint/format | `make api-lint` | **PASS** |
+| OpenAPI 타입 드리프트 | `make check-types` | **PASS** |
+| Backend full tests | `make api-test` | **PASS — 513** (Alembic config deprecation warning 1건, 기존 경고) |
+| Migration smoke | `make api-migrate-smoke` | **PASS — 0001~0060 up/base/up** |
+| Clean-room gate | `make cleanroom-check` | **PASS** |
+| Security audit | `make audit` | **PASS** — pip-audit 0, npm audit high 0 |
+| Whitespace gate | `git diff --check` | **PASS** |
+| Visual QA | Playwright screenshots + manual inspection | **PASS** — `docs/screenshots/redevelopment/team-members-ui/mobile.png`, `docs/screenshots/redevelopment/settings-ia/project-settings-mobile.png` |
+
+## UI-20 Notes
+
+- `/projects/:projectId/settings?tab=members` now reads as a team management surface with role summary tiles, member add composer, team directory cards/table, and permission matrix.
+- Existing member list, add, role update, delete, current-user role, last-owner guard, and permission report API contracts remain unchanged.
+- Mobile QA renders only the card layout at 390x844 so hidden desktop table text does not duplicate accessible names or create horizontal overflow.
+- No feature flag, environment variable, backend, database, migration, or API contract change.
+
+---
+
+# UI-first 재개발 UI-21 검증 (2026-07-10 · B-030)
+
+> 브랜치: `feature/redevelopment-time-cost-ui`
+> 범위: time/cost execution surface 1차. 기존 work item detail의 시간 추적과 비용 섹션을 estimate/budget cues, 기록 가능/read-only badge, ledger, 모바일 accounting cards, composer grid로 재구성. API/DB/env/migration 변경 없음.
+
+| 항목 | 명령 | 결과 |
+|---|---|---:|
+| Frontend typecheck/lint/build | `make web-build` | **PASS** (기존 oxlint Fast Refresh 경고 3건, Vite chunk 경고) |
+| Focused time/cost e2e | `cd apps/web && npm run test:e2e -- --grep "시간\|비용"` | **PASS — 2** |
+| Focused time/cost mobile e2e | `cd apps/web && npm run test:e2e -- --grep "시간·비용 표면"` | **PASS — 1** |
+| Frontend unit | `make web-unit` | **PASS — 62** |
+| Playwright smoke | `make web-e2e` | **PASS — 111** |
+| Backend lint/format | `make api-lint` | **PASS** |
+| OpenAPI 타입 드리프트 | `make check-types` | **PASS** |
+| Backend full tests | `make api-test` | **PASS — 513** (Alembic config deprecation warning 1건, 기존 경고) |
+| Migration smoke | `make api-migrate-smoke` | **PASS — 0001~0060 up/base/up** |
+| Clean-room gate | `make cleanroom-check` | **PASS** |
+| Security audit | `make audit` | **PASS** — pip-audit 0, npm audit high 0 |
+| Whitespace gate | `git diff --check` | **PASS** |
+| Visual QA | Playwright screenshots + manual inspection | **PASS** — `docs/screenshots/redevelopment/time-cost-ui/mobile-time.png`, `mobile-cost.png`, `docs/screenshots/redevelopment/detail-ui/desktop.png`, `full-page-desktop.png`, `docs/screenshots/web-drawer.png` |
+
+## UI-21 Notes
+
+- `TimeTrackingSection` now exposes estimate, spent, remaining, progress, ledger, and a mobile-safe log composer while keeping the existing time-entry hooks and labels.
+- `CostSection` now exposes total amount, entry count, top kind, kind breakdown badges, ledger, and a mobile-safe cost composer while keeping the existing cost-entry hooks and labels.
+- Existing viewer/read-only behavior remains covered: write inputs and delete buttons stay absent for viewers, with no additional duplicate read-only notice in sub-sections.
+- No feature flag, environment variable, backend, database, migration, or API contract change.
+
+---
+
+# UI-first 재개발 UI-22 검증 (2026-07-10 · B-030)
+
+> 브랜치: `feature/redevelopment-relations-ui`
+> 범위: relations/dependencies surface 1차. 기존 work item detail의 관계 섹션을 dependency summary, relation type badge, direction cue, linked-item cards, read-only badge, mobile composer로 재구성. API/DB/env/migration 변경 없음.
+
+| 항목 | 명령 | 결과 |
+|---|---|---:|
+| Frontend typecheck/lint/build | `make web-build` | **PASS** (기존 oxlint Fast Refresh 경고 3건, Vite chunk 경고) |
+| Focused relations e2e | `cd apps/web && npm run test:e2e -- --grep "관계"` | **PASS — 3** |
+| Focused relations mobile e2e | `cd apps/web && npm run test:e2e -- --grep "관계 표면"` | **PASS — 1** |
+| Frontend unit | `make web-unit` | **PASS — 62** |
+| Playwright smoke | `make web-e2e` | **PASS — 111** |
+| Backend lint/format | `make api-lint` | **PASS** |
+| OpenAPI 타입 드리프트 | `make check-types` | **PASS** |
+| Backend full tests | `make api-test` | **PASS — 513** (Alembic config deprecation warning 1건, 기존 경고) |
+| Migration smoke | `make api-migrate-smoke` | **PASS — 0001~0060 up/base/up** |
+| Clean-room gate | `make cleanroom-check` | **PASS** |
+| Security audit | `make audit` | **PASS** — pip-audit 0, npm audit high 0 |
+| Whitespace gate | `git diff --check` | **PASS** |
+| Visual QA | Playwright screenshot + manual inspection | **PASS** — `docs/screenshots/redevelopment/relations-ui/mobile.png` |
+
+## UI-22 Notes
+
+- `RelationsSection` now exposes relation count, dependency count, candidate count, relation type badges, direction cues, linked-item cards, and a mobile-safe relation composer.
+- Existing relation APIs, same-project boundary, delete mutation, and viewer read-only behavior remain unchanged.
+- Existing labels `관계 유형` and `대상 작업` are preserved for regression coverage.
+- No feature flag, environment variable, backend, database, migration, or API contract change.
+
+---
+
+# UI-first 재개발 UI-23 검증 (2026-07-10 · B-030)
+
+> 브랜치: `feature/redevelopment-activity-comments-ui`
+> 범위: activity/comments collaboration surface 1차. 기존 work item detail의 활동 및 댓글 섹션을 feed summary, activity cards, threaded comment cards, reactions, mention chips, mobile composer로 재구성. API/DB/env/migration 변경 없음.
+
+| 항목 | 명령 | 결과 |
+|---|---|---:|
+| Frontend typecheck/lint/build | `make web-build` | **PASS** (기존 oxlint Fast Refresh 경고 3건, Vite chunk 경고) |
+| Focused activity/comments e2e | `cd apps/web && npm run test:e2e -- --grep "댓글\|활동"` | **PASS — 9** |
+| Focused activity/comments mobile e2e | `cd apps/web && npm run test:e2e -- --grep "활동 댓글 표면"` | **PASS — 1** |
+| Frontend unit | `make web-unit` | **PASS — 62** |
+| Playwright smoke | `make web-e2e` | **PASS — 111** |
+| Backend lint/format | `make api-lint` | **PASS** |
+| OpenAPI 타입 드리프트 | `make check-types` | **PASS** |
+| Backend full tests | `make api-test` | **PASS — 513** (Alembic config deprecation warning 1건, 기존 경고) |
+| Migration smoke | `make api-migrate-smoke` | **PASS — 0001~0060 up/base/up** |
+| Clean-room gate | `make cleanroom-check` | **PASS** |
+| Security audit | `make audit` | **PASS** — pip-audit 0, npm audit high 0 |
+| Whitespace gate | `git diff --check` | **PASS** |
+| Visual QA | Playwright screenshots + manual inspection | **PASS** — `docs/screenshots/redevelopment/activity-comments-ui/mobile.png`, `docs/screenshots/redevelopment/detail-ui/mobile-activity.png`, `docs/screenshots/redevelopment/detail-ui/full-page-mobile.png` |
+
+## UI-23 Notes
+
+- `HistorySection` now exposes activity/comment/thread/mention summary metrics, activity cards, threaded comment cards, mention chips, reaction controls, and a mobile-safe comment composer.
+- Existing activity, comment, threaded reply, reaction, mention, and viewer read-only contracts remain unchanged.
+- Existing labels `활동 및 댓글`, `댓글 입력`, `댓글 추가`, `답글`, and reaction aria labels are preserved for regression coverage.
+- No feature flag, environment variable, backend, database, migration, or API contract change.
+
+---
+
+# UI-first 재개발 UI-24 검증 (2026-07-10 · B-030)
+
+> 브랜치: `feature/redevelopment-custom-fields-ui`
+> 범위: custom fields/property values surface 1차. 기존 work item detail의 커스텀 필드 섹션을 field metrics, field value cards, type/scope/status badges, preserved value state, mobile-safe controls로 재구성. API/DB/env/migration 변경 없음.
+
+| 항목 | 명령 | 결과 |
+|---|---|---:|
+| Frontend typecheck/lint/build | `make web-build` | **PASS** (기존 oxlint Fast Refresh 경고 3건, Vite chunk 경고) |
+| Focused custom fields e2e | `cd apps/web && npm run test:e2e -- --grep "커스텀 필드"` | **PASS — 4** |
+| Frontend unit | `make web-unit` | **PASS — 62** |
+| Playwright smoke | `make web-e2e` | **PASS — 111** |
+| Backend lint/format | `make api-lint` | **PASS** |
+| OpenAPI 타입 드리프트 | `make check-types` | **PASS** |
+| Backend full tests | `make api-test` | **PASS — 513** (Alembic config deprecation warning 1건, 기존 경고) |
+| Migration smoke | `make api-migrate-smoke` | **PASS — 0001~0060 up/base/up** |
+| Clean-room gate | `make cleanroom-check` | **PASS** |
+| Security audit | `make audit` | **PASS** — pip-audit 0, npm audit high 0 |
+| Whitespace gate | `git diff --check` | **PASS** |
+| Visual QA | Playwright screenshot + manual inspection | **PASS** — `docs/screenshots/redevelopment/custom-fields-ui/mobile.png` |
+
+## UI-24 Notes
+
+- `CustomFieldsSection` now exposes field count, filled value count, editable count, field type badges, scope cues, preserved value status, and mobile-safe field controls.
+- Existing custom field definition, custom value delta PUT, applies-to binding, inactive preserved value, and viewer read-only contracts remain unchanged.
+- Existing labels `커스텀 필드`, field names, and input aria labels are preserved for regression coverage.
+- No feature flag, environment variable, backend, database, migration, or API contract change.
+
+---
+
+# UI-first 재개발 UI-25 검증 (2026-07-10 · B-030)
+
+> 브랜치: `feature/redevelopment-watchers-notifications-ui`
+> 범위: work item watchers/subscription surface 1차. 기존 watcher 토글을 watcher summary, notification cue strip, participant chips, read-only state, 390px 모바일 screenshot QA로 재구성. API/DB/env/migration 변경 없음.
+
+| 항목 | 명령 | 결과 |
+|---|---|---:|
+| Frontend typecheck | `cd apps/web && npm run typecheck` | **PASS** |
+| Focused watcher e2e | `cd apps/web && npm run test:e2e -- --grep "워처\|워치"` | **PASS — 2** |
+| Frontend typecheck/lint/build | `make web-build` | **PASS** (기존 oxlint Fast Refresh 경고 3건, Vite chunk 경고) |
+| Frontend unit | `make web-unit` | **PASS — 62** |
+| Playwright smoke | `make web-e2e` | **PASS — 111** |
+| Backend lint/format | `make api-lint` | **PASS** |
+| OpenAPI 타입 드리프트 | `make check-types` | **PASS** |
+| Backend full tests | `make api-test` | **PASS — 513** (Alembic config deprecation warning 1건, 기존 경고) |
+| Migration smoke | `make api-migrate-smoke` | **PASS — 0001~0060 up/base/up** |
+| Clean-room gate | `make cleanroom-check` | **PASS** |
+| Security audit | `make audit` | **PASS** — pip-audit 0, npm audit high 0 |
+| Whitespace gate | `git diff --check` | **PASS** |
+| Visual QA | Playwright screenshot + manual inspection | **PASS** — `docs/screenshots/redevelopment/watchers-ui/mobile.png` |
+
+## UI-25 Notes
+
+- Work item detail now exposes a dedicated watcher subscription surface with total watcher count, caller subscription state, notification cue strip, watcher participant chips, and overflow count.
+- Existing watcher API contracts remain unchanged: list watchers, self-service `PUT/DELETE /watchers/me`, idempotent mutations, member-scoped visibility, and server-side write authorization.
+- Viewer/read-only mode keeps the watcher surface visible for context but replaces the mutation button with a read-only state.
+- Mobile QA covers 390x844 detail drawer state and asserts no horizontal overflow.
+- No feature flag, environment variable, backend, database, migration, or API contract change.
+
+---
+
 # UI-first 재개발 UI-26 검증 (2026-07-10 · B-030)
 
 > 브랜치: `feature/redevelopment-work-item-create-ui`
@@ -658,3 +1041,35 @@ healthz/health 분리(DB 다운 스텁: healthz 200 ∧ health 503) · 기동 �
 - The composer uses OneFlow UI primitives and work-package/member hooks only; no Plane source, DOM, CSS, assets, packages, or copy were used.
 - Mobile QA covers 390x844 width, disabled submit without a title, property selection, create POST body, composer dismissal, and no horizontal overflow.
 - No feature flag, environment variable, backend, database, migration, or new API endpoint change.
+
+---
+
+# UI-first 재개발 UI-39 검증 (2026-07-10 · B-030)
+
+> 브랜치: `feature/redevelopment-automation-rule-actions-ui`
+> 범위: automation rule item actions functional surface. 기존 자동화 규칙 표면을 action menu 중심으로 재구성하되, edit, enable/disable, reorder, delete, run feedback, viewer read-only, mobile-safe flow를 기존 automation API에 실제 배선. API/DB/env/migration 변경 없음.
+
+| 항목 | 명령 | 결과 |
+|---|---|---:|
+| Frontend typecheck | `cd apps/web && npm run typecheck` | **PASS** |
+| Focused automation e2e | `cd apps/web && npm run test:e2e -- --grep "자동화"` | **PASS — 4** |
+| Focused meeting locator regression | `cd apps/web && npm run test:e2e -- --grep "회의 상세가 안건"` | **PASS — 1** |
+| Frontend build | `make web-build` | **PASS** (기존 oxlint Fast Refresh 경고 3건, Vite chunk 경고) |
+| Frontend unit | `make web-unit` | **PASS — 62** |
+| Playwright smoke | `make web-e2e` | **PASS — 111** |
+| Backend lint/format | `make api-lint` | **PASS** |
+| OpenAPI 타입 드리프트 | `make check-types` | **PASS** |
+| Backend full tests | `make api-test` | **PASS — 513** (Alembic config deprecation warning 1건, 기존 경고) |
+| Migration smoke | `make api-migrate-smoke` | **PASS — 0001~0060 up/base/up** |
+| Clean-room gate | `make cleanroom-check` | **PASS** |
+| Security audit | `make audit` | **PASS** — pip-audit 0, npm audit high 0 |
+| Whitespace gate | `git diff --check` | **PASS** |
+| Visual QA | Playwright screenshot + manual inspection | **PASS** — `docs/screenshots/redevelopment/automation-rule-actions-ui/mobile.png` |
+
+## UI-39 Notes
+
+- Automation rule rows now expose a single touch-safe action menu instead of scattered inline controls.
+- Owner actions are fully wired to existing automation contracts: edit sends PATCH fields, enable/disable sends PATCH `is_active`, reorder sends PUT order payload, and delete sends DELETE after confirmation.
+- Viewer mode opens the same action affordance but shows read-only context and no write actions.
+- Trigger/action edit controls use existing OneFlow vocabularies for status/type/priority/member values; no new trigger/action semantics are introduced in this PR.
+- No mock, dead, or decorative controls were added. New trigger/action semantics, scheduling, or additional audit persistence remain explicit future API mini-plan territory, not hidden UI.
