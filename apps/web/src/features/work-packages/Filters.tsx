@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom'
 import { Select } from '@/components/ui/select'
 import { useCycles } from '@/features/cycles/api'
 import { useCustomFields } from '@/features/custom-fields/api'
+import { useMilestones } from '@/features/milestones/api'
 import { useModules } from '@/features/modules/api'
 import { useMembers } from '@/features/members/api'
 
@@ -16,6 +17,7 @@ export function Filters({ projectId }: { projectId: string }) {
   const statusLabel = useStatusLabels(projectId)
   const typeLabel = useTypeLabels(projectId)
   const members = useMembers(projectId)
+  const milestones = useMilestones(projectId)
   const cycles = useCycles(projectId)
   const modules = useModules(projectId)
   const customFields = useCustomFields(projectId)
@@ -122,6 +124,22 @@ export function Filters({ projectId }: { projectId: string }) {
           {members.data?.items.map((m) => (
             <option key={m.user_id} value={m.user_id}>
               {m.display_name}
+            </option>
+          ))}
+        </Select>
+      </label>
+      <label className="flex items-center gap-1.5 text-xs text-of-muted">
+        마일스톤
+        <Select
+          aria-label="마일스톤 필터"
+          className="h-7 w-28 text-xs"
+          value={searchParams.get('milestone_id') ?? ''}
+          onChange={(e) => set('milestone_id', e.target.value)}
+        >
+          <option value="">전체</option>
+          {milestones.data?.items.map((m) => (
+            <option key={m.id} value={m.id}>
+              {m.name}
             </option>
           ))}
         </Select>

@@ -4745,6 +4745,8 @@ export interface components {
             columns?: string | null;
             /** Cycle Id */
             cycle_id?: string | null;
+            /** Milestone Id */
+            milestone_id?: string | null;
             /** Module Id */
             module_id?: string | null;
             /** Priority */
@@ -9461,6 +9463,7 @@ export interface operations {
                 priority?: ("none" | "low" | "medium" | "high" | "urgent") | null;
                 type?: ("task" | "bug" | "feature" | "milestone") | null;
                 assignee_id?: string | null;
+                milestone_id?: string | null;
                 cycle_id?: string | null;
                 no_cycle?: boolean;
                 open_only?: boolean;

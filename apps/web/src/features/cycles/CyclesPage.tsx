@@ -1,23 +1,21 @@
-import { Pencil, Trash2 } from 'lucide-react'
+import { MoreHorizontal } from 'lucide-react'
 import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 
 import { EmptyState, ErrorState, ListSkeleton } from '@/components/shell/states'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Select } from '@/components/ui/select'
 import { useMe, useMembers } from '@/features/members/api'
-import { confirmDestructive } from '@/lib/guards'
+import { PlanningSurface } from '@/features/planning/PlanningSurface'
 
 import {
   type Cycle,
   useCreateCycle,
   useCycles,
-  useDeleteCycle,
-  useRolloverCycle,
   useUpdateCycle,
   useCycleBurndown,
 } from './api'
+import { CycleItemActions } from './CycleItemActions'
 import { recentVelocity } from './velocity'
 
 const GROUPS: Array<{ status: Cycle['status']; label: string }> = [
@@ -83,21 +81,32 @@ function CycleRow({
   isOwner,
   projectId,
   others,
+  onMessage,
 }: {
   cycle: Cycle
   isOwner: boolean
   projectId: string
   others: Cycle[]
+  onMessage: (message: string, tone?: 'info' | 'success' | 'error') => void
 }) {
   const navigate = useNavigate()
   const update = useUpdateCycle(projectId)
-  const remove = useDeleteCycle(projectId)
-  const rollover = useRolloverCycle(projectId)
   const [editing, setEditing] = useState(false)
   const [showBurndown, setShowBurndown] = useState(false)
+  const [activeAction, setActiveAction] = useState<{ top: number; left: number } | null>(null)
   const [name, setName] = useState(cycle.name)
   const [start, setStart] = useState(cycle.start_date)
   const [end, setEnd] = useState(cycle.end_date)
+
+  const openActionMenu = (rect: DOMRect) => {
+    const width = 240
+    const height = 248
+    const maxLeft = Math.max(8, window.innerWidth - width - 8)
+    const maxTop = Math.max(8, window.innerHeight - height)
+    const left = Math.min(Math.max(8, rect.right - width), maxLeft)
+    const top = Math.min(Math.max(8, rect.bottom + 6), maxTop)
+    setActiveAction({ top, left })
+  }
 
   if (editing) {
     return (
@@ -147,79 +156,46 @@ function CycleRow({
   }
 
   return (
-    <li className="flex items-center gap-3 px-3 py-2">
-      <button
-        type="button"
-        className="min-w-0 flex-1 truncate text-left text-[13px] font-medium hover:underline"
-        onClick={() => navigate(`/projects/${projectId}/work-packages?cycle_id=${cycle.id}`)}
-      >
-        {cycle.name}
-      </button>
-      <span className="shrink-0 text-[11px] text-of-muted">
-        {cycle.start_date} ~ {cycle.end_date}
-      </span>
-      <ProgressBar done={cycle.done_work_package_count} total={cycle.work_package_count} />
-      {isOwner && cycle.status === 'completed' && others.length > 0 ? (
-        <Select
-          aria-label={`${cycle.name} 미완료 이월`}
-          className="h-7 w-36 text-xs"
-          value=""
-          disabled={rollover.isPending}
-          onChange={(e) => {
-            const target = others.find((c) => c.id === e.target.value)
-            if (!target) return
-            const openCount = cycle.work_package_count - cycle.done_work_package_count
-            if (
-              confirmDestructive(
-                `'${cycle.name}'의 미완료 작업 ${openCount}건을 '${target.name}'(으)로 이월할까요?\n(반대 방향 이월로 언제든 되돌릴 수 있습니다)`,
-              )
-            )
-              rollover.mutate({ cycleId: cycle.id, targetCycleId: target.id })
-          }}
+    <li className="flex flex-wrap items-start gap-3 px-3 py-2">
+      <div className="min-w-0 flex-1 space-y-1">
+        <button
+          type="button"
+          className="block w-full truncate text-left text-[13px] font-medium hover:underline"
+          onClick={() => navigate(`/projects/${projectId}/work-packages?cycle_id=${cycle.id}`)}
         >
-          <option value="">미완료 이월…</option>
-          {others.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.name}
-            </option>
-          ))}
-        </Select>
-      ) : null}
+          {cycle.name}
+        </button>
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+          <span className="shrink-0 text-[11px] text-of-muted">
+            {cycle.start_date} ~ {cycle.end_date}
+          </span>
+          <ProgressBar done={cycle.done_work_package_count} total={cycle.work_package_count} />
+        </div>
+      </div>
       <button
         type="button"
-        aria-label={`${cycle.name} 번다운`}
-        className="shrink-0 rounded-of border border-of-border px-1.5 py-0.5 text-[11px] text-of-muted hover:bg-of-surface-2"
-        onClick={() => setShowBurndown((v) => !v)}
+        aria-label={`${cycle.name} 사이클 작업`}
+        className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-of border border-of-border text-of-muted hover:bg-of-surface-2 hover:text-of-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus"
+        onClick={(event) => openActionMenu(event.currentTarget.getBoundingClientRect())}
       >
-        번다운
+        <MoreHorizontal size={14} />
       </button>
-      {isOwner ? (
-        <>
-          <button
-            type="button"
-            aria-label={`${cycle.name} 편집`}
-            className="shrink-0 rounded-of p-1 text-of-muted hover:bg-of-surface-2"
-            onClick={() => setEditing(true)}
-          >
-            <Pencil size={13} />
-          </button>
-          <button
-            type="button"
-            aria-label={`${cycle.name} 삭제`}
-            disabled={remove.isPending}
-            className="shrink-0 rounded-of p-1 text-of-muted hover:bg-of-surface-2 hover:text-of-danger"
-            onClick={() => {
-              if (
-                confirmDestructive(
-                  `'${cycle.name}' 사이클을 삭제할까요?\n연결된 작업 ${cycle.work_package_count}건은 삭제되지 않고 사이클 배정만 해제됩니다.`,
-                )
-              )
-                remove.mutate(cycle.id)
-            }}
-          >
-            <Trash2 size={13} />
-          </button>
-        </>
+      {activeAction ? (
+        <CycleItemActions
+          cycle={cycle}
+          projectId={projectId}
+          isOwner={isOwner}
+          others={others}
+          top={activeAction.top}
+          left={activeAction.left}
+          onOpenWorkItems={(cycleId) =>
+            navigate(`/projects/${projectId}/work-packages?cycle_id=${cycleId}`)
+          }
+          onEdit={() => setEditing(true)}
+          onToggleBurndown={() => setShowBurndown((value) => !value)}
+          onMessage={onMessage}
+          onClose={() => setActiveAction(null)}
+        />
       ) : null}
       {showBurndown ? (
         <div className="w-full">
@@ -243,129 +219,180 @@ export function CyclesPage() {
   const [start, setStart] = useState('')
   const [end, setEnd] = useState('')
   const create = useCreateCycle(projectId)
+  const [actionMessage, setActionMessage] = useState<{
+    text: string
+    tone: 'info' | 'success' | 'error'
+  } | null>(null)
+  const description =
+    '반복 기간으로 작업 범위를 묶고, 진행률과 이월 흐름을 계획 화면 안에서 이어 봅니다.'
 
-  if (cycles.isPending || members.isPending) return <ListSkeleton />
-  if (cycles.isError) return <ErrorState error={cycles.error} onRetry={() => cycles.refetch()} />
+  if (cycles.isPending || members.isPending) {
+    return (
+      <PlanningSurface projectId={projectId} active="cycles" title="사이클" description={description}>
+        <ListSkeleton />
+      </PlanningSurface>
+    )
+  }
+  if (cycles.isError) {
+    return (
+      <PlanningSurface projectId={projectId} active="cycles" title="사이클" description={description}>
+        <ErrorState error={cycles.error} onRetry={() => cycles.refetch()} />
+      </PlanningSurface>
+    )
+  }
 
   const myRole = members.data?.items.find((m) => m.user_id === me.data?.id)?.role
   const isOwner = myRole === 'owner'
   const items = cycles.data.items
   const velocity = recentVelocity(items)
+  const activeCount = items.filter((c) => c.status === 'active').length
+  const plannedScope = items.reduce((total, c) => total + c.work_package_count, 0)
+  const doneScope = items.reduce((total, c) => total + c.done_work_package_count, 0)
 
   return (
-    <div className="mx-auto max-w-4xl p-6">
-      <h1 className="mb-1 text-base font-semibold">사이클</h1>
-      <p className="mb-4 text-xs text-of-muted">
-        기간 단위(스프린트)로 작업을 묶어 진행률을 봅니다. 작업 배정은 각 작업의 드로어에서 합니다.
-      </p>
-
-      {velocity ? (
-        <section
-          aria-label="벨로시티"
-          className="mb-5 rounded-of border border-of-border bg-of-surface p-3"
-        >
-          <p className="mb-2 text-xs font-medium">
-            벨로시티{' '}
-            <span className="font-normal text-of-muted">
-              최근 완료 {velocity.points.length}개 사이클 · 평균 {velocity.average.toFixed(1)}건
-            </span>
-          </p>
-          <div className="flex items-end gap-3" style={{ height: 72 }}>
-            {velocity.points.map((pt) => (
-              <div key={pt.id} className="flex min-w-0 flex-col items-center gap-1" title={`${pt.name}: ${pt.done}건`}>
-                <span className="text-[10px] tabular-nums text-of-muted">{pt.done}</span>
-                <div
-                  className="w-8 rounded-t bg-of-accent/70"
-                  style={{ height: `${Math.max(4, (pt.done / velocity.max) * 48)}px` }}
-                  aria-label={`${pt.name} 완료 ${pt.done}건`}
-                />
-                <span className="max-w-16 truncate text-[10px] text-of-muted">{pt.name}</span>
-              </div>
-            ))}
-          </div>
-        </section>
-      ) : null}
-
-      {isOwner ? (
-        <div className="mb-5 flex flex-wrap items-center gap-2 rounded-of border border-of-border bg-of-surface p-3">
-          <Input
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="사이클 이름"
-            aria-label="새 사이클 이름"
-            className="h-8 w-44 text-xs"
-          />
-          <Input
-            type="date"
-            value={start}
-            onChange={(e) => setStart(e.target.value)}
-            aria-label="새 사이클 시작일"
-            className="h-8 w-36 text-xs"
-          />
-          <Input
-            type="date"
-            value={end}
-            onChange={(e) => setEnd(e.target.value)}
-            aria-label="새 사이클 종료일"
-            className="h-8 w-36 text-xs"
-          />
-          <Button
-            size="sm"
-            disabled={!name.trim() || !start || !end || create.isPending}
-            onClick={() =>
-              create.mutate(
-                { name: name.trim(), start_date: start, end_date: end },
-                {
-                  onSuccess: () => {
-                    setName('')
-                    setStart('')
-                    setEnd('')
-                  },
-                },
-              )
+    <PlanningSurface
+      projectId={projectId}
+      active="cycles"
+      title="사이클"
+      description={description}
+      metrics={[
+        { label: '사이클', value: items.length, hint: '전체 기간' },
+        { label: '진행 중', value: activeCount, hint: '현재 반복' },
+        { label: '작업 범위', value: plannedScope, hint: `${doneScope}건 완료` },
+        {
+          label: '벨로시티',
+          value: velocity ? velocity.average.toFixed(1) : '-',
+          hint: velocity ? `최근 ${velocity.points.length}개` : '완료 데이터 부족',
+        },
+      ]}
+    >
+      <div className="space-y-5">
+        {actionMessage ? (
+          <p
+            role={actionMessage.tone === 'error' ? 'alert' : 'status'}
+            className={
+              actionMessage.tone === 'error'
+                ? 'rounded-of border border-of-danger/30 bg-of-surface px-3 py-2 text-xs text-of-danger'
+                : 'rounded-of border border-of-border bg-of-surface px-3 py-2 text-xs text-of-muted'
             }
           >
-            사이클 추가
-          </Button>
-          {create.isError ? (
-            <p role="alert" className="w-full text-xs text-of-danger">
-              생성하지 못했습니다. 날짜 범위를 확인하세요.
+            {actionMessage.text}
+          </p>
+        ) : null}
+        {velocity ? (
+          <section
+            aria-label="벨로시티"
+            className="rounded-of border border-of-border bg-of-surface p-3"
+          >
+            <p className="mb-2 text-xs font-medium">
+              벨로시티{' '}
+              <span className="font-normal text-of-muted">
+                최근 완료 {velocity.points.length}개 사이클 · 평균 {velocity.average.toFixed(1)}건
+              </span>
             </p>
-          ) : null}
-        </div>
-      ) : null}
+            <div className="flex items-end gap-3" style={{ height: 72 }}>
+              {velocity.points.map((pt) => (
+                <div
+                  key={pt.id}
+                  className="flex min-w-0 flex-col items-center gap-1"
+                  title={`${pt.name}: ${pt.done}건`}
+                >
+                  <span className="text-[10px] tabular-nums text-of-muted">{pt.done}</span>
+                  <div
+                    className="w-8 rounded-t bg-of-accent/70"
+                    style={{ height: `${Math.max(4, (pt.done / velocity.max) * 48)}px` }}
+                    aria-label={`${pt.name} 완료 ${pt.done}건`}
+                  />
+                  <span className="max-w-16 truncate text-[10px] text-of-muted">{pt.name}</span>
+                </div>
+              ))}
+            </div>
+          </section>
+        ) : null}
 
-      {items.length === 0 ? (
-        <EmptyState
-          title="사이클이 없습니다"
-          hint={isOwner ? '위에서 첫 사이클을 만들어 보세요.' : '소유자가 사이클을 만들 수 있습니다.'}
-        />
-      ) : (
-        <div className="space-y-5">
-          {GROUPS.map(({ status, label }) => {
-            const group = items.filter((c) => c.status === status)
-            if (group.length === 0) return null
-            return (
-              <section key={status} aria-label={label}>
-                <h2 className="mb-1.5 text-sm font-semibold">
-                  {label} <span className="text-xs font-normal text-of-muted">{group.length}</span>
-                </h2>
-                <ul className="divide-y divide-of-border overflow-hidden rounded-of border border-of-border bg-of-surface">
-                  {group.map((c) => (
-                    <CycleRow
-                      key={c.id}
-                      cycle={c}
-                      isOwner={isOwner}
-                      projectId={projectId}
-                      others={items.filter((o) => o.id !== c.id)}
-                    />
-                  ))}
-                </ul>
-              </section>
-            )
-          })}
-        </div>
-      )}
-    </div>
+        {isOwner ? (
+          <div className="flex flex-wrap items-center gap-2 rounded-of border border-of-border bg-of-surface p-3">
+            <Input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="사이클 이름"
+              aria-label="새 사이클 이름"
+              className="h-8 w-44 text-xs"
+            />
+            <Input
+              type="date"
+              value={start}
+              onChange={(e) => setStart(e.target.value)}
+              aria-label="새 사이클 시작일"
+              className="h-8 w-36 text-xs"
+            />
+            <Input
+              type="date"
+              value={end}
+              onChange={(e) => setEnd(e.target.value)}
+              aria-label="새 사이클 종료일"
+              className="h-8 w-36 text-xs"
+            />
+            <Button
+              size="sm"
+              disabled={!name.trim() || !start || !end || create.isPending}
+              onClick={() =>
+                create.mutate(
+                  { name: name.trim(), start_date: start, end_date: end },
+                  {
+                    onSuccess: () => {
+                      setName('')
+                      setStart('')
+                      setEnd('')
+                    },
+                  },
+                )
+              }
+            >
+              사이클 추가
+            </Button>
+            {create.isError ? (
+              <p role="alert" className="w-full text-xs text-of-danger">
+                생성하지 못했습니다. 날짜 범위를 확인하세요.
+              </p>
+            ) : null}
+          </div>
+        ) : null}
+
+        {items.length === 0 ? (
+          <EmptyState
+            title="사이클이 없습니다"
+            hint={isOwner ? '위에서 첫 사이클을 만들어 보세요.' : '소유자가 사이클을 만들 수 있습니다.'}
+          />
+        ) : (
+          <div className="space-y-5">
+            {GROUPS.map(({ status, label }) => {
+              const group = items.filter((c) => c.status === status)
+              if (group.length === 0) return null
+              return (
+                <section key={status} aria-label={label}>
+                  <h2 className="mb-1.5 text-sm font-semibold">
+                    {label}{' '}
+                    <span className="text-xs font-normal text-of-muted">{group.length}</span>
+                  </h2>
+                  <ul className="divide-y divide-of-border overflow-hidden rounded-of border border-of-border bg-of-surface">
+                    {group.map((c) => (
+                      <CycleRow
+                        key={c.id}
+                        cycle={c}
+                        isOwner={isOwner}
+                        projectId={projectId}
+                        others={items.filter((o) => o.id !== c.id)}
+                        onMessage={(text, tone = 'info') => setActionMessage({ text, tone })}
+                      />
+                    ))}
+                  </ul>
+                </section>
+              )
+            })}
+          </div>
+        )}
+      </div>
+    </PlanningSurface>
   )
 }
