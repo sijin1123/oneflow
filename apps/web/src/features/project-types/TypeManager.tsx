@@ -1,8 +1,11 @@
-import { ChevronDown, ChevronUp } from 'lucide-react'
+import { ChevronDown, ChevronUp, ListChecks } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { ApiError } from '@/lib/api'
+import { cn } from '@/lib/utils'
 
 import {
   type ProjectType,
@@ -37,13 +40,28 @@ export function TypeManager({ projectId, isOwner }: { projectId: string; isOwner
   if (sorted.length === 0) return null
 
   return (
-    <div className="mt-4 space-y-2 rounded-of border border-of-border bg-of-surface p-3">
-      <p className="text-xs font-medium">워크 아이템 타입</p>
-      <p className="text-xs text-of-muted">
-        타입 이름과 순서를 조정하고, 쓰지 않는 타입은 비활성화합니다(기존 작업은 유지)
-        {isOwner ? '' : ' (소유자만 편집 가능)'}.
-      </p>
-      <ul className="space-y-1">
+    <section
+      aria-label="워크 아이템 타입"
+      className="space-y-3 rounded-of border border-of-border bg-of-surface p-4"
+    >
+      <div className="flex min-w-0 items-start gap-3">
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-of bg-of-accent-soft text-of-accent">
+          <ListChecks size={16} aria-hidden="true" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            <h3 className="text-sm font-semibold">워크 아이템 타입</h3>
+            <Badge variant="outline">
+              {sorted.filter((type) => type.is_active).length}/{sorted.length} 활성
+            </Badge>
+          </div>
+          <p className="mt-1 text-xs leading-5 text-of-muted">
+            타입 이름과 순서를 조정하고, 쓰지 않는 타입은 비활성화합니다(기존 작업은 유지)
+            {isOwner ? '' : ' (소유자만 편집 가능)'}.
+          </p>
+        </div>
+      </div>
+      <ul className="grid gap-2">
         {sorted.map((t, i) => (
           <TypeRow
             key={t.id}
@@ -65,7 +83,7 @@ export function TypeManager({ projectId, isOwner }: { projectId: string; isOwner
           저장하지 못했습니다.
         </p>
       ) : null}
-    </div>
+    </section>
   )
 }
 
@@ -88,53 +106,73 @@ function TypeRow({
   useEffect(() => setName(type.name), [type.name])
 
   return (
-    <li className="flex items-center gap-2 rounded-of border border-of-border px-2 py-1.5">
+    <li
+      className={cn(
+        'grid min-w-0 gap-2 rounded-of border border-of-border bg-of-surface-2 px-3 py-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center',
+        !type.is_active && 'text-of-muted',
+      )}
+    >
       {isOwner ? (
         <>
-          <Input
-            value={name}
-            aria-label={`${type.key} 타입 이름`}
-            onChange={(e) => setName(e.target.value)}
-            onBlur={() => {
-              const trimmed = name.trim()
-              if (trimmed && trimmed !== type.name) onRename(trimmed)
-              else setName(type.name)
-            }}
-            className={`h-7 flex-1 text-xs ${type.is_active ? '' : 'text-of-muted line-through'}`}
-          />
-          <label className="flex shrink-0 items-center gap-1 text-[11px] text-of-muted">
-            <input
-              type="checkbox"
-              aria-label={`${type.key} 타입 활성`}
-              checked={type.is_active}
-              onChange={(e) => onToggle(e.target.checked)}
-              className="h-3 w-3 accent-of-accent"
+          <div className="flex min-w-0 items-center gap-2">
+            <Badge variant="neutral" className="shrink-0 font-mono uppercase">
+              {type.key}
+            </Badge>
+            <Input
+              value={name}
+              aria-label={`${type.key} 타입 이름`}
+              onChange={(e) => setName(e.target.value)}
+              onBlur={() => {
+                const trimmed = name.trim()
+                if (trimmed && trimmed !== type.name) onRename(trimmed)
+                else setName(type.name)
+              }}
+              className={`h-8 min-w-0 flex-1 text-xs ${type.is_active ? '' : 'text-of-muted line-through'}`}
             />
-            활성
-          </label>
-          <button
-            type="button"
-            aria-label={`${type.key} 위로`}
-            className="shrink-0 rounded-of p-1 text-of-muted hover:bg-of-surface-2"
-            onClick={onMoveUp}
-          >
-            <ChevronUp size={13} />
-          </button>
-          <button
-            type="button"
-            aria-label={`${type.key} 아래로`}
-            className="shrink-0 rounded-of p-1 text-of-muted hover:bg-of-surface-2"
-            onClick={onMoveDown}
-          >
-            <ChevronDown size={13} />
-          </button>
+          </div>
+          <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
+            <label className="flex shrink-0 items-center gap-1 rounded-of border border-of-border bg-of-surface px-2 py-1 text-[11px] text-of-muted">
+              <input
+                type="checkbox"
+                aria-label={`${type.key} 타입 활성`}
+                checked={type.is_active}
+                onChange={(e) => onToggle(e.target.checked)}
+                className="h-3 w-3 accent-of-accent"
+              />
+              활성
+            </label>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              aria-label={`${type.key} 위로`}
+              className="h-7 w-7 text-of-muted"
+              onClick={onMoveUp}
+            >
+              <ChevronUp size={13} aria-hidden="true" />
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              aria-label={`${type.key} 아래로`}
+              className="h-7 w-7 text-of-muted"
+              onClick={onMoveDown}
+            >
+              <ChevronDown size={13} aria-hidden="true" />
+            </Button>
+          </div>
         </>
       ) : (
-        <span className={`flex-1 text-xs ${type.is_active ? '' : 'text-of-muted line-through'}`}>
-          {type.name}
+        <span className="flex min-w-0 items-center gap-2">
+          <Badge variant="neutral" className="shrink-0 font-mono uppercase">
+            {type.key}
+          </Badge>
+          <span className={`min-w-0 truncate text-sm font-medium ${type.is_active ? '' : 'line-through'}`}>
+            {type.name}
+          </span>
         </span>
       )}
-      <span className="shrink-0 text-[10px] uppercase text-of-muted">{type.key}</span>
     </li>
   )
 }
