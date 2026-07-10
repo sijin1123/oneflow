@@ -2,6 +2,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { api } from '@/lib/api'
 
+import { clearIdentityBoundCache } from './cache'
+
 export type AuthConfig = {
   auth_mode: string
   oidc_issuer: string | null
@@ -27,9 +29,9 @@ export function useLogin() {
       api<LoginResult>('/api/v1/auth/login', {
         method: 'POST',
         body: JSON.stringify({ email }),
-      }),
+    }),
     onSuccess: () => {
-      void queryClient.invalidateQueries() // fresh identity everywhere
+      clearIdentityBoundCache(queryClient)
     },
   })
 }

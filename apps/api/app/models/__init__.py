@@ -18,6 +18,7 @@ from app.models.milestone import Milestone
 from app.models.module import Module, ModuleMember
 from app.models.notification import Notification
 from app.models.notification_setting import UserNotificationSettings
+from app.models.personal_note import PersonalNote
 from app.models.project import Project
 from app.models.project_status import ProjectStatus
 from app.models.project_type import ProjectType
@@ -62,6 +63,7 @@ __all__ = [
     "WebhookDelivery",
     "WebhookSecretRotation",
     "UserNotificationSettings",
+    "PersonalNote",
     "IntakeItem",
     "CustomField",
     "WpCustomValue",

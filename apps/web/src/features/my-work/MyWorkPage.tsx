@@ -4,9 +4,12 @@ import {
   FolderKanban,
   Gauge,
   ListChecks,
+  Pin,
+  Plus,
   Search,
   Sparkles,
   SquareActivity,
+  StickyNote,
   TimerReset,
   type LucideIcon,
 } from 'lucide-react'
@@ -21,6 +24,7 @@ import {
   getNotificationTargetPath,
 } from '@/features/notifications/view'
 import { useProjects } from '@/features/projects/api'
+import { usePersonalNotes } from '@/features/personal-notes/api'
 import { FIELD_LABELS } from '@/features/work-packages/activityLabels'
 import { PriorityChip, StatusChip } from '@/features/work-packages/chips'
 import { formatDateTime } from '@/lib/datetime'
@@ -113,6 +117,62 @@ function QuickLink({
       </span>
       <ArrowUpRight size={14} className="shrink-0 text-of-muted" aria-hidden="true" />
     </Link>
+  )
+}
+
+function PersonalNotesPanel() {
+  // This deliberately has its own query boundary: a notes outage must never
+  // hide the rest of the workspace home.
+  const notes = usePersonalNotes('', 3)
+  return (
+    <section
+      aria-label="개인 메모"
+      className="min-w-0 rounded-of border border-of-border bg-of-surface p-3"
+    >
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <StickyNote size={15} className="text-of-muted" />
+          <h2 className="text-sm font-semibold">개인 메모</h2>
+        </div>
+        <Link to="/notes" className="text-xs text-of-accent hover:underline">
+          전체 보기
+        </Link>
+      </div>
+      {notes.isPending ? (
+        <p className="mt-2 text-xs text-of-muted">메모를 불러오는 중입니다.</p>
+      ) : notes.isError ? (
+        <div className="mt-2 flex items-center gap-2 text-xs text-of-danger">
+          메모를 불러오지 못했습니다.
+          <button type="button" className="underline" onClick={() => notes.refetch()}>
+            재시도
+          </button>
+        </div>
+      ) : notes.data?.items.length ? (
+        <ul className="mt-2 divide-y divide-of-border">
+          {notes.data.items.map((note) => (
+            <li key={note.id} className="py-1.5">
+              <Link to="/notes" className="block min-w-0 hover:text-of-accent">
+                <span className="flex min-w-0 items-center gap-1 text-xs font-medium">
+                  {note.is_pinned ? <Pin size={11} className="shrink-0 text-of-accent" /> : null}
+                  <span className="truncate">{note.title}</span>
+                </span>
+                {note.body ? (
+                  <span className="block truncate text-[11px] text-of-muted">{note.body}</span>
+                ) : null}
+              </Link>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="mt-2 text-xs text-of-muted">아직 메모가 없습니다.</p>
+      )}
+      <Link
+        to="/notes?new=1"
+        className="mt-3 inline-flex h-7 items-center gap-1 rounded-of border border-of-border px-2 text-xs hover:bg-of-surface-2"
+      >
+        <Plus size={13} /> 메모 추가
+      </Link>
+    </section>
   )
 }
 
@@ -285,7 +345,7 @@ export function MyWorkPage() {
           <h2 className="text-sm font-semibold">빠른 이동</h2>
           <span className="text-xs text-of-muted">자주 쓰는 표면</span>
         </div>
-        <div className="grid min-w-0 gap-2 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="grid min-w-0 gap-2 sm:grid-cols-2 xl:grid-cols-5">
           <QuickLink
             to="/work-items"
             label="전체 작업"
@@ -312,8 +372,16 @@ export function MyWorkPage() {
             detail="가져오기·내보내기·상태"
             icon={SquareActivity}
           />
+          <QuickLink
+            to="/notes?new=1"
+            label="개인 메모"
+            detail="빠르게 기록하고 정리"
+            icon={StickyNote}
+          />
         </div>
       </section>
+
+      <PersonalNotesPanel />
 
       <AiWorkspacePanel assigned={assigned_to_me} dueSoon={due_soon} created={created_by_me} />
 
