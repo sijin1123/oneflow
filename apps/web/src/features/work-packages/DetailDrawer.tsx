@@ -1,4 +1,4 @@
-import { Bell, BellOff, ExternalLink } from 'lucide-react'
+import { Bell, BellOff, CheckCircle2, ExternalLink, Eye, Users } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
 import { Suspense, lazy, useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
@@ -293,34 +293,34 @@ export function WorkPackageDetailPanel({
           <span>v{wp.version}</span>
         </div>
 
-        {canWrite ? (
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="min-w-[220px] flex-1">
-              <WatchRow wpId={wp.id} />
+        <div className="space-y-2">
+          <WatchRow wpId={wp.id} canWrite={canWrite} />
+          {canWrite ? (
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                className="rounded-of border border-of-border px-2 py-1 text-xs text-of-muted hover:bg-of-surface-2"
+                disabled={duplicate.isPending}
+                onClick={() => duplicate.mutate(wp.id)}
+              >
+                복제
+              </button>
+              <button
+                type="button"
+                className="rounded-of border border-of-border px-2 py-1 text-xs text-of-muted hover:bg-of-surface-2"
+                onClick={() => setMoveOpen((v) => !v)}
+              >
+                이동
+              </button>
+              {fullPageLink}
             </div>
-            <button
-              type="button"
-              className="rounded-of border border-of-border px-2 py-1 text-xs text-of-muted hover:bg-of-surface-2"
-              disabled={duplicate.isPending}
-              onClick={() => duplicate.mutate(wp.id)}
-            >
-              복제
-            </button>
-            <button
-              type="button"
-              className="rounded-of border border-of-border px-2 py-1 text-xs text-of-muted hover:bg-of-surface-2"
-              onClick={() => setMoveOpen((v) => !v)}
-            >
-              이동
-            </button>
-            {fullPageLink}
-          </div>
-        ) : (
-          <div className="flex flex-wrap items-center gap-2">
-            <ReadOnlyNotice className="min-w-[220px] flex-1" />
-            {fullPageLink}
-          </div>
-        )}
+          ) : (
+            <div className="flex flex-wrap items-center gap-2">
+              <ReadOnlyNotice className="min-w-[220px] flex-1" />
+              {fullPageLink}
+            </div>
+          )}
+        </div>
         {canWrite && moveOpen ? <MoveSection wp={wp} projectId={projectId} /> : null}
         {duplicate.isSuccess ? (
           <p role="status" className="text-xs text-of-muted">
@@ -602,25 +602,101 @@ export function WorkPackageDetailPanel({
   )
 }
 
-function WatchRow({ wpId }: { wpId: string }) {
+function WatchRow({ wpId, canWrite }: { wpId: string; canWrite: boolean }) {
   const watchers = useWatchers(wpId)
   const setWatching = useSetWatching(wpId)
   const watching = watchers.data?.me_watching ?? false
+  const total = watchers.data?.total ?? 0
+  const visibleWatchers = watchers.data?.items.slice(0, 3) ?? []
+  const overflow = Math.max(0, total - visibleWatchers.length)
+  const notificationCues = ['상태 변경', '댓글', '담당자']
   return (
-    <div className="flex items-center justify-between rounded-of border border-of-border bg-of-surface px-3 py-2">
-      <span className="min-w-0 text-xs text-of-muted">
-        워처 {watchers.data?.total ?? 0}명 — 상태·댓글·담당자 변경 알림을 받습니다.
-      </span>
-      <button
-        type="button"
-        aria-pressed={watching}
-        disabled={setWatching.isPending || watchers.isPending}
-        className="flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-of border border-of-border px-2 py-1 text-xs font-medium hover:bg-of-surface-2"
-        onClick={() => setWatching.mutate(!watching)}
-      >
-        {watching ? <BellOff size={13} /> : <Bell size={13} />}
-        {watching ? '워치 해제' : '워치'}
-      </button>
-    </div>
+    <section
+      aria-label="워처 구독"
+      className="rounded-of border border-of-border bg-of-surface px-3 py-3"
+    >
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0 space-y-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="flex size-7 items-center justify-center rounded-full bg-of-surface-2 text-of-accent">
+              <Users size={15} />
+            </span>
+            <h3 className="text-xs font-semibold text-of-fg">워처 구독</h3>
+            <span className="rounded-full bg-of-surface-2 px-2 py-0.5 text-[11px] font-medium text-of-muted">
+              {watchers.isPending ? '불러오는 중' : `${total}명`}
+            </span>
+            <span className="rounded-full bg-of-surface-2 px-2 py-0.5 text-[11px] font-medium text-of-muted">
+              {watching ? '내가 구독 중' : '구독 안 함'}
+            </span>
+          </div>
+          <p className="text-xs leading-5 text-of-muted">
+            상태, 댓글, 담당자 변경을 이 작업 맥락에서 받아볼 사람을 한눈에 확인합니다.
+          </p>
+        </div>
+
+        {canWrite ? (
+          <button
+            type="button"
+            aria-pressed={watching}
+            disabled={setWatching.isPending || watchers.isPending}
+            className="flex shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-of border border-of-border px-3 py-1.5 text-xs font-medium text-of-fg transition hover:bg-of-surface-2 disabled:cursor-not-allowed disabled:opacity-60"
+            onClick={() => setWatching.mutate(!watching)}
+          >
+            {watching ? <BellOff size={13} /> : <Bell size={13} />}
+            {watching ? '워치 해제' : '워치'}
+          </button>
+        ) : (
+          <span className="flex shrink-0 items-center gap-1.5 rounded-of border border-of-border px-3 py-1.5 text-xs font-medium text-of-muted">
+            <Eye size={13} />
+            읽기 전용
+          </span>
+        )}
+      </div>
+
+      <div className="mt-3 grid overflow-hidden rounded-of border border-of-border/70 bg-of-surface-2/35 sm:grid-cols-3">
+        {notificationCues.map((cue) => (
+          <div
+            key={cue}
+            className="flex items-center gap-2 border-b border-of-border/70 px-3 py-2 text-xs text-of-muted last:border-b-0 sm:border-b-0 sm:border-r sm:last:border-r-0"
+          >
+            <CheckCircle2 size={13} className="text-of-accent" />
+            <span>{cue}</span>
+          </div>
+        ))}
+      </div>
+
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        {visibleWatchers.length > 0 ? (
+          visibleWatchers.map((watcher) => (
+            <span
+              key={watcher.user_id}
+              className="flex max-w-full items-center gap-2 rounded-full border border-of-border bg-of-surface-2 px-2 py-1 text-xs text-of-fg"
+            >
+              <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-of-accent text-[10px] font-semibold text-white">
+                {watcherInitial(watcher.display_name)}
+              </span>
+              <span className="truncate">{watcher.display_name}</span>
+            </span>
+          ))
+        ) : (
+          <span className="text-xs text-of-muted">아직 워처가 없습니다.</span>
+        )}
+        {overflow > 0 ? (
+          <span className="rounded-full bg-of-surface-2 px-2 py-1 text-xs text-of-muted">
+            +{overflow}
+          </span>
+        ) : null}
+      </div>
+
+      {watchers.isError ? (
+        <p role="alert" className="mt-2 text-xs text-of-danger">
+          워처 정보를 불러오지 못했습니다.
+        </p>
+      ) : null}
+    </section>
   )
+}
+
+function watcherInitial(name: string) {
+  return name.trim().charAt(0).toUpperCase() || '?'
 }
