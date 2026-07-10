@@ -18,6 +18,7 @@ import { PersonalNotesPage } from '@/features/personal-notes/PersonalNotesPage'
 import { InboxPage } from '@/features/notifications/InboxPage'
 import { ProjectsPage } from '@/features/projects/ProjectsPage'
 import { SearchPage } from '@/features/search/SearchPage'
+import { TemplatesPage } from '@/features/project-templates/TemplatesPage'
 import { OperationsPage } from '@/features/ops/OperationsPage'
 import { StatusPage } from '@/features/ops/StatusPage'
 import { UsersPage } from '@/features/admin/UsersPage'
@@ -60,6 +61,7 @@ export const router = createBrowserRouter([
       { path: 'initiatives', element: <InitiativesPage /> },
       { path: 'projects', element: <ProjectsPage /> },
       { path: 'search', element: <SearchPage /> },
+      { path: 'templates', element: <TemplatesPage /> },
       {
         path: 'reports',
         element: (

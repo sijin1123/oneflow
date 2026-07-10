@@ -31,6 +31,7 @@ from app.api.v1 import (
     permissions,
     personal_notes,
     project_statuses,
+    project_templates,
     project_types,
     projects,
     reports,
@@ -131,6 +132,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(access_tokens.router, prefix="/api/v1", tags=["access-tokens"])
     app.include_router(webhooks.router, prefix="/api/v1", tags=["webhooks"])
     app.include_router(projects.router, prefix="/api/v1/projects", tags=["projects"])
+    app.include_router(
+        project_templates.router,
+        prefix="/api/v1/project-templates",
+        tags=["project-templates"],
+    )
     app.include_router(work_packages.router, prefix="/api/v1", tags=["work-packages"])
     app.include_router(csv_io.router, prefix="/api/v1", tags=["csv"])
     app.include_router(comments.router, prefix="/api/v1", tags=["comments"])

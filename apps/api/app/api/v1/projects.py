@@ -9,8 +9,6 @@ from app.core.auth import get_current_user
 from app.core.authz import authorize, is_member, require_member, require_role
 from app.core.dates import utc_today
 from app.db.session import get_session
-from app.models.automation_rule import AutomationRule
-from app.models.custom_field import CustomField
 from app.models.initiative import Initiative, InitiativeProject
 from app.models.member import ProjectMember
 from app.models.project import Project
@@ -29,6 +27,7 @@ from app.schemas.project import (
     TemplateApplied,
 )
 from app.services.health import apply_health_patch
+from app.services.project_templates import capture_project_settings, materialize_project_settings
 
 router = APIRouter()
 
@@ -160,6 +159,18 @@ async def create_project(
             # already opened one, so reset it first (nothing written yet).
             await session.rollback()
             await session.execute(text("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ"))
+            still_member = await session.scalar(
+                select(
+                    select(ProjectMember.id)
+                    .where(
+                        ProjectMember.project_id == body.template_project_id,
+                        ProjectMember.user_id == user_id,
+                    )
+                    .exists()
+                )
+            )
+            if not still_member:
+                raise HTTPException(status_code=404, detail="not found")
         session.add(project)
         await session.flush()
         session.add(ProjectMember(project_id=project.id, user_id=user_id, role="owner"))
@@ -179,9 +190,9 @@ async def create_project(
             # Template mode SKIPS the default seeds (v15.1 R1-③): the fixed KEY
             # vocabulary makes the template rows the same set, just with the
             # template's labels/order/enablement. SETTINGS only — no content.
-            applied = await _copy_template_settings(
-                session, source=body.template_project_id, target=project.id
-            )
+            snapshot = await capture_project_settings(session, body.template_project_id)
+            applied_snapshot = await materialize_project_settings(session, project.id, snapshot)
+            applied = TemplateApplied(**applied_snapshot.model_dump())
         await session.flush()
         await session.commit()
     except IntegrityError as exc:
@@ -190,75 +201,6 @@ async def create_project(
     response = ProjectCreateResponse.model_validate(project)
     response.template_applied = applied
     return response
-
-
-async def _copy_template_settings(
-    session: AsyncSession, *, source: uuid.UUID, target: uuid.UUID
-) -> TemplateApplied:
-    """Copy SETTINGS from the template project inside the caller's transaction.
-    Members can already read every copied kind (automation rules included —
-    v15.1 R1-①), so this leaks nothing. Copied automation rules start DISABLED
-    (R1-④ — review before they act) with fresh fire counters."""
-    statuses = (
-        (await session.execute(select(ProjectStatus).where(ProjectStatus.project_id == source)))
-        .scalars()
-        .all()
-    )
-    session.add_all(
-        ProjectStatus(project_id=target, key=s.key, name=s.name, position=s.position)
-        for s in statuses
-    )
-    types = (
-        (await session.execute(select(ProjectType).where(ProjectType.project_id == source)))
-        .scalars()
-        .all()
-    )
-    session.add_all(
-        ProjectType(
-            project_id=target, key=t.key, name=t.name, position=t.position, is_active=t.is_active
-        )
-        for t in types
-    )
-    fields = (
-        (await session.execute(select(CustomField).where(CustomField.project_id == source)))
-        .scalars()
-        .all()
-    )
-    session.add_all(
-        CustomField(
-            project_id=target,
-            name=f.name,
-            field_type=f.field_type,
-            options=f.options,
-            position=f.position,
-            applies_to=f.applies_to,
-            is_active=f.is_active,
-        )
-        for f in fields
-    )
-    rules = (
-        (await session.execute(select(AutomationRule).where(AutomationRule.project_id == source)))
-        .scalars()
-        .all()
-    )
-    session.add_all(
-        AutomationRule(
-            project_id=target,
-            name=r.name,
-            trigger_type=r.trigger_type,
-            trigger_value=r.trigger_value,
-            action_type=r.action_type,
-            action_value=r.action_value,
-            is_active=False,  # safe default — review, then enable (R1-④)
-        )
-        for r in rules
-    )
-    return TemplateApplied(
-        statuses=len(statuses),
-        types=len(types),
-        custom_fields=len(fields),
-        automation_rules=len(rules),
-    )
 
 
 @router.get("/{project_id}", response_model=ProjectRead)

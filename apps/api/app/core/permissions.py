@@ -305,6 +305,22 @@ ENDPOINT_VERBS: dict[str, str] = {
 # route → reason (kept human-readable; the coverage test only checks presence).
 ENDPOINT_ALLOWLIST: dict[str, str] = {
     "POST /api/v1/projects": "워크스페이스 — 모든 활성 사용자가 프로젝트를 만들 수 있음",
+    "POST /api/v1/project-templates": "워크스페이스 템플릿 — 생성자 또는 활성 admin 관리",
+    "POST /api/v1/project-templates/{template_id}/revisions": (
+        "워크스페이스 템플릿 — 생성자 또는 활성 admin 관리"
+    ),
+    "POST /api/v1/project-templates/{template_id}/archive": (
+        "워크스페이스 템플릿 — 생성자 또는 활성 admin 관리"
+    ),
+    "POST /api/v1/project-templates/{template_id}/unarchive": (
+        "워크스페이스 템플릿 — 생성자 또는 활성 admin 관리"
+    ),
+    "DELETE /api/v1/project-templates/{template_id}": (
+        "워크스페이스 템플릿 — 생성자 또는 활성 admin 관리"
+    ),
+    "POST /api/v1/project-templates/{template_id}/apply": (
+        "워크스페이스 템플릿 적용 — 프로젝트 생성 권한 필요"
+    ),
     "POST /api/v1/auth/login": "인증 축 — dev 로그인(loopback 한정, 프로젝트 verb 아님)",
     "POST /api/v1/auth/logout": "인증 축 — 세션 폐기(비인증·멱등)",
     "POST /api/v1/users": "워크스페이스 admin 축 (is_admin — 프로젝트 역할과 별개)",
