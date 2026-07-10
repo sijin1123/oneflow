@@ -628,6 +628,95 @@ test('관계 표면은 모바일에서 의존 카드와 composer를 유지한다
   })
 })
 
+test('시간·비용 표면은 모바일에서 기록 카드와 ledger를 유지한다', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await mockApi(page)
+  await page.route(`**/api/v1/work-packages/${wpA.id}/time-entries`, (route) =>
+    route.fulfill({
+      json: {
+        items: [
+          {
+            id: 'te-mobile-1',
+            work_package_id: wpA.id,
+            user_id: 'me-1',
+            hours: 6.5,
+            spent_on: '2026-07-02',
+            comment: 'API 설계',
+            created_at: '2026-07-02T01:00:00Z',
+          },
+          {
+            id: 'te-mobile-2',
+            work_package_id: wpA.id,
+            user_id: 'me-1',
+            hours: 4,
+            spent_on: '2026-07-03',
+            comment: null,
+            created_at: '2026-07-03T01:00:00Z',
+          },
+        ],
+        total: 2,
+        total_hours: 10.5,
+      },
+    }),
+  )
+  await page.route(`**/api/v1/work-packages/${wpA.id}/cost-entries`, (route) =>
+    route.fulfill({
+      json: {
+        items: [
+          {
+            id: 'ce-mobile-1',
+            work_package_id: wpA.id,
+            user_id: 'me-1',
+            amount: 120000,
+            kind: 'labor',
+            spent_on: '2026-07-02',
+            comment: '개발 인건비',
+            created_at: '2026-07-02T01:00:00Z',
+          },
+          {
+            id: 'ce-mobile-2',
+            work_package_id: wpA.id,
+            user_id: 'me-1',
+            amount: 35000,
+            kind: 'material',
+            spent_on: '2026-07-03',
+            comment: null,
+            created_at: '2026-07-03T01:00:00Z',
+          },
+        ],
+        total: 2,
+        total_amount: 155000,
+      },
+    }),
+  )
+
+  await page.goto(`/projects/${project.id}/work-packages`)
+  await page.getByRole('button', { name: '워크패키지 API 구현' }).click()
+  const drawer = page.getByRole('dialog', { name: '워크패키지 API 구현' })
+  const timeSection = drawer.getByRole('region', { name: '시간 추적' })
+  const costSection = drawer.getByRole('region', { name: '비용' })
+
+  await expect(timeSection.getByText('10.5h')).toBeVisible()
+  await expect(timeSection.getByText('예상 대비 진행')).toBeVisible()
+  await expect(timeSection.getByText('API 설계')).toBeVisible()
+  await expect(timeSection.getByLabel('기록할 시간')).toBeVisible()
+  await expect(costSection.getByText('₩155,000').first()).toBeVisible()
+  await expect(costSection.getByText('인건비 ₩120,000')).toBeVisible()
+  await expect(costSection.getByText('개발 인건비')).toBeVisible()
+  await expect(costSection.getByLabel('비용 금액')).toBeVisible()
+  await expectNoHorizontalOverflow(page)
+  await timeSection.scrollIntoViewIfNeeded()
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/time-cost-ui/mobile-time.png',
+    fullPage: true,
+  })
+  await costSection.scrollIntoViewIfNeeded()
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/time-cost-ui/mobile-cost.png',
+    fullPage: true,
+  })
+})
+
 test('작업 상세 전체 페이지가 드로어 IA와 활동 탭을 재사용한다', async ({ page }) => {
   await mockApi(page)
   await page.goto(`/projects/${project.id}/work-packages`)
@@ -1491,6 +1580,57 @@ test('멤버 패널: 역할별 권한 표를 렌더하고 내 역할 열을 강�
   )
 })
 
+test('프로젝트 팀 표면은 모바일에서 멤버 카드와 권한 카드를 유지한다', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await mockApi(page)
+  await page.route(`**/api/v1/projects/${project.id}/permissions`, (route) =>
+    route.fulfill({
+      json: {
+        my_role: 'owner',
+        verbs: [
+          {
+            key: 'member.manage',
+            label: '멤버 추가·역할 변경·제거',
+            owner: 'always',
+            member: 'never',
+            viewer: 'never',
+            condition: null,
+            note: null,
+          },
+          {
+            key: 'entry.delete',
+            label: '시간/비용 항목 삭제',
+            owner: 'always',
+            member: 'conditional',
+            viewer: 'never',
+            condition: '본인이 기록한 항목만',
+            note: null,
+          },
+        ],
+      },
+    }),
+  )
+
+  await page.goto(`/projects/${project.id}/settings?tab=members`)
+  await expect(page.getByRole('heading', { name: '프로젝트 설정' })).toBeVisible()
+  await expect(page.getByText('전체 멤버')).toBeVisible()
+  await expect(page.getByLabel('멤버 카드 목록')).toBeVisible()
+  await expect(page.getByText('alex@oneflow.local')).toBeVisible()
+  await expect(page.getByLabel('Alex Kim 역할')).toBeVisible()
+  const permissions = page.getByRole('region', { name: '권한' })
+  await expect(permissions.getByText('멤버 추가·역할 변경·제거')).toBeVisible()
+  await expect(permissions.getByText('조건부', { exact: true })).toHaveAttribute(
+    'title',
+    '본인이 기록한 항목만',
+  )
+  await expectNoHorizontalOverflow(page)
+  await page.getByLabel('멤버 카드 목록').scrollIntoViewIfNeeded()
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/team-members-ui/mobile.png',
+    fullPage: true,
+  })
+})
+
 test('설정 탭: 딥링크·미저장 가드·뒤로가기가 동작한다', async ({ page }) => {
   await page.route('**/api/v1/projects', (route) => route.fulfill({ json: projects }))
   await page.route('**/api/v1/me', (route) =>
@@ -2287,6 +2427,66 @@ test('인테이크 큐에서 소유자가 수락하면 triage POST가 간다', a
   expect(sent.note).toBe('다음 분기 성능 작업으로 수락')
 })
 
+test('인테이크 표면은 모바일에서 제출과 판정 큐를 유지한다', async ({ page }) => {
+  await mockApi(page)
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.route(`**/api/v1/projects/${project.id}/intake`, (route) =>
+    route.fulfill({
+      json: {
+        items: [
+          {
+            id: 'it-1',
+            project_id: project.id,
+            title: '검색이 느려요',
+            body: null,
+            status: 'pending',
+            submitted_by: 'u-alex',
+            submitter_name: 'Alex Kim',
+            snooze_until: null,
+            accepted_wp_id: null,
+            triage_note: null,
+            triaged_by_id: null,
+            triaged_at: null,
+            created_at: '2026-07-06T00:00:00Z',
+            updated_at: '2026-07-06T00:00:00Z',
+          },
+          {
+            id: 'it-2',
+            project_id: project.id,
+            title: '중복 요청',
+            body: null,
+            status: 'duplicate',
+            submitted_by: 'u-alex',
+            submitter_name: 'Alex Kim',
+            snooze_until: null,
+            accepted_wp_id: null,
+            triage_note: '기존 요청과 합침',
+            triaged_by_id: 'me-1',
+            triaged_at: '2026-07-07T00:00:00Z',
+            created_at: '2026-07-06T00:00:00Z',
+            updated_at: '2026-07-07T00:00:00Z',
+          },
+        ],
+        total: 2,
+      },
+    }),
+  )
+
+  await page.goto(`/projects/${project.id}/intake?item=it-1`)
+  await expect(page.getByRole('heading', { name: '인테이크', exact: true })).toBeVisible()
+  await expect(page.getByText('열린 요청')).toBeVisible()
+  await expect(page.getByLabel('인테이크 요청 제목')).toBeVisible()
+  const pending = page.getByRole('region', { name: '대기' })
+  await expect(pending.getByText('검색이 느려요')).toBeVisible()
+  await expect(pending.getByRole('button', { name: '수락' })).toBeVisible()
+  await expect(pending.getByLabel('검색이 느려요 판정 사유')).toBeVisible()
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/intake-ui/mobile.png',
+    fullPage: true,
+  })
+})
+
 test('설정 필드 탭에서 드롭다운 필드를 정의한다', async ({ page }) => {
   await mockApi(page)
   await page.route('**/api/v1/me', (route) =>
@@ -3071,12 +3271,16 @@ test('새 프로젝트 폼에서 템플릿을 고르면 template_project_id를 �
   // rollup columns render and toggle off persists in localStorage
   await expect(page.getByText('2건')).toBeVisible()
   await expect(page.getByText('멤버 1')).toBeVisible()
-  await page.getByLabel('멤버 열 표시').uncheck()
+  await page.getByRole('button', { name: '표시' }).click()
+  await page.getByRole('menuitemcheckbox', { name: '멤버 열 표시' }).click()
+  await page.keyboard.press('Escape')
   await expect(page.getByText('멤버 1')).toBeHidden()
   await page.reload()
   await expect(page.getByText('2건')).toBeVisible()
   await expect(page.getByText('멤버 1')).toBeHidden() // restored from storage
-  await page.getByLabel('멤버 열 표시').check()
+  await page.getByRole('button', { name: '표시' }).click()
+  await page.getByRole('menuitemcheckbox', { name: '멤버 열 표시' }).click()
+  await page.keyboard.press('Escape')
 
   await page.getByRole('button', { name: '새 프로젝트' }).first().click()
   await page.getByLabel('이름').fill('템플릿 기반')
@@ -3161,7 +3365,7 @@ test('전체 검색이 그룹 결과를 보여주고 문서로 이동한다', as
 
   await page.goto('/search')
   await page.getByLabel('전체 검색어').fill('구현')
-  await page.getByRole('button', { name: '검색' }).click()
+  await page.getByRole('button', { name: '검색', exact: true }).click()
 
   // grouped sections with truncation notice on documents
   await expect(page.getByText('작업 1건')).toBeVisible()
@@ -3176,6 +3380,70 @@ test('전체 검색이 그룹 결과를 보여주고 문서로 이동한다', as
   // navigation contract: a document result opens the editor
   await page.getByRole('button', { name: /구현 가이드 문서/ }).click()
   await expect(page.getByLabel('문서 제목')).toHaveValue('구현 가이드 문서')
+})
+
+test('전체 검색 표면은 모바일에서 요약과 결과 카드를 안정적으로 보여준다', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await mockApi(page)
+  const emptyGroup = { items: [], returned: 0, truncated: false }
+  await page.route('**/api/v1/search?**', (route) =>
+    route.fulfill({
+      json: {
+        query: '구현',
+        work_packages: {
+          items: [
+            {
+              id: wpA.id,
+              project_id: project.id,
+              project_key: 'ONE',
+              project_name: 'OneFlow 도입',
+              subject: '워크패키지 API 구현',
+              status: 'todo',
+              priority: 'high',
+              type: 'task',
+              due_date: '2026-07-15',
+              matched_in: 'primary',
+              snippet: null,
+            },
+          ],
+          returned: 1,
+          truncated: false,
+        },
+        documents: {
+          items: [
+            {
+              id: 'd-77',
+              project_id: project.id,
+              project_key: 'ONE',
+              project_name: 'OneFlow 도입',
+              title: '구현 가이드 문서',
+              matched_in: 'content',
+              snippet: '배포 구현 절차를 정리한 본문입니다',
+            },
+          ],
+          returned: 1,
+          truncated: true,
+        },
+        meetings: emptyGroup,
+        cycles: emptyGroup,
+        modules: emptyGroup,
+        initiatives: emptyGroup,
+      },
+    }),
+  )
+
+  await page.goto('/search?q=%EA%B5%AC%ED%98%84')
+  await expect(page.getByRole('heading', { name: '전체 검색' })).toBeVisible()
+  await expect(page.getByLabel('검색 결과 요약')).toContainText('작업')
+  await expect(page.getByRole('button', { name: /워크패키지 API 구현/ })).toBeVisible()
+  await expect(page.getByText('배포 구현 절차를 정리한 본문입니다')).toBeVisible()
+  await expect
+    .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth))
+    .toBe(true)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/search-discovery-ui/mobile.png',
+    fullPage: true,
+  })
 })
 
 test('커맨드 팔레트는 flag OFF에서 렌더링되지 않는다', async ({ page }) => {
@@ -3575,6 +3843,24 @@ test('설정에서 자동화 규칙을 보여주고 새 규칙을 추가한다',
       },
     }),
   )
+  const rules = [
+    {
+      id: 'r1',
+      project_id: project.id,
+      name: '검수 시 긴급',
+      trigger_type: 'status_changed_to',
+      trigger_value: 'in_review',
+      action_type: 'set_priority',
+      action_value: 'urgent',
+      condition_field: null,
+      condition_value: null,
+      position: 0,
+      is_active: true,
+      last_fired_at: '2026-07-06T09:00:00Z',
+      fired_count: 3,
+      created_at: '2026-07-06T08:00:00Z',
+    },
+  ]
   await page.route(`**/api/v1/projects/${project.id}/automation-rules`, async (route) => {
     if (route.request().method() === 'POST') {
       await route.fulfill({ status: 201, json: { id: 'r-new' } })
@@ -3582,27 +3868,26 @@ test('설정에서 자동화 규칙을 보여주고 새 규칙을 추가한다',
     }
     await route.fulfill({
       json: {
-        items: [
-          {
-            id: 'r1',
-            project_id: project.id,
-            name: '검수 시 긴급',
-            trigger_type: 'status_changed_to',
-            trigger_value: 'in_review',
-            action_type: 'set_priority',
-            action_value: 'urgent',
-            is_active: true,
-            last_fired_at: '2026-07-06T09:00:00Z',
-            fired_count: 3,
-          },
-        ],
-        total: 1,
+        items: rules,
+        total: rules.length,
       },
     })
   })
-  await page.route(`**/api/v1/projects/${project.id}/automation-rules/r1`, (route) =>
-    route.fulfill({ json: { id: 'r1' } }),
-  )
+  await page.route(`**/api/v1/projects/${project.id}/automation-rules/r1`, async (route) => {
+    if (route.request().method() === 'DELETE') {
+      rules.splice(0, rules.length)
+      await route.fulfill({ status: 204 })
+      return
+    }
+    const sent = route.request().postDataJSON() as {
+      name?: string
+      trigger_value?: string
+      action_value?: string
+      is_active?: boolean
+    }
+    Object.assign(rules[0], sent)
+    await route.fulfill({ json: { ...rules[0] } })
+  })
   await page.route(`**/api/v1/projects/${project.id}/automation-rules/runs**`, (route) =>
     route.fulfill({
       json: {
@@ -3632,12 +3917,30 @@ test('설정에서 자동화 규칙을 보여주고 새 규칙을 추가한다',
   // fire-audit surface renders per rule
   await expect(page.getByText('발화 3회', { exact: false })).toBeVisible()
 
-  // inline edit sends a partial PATCH with the changed value only
+  // action-menu edit sends the changed value through PATCH
+  await page.getByLabel('검수 시 긴급 자동화 규칙 작업').click()
+  await page.getByLabel('검수 시 긴급 규칙 편집').click()
   const rulePatch = page.waitForRequest(
     (r) => r.method() === 'PATCH' && r.url().includes('/automation-rules/r1'),
   )
-  await page.getByLabel('검수 시 긴급 우선순위 값').selectOption('high')
+  await page.getByLabel('검수 시 긴급 우선순위 값 편집').selectOption('high')
+  await page.getByRole('button', { name: '저장' }).click()
   expect(((await rulePatch).postDataJSON() as { action_value: string }).action_value).toBe('high')
+
+  await page.getByLabel('검수 시 긴급 자동화 규칙 작업').click()
+  const toggle = page.waitForRequest(
+    (r) => r.method() === 'PATCH' && r.url().includes('/automation-rules/r1'),
+  )
+  await page.getByLabel('검수 시 긴급 규칙 사용 중지').click()
+  expect(((await toggle).postDataJSON() as { is_active: boolean }).is_active).toBe(false)
+
+  page.once('dialog', (dialog) => void dialog.accept())
+  await page.getByLabel('검수 시 긴급 자동화 규칙 작업').click()
+  const deleteReq = page.waitForRequest(
+    (r) => r.method() === 'DELETE' && r.url().includes('/automation-rules/r1'),
+  )
+  await page.getByLabel('검수 시 긴급 규칙 삭제').click()
+  await deleteReq
 
   // execution log renders behind the details toggle
   await page.getByText('실행 로그', { exact: false }).click()
@@ -3826,9 +4129,159 @@ test('자동화 규칙 우선순위: 아래로 이동하면 순서를 담아 PUT
   const put = page.waitForRequest(
     (r) => r.method() === 'PUT' && r.url().includes('/automation-rules/order'),
   )
-  await page.getByRole('button', { name: '긴급 규칙 아래로' }).click()
+  await page.getByLabel('긴급 규칙 자동화 규칙 작업').click()
+  await page.getByLabel('긴급 규칙 아래로').click()
   const sent = (await put).postDataJSON() as { ordered_ids: string[] }
   expect(sent.ordered_ids).toEqual(['r2', 'r1'])
+})
+
+test('프로젝트 governance 표면은 모바일에서 워크플로우와 자동화를 안정적으로 보여준다', async ({ page }) => {
+  await mockApi(page)
+  await page.setViewportSize({ width: 390, height: 844 })
+  const statuses = [
+    { id: 'ps-1', project_id: project.id, key: 'todo', name: '할 일', position: 0 },
+    { id: 'ps-2', project_id: project.id, key: 'in_review', name: '검토 중', position: 1 },
+    { id: 'ps-3', project_id: project.id, key: 'done', name: '완료', position: 2 },
+  ]
+  const types = [
+    { id: 'pt-1', project_id: project.id, key: 'task', name: '작업', position: 0, is_active: true },
+    { id: 'pt-2', project_id: project.id, key: 'bug', name: '버그', position: 1, is_active: true },
+    {
+      id: 'pt-3',
+      project_id: project.id,
+      key: 'feature',
+      name: '기능',
+      position: 2,
+      is_active: false,
+    },
+  ]
+  await page.route(`**/api/v1/projects/${project.id}/statuses`, (route) =>
+    route.fulfill({ json: { items: statuses, total: statuses.length } }),
+  )
+  await page.route(`**/api/v1/projects/${project.id}/types`, (route) =>
+    route.fulfill({ json: { items: types, total: types.length } }),
+  )
+  await page.route(`**/api/v1/projects/${project.id}/automation-rules`, (route) =>
+    route.fulfill({
+      json: {
+        items: [
+          {
+            id: 'r1',
+            project_id: project.id,
+            name: '검수 시 긴급',
+            trigger_type: 'status_changed_to',
+            trigger_value: 'in_review',
+            action_type: 'set_priority',
+            action_value: 'urgent',
+            condition_field: 'type',
+            condition_value: 'bug',
+            position: 0,
+            is_active: true,
+            last_fired_at: '2026-07-06T09:00:00Z',
+            fired_count: 3,
+            created_at: '2026-07-06T00:00:00Z',
+          },
+        ],
+        total: 1,
+      },
+    }),
+  )
+  await page.route(`**/api/v1/projects/${project.id}/automation-rules/runs**`, (route) =>
+    route.fulfill({ json: { items: [], total: 0 } }),
+  )
+
+  await page.goto(`/projects/${project.id}/settings?tab=workflow`)
+  await expect(page.getByRole('region', { name: '워크플로우 거버넌스' })).toBeVisible()
+  await expect(page.getByLabel('in_review 상태 이름')).toHaveValue('검토 중')
+  await expect(page.getByRole('region', { name: '워크 아이템 타입' })).toContainText('2/3 활성')
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/governance-ui/mobile-workflow.png',
+    fullPage: true,
+  })
+
+  await page.getByRole('tab', { name: '자동화' }).click()
+  await expect(page.getByRole('region', { name: '자동화 규칙' })).toContainText('검수 시 긴급')
+  await expect(page.getByText(/그리고 타입이\(가\) '버그'일 때/)).toBeVisible()
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/governance-ui/mobile-automation.png',
+    fullPage: true,
+  })
+})
+
+test('모바일 자동화 규칙 액션 메뉴는 읽기 전용 상태를 안전하게 보여준다', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 760 })
+  await page.route('**/api/v1/projects', (route) => route.fulfill({ json: projects }))
+  await page.route('**/api/v1/me', (route) =>
+    route.fulfill({
+      json: { id: 'me-1', email: 'dev@oneflow.local', display_name: 'Dev User', is_active: true },
+    }),
+  )
+  await page.route('**/api/v1/me/notifications', (route) =>
+    route.fulfill({ json: { items: [], total: 0, unread: 0 } }),
+  )
+  await page.route(`**/api/v1/projects/${project.id}`, (route) =>
+    route.fulfill({ json: project }),
+  )
+  await page.route(`**/api/v1/projects/${project.id}/milestones`, (route) =>
+    route.fulfill({ json: { items: [], total: 0 } }),
+  )
+  await page.route(`**/api/v1/projects/${project.id}/statuses`, (route) =>
+    route.fulfill({ json: { items: [], total: 0 } }),
+  )
+  await page.route(`**/api/v1/projects/${project.id}/members`, (route) =>
+    route.fulfill({
+      json: {
+        items: [
+          { user_id: 'me-1', email: 'dev@oneflow.local', display_name: 'Dev User', role: 'viewer' },
+        ],
+        total: 1,
+      },
+    }),
+  )
+  await page.route(`**/api/v1/projects/${project.id}/automation-rules`, (route) =>
+    route.fulfill({
+      json: {
+        items: [
+          {
+            id: 'r1',
+            project_id: project.id,
+            name: '검수 시 긴급',
+            trigger_type: 'status_changed_to',
+            trigger_value: 'in_review',
+            action_type: 'set_priority',
+            action_value: 'urgent',
+            condition_field: null,
+            condition_value: null,
+            position: 0,
+            is_active: true,
+            last_fired_at: null,
+            fired_count: 0,
+            created_at: '2026-07-06T08:00:00Z',
+          },
+        ],
+        total: 1,
+      },
+    }),
+  )
+  await page.route(`**/api/v1/projects/${project.id}/automation-rules/runs**`, (route) =>
+    route.fulfill({ json: { items: [], total: 0 } }),
+  )
+
+  await page.goto(`/projects/${project.id}/settings?tab=automation`)
+  await page.getByLabel('검수 시 긴급 자동화 규칙 작업').click()
+  const menu = page.getByRole('menu', { name: '검수 시 긴급 자동화 규칙 작업 메뉴' })
+  await expect(menu).toBeVisible()
+  await expect(menu.getByText('읽기 전용')).toBeVisible()
+  await expect(menu.getByLabel('검수 시 긴급 규칙 편집')).toBeHidden()
+  const box = await menu.boundingBox()
+  expect(box).not.toBeNull()
+  expect((box?.x ?? 0) + (box?.width ?? 0)).toBeLessThanOrEqual(390)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/automation-rule-actions-ui/mobile.png',
+    fullPage: true,
+  })
 })
 
 test('AI 요약 플래그가 켜지면 드로어에서 요약을 생성한다', async ({ page }) => {
@@ -4369,7 +4822,7 @@ test('회의 상세가 안건·액션 아이템을 보여주고 액션 아이템
 
   await expect(page.getByLabel('회의 제목')).toHaveValue('스프린트 회의')
   await expect(page.getByText('배포 점검')).toBeVisible()
-  await expect(page.getByLabel('안건')).toBeVisible()
+  await expect(page.getByLabel('안건', { exact: true })).toBeVisible()
   await expect(page.getByText('Meeting detail')).toBeVisible()
   await expect(page.getByLabel('회의 속성')).toBeVisible()
   await expectNoHorizontalOverflow(page)
@@ -5261,6 +5714,78 @@ test('사용자 이름을 클릭하면 프로젝트 멤버십 패널이 열린�
   await expect(panel).toBeHidden()
 })
 
+test('사용자 디렉터리는 모바일에서 계정 카드와 멤버십을 유지한다', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await mockApi(page)
+  const admin = {
+    id: 'me-1',
+    email: 'dev@oneflow.local',
+    display_name: 'Dev User',
+    is_active: true,
+    is_admin: true,
+    created_at: '2026-07-01T00:00:00Z',
+  }
+  const alex = {
+    id: 'u-alex',
+    email: 'alex@oneflow.local',
+    display_name: 'Alex Kim',
+    is_active: true,
+    is_admin: false,
+    created_at: '2026-07-02T00:00:00Z',
+  }
+  const oldUser = {
+    id: 'u-old',
+    email: 'old@oneflow.local',
+    display_name: 'Old Member',
+    is_active: false,
+    is_admin: false,
+    created_at: '2026-07-03T00:00:00Z',
+  }
+  await page.route('**/api/v1/users', (route) =>
+    route.fulfill({ json: { items: [admin, alex, oldUser], total: 3 } }),
+  )
+  await page.route('**/api/v1/users/u-alex/memberships', (route) =>
+    route.fulfill({
+      json: {
+        items: [
+          {
+            project_id: project.id,
+            project_key: project.key,
+            project_name: project.name,
+            role: 'member',
+            archived: false,
+          },
+        ],
+        total: 1,
+      },
+    }),
+  )
+
+  await page.goto('/admin/users')
+  await expect(page.getByRole('heading', { name: '사용자 관리' })).toBeVisible()
+  await expect(page.getByLabel('사용자 카드 목록')).toBeVisible()
+  await expect(page.getByText('alex@oneflow.local')).toBeVisible()
+  await expect(page.getByText('old@oneflow.local')).toBeVisible()
+
+  await page.getByRole('button', { name: '관리자' }).click()
+  await expect(page.getByText('dev@oneflow.local')).toBeVisible()
+  await expect(page.getByText('alex@oneflow.local')).toBeHidden()
+  await page.getByRole('button', { name: '전체' }).click()
+
+  const membershipsGet = page.waitForRequest((r) => r.url().includes('/users/u-alex/memberships'))
+  await page.getByRole('button', { name: 'Alex Kim' }).click()
+  await membershipsGet
+  const panel = page.getByLabel('프로젝트 멤버십')
+  await expect(panel.getByText('OneFlow 도입')).toBeVisible()
+  await expect(panel.getByText('· 멤버')).toBeVisible()
+  await expectNoHorizontalOverflow(page)
+  await page.evaluate(() => document.querySelector('main')?.scrollTo(0, 0))
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/user-directory-ui/mobile.png',
+    fullPage: true,
+  })
+})
+
 test('프로젝트 상태 보고를 저장하면 목록에 헬스 칩이 보인다', async ({ page }) => {
   await mockApi(page)
   const atRisk = {
@@ -5324,14 +5849,14 @@ test('프로젝트 목록 정렬이 순서를 바꾸고 방향 토글이 동작�
     }),
   )
   await page.goto('/projects')
-  const names = page.locator('ul > li p.truncate')
-  await expect(names.first()).toContainText('알파') // server order by default
+  const rows = page.getByRole('list', { name: '프로젝트 디렉터리' }).getByRole('listitem')
+  await expect(rows.first()).toContainText('알파') // server order by default
 
   await page.getByLabel('프로젝트 정렬').selectOption('overdue_count')
   await page.getByLabel(/정렬 방향/).click() // asc → desc
-  await expect(names.first()).toContainText('베타') // 5 overdue first
+  await expect(rows.first()).toContainText('베타') // 5 overdue first
   await page.getByLabel(/정렬 방향/).click() // back to asc
-  await expect(names.first()).toContainText('알파')
+  await expect(rows.first()).toContainText('알파')
 })
 
 
@@ -5383,7 +5908,9 @@ test('프로젝트 목록 이니셔티브 열을 켜면 칩이 보이고 클릭 
 
   await page.goto('/projects')
   // Opt-in column (default off keeps the original look).
-  await page.getByLabel('이니셔티브 열 표시').check()
+  await page.getByRole('button', { name: '표시' }).click()
+  await page.getByRole('menuitemcheckbox', { name: '이니셔티브 열 표시' }).click()
+  await page.keyboard.press('Escape')
   await expect(page.getByRole('button', { name: '플랫폼 전략' })).toBeVisible()
   await expect(page.getByText('외 2')).toBeVisible()
 
@@ -5391,6 +5918,50 @@ test('프로젝트 목록 이니셔티브 열을 켜면 칩이 보이고 클릭 
   await expect(page).toHaveURL(/\/initiatives\?highlight=ini-9/)
   // The target card carries the highlight ring.
   await expect(page.locator('li.ring-1', { hasText: '플랫폼 전략' })).toBeVisible()
+})
+
+test('프로젝트 디렉터리는 모바일에서 요약·검색·카드 링크가 겹치지 않는다', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await mockApi(page)
+  await page.route('**/api/v1/projects', (route) =>
+    route.fulfill({
+      json: {
+        items: [
+          {
+            ...project,
+            ...projectRollups,
+            initiatives: [{ id: 'ini-9', name: '플랫폼 전략' }],
+            initiative_overflow: 1,
+          },
+          {
+            ...project,
+            ...projectRollups,
+            id: 'p-b',
+            key: 'OPS',
+            name: '운영 자동화',
+            description: '반복 업무 자동화와 리포팅',
+            health: 'off_track',
+            overdue_count: 3,
+          },
+        ],
+        total: 2,
+      },
+    }),
+  )
+
+  await page.goto('/projects')
+  await expect(page.getByRole('heading', { name: '프로젝트' })).toBeVisible()
+  await expect(page.getByLabel('프로젝트 요약')).toContainText('열린 작업')
+  await page.getByLabel('프로젝트 검색어').fill('운영')
+  await expect(page.getByRole('list', { name: '프로젝트 디렉터리' })).toContainText('운영 자동화')
+  await expect(page.getByRole('list', { name: '프로젝트 디렉터리' })).not.toContainText('OneFlow 도입')
+  await expect
+    .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth))
+    .toBe(true)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/project-directory-ui/mobile.png',
+    fullPage: true,
+  })
 })
 
 
@@ -5457,6 +6028,72 @@ test('백로그에서 사이클을 배정하면 PATCH 후 행이 사라진다', 
   expect(sent.expected_version).toBe(wpA.version)
   // Refetch drops the assigned row out of the backlog.
   await expect(page.getByText('백로그가 비어 있습니다')).toBeVisible()
+})
+
+test('계획 표면은 모바일에서 백로그·보드·캘린더 모드를 유지한다', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await mockApi(page)
+  await page.route(`**/api/v1/projects/${project.id}/work-packages**`, (route) => {
+    const url = new URL(route.request().url())
+    if (url.searchParams.get('no_cycle') === 'true') {
+      return route.fulfill({ json: { items: [wpA, wpB], total: 2 } })
+    }
+    return route.fulfill({ json: workPackages })
+  })
+  await page.route(`**/api/v1/projects/${project.id}/cycles`, (route) =>
+    route.fulfill({
+      json: {
+        items: [
+          {
+            id: 'cy-planning',
+            project_id: project.id,
+            name: '7월 스프린트',
+            description: null,
+            start_date: '2026-07-01',
+            end_date: '2026-07-14',
+            status: 'active',
+            work_package_count: 2,
+            done_work_package_count: 0,
+            created_at: '2026-07-01T00:00:00Z',
+            updated_at: '2026-07-01T00:00:00Z',
+          },
+        ],
+        total: 1,
+      },
+    }),
+  )
+
+  await page.goto(`/projects/${project.id}/backlog`)
+  await expect(page.getByText('Planning surface')).toBeVisible()
+  const planningNav = page.getByRole('navigation', { name: '계획 모드' })
+  const backlogMode = planningNav.getByRole('link', { name: /백로그/ })
+  await expect(backlogMode).toBeVisible()
+  await expect(backlogMode).toHaveAttribute('aria-current', 'page')
+  await expect(page.getByLabel('계획 요약')).toContainText('미배정 작업')
+  await expect(page.getByLabel('계획 요약')).toContainText('배정 가능 사이클')
+  await expect(page.getByLabel('백로그 작업 목록')).toContainText('워크패키지 API 구현')
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/planning-ui/mobile-backlog.png',
+    fullPage: true,
+  })
+
+  await planningNav.getByRole('link', { name: /보드/ }).click()
+  await expect(page).toHaveURL(/\/board/)
+  const boardMode = page.getByRole('navigation', { name: '계획 모드' }).getByRole('link', { name: /보드/ })
+  await expect(boardMode).toBeVisible()
+  await expect(boardMode).toHaveAttribute('aria-current', 'page')
+  await expect(page.getByLabel('계획 요약')).toContainText('스윔레인')
+  await expectNoHorizontalOverflow(page)
+
+  await page.getByRole('navigation', { name: '계획 모드' }).getByRole('link', { name: /캘린더/ }).click()
+  await expect(page).toHaveURL(/\/calendar/)
+  const calendarMode = page.getByRole('navigation', { name: '계획 모드' }).getByRole('link', { name: /캘린더/ })
+  await expect(calendarMode).toBeVisible()
+  await expect(calendarMode).toHaveAttribute('aria-current', 'page')
+  await expect(page.getByLabel('계획 요약')).toContainText('일정 있음')
+  await expect(page.getByText('워크패키지 API 구현')).toBeVisible()
+  await expectNoHorizontalOverflow(page)
 })
 
 
@@ -5671,4 +6308,97 @@ test('포트폴리오 리포트가 행·합계·아카이브 토글을 보여준
   await expect(page.getByText('(아카이브)')).toBeVisible()
   await expect(page.getByText('합계 · 2개 프로젝트')).toBeVisible()
   await expect(page.getByText('미설정')).toBeVisible() // NULL budget row
+})
+
+test('보고 표면은 모바일에서 포트폴리오와 이니셔티브를 넘침 없이 보여준다', async ({ page }) => {
+  await mockApi(page)
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.route('**/api/v1/reports/portfolio?include_archived=false', (route) =>
+    route.fulfill({
+      json: {
+        items: [
+          {
+            project_id: 'p-1',
+            key: 'ONE',
+            name: 'OneFlow 도입',
+            archived: false,
+            health: 'at_risk',
+            member_count: 3,
+            work_package_count: 12,
+            open_work_package_count: 7,
+            overdue_count: 2,
+            budget: 20000000,
+            cost_total: 5000000,
+            hours_total: 42.5,
+          },
+        ],
+        totals: {
+          projects: 1,
+          work_packages: 12,
+          open: 7,
+          overdue: 2,
+          budget: 20000000,
+          cost_total: 5000000,
+          hours_total: 42.5,
+        },
+        total: 1,
+      },
+    }),
+  )
+  await page.route('**/api/v1/reports/portfolio/timeline?**', (route) =>
+    route.fulfill({ json: { items: [], total: 0 } }),
+  )
+  await page.route('**/api/v1/initiatives', (route) =>
+    route.fulfill({
+      json: {
+        items: [
+          {
+            id: 'ini-1',
+            name: '플랫폼 개편',
+            description: null,
+            owner_id: 'u-dev',
+            owner_name: 'Dev User',
+            state: 'in_progress',
+            start_date: null,
+            target_date: null,
+            health: 'at_risk',
+            health_note: '일정 검토 필요',
+            health_updated_by: 'me-1',
+            health_updated_at: '2026-07-08T00:00:00Z',
+            is_mine: true,
+            connected_project_count: 2,
+            projects: [
+              {
+                project_id: project.id,
+                project_name: project.name,
+                work_package_count: 4,
+                done_work_package_count: 1,
+              },
+            ],
+            created_at: '2026-07-07T00:00:00Z',
+            updated_at: '2026-07-07T00:00:00Z',
+          },
+        ],
+        total: 1,
+      },
+    }),
+  )
+
+  await page.goto('/reports')
+  await expect(page.getByRole('heading', { name: '포트폴리오 리포트' })).toBeVisible()
+  await expect(page.getByText('미완료 작업', { exact: true })).toBeVisible()
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/reporting-ui/mobile-reports.png',
+    fullPage: true,
+  })
+
+  await page.goto('/initiatives')
+  await expect(page.getByRole('heading', { name: '이니셔티브', exact: true })).toBeVisible()
+  await expect(page.getByRole('region', { name: '진행 중' }).getByText('플랫폼 개편')).toBeVisible()
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/reporting-ui/mobile-initiatives.png',
+    fullPage: true,
+  })
 })
