@@ -1,10 +1,10 @@
-import { ChevronDown, ChevronUp, GitBranch } from 'lucide-react'
+import { ChevronDown, ChevronUp, GitBranch, Pencil, Save } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
+import { InlineActionMenu } from '@/components/ui/action-menu'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { cn } from '@/lib/utils'
 
 import {
   type ProjectStatus,
@@ -95,55 +95,93 @@ function StatusRow({
   onMove: (dir: -1 | 1) => void
 }) {
   const [name, setName] = useState(status.name)
+  const [editing, setEditing] = useState(false)
   // Resync when the server value changes (after a rename refetch, or if a failed
   // rename left the server name unchanged) — otherwise the input shows a name the
   // server never accepted (fable5 audit: state-from-props anti-pattern).
   useEffect(() => setName(status.name), [status.name])
 
-  return (
-    <li className="grid min-w-0 gap-2 rounded-of border border-of-border bg-of-surface-2 px-3 py-2 sm:grid-cols-[5rem_minmax(0,1fr)_auto] sm:items-center">
-      <span className="flex min-w-0 items-center">
+  if (editing) {
+    return (
+      <li className="grid min-w-0 gap-2 rounded-of border border-of-border bg-of-surface-2 px-3 py-2 sm:grid-cols-[5rem_minmax(0,1fr)_auto] sm:items-center">
         <Badge variant="neutral" className="max-w-full truncate font-mono uppercase">
           {status.key}
         </Badge>
-      </span>
-      {isOwner ? (
         <Input
           value={name}
-          onChange={(e) => setName(e.target.value)}
-          onBlur={() => onRename(name.trim())}
-          aria-label={`${status.key} 상태 이름`}
+          onChange={(event) => setName(event.target.value)}
+          aria-label={`${status.key} 상태 이름 편집`}
           className="h-8 min-w-0 text-xs"
         />
-      ) : (
-        <span className="min-w-0 truncate text-sm font-medium">{status.name}</span>
-      )}
-      {isOwner ? (
-        <span className="flex shrink-0 items-center justify-end gap-1">
+        <span className="flex items-center justify-end gap-2">
           <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            aria-label={`${status.key} 위로`}
-            disabled={isFirst}
-            onClick={() => onMove(-1)}
-            className={cn('h-7 w-7 text-of-muted', isFirst && 'opacity-30')}
+            size="sm"
+            disabled={!name.trim()}
+            onClick={() => {
+              const trimmed = name.trim()
+              if (trimmed && trimmed !== status.name) onRename(trimmed)
+              else setName(status.name)
+              setEditing(false)
+            }}
           >
-            <ChevronUp size={13} aria-hidden="true" />
+            <Save size={14} aria-hidden="true" />
+            저장
           </Button>
           <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            aria-label={`${status.key} 아래로`}
-            disabled={isLast}
-            onClick={() => onMove(1)}
-            className={cn('h-7 w-7 text-of-muted', isLast && 'opacity-30')}
+            size="sm"
+            variant="outline"
+            onClick={() => {
+              setName(status.name)
+              setEditing(false)
+            }}
           >
-            <ChevronDown size={13} aria-hidden="true" />
+            취소
           </Button>
         </span>
-      ) : null}
+      </li>
+    )
+  }
+
+  return (
+    <li className="grid min-w-0 gap-2 rounded-of border border-of-border bg-of-surface-2 px-3 py-2 sm:grid-cols-[5rem_minmax(0,1fr)_auto] sm:items-center">
+      <Badge variant="neutral" className="max-w-full truncate font-mono uppercase">
+        {status.key}
+      </Badge>
+      <span className="min-w-0">
+        <span className="block truncate text-sm font-medium">{status.name}</span>
+        <span className="text-[11px] text-of-muted">위치 {status.position + 1}</span>
+      </span>
+      <InlineActionMenu
+        label={`${status.key} 상태 작업`}
+        menuLabel={`${status.key} 상태 작업 메뉴`}
+        note={isOwner ? '고정 상태 키라 삭제/비활성화는 제공하지 않습니다.' : '읽기 전용'}
+        items={
+          isOwner
+            ? [
+                {
+                  label: '편집',
+                  ariaLabel: `${status.key} 상태 편집`,
+                  icon: <Pencil size={14} />,
+                  onSelect: () => setEditing(true),
+                },
+                {
+                  label: '위로 이동',
+                  ariaLabel: `${status.key} 위로`,
+                  icon: <ChevronUp size={14} />,
+                  disabled: isFirst,
+                  onSelect: () => onMove(-1),
+                },
+                {
+                  label: '아래로 이동',
+                  ariaLabel: `${status.key} 아래로`,
+                  icon: <ChevronDown size={14} />,
+                  disabled: isLast,
+                  onSelect: () => onMove(1),
+                },
+              ]
+            : []
+        }
+      />
     </li>
   )
 }
