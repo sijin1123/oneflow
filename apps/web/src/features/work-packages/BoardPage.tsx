@@ -11,6 +11,7 @@ import { useProjectStatuses } from '@/features/project-statuses/api'
 
 import { DetailDrawer } from './DetailDrawer'
 import { PriorityChip, TypeChip } from './chips'
+import { BoardCardActions, type BoardCardActionMessage } from './BoardCardActions'
 import { usePatchWorkPackage, useWorkPackages } from './api'
 import { buildLanes, type LaneBy } from './lanes'
 import { useTypeLabels } from './useTypeLabels'
@@ -38,6 +39,7 @@ export function BoardPage() {
   const [pendingMoves, setPendingMoves] = useState<Map<string, string>>(new Map())
   const [dropTarget, setDropTarget] = useState<string | null>(null)
   const [moveError, setMoveError] = useState<string | null>(null)
+  const [cardActionMessage, setCardActionMessage] = useState<BoardCardActionMessage | null>(null)
 
   // Columns come from the project's configured workflow (label + order); until it
   // loads (or if it is empty) fall back to the built-in status set so the board
@@ -79,10 +81,12 @@ export function BoardPage() {
 
   const effectiveStatus = (wp: WorkPackage) => pendingMoves.get(wp.id) ?? wp.status
 
-  const openDrawer = (id: string) => {
+  const openDrawer = (id: string, options: { move?: boolean } = {}) => {
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev)
       next.set('wp', id)
+      if (options.move) next.set('move', '1')
+      else next.delete('move')
       return next
     })
   }
@@ -169,6 +173,17 @@ export function BoardPage() {
               {moveError}
             </p>
           ) : null}
+          {cardActionMessage ? (
+            <p
+              role={cardActionMessage.kind === 'error' ? 'alert' : 'status'}
+              aria-live="polite"
+              className={`text-xs ${
+                cardActionMessage.kind === 'error' ? 'text-of-danger' : 'text-of-muted'
+              }`}
+            >
+              {cardActionMessage.text}
+            </p>
+          ) : null}
         </div>
         <div className="min-h-0 flex-1 overflow-x-auto p-3">
           {lanes.map((lane) => {
@@ -217,36 +232,52 @@ export function BoardPage() {
                         </header>
                         <div className="min-h-0 flex-1 space-y-2 overflow-y-auto px-2 pb-2">
                           {items.map((wp) => (
-                            <button
+                            <article
                               key={wp.id}
-                              type="button"
-                              draggable={canWrite}
-                              onDragStart={
-                                canWrite
-                                  ? (e) => {
-                                      e.dataTransfer.setData('text/oneflow-wp', wp.id)
-                                      e.dataTransfer.effectAllowed = 'move'
-                                    }
-                                  : undefined
-                              }
-                              onClick={() => openDrawer(wp.id)}
-                              className={`w-full rounded-of border border-of-border bg-of-surface p-2.5 text-left shadow-sm hover:border-of-accent ${
-                                canWrite ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'
-                              } ${pendingMoves.has(wp.id) ? 'opacity-60' : ''}`}
+                              className={`group rounded-of border border-of-border bg-of-surface p-2.5 shadow-sm transition-colors hover:border-of-accent focus-within:border-of-accent ${
+                                pendingMoves.has(wp.id) ? 'opacity-60' : ''
+                              }`}
                             >
-                              <p className="mb-1.5 line-clamp-2 text-[13px] font-medium">
-                                {wp.subject}
-                              </p>
-                              <div className="flex items-center gap-2">
-                                <TypeChip type={wp.type} label={typeLabel(wp.type)} />
-                                <PriorityChip priority={wp.priority} />
-                                {wp.due_date ? (
-                                  <span className="ml-auto text-[11px] text-of-muted">
-                                    {wp.due_date}
+                              <div className="flex min-w-0 items-start gap-2">
+                                <button
+                                  type="button"
+                                  draggable={canWrite}
+                                  onDragStart={
+                                    canWrite
+                                      ? (e) => {
+                                          e.dataTransfer.setData('text/oneflow-wp', wp.id)
+                                          e.dataTransfer.effectAllowed = 'move'
+                                        }
+                                      : undefined
+                                  }
+                                  onClick={() => openDrawer(wp.id)}
+                                  className={`min-w-0 flex-1 text-left ${
+                                    canWrite ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'
+                                  } focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus`}
+                                >
+                                  <span className="mb-1.5 block line-clamp-2 text-[13px] font-medium">
+                                    {wp.subject}
                                   </span>
-                                ) : null}
+                                  <span className="flex items-center gap-2">
+                                    <TypeChip type={wp.type} label={typeLabel(wp.type)} />
+                                    <PriorityChip priority={wp.priority} />
+                                    {wp.due_date ? (
+                                      <span className="ml-auto text-[11px] text-of-muted">
+                                        {wp.due_date}
+                                      </span>
+                                    ) : null}
+                                  </span>
+                                </button>
+                                <BoardCardActions
+                                  projectId={projectId}
+                                  wp={wp}
+                                  canWrite={canWrite}
+                                  onOpenDrawer={(id) => openDrawer(id)}
+                                  onOpenMove={(id) => openDrawer(id, { move: true })}
+                                  onMessage={setCardActionMessage}
+                                />
                               </div>
-                            </button>
+                            </article>
                           ))}
                         </div>
                       </section>
