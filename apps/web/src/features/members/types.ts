@@ -2,7 +2,7 @@ export type Member = {
   user_id: string
   email: string
   display_name: string
-  role: 'owner' | 'member'
+  role: 'owner' | 'member' | 'viewer'
 }
 
 export type MemberList = {
@@ -15,4 +15,22 @@ export type Me = {
   email: string
   display_name: string
   is_active: boolean
+  is_admin: boolean
+}
+
+export type PermissionAllow = 'always' | 'never' | 'conditional'
+
+export type PermissionVerb = {
+  key: string
+  label: string
+  owner: PermissionAllow
+  member: PermissionAllow
+  viewer: PermissionAllow
+  condition: string | null
+  note: string | null
+}
+
+export type PermissionReport = {
+  my_role: 'owner' | 'member' | 'viewer'
+  verbs: PermissionVerb[]
 }

@@ -29,14 +29,25 @@ export type WorkPackage = {
   assignee_id: string | null
   parent_id: string | null
   milestone_id: string | null
+  cycle_id: string | null
+  module_id: string | null
   /** date-only 'YYYY-MM-DD' strings — never converted through JS Date (§6.1) */
   start_date: string | null
   due_date: string | null
   estimated_hours: number | null
+  /** author user-id — null on rows created before the column existed */
+  created_by: string | null
   /** optimistic-concurrency token: echo the integer exactly (§6.2) */
   version: number
   created_at: string
   updated_at: string
+  /** batch custom-field values — present only when the list was requested
+      with `custom_fields=` (Pass 67); null otherwise */
+  custom_values?: Array<{
+    field_id: string
+    value: unknown
+    member_display_name: string | null
+  }> | null
 }
 
 export type WorkPackageList = {
@@ -53,6 +64,8 @@ export type WorkPackagePatch = Partial<{
   assignee_id: string | null
   parent_id: string | null
   milestone_id: string | null
+  cycle_id: string | null
+  module_id: string | null
   start_date: string | null
   due_date: string | null
   estimated_hours: number | null
@@ -79,11 +92,24 @@ export type ConflictBody = {
 export type Comment = {
   id: string
   work_package_id: string
+  /** set on replies — always references a ROOT comment (single-level threads) */
+  parent_id: string | null
   author_id: string | null
   body: string
+  /** accepted mention user-ids (member-validated server-side); null = none */
+  mentions: string[] | null
+  /** six fixed vocabulary slots (server always returns all — 0-count included) */
+  reactions: ReactionAgg[]
   created_at: string
   updated_at: string
 }
+
+export type ReactionAgg = { key: string; count: number; me: boolean }
+
+/** Quick-pick glyphs (Pass 35: the API stores glyphs — the set is OPEN and
+    the aggregate returns whatever exists; this list is only the web's
+    one-click shortcut row). */
+export const QUICK_REACTIONS = ['👍', '👎', '🎉', '❤️', '😄', '😕'] as const
 
 export type CommentList = {
   items: Comment[]
@@ -156,6 +182,8 @@ export type CsvImportResult = {
   /** sha256 of the valid rows — reconcile a dry-run preview against the commit (대사) */
   checksum: string
   errors: CsvRowError[]
+  /** adapter advisories (Jira import: unmapped assignees, fallback counts, ignored columns) */
+  notes: string[]
 }
 
 export const STATUS_LABELS: Record<WpStatus, string> = {

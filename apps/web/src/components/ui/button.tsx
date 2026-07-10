@@ -7,14 +7,14 @@ import * as React from 'react'
 import { cn } from '@/lib/utils'
 
 const buttonVariants = cva(
-  'inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-of text-sm font-medium transition-colors disabled:pointer-events-none disabled:opacity-50 [&_svg]:size-4 [&_svg]:shrink-0',
+  'inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-of text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus focus-visible:ring-offset-1 focus-visible:ring-offset-of-surface disabled:pointer-events-none disabled:opacity-50 [&_svg]:size-4 [&_svg]:shrink-0',
   {
     variants: {
       variant: {
-        default: 'bg-of-accent text-white hover:opacity-90',
-        outline: 'border border-of-border bg-of-surface hover:bg-of-surface-2',
-        ghost: 'hover:bg-of-surface-2',
-        danger: 'bg-of-danger text-white hover:opacity-90',
+        default: 'bg-of-accent text-white hover:bg-of-accent-hover',
+        outline: 'border border-of-border bg-of-surface hover:bg-of-surface-hover',
+        ghost: 'hover:bg-of-surface-hover',
+        danger: 'bg-of-danger text-white hover:bg-of-danger-hover',
       },
       size: {
         default: 'h-8 px-3',

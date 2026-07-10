@@ -9,6 +9,8 @@ class NotificationRead(BaseModel):
     kind: str
     project_id: uuid.UUID
     work_package_id: uuid.UUID | None
+    # WP-less intake notifications anchor to their item instead (Pass 49).
+    intake_item_id: uuid.UUID | None = None
     # Joined for display so the client need not fetch each work package.
     work_package_subject: str | None
     actor_name: str | None

@@ -1,0 +1,33 @@
+/* OneFlow overrides for DHTMLX Gantt (Pass 73) — status bar colors mirror the
+   old clean-room timeline; blocks links render in the danger tone. */
+.gantt_task_line.of-bar-backlog { background: #d1d5db; border-color: #d1d5db; }
+.gantt_task_line.of-bar-todo { background: #38bdf8; border-color: #38bdf8; }
+.gantt_task_line.of-bar-in_progress { background: #fbbf24; border-color: #fbbf24; }
+.gantt_task_line.of-bar-in_review { background: #a78bfa; border-color: #a78bfa; }
+.gantt_task_line.of-bar-done { background: #34d399; border-color: #34d399; }
+.gantt_task_line.of-bar-cancelled { background: #e5e7eb; border-color: #e5e7eb; }
+.gantt_task_line.of-bar-backlog .gantt_task_content,
+.gantt_task_line.of-bar-cancelled .gantt_task_content { color: #374151; }
+.gantt_task_link.of-link-blocks .gantt_line_wrapper div { background: rgba(220, 38, 38, 0.7); }
+.gantt_task_link.of-link-blocks .gantt_link_arrow_right,
+.gantt_task_link.of-link-blocks .gantt_link_arrow_left { border-left-color: rgba(220, 38, 38, 0.7); }
+.gantt_task_cell.of-today-cell { background: rgba(220, 38, 38, 0.08); border-right: 1px solid rgba(220, 38, 38, 0.5); }
+.of-gantt-task-inner { display: flex; height: 100%; min-width: 0; align-items: center; gap: 4px; }
+.of-gantt-task-title { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.of-gantt-action {
+  display: inline-flex;
+  height: 16px;
+  min-width: 18px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.65);
+  color: #111827;
+  font-size: 11px;
+  line-height: 1;
+  pointer-events: auto;
+}
+.of-gantt-action:hover,
+.of-gantt-action:focus-visible { background: rgba(255, 255, 255, 0.95); outline: 1px solid rgba(17, 24, 39, 0.35); }

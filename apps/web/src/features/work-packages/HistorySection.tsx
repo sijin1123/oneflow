@@ -1,32 +1,145 @@
+import {
+  Activity as ActivityIcon,
+  Clock3,
+  CornerDownRight,
+  MessageSquareText,
+  Send,
+  SmilePlus,
+  UsersRound,
+  type LucideIcon,
+} from 'lucide-react'
 import { useState } from 'react'
 
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
+import { useMemberNames, useMembers } from '@/features/members/api'
+import { useCanWrite } from '@/features/members/useCanWrite'
 import { formatDateTime } from '@/lib/datetime'
+import { cn } from '@/lib/utils'
 
 import { FIELD_LABELS } from './activityLabels'
-import { useActivities, useComments, useCreateComment } from './api'
-import { PRIORITY_LABELS, TYPE_LABELS } from './types'
+import { useActivities, useComments, useCreateComment, useToggleReaction } from './api'
+import type { CommentThread } from './comments'
+import { groupThreads } from './comments'
+import { PRIORITY_LABELS, QUICK_REACTIONS, TYPE_LABELS } from './types'
 import type { Activity, Comment } from './types'
 import { useStatusLabels } from './useStatusLabels'
 
-/** Merge activities and comments into one chronological feed. */
+/** Merge activities and comment THREADS into one chronological feed — a thread
+    sorts by its root, replies stay beneath it (PLAN v10.1 R1-⑦). */
 type FeedItem =
   | { kind: 'activity'; at: string; activity: Activity }
-  | { kind: 'comment'; at: string; comment: Comment }
+  | { kind: 'thread'; at: string; thread: CommentThread }
+
+function FeedMetric({
+  icon: Icon,
+  label,
+  value,
+  tone = 'neutral',
+}: {
+  icon: LucideIcon
+  label: string
+  value: string
+  tone?: 'accent' | 'neutral'
+}) {
+  return (
+    <div className="flex min-w-0 items-center gap-3 rounded-of border border-of-border bg-of-surface px-3 py-3">
+      <span
+        className={cn(
+          'flex h-8 w-8 shrink-0 items-center justify-center rounded-of',
+          tone === 'accent' ? 'bg-of-accent-soft text-of-accent' : 'bg-of-surface-2 text-of-muted',
+        )}
+      >
+        <Icon size={15} aria-hidden="true" />
+      </span>
+      <span className="min-w-0">
+        <span className="block text-[11px] text-of-muted">{label}</span>
+        <span className="block text-sm font-semibold tabular-nums">{value}</span>
+      </span>
+    </div>
+  )
+}
+
+/* Free-emoji entry (Pass 35): a tiny inline input — the server enforces the
+   single-grapheme grammar (422), so the client stays permissive. */
+function FreeReactionInput({
+  disabled,
+  onAdd,
+}: {
+  disabled: boolean
+  onAdd: (emoji: string) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const [value, setValue] = useState('')
+  const submit = () => {
+    const emoji = value.trim()
+    if (!emoji) return
+    onAdd(emoji)
+    setValue('')
+    setOpen(false)
+  }
+  if (!open) {
+    return (
+      <button
+        type="button"
+        aria-label="이모지 추가"
+        className="inline-flex h-6 items-center gap-1 rounded-full border border-of-border px-1.5 text-[11px] text-of-muted hover:bg-of-surface"
+        onClick={() => setOpen(true)}
+      >
+        <SmilePlus size={12} aria-hidden="true" />
+      </button>
+    )
+  }
+  return (
+    <span className="flex items-center gap-1">
+      <input
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') submit()
+          if (e.key === 'Escape') setOpen(false)
+        }}
+        placeholder="😀"
+        aria-label="자유 이모지 입력"
+        className="h-6 w-14 rounded-of border border-of-border bg-of-surface px-1 text-center text-[12px]"
+        maxLength={16}
+      />
+      <button
+        type="button"
+        aria-label="이모지 등록"
+        disabled={disabled || !value.trim()}
+        className="rounded-of border border-of-border px-1.5 py-0.5 text-[11px] text-of-muted hover:bg-of-surface-2 disabled:opacity-50"
+        onClick={submit}
+      >
+        추가
+      </button>
+    </span>
+  )
+}
 
 export function HistorySection({ wpId, projectId }: { wpId: string; projectId: string }) {
   const activities = useActivities(wpId)
   const comments = useComments(wpId)
   const createComment = useCreateComment(wpId)
+  const toggleReaction = useToggleReaction(wpId)
   const statusLabel = useStatusLabels(projectId)
+  const members = useMembers(projectId)
+  const canWrite = useCanWrite(projectId)
+  const memberName = useMemberNames(projectId)
   const [draft, setDraft] = useState('')
+  const [replyTo, setReplyTo] = useState<string | null>(null)
+  const [replyDraft, setReplyDraft] = useState('')
+  const [mentioned, setMentioned] = useState<string[]>([])
 
   const labelValue = (field: string | null, value: string | null): string => {
     if (value === null) return '없음'
     if (field === 'status') return statusLabel(value)
     if (field === 'priority') return PRIORITY_LABELS[value as keyof typeof PRIORITY_LABELS] ?? value
     if (field === 'type') return TYPE_LABELS[value as keyof typeof TYPE_LABELS] ?? value
+    // Members stay uuids in the log (the existing contract) — resolve here.
+    // cycle/module/milestone records store NAME snapshots since Pass 71.
+    if (field === 'assignee_id') return memberName(value)
     return value
   }
 
@@ -41,44 +154,211 @@ export function HistorySection({ wpId, projectId }: { wpId: string; projectId: s
     ...(activities.data?.items ?? []).map(
       (a): FeedItem => ({ kind: 'activity', at: a.created_at, activity: a }),
     ),
-    ...(comments.data?.items ?? []).map(
-      (c): FeedItem => ({ kind: 'comment', at: c.created_at, comment: c }),
+    ...groupThreads(comments.data?.items ?? []).map(
+      (t): FeedItem => ({ kind: 'thread', at: t.root.created_at, thread: t }),
     ),
   ].sort((x, y) => x.at.localeCompare(y.at))
 
   const submit = () => {
     const body = draft.trim()
     if (!body) return
-    createComment.mutate(body, { onSuccess: () => setDraft('') })
+    createComment.mutate(
+      { body, mentioned_user_ids: mentioned },
+      {
+        onSuccess: () => {
+          setDraft('')
+          setMentioned([])
+        },
+      },
+    )
+  }
+
+  const toggleMention = (userId: string) => {
+    setMentioned((prev) =>
+      prev.includes(userId) ? prev.filter((id) => id !== userId) : [...prev, userId],
+    )
+  }
+
+  const submitReply = (rootId: string) => {
+    const body = replyDraft.trim()
+    if (!body) return
+    createComment.mutate(
+      { body, parent_id: rootId },
+      {
+        onSuccess: () => {
+          setReplyDraft('')
+          setReplyTo(null)
+        },
+      },
+    )
   }
 
   const pending = activities.isPending || comments.isPending
+  const error = activities.isError || comments.isError
+  const activityCount = activities.data?.total ?? 0
+  const commentCount = comments.data?.total ?? 0
+  const threadCount = groupThreads(comments.data?.items ?? []).length
+  const mentionCount = (comments.data?.items ?? []).reduce(
+    (sum, comment) => sum + (comment.mentions?.length ?? 0),
+    0,
+  )
+
+  const commentBox = (c: Comment, isReply: boolean) => (
+    <div
+      className={cn(
+        'rounded-of border border-of-border bg-of-surface px-3 py-3',
+        isReply ? 'ml-4 border-l-4 border-l-of-accent-soft' : '',
+      )}
+    >
+      <div className="mb-2 flex min-w-0 items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="truncate text-xs font-semibold">
+            {c.author_id ? memberName(c.author_id) : '댓글'}
+          </p>
+          <p className="mt-0.5 text-[11px] text-of-muted">{formatDateTime(c.created_at)}</p>
+        </div>
+        {isReply ? <Badge variant="outline">답글</Badge> : <Badge variant="neutral">댓글</Badge>}
+      </div>
+      <p className="whitespace-pre-wrap text-[13px]">{c.body}</p>
+      {c.mentions && c.mentions.length > 0 ? (
+        <p className="mt-1 flex flex-wrap gap-1">
+          {c.mentions.map((uid) => (
+            <Badge key={uid} variant="accent" className="text-[10px]">
+              @{memberName(uid)}
+            </Badge>
+          ))}
+        </p>
+      ) : null}
+      {canWrite ? (
+        <p className="mt-3 flex flex-wrap items-center gap-1">
+          {/* Open set (Pass 35): existing aggregates first, then quick-pick
+              glyphs not yet present, then free input. */}
+          {[
+            ...c.reactions,
+            ...QUICK_REACTIONS.filter((g) => !c.reactions.some((r) => r.key === g)).map((g) => ({
+              key: g,
+              count: 0,
+              me: false,
+            })),
+          ].map(({ key, count, me }) => (
+            <button
+              key={key}
+              type="button"
+              aria-label={`${key} 리액션`}
+              aria-pressed={me}
+              className={cn(
+                'rounded-full border px-1.5 py-0.5 text-[11px]',
+                me
+                  ? 'border-of-accent bg-of-accent-soft text-of-accent'
+                  : 'border-of-border text-of-muted hover:bg-of-surface-2',
+                count === 0 && !me ? 'opacity-60' : '',
+              )}
+              disabled={toggleReaction.isPending}
+              onClick={() => toggleReaction.mutate({ commentId: c.id, key, on: !me })}
+            >
+              {key}
+              {count > 0 ? ` ${count}` : ''}
+            </button>
+          ))}
+          <FreeReactionInput
+            disabled={toggleReaction.isPending}
+            onAdd={(emoji) => toggleReaction.mutate({ commentId: c.id, key: emoji, on: true })}
+          />
+        </p>
+      ) : null}
+      <p className="mt-2 flex items-center gap-2 text-[11px] text-of-muted">
+        {canWrite && !isReply ? (
+          <button
+            type="button"
+            className="inline-flex items-center gap-1 rounded-of px-1 py-0.5 hover:bg-of-surface-2 hover:text-of-fg"
+            onClick={() => {
+              setReplyTo((prev) => (prev === c.id ? null : c.id))
+              setReplyDraft('')
+            }}
+          >
+            <CornerDownRight size={12} aria-hidden="true" />
+            답글
+          </button>
+        ) : null}
+      </p>
+    </div>
+  )
 
   return (
-    <section aria-label="활동 및 댓글" className="space-y-3 border-t border-of-border pt-3">
-      <h3 className="text-xs font-semibold text-of-muted">활동 및 댓글</h3>
+    <section aria-label="활동 및 댓글" className="rounded-of border border-of-border bg-of-surface p-4">
+      <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
+          <h3 className="text-sm font-semibold">활동 및 댓글</h3>
+          <p className="mt-1 text-xs leading-5 text-of-muted">
+            작업 변경과 논의를 시간순으로 모읍니다.
+          </p>
+        </div>
+        <Badge variant={canWrite ? 'accent' : 'outline'} className="self-start">
+          {canWrite ? '댓글 가능' : '읽기 전용'}
+        </Badge>
+      </div>
+
+      <div className="mt-3 grid gap-2 sm:grid-cols-4">
+        <FeedMetric icon={ActivityIcon} label="활동" value={`${activityCount}건`} tone="accent" />
+        <FeedMetric icon={MessageSquareText} label="댓글" value={`${commentCount}건`} />
+        <FeedMetric icon={CornerDownRight} label="스레드" value={`${threadCount}건`} />
+        <FeedMetric icon={UsersRound} label="멘션" value={`${mentionCount}건`} />
+      </div>
 
       {pending ? (
-        <p className="text-xs text-of-muted">불러오는 중…</p>
+        <div className="mt-3 rounded-of border border-dashed border-of-border bg-of-surface-2/35 px-3 py-4 text-xs text-of-muted">
+          불러오는 중...
+        </div>
+      ) : error ? (
+        <div className="mt-3 rounded-of border border-of-border bg-of-surface px-3 py-4 text-xs text-of-danger">
+          활동을 불러오지 못했습니다.
+        </div>
       ) : feed.length === 0 ? (
-        <p className="text-xs text-of-muted">아직 활동이 없습니다.</p>
+        <div className="mt-3 rounded-of border border-dashed border-of-border bg-of-surface-2/35 px-3 py-4 text-xs text-of-muted">
+          아직 활동이 없습니다.
+        </div>
       ) : (
-        <ul className="space-y-2">
+        <ul className="mt-3 space-y-2">
           {feed.map((item) =>
-            item.kind === 'comment' ? (
-              <li
-                key={`c-${item.comment.id}`}
-                className="rounded-of border border-of-border bg-of-surface-2/40 px-2.5 py-2"
-              >
-                <p className="whitespace-pre-wrap text-[13px]">{item.comment.body}</p>
-                <p className="mt-1 text-[11px] text-of-muted">{formatDateTime(item.comment.created_at)}</p>
+            item.kind === 'thread' ? (
+              <li key={`c-${item.thread.root.id}`} className="space-y-1.5">
+                {commentBox(item.thread.root, false)}
+                {item.thread.replies.map((r) => (
+                  <div key={r.id}>{commentBox(r, true)}</div>
+                ))}
+                {replyTo === item.thread.root.id ? (
+                  <div className="ml-4 space-y-1.5 rounded-of border border-of-border bg-of-surface-2/35 p-3">
+                    <Textarea
+                      value={replyDraft}
+                      onChange={(e) => setReplyDraft(e.target.value)}
+                      placeholder="답글을 입력하세요"
+                      aria-label="답글 입력"
+                      className="min-h-12"
+                    />
+                    <Button
+                      size="sm"
+                      onClick={() => submitReply(item.thread.root.id)}
+                      disabled={createComment.isPending || !replyDraft.trim()}
+                    >
+                      답글 추가
+                    </Button>
+                  </div>
+                ) : null}
               </li>
             ) : (
-              <li key={`a-${item.activity.id}`} className="flex gap-2 px-1 text-xs text-of-muted">
-                <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-of-border" aria-hidden />
-                <span>
-                  {activityText(item.activity)}
-                  <span className="ml-1.5 text-[11px]">· {formatDateTime(item.activity.created_at)}</span>
+              <li
+                key={`a-${item.activity.id}`}
+                className="flex gap-3 rounded-of border border-of-border bg-of-surface-2/35 p-3 text-xs text-of-muted"
+              >
+                <span
+                  className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-of bg-of-surface text-of-muted"
+                  aria-hidden
+                >
+                  <Clock3 size={14} />
+                </span>
+                <span className="min-w-0">
+                  <span className="block text-of-text">{activityText(item.activity)}</span>
+                  <span className="mt-1 block text-[11px]">{formatDateTime(item.activity.created_at)}</span>
                 </span>
               </li>
             ),
@@ -86,23 +366,53 @@ export function HistorySection({ wpId, projectId }: { wpId: string; projectId: s
         </ul>
       )}
 
-      <div className="space-y-2">
-        <Textarea
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          placeholder="댓글을 입력하세요"
-          aria-label="댓글 입력"
-          className="min-h-16"
-        />
-        <div className="flex items-center gap-2">
-          <Button size="sm" onClick={submit} disabled={createComment.isPending || !draft.trim()}>
-            댓글 추가
-          </Button>
-          {createComment.isError ? (
-            <span className="text-xs text-of-danger">댓글 저장 실패</span>
+      {canWrite ? (
+        <div className="mt-4 space-y-3 rounded-of border border-of-border bg-of-surface-2/35 p-3">
+          <div className="flex items-center gap-2 text-xs font-semibold">
+            <Send size={14} aria-hidden="true" />
+            새 댓글
+          </div>
+          <Textarea
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            placeholder="댓글을 입력하세요"
+            aria-label="댓글 입력"
+            className="min-h-20"
+          />
+          {(members.data?.items ?? []).length > 0 ? (
+            <fieldset className="flex flex-wrap items-center gap-2">
+              <legend className="sr-only">멘션할 멤버</legend>
+              <span className="text-[11px] text-of-muted">멘션</span>
+              {(members.data?.items ?? []).map((m) => (
+                <label
+                  key={m.user_id}
+                  className={cn(
+                    'flex items-center gap-1 rounded-of border border-of-border bg-of-surface px-2 py-1 text-[11px]',
+                    mentioned.includes(m.user_id) ? 'border-of-accent text-of-accent' : '',
+                  )}
+                >
+                  <input
+                    type="checkbox"
+                    checked={mentioned.includes(m.user_id)}
+                    onChange={() => toggleMention(m.user_id)}
+                    aria-label={`${m.display_name} 멘션`}
+                    className="h-3 w-3 accent-of-accent"
+                  />
+                  {m.display_name}
+                </label>
+              ))}
+            </fieldset>
           ) : null}
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <Button size="sm" onClick={submit} disabled={createComment.isPending || !draft.trim()}>
+              댓글 추가
+            </Button>
+            {createComment.isError ? (
+              <span className="text-xs text-of-danger">댓글 저장 실패</span>
+            ) : null}
+          </div>
         </div>
-      </div>
+      ) : null}
     </section>
   )
 }

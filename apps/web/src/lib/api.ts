@@ -26,9 +26,26 @@ export class ApiError extends Error {
 export async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE_URL}${path}`, {
     headers: { 'content-type': 'application/json', ...(init?.headers ?? {}) },
+    // Session cookie (Pass 72): the API may be cross-origin in dev
+    // (5173 → 8000, CORS allow_credentials on the server side).
+    credentials: 'include',
     ...init,
   })
   const requestId = res.headers.get('x-request-id')
+  // 401 on a READ means the session is gone → go log in (v72.1 R1-⑤:
+  // mutating requests keep their error surface so typed work is never lost;
+  // auth endpoints and the login screen itself are exempt).
+  if (
+    res.status === 401 &&
+    (init?.method ?? 'GET') === 'GET' &&
+    !path.startsWith('/api/v1/auth/') &&
+    !window.location.pathname.startsWith('/login')
+  ) {
+    const next = encodeURIComponent(
+      window.location.pathname + window.location.search,
+    )
+    window.location.assign(`/login?next=${next}`)
+  }
   if (!res.ok) {
     let payload: unknown = null
     let detail = `HTTP ${res.status}`
