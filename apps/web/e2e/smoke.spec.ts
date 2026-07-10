@@ -3179,7 +3179,7 @@ test('전체 검색이 그룹 결과를 보여주고 문서로 이동한다', as
 
   await page.goto('/search')
   await page.getByLabel('전체 검색어').fill('구현')
-  await page.getByRole('button', { name: '검색' }).click()
+  await page.getByRole('button', { name: '검색', exact: true }).click()
 
   // grouped sections with truncation notice on documents
   await expect(page.getByText('작업 1건')).toBeVisible()
@@ -3194,6 +3194,70 @@ test('전체 검색이 그룹 결과를 보여주고 문서로 이동한다', as
   // navigation contract: a document result opens the editor
   await page.getByRole('button', { name: /구현 가이드 문서/ }).click()
   await expect(page.getByLabel('문서 제목')).toHaveValue('구현 가이드 문서')
+})
+
+test('전체 검색 표면은 모바일에서 요약과 결과 카드를 안정적으로 보여준다', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await mockApi(page)
+  const emptyGroup = { items: [], returned: 0, truncated: false }
+  await page.route('**/api/v1/search?**', (route) =>
+    route.fulfill({
+      json: {
+        query: '구현',
+        work_packages: {
+          items: [
+            {
+              id: wpA.id,
+              project_id: project.id,
+              project_key: 'ONE',
+              project_name: 'OneFlow 도입',
+              subject: '워크패키지 API 구현',
+              status: 'todo',
+              priority: 'high',
+              type: 'task',
+              due_date: '2026-07-15',
+              matched_in: 'primary',
+              snippet: null,
+            },
+          ],
+          returned: 1,
+          truncated: false,
+        },
+        documents: {
+          items: [
+            {
+              id: 'd-77',
+              project_id: project.id,
+              project_key: 'ONE',
+              project_name: 'OneFlow 도입',
+              title: '구현 가이드 문서',
+              matched_in: 'content',
+              snippet: '배포 구현 절차를 정리한 본문입니다',
+            },
+          ],
+          returned: 1,
+          truncated: true,
+        },
+        meetings: emptyGroup,
+        cycles: emptyGroup,
+        modules: emptyGroup,
+        initiatives: emptyGroup,
+      },
+    }),
+  )
+
+  await page.goto('/search?q=%EA%B5%AC%ED%98%84')
+  await expect(page.getByRole('heading', { name: '전체 검색' })).toBeVisible()
+  await expect(page.getByLabel('검색 결과 요약')).toContainText('작업')
+  await expect(page.getByRole('button', { name: /워크패키지 API 구현/ })).toBeVisible()
+  await expect(page.getByText('배포 구현 절차를 정리한 본문입니다')).toBeVisible()
+  await expect
+    .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth))
+    .toBe(true)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/search-discovery-ui/mobile.png',
+    fullPage: true,
+  })
 })
 
 test('커맨드 팔레트는 flag OFF에서 렌더링되지 않는다', async ({ page }) => {
