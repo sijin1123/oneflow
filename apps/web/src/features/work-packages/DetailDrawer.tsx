@@ -60,18 +60,34 @@ export function DetailDrawer({ projectId }: { projectId: string }) {
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev)
       next.delete('wp')
+      next.delete('move')
       return next
     })
   }
 
   return (
     <Sheet open={wpId !== null} onOpenChange={(open) => !open && close()}>
-      {wpId ? <DrawerBody key={wpId} wpId={wpId} projectId={projectId} /> : null}
+      {wpId ? (
+        <DrawerBody
+          key={wpId}
+          wpId={wpId}
+          projectId={projectId}
+          initialMoveOpen={searchParams.get('move') === '1'}
+        />
+      ) : null}
     </Sheet>
   )
 }
 
-function DrawerBody({ wpId, projectId }: { wpId: string; projectId: string }) {
+function DrawerBody({
+  wpId,
+  projectId,
+  initialMoveOpen,
+}: {
+  wpId: string
+  projectId: string
+  initialMoveOpen: boolean
+}) {
   const { data: wp, isPending, isError, error, refetch } = useWorkPackage(wpId)
 
   return (
@@ -81,7 +97,7 @@ function DrawerBody({ wpId, projectId }: { wpId: string; projectId: string }) {
       ) : isError ? (
         <ErrorState error={error} onRetry={() => refetch()} />
       ) : (
-        <WorkPackageDetailPanel wp={wp} projectId={projectId} />
+        <WorkPackageDetailPanel wp={wp} projectId={projectId} initialMoveOpen={initialMoveOpen} />
       )}
     </SheetContent>
   )
@@ -175,10 +191,12 @@ export function WorkPackageDetailPanel({
   wp,
   projectId,
   showFullPageLink = true,
+  initialMoveOpen = false,
 }: {
   wp: WorkPackage
   projectId: string
   showFullPageLink?: boolean
+  initialMoveOpen?: boolean
 }) {
   const patch = usePatchWorkPackage(projectId)
   const queryClient = useQueryClient()
@@ -192,6 +210,10 @@ export function WorkPackageDetailPanel({
   const canWrite = useCanWrite(projectId)
   const [moveOpen, setMoveOpen] = useState(false)
   const [activeTab, setActiveTab] = useState<'overview' | 'activity'>('overview')
+
+  useEffect(() => {
+    if (initialMoveOpen) setMoveOpen(true)
+  }, [initialMoveOpen, wp.id])
 
   // All editable fields are controlled and resynced from server data, so a 409
   // invalidate+refetch really does reload every field (review finding #2).
