@@ -10,6 +10,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { EmptyState, ErrorState, ListSkeleton } from '@/components/shell/states'
 import { useCanWrite } from '@/features/members/useCanWrite'
 import { useMilestones } from '@/features/milestones/api'
+import { PlanningSurface } from '@/features/planning/PlanningSurface'
 import { ApiError } from '@/lib/api'
 import { todayISO } from '@/lib/datetime'
 import { cn } from '@/lib/utils'
@@ -276,6 +277,8 @@ export function TimelinePage() {
     setZoom(next)
     saveZoom(next)
   }
+  const description =
+    '시작일과 기한이 있는 작업을 막대와 의존선으로 보고, 큰 일정 흐름을 계획 표면에서 조정합니다.'
 
   const reschedule = async (
     id: string,
@@ -302,17 +305,32 @@ export function TimelinePage() {
     }
   }
 
-  if (isPending) return <ListSkeleton />
-  if (isError) return <ErrorState error={error} onRetry={() => refetch()} />
+  if (isPending) {
+    return (
+      <PlanningSurface projectId={projectId} active="timeline" title="타임라인" description={description} wide>
+        <ListSkeleton />
+      </PlanningSurface>
+    )
+  }
+  if (isError) {
+    return (
+      <PlanningSurface projectId={projectId} active="timeline" title="타임라인" description={description} wide>
+        <ErrorState error={error} onRetry={() => refetch()} />
+      </PlanningSurface>
+    )
+  }
 
   const dated = data.items.filter((w) => w.start_date || w.due_date)
   const undated = data.items.filter((w) => !w.start_date && !w.due_date)
   if (dated.length === 0) {
     return (
-      <EmptyState
-        title="일정이 있는 작업이 없습니다"
-        hint="작업에 시작일/기한을 지정하면 타임라인에 표시됩니다."
-      />
+      <PlanningSurface projectId={projectId} active="timeline" title="타임라인" description={description} wide>
+        <EmptyState
+          title="일정이 있는 작업이 없습니다"
+          hint="작업에 시작일/기한을 지정하면 타임라인에 표시됩니다."
+          className="rounded-of border border-of-border bg-of-surface"
+        />
+      </PlanningSurface>
     )
   }
 
@@ -328,46 +346,64 @@ export function TimelinePage() {
   }
 
   return (
-    <div className="flex h-full flex-col">
-      <div className="flex items-center gap-1.5 border-b border-of-border px-4 py-1.5 text-xs text-of-muted">
-        <span>줌</span>
-        {ZOOM_LEVELS.map((z) => (
-          <button
-            key={z}
-            type="button"
-            aria-pressed={zoom === z}
-            className={cn(
-              'rounded-of px-2 py-0.5',
-              zoom === z ? 'bg-of-accent-soft font-medium text-of-accent' : 'hover:bg-of-surface-2',
-            )}
-            onClick={() => changeZoom(z)}
-          >
-            {ZOOM_LABELS[z]}
-          </button>
-        ))}
-        <span className="ml-auto flex items-center gap-3">
-          {dragNotice ? <span role="alert" className="text-of-danger">{dragNotice}</span> : null}
-          {editable ? <span>막대를 드래그해 일정을 조정할 수 있습니다</span> : null}
-          {omitted > 0 ? (
-            <span>일정 미정으로 표시되지 않은 의존 {omitted}건 (연관(relates)은 의존이 아니라 표시하지 않음)</span>
-          ) : null}
-          {undated.length > 0 ? (
-            <span>일정 미정 {undated.length}건</span>
-          ) : null}
-        </span>
-      </div>
-      <div className="min-h-0 flex-1">
-        <GanttChart
-          items={data.items}
-          milestones={milestones.data?.items ?? []}
-          relations={relations.data?.items ?? []}
-          zoom={zoom}
-          editable={editable}
-          onOpen={openDrawer}
-          onReschedule={reschedule}
-        />
+    <PlanningSurface
+      projectId={projectId}
+      active="timeline"
+      title="타임라인"
+      description={description}
+      wide
+      bodyClassName="flex min-h-0 flex-col"
+      metrics={[
+        { label: '작업', value: data.total, hint: '전체 범위' },
+        { label: '일정 있음', value: dated.length, hint: `${undated.length}건 미정` },
+        { label: '마일스톤', value: milestones.data?.items.length ?? '-', hint: '표시 가능한 기준점' },
+        { label: '줌', value: ZOOM_LABELS[zoom], hint: editable ? '드래그 가능' : '읽기 전용' },
+      ]}
+    >
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-of border border-of-border bg-of-surface">
+        <div className="flex flex-wrap items-center gap-1.5 border-b border-of-border px-3 py-2 text-xs text-of-muted">
+          <span>줌</span>
+          {ZOOM_LEVELS.map((z) => (
+            <button
+              key={z}
+              type="button"
+              aria-pressed={zoom === z}
+              className={cn(
+                'rounded-of px-2 py-0.5',
+                zoom === z
+                  ? 'bg-of-accent-soft font-medium text-of-accent'
+                  : 'hover:bg-of-surface-2',
+              )}
+              onClick={() => changeZoom(z)}
+            >
+              {ZOOM_LABELS[z]}
+            </button>
+          ))}
+          <span className="ml-auto flex items-center gap-3">
+            {dragNotice ? <span role="alert" className="text-of-danger">{dragNotice}</span> : null}
+            {editable ? <span>막대를 드래그해 일정을 조정할 수 있습니다</span> : null}
+            {omitted > 0 ? (
+              <span>
+                일정 미정으로 표시되지 않은 의존 {omitted}건 (연관(relates)은 의존이 아니라
+                표시하지 않음)
+              </span>
+            ) : null}
+            {undated.length > 0 ? <span>일정 미정 {undated.length}건</span> : null}
+          </span>
+        </div>
+        <div className="min-h-0 flex-1">
+          <GanttChart
+            items={data.items}
+            milestones={milestones.data?.items ?? []}
+            relations={relations.data?.items ?? []}
+            zoom={zoom}
+            editable={editable}
+            onOpen={openDrawer}
+            onReschedule={reschedule}
+          />
+        </div>
       </div>
       <DetailDrawer projectId={projectId} />
-    </div>
+    </PlanningSurface>
   )
 }

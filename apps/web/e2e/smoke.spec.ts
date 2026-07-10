@@ -5523,6 +5523,72 @@ test('백로그에서 사이클을 배정하면 PATCH 후 행이 사라진다', 
   await expect(page.getByText('백로그가 비어 있습니다')).toBeVisible()
 })
 
+test('계획 표면은 모바일에서 백로그·보드·캘린더 모드를 유지한다', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await mockApi(page)
+  await page.route(`**/api/v1/projects/${project.id}/work-packages**`, (route) => {
+    const url = new URL(route.request().url())
+    if (url.searchParams.get('no_cycle') === 'true') {
+      return route.fulfill({ json: { items: [wpA, wpB], total: 2 } })
+    }
+    return route.fulfill({ json: workPackages })
+  })
+  await page.route(`**/api/v1/projects/${project.id}/cycles`, (route) =>
+    route.fulfill({
+      json: {
+        items: [
+          {
+            id: 'cy-planning',
+            project_id: project.id,
+            name: '7월 스프린트',
+            description: null,
+            start_date: '2026-07-01',
+            end_date: '2026-07-14',
+            status: 'active',
+            work_package_count: 2,
+            done_work_package_count: 0,
+            created_at: '2026-07-01T00:00:00Z',
+            updated_at: '2026-07-01T00:00:00Z',
+          },
+        ],
+        total: 1,
+      },
+    }),
+  )
+
+  await page.goto(`/projects/${project.id}/backlog`)
+  await expect(page.getByText('Planning surface')).toBeVisible()
+  const planningNav = page.getByRole('navigation', { name: '계획 모드' })
+  const backlogMode = planningNav.getByRole('link', { name: /백로그/ })
+  await expect(backlogMode).toBeVisible()
+  await expect(backlogMode).toHaveAttribute('aria-current', 'page')
+  await expect(page.getByLabel('계획 요약')).toContainText('미배정 작업')
+  await expect(page.getByLabel('계획 요약')).toContainText('배정 가능 사이클')
+  await expect(page.getByLabel('백로그 작업 목록')).toContainText('워크패키지 API 구현')
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/planning-ui/mobile-backlog.png',
+    fullPage: true,
+  })
+
+  await planningNav.getByRole('link', { name: /보드/ }).click()
+  await expect(page).toHaveURL(/\/board/)
+  const boardMode = page.getByRole('navigation', { name: '계획 모드' }).getByRole('link', { name: /보드/ })
+  await expect(boardMode).toBeVisible()
+  await expect(boardMode).toHaveAttribute('aria-current', 'page')
+  await expect(page.getByLabel('계획 요약')).toContainText('스윔레인')
+  await expectNoHorizontalOverflow(page)
+
+  await page.getByRole('navigation', { name: '계획 모드' }).getByRole('link', { name: /캘린더/ }).click()
+  await expect(page).toHaveURL(/\/calendar/)
+  const calendarMode = page.getByRole('navigation', { name: '계획 모드' }).getByRole('link', { name: /캘린더/ })
+  await expect(calendarMode).toBeVisible()
+  await expect(calendarMode).toHaveAttribute('aria-current', 'page')
+  await expect(page.getByLabel('계획 요약')).toContainText('일정 있음')
+  await expect(page.getByText('워크패키지 API 구현')).toBeVisible()
+  await expectNoHorizontalOverflow(page)
+})
+
 
 test('잠긴 뷰는 공유/삭제가 숨고 해제하면 복원된다', async ({ page }) => {
   await mockApi(page)
