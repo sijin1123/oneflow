@@ -318,10 +318,19 @@ export function useToggleReaction(wpId: string) {
   })
 }
 
+export type WorkPackageCreateInput = {
+  subject: string
+  type?: string
+  status?: string
+  priority?: string
+  assignee_id?: string | null
+  due_date?: string | null
+}
+
 export function useCreateWorkPackage(projectId: string) {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (body: { subject: string }) =>
+    mutationFn: (body: WorkPackageCreateInput) =>
       api<WorkPackage>(`/api/v1/projects/${projectId}/work-packages`, {
         method: 'POST',
         body: JSON.stringify(body),

@@ -1,7 +1,10 @@
-import { ChevronDown, ChevronUp } from 'lucide-react'
+import { ChevronDown, ChevronUp, GitBranch } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { cn } from '@/lib/utils'
 
 import {
   type ProjectStatus,
@@ -33,18 +36,31 @@ export function StatusManager({ projectId, isOwner }: { projectId: string; isOwn
   const failed = update.isError || reorder.isError
 
   return (
-    <div className="mb-4 space-y-2 rounded-of border border-of-border bg-of-surface p-3">
-      <p className="text-xs font-medium">워크플로우 상태</p>
-      <p className="text-xs text-of-muted">
-        상태 이름과 순서를 조정합니다. 이름은 보드·목록·필터·대시보드 전체에 반영됩니다
-        {isOwner ? '' : ' (소유자만 편집 가능)'}.
-      </p>
+    <section
+      aria-label="워크플로우 상태"
+      className="space-y-3 rounded-of border border-of-border bg-of-surface p-4"
+    >
+      <div className="flex min-w-0 items-start gap-3">
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-of bg-of-accent-soft text-of-accent">
+          <GitBranch size={16} aria-hidden="true" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            <h3 className="text-sm font-semibold">워크플로우 상태</h3>
+            <Badge variant="outline">{sorted.length}개 상태</Badge>
+          </div>
+          <p className="mt-1 text-xs leading-5 text-of-muted">
+            상태 이름과 순서를 조정합니다. 이름은 보드·목록·필터·대시보드 전체에 반영됩니다
+            {isOwner ? '' : ' (소유자만 편집 가능)'}.
+          </p>
+        </div>
+      </div>
       {failed ? (
         <p role="alert" className="text-xs text-of-danger">
           변경을 저장하지 못했습니다. 다시 시도해 주세요.
         </p>
       ) : null}
-      <ul className="space-y-1">
+      <ul className="grid gap-2">
         {sorted.map((status, index) => (
           <StatusRow
             key={status.id}
@@ -59,7 +75,7 @@ export function StatusManager({ projectId, isOwner }: { projectId: string; isOwn
           />
         ))}
       </ul>
-    </div>
+    </section>
   )
 }
 
@@ -85,39 +101,47 @@ function StatusRow({
   useEffect(() => setName(status.name), [status.name])
 
   return (
-    <li className="flex items-center gap-2 rounded-of border border-of-border px-2 py-1.5">
-      <span className="w-24 shrink-0 font-mono text-[11px] text-of-muted">{status.key}</span>
+    <li className="grid min-w-0 gap-2 rounded-of border border-of-border bg-of-surface-2 px-3 py-2 sm:grid-cols-[5rem_minmax(0,1fr)_auto] sm:items-center">
+      <span className="flex min-w-0 items-center">
+        <Badge variant="neutral" className="max-w-full truncate font-mono uppercase">
+          {status.key}
+        </Badge>
+      </span>
       {isOwner ? (
         <Input
           value={name}
           onChange={(e) => setName(e.target.value)}
           onBlur={() => onRename(name.trim())}
           aria-label={`${status.key} 상태 이름`}
-          className="h-7 flex-1 text-xs"
+          className="h-8 min-w-0 text-xs"
         />
       ) : (
-        <span className="flex-1 text-xs">{status.name}</span>
+        <span className="min-w-0 truncate text-sm font-medium">{status.name}</span>
       )}
       {isOwner ? (
-        <span className="flex shrink-0 items-center gap-0.5">
-          <button
+        <span className="flex shrink-0 items-center justify-end gap-1">
+          <Button
             type="button"
+            variant="ghost"
+            size="icon"
             aria-label={`${status.key} 위로`}
             disabled={isFirst}
             onClick={() => onMove(-1)}
-            className="rounded p-1 text-of-muted hover:bg-of-surface-2 disabled:opacity-30"
+            className={cn('h-7 w-7 text-of-muted', isFirst && 'opacity-30')}
           >
-            <ChevronUp size={13} />
-          </button>
-          <button
+            <ChevronUp size={13} aria-hidden="true" />
+          </Button>
+          <Button
             type="button"
+            variant="ghost"
+            size="icon"
             aria-label={`${status.key} 아래로`}
             disabled={isLast}
             onClick={() => onMove(1)}
-            className="rounded p-1 text-of-muted hover:bg-of-surface-2 disabled:opacity-30"
+            className={cn('h-7 w-7 text-of-muted', isLast && 'opacity-30')}
           >
-            <ChevronDown size={13} />
-          </button>
+            <ChevronDown size={13} aria-hidden="true" />
+          </Button>
         </span>
       ) : null}
     </li>
