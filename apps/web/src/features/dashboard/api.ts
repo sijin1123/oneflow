@@ -1,10 +1,27 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { api } from '@/lib/api'
+import type { WorkPackage } from '@/features/work-packages/types'
 
 export type Bucket = { key: string; count: number }
 
 export type Dashboard = {
+  id: string
+  key: string
+  name: string
+  description: string | null
+  health: 'on_track' | 'at_risk' | 'off_track' | null
+  health_note: string | null
+  archived_at: string | null
+  completion_percent: number
+  recent_work_packages: Array<{
+    id: string
+    subject: string
+    status: WorkPackage['status']
+    priority: WorkPackage['priority']
+    assignee_name: string | null
+    updated_at: string
+  }>
   total_work_packages: number
   open_work_packages: number
   overdue_count: number

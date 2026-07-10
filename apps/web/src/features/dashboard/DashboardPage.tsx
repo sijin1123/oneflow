@@ -1,10 +1,14 @@
 import { ArrowDown, ArrowUp, FileDown, Settings2 } from 'lucide-react'
 import { useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router-dom'
 
 import { ErrorState, ListSkeleton } from '@/components/shell/states'
 import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
+import { HEALTH_LABELS, HEALTH_STYLES } from '@/features/projects/types'
+import { PriorityChip, StatusChip } from '@/features/work-packages/chips'
 import { BASE_URL } from '@/lib/api'
+import { formatDateTime } from '@/lib/datetime'
 import { cn } from '@/lib/utils'
 import { PRIORITY_LABELS, WP_STATUSES, WP_TYPES } from '@/features/work-packages/types'
 import type { WpPriority, WpStatus } from '@/features/work-packages/types'
@@ -94,6 +98,7 @@ const WIDGET_LABELS: Record<string, string> = {
 
 export function DashboardPage() {
   const { projectId } = useParams() as { projectId: string }
+  const navigate = useNavigate()
   const { data, isPending, isError, error, refetch } = useDashboard(projectId)
   const layout = useDashboardLayout(projectId)
   const saveLayout = useSaveDashboardLayout(projectId)
@@ -145,12 +150,20 @@ export function DashboardPage() {
 
   return (
     <ReportingSurface
-      title="대시보드"
-      description="프로젝트의 작업, 비용, 시간, 활동 신호를 한 화면에서 점검합니다."
+      title={data.name}
+      description={data.description || '프로젝트의 작업, 비용, 시간, 활동 신호를 한 화면에서 점검합니다.'}
       context={
-        <span className="inline-flex items-center rounded-of border border-of-border bg-of-surface px-2 py-1">
-          프로젝트
-        </span>
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge variant="outline">{data.key}</Badge>
+          {data.health ? (
+            <span className={cn('inline-flex min-h-5 items-center rounded-full px-2 text-xs font-medium', HEALTH_STYLES[data.health])}>
+              {HEALTH_LABELS[data.health]}
+            </span>
+          ) : (
+            <Badge variant="neutral">상태 미설정</Badge>
+          )}
+          {data.archived_at ? <Badge variant="neutral">보관됨</Badge> : null}
+        </div>
       }
       actions={
         <>
@@ -171,6 +184,11 @@ export function DashboardPage() {
         </>
       }
     >
+      {data.health_note ? (
+        <p className="border-l-2 border-of-accent px-3 text-xs leading-5 text-of-muted">
+          {data.health_note}
+        </p>
+      ) : null}
 
       {editing ? (
         <div className="space-y-2 rounded-of border border-of-border bg-of-surface p-3">
@@ -226,9 +244,10 @@ export function DashboardPage() {
         {widgets.map((key) => {
         if (key === 'summary')
           return (
-            <div key={key} className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <div key={key} className="grid grid-cols-2 gap-3 sm:grid-cols-5">
               <Tile label="전체 작업" value={String(data.total_work_packages)} />
               <Tile label="진행 중" value={String(data.open_work_packages)} />
+              <Tile label="완료율" value={`${data.completion_percent}%`} />
               <Tile
                 label="기한 초과"
                 value={String(data.overdue_count)}
@@ -321,6 +340,38 @@ export function DashboardPage() {
         return null
         })}
       </div>
+
+      <section aria-label="최근 작업" className="min-w-0 border-t border-of-border pt-4">
+        <div className="mb-2 flex items-center justify-between gap-3">
+          <h2 className="text-sm font-semibold">최근 작업</h2>
+          <Button variant="ghost" size="sm" onClick={() => navigate(`/projects/${projectId}/work-packages`)}>
+            전체 보기
+          </Button>
+        </div>
+        {data.recent_work_packages.length === 0 ? (
+          <p className="py-8 text-center text-xs text-of-muted">아직 작업이 없습니다.</p>
+        ) : (
+          <ul className="divide-y divide-of-border border-y border-of-border">
+            {data.recent_work_packages.map((workPackage) => (
+              <li key={workPackage.id}>
+                <button
+                  type="button"
+                  className="grid min-h-12 w-full min-w-0 gap-1 px-2 py-2 text-left hover:bg-of-surface-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"
+                  onClick={() => navigate(`/projects/${projectId}/work-packages?wp=${workPackage.id}`)}
+                >
+                  <span className="min-w-0 truncate text-[13px] font-medium">{workPackage.subject}</span>
+                  <span className="flex min-w-0 flex-wrap items-center gap-2 text-[11px] text-of-muted">
+                    <StatusChip status={workPackage.status} />
+                    <PriorityChip priority={workPackage.priority} />
+                    <span>{workPackage.assignee_name ?? '담당자 없음'}</span>
+                    <span>{formatDateTime(workPackage.updated_at)}</span>
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
     </ReportingSurface>
   )
 }
