@@ -4,17 +4,22 @@ import { useParams, useSearchParams } from 'react-router-dom'
 
 import { EmptyState, ErrorState, ListSkeleton } from '@/components/shell/states'
 import { Button } from '@/components/ui/button'
+import { useCanWrite } from '@/features/members/useCanWrite'
 
 import { DetailDrawer } from './DetailDrawer'
+import { TreeItemActions } from './TreeItemActions'
 import { PriorityChip, StatusChip, TypeChip } from './chips'
 import { useWorkPackages } from './api'
 import { branchIds, buildTree, type TreeNode } from './tree'
 import { useStatusLabels } from './useStatusLabels'
+import { useTypeLabels } from './useTypeLabels'
 
 export function TreePage() {
   const { projectId } = useParams() as { projectId: string }
   const [, setSearchParams] = useSearchParams()
   const statusLabel = useStatusLabels(projectId)
+  const typeLabel = useTypeLabels(projectId)
+  const canWrite = useCanWrite(projectId)
   // useWorkPackages now pages through the full set, so the tree no longer orphans
   // children whose parents fell past the first page.
   const { data, isPending, isError, error, refetch } = useWorkPackages(projectId, {})
@@ -22,11 +27,17 @@ export function TreePage() {
   const tree = useMemo(() => (data ? buildTree(data.items) : []), [data])
   const allBranches = useMemo(() => branchIds(tree), [tree])
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
+  const [itemActionMessage, setItemActionMessage] = useState<{
+    text: string
+    tone: 'info' | 'success' | 'error'
+  } | null>(null)
 
-  const openDrawer = (id: string) => {
+  const openDrawer = (id: string, opts: { move?: boolean } = {}) => {
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev)
       next.set('wp', id)
+      if (opts.move) next.set('move', '1')
+      else next.delete('move')
       return next
     })
   }
@@ -42,9 +53,24 @@ export function TreePage() {
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex items-center justify-between gap-2 border-b border-of-border px-4 py-2">
-        <span className="text-sm font-medium">계층 구조</span>
-        <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-of-border px-4 py-2">
+        <div className="min-w-0">
+          <span className="text-sm font-medium">계층 구조</span>
+          {itemActionMessage ? (
+            <p
+              role={itemActionMessage.tone === 'error' ? 'alert' : 'status'}
+              aria-live="polite"
+              className={
+                itemActionMessage.tone === 'error'
+                  ? 'mt-0.5 text-xs text-of-danger'
+                  : 'mt-0.5 text-xs text-of-muted'
+              }
+            >
+              {itemActionMessage.text}
+            </p>
+          ) : null}
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
           <Button variant="outline" size="sm" onClick={() => setCollapsed(new Set())}>
             모두 펼치기
           </Button>
@@ -73,7 +99,12 @@ export function TreePage() {
               collapsed={collapsed}
               onToggle={toggle}
               onOpen={openDrawer}
+              onOpenMove={(id) => openDrawer(id, { move: true })}
+              onMessage={(text, tone = 'info') => setItemActionMessage({ text, tone })}
               statusLabel={statusLabel}
+              typeLabel={typeLabel}
+              projectId={projectId}
+              canWrite={canWrite}
             />
           ))}
         </div>
@@ -89,13 +120,23 @@ function TreeRow({
   collapsed,
   onToggle,
   onOpen,
+  onOpenMove,
+  onMessage,
   statusLabel,
+  typeLabel,
+  projectId,
+  canWrite,
 }: {
   node: TreeNode
   collapsed: Set<string>
   onToggle: (id: string) => void
-  onOpen: (id: string) => void
+  onOpen: (id: string, opts?: { move?: boolean }) => void
+  onOpenMove: (id: string) => void
+  onMessage: (message: string, tone?: 'info' | 'success' | 'error') => void
   statusLabel: (key: string) => string
+  typeLabel: (key: string) => string
+  projectId: string
+  canWrite: boolean
 }) {
   const hasChildren = node.children.length > 0
   const isCollapsed = collapsed.has(node.wp.id)
@@ -103,7 +144,7 @@ function TreeRow({
   return (
     <div role="treeitem" aria-expanded={hasChildren ? !isCollapsed : undefined}>
       <div
-        className="flex items-center gap-2 rounded-of py-1.5 pr-2 hover:bg-of-surface-2"
+        className="group flex items-center gap-2 rounded-of py-1.5 pr-2 hover:bg-of-surface-2 focus-within:bg-of-surface-2"
         style={{ paddingLeft: `${node.depth * 20 + 4}px` }}
       >
         {hasChildren ? (
@@ -118,7 +159,7 @@ function TreeRow({
         ) : (
           <span className="inline-block w-[22px] shrink-0" aria-hidden />
         )}
-        <TypeChip type={node.wp.type} />
+        <TypeChip type={node.wp.type} label={typeLabel(node.wp.type)} />
         <button
           type="button"
           className="min-w-0 flex-1 truncate text-left text-sm font-medium hover:text-of-accent"
@@ -128,6 +169,14 @@ function TreeRow({
         </button>
         <StatusChip status={node.wp.status} label={statusLabel(node.wp.status)} />
         <PriorityChip priority={node.wp.priority} />
+        <TreeItemActions
+          wp={node.wp}
+          projectId={projectId}
+          canWrite={canWrite}
+          onOpen={onOpen}
+          onOpenMove={onOpenMove}
+          onMessage={onMessage}
+        />
       </div>
 
       {hasChildren && !isCollapsed ? (
@@ -139,7 +188,12 @@ function TreeRow({
               collapsed={collapsed}
               onToggle={onToggle}
               onOpen={onOpen}
+              onOpenMove={onOpenMove}
+              onMessage={onMessage}
               statusLabel={statusLabel}
+              typeLabel={typeLabel}
+              projectId={projectId}
+              canWrite={canWrite}
             />
           ))}
         </div>

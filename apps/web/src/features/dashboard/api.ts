@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { api } from '@/lib/api'
 
@@ -28,6 +28,7 @@ export type ProjectActivity = {
   id: string
   work_package_id: string
   work_package_subject: string
+  actor_id: string | null
   actor_name: string | null
   action: 'created' | 'field_changed' | 'commented'
   field: string | null
@@ -38,12 +39,56 @@ export type ProjectActivity = {
 
 export type ProjectActivityList = {
   items: ProjectActivity[]
+  /** RETURNED count (legacy contract) — `truncated` says more rows exist */
   total: number
+  truncated: boolean
 }
 
-export function useProjectActivities(projectId: string) {
+export type ActivityFilters = { action?: string; order?: 'asc' | 'desc'; actor_id?: string }
+
+export function useProjectActivities(projectId: string, filters: ActivityFilters = {}) {
+  const params = new URLSearchParams()
+  if (filters.action) params.set('action', filters.action)
+  if (filters.order) params.set('order', filters.order)
+  if (filters.actor_id) params.set('actor_id', filters.actor_id)
+  const qs = params.toString()
   return useQuery({
-    queryKey: ['project-activities', projectId],
-    queryFn: () => api<ProjectActivityList>(`/api/v1/projects/${projectId}/activities`),
+    // filters belong in the cache key — each combination is its own page
+    queryKey: [
+      'project-activities',
+      projectId,
+      filters.action ?? '',
+      filters.order ?? 'desc',
+      filters.actor_id ?? '',
+    ],
+    queryFn: () =>
+      api<ProjectActivityList>(`/api/v1/projects/${projectId}/activities${qs ? `?${qs}` : ''}`),
+  })
+}
+
+export type DashboardLayout = {
+  widgets: string[]
+  updated_at: string | null
+  is_default: boolean
+}
+
+export function useDashboardLayout(projectId: string) {
+  return useQuery({
+    queryKey: ['dashboard-layout', projectId],
+    queryFn: () => api<DashboardLayout>(`/api/v1/projects/${projectId}/dashboard/layout`),
+  })
+}
+
+export function useSaveDashboardLayout(projectId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (widgets: string[]) =>
+      api<DashboardLayout>(`/api/v1/projects/${projectId}/dashboard/layout`, {
+        method: 'PUT',
+        body: JSON.stringify({ widgets }),
+      }),
+    onSuccess: (layout) => {
+      queryClient.setQueryData(['dashboard-layout', projectId], layout)
+    },
   })
 }

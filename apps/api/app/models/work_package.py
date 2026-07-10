@@ -25,6 +25,9 @@ from app.db.base import Base
 WP_TYPES = ("task", "bug", "feature", "milestone")
 WP_STATUSES = ("backlog", "todo", "in_progress", "in_review", "done", "cancelled")
 WP_PRIORITIES = ("none", "low", "medium", "high", "urgent")
+# Single completion policy: every "open vs closed" aggregation (dashboard, my
+# work, cycle/module progress) must use this — never a local status list.
+WP_CLOSED_STATUSES = ("done", "cancelled")
 
 
 def _in_clause(column: str, values: tuple[str, ...]) -> str:
@@ -56,6 +59,20 @@ class WorkPackage(Base):
             name="fk_work_packages_parent_same_project",
             ondelete="SET NULL (parent_id)",
         ),
+        # Same pattern for cycles: cross-project assignment is unrepresentable,
+        # and deleting a cycle clears only cycle_id (expansion Pass 1 PR-C).
+        ForeignKeyConstraint(
+            ["cycle_id", "project_id"],
+            ["cycles.id", "cycles.project_id"],
+            name="fk_work_packages_cycle_project",
+            ondelete="SET NULL (cycle_id)",
+        ),
+        ForeignKeyConstraint(
+            ["module_id", "project_id"],
+            ["modules.id", "modules.project_id"],
+            name="fk_work_packages_module_project",
+            ondelete="SET NULL (module_id)",
+        ),
         Index("ix_work_packages_project_status", "project_id", "status"),
         Index(
             "ix_work_packages_project_updated_desc",
@@ -65,6 +82,8 @@ class WorkPackage(Base):
         Index("ix_work_packages_parent", "parent_id"),
         Index("ix_work_packages_assignee", "assignee_id"),
         Index("ix_work_packages_milestone", "milestone_id"),
+        Index("ix_work_packages_cycle", "cycle_id"),
+        Index("ix_work_packages_module", "module_id"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -86,9 +105,18 @@ class WorkPackage(Base):
     milestone_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("milestones.id", ondelete="SET NULL"), nullable=True
     )
+    # Optional cycle/sprint assignment — constrained by the composite FK above.
+    cycle_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    # Optional module assignment — same composite-FK pattern.
+    module_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     # Planned effort in hours (Phase 3 time tracking). Spent/remaining are derived
     # from time_entries, not stored.
     estimated_hours: Mapped[Decimal | None] = mapped_column(Numeric(6, 2), nullable=True)
+    # Author (Pass 12 PR-Z): recorded by every creation path from 0033 on;
+    # pre-0033 rows stay NULL (no reliable history to backfill).
+    created_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
     # Optimistic-concurrency token (v5.1): +1 on every successful write.
     version: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     created_at: Mapped[datetime] = mapped_column(

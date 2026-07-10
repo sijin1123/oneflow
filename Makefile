@@ -1,6 +1,6 @@
 # OneFlow developer commands. Backend runs via uv (Python 3.13), frontend via npm.
 
-.PHONY: db-up db-down db-reset api-dev api-test api-lint api-migrate web-dev web-build web-test cleanroom-check
+.PHONY: db-up db-down db-reset api-dev api-test api-lint api-migrate api-sweep-blobs api-sweep-blobs-delete web-dev web-build web-test cleanroom-check
 
 db-up:
 	docker compose up -d postgres
@@ -23,6 +23,20 @@ api-migrate-smoke:
 
 api-seed:
 	cd apps/api && uv run python -m app.seed
+
+# Orphan-blob sweep: dry-run reports; -delete QUARANTINES (never unlinks).
+api-sweep-blobs:
+	cd apps/api && uv run python -m app.services.storage_sweep
+
+api-sweep-blobs-delete:
+	cd apps/api && uv run python -m app.services.storage_sweep --delete
+
+# Recurring-meeting sweep (Pass 69): dry-run reports; -create materializes.
+api-recurring-meetings:
+	cd apps/api && uv run python -m app.services.recurring_meetings
+
+api-recurring-meetings-create:
+	cd apps/api && uv run python -m app.services.recurring_meetings --create
 
 api-test:
 	cd apps/api && uv run pytest -q

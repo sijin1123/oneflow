@@ -14,7 +14,14 @@ from tests.conftest import make_test_settings
 
 @pytest.fixture
 async def oidc_client(_prepare_database):
-    app = create_app(make_test_settings(auth_mode="oidc"))
+    app = create_app(
+        make_test_settings(
+            auth_mode="oidc",
+            oidc_issuer="https://idp.example.com/realms/test",
+            oidc_client_id="oneflow-web",
+            oidc_client_secret="test-secret",
+        )
+    )
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as c:
         yield c

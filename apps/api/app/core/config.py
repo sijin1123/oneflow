@@ -31,13 +31,32 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     # Strict parse: exactly "true" enables it, everything else stays locked (PLAN §9 table).
     dev_allow_nonlocal: str = "false"
+    # Dev-login sessions (Pass 72): OFF = the historical zero-credential auto
+    # dev user (cookies IGNORED — deterministic for tests/scripts); exactly
+    # "true" = a session cookie is REQUIRED (missing/invalid → 401). Restart
+    # to change; never exposed in any settings UI (boot-time config).
+    dev_login_required: str = "false"
     # AI summary feature flag (PLAN §3 Phase 3 AI/RAG). Default OFF; exactly "true"
     # enables the work-package summary endpoint. Uses a local, no-secret provider.
     ai_summary: str = "false"
+    # Command palette rollout flag (B-030 Pass 1A). Default OFF for staged
+    # rollout; the UI must fail closed unless this is exactly "true".
+    command_palette_enabled: str = "false"
     # Seed --reset unlock token; valid only when it equals DESTRUCTIVE_RESET_TOKEN.
     allow_destructive_reset: str | None = None
     db_pool_size: int = 10
     db_max_overflow: int = 20
+    # OIDC provider surface (Pass 5 PR-N). Configuration only — the actual
+    # login flow stays 501 until the real integration lands. The secret is
+    # never echoed by any endpoint (only its presence as a boolean).
+    oidc_issuer: str | None = None
+    oidc_client_id: str | None = None
+    oidc_client_secret: str | None = None
+    # File uploads (Pass 4 PR-M). Not secrets; restart required to change.
+    # Local-dev default — production should point at a dedicated volume.
+    storage_dir: str = "var/uploads"
+    upload_max_bytes: int = 10_485_760  # 10 MiB per file
+    project_storage_quota_bytes: int = 1_073_741_824  # 1 GiB per project
 
     @property
     def cors_origin_list(self) -> list[str]:
@@ -48,8 +67,16 @@ class Settings(BaseSettings):
         return self.dev_allow_nonlocal == "true"
 
     @property
+    def dev_login_required_enabled(self) -> bool:
+        return self.dev_login_required == "true"
+
+    @property
     def ai_summary_enabled(self) -> bool:
         return self.ai_summary == "true"
+
+    @property
+    def command_palette_is_enabled(self) -> bool:
+        return self.command_palette_enabled == "true"
 
     @property
     def destructive_reset_enabled(self) -> bool:
@@ -70,6 +97,23 @@ class Settings(BaseSettings):
                 "ONEFLOW_AUTH_MODE=dev is forbidden when ONEFLOW_ENV is staging/production "
                 "(PLAN §9 startup guard)"
             )
+        # Guard (1b): oidc mode without a complete provider config must fail at
+        # boot, not with per-request 500s halfway through a deploy.
+        if self.auth_mode == "oidc":
+            missing = [
+                name
+                for name, value in (
+                    ("ONEFLOW_OIDC_ISSUER", self.oidc_issuer),
+                    ("ONEFLOW_OIDC_CLIENT_ID", self.oidc_client_id),
+                    ("ONEFLOW_OIDC_CLIENT_SECRET", self.oidc_client_secret),
+                )
+                if not value
+            ]
+            if missing:
+                raise ValueError("ONEFLOW_AUTH_MODE=oidc requires " + ", ".join(missing))
+            parts = urlsplit(self.oidc_issuer or "")
+            if parts.scheme != "https" or not parts.netloc:
+                raise ValueError("ONEFLOW_OIDC_ISSUER must be an https:// URL")
         # Guard (2): asyncpg scheme only — ONEFLOW_DATABASE_URL is the single DB entrypoint.
         for name, url in (
             ("ONEFLOW_DATABASE_URL", self.database_url),
@@ -93,6 +137,8 @@ class Settings(BaseSettings):
             raise ValueError("ONEFLOW_DEV_ALLOW_NONLOCAL accepts exactly 'true' or 'false'")
         if self.ai_summary not in {"true", "false"}:
             raise ValueError("ONEFLOW_AI_SUMMARY accepts exactly 'true' or 'false'")
+        if self.command_palette_enabled not in {"true", "false"}:
+            raise ValueError("ONEFLOW_COMMAND_PALETTE_ENABLED accepts exactly 'true' or 'false'")
         # Guard (4) companion: the non-local escape hatch is dev/test-only (v5.1).
         if self.dev_allow_nonlocal_enabled and self.env not in {"development", "test"}:
             raise ValueError(

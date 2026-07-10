@@ -56,6 +56,22 @@ async def test_assign_wp_to_milestone(client, project):
     assert cleared.json()["milestone_id"] is None
 
 
+async def test_list_work_packages_filters_by_milestone(client, project):
+    pid = project["id"]
+    m1 = (await client.post(f"/api/v1/projects/{pid}/milestones", json={"name": "M1"})).json()
+    m2 = (await client.post(f"/api/v1/projects/{pid}/milestones", json={"name": "M2"})).json()
+    await create_wp(client, pid, subject="M1 작업", milestone_id=m1["id"])
+    await create_wp(client, pid, subject="M2 작업", milestone_id=m2["id"])
+    await create_wp(client, pid, subject="미배정")
+
+    listed = (
+        await client.get(f"/api/v1/projects/{pid}/work-packages", params={"milestone_id": m1["id"]})
+    ).json()
+
+    assert listed["total"] == 1
+    assert listed["items"][0]["subject"] == "M1 작업"
+
+
 async def test_wp_milestone_must_be_same_project(client, project, foreign_project):
     pid = project["id"]
     # a milestone in another project (create directly)

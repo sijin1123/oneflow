@@ -48,10 +48,12 @@ export function PriorityChip({ priority }: { priority: WpPriority }) {
   )
 }
 
-export function TypeChip({ type }: { type: WpType }) {
+export function TypeChip({ type, label }: { type: WpType; label?: string }) {
+  // Project-scoped surfaces pass the configured label (useTypeLabels);
+  // cross-project surfaces (search, my-work) keep the built-in default.
   return (
     <Badge variant="outline" className="whitespace-nowrap">
-      {TYPE_LABELS[type]}
+      {label ?? TYPE_LABELS[type]}
     </Badge>
   )
 }

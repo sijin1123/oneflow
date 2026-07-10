@@ -25,6 +25,34 @@ export interface paths {
         patch: operations["update_action_item_api_v1_action_items__item_id__patch"];
         trace?: never;
     };
+    "/api/v1/action-items/{item_id}/convert": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Convert Action Item
+         * @description Turn a meeting action item into a work package (Pass 6 PR-O).
+         *
+         *     Intake-accept pattern: WP insert+flush, then a status-conditional UPDATE
+         *     (`converted_wp_id IS NULL`) in the SAME transaction — a concurrent convert
+         *     succeeds exactly once and the loser's WP insert rolls back (409).
+         *     Assignee inheritance: only if the item's assignee is a CURRENT project
+         *     member with a writable role; otherwise (null / left / deleted / viewer)
+         *     the WP starts unassigned — conversion is never refused over a stale
+         *     assignee (v61.1 R1-⑥).
+         */
+        post: operations["convert_action_item_api_v1_action_items__item_id__convert_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/attachments/{attachment_id}": {
         parameters: {
             query?: never;
@@ -37,6 +65,83 @@ export interface paths {
         post?: never;
         /** Delete Attachment */
         delete: operations["delete_attachment_api_v1_attachments__attachment_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/attachments/{attachment_id}/download": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Download Attachment */
+        get: operations["download_attachment_api_v1_attachments__attachment_id__download_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/config": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Auth Config */
+        get: operations["auth_config_api_v1_auth_config_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/login": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Dev Login
+         * @description Passwordless DEV login (Pass 72): the email of an existing ACTIVE
+         *     directory user starts a 7-day session. Unknown and inactive emails are
+         *     the SAME generic 401 (no account enumeration). oidc mode stays 501.
+         */
+        post: operations["dev_login_api_v1_auth_login_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/logout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Dev Logout
+         * @description Revoke the cookie's session and clear the cookie — unauthenticated and
+         *     idempotent (a missing/unknown cookie is still a clean 204).
+         */
+        post: operations["dev_logout_api_v1_auth_logout_post"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -62,6 +167,53 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/comments/{comment_id}/reactions/{emoji}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Put Reaction
+         * @description Idempotent add (v17.1 R1-①): INSERT..ON CONFLICT DO NOTHING — concurrent
+         *     PUTs both succeed; a comment deleted mid-flight maps to 404 (R1-②).
+         */
+        put: operations["put_reaction_api_v1_comments__comment_id__reactions__emoji__put"];
+        post?: never;
+        /**
+         * Delete Reaction
+         * @description Idempotent remove — a conditional DELETE whose rowcount is ignored.
+         */
+        delete: operations["delete_reaction_api_v1_comments__comment_id__reactions__emoji__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/document-comments/{comment_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Document Comment
+         * @description Author or PROJECT OWNER (v43.1 R1-④ — the owner is the cleanup
+         *     authority, incl. author-less SET NULL rows). Order: scope 404 → archive
+         *     409 → authorship 404; the conditional DELETE maps rowcount 0 to 404.
+         */
+        delete: operations["delete_document_comment_api_v1_document_comments__comment_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/documents/{doc_id}": {
         parameters: {
             query?: never;
@@ -79,6 +231,64 @@ export interface paths {
         head?: never;
         /** Update Document */
         patch: operations["update_document_api_v1_documents__doc_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/documents/{doc_id}/comments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Document Comments
+         * @description Member-scoped; reads stay open on archived projects. `total` is the
+         *     FULL count (limit/offset — the WP-activities contract; nothing is ever
+         *     unreachable, v43.1 R1-②).
+         */
+        get: operations["list_document_comments_api_v1_documents__doc_id__comments_get"];
+        put?: never;
+        /** Create Document Comment */
+        post: operations["create_document_comment_api_v1_documents__doc_id__comments_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/documents/{doc_id}/work-package-links": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Document Links */
+        get: operations["list_document_links_api_v1_documents__doc_id__work_package_links_get"];
+        put?: never;
+        /** Create Document Link */
+        post: operations["create_document_link_api_v1_documents__doc_id__work_package_links_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/documents/{doc_id}/work-package-links/{link_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Document Link */
+        delete: operations["delete_document_link_api_v1_documents__doc_id__work_package_links__link_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/health": {
@@ -115,6 +325,76 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/initiatives": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Initiatives */
+        get: operations["list_initiatives_api_v1_initiatives_get"];
+        put?: never;
+        /** Create Initiative */
+        post: operations["create_initiative_api_v1_initiatives_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/initiatives/{initiative_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Initiative */
+        delete: operations["delete_initiative_api_v1_initiatives__initiative_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Initiative */
+        patch: operations["update_initiative_api_v1_initiatives__initiative_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/initiatives/{initiative_id}/projects": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Connect Project */
+        post: operations["connect_project_api_v1_initiatives__initiative_id__projects_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/initiatives/{initiative_id}/projects/{project_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Disconnect Project */
+        delete: operations["disconnect_project_api_v1_initiatives__initiative_id__projects__project_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/me": {
         parameters: {
             query?: never;
@@ -129,6 +409,64 @@ export interface paths {
          */
         get: operations["me_api_v1_me_get"];
         put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/me/access-tokens": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Access Tokens */
+        get: operations["list_access_tokens_api_v1_me_access_tokens_get"];
+        put?: never;
+        /** Create Access Token */
+        post: operations["create_access_token_api_v1_me_access_tokens_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/me/access-tokens/{token_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Revoke Access Token */
+        delete: operations["revoke_access_token_api_v1_me_access_tokens__token_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/me/notification-settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Notification Settings
+         * @description The caller's own toggles; an absent row means all defaults (True).
+         *     Preferences apply at notification CREATION time only — existing inbox rows
+         *     and unread counts are never retro-affected.
+         */
+        get: operations["get_notification_settings_api_v1_me_notification_settings_get"];
+        /** Update Notification Settings */
+        put: operations["update_notification_settings_api_v1_me_notification_settings_put"];
         post?: never;
         delete?: never;
         options?: never;
@@ -192,6 +530,75 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/me/time-entries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * My Time Entries
+         * @description The caller's OWN logged time (Pass 53, v53.1): user_id is the only
+         *     ownership filter — entries stay visible after leaving a project (audit/
+         *     billing data). Dates are date-only UTC INCLUSIVE on spent_on; from/to
+         *     come as a pair (one alone is ambiguous → 422); default = the last 7 UTC
+         *     days. Totals cover the whole range; items paginate.
+         */
+        get: operations["my_time_entries_api_v1_me_time_entries_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/me/work": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * My Work
+         * @description Personal cross-project home: my open assignments, the slice due within
+         *     7 days, and recent activity across my projects. Membership is re-evaluated
+         *     inside each query (no caching), so leaving a project hides its work packages
+         *     and activity immediately — even for items still assigned to the caller.
+         */
+        get: operations["my_work_api_v1_me_work_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/meeting-templates/{template_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Meeting Template
+         * @description Author or PROJECT OWNER (the #118 document-comment ruling): order is
+         *     scope 404 → archive 409 → authorship 404 (existence hidden). Deleting a
+         *     template never touches meetings created from it (snapshot copies).
+         */
+        delete: operations["delete_meeting_template_api_v1_meeting_templates__template_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/meetings/{meeting_id}": {
         parameters: {
             query?: never;
@@ -222,6 +629,46 @@ export interface paths {
         put?: never;
         /** Create Action Item */
         post: operations["create_action_item_api_v1_meetings__meeting_id__action_items_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/meetings/{meeting_id}/follow-up": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Follow Up
+         * @description Follow-up meeting (Pass 34 PR-AZ): same title (occurrences are told
+         *     apart by date), agenda carried, minutes empty, author = caller. Open
+         *     UNCONVERTED action items are COPIED — converted items are tracked by
+         *     their work package, and the source meeting keeps its full record.
+         */
+        post: operations["create_follow_up_api_v1_meetings__meeting_id__follow_up_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ops/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Ops Status */
+        get: operations["ops_status_api_v1_ops_status_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -273,12 +720,42 @@ export interface paths {
         };
         /**
          * Project Activities
-         * @description Project-wide audit feed: every work-package activity in the project, newest
-         *     first, enriched with the work package subject and actor name (member-scoped).
+         * @description Project-wide audit feed, enriched with the work package subject and actor
+         *     name (member-scoped). Filters are independent ANDs (v19.1): exact-key
+         *     `field` with action=created/commented yields an empty page, never 422.
+         *     `total` stays the RETURNED count (legacy contract); `truncated` (limit+1
+         *     probe) says whether more rows exist.
+         *
+         *     `actor_id` (Pass 38, revising the Pass-19 exclusion): any uuid — an
+         *     unrelated one is a legitimately empty page. Members can already walk the
+         *     whole feed by pagination, so the filter opens no new information channel
+         *     (v38.1 R1-②); ids are exposed as stored, matching the WP activity read.
          */
         get: operations["project_activities_api_v1_projects__project_id__activities_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Archive Project
+         * @description Owner-only, idempotent. An archived project becomes read-only: every
+         *     project-scoped write returns 409 until the owner restores it (PR-G).
+         *     Deliberately NOT write-gated — archiving twice is a no-op, not an error.
+         */
+        post: operations["archive_project_api_v1_projects__project_id__archive_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -292,11 +769,39 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List Attachments */
+        /**
+         * List Attachments
+         * @description Read-side filters are LENIENT (v23.1 R1-②): only a double filter is a
+         *     422; a missing/cross-project anchor id simply matches nothing inside the
+         *     project scope (existence hiding).
+         */
         get: operations["list_attachments_api_v1_projects__project_id__attachments_get"];
         put?: never;
         /** Create Attachment */
         post: operations["create_attachment_api_v1_projects__project_id__attachments_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/attachments/upload": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Upload Attachment
+         * @description Raw-body upload (PLAN P4-1). Order inside ONE transaction: row flush →
+         *     stream to temp (counted) → atomic replace → commit. A failure before commit
+         *     rolls the row back and removes the temp file; only a failed commit can leave
+         *     an (harmless) orphan blob — a broken row is unrepresentable.
+         */
+        post: operations["upload_attachment_api_v1_projects__project_id__attachments_upload_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -321,6 +826,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{project_id}/automation-rules/order": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Reorder Automation Rules
+         * @description Owner-only atomic reorder (Pass 82 — the custom-fields /order contract):
+         *     ordered_ids must list EXACTLY this project's rules (active + inactive);
+         *     positions rewrite 0..n-1 in one transaction under the project order lock so
+         *     a concurrent create can't interleave a duplicate position.
+         */
+        put: operations["reorder_automation_rules_api_v1_projects__project_id__automation_rules_order_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/automation-rules/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Automation Rule Runs
+         * @description Per-WP automation audit trail, newest first (member read — the same
+         *     visibility as the rules themselves).
+         */
+        get: operations["list_automation_rule_runs_api_v1_projects__project_id__automation_rules_runs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{project_id}/automation-rules/{rule_id}": {
         parameters: {
             query?: never;
@@ -337,6 +886,162 @@ export interface paths {
         head?: never;
         /** Update Automation Rule */
         patch: operations["update_automation_rule_api_v1_projects__project_id__automation_rules__rule_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/custom-fields": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Custom Fields */
+        get: operations["list_custom_fields_api_v1_projects__project_id__custom_fields_get"];
+        put?: never;
+        /** Create Custom Field */
+        post: operations["create_custom_field_api_v1_projects__project_id__custom_fields_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/custom-fields/order": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Reorder Custom Fields
+         * @description Owner-only atomic reorder (Pass 50 — the statuses /order contract
+         *     verbatim): ordered_ids must list EXACTLY this project's fields (active
+         *     and inactive); positions rewrite 0..n-1 in one transaction.
+         */
+        put: operations["reorder_custom_fields_api_v1_projects__project_id__custom_fields_order_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/custom-fields/{field_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Custom Field
+         * @description Hard delete only when no values reference the field — enforced by the
+         *     RESTRICT FK, so a concurrent value write makes THIS delete fail (409),
+         *     never the other way around. Operational removal is is_active=false.
+         */
+        delete: operations["delete_custom_field_api_v1_projects__project_id__custom_fields__field_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Custom Field */
+        patch: operations["update_custom_field_api_v1_projects__project_id__custom_fields__field_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/cycles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Cycles */
+        get: operations["list_cycles_api_v1_projects__project_id__cycles_get"];
+        put?: never;
+        /** Create Cycle */
+        post: operations["create_cycle_api_v1_projects__project_id__cycles_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/cycles/{cycle_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Cycle */
+        delete: operations["delete_cycle_api_v1_projects__project_id__cycles__cycle_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Cycle */
+        patch: operations["update_cycle_api_v1_projects__project_id__cycles__cycle_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/cycles/{cycle_id}/burndown": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Cycle Burndown
+         * @description Current-scope burndown-lite (Pass 21, v21.1) — derived from the status
+         *     activity history, no snapshots. Per WP the timeline is exact: before the
+         *     first status activity the status was that activity's old_value; after each
+         *     activity it is its new_value; with no activities it never changed. A day's
+         *     `remaining` counts scoped WPs created by that day whose end-of-day status
+         *     is outside the FIXED closed vocabulary (WP_CLOSED_STATUSES — label/enable
+         *     config never rewrites history, R1-④). All dates are UTC date-only; the
+         *     series stops at min(end_date, today) — the future is not fabricated.
+         *     Member read; archived projects stay readable (read-open); a foreign or
+         *     missing cycle is 404 (existence hiding). The two reads are sequential —
+         *     a mid-flight status change converges to the current state next fetch
+         *     (read-only visualization, R1-②).
+         */
+        get: operations["cycle_burndown_api_v1_projects__project_id__cycles__cycle_id__burndown_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/cycles/{cycle_id}/rollover": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Rollover Cycle
+         * @description Move the source cycle's OPEN work packages to the target cycle
+         *     (PLAN P6-2). One UPDATE statement = statement-time snapshot (plain PG
+         *     row-level semantics — no extra locking); concurrently closed/moved rows are
+         *     judged as of execution. NOT destructive: it only reassigns cycle_id, so a
+         *     reverse rollover restores the previous grouping. Source/target lifecycle
+         *     states are deliberately unconstrained (the operator picks the moment); the
+         *     UI merely SUGGESTS completed sources.
+         */
+        post: operations["rollover_cycle_api_v1_projects__project_id__cycles__cycle_id__rollover_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/projects/{project_id}/dashboard": {
@@ -356,6 +1061,58 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{project_id}/dashboard/export.csv": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export Dashboard Csv
+         * @description The dashboard roll-up as CSV (Pass 6 PR-Q). Reads stay open on archived
+         *     projects (same policy as the work-package export); the formula guard and
+         *     UTF-8 BOM follow the existing CSV conventions.
+         */
+        get: operations["export_dashboard_csv_api_v1_projects__project_id__dashboard_export_csv_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/dashboard/layout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Dashboard Layout
+         * @description The caller's OWN layout; absent row = the built-in default. Unknown keys
+         *     (a widget retired by a later migration) are filtered out; if nothing
+         *     survives, the default backfills (v18.1 R1-⑥).
+         */
+        get: operations["get_dashboard_layout_api_v1_projects__project_id__dashboard_layout_get"];
+        /**
+         * Put Dashboard Layout
+         * @description Upsert of the caller's OWN layout. Deliberately last-write-wins (v18.1
+         *     R1-① — single-owner personal preference, lost updates self-correct) and
+         *     deliberately EXEMPT from the archived-project write gate (R1-③ — a display
+         *     preference, not project data). API normalizes: de-dup keeping the first
+         *     occurrence; vocabulary/empty violations are 422 (DB CHECK is the backstop).
+         */
+        put: operations["put_dashboard_layout_api_v1_projects__project_id__dashboard_layout_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{project_id}/documents": {
         parameters: {
             query?: never;
@@ -368,6 +1125,73 @@ export interface paths {
         put?: never;
         /** Create Document */
         post: operations["create_document_api_v1_projects__project_id__documents_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/intake": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Intake */
+        get: operations["list_intake_api_v1_projects__project_id__intake_get"];
+        put?: never;
+        /** Submit Intake */
+        post: operations["submit_intake_api_v1_projects__project_id__intake_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/intake/{item_id}/triage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Triage Intake
+         * @description Owner decision on an OPEN (pending/snoozed) item.
+         *
+         *     Accept order inside ONE transaction: ① insert the work package (flushed for
+         *     its id) → ② status-conditional UPDATE — rowcount 0 means someone else
+         *     already decided, so the whole transaction (including the WP) rolls back and
+         *     the caller gets 409. A concurrent accept therefore succeeds exactly once
+         *     and can never leave a duplicate work package (PLAN P2-5).
+         */
+        post: operations["triage_intake_api_v1_projects__project_id__intake__item_id__triage_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/meeting-templates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Meeting Templates */
+        get: operations["list_meeting_templates_api_v1_projects__project_id__meeting_templates_get"];
+        put?: never;
+        /**
+         * Create Meeting Template
+         * @description agenda XOR from_meeting_id (schema-enforced). A from_meeting snapshot
+         *     copies the ALREADY-sanitized stored agenda; a direct agenda passes the
+         *     same nh3 boundary as meeting edits (v48.1 R1-②).
+         */
+        post: operations["create_meeting_template_api_v1_projects__project_id__meeting_templates_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -464,6 +1288,107 @@ export interface paths {
         patch: operations["update_milestone_api_v1_projects__project_id__milestones__milestone_id__patch"];
         trace?: never;
     };
+    "/api/v1/projects/{project_id}/modules": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Modules */
+        get: operations["list_modules_api_v1_projects__project_id__modules_get"];
+        put?: never;
+        /** Create Module */
+        post: operations["create_module_api_v1_projects__project_id__modules_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/modules/{module_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Module */
+        delete: operations["delete_module_api_v1_projects__project_id__modules__module_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Module */
+        patch: operations["update_module_api_v1_projects__project_id__modules__module_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/modules/{module_id}/members": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Module Members */
+        get: operations["list_module_members_api_v1_projects__project_id__modules__module_id__members_get"];
+        /**
+         * Replace Module Members
+         * @description Full replace under the SAME project advisory lock role changes use
+         *     (427002) — a concurrent demotion/removal serializes against this write,
+         *     and the conditional INSERT..SELECT re-checks eligibility at commit time
+         *     (v65.1 R1-③). Two concurrent PUTs are last-write-wins by design (an
+         *     informational roster — v65.1 R1-④).
+         */
+        put: operations["replace_module_members_api_v1_projects__project_id__modules__module_id__members_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/permissions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Permission Report */
+        get: operations["permission_report_api_v1_projects__project_id__permissions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/relations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Project Relations
+         * @description Every relation in the project (member read) — the timeline draws
+         *     dependency connectors from this. Deterministic order, limit+1 truncation
+         *     probe (v20.1 R1-① — relations are few per WP; a hard 1000 cap bounds the
+         *     payload, revisit with pagination if projects outgrow it).
+         */
+        get: operations["list_project_relations_api_v1_projects__project_id__relations_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{project_id}/saved-filters": {
         parameters: {
             query?: never;
@@ -496,7 +1421,8 @@ export interface paths {
         delete: operations["delete_saved_filter_api_v1_projects__project_id__saved_filters__filter_id__delete"];
         options?: never;
         head?: never;
-        patch?: never;
+        /** Update Saved Filter */
+        patch: operations["update_saved_filter_api_v1_projects__project_id__saved_filters__filter_id__patch"];
         trace?: never;
     };
     "/api/v1/projects/{project_id}/statuses": {
@@ -554,6 +1480,102 @@ export interface paths {
         patch: operations["update_project_status_api_v1_projects__project_id__statuses__status_id__patch"];
         trace?: never;
     };
+    "/api/v1/projects/{project_id}/storage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Project Storage
+         * @description Read-only usage snapshot for the settings Storage tab (Pass 57): one
+         *     self-consistent aggregate; the quota itself is env-owned (editing it is
+         *     an explicit non-goal — restart required, see the env rules).
+         */
+        get: operations["project_storage_api_v1_projects__project_id__storage_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/types": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Project Types */
+        get: operations["list_project_types_api_v1_projects__project_id__types_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/types/order": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Reorder Project Types
+         * @description Owner-only atomic reorder — same contract as the status reorder.
+         */
+        put: operations["reorder_project_types_api_v1_projects__project_id__types_order_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/types/{type_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update Project Type */
+        patch: operations["update_project_type_api_v1_projects__project_id__types__type_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/unarchive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Unarchive Project
+         * @description Owner-only, idempotent restore — the one write an archived project accepts.
+         */
+        post: operations["unarchive_project_api_v1_projects__project_id__unarchive_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{project_id}/work-packages": {
         parameters: {
             query?: never;
@@ -566,6 +1588,35 @@ export interface paths {
         put?: never;
         /** Create Work Package */
         post: operations["create_work_package_api_v1_projects__project_id__work_packages_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/work-packages/bulk-update": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Bulk Update Work Packages
+         * @description Bulk simple-assignment update (Pass 12 PR-AB, PLAN v12.1 R1-①②⑥).
+         *
+         *     Single transaction, all-or-nothing over the rows found: SELECT..FOR UPDATE
+         *     the project-scoped rows, validate the uniform patch ONCE up front (422
+         *     before any write), then per row: snapshot old values, skip unchanged rows,
+         *     assign + version+1, record field changes and assignment notifications for
+         *     real changes only. ids not found in this project return as opaque
+         *     skipped_ids (missing and cross-project look identical — existence hiding).
+         *     Deliberate §6.2 exception: no per-row version token (simple assignments,
+         *     list-scale cleanup; the drawer's precision PATCH keeps the token).
+         */
+        post: operations["bulk_update_work_packages_api_v1_projects__project_id__work_packages_bulk_update_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -606,6 +1657,132 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{project_id}/work-packages/import/jira": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Import Jira Csv
+         * @description Jira CSV export → work packages (Pass 8 PR-T, PLAN v8.1 contract).
+         *
+         *     The adapter maps columns/values deterministically; the shared pipeline
+         *     applies row-level isolation, disabled-type rejection, dry-run preview and
+         *     the idempotent-re-upload duplicate guard ("[KEY] Summary" subjects).
+         */
+        post: operations["import_jira_csv_api_v1_projects__project_id__work_packages_import_jira_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/work-packages/import/linear": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Import Linear Csv
+         * @description Linear CSV export → work packages (Pass 25 PR-AQ, PLAN v25.1 contract —
+         *     same pipeline and response shape as the Jira adapter).
+         */
+        post: operations["import_linear_csv_api_v1_projects__project_id__work_packages_import_linear_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/reports/portfolio": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Portfolio Report */
+        get: operations["portfolio_report_api_v1_reports_portfolio_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/reports/portfolio/export.csv": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Export Portfolio Csv */
+        get: operations["export_portfolio_csv_api_v1_reports_portfolio_export_csv_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/reports/portfolio/timeline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Portfolio Timeline
+         * @description Cross-project lanes (Pass 75, v75.1): scope/order/paging are the
+         *     portfolio-report contract (#138); the lane span derives from the
+         *     project's dated work packages via an INDEPENDENT aggregate (min of any
+         *     start/due → max — join multiplication unrepresentable); the open count
+         *     reuses the SAME closed-status predicate; milestones come from ONE batch
+         *     query (dated only).
+         */
+        get: operations["portfolio_timeline_api_v1_reports_portfolio_timeline_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Unified Search
+         * @description Grouped workspace search (v14.1). Ordering contract: work packages keep
+         *     the existing updated_at desc; documents/meetings sort by title asc,
+         *     cycles/modules/initiatives by name asc; ties break on id asc.
+         */
+        get: operations["unified_search_api_v1_search_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/search/work-packages": {
         parameters: {
             query?: never;
@@ -615,6 +1792,65 @@ export interface paths {
         };
         /** Search Work Packages */
         get: operations["search_work_packages_api_v1_search_work_packages_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/users": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Users */
+        get: operations["list_users_api_v1_users_get"];
+        put?: never;
+        /** Create User */
+        post: operations["create_user_api_v1_users_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/users/{user_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update User */
+        patch: operations["update_user_api_v1_users__user_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/users/{user_id}/memberships": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List User Memberships
+         * @description Workspace governance READ (Pass 62 PR-CB, v62.1 R1-②): admins see a
+         *     user's project memberships to verify offboarding — deliberately minimal
+         *     fields, and read-only. Membership WRITES stay owner-only per project
+         *     (Pass 33 invariant unchanged); offboarding's write tool is deactivation.
+         *     Inactive users stay queryable (that is the offboarding-check use case).
+         */
+        get: operations["list_user_memberships_api_v1_users__user_id__memberships_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -648,7 +1884,12 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List Activities */
+        /**
+         * List Activities
+         * @description Filters compose as independent ANDs (v19.1): `field` is an exact
+         *     internal key match (trimmed, ≤40) — combining it with action=created or
+         *     commented legitimately yields an empty page, never a 422.
+         */
         get: operations["list_activities_api_v1_work_packages__wp_id__activities_get"];
         put?: never;
         post?: never;
@@ -706,6 +1947,102 @@ export interface paths {
         post?: never;
         /** Delete Cost Entry */
         delete: operations["delete_cost_entry_api_v1_work_packages__wp_id__cost_entries__entry_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/work-packages/{wp_id}/custom-values": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Custom Values */
+        get: operations["list_custom_values_api_v1_work_packages__wp_id__custom_values_get"];
+        /**
+         * Put Custom Values
+         * @description DELTA upsert in ONE transaction (all-or-nothing): only the listed
+         *     field_ids change; value=null deletes. Conflicts resolve per-field via
+         *     ON CONFLICT DO UPDATE — no read-modify-write race.
+         */
+        put: operations["put_custom_values_api_v1_work_packages__wp_id__custom_values_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/work-packages/{wp_id}/documents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Work Package Documents */
+        get: operations["list_work_package_documents_api_v1_work_packages__wp_id__documents_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/work-packages/{wp_id}/duplicate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Duplicate Work Package
+         * @description Same-project duplicate (Pass 12 PR-AA, PLAN v12.1).
+         *
+         *     Copied: subject('(복사) ' prefix), description, type, priority, dates,
+         *     estimate, milestone/cycle/module, assignee (only if STILL a member — R1-⑤),
+         *     and custom values that pass the current write validation (active + bound +
+         *     valid option/member — R1-④; the rest are counted, not copied).
+         *     Not copied: status (→backlog — a duplicate starts over), parent (no tree
+         *     duplication), relations, watchers, comments, activities, attachments,
+         *     time/cost entries.
+         */
+        post: operations["duplicate_work_package_api_v1_work_packages__wp_id__duplicate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/work-packages/{wp_id}/move": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Move Work Package
+         * @description Move a work package to another project (Pass 66 PR-CF, v66.1).
+         *
+         *     A move is a FULL transfer of ownership and visibility — comments, time,
+         *     cost and history travel with the item (internal trust model; the source
+         *     OWNER gate is the control). Project-scoped references cannot travel:
+         *     parent/children links detach, relations / custom values / document links
+         *     are deleted (previewed via dry_run first), watchers and the assignee are
+         *     re-checked against target eligibility. Blob storage keys are immutable —
+         *     quota and sweeps follow the DB project_id, never the key prefix.
+         */
+        post: operations["move_work_package_api_v1_work_packages__wp_id__move_post"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -798,6 +2135,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/work-packages/{wp_id}/watchers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Watchers */
+        get: operations["list_watchers_api_v1_work_packages__wp_id__watchers_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/work-packages/{wp_id}/watchers/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Watch */
+        put: operations["watch_api_v1_work_packages__wp_id__watchers_me_put"];
+        post?: never;
+        /** Unwatch */
+        delete: operations["unwatch_api_v1_work_packages__wp_id__watchers_me_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -813,6 +2185,8 @@ export interface components {
         ActionItemRead: {
             /** Assignee Id */
             assignee_id: string | null;
+            /** Converted Wp Id */
+            converted_wp_id: string | null;
             /**
              * Created At
              * Format: date-time
@@ -894,12 +2268,16 @@ export interface components {
         AttachmentCreate: {
             /** Content Type */
             content_type?: string | null;
+            /** Document Id */
+            document_id?: string | null;
             /** Filename */
             filename: string;
             /** Size Bytes */
             size_bytes?: number | null;
             /** Url */
             url: string;
+            /** Work Package Id */
+            work_package_id?: string | null;
         };
         /** AttachmentList */
         AttachmentList: {
@@ -917,8 +2295,15 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+            /** Document Id */
+            document_id?: string | null;
             /** Filename */
             filename: string;
+            /**
+             * Has File
+             * @default false
+             */
+            has_file: boolean;
             /**
              * Id
              * Format: uuid
@@ -935,6 +2320,27 @@ export interface components {
             uploaded_by: string | null;
             /** Url */
             url: string;
+            /** Work Package Id */
+            work_package_id?: string | null;
+        };
+        /** AuthConfigRead */
+        AuthConfigRead: {
+            /** Auth Mode */
+            auth_mode: string;
+            /**
+             * Command Palette Enabled
+             * @default false
+             */
+            command_palette_enabled: boolean;
+            /**
+             * Has Client Secret
+             * @default false
+             */
+            has_client_secret: boolean;
+            /** Oidc Client Id */
+            oidc_client_id?: string | null;
+            /** Oidc Issuer */
+            oidc_issuer?: string | null;
         };
         /** AutomationRuleCreate */
         AutomationRuleCreate: {
@@ -945,6 +2351,10 @@ export interface components {
             action_type: string;
             /** Action Value */
             action_value: string;
+            /** Condition Field */
+            condition_field?: string | null;
+            /** Condition Value */
+            condition_value?: string | null;
             /**
              * Is Active
              * @default true
@@ -973,11 +2383,17 @@ export interface components {
             action_type: string;
             /** Action Value */
             action_value: string;
+            /** Condition Field */
+            condition_field: string | null;
+            /** Condition Value */
+            condition_value: string | null;
             /**
              * Created At
              * Format: date-time
              */
             created_at: string;
+            /** Fired Count */
+            fired_count: number;
             /**
              * Id
              * Format: uuid
@@ -985,8 +2401,12 @@ export interface components {
             id: string;
             /** Is Active */
             is_active: boolean;
+            /** Last Fired At */
+            last_fired_at: string | null;
             /** Name */
             name: string;
+            /** Position */
+            position: number;
             /**
              * Project Id
              * Format: uuid
@@ -997,10 +2417,74 @@ export interface components {
             /** Trigger Value */
             trigger_value: string;
         };
-        /** AutomationRuleUpdate */
+        /**
+         * AutomationRuleReorder
+         * @description Exactly this project's rule ids (active + inactive), new order (Pass 82).
+         */
+        AutomationRuleReorder: {
+            /** Ordered Ids */
+            ordered_ids: string[];
+        };
+        /** AutomationRuleRunList */
+        AutomationRuleRunList: {
+            /** Items */
+            items: components["schemas"]["AutomationRuleRunRead"][];
+            /** Total */
+            total: number;
+        };
+        /**
+         * AutomationRuleRunRead
+         * @description Execution-log row (v16.1 R1-⑤). Deleted references read via snapshots:
+         *     rule_id/work_package_id/actor_id may be null while rule_name and
+         *     work_package_subject stay readable.
+         */
+        AutomationRuleRunRead: {
+            /** Actor Id */
+            actor_id: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Field */
+            field: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** New Value */
+            new_value: string | null;
+            /** Old Value */
+            old_value: string | null;
+            /** Rule Id */
+            rule_id: string | null;
+            /** Rule Name */
+            rule_name: string;
+            /** Work Package Id */
+            work_package_id: string | null;
+            /** Work Package Subject */
+            work_package_subject: string;
+        };
+        /**
+         * AutomationRuleUpdate
+         * @description Partial rule edit (v13.1) — omitted fields keep their current value.
+         *     Validation runs on the MERGED rule (router builds an AutomationRuleCreate
+         *     from current+patch), so a value change can never leave the pair invalid.
+         */
         AutomationRuleUpdate: {
+            /** Action Value */
+            action_value?: string | null;
+            /** Condition Field */
+            condition_field?: string | null;
+            /** Condition Value */
+            condition_value?: string | null;
             /** Is Active */
-            is_active: boolean;
+            is_active?: boolean | null;
+            /** Name */
+            name?: string | null;
+            /** Trigger Value */
+            trigger_value?: string | null;
         };
         /** Bucket */
         Bucket: {
@@ -1009,10 +2493,73 @@ export interface components {
             /** Key */
             key: string;
         };
+        /**
+         * BulkPatch
+         * @description Uniform patch for bulk-update — simple assignments only (v12.1: the
+         *     deliberate §6.2 exception; drawer precision edits keep the version token).
+         */
+        BulkPatch: {
+            /** Assignee Id */
+            assignee_id?: string | null;
+            /** Priority */
+            priority?: string | null;
+            /** Status */
+            status?: string | null;
+        };
+        /** BulkUpdateRequest */
+        BulkUpdateRequest: {
+            /** Ids */
+            ids: string[];
+            patch: components["schemas"]["BulkPatch"];
+        };
+        /**
+         * BulkUpdateResult
+         * @description skipped_ids is deliberately opaque (missing / cross-project / whatever —
+         *     existence hiding, v12.1 R1-③); unchanged rows are reported, not re-written.
+         */
+        BulkUpdateResult: {
+            /** Skipped Ids */
+            skipped_ids: string[];
+            /** Unchanged Ids */
+            unchanged_ids: string[];
+            /** Updated Ids */
+            updated_ids: string[];
+        };
+        /** BurndownDay */
+        BurndownDay: {
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            /** Remaining */
+            remaining: number;
+        };
+        /**
+         * BurndownRead
+         * @description Current-scope burndown (v21.1 R1-①): the day series covers WPs assigned
+         *     to the cycle NOW — items moved out mid-cycle are absent (documented; a
+         *     cycle-assignment history rebuild is a follow-up).
+         */
+        BurndownRead: {
+            /** Days */
+            days: components["schemas"]["BurndownDay"][];
+            /** Scope */
+            scope: string;
+            /** Total Scope */
+            total_scope: number;
+        };
         /** CommentCreate */
         CommentCreate: {
             /** Body */
             body: string;
+            /**
+             * Mentioned User Ids
+             * @default []
+             */
+            mentioned_user_ids: string[];
+            /** Parent Id */
+            parent_id?: string | null;
         };
         /** CommentList */
         CommentList: {
@@ -1037,6 +2584,15 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            /** Mentions */
+            mentions: string[] | null;
+            /** Parent Id */
+            parent_id: string | null;
+            /**
+             * Reactions
+             * @default []
+             */
+            reactions: components["schemas"]["ReactionAgg"][];
             /**
              * Updated At
              * Format: date-time
@@ -1133,6 +2689,11 @@ export interface components {
             inserted: number;
             /** Invalid */
             invalid: number;
+            /**
+             * Notes
+             * @default []
+             */
+            notes: string[];
             /** Total Rows */
             total_rows: number;
             /** Valid */
@@ -1152,6 +2713,220 @@ export interface components {
             raw: string;
             /** Row */
             row: number;
+        };
+        /** CustomFieldCreate */
+        CustomFieldCreate: {
+            /** Applies To */
+            applies_to?: string[] | null;
+            /** Field Type */
+            field_type: string;
+            /** Name */
+            name: string;
+            /** Options */
+            options?: string[] | null;
+        };
+        /** CustomFieldList */
+        CustomFieldList: {
+            /** Items */
+            items: components["schemas"]["CustomFieldRead"][];
+            /** Total */
+            total: number;
+        };
+        /** CustomFieldRead */
+        CustomFieldRead: {
+            /** Applies To */
+            applies_to: string[] | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Field Type */
+            field_type: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Is Active */
+            is_active: boolean;
+            /** Name */
+            name: string;
+            /** Options */
+            options: string[] | null;
+            /** Position */
+            position: number;
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * CustomFieldReorder
+         * @description Exactly this project's field ids (active + inactive), new order.
+         */
+        CustomFieldReorder: {
+            /** Ordered Ids */
+            ordered_ids: string[];
+        };
+        /**
+         * CustomFieldUpdate
+         * @description field_type is immutable — changing it would corrupt stored values.
+         *     applies_to CAN be updated; send null to widen back to all types.
+         */
+        CustomFieldUpdate: {
+            /** Applies To */
+            applies_to?: string[] | null;
+            /** Is Active */
+            is_active?: boolean | null;
+            /** Name */
+            name?: string | null;
+            /** Options */
+            options?: string[] | null;
+        };
+        /** CustomValueList */
+        CustomValueList: {
+            /** Items */
+            items: components["schemas"]["CustomValueRead"][];
+            /** Total */
+            total: number;
+        };
+        /** CustomValueRead */
+        CustomValueRead: {
+            /**
+             * Field Id
+             * Format: uuid
+             */
+            field_id: string;
+            /** Member Display Name */
+            member_display_name?: string | null;
+            /** Value */
+            value: unknown;
+        };
+        /** CustomValueWrite */
+        CustomValueWrite: {
+            /**
+             * Field Id
+             * Format: uuid
+             */
+            field_id: string;
+            /** Value */
+            value?: unknown;
+        };
+        /**
+         * CustomValuesPut
+         * @description DELTA semantics: only the listed field_ids are touched — other stored
+         *     values are never overwritten by a stale full-state payload.
+         */
+        CustomValuesPut: {
+            /** Values */
+            values: components["schemas"]["CustomValueWrite"][];
+        };
+        /** CycleCreate */
+        CycleCreate: {
+            /** Description */
+            description?: string | null;
+            /**
+             * End Date
+             * Format: date
+             */
+            end_date: string;
+            /** Name */
+            name: string;
+            /**
+             * Start Date
+             * Format: date
+             */
+            start_date: string;
+        };
+        /** CycleList */
+        CycleList: {
+            /** Items */
+            items: components["schemas"]["CycleRead"][];
+            /** Total */
+            total: number;
+        };
+        /** CycleRead */
+        CycleRead: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Description */
+            description: string | null;
+            /** Done Work Package Count */
+            done_work_package_count: number;
+            /**
+             * End Date
+             * Format: date
+             */
+            end_date: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            /**
+             * Start Date
+             * Format: date
+             */
+            start_date: string;
+            /** Status */
+            status: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Work Package Count */
+            work_package_count: number;
+        };
+        /**
+         * CycleUpdate
+         * @description Partial update — the cross-field date check runs in the router against
+         *     the MERGED values, so changing one bound cannot invert the range.
+         */
+        CycleUpdate: {
+            /** Description */
+            description?: string | null;
+            /** End Date */
+            end_date?: string | null;
+            /** Name */
+            name?: string | null;
+            /** Start Date */
+            start_date?: string | null;
+        };
+        /** DashboardLayoutPut */
+        DashboardLayoutPut: {
+            /** Widgets */
+            widgets: string[];
+        };
+        /**
+         * DashboardLayoutRead
+         * @description v18.1 R1-⑤: is_default marks the built-in layout (no row persisted);
+         *     updated_at is null in that case. PUT echoes the NORMALIZED array.
+         */
+        DashboardLayoutRead: {
+            /** Is Default */
+            is_default: boolean;
+            /** Updated At */
+            updated_at: string | null;
+            /** Widgets */
+            widgets: string[];
         };
         /** DashboardRead */
         DashboardRead: {
@@ -1176,6 +2951,49 @@ export interface components {
             /** Type Counts */
             type_counts: components["schemas"]["Bucket"][];
         };
+        /**
+         * DocumentCommentCreate
+         * @description Plain text only (the document body is the rich surface — v43.1 R1-⑤);
+         *     the web renders comments as text nodes, never as HTML.
+         */
+        DocumentCommentCreate: {
+            /** Body */
+            body: string;
+        };
+        /** DocumentCommentList */
+        DocumentCommentList: {
+            /** Items */
+            items: components["schemas"]["DocumentCommentRead"][];
+            /** Total */
+            total: number;
+        };
+        /** DocumentCommentRead */
+        DocumentCommentRead: {
+            /** Author Id */
+            author_id: string | null;
+            /** Body */
+            body: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Document Id
+             * Format: uuid
+             */
+            document_id: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+        };
         /** DocumentConflict */
         DocumentConflict: {
             current: components["schemas"]["DocumentRead"];
@@ -1186,8 +3004,62 @@ export interface components {
         DocumentCreate: {
             /** Body */
             body?: string | null;
+            /** Parent Id */
+            parent_id?: string | null;
             /** Title */
             title: string;
+        };
+        /** DocumentGroup */
+        DocumentGroup: {
+            /** Items */
+            items: components["schemas"]["SearchDocumentItem"][];
+            /** Returned */
+            returned: number;
+            /** Truncated */
+            truncated: boolean;
+        };
+        /** DocumentLinkCreate */
+        DocumentLinkCreate: {
+            /**
+             * Work Package Id
+             * Format: uuid
+             */
+            work_package_id: string;
+        };
+        /** DocumentLinkList */
+        DocumentLinkList: {
+            /** Items */
+            items: components["schemas"]["DocumentLinkRead"][];
+            /** Total */
+            total: number;
+        };
+        /** DocumentLinkRead */
+        DocumentLinkRead: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Document Id
+             * Format: uuid
+             */
+            document_id: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            /**
+             * Work Package Id
+             * Format: uuid
+             */
+            work_package_id: string;
         };
         /** DocumentList */
         DocumentList: {
@@ -1213,6 +3085,8 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            /** Parent Id */
+            parent_id: string | null;
             /**
              * Project Id
              * Format: uuid
@@ -1244,6 +3118,8 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            /** Parent Id */
+            parent_id: string | null;
             /**
              * Project Id
              * Format: uuid
@@ -1259,12 +3135,18 @@ export interface components {
             /** Version */
             version: number;
         };
-        /** DocumentUpdate */
+        /**
+         * DocumentUpdate
+         * @description `parent_id` is tri-state: omitted = keep, null = move to root, uuid = reparent
+         *     (same model_fields_set convention as title/body).
+         */
         DocumentUpdate: {
             /** Body */
             body?: string | null;
             /** Expected Version */
             expected_version: number;
+            /** Parent Id */
+            parent_id?: string | null;
             /** Title */
             title?: string | null;
         };
@@ -1272,6 +3154,230 @@ export interface components {
         HTTPValidationError: {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
+        };
+        /** InitiativeConnect */
+        InitiativeConnect: {
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+        };
+        /** InitiativeCreate */
+        InitiativeCreate: {
+            /** Description */
+            description?: string | null;
+            /** Name */
+            name: string;
+            /** Start Date */
+            start_date?: string | null;
+            /**
+             * State
+             * @default planned
+             */
+            state: string;
+            /** Target Date */
+            target_date?: string | null;
+        };
+        /** InitiativeGroup */
+        InitiativeGroup: {
+            /** Items */
+            items: components["schemas"]["SearchInitiativeItem"][];
+            /** Returned */
+            returned: number;
+            /** Truncated */
+            truncated: boolean;
+        };
+        /** InitiativeList */
+        InitiativeList: {
+            /** Items */
+            items: components["schemas"]["InitiativeRead"][];
+            /** Total */
+            total: number;
+        };
+        /**
+         * InitiativeProjectRead
+         * @description A connected project AS VISIBLE TO THE CALLER (member projects only).
+         */
+        InitiativeProjectRead: {
+            /** Done Work Package Count */
+            done_work_package_count: number;
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            /** Project Name */
+            project_name: string;
+            /** Work Package Count */
+            work_package_count: number;
+        };
+        /** InitiativeRead */
+        InitiativeRead: {
+            /** Connected Project Count */
+            connected_project_count: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Description */
+            description: string | null;
+            /** Health */
+            health: string | null;
+            /** Health Note */
+            health_note: string | null;
+            /** Health Updated At */
+            health_updated_at: string | null;
+            /** Health Updated By */
+            health_updated_by: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Is Mine */
+            is_mine: boolean;
+            /** Name */
+            name: string;
+            /** Owner Id */
+            owner_id: string | null;
+            /** Owner Name */
+            owner_name: string | null;
+            /** Projects */
+            projects: components["schemas"]["InitiativeProjectRead"][];
+            /** Start Date */
+            start_date: string | null;
+            /** State */
+            state: string;
+            /** Target Date */
+            target_date: string | null;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** InitiativeUpdate */
+        InitiativeUpdate: {
+            /** Description */
+            description?: string | null;
+            /** Health */
+            health?: string | null;
+            /** Health Note */
+            health_note?: string | null;
+            /** Name */
+            name?: string | null;
+            /** Start Date */
+            start_date?: string | null;
+            /** State */
+            state?: string | null;
+            /** Target Date */
+            target_date?: string | null;
+        };
+        /** IntakeCreate */
+        IntakeCreate: {
+            /** Body */
+            body?: string | null;
+            /** Title */
+            title: string;
+        };
+        /** IntakeList */
+        IntakeList: {
+            /** Items */
+            items: components["schemas"]["IntakeRead"][];
+            /** Total */
+            total: number;
+        };
+        /** IntakeRead */
+        IntakeRead: {
+            /** Accepted Wp Id */
+            accepted_wp_id: string | null;
+            /** Body */
+            body: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            /** Snooze Until */
+            snooze_until: string | null;
+            /** Status */
+            status: string;
+            /** Submitted By */
+            submitted_by: string | null;
+            /** Submitter Name */
+            submitter_name: string | null;
+            /** Title */
+            title: string;
+            /** Triage Note */
+            triage_note?: string | null;
+            /** Triaged At */
+            triaged_at?: string | null;
+            /** Triaged By Id */
+            triaged_by_id?: string | null;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * IntakeTriage
+         * @description Owner triage decision. `status` must be a decision (not 'pending');
+         *     `snooze_until` only pairs with 'snoozed'. `note` is optional PLAIN TEXT
+         *     (v29.1 — no HTML surface; trim-empty normalizes to null).
+         */
+        IntakeTriage: {
+            /** Note */
+            note?: string | null;
+            /** Snooze Until */
+            snooze_until?: string | null;
+            /** Status */
+            status: string;
+        };
+        /** LoginRequest */
+        LoginRequest: {
+            /** Email */
+            email: string;
+        };
+        /** LoginResult */
+        LoginResult: {
+            /** Display Name */
+            display_name: string;
+            /** Email */
+            email: string;
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+        };
+        /**
+         * MeWorkRead
+         * @description Personal home payload. Lists are hard-capped (no pagination yet):
+         *     assigned/due-soon/created at 50, activity at 20 — documented in the
+         *     coverage ledger.
+         */
+        MeWorkRead: {
+            /** Assigned To Me */
+            assigned_to_me: components["schemas"]["MyWorkPackage"][];
+            /** Created By Me */
+            created_by_me: components["schemas"]["MyWorkPackage"][];
+            /** Due Soon */
+            due_soon: components["schemas"]["MyWorkPackage"][];
+            /** Recent Activity */
+            recent_activity: components["schemas"]["MyActivityRead"][];
         };
         /** MeetingConflict */
         MeetingConflict: {
@@ -1281,10 +3387,38 @@ export interface components {
         };
         /** MeetingCreate */
         MeetingCreate: {
+            /** Recurrence */
+            recurrence?: string | null;
             /** Scheduled On */
             scheduled_on?: string | null;
+            /** Template Id */
+            template_id?: string | null;
             /** Title */
             title: string;
+        };
+        /**
+         * MeetingFollowUpCreate
+         * @description Follow-up meeting (Pass 34 PR-AZ): agenda carries over; open UNCONVERTED
+         *     action items are COPIED (never moved — the original meeting keeps its
+         *     record); scheduled_on defaults to the source date + 7 days.
+         */
+        MeetingFollowUpCreate: {
+            /**
+             * Carry Open Items
+             * @default true
+             */
+            carry_open_items: boolean;
+            /** Scheduled On */
+            scheduled_on?: string | null;
+        };
+        /** MeetingGroup */
+        MeetingGroup: {
+            /** Items */
+            items: components["schemas"]["SearchMeetingItem"][];
+            /** Returned */
+            returned: number;
+            /** Truncated */
+            truncated: boolean;
         };
         /** MeetingList */
         MeetingList: {
@@ -1305,6 +3439,8 @@ export interface components {
              * Format: uuid
              */
             project_id: string;
+            /** Recurrence */
+            recurrence?: string | null;
             /** Scheduled On */
             scheduled_on: string | null;
             /** Title */
@@ -1333,6 +3469,10 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+            /** Follow Up Source Id */
+            follow_up_source_id?: string | null;
+            /** Follow Up Source Title */
+            follow_up_source_title?: string | null;
             /**
              * Id
              * Format: uuid
@@ -1345,6 +3485,10 @@ export interface components {
              * Format: uuid
              */
             project_id: string;
+            /** Recurrence */
+            recurrence?: string | null;
+            /** Recurrence Source Id */
+            recurrence_source_id?: string | null;
             /** Scheduled On */
             scheduled_on: string | null;
             /** Title */
@@ -1357,6 +3501,49 @@ export interface components {
             /** Version */
             version: number;
         };
+        /**
+         * MeetingTemplateCreate
+         * @description agenda XOR from_meeting_id (v48.1 R1-①): both or neither is a 422.
+         */
+        MeetingTemplateCreate: {
+            /** Agenda */
+            agenda?: string | null;
+            /** From Meeting Id */
+            from_meeting_id?: string | null;
+            /** Name */
+            name: string;
+        };
+        /** MeetingTemplateList */
+        MeetingTemplateList: {
+            /** Items */
+            items: components["schemas"]["MeetingTemplateRead"][];
+            /** Total */
+            total: number;
+        };
+        /** MeetingTemplateRead */
+        MeetingTemplateRead: {
+            /** Agenda */
+            agenda: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Created By */
+            created_by: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+        };
         /** MeetingUpdate */
         MeetingUpdate: {
             /** Agenda */
@@ -1365,6 +3552,8 @@ export interface components {
             expected_version: number;
             /** Minutes */
             minutes?: string | null;
+            /** Recurrence */
+            recurrence?: string | null;
             /** Scheduled On */
             scheduled_on?: string | null;
             /** Title */
@@ -1431,6 +3620,11 @@ export interface components {
             created_at: string;
             /** Description */
             description: string | null;
+            /**
+             * Done Work Package Count
+             * @default 0
+             */
+            done_work_package_count: number;
             /** Due Date */
             due_date: string | null;
             /**
@@ -1450,6 +3644,11 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
+            /**
+             * Work Package Count
+             * @default 0
+             */
+            work_package_count: number;
         };
         /** MilestoneUpdate */
         MilestoneUpdate: {
@@ -1459,6 +3658,313 @@ export interface components {
             due_date?: string | null;
             /** Name */
             name?: string | null;
+        };
+        /** ModuleCreate */
+        ModuleCreate: {
+            /** Description */
+            description?: string | null;
+            /** Lead Id */
+            lead_id?: string | null;
+            /** Name */
+            name: string;
+            /** Start Date */
+            start_date?: string | null;
+            /**
+             * State
+             * @default planned
+             */
+            state: string;
+            /** Target Date */
+            target_date?: string | null;
+        };
+        /** ModuleList */
+        ModuleList: {
+            /** Items */
+            items: components["schemas"]["ModuleRead"][];
+            /** Total */
+            total: number;
+        };
+        /** ModuleMemberList */
+        ModuleMemberList: {
+            /** Items */
+            items: components["schemas"]["ModuleMemberRead"][];
+            /** Total */
+            total: number;
+        };
+        /** ModuleMemberRead */
+        ModuleMemberRead: {
+            /** Display Name */
+            display_name: string;
+            /** Email */
+            email: string;
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+        };
+        /**
+         * ModuleMembersPut
+         * @description Full-replace roster (idempotent; duplicates collapse; [] clears).
+         *     Every id must be currently eligible or the whole request is refused.
+         */
+        ModuleMembersPut: {
+            /** User Ids */
+            user_ids: string[];
+        };
+        /** ModuleRead */
+        ModuleRead: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Description */
+            description: string | null;
+            /** Done Work Package Count */
+            done_work_package_count: number;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Lead Id */
+            lead_id: string | null;
+            /**
+             * Member Count
+             * @default 0
+             */
+            member_count: number;
+            /** Name */
+            name: string;
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            /** Start Date */
+            start_date: string | null;
+            /** State */
+            state: string;
+            /** Target Date */
+            target_date: string | null;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Work Package Count */
+            work_package_count: number;
+        };
+        /**
+         * ModuleUpdate
+         * @description Partial update — the cross-field date check runs in the router against
+         *     the MERGED values (dates are optional here, unlike cycles).
+         */
+        ModuleUpdate: {
+            /** Description */
+            description?: string | null;
+            /** Lead Id */
+            lead_id?: string | null;
+            /** Name */
+            name?: string | null;
+            /** Start Date */
+            start_date?: string | null;
+            /** State */
+            state?: string | null;
+            /** Target Date */
+            target_date?: string | null;
+        };
+        /** MoveCleared */
+        MoveCleared: {
+            /** Assignee Cleared */
+            assignee_cleared: boolean;
+            children: components["schemas"]["MoveRefSummary"];
+            custom_values: components["schemas"]["MoveRefSummary"];
+            /** Cycle */
+            cycle: boolean;
+            document_links: components["schemas"]["MoveRefSummary"];
+            /** Milestone */
+            milestone: boolean;
+            /** Module */
+            module: boolean;
+            /** Parent */
+            parent: boolean;
+            relations: components["schemas"]["MoveRefSummary"];
+            watchers_removed: components["schemas"]["MoveRefSummary"];
+        };
+        /**
+         * MoveRefSummary
+         * @description One cleared-reference category of a cross-project move: count plus the
+         *     first few names so the preview is meaningful, never just a number.
+         */
+        MoveRefSummary: {
+            /**
+             * Count
+             * @default 0
+             */
+            count: number;
+            /**
+             * Names
+             * @default []
+             */
+            names: string[];
+            /**
+             * Overflow
+             * @default 0
+             */
+            overflow: number;
+        };
+        /**
+         * MyActivityRead
+         * @description Recent activity across the caller's projects, enriched for display.
+         */
+        MyActivityRead: {
+            /** Action */
+            action: string;
+            /** Actor Name */
+            actor_name: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Field */
+            field: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** New Value */
+            new_value: string | null;
+            /** Old Value */
+            old_value: string | null;
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            /** Project Name */
+            project_name: string;
+            /**
+             * Work Package Id
+             * Format: uuid
+             */
+            work_package_id: string;
+            /** Work Package Subject */
+            work_package_subject: string;
+        };
+        /** MyTimeEntry */
+        MyTimeEntry: {
+            /** Hours */
+            hours: number;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Note */
+            note: string | null;
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            /** Project Name */
+            project_name: string;
+            /**
+             * Spent On
+             * Format: date
+             */
+            spent_on: string;
+            /**
+             * Work Package Id
+             * Format: uuid
+             */
+            work_package_id: string;
+            /** Work Package Subject */
+            work_package_subject: string;
+        };
+        /** MyTimeProjectSum */
+        MyTimeProjectSum: {
+            /** Hours */
+            hours: number;
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            /** Project Name */
+            project_name: string;
+        };
+        /**
+         * MyTimeRead
+         * @description Personal time view (Pass 53, v53.1): the caller's OWN entries — kept
+         *     visible after leaving a project (audit/billing data); totals cover the
+         *     WHOLE range regardless of item pagination.
+         */
+        MyTimeRead: {
+            /** By Project */
+            by_project: components["schemas"]["MyTimeProjectSum"][];
+            /**
+             * From Date
+             * Format: date
+             */
+            from_date: string;
+            /** Items */
+            items: components["schemas"]["MyTimeEntry"][];
+            /**
+             * To Date
+             * Format: date
+             */
+            to_date: string;
+            /** Total */
+            total: number;
+            /** Total Hours */
+            total_hours: number;
+        };
+        /**
+         * MyWorkPackage
+         * @description Slim cross-project work-package row for the personal home: enough to
+         *     render a list line and deep-link into the owning project's views.
+         */
+        MyWorkPackage: {
+            /** Assignee Id */
+            assignee_id?: string | null;
+            /** Assignee Name */
+            assignee_name?: string | null;
+            /** Due Date */
+            due_date: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Priority */
+            priority: string;
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            /** Project Name */
+            project_name: string;
+            /** Status */
+            status: string;
+            /** Subject */
+            subject: string;
+            /** Type */
+            type: string;
+        };
+        /** NamedGroup */
+        NamedGroup: {
+            /** Items */
+            items: components["schemas"]["SearchNamedItem"][];
+            /** Returned */
+            returned: number;
+            /** Truncated */
+            truncated: boolean;
         };
         /** NotificationList */
         NotificationList: {
@@ -1483,6 +3989,8 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            /** Intake Item Id */
+            intake_item_id?: string | null;
             /** Kind */
             kind: string;
             /**
@@ -1497,12 +4005,285 @@ export interface components {
             /** Work Package Subject */
             work_package_subject: string | null;
         };
-        /** ProjectActivityList */
+        /** NotificationSettingsRead */
+        NotificationSettingsRead: {
+            /** Assigned */
+            assigned: boolean;
+            /** Commented */
+            commented: boolean;
+            /** Due Alerts */
+            due_alerts: boolean;
+            /** Intake */
+            intake: boolean;
+            /** Mention */
+            mention: boolean;
+            /** Watched */
+            watched: boolean;
+        };
+        /**
+         * NotificationSettingsUpdate
+         * @description Partial update — omitted fields keep their current (or default) value.
+         */
+        NotificationSettingsUpdate: {
+            /** Assigned */
+            assigned?: boolean | null;
+            /** Commented */
+            commented?: boolean | null;
+            /** Due Alerts */
+            due_alerts?: boolean | null;
+            /** Intake */
+            intake?: boolean | null;
+            /** Mention */
+            mention?: boolean | null;
+            /** Watched */
+            watched?: boolean | null;
+        };
+        /**
+         * OpsConfig
+         * @description Strict allowlist — enums/booleans/numbers only, never secrets (R1-⑤).
+         */
+        OpsConfig: {
+            /** Ai Summary Enabled */
+            ai_summary_enabled: boolean;
+            /** Auth Mode */
+            auth_mode: string;
+            /** Project Storage Quota Bytes */
+            project_storage_quota_bytes: number;
+            /** Storage Backend */
+            storage_backend: string;
+            /** Upload Max Bytes */
+            upload_max_bytes: number;
+        };
+        /**
+         * OpsCounts
+         * @description Caller-scoped, best-effort (null on failure — v26.1 R1-④).
+         */
+        OpsCounts: {
+            /** Projects */
+            projects: number | null;
+            /** Work Packages */
+            work_packages: number | null;
+        };
+        /** OpsDatabase */
+        OpsDatabase: {
+            /** Current Revision */
+            current_revision: string | null;
+            /** Status */
+            status: string;
+        };
+        /** PermissionReportRead */
+        PermissionReportRead: {
+            /** My Role */
+            my_role: string;
+            /** Verbs */
+            verbs: components["schemas"]["PermissionVerb"][];
+        };
+        /** PermissionVerb */
+        PermissionVerb: {
+            /** Condition */
+            condition: string | null;
+            /** Key */
+            key: string;
+            /** Label */
+            label: string;
+            /**
+             * Member
+             * @enum {string}
+             */
+            member: "always" | "never" | "conditional";
+            /** Note */
+            note: string | null;
+            /**
+             * Owner
+             * @enum {string}
+             */
+            owner: "always" | "never" | "conditional";
+            /**
+             * Viewer
+             * @enum {string}
+             */
+            viewer: "always" | "never" | "conditional";
+        };
+        /** PersonalAccessTokenCreate */
+        PersonalAccessTokenCreate: {
+            /**
+             * Expires In Days
+             * @default 90
+             */
+            expires_in_days: number;
+            /** Name */
+            name: string;
+        };
+        /** PersonalAccessTokenCreated */
+        PersonalAccessTokenCreated: {
+            item: components["schemas"]["PersonalAccessTokenRead"];
+            /** Token */
+            token: string;
+        };
+        /** PersonalAccessTokenList */
+        PersonalAccessTokenList: {
+            /** Items */
+            items: components["schemas"]["PersonalAccessTokenRead"][];
+            /** Total */
+            total: number;
+        };
+        /** PersonalAccessTokenRead */
+        PersonalAccessTokenRead: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Last Used At */
+            last_used_at: string | null;
+            /** Name */
+            name: string;
+            /** Revoked At */
+            revoked_at: string | null;
+            /** Token Prefix */
+            token_prefix: string;
+        };
+        /**
+         * PortfolioItem
+         * @description One project row of the portfolio report (Pass 63, v63.1).
+         *
+         *     Numbers reuse the existing contracts: counts share the list-rollup
+         *     predicates (WP_CLOSED_STATUSES, UTC-today overdue), cost_total the
+         *     dashboard's cost_entries sum, hours_total the time_entries sum — all as
+         *     plain floats (workspace single-currency assumption, same as budget).
+         */
+        PortfolioItem: {
+            /** Archived */
+            archived: boolean;
+            /** Budget */
+            budget: number | null;
+            /** Cost Total */
+            cost_total: number;
+            /** Health */
+            health: string | null;
+            /** Hours Total */
+            hours_total: number;
+            /** Key */
+            key: string;
+            /** Member Count */
+            member_count: number;
+            /** Name */
+            name: string;
+            /** Open Work Package Count */
+            open_work_package_count: number;
+            /** Overdue Count */
+            overdue_count: number;
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            /** Work Package Count */
+            work_package_count: number;
+        };
+        /** PortfolioReportRead */
+        PortfolioReportRead: {
+            /** Items */
+            items: components["schemas"]["PortfolioItem"][];
+            /** Total */
+            total: number;
+            totals: components["schemas"]["PortfolioTotals"];
+        };
+        /**
+         * PortfolioTimelineItem
+         * @description One project lane (Pass 75). start/end derive from the project's dated
+         *     work packages (min of starts/dues → max) — null when nothing is dated.
+         */
+        PortfolioTimelineItem: {
+            /** Archived */
+            archived: boolean;
+            /** End Date */
+            end_date: string | null;
+            /** Key */
+            key: string;
+            /** Milestones */
+            milestones: components["schemas"]["PortfolioTimelineMilestone"][];
+            /** Name */
+            name: string;
+            /** Open Work Package Count */
+            open_work_package_count: number;
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            /** Start Date */
+            start_date: string | null;
+        };
+        /** PortfolioTimelineMilestone */
+        PortfolioTimelineMilestone: {
+            /**
+             * Due Date
+             * Format: date
+             */
+            due_date: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+        };
+        /** PortfolioTimelineRead */
+        PortfolioTimelineRead: {
+            /** Items */
+            items: components["schemas"]["PortfolioTimelineItem"][];
+            /** Total */
+            total: number;
+        };
+        /**
+         * PortfolioTotals
+         * @description Server-side sums over the RETURNED items (same statement snapshot —
+         *     the totals can never disagree with the rows they accompany). budget sums
+         *     only projects that have one set.
+         */
+        PortfolioTotals: {
+            /** Budget */
+            budget: number;
+            /** Cost Total */
+            cost_total: number;
+            /** Hours Total */
+            hours_total: number;
+            /** Open */
+            open: number;
+            /** Overdue */
+            overdue: number;
+            /** Projects */
+            projects: number;
+            /** Work Packages */
+            work_packages: number;
+        };
+        /**
+         * ProjectActivityList
+         * @description `total` is the RETURNED count (legacy contract — documented, v19.1);
+         *     `truncated` reports more rows beyond the limit (limit+1 probe).
+         */
         ProjectActivityList: {
             /** Items */
             items: components["schemas"]["ProjectActivityRead"][];
             /** Total */
             total: number;
+            /**
+             * Truncated
+             * @default false
+             */
+            truncated: boolean;
         };
         /**
          * ProjectActivityRead
@@ -1512,6 +4293,8 @@ export interface components {
         ProjectActivityRead: {
             /** Action */
             action: string;
+            /** Actor Id */
+            actor_id: string | null;
             /** Actor Name */
             actor_name: string | null;
             /**
@@ -1546,16 +4329,17 @@ export interface components {
             key: string;
             /** Name */
             name: string;
+            /** Template Project Id */
+            template_project_id?: string | null;
         };
-        /** ProjectList */
-        ProjectList: {
-            /** Items */
-            items: components["schemas"]["ProjectRead"][];
-            /** Total */
-            total: number;
-        };
-        /** ProjectRead */
-        ProjectRead: {
+        /**
+         * ProjectCreateResponse
+         * @description POST /projects response — additive: template_applied is null unless a
+         *     template was used, so existing clients are unaffected (v15.1 R1-⑤).
+         */
+        ProjectCreateResponse: {
+            /** Archived At */
+            archived_at: string | null;
             /** Budget */
             budget: number | null;
             /**
@@ -1565,6 +4349,139 @@ export interface components {
             created_at: string;
             /** Description */
             description: string | null;
+            /** Health */
+            health: string | null;
+            /** Health Note */
+            health_note: string | null;
+            /** Health Updated At */
+            health_updated_at: string | null;
+            /** Health Updated By */
+            health_updated_by: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Key */
+            key: string;
+            /** Name */
+            name: string;
+            template_applied?: components["schemas"]["TemplateApplied"] | null;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** ProjectInitiativeRef */
+        ProjectInitiativeRef: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+        };
+        /** ProjectList */
+        ProjectList: {
+            /** Items */
+            items: components["schemas"]["ProjectListItem"][];
+            /** Total */
+            total: number;
+        };
+        /**
+         * ProjectListItem
+         * @description List row with portfolio rollups (Pass 22, additive). member_count =
+         *     current project_members rows, any role (a deleted user cannot appear —
+         *     users FK CASCADE); overdue = due_date < UTC-today AND status open.
+         */
+        ProjectListItem: {
+            /** Archived At */
+            archived_at: string | null;
+            /** Budget */
+            budget: number | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Description */
+            description: string | null;
+            /** Health */
+            health: string | null;
+            /** Health Note */
+            health_note: string | null;
+            /** Health Updated At */
+            health_updated_at: string | null;
+            /** Health Updated By */
+            health_updated_by: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Initiative Overflow
+             * @default 0
+             */
+            initiative_overflow: number;
+            /**
+             * Initiatives
+             * @default []
+             */
+            initiatives: components["schemas"]["ProjectInitiativeRef"][];
+            /** Key */
+            key: string;
+            /**
+             * Member Count
+             * @default 0
+             */
+            member_count: number;
+            /** Name */
+            name: string;
+            /**
+             * Open Work Package Count
+             * @default 0
+             */
+            open_work_package_count: number;
+            /**
+             * Overdue Count
+             * @default 0
+             */
+            overdue_count: number;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /**
+             * Work Package Count
+             * @default 0
+             */
+            work_package_count: number;
+        };
+        /** ProjectRead */
+        ProjectRead: {
+            /** Archived At */
+            archived_at: string | null;
+            /** Budget */
+            budget: number | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Description */
+            description: string | null;
+            /** Health */
+            health: string | null;
+            /** Health Note */
+            health_note: string | null;
+            /** Health Updated At */
+            health_updated_at: string | null;
+            /** Health Updated By */
+            health_updated_by: string | null;
             /**
              * Id
              * Format: uuid
@@ -1579,6 +4496,39 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
+        };
+        /** ProjectRelationList */
+        ProjectRelationList: {
+            /** Items */
+            items: components["schemas"]["ProjectRelationRead"][];
+            /** Total */
+            total: number;
+            /** Truncated */
+            truncated: boolean;
+        };
+        /**
+         * ProjectRelationRead
+         * @description Project-wide relation row — absolute source/target (no caller-relative
+         *     direction). Feeds the timeline dependency connectors (Pass 20).
+         */
+        ProjectRelationRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Relation Type */
+            relation_type: string;
+            /**
+             * Source Id
+             * Format: uuid
+             */
+            source_id: string;
+            /**
+             * Target Id
+             * Format: uuid
+             */
+            target_id: string;
         };
         /** ProjectStatusList */
         ProjectStatusList: {
@@ -1627,14 +4577,77 @@ export interface components {
             /** Position */
             position?: number | null;
         };
+        /** ProjectTypeList */
+        ProjectTypeList: {
+            /** Items */
+            items: components["schemas"]["ProjectTypeRead"][];
+            /** Total */
+            total: number;
+        };
+        /** ProjectTypeRead */
+        ProjectTypeRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Is Active */
+            is_active: boolean;
+            /** Key */
+            key: string;
+            /** Name */
+            name: string;
+            /** Position */
+            position: number;
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+        };
+        /** ProjectTypeReorder */
+        ProjectTypeReorder: {
+            /** Ordered Ids */
+            ordered_ids: string[];
+        };
+        /** ProjectTypeUpdate */
+        ProjectTypeUpdate: {
+            /** Is Active */
+            is_active?: boolean | null;
+            /** Name */
+            name?: string | null;
+        };
         /** ProjectUpdate */
         ProjectUpdate: {
             /** Budget */
             budget?: number | null;
             /** Description */
             description?: string | null;
+            /** Health */
+            health?: string | null;
+            /** Health Note */
+            health_note?: string | null;
             /** Name */
             name?: string | null;
+        };
+        /**
+         * ReactionAgg
+         * @description One emoji aggregate. The set is OPEN (Pass 35): only emojis with at
+         *     least one reaction appear, sorted by count desc then codepoint asc —
+         *     clients own the quick-pick set.
+         */
+        ReactionAgg: {
+            /** Count */
+            count: number;
+            /** Key */
+            key: string;
+            /** Me */
+            me: boolean;
+        };
+        /** ReactionList */
+        ReactionList: {
+            /** Items */
+            items: components["schemas"]["ReactionAgg"][];
         };
         /** RelationCreate */
         RelationCreate: {
@@ -1675,12 +4688,37 @@ export interface components {
              */
             target_id: string;
         };
+        /** RolloverRequest */
+        RolloverRequest: {
+            /**
+             * Target Cycle Id
+             * Format: uuid
+             */
+            target_cycle_id: string;
+        };
+        /** RolloverResult */
+        RolloverResult: {
+            /** Moved */
+            moved: number;
+        };
         /** SavedFilterCreate */
         SavedFilterCreate: {
+            /**
+             * Is Shared
+             * @default false
+             */
+            is_shared: boolean;
+            /**
+             * Layout
+             * @default list
+             */
+            layout: string;
             /** Name */
             name: string;
             /** @default {} */
             params: components["schemas"]["SavedFilterParams"];
+            /** Sort */
+            sort?: string | null;
         };
         /** SavedFilterList */
         SavedFilterList: {
@@ -1695,6 +4733,22 @@ export interface components {
          *     so a saved filter can never carry a status the list endpoint would 422 on.
          */
         SavedFilterParams: {
+            /** Assignee Id */
+            assignee_id?: string | null;
+            /** Cf Field */
+            cf_field?: string | null;
+            /** Cf Op */
+            cf_op?: string | null;
+            /** Cf Value */
+            cf_value?: string | null;
+            /** Columns */
+            columns?: string | null;
+            /** Cycle Id */
+            cycle_id?: string | null;
+            /** Milestone Id */
+            milestone_id?: string | null;
+            /** Module Id */
+            module_id?: string | null;
             /** Priority */
             priority?: string | null;
             /** Q */
@@ -1716,17 +4770,140 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            /** Is Locked */
+            is_locked: boolean;
+            /** Is Mine */
+            is_mine: boolean;
+            /** Is Shared */
+            is_shared: boolean;
+            /** Layout */
+            layout: string;
             /** Name */
             name: string;
+            /** Owner Name */
+            owner_name: string;
             params: components["schemas"]["SavedFilterParams"];
             /**
              * Project Id
              * Format: uuid
              */
             project_id: string;
+            /** Sort */
+            sort: string | null;
+        };
+        /**
+         * SavedFilterUpdate
+         * @description Author-only partial update (rename, relayout, share/lock toggles).
+         *     A LOCKED view only accepts the single-field unlock (v54.1 R1-⑤).
+         */
+        SavedFilterUpdate: {
+            /** Is Locked */
+            is_locked?: boolean | null;
+            /** Is Shared */
+            is_shared?: boolean | null;
+            /** Layout */
+            layout?: string | null;
+            /** Name */
+            name?: string | null;
+            /** Sort */
+            sort?: string | null;
+        };
+        /** SearchDocumentItem */
+        SearchDocumentItem: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Matched In
+             * @default primary
+             */
+            matched_in: string;
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            /** Project Key */
+            project_key: string;
+            /** Project Name */
+            project_name: string;
+            /** Snippet */
+            snippet?: string | null;
+            /** Title */
+            title: string;
+        };
+        /** SearchInitiativeItem */
+        SearchInitiativeItem: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** State */
+            state: string;
+        };
+        /** SearchMeetingItem */
+        SearchMeetingItem: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Matched In
+             * @default primary
+             */
+            matched_in: string;
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            /** Project Key */
+            project_key: string;
+            /** Project Name */
+            project_name: string;
+            /** Scheduled On */
+            scheduled_on: string | null;
+            /** Snippet */
+            snippet?: string | null;
+            /** Title */
+            title: string;
+        };
+        /**
+         * SearchNamedItem
+         * @description Cycles and modules — matched by name within member projects.
+         */
+        SearchNamedItem: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            /** Project Key */
+            project_key: string;
+            /** Project Name */
+            project_name: string;
         };
         /** SearchResultItem */
         SearchResultItem: {
+            /** Assignee Id */
+            assignee_id?: string | null;
+            /** Assignee Name */
+            assignee_name?: string | null;
+            /** Created At */
+            created_at?: string | null;
             /** Due Date */
             due_date: string | null;
             /**
@@ -1734,6 +4911,11 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            /**
+             * Matched In
+             * @default primary
+             */
+            matched_in: string;
             /** Priority */
             priority: string;
             /**
@@ -1745,12 +4927,18 @@ export interface components {
             project_key: string;
             /** Project Name */
             project_name: string;
+            /** Snippet */
+            snippet?: string | null;
+            /** Start Date */
+            start_date?: string | null;
             /** Status */
             status: string;
             /** Subject */
             subject: string;
             /** Type */
             type: string;
+            /** Updated At */
+            updated_at?: string | null;
         };
         /** SearchResults */
         SearchResults: {
@@ -1760,6 +4948,43 @@ export interface components {
             query: string;
             /** Total */
             total: number;
+        };
+        /** StatusRead */
+        StatusRead: {
+            config: components["schemas"]["OpsConfig"];
+            counts: components["schemas"]["OpsCounts"];
+            database: components["schemas"]["OpsDatabase"];
+            /** Version */
+            version: string;
+        };
+        /**
+         * StorageRead
+         * @description Settings Storage tab payload (Pass 57): used counts stored blobs only;
+         *     links carry no bytes. quota comes from env (read-only here).
+         */
+        StorageRead: {
+            /** Attachment Count */
+            attachment_count: number;
+            /** Link Count */
+            link_count: number;
+            /** Quota Bytes */
+            quota_bytes: number;
+            /** Used Bytes */
+            used_bytes: number;
+        };
+        /**
+         * TemplateApplied
+         * @description Copy counts when a project was created from a template (never silent).
+         */
+        TemplateApplied: {
+            /** Automation Rules */
+            automation_rules: number;
+            /** Custom Fields */
+            custom_fields: number;
+            /** Statuses */
+            statuses: number;
+            /** Types */
+            types: number;
         };
         /** TimeEntryCreate */
         TimeEntryCreate: {
@@ -1808,6 +5033,92 @@ export interface components {
              */
             work_package_id: string;
         };
+        /**
+         * UnifiedSearchResults
+         * @description Grouped workspace search (Pass 14, v14.1). `returned` is the RETURNED
+         *     count; `truncated` means more hits exist beyond the per-group cap (computed
+         *     by a limit+1 fetch — never a silent cut).
+         */
+        UnifiedSearchResults: {
+            cycles: components["schemas"]["NamedGroup"];
+            documents: components["schemas"]["DocumentGroup"];
+            initiatives: components["schemas"]["InitiativeGroup"];
+            meetings: components["schemas"]["MeetingGroup"];
+            modules: components["schemas"]["NamedGroup"];
+            /** Query */
+            query: string;
+            work_packages: components["schemas"]["WpGroup"];
+        };
+        /**
+         * UserCreate
+         * @description Directory registration — no invite email; real login wiring is the
+         *     OIDC pass. Email normalizes to a lowercase login key (mutable, never a
+         *     stable id).
+         */
+        UserCreate: {
+            /** Display Name */
+            display_name: string;
+            /** Email */
+            email: string;
+        };
+        /** UserDirectoryList */
+        UserDirectoryList: {
+            /** Items */
+            items: components["schemas"]["UserDirectoryRead"][];
+            /** Total */
+            total: number;
+        };
+        /**
+         * UserDirectoryRead
+         * @description Directory row for workspace admins (/api/v1/users).
+         */
+        UserDirectoryRead: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Display Name */
+            display_name: string;
+            /** Email */
+            email: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Is Active */
+            is_active: boolean;
+            /** Is Admin */
+            is_admin: boolean;
+        };
+        /** UserMembershipList */
+        UserMembershipList: {
+            /** Items */
+            items: components["schemas"]["UserMembershipRead"][];
+            /** Total */
+            total: number;
+        };
+        /**
+         * UserMembershipRead
+         * @description One project membership row for the workspace governance read
+         *     (Pass 62 PR-CB) — deliberately minimal fields (v62.1 R1-(2)).
+         */
+        UserMembershipRead: {
+            /** Archived */
+            archived: boolean;
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            /** Project Key */
+            project_key: string;
+            /** Project Name */
+            project_name: string;
+            /** Role */
+            role: string;
+        };
         /** UserRead */
         UserRead: {
             /** Display Name */
@@ -1821,6 +5132,22 @@ export interface components {
             id: string;
             /** Is Active */
             is_active: boolean;
+            /** Is Admin */
+            is_admin: boolean;
+        };
+        /**
+         * UserUpdate
+         * @description Admin-only partial update. Guards live in the endpoint: no
+         *     self-deactivation, and the last admin can neither lose the flag nor be
+         *     deactivated.
+         */
+        UserUpdate: {
+            /** Display Name */
+            display_name?: string | null;
+            /** Is Active */
+            is_active?: boolean | null;
+            /** Is Admin */
+            is_admin?: boolean | null;
         };
         /** ValidationError */
         ValidationError: {
@@ -1835,10 +5162,31 @@ export interface components {
             /** Error Type */
             type: string;
         };
+        /** WatcherList */
+        WatcherList: {
+            /** Items */
+            items: components["schemas"]["WatcherRead"][];
+            /** Me Watching */
+            me_watching: boolean;
+            /** Total */
+            total: number;
+        };
+        /** WatcherRead */
+        WatcherRead: {
+            /** Display Name */
+            display_name: string;
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+        };
         /** WorkPackageCreate */
         WorkPackageCreate: {
             /** Assignee Id */
             assignee_id?: string | null;
+            /** Cycle Id */
+            cycle_id?: string | null;
             /** Description */
             description?: string | null;
             /** Due Date */
@@ -1847,6 +5195,8 @@ export interface components {
             estimated_hours?: number | null;
             /** Milestone Id */
             milestone_id?: string | null;
+            /** Module Id */
+            module_id?: string | null;
             /** Parent Id */
             parent_id?: string | null;
             /**
@@ -1869,12 +5219,48 @@ export interface components {
              */
             type: string;
         };
+        /**
+         * WorkPackageDuplicateResult
+         * @description Duplicate response: the new WP plus how many custom values did NOT copy
+         *     (inactive/unbound field, stale option or ex-member value — v12.1 R1-④).
+         */
+        WorkPackageDuplicateResult: {
+            /** Skipped Custom Values */
+            skipped_custom_values: number;
+            work_package: components["schemas"]["WorkPackageRead"];
+        };
         /** WorkPackageList */
         WorkPackageList: {
             /** Items */
             items: components["schemas"]["WorkPackageRead"][];
             /** Total */
             total: number;
+        };
+        /** WorkPackageMove */
+        WorkPackageMove: {
+            /**
+             * Dry Run
+             * @default false
+             */
+            dry_run: boolean;
+            /** Expected Version */
+            expected_version: number;
+            /**
+             * Target Project Id
+             * Format: uuid
+             */
+            target_project_id: string;
+        };
+        /**
+         * WorkPackageMoveResult
+         * @description dry_run=True returns the SAME cleared summary with work_package=None
+         *     and no state change (v66.1 R1-④).
+         */
+        WorkPackageMoveResult: {
+            cleared: components["schemas"]["MoveCleared"];
+            /** Dry Run */
+            dry_run: boolean;
+            work_package: components["schemas"]["WorkPackageRead"] | null;
         };
         /**
          * WorkPackagePatch
@@ -1885,6 +5271,8 @@ export interface components {
         WorkPackagePatch: {
             /** Assignee Id */
             assignee_id?: string | null;
+            /** Cycle Id */
+            cycle_id?: string | null;
             /** Description */
             description?: string | null;
             /** Due Date */
@@ -1895,6 +5283,8 @@ export interface components {
             expected_version: number;
             /** Milestone Id */
             milestone_id?: string | null;
+            /** Module Id */
+            module_id?: string | null;
             /** Parent Id */
             parent_id?: string | null;
             /** Priority */
@@ -1917,6 +5307,12 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+            /** Created By */
+            created_by: string | null;
+            /** Custom Values */
+            custom_values?: components["schemas"]["CustomValueRead"][] | null;
+            /** Cycle Id */
+            cycle_id: string | null;
             /** Description */
             description: string | null;
             /** Due Date */
@@ -1930,6 +5326,8 @@ export interface components {
             id: string;
             /** Milestone Id */
             milestone_id: string | null;
+            /** Module Id */
+            module_id: string | null;
             /** Parent Id */
             parent_id: string | null;
             /** Priority */
@@ -1955,6 +5353,15 @@ export interface components {
             /** Version */
             version: number;
         };
+        /** WpGroup */
+        WpGroup: {
+            /** Items */
+            items: components["schemas"]["SearchResultItem"][];
+            /** Returned */
+            returned: number;
+            /** Truncated */
+            truncated: boolean;
+        };
     };
     responses: never;
     parameters: never;
@@ -1967,11 +5374,15 @@ export interface operations {
     delete_action_item_api_v1_action_items__item_id__delete: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 item_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -1996,11 +5407,15 @@ export interface operations {
     update_action_item_api_v1_action_items__item_id__patch: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 item_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody: {
             content: {
@@ -2028,14 +5443,170 @@ export interface operations {
             };
         };
     };
+    convert_action_item_api_v1_action_items__item_id__convert_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                item_id: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActionItemRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     delete_attachment_api_v1_attachments__attachment_id__delete: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 attachment_id: string;
             };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    download_attachment_api_v1_attachments__attachment_id__download_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                attachment_id: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    auth_config_api_v1_auth_config_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
             cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthConfigRead"];
+                };
+            };
+        };
+    };
+    dev_login_api_v1_auth_login_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LoginRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LoginResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    dev_logout_api_v1_auth_logout_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -2060,9 +5631,13 @@ export interface operations {
     capabilities_api_v1_capabilities_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path?: never;
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -2075,16 +5650,132 @@ export interface operations {
                     "application/json": components["schemas"]["AiCapabilities"];
                 };
             };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_reaction_api_v1_comments__comment_id__reactions__emoji__put: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                comment_id: string;
+                emoji: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReactionList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_reaction_api_v1_comments__comment_id__reactions__emoji__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                comment_id: string;
+                emoji: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_document_comment_api_v1_document_comments__comment_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                comment_id: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
         };
     };
     get_document_api_v1_documents__doc_id__get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 doc_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -2111,11 +5802,15 @@ export interface operations {
     delete_document_api_v1_documents__doc_id__delete: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 doc_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -2140,11 +5835,15 @@ export interface operations {
     update_document_api_v1_documents__doc_id__patch: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 doc_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody: {
             content: {
@@ -2169,6 +5868,191 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["DocumentConflict"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_document_comments_api_v1_documents__doc_id__comments_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                doc_id: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentCommentList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_document_comment_api_v1_documents__doc_id__comments_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                doc_id: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DocumentCommentCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentCommentRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_document_links_api_v1_documents__doc_id__work_package_links_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                doc_id: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentLinkList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_document_link_api_v1_documents__doc_id__work_package_links_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                doc_id: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DocumentLinkCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentLinkRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_document_link_api_v1_documents__doc_id__work_package_links__link_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                doc_id: string;
+                link_id: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -2223,12 +6107,233 @@ export interface operations {
             };
         };
     };
+    list_initiatives_api_v1_initiatives_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InitiativeList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_initiative_api_v1_initiatives_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InitiativeCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InitiativeRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_initiative_api_v1_initiatives__initiative_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                initiative_id: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_initiative_api_v1_initiatives__initiative_id__patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                initiative_id: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InitiativeUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InitiativeRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    connect_project_api_v1_initiatives__initiative_id__projects_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                initiative_id: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InitiativeConnect"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InitiativeRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    disconnect_project_api_v1_initiatives__initiative_id__projects__project_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                initiative_id: string;
+                project_id: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InitiativeRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     me_api_v1_me_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path?: never;
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -2241,6 +6346,188 @@ export interface operations {
                     "application/json": components["schemas"]["UserRead"];
                 };
             };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_access_tokens_api_v1_me_access_tokens_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PersonalAccessTokenList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_access_token_api_v1_me_access_tokens_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PersonalAccessTokenCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PersonalAccessTokenCreated"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    revoke_access_token_api_v1_me_access_tokens__token_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                token_id: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_notification_settings_api_v1_me_notification_settings_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationSettingsRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_notification_settings_api_v1_me_notification_settings_put: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NotificationSettingsUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationSettingsRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
         };
     };
     list_notifications_api_v1_me_notifications_get: {
@@ -2249,9 +6536,13 @@ export interface operations {
                 unread_only?: boolean;
                 limit?: number;
             };
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path?: never;
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -2278,9 +6569,13 @@ export interface operations {
     mark_all_notifications_read_api_v1_me_notifications_read_all_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path?: never;
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -2291,16 +6586,133 @@ export interface operations {
                 };
                 content?: never;
             };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
         };
     };
     mark_notification_read_api_v1_me_notifications__notification_id__read_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 notification_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    my_time_entries_api_v1_me_time_entries_get: {
+        parameters: {
+            query?: {
+                from?: string | null;
+                to?: string | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MyTimeRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    my_work_api_v1_me_work_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MeWorkRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_meeting_template_api_v1_meeting_templates__template_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                template_id: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -2325,11 +6737,15 @@ export interface operations {
     get_meeting_api_v1_meetings__meeting_id__get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 meeting_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -2356,11 +6772,15 @@ export interface operations {
     delete_meeting_api_v1_meetings__meeting_id__delete: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 meeting_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -2385,11 +6805,15 @@ export interface operations {
     update_meeting_api_v1_meetings__meeting_id__patch: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 meeting_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody: {
             content: {
@@ -2429,11 +6853,15 @@ export interface operations {
     create_action_item_api_v1_meetings__meeting_id__action_items_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 meeting_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody: {
             content: {
@@ -2461,15 +6889,92 @@ export interface operations {
             };
         };
     };
+    create_follow_up_api_v1_meetings__meeting_id__follow_up_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                meeting_id: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MeetingFollowUpCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MeetingRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    ops_status_api_v1_ops_status_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StatusRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_projects_api_v1_projects_get: {
         parameters: {
             query?: {
                 limit?: number;
                 offset?: number;
+                include_archived?: boolean;
             };
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path?: never;
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -2496,9 +7001,13 @@ export interface operations {
     create_project_api_v1_projects_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path?: never;
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody: {
             content: {
@@ -2512,7 +7021,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ProjectRead"];
+                    "application/json": components["schemas"]["ProjectCreateResponse"];
                 };
             };
             /** @description Validation Error */
@@ -2529,11 +7038,15 @@ export interface operations {
     get_project_api_v1_projects__project_id__get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 project_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -2560,11 +7073,15 @@ export interface operations {
     update_project_api_v1_projects__project_id__patch: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 project_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody: {
             content: {
@@ -2596,12 +7113,20 @@ export interface operations {
         parameters: {
             query?: {
                 limit?: number;
+                action?: string | null;
+                field?: string | null;
+                actor_id?: string | null;
+                order?: string;
             };
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 project_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -2625,14 +7150,56 @@ export interface operations {
             };
         };
     };
-    list_attachments_api_v1_projects__project_id__attachments_get: {
+    archive_project_api_v1_projects__project_id__archive_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 project_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_attachments_api_v1_projects__project_id__attachments_get: {
+        parameters: {
+            query?: {
+                work_package_id?: string | null;
+                document_id?: string | null;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -2659,11 +7226,15 @@ export interface operations {
     create_attachment_api_v1_projects__project_id__attachments_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 project_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody: {
             content: {
@@ -2691,14 +7262,57 @@ export interface operations {
             };
         };
     };
-    list_automation_rules_api_v1_projects__project_id__automation_rules_get: {
+    upload_attachment_api_v1_projects__project_id__attachments_upload_post: {
         parameters: {
-            query?: never;
-            header?: never;
+            query: {
+                filename: string;
+                work_package_id?: string | null;
+                document_id?: string | null;
+            };
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 project_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AttachmentRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_automation_rules_api_v1_projects__project_id__automation_rules_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -2725,11 +7339,15 @@ export interface operations {
     create_automation_rule_api_v1_projects__project_id__automation_rules_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 project_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody: {
             content: {
@@ -2757,15 +7375,95 @@ export interface operations {
             };
         };
     };
+    reorder_automation_rules_api_v1_projects__project_id__automation_rules_order_put: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AutomationRuleReorder"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AutomationRuleList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_automation_rule_runs_api_v1_projects__project_id__automation_rules_runs_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AutomationRuleRunList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     delete_automation_rule_api_v1_projects__project_id__automation_rules__rule_id__delete: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 project_id: string;
                 rule_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -2790,12 +7488,16 @@ export interface operations {
     update_automation_rule_api_v1_projects__project_id__automation_rules__rule_id__patch: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 project_id: string;
                 rule_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody: {
             content: {
@@ -2823,14 +7525,431 @@ export interface operations {
             };
         };
     };
-    project_dashboard_api_v1_projects__project_id__dashboard_get: {
+    list_custom_fields_api_v1_projects__project_id__custom_fields_get: {
         parameters: {
-            query?: never;
-            header?: never;
+            query?: {
+                include_inactive?: boolean;
+            };
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 project_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CustomFieldList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_custom_field_api_v1_projects__project_id__custom_fields_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CustomFieldCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CustomFieldRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reorder_custom_fields_api_v1_projects__project_id__custom_fields_order_put: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CustomFieldReorder"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CustomFieldList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_custom_field_api_v1_projects__project_id__custom_fields__field_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                project_id: string;
+                field_id: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_custom_field_api_v1_projects__project_id__custom_fields__field_id__patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                project_id: string;
+                field_id: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CustomFieldUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CustomFieldRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_cycles_api_v1_projects__project_id__cycles_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CycleList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_cycle_api_v1_projects__project_id__cycles_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CycleCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CycleRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_cycle_api_v1_projects__project_id__cycles__cycle_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                project_id: string;
+                cycle_id: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_cycle_api_v1_projects__project_id__cycles__cycle_id__patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                project_id: string;
+                cycle_id: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CycleUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CycleRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cycle_burndown_api_v1_projects__project_id__cycles__cycle_id__burndown_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                project_id: string;
+                cycle_id: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BurndownRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    rollover_cycle_api_v1_projects__project_id__cycles__cycle_id__rollover_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                project_id: string;
+                cycle_id: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RolloverRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RolloverResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    project_dashboard_api_v1_projects__project_id__dashboard_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -2854,14 +7973,127 @@ export interface operations {
             };
         };
     };
-    list_documents_api_v1_projects__project_id__documents_get: {
+    export_dashboard_csv_api_v1_projects__project_id__dashboard_export_csv_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 project_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_dashboard_layout_api_v1_projects__project_id__dashboard_layout_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DashboardLayoutRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_dashboard_layout_api_v1_projects__project_id__dashboard_layout_put: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DashboardLayoutPut"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DashboardLayoutRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_documents_api_v1_projects__project_id__documents_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -2888,11 +8120,15 @@ export interface operations {
     create_document_api_v1_projects__project_id__documents_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 project_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody: {
             content: {
@@ -2920,14 +8156,206 @@ export interface operations {
             };
         };
     };
-    list_meetings_api_v1_projects__project_id__meetings_get: {
+    list_intake_api_v1_projects__project_id__intake_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 project_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IntakeList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    submit_intake_api_v1_projects__project_id__intake_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IntakeCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IntakeRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    triage_intake_api_v1_projects__project_id__intake__item_id__triage_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                project_id: string;
+                item_id: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IntakeTriage"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IntakeRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_meeting_templates_api_v1_projects__project_id__meeting_templates_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MeetingTemplateList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_meeting_template_api_v1_projects__project_id__meeting_templates_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MeetingTemplateCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MeetingTemplateRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_meetings_api_v1_projects__project_id__meetings_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -2954,11 +8382,15 @@ export interface operations {
     create_meeting_api_v1_projects__project_id__meetings_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 project_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody: {
             content: {
@@ -2989,11 +8421,15 @@ export interface operations {
     list_members_api_v1_projects__project_id__members_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 project_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -3020,11 +8456,15 @@ export interface operations {
     add_member_api_v1_projects__project_id__members_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 project_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody: {
             content: {
@@ -3055,12 +8495,16 @@ export interface operations {
     remove_member_api_v1_projects__project_id__members__user_id__delete: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 project_id: string;
                 user_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -3085,12 +8529,16 @@ export interface operations {
     update_member_role_api_v1_projects__project_id__members__user_id__patch: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 project_id: string;
                 user_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody: {
             content: {
@@ -3121,11 +8569,15 @@ export interface operations {
     list_milestones_api_v1_projects__project_id__milestones_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 project_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -3152,11 +8604,15 @@ export interface operations {
     create_milestone_api_v1_projects__project_id__milestones_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 project_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody: {
             content: {
@@ -3187,12 +8643,16 @@ export interface operations {
     delete_milestone_api_v1_projects__project_id__milestones__milestone_id__delete: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 project_id: string;
                 milestone_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -3217,12 +8677,16 @@ export interface operations {
     update_milestone_api_v1_projects__project_id__milestones__milestone_id__patch: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 project_id: string;
                 milestone_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody: {
             content: {
@@ -3250,14 +8714,314 @@ export interface operations {
             };
         };
     };
-    list_saved_filters_api_v1_projects__project_id__saved_filters_get: {
+    list_modules_api_v1_projects__project_id__modules_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 project_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModuleList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_module_api_v1_projects__project_id__modules_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ModuleCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModuleRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_module_api_v1_projects__project_id__modules__module_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                project_id: string;
+                module_id: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_module_api_v1_projects__project_id__modules__module_id__patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                project_id: string;
+                module_id: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ModuleUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModuleRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_module_members_api_v1_projects__project_id__modules__module_id__members_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                project_id: string;
+                module_id: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModuleMemberList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    replace_module_members_api_v1_projects__project_id__modules__module_id__members_put: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                project_id: string;
+                module_id: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ModuleMembersPut"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModuleMemberList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    permission_report_api_v1_projects__project_id__permissions_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PermissionReportRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_project_relations_api_v1_projects__project_id__relations_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectRelationList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_saved_filters_api_v1_projects__project_id__saved_filters_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -3284,11 +9048,15 @@ export interface operations {
     create_saved_filter_api_v1_projects__project_id__saved_filters_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 project_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody: {
             content: {
@@ -3319,12 +9087,16 @@ export interface operations {
     delete_saved_filter_api_v1_projects__project_id__saved_filters__filter_id__delete: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 project_id: string;
                 filter_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -3346,14 +9118,58 @@ export interface operations {
             };
         };
     };
+    update_saved_filter_api_v1_projects__project_id__saved_filters__filter_id__patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                project_id: string;
+                filter_id: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SavedFilterUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SavedFilterRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_project_statuses_api_v1_projects__project_id__statuses_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 project_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -3380,11 +9196,15 @@ export interface operations {
     reorder_project_statuses_api_v1_projects__project_id__statuses_order_put: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 project_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody: {
             content: {
@@ -3415,12 +9235,16 @@ export interface operations {
     update_project_status_api_v1_projects__project_id__statuses__status_id__patch: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 project_id: string;
                 status_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody: {
             content: {
@@ -3448,6 +9272,190 @@ export interface operations {
             };
         };
     };
+    project_storage_api_v1_projects__project_id__storage_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StorageRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_project_types_api_v1_projects__project_id__types_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectTypeList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reorder_project_types_api_v1_projects__project_id__types_order_put: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProjectTypeReorder"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectTypeList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_project_type_api_v1_projects__project_id__types__type_id__patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                project_id: string;
+                type_id: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProjectTypeUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectTypeRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    unarchive_project_api_v1_projects__project_id__unarchive_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_work_packages_api_v1_projects__project_id__work_packages_get: {
         parameters: {
             query?: {
@@ -3455,16 +9463,29 @@ export interface operations {
                 priority?: ("none" | "low" | "medium" | "high" | "urgent") | null;
                 type?: ("task" | "bug" | "feature" | "milestone") | null;
                 assignee_id?: string | null;
+                milestone_id?: string | null;
+                cycle_id?: string | null;
+                no_cycle?: boolean;
+                open_only?: boolean;
+                module_id?: string | null;
                 q?: string | null;
+                custom_fields?: string | null;
+                cf_field?: string | null;
+                cf_op?: string | null;
+                cf_value?: string | null;
                 sort?: "created" | "subject";
                 limit?: number;
                 offset?: number;
             };
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 project_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -3491,11 +9512,15 @@ export interface operations {
     create_work_package_api_v1_projects__project_id__work_packages_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 project_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody: {
             content: {
@@ -3523,14 +9548,57 @@ export interface operations {
             };
         };
     };
-    export_work_packages_csv_api_v1_projects__project_id__work_packages_export_csv_get: {
+    bulk_update_work_packages_api_v1_projects__project_id__work_packages_bulk_update_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 project_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BulkUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BulkUpdateResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_work_packages_csv_api_v1_projects__project_id__work_packages_export_csv_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -3557,11 +9625,15 @@ export interface operations {
     import_work_packages_csv_api_v1_projects__project_id__work_packages_import_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 project_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody: {
             content: {
@@ -3589,15 +9661,243 @@ export interface operations {
             };
         };
     };
-    search_work_packages_api_v1_search_work_packages_get: {
+    import_jira_csv_api_v1_projects__project_id__work_packages_import_jira_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CsvImportRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CsvImportResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    import_linear_csv_api_v1_projects__project_id__work_packages_import_linear_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CsvImportRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CsvImportResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    portfolio_report_api_v1_reports_portfolio_get: {
+        parameters: {
+            query?: {
+                include_archived?: boolean;
+                limit?: number;
+                offset?: number;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PortfolioReportRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_portfolio_csv_api_v1_reports_portfolio_export_csv_get: {
+        parameters: {
+            query?: {
+                include_archived?: boolean;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    portfolio_timeline_api_v1_reports_portfolio_timeline_get: {
+        parameters: {
+            query?: {
+                include_archived?: boolean;
+                limit?: number;
+                offset?: number;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PortfolioTimelineRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    unified_search_api_v1_search_get: {
         parameters: {
             query: {
                 q: string;
                 limit?: number;
             };
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path?: never;
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UnifiedSearchResults"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    search_work_packages_api_v1_search_work_packages_get: {
+        parameters: {
+            query?: {
+                q?: string | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -3621,14 +9921,165 @@ export interface operations {
             };
         };
     };
+    list_users_api_v1_users_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserDirectoryList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_user_api_v1_users_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UserCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserDirectoryRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_user_api_v1_users__user_id__patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                user_id: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UserUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserDirectoryRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_user_memberships_api_v1_users__user_id__memberships_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                user_id: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserMembershipList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_work_package_api_v1_work_packages__wp_id__get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 wp_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -3655,11 +10106,15 @@ export interface operations {
     patch_work_package_api_v1_work_packages__wp_id__patch: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 wp_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody: {
             content: {
@@ -3701,12 +10156,20 @@ export interface operations {
             query?: {
                 limit?: number;
                 offset?: number;
+                action?: string | null;
+                field?: string | null;
+                actor_id?: string | null;
+                order?: string;
             };
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 wp_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -3736,11 +10199,15 @@ export interface operations {
                 limit?: number;
                 offset?: number;
             };
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 wp_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -3767,11 +10234,15 @@ export interface operations {
     create_comment_api_v1_work_packages__wp_id__comments_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 wp_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody: {
             content: {
@@ -3802,11 +10273,15 @@ export interface operations {
     list_cost_entries_api_v1_work_packages__wp_id__cost_entries_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 wp_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -3833,11 +10308,15 @@ export interface operations {
     log_cost_api_v1_work_packages__wp_id__cost_entries_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 wp_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody: {
             content: {
@@ -3868,12 +10347,16 @@ export interface operations {
     delete_cost_entry_api_v1_work_packages__wp_id__cost_entries__entry_id__delete: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 wp_id: string;
                 entry_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -3895,14 +10378,201 @@ export interface operations {
             };
         };
     };
-    list_relations_api_v1_work_packages__wp_id__relations_get: {
+    list_custom_values_api_v1_work_packages__wp_id__custom_values_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 wp_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CustomValueList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_custom_values_api_v1_work_packages__wp_id__custom_values_put: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                wp_id: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CustomValuesPut"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CustomValueList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_work_package_documents_api_v1_work_packages__wp_id__documents_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                wp_id: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    duplicate_work_package_api_v1_work_packages__wp_id__duplicate_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                wp_id: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkPackageDuplicateResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    move_work_package_api_v1_work_packages__wp_id__move_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                wp_id: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkPackageMove"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkPackageMoveResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_relations_api_v1_work_packages__wp_id__relations_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                wp_id: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -3929,11 +10599,15 @@ export interface operations {
     create_relation_api_v1_work_packages__wp_id__relations_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 wp_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody: {
             content: {
@@ -3964,12 +10638,16 @@ export interface operations {
     delete_relation_api_v1_work_packages__wp_id__relations__relation_id__delete: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 wp_id: string;
                 relation_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -3994,11 +10672,15 @@ export interface operations {
     summarize_api_v1_work_packages__wp_id__summary_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 wp_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -4025,11 +10707,15 @@ export interface operations {
     list_time_entries_api_v1_work_packages__wp_id__time_entries_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 wp_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -4056,11 +10742,15 @@ export interface operations {
     log_time_api_v1_work_packages__wp_id__time_entries_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 wp_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody: {
             content: {
@@ -4091,12 +10781,117 @@ export interface operations {
     delete_time_entry_api_v1_work_packages__wp_id__time_entries__entry_id__delete: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 wp_id: string;
                 entry_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_watchers_api_v1_work_packages__wp_id__watchers_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                wp_id: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WatcherList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    watch_api_v1_work_packages__wp_id__watchers_me_put: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                wp_id: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    unwatch_api_v1_work_packages__wp_id__watchers_me_delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                wp_id: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {

@@ -21,8 +21,17 @@ export type WpFilters = {
   priority?: string
   type?: string
   assignee_id?: string
+  milestone_id?: string
+  cycle_id?: string
+  module_id?: string
   q?: string
   sort?: string
+  no_cycle?: string
+  open_only?: string
+  custom_fields?: string
+  cf_field?: string
+  cf_op?: string
+  cf_value?: string
 }
 
 // The server caps a single page at 500. Fetch every page so no view silently
@@ -60,6 +69,33 @@ export function useWorkPackages(projectId: string, filters: WpFilters) {
   return useQuery({
     queryKey: ['work-packages', projectId, filters],
     queryFn: () => fetchAllWorkPackages(projectId, filters),
+  })
+}
+
+export type WatcherList = {
+  items: Array<{ user_id: string; display_name: string }>
+  total: number
+  me_watching: boolean
+}
+
+export function useWatchers(wpId: string | null) {
+  return useQuery({
+    queryKey: ['wp-watchers', wpId],
+    queryFn: () => api<WatcherList>(`/api/v1/work-packages/${wpId}/watchers`),
+    enabled: wpId !== null,
+  })
+}
+
+export function useSetWatching(wpId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (watching: boolean) =>
+      api<void>(`/api/v1/work-packages/${wpId}/watchers/me`, {
+        method: watching ? 'PUT' : 'DELETE',
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['wp-watchers', wpId] })
+    },
   })
 }
 
@@ -198,10 +234,14 @@ export function useActivities(wpId: string | null) {
 export function useCreateComment(wpId: string) {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (body: string) =>
+    mutationFn: (input: {
+      body: string
+      parent_id?: string | null
+      mentioned_user_ids?: string[]
+    }) =>
       api<Comment>(`/api/v1/work-packages/${wpId}/comments`, {
         method: 'POST',
-        body: JSON.stringify({ body }),
+        body: JSON.stringify(input),
       }),
     onSuccess: () => {
       // A comment also appends a 'commented' activity — refresh both.
@@ -211,10 +251,87 @@ export function useCreateComment(wpId: string) {
   })
 }
 
+export type DuplicateResult = {
+  work_package: WorkPackage
+  /** custom values that failed today's write rules and were not copied */
+  skipped_custom_values: number
+}
+
+export function useDuplicateWorkPackage(projectId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (wpId: string) =>
+      api<DuplicateResult>(`/api/v1/work-packages/${wpId}/duplicate`, { method: 'POST' }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['work-packages', projectId] })
+    },
+  })
+}
+
+export type BulkUpdateResult = {
+  updated_ids: string[]
+  unchanged_ids: string[]
+  /** opaque — missing and cross-project ids look identical (existence hiding) */
+  skipped_ids: string[]
+}
+
+export function useBulkUpdate(projectId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (input: {
+      ids: string[]
+      patch: { status?: string; assignee_id?: string | null; priority?: string }
+    }) =>
+      api<BulkUpdateResult>(`/api/v1/projects/${projectId}/work-packages/bulk-update`, {
+        method: 'POST',
+        body: JSON.stringify(input),
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['work-packages', projectId] })
+    },
+  })
+}
+
+export type ProjectRelationList = {
+  items: { id: string; source_id: string; target_id: string; relation_type: string }[]
+  total: number
+  truncated: boolean
+}
+
+export function useProjectRelations(projectId: string) {
+  return useQuery({
+    queryKey: ['project-relations', projectId],
+    queryFn: () => api<ProjectRelationList>(`/api/v1/projects/${projectId}/relations`),
+  })
+}
+
+export function useToggleReaction(wpId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ commentId, key, on }: { commentId: string; key: string; on: boolean }) =>
+      // encodeURIComponent: a raw '#' (keycap #⃣) would start a URL fragment.
+      api(`/api/v1/comments/${commentId}/reactions/${encodeURIComponent(key)}`, {
+        method: on ? 'PUT' : 'DELETE',
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['work-package-comments', wpId] })
+    },
+  })
+}
+
+export type WorkPackageCreateInput = {
+  subject: string
+  type?: string
+  status?: string
+  priority?: string
+  assignee_id?: string | null
+  due_date?: string | null
+}
+
 export function useCreateWorkPackage(projectId: string) {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (body: { subject: string }) =>
+    mutationFn: (body: WorkPackageCreateInput) =>
       api<WorkPackage>(`/api/v1/projects/${projectId}/work-packages`, {
         method: 'POST',
         body: JSON.stringify(body),
@@ -261,6 +378,53 @@ export function usePatchWorkPackage(projectId: string) {
         void queryClient.invalidateQueries({ queryKey: ['work-package', wpId] })
         void queryClient.invalidateQueries({ queryKey: ['work-packages', projectId] })
       }
+    },
+  })
+}
+
+export type MoveRefSummary = { count: number; names: string[]; overflow: number }
+
+export type MoveCleared = {
+  parent: boolean
+  children: MoveRefSummary
+  milestone: boolean
+  cycle: boolean
+  module: boolean
+  relations: MoveRefSummary
+  custom_values: MoveRefSummary
+  document_links: MoveRefSummary
+  watchers_removed: MoveRefSummary
+  assignee_cleared: boolean
+}
+
+export type MoveResult = {
+  work_package: WorkPackage | null
+  cleared: MoveCleared
+  dry_run: boolean
+}
+
+export function useMoveWorkPackage(projectId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (input: {
+      wpId: string
+      target_project_id: string
+      expected_version: number
+      dry_run?: boolean
+    }) =>
+      api<MoveResult>(`/api/v1/work-packages/${input.wpId}/move`, {
+        method: 'POST',
+        body: JSON.stringify({
+          target_project_id: input.target_project_id,
+          expected_version: input.expected_version,
+          dry_run: input.dry_run ?? false,
+        }),
+      }),
+    onSuccess: (result) => {
+      if (result.dry_run) return
+      void queryClient.invalidateQueries({ queryKey: ['work-packages', projectId] })
+      void queryClient.invalidateQueries({ queryKey: ['work-package'] })
+      void queryClient.invalidateQueries({ queryKey: ['projects'] })
     },
   })
 }

@@ -10,6 +10,9 @@ class AttachmentCreate(BaseModel):
     url: str
     content_type: str | None = None
     size_bytes: int | None = None
+    # Optional anchor (at most one) — validated against the project in the router.
+    work_package_id: uuid.UUID | None = None
+    document_id: uuid.UUID | None = None
 
     @field_validator("filename")
     @classmethod
@@ -51,10 +54,15 @@ class AttachmentRead(BaseModel):
 
     id: uuid.UUID
     project_id: uuid.UUID
+    work_package_id: uuid.UUID | None = None
+    document_id: uuid.UUID | None = None
     filename: str
     content_type: str | None
     size_bytes: int | None
     url: str
+    # True for uploaded rows — the client renders a /download link instead of
+    # the sentinel url (URL-only rows keep the external link).
+    has_file: bool = False
     uploaded_by: uuid.UUID | None
     created_at: datetime
 
@@ -62,3 +70,13 @@ class AttachmentRead(BaseModel):
 class AttachmentList(BaseModel):
     items: list[AttachmentRead]
     total: int
+
+
+class StorageRead(BaseModel):
+    """Settings Storage tab payload (Pass 57): used counts stored blobs only;
+    links carry no bytes. quota comes from env (read-only here)."""
+
+    used_bytes: int
+    quota_bytes: int
+    attachment_count: int
+    link_count: int

@@ -1,4 +1,4 @@
-import { Bell } from 'lucide-react'
+import { Bell, ArrowUpRight } from 'lucide-react'
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
@@ -13,13 +13,7 @@ import {
   useMarkNotificationRead,
   useNotifications,
 } from './api'
-
-function message(n: Notification): string {
-  const who = n.actor_name ?? '누군가'
-  const subject = n.work_package_subject ?? '삭제된 작업'
-  if (n.kind === 'assigned') return `${who}님이 '${subject}' 작업에 회원님을 배정했습니다.`
-  return `${who}: ${subject}`
-}
+import { getNotificationMessage, getNotificationTargetPath } from './view'
 
 export function NotificationBell() {
   const [open, setOpen] = useState(false)
@@ -33,9 +27,13 @@ export function NotificationBell() {
   const openTarget = (n: Notification) => {
     markRead.mutate(n.id)
     setOpen(false)
-    if (n.work_package_id) {
-      navigate(`/projects/${n.project_id}/work-packages?wp=${n.work_package_id}`)
-    }
+    const target = getNotificationTargetPath(n)
+    if (target) navigate(target)
+  }
+
+  const openInbox = () => {
+    setOpen(false)
+    navigate('/inbox')
   }
 
   return (
@@ -55,7 +53,10 @@ export function NotificationBell() {
         </button>
       </SheetTrigger>
       <SheetContent title="알림">
-        <div className="mb-3 flex justify-end">
+        <div className="mb-3 flex flex-wrap justify-end gap-2">
+          <Button variant="ghost" size="sm" onClick={openInbox}>
+            인박스 열기 <ArrowUpRight size={13} aria-hidden="true" />
+          </Button>
           <Button
             variant="outline"
             size="sm"
@@ -89,7 +90,7 @@ export function NotificationBell() {
                       aria-hidden
                     />
                     <div className="min-w-0">
-                      <p className="break-words">{message(n)}</p>
+                      <p className="break-words">{getNotificationMessage(n)}</p>
                       <p className="mt-0.5 text-xs text-of-muted">{formatDateTime(n.created_at)}</p>
                     </div>
                   </div>
