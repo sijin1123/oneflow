@@ -42,10 +42,15 @@ async def test_layout_and_sort_validation(client, project):
         json={"name": "이상한 정렬", "sort": "priority"},
     )
     assert res.status_code == 422
-    # cycle/module filter params must be UUID-shaped.
+    # cycle/module/milestone filter params must be UUID-shaped.
     res = await client.post(
         f"/api/v1/projects/{project['id']}/saved-filters",
         json={"name": "이상한 사이클", "params": {"cycle_id": "not-a-uuid"}},
+    )
+    assert res.status_code == 422
+    res = await client.post(
+        f"/api/v1/projects/{project['id']}/saved-filters",
+        json={"name": "이상한 마일스톤", "params": {"milestone_id": "not-a-uuid"}},
     )
     assert res.status_code == 422
 

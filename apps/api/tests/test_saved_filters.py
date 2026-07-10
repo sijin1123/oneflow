@@ -27,6 +27,7 @@ async def test_saved_filter_crud(client, project):
         "priority": "urgent",
         "type": "bug",
         "assignee_id": None,
+        "milestone_id": None,
         "cycle_id": None,
         "module_id": None,
         "q": None,

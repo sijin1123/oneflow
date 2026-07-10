@@ -358,6 +358,7 @@ async def list_work_packages(
     priority: PriorityFilter | None = Query(default=None),
     type: TypeFilter | None = Query(default=None),
     assignee_id: uuid.UUID | None = Query(default=None),
+    milestone_id: uuid.UUID | None = Query(default=None),
     cycle_id: uuid.UUID | None = Query(default=None),
     # Backlog filters (Pass 52, v52.1): pure additive ANDs inside the scoped
     # WHERE. no_cycle=true is cycle_id IS NULL (contradictory with cycle_id →
@@ -390,6 +391,8 @@ async def list_work_packages(
         stmt = stmt.where(WorkPackage.type == type)
     if assignee_id is not None:
         stmt = stmt.where(WorkPackage.assignee_id == assignee_id)
+    if milestone_id is not None:
+        stmt = stmt.where(WorkPackage.milestone_id == milestone_id)
     if no_cycle and cycle_id is not None:
         raise HTTPException(status_code=422, detail="no_cycle contradicts cycle_id")
     if cycle_id is not None:

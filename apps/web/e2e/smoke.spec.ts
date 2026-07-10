@@ -7,6 +7,7 @@
 
 import { expect, test, type Page } from '@playwright/test'
 
+import type { Milestone } from '../src/features/milestones/api'
 import type { Project, ProjectList } from '../src/features/projects/types'
 import type { SearchResults } from '../src/features/search/api'
 import type {
@@ -6522,7 +6523,7 @@ test('빈 프로젝트 목록에서 새 프로젝트를 만들면 생성 요청 
   await expect(page).toHaveURL(/\/projects\/p-new\/work-packages/)
 })
 
-test('마일스톤 패널이 진행 바와 삭제 확인 문구를 보여준다', async ({ page }) => {
+test('마일스톤 패널이 행 작업 메뉴·편집·삭제 확인·필터 이동을 제공한다', async ({ page }) => {
   await mockApi(page)
   await page.route('**/api/v1/me', (route) =>
     route.fulfill({
@@ -6532,6 +6533,102 @@ test('마일스톤 패널이 진행 바와 삭제 확인 문구를 보여준다'
   await page.route(`**/api/v1/projects/${project.id}`, (route) =>
     route.fulfill({ json: project }),
   )
+  let milestone: Milestone = {
+    id: 'ms-1',
+    project_id: project.id,
+    name: '1차 출시',
+    description: null,
+    due_date: '2026-08-01',
+    work_package_count: 4,
+    done_work_package_count: 3,
+    created_at: '2026-07-01T00:00:00Z',
+    updated_at: '2026-07-01T00:00:00Z',
+  }
+  await page.route(`**/api/v1/projects/${project.id}/milestones`, (route) =>
+    route.fulfill({
+      json: {
+        items: [milestone],
+        total: 1,
+      },
+    }),
+  )
+  await page.route(`**/api/v1/projects/${project.id}/milestones/ms-1`, async (route) => {
+    if (route.request().method() === 'PATCH') {
+      const patch = route.request().postDataJSON() as { name?: string; due_date?: string | null }
+      milestone = {
+        ...milestone,
+        name: patch.name ?? milestone.name,
+        due_date: patch.due_date ?? null,
+        updated_at: '2026-07-02T00:00:00Z',
+      }
+      await route.fulfill({ json: milestone })
+      return
+    }
+    if (route.request().method() === 'DELETE') {
+      await route.fulfill({ status: 204 })
+      return
+    }
+    await route.fulfill({ status: 405 })
+  })
+
+  await page.goto(`/projects/${project.id}/settings?tab=milestones`)
+  await expect(page.getByText('1차 출시')).toBeVisible()
+  await expect(page.getByText('3/4')).toBeVisible()
+  await expect(page.getByRole('progressbar', { name: '1차 출시 진행률' })).toBeVisible()
+
+  await page.getByLabel('1차 출시 마일스톤 작업').click()
+  const filtered = page.waitForRequest(
+    (r) => r.url().includes('/work-packages?') && r.url().includes('milestone_id=ms-1'),
+  )
+  await page.getByLabel('1차 출시 작업 목록 열기').click()
+  await filtered
+  await expect(page).toHaveURL(/milestone_id=ms-1/)
+  await expect(page.getByLabel('마일스톤 필터')).toHaveValue('ms-1')
+
+  await page.goto(`/projects/${project.id}/settings?tab=milestones`)
+  await page.getByLabel('1차 출시 마일스톤 작업').click()
+  await page.getByLabel('1차 출시 편집').click()
+  await page.getByLabel('마일스톤 이름 편집').fill('1차 GA')
+  await page.getByLabel('마일스톤 기한 편집').fill('2026-08-15')
+  const patch = page.waitForRequest(
+    (r) => r.method() === 'PATCH' && r.url().endsWith('/api/v1/projects/11111111-1111-4111-8111-111111111111/milestones/ms-1'),
+  )
+  await page.getByRole('button', { name: /저장/ }).click()
+  const patchReq = await patch
+  expect(patchReq.postDataJSON()).toMatchObject({ name: '1차 GA', due_date: '2026-08-15' })
+  await expect(page.getByText('1차 GA')).toBeVisible()
+
+  // delete confirm carries the assignment-release wording (never silent)
+  const dialogs: string[] = []
+  page.once('dialog', (d) => {
+    dialogs.push(d.message())
+    void d.dismiss()
+  })
+  await page.getByLabel('1차 GA 마일스톤 작업').click()
+  await page.getByLabel('1차 GA 삭제').click()
+  await expect
+    .poll(() => dialogs[0] ?? '')
+    .toContain('연결된 작업 4건은 삭제되지 않고 배정만 해제됩니다')
+})
+
+test('마일스톤 행 작업 메뉴가 모바일 폭 안에 머물고 읽기 전용 cue를 보여준다', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await mockApi(page)
+  await page.route('**/api/v1/me', (route) =>
+    route.fulfill({
+      json: { id: 'me-1', email: 'viewer@oneflow.local', display_name: 'Viewer', is_active: true },
+    }),
+  )
+  await page.route(`**/api/v1/projects/${project.id}/members`, (route) =>
+    route.fulfill({
+      json: {
+        items: [
+          { user_id: 'me-1', email: 'viewer@oneflow.local', display_name: 'Viewer', role: 'viewer' },
+        ],
+        total: 1,
+      },
+    }),
+  )
   await page.route(`**/api/v1/projects/${project.id}/milestones`, (route) =>
     route.fulfill({
       json: {
@@ -6539,7 +6636,7 @@ test('마일스톤 패널이 진행 바와 삭제 확인 문구를 보여준다'
           {
             id: 'ms-1',
             project_id: project.id,
-            name: '1차 출시',
+            name: '모바일 출시',
             description: null,
             due_date: '2026-08-01',
             work_package_count: 4,
@@ -6554,20 +6651,20 @@ test('마일스톤 패널이 진행 바와 삭제 확인 문구를 보여준다'
   )
 
   await page.goto(`/projects/${project.id}/settings?tab=milestones`)
-  await expect(page.getByText('1차 출시')).toBeVisible()
-  await expect(page.getByText('3/4')).toBeVisible()
-  await expect(page.getByRole('progressbar', { name: '1차 출시 진행률' })).toBeVisible()
-
-  // delete confirm carries the assignment-release wording (never silent)
-  const dialogs: string[] = []
-  page.once('dialog', (d) => {
-    dialogs.push(d.message())
-    void d.dismiss()
+  await expect(page.getByText('쓰기 권한이 없어 마일스톤 변경 작업은 숨겨졌습니다.')).toBeVisible()
+  await page.getByLabel('모바일 출시 마일스톤 작업').click()
+  const menu = page.getByRole('menu', { name: '모바일 출시 마일스톤 작업 메뉴' })
+  await expect(menu).toBeVisible()
+  await expect(menu.getByText('쓰기 권한 없음')).toBeVisible()
+  await expect(page.getByLabel('모바일 출시 편집')).toHaveCount(0)
+  const box = await menu.boundingBox()
+  expect(box).not.toBeNull()
+  expect(box!.x).toBeGreaterThanOrEqual(0)
+  expect(box!.x + box!.width).toBeLessThanOrEqual(390)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/milestone-item-actions-ui/mobile.png',
+    fullPage: true,
   })
-  await page.getByLabel('1차 출시 삭제').click()
-  await expect
-    .poll(() => dialogs[0] ?? '')
-    .toContain('연결된 작업 4건은 삭제되지 않고 배정만 해제됩니다')
 })
 
 test('시스템 상태 페이지가 버전과 구성 카드를 보여준다', async ({ page }) => {
