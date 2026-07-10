@@ -1,14 +1,16 @@
-import { FileDown, Settings2 } from 'lucide-react'
+import { ArrowDown, ArrowUp, FileDown, Settings2 } from 'lucide-react'
 import { useState } from 'react'
 import { useParams } from 'react-router-dom'
 
 import { ErrorState, ListSkeleton } from '@/components/shell/states'
+import { Button } from '@/components/ui/button'
 import { BASE_URL } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { PRIORITY_LABELS, WP_STATUSES, WP_TYPES } from '@/features/work-packages/types'
 import type { WpPriority, WpStatus } from '@/features/work-packages/types'
 import { useStatusLabels } from '@/features/work-packages/useStatusLabels'
 import { useTypeLabels } from '@/features/work-packages/useTypeLabels'
+import { ReportingMetricCard, ReportingSurface } from '@/features/reports/ReportingSurface'
 
 import { RecentActivity } from './RecentActivity'
 import { useDashboard, useDashboardLayout, useSaveDashboardLayout, type Bucket } from './api'
@@ -38,10 +40,7 @@ const PRIORITY_COLOR: Record<string, string> = {
 
 function Tile({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
   return (
-    <div className="rounded-of border border-of-border bg-of-surface px-4 py-3">
-      <p className="text-xs text-of-muted">{label}</p>
-      <p className={cn('mt-1 text-xl font-semibold', accent && 'text-of-danger')}>{value}</p>
-    </div>
+    <ReportingMetricCard label={label} value={value} tone={accent ? 'danger' : 'neutral'} />
   )
 }
 
@@ -59,7 +58,7 @@ function Distribution({
   const max = Math.max(1, ...buckets.map((b) => b.count))
   const total = buckets.reduce((s, b) => s + b.count, 0)
   return (
-    <div className="rounded-of border border-of-border bg-of-surface p-4">
+    <div className="min-w-0 rounded-of border border-of-border bg-of-surface p-4">
       <h2 className="mb-3 text-sm font-semibold">{title}</h2>
       {total === 0 ? (
         <p className="text-xs text-of-muted">데이터가 없습니다.</p>
@@ -145,29 +144,36 @@ export function DashboardPage() {
       : null
 
   return (
-    <div className="mx-auto max-w-3xl space-y-4 p-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-base font-semibold">대시보드</h1>
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
+    <ReportingSurface
+      title="대시보드"
+      description="프로젝트의 작업, 비용, 시간, 활동 신호를 한 화면에서 점검합니다."
+      context={
+        <span className="inline-flex items-center rounded-of border border-of-border bg-of-surface px-2 py-1">
+          프로젝트
+        </span>
+      }
+      actions={
+        <>
+          <Button
+            variant="outline"
+            size="sm"
             onClick={editing ? save : startEdit}
             disabled={saveLayout.isPending || (editing && draft.length === 0)}
-            className="flex items-center gap-1.5 rounded-of border border-of-border px-2.5 py-1.5 text-xs font-medium hover:bg-of-surface-2"
           >
             <Settings2 size={13} /> {editing ? '레이아웃 저장' : '위젯 편집'}
-          </button>
+          </Button>
           <a
             href={`${BASE_URL}/api/v1/projects/${projectId}/dashboard/export.csv`}
-            className="flex items-center gap-1.5 rounded-of border border-of-border px-2.5 py-1.5 text-xs font-medium hover:bg-of-surface-2"
+            className="inline-flex h-7 items-center justify-center gap-1.5 whitespace-nowrap rounded-of border border-of-border bg-of-surface px-2 text-xs font-medium transition-colors hover:bg-of-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus focus-visible:ring-offset-1 focus-visible:ring-offset-of-surface"
           >
             <FileDown size={13} /> CSV 내보내기
           </a>
-        </div>
-      </div>
+        </>
+      }
+    >
 
       {editing ? (
-        <div className="space-y-1.5 rounded-of border border-of-border bg-of-surface p-3">
+        <div className="space-y-2 rounded-of border border-of-border bg-of-surface p-3">
           <p className="text-xs font-medium">표시할 위젯과 순서 (최소 1개)</p>
           <ul className="space-y-1">
             {[...draft, ...Object.keys(WIDGET_LABELS).filter((k) => !draft.includes(k))].map(
@@ -190,18 +196,18 @@ export function DashboardPage() {
                         <button
                           type="button"
                           aria-label={`${WIDGET_LABELS[key]} 위로`}
-                          className="rounded-of border border-of-border px-1.5 text-of-muted hover:bg-of-surface-2"
+                          className="inline-flex h-6 w-6 items-center justify-center rounded-of border border-of-border text-of-muted hover:bg-of-surface-hover"
                           onClick={() => move(key, -1)}
                         >
-                          ↑
+                          <ArrowUp size={12} aria-hidden="true" />
                         </button>
                         <button
                           type="button"
                           aria-label={`${WIDGET_LABELS[key]} 아래로`}
-                          className="rounded-of border border-of-border px-1.5 text-of-muted hover:bg-of-surface-2"
+                          className="inline-flex h-6 w-6 items-center justify-center rounded-of border border-of-border text-of-muted hover:bg-of-surface-hover"
                           onClick={() => move(key, 1)}
                         >
-                          ↓
+                          <ArrowDown size={12} aria-hidden="true" />
                         </button>
                       </>
                     ) : null}
@@ -216,7 +222,8 @@ export function DashboardPage() {
         </div>
       ) : null}
 
-      {widgets.map((key) => {
+      <div className="space-y-4">
+        {widgets.map((key) => {
         if (key === 'summary')
           return (
             <div key={key} className="grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -312,7 +319,8 @@ export function DashboardPage() {
           )
         if (key === 'recent_activity') return <RecentActivity key={key} projectId={projectId} />
         return null
-      })}
-    </div>
+        })}
+      </div>
+    </ReportingSurface>
   )
 }
