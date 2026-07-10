@@ -3527,13 +3527,128 @@ test('계층 트리가 상/하위 관계를 보여주고 접기가 동작한다'
     route.fulfill({ json: nested }),
   )
   await page.goto(`/projects/${project.id}/tree`)
-  await expect(page.getByRole('button', { name: '워크패키지 API 구현' })).toBeVisible()
-  await expect(page.getByRole('button', { name: '보드 뷰 구현' })).toBeVisible()
+  await expect(page.getByRole('button', { name: '워크패키지 API 구현', exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: '보드 뷰 구현', exact: true })).toBeVisible()
 
   // collapsing the parent removes the child row from view ('접기' exact to avoid
   // matching the '모두 접기' toolbar button)
   await page.getByRole('button', { name: '접기', exact: true }).click()
-  await expect(page.getByRole('button', { name: '보드 뷰 구현' })).toBeHidden()
+  await expect(page.getByRole('button', { name: '보드 뷰 구현', exact: true })).toBeHidden()
+})
+
+test('트리 항목 액션 메뉴가 링크·복제·이동·전체 페이지 흐름을 연결한다', async ({ page }) => {
+  await mockApi(page)
+  const nested: WorkPackageList = { items: [wpA, { ...wpB, parent_id: wpA.id }], total: 2 }
+  await page.route('**/api/v1/projects/*/work-packages**', (route) =>
+    route.fulfill({ json: nested }),
+  )
+  await page.route('**/api/v1/projects', (route) =>
+    route.fulfill({
+      json: {
+        items: [project, { ...project, id: 'p-2', key: 'TWO', name: '두번째 프로젝트' }],
+        total: 2,
+      },
+    }),
+  )
+  await page.route(`**/api/v1/work-packages/${wpA.id}/duplicate`, (route) =>
+    route.fulfill({
+      status: 201,
+      json: {
+        work_package: { ...wpA, id: 'dup-tree', subject: '(복사) 워크패키지 API 구현' },
+        skipped_custom_values: 0,
+      },
+    }),
+  )
+
+  await page.goto(`/projects/${project.id}/tree`)
+  const row = page
+    .getByRole('treeitem')
+    .filter({ has: page.getByRole('button', { name: '워크패키지 API 구현', exact: true }) })
+    .first()
+  const trigger = row.getByRole('button', { name: '워크패키지 API 구현 트리 항목 작업' })
+
+  await trigger.click()
+  await page.getByRole('menuitem', { name: '링크 복사' }).click()
+  await expect
+    .poll(() => page.evaluate(() => localStorage.getItem('__copied_tree_item_link')))
+    .toContain(`/projects/${project.id}/work-packages/${wpA.id}`)
+  await expect(page.getByText('링크', { exact: false })).toBeVisible()
+
+  await trigger.click()
+  const duplicatePost = page.waitForRequest(
+    (r) => r.method() === 'POST' && r.url().includes(`/work-packages/${wpA.id}/duplicate`),
+  )
+  await page.getByRole('menuitem', { name: '복제' }).click()
+  await duplicatePost
+  await expect(page.getByText("'(복사) 워크패키지 API 구현' 생성됨")).toBeVisible()
+
+  await trigger.click()
+  await page.getByRole('menuitem', { name: '이동 패널 열기' }).click()
+  await expect(page).toHaveURL(new RegExp(`wp=${wpA.id}`))
+  await expect(page).toHaveURL(/move=1/)
+  const drawer = page.getByRole('dialog')
+  await expect(drawer.getByLabel('이동 대상 프로젝트')).toBeVisible()
+  await drawer.getByRole('button', { name: '닫기' }).click()
+  await expect(page).not.toHaveURL(/move=1/)
+
+  await trigger.click()
+  await page.getByRole('menuitem', { name: '전체 페이지 열기' }).click()
+  await expect(page).toHaveURL(new RegExp(`/projects/${project.id}/work-packages/${wpA.id}$`))
+})
+
+test('모바일 트리 항목 액션 메뉴는 hover 없이 열리고 폭을 넘지 않는다', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await mockApi(page)
+  const nested: WorkPackageList = { items: [wpA, { ...wpB, parent_id: wpA.id }], total: 2 }
+  await page.route('**/api/v1/projects/*/work-packages**', (route) =>
+    route.fulfill({ json: nested }),
+  )
+
+  await page.goto(`/projects/${project.id}/tree`)
+  const row = page
+    .getByRole('treeitem')
+    .filter({ has: page.getByRole('button', { name: '워크패키지 API 구현', exact: true }) })
+    .first()
+  await row.getByRole('button', { name: '워크패키지 API 구현 트리 항목 작업' }).click()
+
+  const menu = page.getByRole('menu')
+  await expect(menu).toBeVisible()
+  await expect(menu.getByText('트리 항목')).toBeVisible()
+  const box = await menu.boundingBox()
+  expect(box).not.toBeNull()
+  expect(box!.x).toBeGreaterThanOrEqual(0)
+  expect(box!.x + box!.width).toBeLessThanOrEqual(390)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/tree-item-actions-ui/mobile.png',
+    fullPage: true,
+  })
+})
+
+test('뷰어 트리 항목 액션 메뉴는 쓰기 액션 없이 읽기 전용으로 표시된다', async ({ page }) => {
+  await mockApi(page)
+  await page.route(`**/api/v1/projects/${project.id}/members`, (route) =>
+    route.fulfill({
+      json: {
+        items: [
+          { user_id: 'me-1', email: 'dev@oneflow.local', display_name: 'Dev User', role: 'viewer' },
+        ],
+        total: 1,
+      },
+    }),
+  )
+
+  await page.goto(`/projects/${project.id}/tree`)
+  const row = page
+    .getByRole('treeitem')
+    .filter({ has: page.getByRole('button', { name: '워크패키지 API 구현', exact: true }) })
+    .first()
+  await row.getByRole('button', { name: '워크패키지 API 구현 트리 항목 작업' }).click()
+  const menu = page.getByRole('menu')
+
+  await expect(menu.getByText('쓰기 권한 없음')).toBeVisible()
+  await expect(menu.getByRole('menuitem', { name: '복제' })).toHaveCount(0)
+  await expect(menu.getByRole('menuitem', { name: '이동 패널 열기' })).toHaveCount(0)
+  await expect(menu.getByRole('menuitem', { name: '전체 페이지 열기' })).toBeVisible()
 })
 
 test('캘린더가 기한이 있는 작업을 해당 날짜에 표시하고 월 이동이 된다', async ({ page }) => {
