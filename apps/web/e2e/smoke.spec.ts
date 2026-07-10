@@ -2687,6 +2687,85 @@ test('드로어 커스텀 필드에 값을 입력하면 델타 PUT이 간다', a
   await expect(page.getByRole('dialog').getByLabel('재현 절차')).toHaveCount(0)
 })
 
+test('커스텀 필드 표면은 모바일에서 값 카드와 입력 상태를 유지한다', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await mockApi(page)
+  await page.route(`**/api/v1/projects/${project.id}/custom-fields**`, (route) =>
+    route.fulfill({
+      json: {
+        items: [
+          {
+            id: 'cf-mobile-1',
+            project_id: project.id,
+            name: '심각도',
+            field_type: 'dropdown',
+            options: ['낮음', '높음'],
+            position: 0,
+            is_active: true,
+            applies_to: null,
+            created_at: '2026-07-06T00:00:00Z',
+            updated_at: '2026-07-06T00:00:00Z',
+          },
+          {
+            id: 'cf-mobile-2',
+            project_id: project.id,
+            name: '점수',
+            field_type: 'number',
+            options: null,
+            position: 1,
+            is_active: true,
+            applies_to: ['task'],
+            created_at: '2026-07-06T00:00:00Z',
+            updated_at: '2026-07-06T00:00:00Z',
+          },
+          {
+            id: 'cf-mobile-3',
+            project_id: project.id,
+            name: '레거시 코드',
+            field_type: 'text',
+            options: null,
+            position: 2,
+            is_active: false,
+            applies_to: null,
+            created_at: '2026-07-06T00:00:00Z',
+            updated_at: '2026-07-06T00:00:00Z',
+          },
+        ],
+        total: 3,
+      },
+    }),
+  )
+  await page.route(`**/api/v1/work-packages/${wpA.id}/custom-values`, (route) =>
+    route.fulfill({
+      json: {
+        items: [
+          { field_id: 'cf-mobile-1', value: '높음', member_display_name: null },
+          { field_id: 'cf-mobile-3', value: 'A-17', member_display_name: null },
+        ],
+        total: 2,
+      },
+    }),
+  )
+
+  await page.goto(`/projects/${project.id}/work-packages`)
+  await page.getByRole('button', { name: '워크패키지 API 구현' }).click()
+  const drawer = page.getByRole('dialog', { name: '워크패키지 API 구현' })
+  const customSection = drawer.getByRole('region', { name: '커스텀 필드' })
+
+  await customSection.scrollIntoViewIfNeeded()
+  await expect(customSection.getByText('심각도')).toBeVisible()
+  await expect(customSection.getByText('점수')).toBeVisible()
+  await expect(customSection.getByText('레거시 코드')).toBeVisible()
+  await expect(customSection.getByLabel('심각도')).toBeVisible()
+  await expect(customSection.getByLabel('점수')).toBeVisible()
+  await expect(customSection.getByText('A-17 (비활성 필드)')).toBeVisible()
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/custom-fields-ui/mobile.png',
+    fullPage: true,
+  })
+})
+
 test('보드에서 카드를 드래그해 옮기면 상태 PATCH가 간다', async ({ page }) => {
   await mockApi(page)
   await page.goto(`/projects/${project.id}/board`)
