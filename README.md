@@ -52,6 +52,76 @@ cd ../.. && make web-dev
 | OpenAPI 타입 생성/드리프트 | `make gen-types` / `make check-types` |
 | 클린룸 게이트 | `make cleanroom-check` |
 
+## Storage sweep 운영 절차 (고아 블롭 정리)
+
+업로드 스토리지에는 크래시가 남긴 `.upload-*` 임시 파일과, attachment 행이 삭제된 뒤 남은 고아 블롭이 쌓일 수 있습니다. 정리는 반드시 아래 순서를 따릅니다.
+
+1. **dry-run**: `make api-sweep-blobs` — 후보 목록만 출력하며 아무것도 이동/삭제하지 않습니다. `--json`을 붙이면 기계가독 리포트를 얻습니다.
+2. **검토**: 후보가 예상과 다르면(대량 발생, 최근 파일 다수) 중단하고 원인을 확인합니다. `min-age`(기본 24h) 이내 파일과 인식 불가/symlink 경로는 항상 보호됩니다.
+3. **격리 실행**: `make api-sweep-blobs-delete` — 후보를 `<storage root>/.quarantine/<runstamp>/`로 **이동**(unlink 아님)하고 `manifest.json`을 남깁니다. 실행 직전 DB 키를 재조회해 두 스냅샷 합집합에 없는 파일만 격리합니다.
+4. **보관/복구**: manifest를 백업 위치에 보관합니다. 오탐이면 manifest의 원경로대로 되돌리면 복구됩니다. 격리 영역은 이후 sweep이 건드리지 않으며, 최종 purge(영구 삭제)는 보존 기간 경과 후 운영자가 수동으로 수행합니다.
+5. **missing blob 행**: 리포트의 "rows with MISSING blobs"는 블롭이 사라진 attachment 행입니다 — 스크립트는 삭제하지 않으며, 데이터 복원 여부는 운영 판단입니다.
+
+## 기한(due-date) 알림 운영 절차 (Pass 40)
+
+담당 작업의 기한 알림(내일 마감 `due_soon` / 오늘 처음 초과 `overdue`)을 인앱 수신함에 넣는다.
+앱에 스케줄러가 없으므로 운영 cron이 **매일 1회(UTC 자정 이후)** 실행한다.
+
+```bash
+cd apps/api
+uv run python -m app.services.due_alerts            # dry-run: 생성될 건수만 보고
+uv run python -m app.services.due_alerts --create   # 실제 생성
+```
+
+- **멱등**: 같은 (사용자, 작업, 종류)의 당일(UTC) 중복 생성은 NOT EXISTS로 차단 — 재실행 안전.
+- **동시 실행 방지**: advisory lock(427007) — 후발 프로세스는 exit code 2로 즉시 종료.
+- **폭주 없음**: overdue는 '어제가 기한'인 항목만 알림(백필 없음). 실행을 놓친 날은 보충되지 않는다.
+- 대상: 담당자가 현재 프로젝트 멤버이면서 활성 사용자이고, 기한 알림 토글이 켜져 있는 경우만.
+- 로그 예: `created: due_soon=3` / `created: overdue=1`. exit 0=성공, 2=락 미획득.
+
+## 백업/복구 런북
+
+백업 대상은 두 가지입니다: **PostgreSQL 데이터베이스**(메타데이터 전부)와 **업로드 스토리지 디렉터리**(`ONEFLOW_STORAGE_DIR`, 기본 `apps/api/var/uploads` — 블롭 본문). 반드시 **DB를 먼저, 블롭을 나중에** 백업합니다 — 행⇄블롭 계약상 "블롭만 남는" 고아는 무해하고 스윕 가능하지만, "행만 남는" 결손은 다운로드가 깨집니다.
+
+### 백업
+
+```bash
+# 1) DB 덤프 (로컬 개발 컨테이너 기준 — 운영은 관리형 DB의 스냅샷/pg_dump 사용)
+docker exec oneflow-postgres pg_dump -U oneflow -d oneflow -Fc   > backup/oneflow-$(date +%Y%m%dT%H%M%S).dump
+
+# 2) 스토리지 스냅샷 (.quarantine 포함 — 격리분도 복구 대상)
+tar czf backup/uploads-$(date +%Y%m%dT%H%M%S).tar.gz -C apps/api var/uploads
+```
+
+### 복구 (역순 아님 — DB부터)
+
+```bash
+# 1) DB 복원 (기존 데이터가 있으면 --clean 사용 여부를 먼저 판단)
+docker exec -i oneflow-postgres pg_restore -U oneflow -d oneflow --clean --if-exists   < backup/oneflow-<timestamp>.dump
+
+# 2) 마이그레이션 정합 확인 — 복원본 리비전이 코드 기대와 같아야 함
+cd apps/api && uv run alembic current   # 예: 0039 (head)
+
+# 3) 블롭 복원
+tar xzf backup/uploads-<timestamp>.tar.gz -C apps/api
+```
+
+### 복구 후 검증
+
+1. `/status` 페이지(또는 `GET /api/v1/ops/status`)에서 DB 상태·마이그레이션 리비전 확인.
+2. `make api-sweep-blobs`(dry-run)로 정합 점검 — **"rows with MISSING blobs"가 0이어야** DB·블롭 시점이 맞습니다(0이 아니면 블롭 백업이 DB보다 오래된 것 — 더 최신 블롭 백업으로 재복원).
+3. 임의 프로젝트에서 목록/문서/첨부 다운로드 스모크.
+
+### 주기/보존 권고
+
+- DB 일 1회 이상 + 마이그레이션 배포 직전 1회(0001–00NN 전환 경계 보존).
+- 블롭은 DB 백업 **직후** 촬영해 시점 차를 최소화. 보존 기간은 조직 정책에 따르되 최소 마지막 2세대.
+- 복구 리허설을 분기 1회 권고(위 검증 3단계 포함).
+
+### 코드 롤백 시 자동화 규칙 우선순위
+
+자동화 규칙 우선순위는 `automation_rules.position`(Pass 82)으로 결정됩니다. 이 열을 도입한 배포를 **코드만 이전 버전으로 롤백**하면 열 자체는 DB에 잔존하지만 구버전 코드는 이를 무시하고 승자 정책이 `created_at` 순서로 임시 회귀합니다(보안 경계 아님 — 자동화 실행 결과의 승자만 달라짐). 롤백 후에는 순서 의존 규칙의 동작을 스모크 확인하고, 재배포로 최신 코드를 복원하면 `position` 기반 우선순위가 다시 적용됩니다. 마이그레이션(0060)까지 되돌릴 필요는 없습니다(열 잔존은 무해).
+
 CI(`.github/workflows/ci.yml`)는 `backend`/`frontend`/`cleanroom`/`security-audit` 4개 잡으로 검증합니다. 앞의 3개(`backend`/`frontend`/`cleanroom`)를 main 브랜치의 required status checks로 등록하며, `security-audit`(pip-audit·npm audit)는 자문용 비차단 잡입니다.
 
 ## Layout

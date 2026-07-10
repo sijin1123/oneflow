@@ -33,12 +33,15 @@ from app.models import (
     Milestone,
     Project,
     ProjectMember,
+    ProjectStatus,
     TimeEntry,
     User,
     WorkPackage,
     WorkPackageComment,
     WorkPackageRelation,
 )
+from app.models.project_status import DEFAULT_STATUSES
+from app.models.project_type import DEFAULT_TYPES, ProjectType
 
 DEV_USER_EMAIL = "dev@oneflow.local"
 ALLOWED_RESET_HOSTS = {"localhost", "127.0.0.1", "::1", "postgres"}
@@ -128,10 +131,14 @@ async def seed_data(session: AsyncSession) -> bool:
             await session.execute(select(User).where(User.email == DEV_USER_EMAIL))
         ).scalar_one_or_none()
         if dev is None:
-            dev = User(email=DEV_USER_EMAIL, display_name="Dev User")
+            dev = User(email=DEV_USER_EMAIL, display_name="Dev User", is_admin=True)
             session.add(dev)
+        else:
+            dev.is_admin = True  # keep re-seeded dev DBs administrable (v33.1 R1-(2))
         mate = User(email="alex@oneflow.local", display_name="Alex Kim")
         session.add(mate)
+        observer = User(email="viewer@oneflow.local", display_name="Viewer Choi")
+        session.add(observer)
         await session.flush()
 
         project = Project(
@@ -146,7 +153,18 @@ async def seed_data(session: AsyncSession) -> bool:
             [
                 ProjectMember(project_id=project.id, user_id=dev.id, role="owner"),
                 ProjectMember(project_id=project.id, user_id=mate.id, role="member"),
+                ProjectMember(project_id=project.id, user_id=observer.id, role="viewer"),
             ]
+        )
+        # Seed the default workflow so the demo project has an editable status
+        # config, matching the API create path (fable5 audit: seed skipped this).
+        session.add_all(
+            ProjectStatus(project_id=project.id, key=key, name=name, position=pos)
+            for key, name, pos in DEFAULT_STATUSES
+        )
+        session.add_all(
+            ProjectType(project_id=project.id, key=key, name=name, position=pos)
+            for key, name, pos in DEFAULT_TYPES
         )
         milestone = Milestone(
             project_id=project.id,
@@ -330,7 +348,7 @@ async def seed_data(session: AsyncSession) -> bool:
             ]
         )
 
-    print("[seed] demo data inserted (1 project, 2 users, 12 work packages, 2 relations, history)")
+    print("[seed] demo data inserted (1 project, 3 users, 12 work packages, 2 relations, history)")
     return True
 
 

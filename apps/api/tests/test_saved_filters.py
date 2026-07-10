@@ -22,7 +22,20 @@ async def test_saved_filter_crud(client, project):
     assert created.status_code == 201
     body = created.json()
     assert body["name"] == "긴급 버그"  # trimmed
-    assert body["params"] == {"status": "todo", "priority": "urgent", "type": "bug", "q": None}
+    assert body["params"] == {
+        "status": "todo",
+        "priority": "urgent",
+        "type": "bug",
+        "assignee_id": None,
+        "milestone_id": None,
+        "cycle_id": None,
+        "module_id": None,
+        "q": None,
+        "columns": None,
+        "cf_field": None,
+        "cf_op": None,
+        "cf_value": None,
+    }
 
     listed = (await client.get(f"/api/v1/projects/{pid}/saved-filters")).json()
     assert listed["total"] == 1

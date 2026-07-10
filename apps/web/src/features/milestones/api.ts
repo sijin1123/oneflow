@@ -8,6 +8,8 @@ export type Milestone = {
   name: string
   description: string | null
   due_date: string | null
+  work_package_count: number
+  done_work_package_count: number
   created_at: string
   updated_at: string
 }
@@ -27,6 +29,27 @@ export function useCreateMilestone(projectId: string) {
     mutationFn: (input: { name: string; due_date: string | null }) =>
       api<Milestone>(`/api/v1/projects/${projectId}/milestones`, {
         method: 'POST',
+        body: JSON.stringify(input),
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['milestones', projectId] })
+    },
+  })
+}
+
+export function useUpdateMilestone(projectId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({
+      milestoneId,
+      ...input
+    }: {
+      milestoneId: string
+      name?: string
+      due_date?: string | null
+    }) =>
+      api<Milestone>(`/api/v1/projects/${projectId}/milestones/${milestoneId}`, {
+        method: 'PATCH',
         body: JSON.stringify(input),
       }),
     onSuccess: () => {

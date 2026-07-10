@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiError, api } from '@/lib/api'
 
 export type ActionItem = {
+  converted_wp_id: string | null
   id: string
   meeting_id: string
   description: string
@@ -19,6 +20,10 @@ export type Meeting = {
   agenda: string | null
   minutes: string | null
   author_id: string | null
+  recurrence: 'weekly' | 'biweekly' | 'monthly' | null
+  recurrence_source_id: string | null
+  follow_up_source_id: string | null
+  follow_up_source_title: string | null
   version: number
   created_at: string
   updated_at: string
@@ -30,6 +35,7 @@ export type MeetingListItem = {
   project_id: string
   title: string
   scheduled_on: string | null
+  recurrence: 'weekly' | 'biweekly' | 'monthly' | null
   version: number
   updated_at: string
 }
@@ -55,10 +61,22 @@ export function useMeeting(meetingId: string | null) {
 export function useCreateMeeting(projectId: string) {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (input: { title: string; scheduled_on?: string | null }) =>
+    mutationFn: (input: { title: string; scheduled_on?: string | null; template_id?: string }) =>
       api<Meeting>(`/api/v1/projects/${projectId}/meetings`, {
         method: 'POST',
         body: JSON.stringify(input),
+      }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['meetings', projectId] }),
+  })
+}
+
+export function useCreateFollowUp(projectId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (meetingId: string) =>
+      api<Meeting>(`/api/v1/meetings/${meetingId}/follow-up`, {
+        method: 'POST',
+        body: JSON.stringify({}),
       }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['meetings', projectId] }),
   })
@@ -72,6 +90,7 @@ export function useUpdateMeeting(projectId: string) {
       expected_version: number
       title?: string
       scheduled_on?: string | null
+      recurrence?: string | null
       agenda?: string | null
       minutes?: string | null
     }) => {
@@ -143,5 +162,61 @@ export function useDeleteActionItem(meetingId: string) {
     mutationFn: (id: string) =>
       api<void>(`/api/v1/action-items/${id}`, { method: 'DELETE' }),
     onSuccess: () => void invalidate(),
+  })
+}
+
+export function useConvertActionItem(meetingId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) =>
+      api<ActionItem>(`/api/v1/action-items/${id}/convert`, { method: 'POST' }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['meeting', meetingId] })
+    },
+  })
+}
+
+
+export type MeetingTemplate = {
+  id: string
+  project_id: string
+  name: string
+  agenda: string | null
+  created_by: string | null
+  created_at: string
+}
+
+export function useMeetingTemplates(projectId: string) {
+  return useQuery({
+    queryKey: ['meeting-templates', projectId],
+    queryFn: () =>
+      api<{ items: MeetingTemplate[]; total: number }>(
+        `/api/v1/projects/${projectId}/meeting-templates`,
+      ),
+  })
+}
+
+export function useCreateMeetingTemplate(projectId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (input: { name: string; agenda?: string; from_meeting_id?: string }) =>
+      api<MeetingTemplate>(`/api/v1/projects/${projectId}/meeting-templates`, {
+        method: 'POST',
+        body: JSON.stringify(input),
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['meeting-templates', projectId] })
+    },
+  })
+}
+
+export function useDeleteMeetingTemplate(projectId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (templateId: string) =>
+      api(`/api/v1/meeting-templates/${templateId}`, { method: 'DELETE' }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['meeting-templates', projectId] })
+    },
   })
 }
