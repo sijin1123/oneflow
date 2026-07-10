@@ -205,6 +205,32 @@ async function mockApi(page: Page, opts: { conflictOnPatch?: boolean } = {}) {
       json: { assigned: true, watched: true, commented: true, mention: true, due_alerts: true },
     }),
   )
+  // Personal developer settings: default to no user-owned API tokens.
+  await page.route('**/api/v1/me/access-tokens**', async (route) => {
+    if (route.request().method() === 'POST') {
+      await route.fulfill({
+        status: 201,
+        json: {
+          token: 'ofp_created_once',
+          item: {
+            id: 'tok-created',
+            name: '새 토큰',
+            token_prefix: 'ofp_created',
+            created_at: '2026-07-10T00:00:00Z',
+            expires_at: '2026-10-08T00:00:00Z',
+            revoked_at: null,
+            last_used_at: null,
+          },
+        },
+      })
+      return
+    }
+    if (route.request().method() === 'DELETE') {
+      await route.fulfill({ status: 204, body: '' })
+      return
+    }
+    await route.fulfill({ json: { items: [], total: 0 } })
+  })
   // The meetings page's template select fetches on mount — default to none.
   await page.route('**/api/v1/projects/*/meeting-templates', (route) =>
     route.fulfill({ json: { items: [], total: 0 } }),
@@ -2878,6 +2904,78 @@ test('개인 설정에서 알림 토글이 PUT을 보내고 구 딥링크가 리
   )
   await page.getByLabel(/기한 알림/).click()
   expect(((await duePut).postDataJSON() as { due_alerts: boolean }).due_alerts).toBe(false)
+})
+
+test('개인 설정에서 액세스 토큰을 생성하고 폐기한다', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await mockApi(page)
+  let tokens = [
+    {
+      id: 'tok-existing',
+      name: '배포 스크립트',
+      token_prefix: 'ofp_existing',
+      created_at: '2026-07-01T00:00:00Z',
+      expires_at: '2026-09-29T00:00:00Z',
+      revoked_at: null as string | null,
+      last_used_at: null as string | null,
+    },
+  ]
+  await page.route('**/api/v1/me/access-tokens**', async (route) => {
+    const request = route.request()
+    if (request.method() === 'POST') {
+      const sent = request.postDataJSON() as { name: string; expires_in_days: number }
+      const created = {
+        id: 'tok-created',
+        name: sent.name,
+        token_prefix: 'ofp_created',
+        created_at: '2026-07-10T00:00:00Z',
+        expires_at: '2026-10-08T00:00:00Z',
+        revoked_at: null,
+        last_used_at: null,
+      }
+      tokens = [created, ...tokens]
+      await route.fulfill({ status: 201, json: { token: 'ofp_created_secret_once', item: created } })
+      return
+    }
+    if (request.method() === 'DELETE') {
+      const id = request.url().split('/').pop()
+      tokens = tokens.map((token) =>
+        token.id === id ? { ...token, revoked_at: '2026-07-10T01:00:00Z' } : token,
+      )
+      await route.fulfill({ status: 204, body: '' })
+      return
+    }
+    await route.fulfill({ json: { items: tokens, total: tokens.length } })
+  })
+
+  await page.goto('/settings')
+  const tokenSection = page.getByRole('region', { name: '개발자 액세스 토큰' })
+  await expect(tokenSection.getByText('배포 스크립트')).toBeVisible()
+
+  const post = page.waitForRequest(
+    (request) => request.method() === 'POST' && request.url().includes('/me/access-tokens'),
+  )
+  await tokenSection.getByLabel('토큰 이름').fill('통합 스크립트')
+  await tokenSection.getByLabel('유효 일수').fill('45')
+  await tokenSection.getByRole('button', { name: '토큰 생성' }).click()
+  expect((await post).postDataJSON()).toEqual({ name: '통합 스크립트', expires_in_days: 45 })
+  await expect(tokenSection.getByLabel('새 액세스 토큰')).toContainText(
+    'ofp_created_secret_once',
+  )
+  await expectNoHorizontalOverflow(page)
+  await tokenSection.scrollIntoViewIfNeeded()
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/developer-security-ui/mobile.png',
+    fullPage: true,
+  })
+
+  const del = page.waitForRequest(
+    (request) =>
+      request.method() === 'DELETE' && request.url().includes('/me/access-tokens/tok-existing'),
+  )
+  await tokenSection.getByRole('button', { name: '배포 스크립트 폐기' }).click()
+  await del
+  await expect(tokenSection.getByText('폐기됨')).toBeVisible()
 })
 
 test('settings/admin IA는 모바일 폭에서 표면별 탐색을 유지한다', async ({ page }) => {
