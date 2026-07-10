@@ -60,6 +60,20 @@ def test_command_palette_flag_strict_parse():
     assert make_test_settings(command_palette_enabled="true").command_palette_is_enabled
 
 
+def test_webhook_configuration_is_fail_closed_and_validated():
+    assert not make_test_settings().webhooks_enabled
+    _expect_invalid(webhook_signing_key="too-short", webhook_allowed_hosts="example.com")
+    _expect_invalid(
+        webhook_signing_key="x" * 32,
+        webhook_allowed_hosts="https://example.com/path",
+    )
+    configured = make_test_settings(
+        webhook_signing_key="x" * 32,
+        webhook_allowed_hosts="example.com,hooks.example.com:8443",
+    )
+    assert configured.webhooks_enabled
+
+
 def test_dev_allow_nonlocal_forbidden_outside_dev_test():
     _expect_invalid(
         env="production",

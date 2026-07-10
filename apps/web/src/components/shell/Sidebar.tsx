@@ -23,6 +23,7 @@ import {
   SquareActivity,
   SquareKanban,
   UsersRound,
+  Webhook,
   X,
   type LucideIcon,
 } from 'lucide-react'
@@ -132,7 +133,11 @@ function SidebarContent({
   const me = useMe()
 
   const operationItems: WorkspaceNavItem[] = me.data?.is_admin
-    ? [...operationsNav, { to: '/admin/users', label: '사용자 관리', icon: UsersRound }]
+    ? [
+        ...operationsNav,
+        { to: '/admin/users', label: '사용자 관리', icon: UsersRound },
+        { to: '/admin/webhooks', label: 'Webhooks', icon: Webhook },
+      ]
     : operationsNav
 
   return (

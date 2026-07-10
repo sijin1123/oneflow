@@ -20,6 +20,7 @@ import { SearchPage } from '@/features/search/SearchPage'
 import { OperationsPage } from '@/features/ops/OperationsPage'
 import { StatusPage } from '@/features/ops/StatusPage'
 import { UsersPage } from '@/features/admin/UsersPage'
+import { WebhooksPage } from '@/features/admin/WebhooksPage'
 import { PersonalSettingsPage } from '@/features/settings/PersonalSettingsPage'
 import { SettingsPage } from '@/features/settings/SettingsPage'
 import { AllWorkPage } from '@/features/work-items/AllWorkPage'
@@ -66,6 +67,7 @@ export const router = createBrowserRouter([
       { path: 'operations', element: <OperationsPage /> },
       { path: 'status', element: <StatusPage /> },
       { path: 'admin/users', element: <UsersPage /> },
+      { path: 'admin/webhooks', element: <WebhooksPage /> },
       { path: 'settings', element: <PersonalSettingsPage /> },
       { path: 'projects/:projectId/work-packages', element: <ListPage /> },
       { path: 'projects/:projectId/work-packages/:wpId', element: <WorkPackageDetailPage /> },

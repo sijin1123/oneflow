@@ -4,7 +4,7 @@ import uuid
 from typing import Literal
 
 import sqlalchemy as sa
-from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, Response
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
 from sqlalchemy import delete as sa_delete
@@ -54,6 +54,7 @@ from app.services.activity import record_created, record_field_changes
 from app.services.automation import bump_fired, change_candidates, record_applied
 from app.services.notification import notify_watchers, record_assignment
 from app.services.sanitize import sanitize_html
+from app.services.webhooks import deliver_event_to_all
 
 logger = logging.getLogger("oneflow.work_packages")
 
@@ -86,6 +87,45 @@ PATCH_DATA_FIELDS = (
     "due_date",
     "estimated_hours",
 )
+
+
+def _webhook_payload(wp: WorkPackage, event_type: str, changed_fields: list[str]) -> dict:
+    return jsonable_encoder(
+        {
+            "id": str(uuid.uuid4()),
+            "event": event_type,
+            "occurred_at": wp.updated_at,
+            "data": {
+                "id": wp.id,
+                "project_id": wp.project_id,
+                "subject": wp.subject,
+                "status": wp.status,
+                "priority": wp.priority,
+                "version": wp.version,
+                "changed_fields": sorted(changed_fields),
+            },
+        }
+    )
+
+
+def _schedule_webhook(
+    background_tasks: BackgroundTasks,
+    request: Request,
+    event_type: str,
+    wp: WorkPackage,
+    changed_fields: list[str],
+) -> None:
+    settings: Settings = request.app.state.settings
+    if not settings.webhooks_enabled:
+        return
+    background_tasks.add_task(
+        deliver_event_to_all,
+        request.app.state.sessionmaker,
+        settings,
+        event_type,
+        _webhook_payload(wp, event_type, changed_fields),
+        getattr(request.app.state, "webhook_sender", None),
+    )
 
 
 async def _get_wp_scoped(
@@ -428,6 +468,8 @@ async def list_work_packages(
 async def create_work_package(
     project_id: uuid.UUID,
     body: WorkPackageCreate,
+    background_tasks: BackgroundTasks,
+    request: Request,
     session: AsyncSession = Depends(get_session),
     user: User = Depends(get_current_user),
 ) -> WorkPackageRead:
@@ -465,6 +507,13 @@ async def create_work_package(
         )
     await session.flush()
     await session.commit()
+    _schedule_webhook(
+        background_tasks,
+        request,
+        "work_package.created",
+        wp,
+        list(body.model_fields_set),
+    )
     return WorkPackageRead.model_validate(wp)
 
 
@@ -745,6 +794,8 @@ async def _check_parent_guards(
 async def patch_work_package(
     wp_id: uuid.UUID,
     body: WorkPackagePatch,
+    background_tasks: BackgroundTasks,
+    request: Request,
     session: AsyncSession = Depends(get_session),
     user: User = Depends(get_current_user),
 ):
@@ -907,6 +958,13 @@ async def patch_work_package(
         raise
 
     if updated is not None:
+        _schedule_webhook(
+            background_tasks,
+            request,
+            "work_package.updated",
+            updated,
+            list(changes),
+        )
         return WorkPackageRead.model_validate(updated)
 
     # 0 rows affected: distinguish 404 vs 409 by re-select.
