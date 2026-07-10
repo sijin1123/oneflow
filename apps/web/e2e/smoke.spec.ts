@@ -2241,6 +2241,66 @@ test('인테이크 큐에서 소유자가 수락하면 triage POST가 간다', a
   expect(sent.note).toBe('다음 분기 성능 작업으로 수락')
 })
 
+test('인테이크 표면은 모바일에서 제출과 판정 큐를 유지한다', async ({ page }) => {
+  await mockApi(page)
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.route(`**/api/v1/projects/${project.id}/intake`, (route) =>
+    route.fulfill({
+      json: {
+        items: [
+          {
+            id: 'it-1',
+            project_id: project.id,
+            title: '검색이 느려요',
+            body: null,
+            status: 'pending',
+            submitted_by: 'u-alex',
+            submitter_name: 'Alex Kim',
+            snooze_until: null,
+            accepted_wp_id: null,
+            triage_note: null,
+            triaged_by_id: null,
+            triaged_at: null,
+            created_at: '2026-07-06T00:00:00Z',
+            updated_at: '2026-07-06T00:00:00Z',
+          },
+          {
+            id: 'it-2',
+            project_id: project.id,
+            title: '중복 요청',
+            body: null,
+            status: 'duplicate',
+            submitted_by: 'u-alex',
+            submitter_name: 'Alex Kim',
+            snooze_until: null,
+            accepted_wp_id: null,
+            triage_note: '기존 요청과 합침',
+            triaged_by_id: 'me-1',
+            triaged_at: '2026-07-07T00:00:00Z',
+            created_at: '2026-07-06T00:00:00Z',
+            updated_at: '2026-07-07T00:00:00Z',
+          },
+        ],
+        total: 2,
+      },
+    }),
+  )
+
+  await page.goto(`/projects/${project.id}/intake?item=it-1`)
+  await expect(page.getByRole('heading', { name: '인테이크', exact: true })).toBeVisible()
+  await expect(page.getByText('열린 요청')).toBeVisible()
+  await expect(page.getByLabel('인테이크 요청 제목')).toBeVisible()
+  const pending = page.getByRole('region', { name: '대기' })
+  await expect(pending.getByText('검색이 느려요')).toBeVisible()
+  await expect(pending.getByRole('button', { name: '수락' })).toBeVisible()
+  await expect(pending.getByLabel('검색이 느려요 판정 사유')).toBeVisible()
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/intake-ui/mobile.png',
+    fullPage: true,
+  })
+})
+
 test('설정 필드 탭에서 드롭다운 필드를 정의한다', async ({ page }) => {
   await mockApi(page)
   await page.route('**/api/v1/me', (route) =>
@@ -5851,4 +5911,97 @@ test('포트폴리오 리포트가 행·합계·아카이브 토글을 보여준
   await expect(page.getByText('(아카이브)')).toBeVisible()
   await expect(page.getByText('합계 · 2개 프로젝트')).toBeVisible()
   await expect(page.getByText('미설정')).toBeVisible() // NULL budget row
+})
+
+test('보고 표면은 모바일에서 포트폴리오와 이니셔티브를 넘침 없이 보여준다', async ({ page }) => {
+  await mockApi(page)
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.route('**/api/v1/reports/portfolio?include_archived=false', (route) =>
+    route.fulfill({
+      json: {
+        items: [
+          {
+            project_id: 'p-1',
+            key: 'ONE',
+            name: 'OneFlow 도입',
+            archived: false,
+            health: 'at_risk',
+            member_count: 3,
+            work_package_count: 12,
+            open_work_package_count: 7,
+            overdue_count: 2,
+            budget: 20000000,
+            cost_total: 5000000,
+            hours_total: 42.5,
+          },
+        ],
+        totals: {
+          projects: 1,
+          work_packages: 12,
+          open: 7,
+          overdue: 2,
+          budget: 20000000,
+          cost_total: 5000000,
+          hours_total: 42.5,
+        },
+        total: 1,
+      },
+    }),
+  )
+  await page.route('**/api/v1/reports/portfolio/timeline?**', (route) =>
+    route.fulfill({ json: { items: [], total: 0 } }),
+  )
+  await page.route('**/api/v1/initiatives', (route) =>
+    route.fulfill({
+      json: {
+        items: [
+          {
+            id: 'ini-1',
+            name: '플랫폼 개편',
+            description: null,
+            owner_id: 'u-dev',
+            owner_name: 'Dev User',
+            state: 'in_progress',
+            start_date: null,
+            target_date: null,
+            health: 'at_risk',
+            health_note: '일정 검토 필요',
+            health_updated_by: 'me-1',
+            health_updated_at: '2026-07-08T00:00:00Z',
+            is_mine: true,
+            connected_project_count: 2,
+            projects: [
+              {
+                project_id: project.id,
+                project_name: project.name,
+                work_package_count: 4,
+                done_work_package_count: 1,
+              },
+            ],
+            created_at: '2026-07-07T00:00:00Z',
+            updated_at: '2026-07-07T00:00:00Z',
+          },
+        ],
+        total: 1,
+      },
+    }),
+  )
+
+  await page.goto('/reports')
+  await expect(page.getByRole('heading', { name: '포트폴리오 리포트' })).toBeVisible()
+  await expect(page.getByText('미완료 작업', { exact: true })).toBeVisible()
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/reporting-ui/mobile-reports.png',
+    fullPage: true,
+  })
+
+  await page.goto('/initiatives')
+  await expect(page.getByRole('heading', { name: '이니셔티브', exact: true })).toBeVisible()
+  await expect(page.getByRole('region', { name: '진행 중' }).getByText('플랫폼 개편')).toBeVisible()
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/reporting-ui/mobile-initiatives.png',
+    fullPage: true,
+  })
 })
