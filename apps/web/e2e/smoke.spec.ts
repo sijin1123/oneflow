@@ -10,6 +10,7 @@ import { expect, test, type Page } from '@playwright/test'
 import type { Milestone } from '../src/features/milestones/api'
 import type { Project, ProjectList } from '../src/features/projects/types'
 import type { SearchResults } from '../src/features/search/api'
+import type { MyActivityList, MyWorkItemList } from '../src/features/my-work/api'
 import type {
   WorkItemDraft,
   WorkItemDraftContent,
@@ -2561,6 +2562,125 @@ test('내 작업 홈이 배정·기한임박·활동을 모아 보여주고 딥�
     .getByRole('button', { name: new RegExp(wpA.subject) })
     .click()
   await expect(page).toHaveURL(new RegExp(`/projects/${project.id}/work-packages\\?wp=${wpA.id}`))
+})
+
+test('내 작업 탭이 관계·검색·범위·정렬·페이지 상태를 URL과 API에 연결한다', async ({
+  page,
+}) => {
+  await mockApi(page)
+  await page.route('**/api/v1/me/work-items**', (route) => {
+    const url = new URL(route.request().url())
+    const relationship = url.searchParams.get('relationship') ?? 'assigned'
+    const state = url.searchParams.get('state') ?? 'open'
+    const sort = url.searchParams.get('sort') ?? 'updated'
+    const q = url.searchParams.get('q') ?? '전체'
+    const offset = Number(url.searchParams.get('offset') ?? 0)
+    const item = offset > 0 ? wpB : wpA
+    const body: MyWorkItemList = {
+      items: [
+        {
+          id: item.id,
+          project_id: project.id,
+          project_name: project.name,
+          subject: `${relationship} · ${state} · ${sort} · ${q}`,
+          type: item.type,
+          status: item.status,
+          priority: item.priority,
+          due_date: item.due_date,
+          assignee_id: relationship === 'assigned' ? 'me-1' : 'u-alex',
+          assignee_name: relationship === 'assigned' ? 'Dev User' : 'Alex Kim',
+          updated_at: item.updated_at,
+        },
+      ],
+      total: relationship === 'assigned' ? 26 : 1,
+      limit: 25,
+      offset,
+    }
+    return route.fulfill({ json: body })
+  })
+  await page.route('**/api/v1/me/activities**', (route) => {
+    const body: MyActivityList = {
+      items: [
+        {
+          id: 'my-activity-1',
+          project_id: project.id,
+          project_name: project.name,
+          work_package_id: wpA.id,
+          work_package_subject: wpA.subject,
+          actor_name: 'Dev User',
+          action: 'commented',
+          field: null,
+          old_value: null,
+          new_value: null,
+          created_at: '2026-07-11T08:00:00Z',
+        },
+      ],
+      total: 1,
+      limit: 25,
+      offset: 0,
+    }
+    return route.fulfill({ json: body })
+  })
+
+  await page.goto('/my?tab=assigned')
+  await expect(page.getByRole('heading', { name: '나에게 배정된 작업' })).toBeVisible()
+  await expect(page.getByText('assigned · open · updated · 전체')).toBeVisible()
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/your-work-tabs-ui/desktop.png',
+    fullPage: true,
+  })
+
+  await page.getByLabel('내 작업 검색').fill('결제')
+  await page.getByLabel('내 작업 검색').press('Enter')
+  await page.getByLabel('작업 범위').selectOption('all')
+  await page.getByLabel('작업 정렬').selectOption('due')
+  await expect(page).toHaveURL(/tab=assigned.*q=%EA%B2%B0%EC%A0%9C.*state=all.*sort=due/)
+  await expect(page.getByText('assigned · all · due · 결제')).toBeVisible()
+
+  await page.getByRole('button', { name: '초기화' }).click()
+  await page.getByRole('button', { name: '다음 페이지' }).click()
+  await expect(page).toHaveURL(/offset=25/)
+  await expect(page.getByText('26-26 / 26')).toBeVisible()
+  await page.getByRole('button', { name: '이전 페이지' }).click()
+  await expect(page).not.toHaveURL(/offset=/)
+  await page.goBack()
+  await expect(page).toHaveURL(/offset=25/)
+  await expect(page.getByText('26-26 / 26')).toBeVisible()
+  await page.goForward()
+  await expect(page).not.toHaveURL(/offset=/)
+
+  await page.getByRole('link', { name: '생성함' }).click()
+  await expect(page.getByText('created · open · updated · 전체')).toBeVisible()
+  await page.getByRole('link', { name: '구독' }).click()
+  await expect(page.getByText('subscribed · open · updated · 전체')).toBeVisible()
+  await page.setViewportSize({ width: 390, height: 844 })
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/your-work-tabs-ui/mobile.png',
+    fullPage: true,
+  })
+
+  await page.getByRole('link', { name: '활동' }).click()
+  const activities = page.getByRole('list', { name: '내 프로젝트 활동 목록' })
+  await expect(activities.getByText(wpA.subject)).toBeVisible()
+  await expect(activities.getByText(/댓글/)).toBeVisible()
+  await expectNoHorizontalOverflow(page)
+})
+
+test('내 작업 탭이 오류 재시도 후 빈 상태를 복구한다', async ({ page }) => {
+  await mockApi(page)
+  let shouldFail = true
+  await page.route('**/api/v1/me/work-items**', (route) => {
+    if (shouldFail) return route.fulfill({ status: 500, json: { detail: 'temporary' } })
+    const body: MyWorkItemList = { items: [], total: 0, limit: 25, offset: 0 }
+    return route.fulfill({ json: body })
+  })
+
+  await page.goto('/my?tab=subscribed')
+  await expect(page.getByRole('alert')).toContainText('데이터를 불러오지 못했습니다')
+  shouldFail = false
+  await page.getByRole('button', { name: '다시 시도' }).click()
+  await expect(page.getByText('조건에 맞는 구독 작업이 없습니다.')).toBeVisible()
 })
 
 test('AI workspace가 켜진 AI 요약 기능을 보이는 작업 상세로 연결한다', async ({ page }) => {
