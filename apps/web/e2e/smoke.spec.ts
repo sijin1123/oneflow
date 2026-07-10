@@ -2241,6 +2241,66 @@ test('인테이크 큐에서 소유자가 수락하면 triage POST가 간다', a
   expect(sent.note).toBe('다음 분기 성능 작업으로 수락')
 })
 
+test('인테이크 표면은 모바일에서 제출과 판정 큐를 유지한다', async ({ page }) => {
+  await mockApi(page)
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.route(`**/api/v1/projects/${project.id}/intake`, (route) =>
+    route.fulfill({
+      json: {
+        items: [
+          {
+            id: 'it-1',
+            project_id: project.id,
+            title: '검색이 느려요',
+            body: null,
+            status: 'pending',
+            submitted_by: 'u-alex',
+            submitter_name: 'Alex Kim',
+            snooze_until: null,
+            accepted_wp_id: null,
+            triage_note: null,
+            triaged_by_id: null,
+            triaged_at: null,
+            created_at: '2026-07-06T00:00:00Z',
+            updated_at: '2026-07-06T00:00:00Z',
+          },
+          {
+            id: 'it-2',
+            project_id: project.id,
+            title: '중복 요청',
+            body: null,
+            status: 'duplicate',
+            submitted_by: 'u-alex',
+            submitter_name: 'Alex Kim',
+            snooze_until: null,
+            accepted_wp_id: null,
+            triage_note: '기존 요청과 합침',
+            triaged_by_id: 'me-1',
+            triaged_at: '2026-07-07T00:00:00Z',
+            created_at: '2026-07-06T00:00:00Z',
+            updated_at: '2026-07-07T00:00:00Z',
+          },
+        ],
+        total: 2,
+      },
+    }),
+  )
+
+  await page.goto(`/projects/${project.id}/intake?item=it-1`)
+  await expect(page.getByRole('heading', { name: '인테이크', exact: true })).toBeVisible()
+  await expect(page.getByText('열린 요청')).toBeVisible()
+  await expect(page.getByLabel('인테이크 요청 제목')).toBeVisible()
+  const pending = page.getByRole('region', { name: '대기' })
+  await expect(pending.getByText('검색이 느려요')).toBeVisible()
+  await expect(pending.getByRole('button', { name: '수락' })).toBeVisible()
+  await expect(pending.getByLabel('검색이 느려요 판정 사유')).toBeVisible()
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/intake-ui/mobile.png',
+    fullPage: true,
+  })
+})
+
 test('설정 필드 탭에서 드롭다운 필드를 정의한다', async ({ page }) => {
   await mockApi(page)
   await page.route('**/api/v1/me', (route) =>
