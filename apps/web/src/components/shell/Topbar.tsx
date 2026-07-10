@@ -19,6 +19,7 @@ const workspaceRouteLabels: Array<{ path: string; title: string; parent: string 
   { path: '/inbox', title: '인박스', parent: '워크스페이스' },
   { path: '/work-items', title: '전체 작업', parent: '워크스페이스' },
   { path: '/projects', title: '프로젝트', parent: '워크스페이스' },
+  { path: '/templates', title: '프로젝트 템플릿', parent: '워크스페이스' },
   { path: '/initiatives', title: '이니셔티브', parent: '워크스페이스' },
   { path: '/search', title: '검색', parent: '워크스페이스' },
   { path: '/reports', title: '리포트', parent: '워크스페이스' },

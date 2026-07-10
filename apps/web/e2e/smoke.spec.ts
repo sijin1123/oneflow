@@ -9,6 +9,7 @@ import { expect, test, type Page } from '@playwright/test'
 
 import type { Milestone } from '../src/features/milestones/api'
 import type { Project, ProjectList } from '../src/features/projects/types'
+import type { ProjectTemplate } from '../src/features/project-templates/api'
 import type { SearchResults } from '../src/features/search/api'
 import type { MyActivityList, MyWorkItemList } from '../src/features/my-work/api'
 import type {
@@ -5030,6 +5031,248 @@ test('새 프로젝트 폼에서 템플릿을 고르면 template_project_id를 �
   await page.getByRole('button', { name: '만들기' }).click()
   const sent = (await post).postDataJSON() as { template_project_id: string }
   expect(sent.template_project_id).toBe(project.id)
+})
+
+test('프로젝트 템플릿 catalog가 revision·적용·보관·복원·삭제를 연결한다', async ({
+  page,
+}) => {
+  await mockApi(page)
+  const template: ProjectTemplate = {
+    id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    name: 'Delivery 표준',
+    description: '표준 상태와 자동화',
+    source_project_id: project.id,
+    source_project_name: project.name,
+    created_by: 'me-1',
+    creator_name: 'Dev User',
+    archived_at: null,
+    latest_revision: {
+      version: 1,
+      statuses: 6,
+      types: 4,
+      custom_fields: 1,
+      automation_rules: 1,
+    },
+    updated_at: '2026-07-11T08:00:00Z',
+    can_manage: true,
+  }
+  let current: ProjectTemplate | null = template
+  await page.route('**/api/v1/project-templates**', (route) => {
+    const request = route.request()
+    const url = new URL(request.url())
+    const suffix = url.pathname.replace('/api/v1/project-templates', '')
+    if (request.method() === 'GET') {
+      const includeArchived = url.searchParams.get('include_archived') === 'true'
+      const q = url.searchParams.get('q')?.toLocaleLowerCase() ?? ''
+      const items = current && (!current.archived_at || includeArchived) && current.name.toLocaleLowerCase().includes(q) ? [current] : []
+      return route.fulfill({ json: { items, total: items.length, limit: 50, offset: 0 } })
+    }
+    if (request.method() === 'POST' && suffix.endsWith('/revisions') && current) {
+      current = {
+        ...current,
+        latest_revision: { ...current.latest_revision!, version: 2 },
+        updated_at: '2026-07-11T09:00:00Z',
+      }
+      return route.fulfill({ status: 201, json: current })
+    }
+    if (request.method() === 'POST' && suffix.endsWith('/apply')) {
+      return route.fulfill({
+        status: 201,
+        json: { ...project, id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', key: 'NEWP' },
+      })
+    }
+    if (request.method() === 'POST' && suffix.endsWith('/archive') && current) {
+      current = { ...current, archived_at: '2026-07-11T10:00:00Z' }
+      return route.fulfill({ json: current })
+    }
+    if (request.method() === 'POST' && suffix.endsWith('/unarchive') && current) {
+      current = { ...current, archived_at: null }
+      return route.fulfill({ json: current })
+    }
+    if (request.method() === 'DELETE') {
+      current = null
+      return route.fulfill({ status: 204 })
+    }
+    return route.fallback()
+  })
+
+  await page.goto('/templates')
+  await expect(page.getByRole('heading', { name: '프로젝트 템플릿' })).toBeVisible()
+  await expect(page.getByText(template.name)).toBeVisible()
+  await expect(page.getByText('스냅샷 항목 12개')).toBeVisible()
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/templates-ui/desktop.png',
+    fullPage: true,
+  })
+
+  const revision = page.waitForRequest(
+    (request) => request.method() === 'POST' && request.url().endsWith('/revisions'),
+  )
+  await page.getByRole('button', { name: '스냅샷 갱신' }).click()
+  await revision
+  await expect(page.getByText('v2')).toBeVisible()
+
+  await page.getByRole('button', { name: '적용', exact: true }).click()
+  const applyForm = page.getByRole('form', { name: `${template.name} 적용` })
+  await applyForm.getByLabel('새 프로젝트 이름').fill('새 Delivery')
+  await applyForm.getByLabel('키').fill('NEWP')
+  const apply = page.waitForRequest(
+    (request) => request.method() === 'POST' && request.url().endsWith('/apply'),
+  )
+  await applyForm.getByRole('button', { name: '적용' }).click()
+  expect((await apply).postDataJSON()).toMatchObject({ name: '새 Delivery', key: 'NEWP' })
+  await expect(page).toHaveURL(/projects\/bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb\/work-packages/)
+  await page.goBack()
+
+  await page.getByRole('button', { name: '보관', exact: true }).click()
+  await expect(page.getByText('아직 프로젝트 템플릿이 없습니다')).toBeVisible()
+  await page.getByLabel('보관 포함').click()
+  await expect(page).toHaveURL(/include_archived=true/)
+  await expect(page.getByText('보관됨')).toBeVisible()
+  await page.getByRole('button', { name: '복원' }).click()
+  await expect(page.getByText('보관됨')).toBeHidden()
+  await page.getByRole('button', { name: '보관', exact: true }).click()
+  await page.getByRole('button', { name: '삭제' }).click()
+  const dialog = page.getByRole('dialog', { name: `${template.name} 삭제 확인` })
+  await expect(dialog.getByRole('button', { name: '취소' })).toBeFocused()
+  await page.keyboard.press('Escape')
+  await expect(dialog).toHaveCount(0)
+  await page.getByRole('button', { name: '삭제' }).click()
+  const reopenedDialog = page.getByRole('dialog', { name: `${template.name} 삭제 확인` })
+  await reopenedDialog.getByRole('button', { name: '삭제' }).click()
+  await expect(page.getByText('아직 프로젝트 템플릿이 없습니다')).toBeVisible()
+})
+
+test('프로젝트 템플릿 생성·검색과 모바일 상태가 실제 요청에 연결된다', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await mockApi(page)
+  let items: ProjectTemplate[] = []
+  await page.route('**/api/v1/project-templates**', (route) => {
+    const request = route.request()
+    const url = new URL(request.url())
+    if (request.method() === 'GET' && url.pathname.endsWith('/sources')) {
+      return route.fulfill({
+        json: { items: [{ id: project.id, key: project.key, name: project.name }], total: 1 },
+      })
+    }
+    if (request.method() === 'POST' && url.pathname === '/api/v1/project-templates') {
+      const input = request.postDataJSON() as {
+        name: string
+        description: string | null
+        source_project_id: string
+      }
+      const created: ProjectTemplate = {
+        id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+        ...input,
+        source_project_name: project.name,
+        created_by: 'me-1',
+        creator_name: 'Dev User',
+        archived_at: null,
+        latest_revision: {
+          version: 1,
+          statuses: 6,
+          types: 4,
+          custom_fields: 0,
+          automation_rules: 0,
+        },
+        updated_at: '2026-07-11T08:00:00Z',
+        can_manage: true,
+      }
+      items = [created]
+      return route.fulfill({ status: 201, json: created })
+    }
+    if (request.method() === 'GET') {
+      const q = url.searchParams.get('q')?.toLocaleLowerCase() ?? ''
+      const filtered = items.filter((item) => item.name.toLocaleLowerCase().includes(q))
+      return route.fulfill({ json: { items: filtered, total: filtered.length, limit: 50, offset: 0 } })
+    }
+    return route.fallback()
+  })
+
+  await page.goto('/templates')
+  await page.getByRole('button', { name: '새 템플릿' }).first().click()
+  const createForm = page.getByRole('form', { name: '새 템플릿 생성' })
+  await createForm.getByLabel('템플릿 이름').fill('모바일 표준')
+  await createForm.getByLabel('원본 프로젝트').selectOption(project.id)
+  const create = page.waitForRequest(
+    (request) =>
+      request.method() === 'POST' && request.url().endsWith('/api/v1/project-templates'),
+  )
+  await createForm.getByRole('button', { name: '만들기' }).click()
+  expect((await create).postDataJSON()).toMatchObject({
+    name: '모바일 표준',
+    source_project_id: project.id,
+  })
+  await expect(page.getByText('모바일 표준')).toBeVisible()
+  await page.getByLabel('템플릿 검색어').fill('없음')
+  await page.getByLabel('템플릿 검색어').press('Enter')
+  await expect(page).toHaveURL(/q=%EC%97%86%EC%9D%8C/)
+  await expect(page.getByText('조건에 맞는 템플릿이 없습니다')).toBeVisible()
+  await page.getByRole('button', { name: '검색 지우기' }).click()
+  await expect(page.getByText('모바일 표준')).toBeVisible()
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/templates-ui/mobile.png',
+    fullPage: true,
+  })
+})
+
+test('프로젝트 템플릿 목록 오류는 명시적 재시도로 복구한다', async ({ page }) => {
+  await mockApi(page)
+  let fail = true
+  await page.route('**/api/v1/project-templates**', (route) => {
+    if (fail) return route.fulfill({ status: 500, json: { detail: 'temporary' } })
+    return route.fulfill({ json: { items: [], total: 0, limit: 50, offset: 0 } })
+  })
+  await page.goto('/templates')
+  await expect(page.getByRole('alert')).toContainText('데이터를 불러오지 못했습니다')
+  fail = false
+  await page.getByRole('button', { name: '다시 시도' }).click()
+  await expect(page.getByText('아직 프로젝트 템플릿이 없습니다')).toBeVisible()
+})
+
+test('프로젝트 템플릿 페이지 offset은 데이터 범위와 형식에 맞게 교정한다', async ({ page }) => {
+  await mockApi(page)
+  const items: ProjectTemplate[] = Array.from({ length: 51 }, (_, index) => ({
+    id: `template-${index + 1}`,
+    name: `Template ${index + 1}`,
+    description: null,
+    source_project_id: project.id,
+    source_project_name: project.name,
+    created_by: 'me-1',
+    creator_name: 'Dev User',
+    archived_at: null,
+    latest_revision: {
+      version: 1,
+      statuses: 6,
+      types: 4,
+      custom_fields: 0,
+      automation_rules: 0,
+    },
+    updated_at: '2026-07-11T08:00:00Z',
+    can_manage: true,
+  }))
+  await page.route('**/api/v1/project-templates**', (route) => {
+    const url = new URL(route.request().url())
+    const offset = Number(url.searchParams.get('offset') ?? 0)
+    return route.fulfill({
+      json: { items: items.slice(offset, offset + 50), total: items.length, limit: 50, offset },
+    })
+  })
+
+  await page.goto('/templates?offset=100')
+  await expect(page).toHaveURL(/offset=50/)
+  await expect(page.getByText('Template 51')).toBeVisible()
+  await page.getByRole('button', { name: '이전 페이지' }).click()
+  await expect(page).toHaveURL(/\/templates$/)
+  await expect(page.getByText('Template 1', { exact: true })).toBeVisible()
+
+  items.length = 0
+  for (const invalidOffset of ['50', '-5', 'oops']) {
+    await page.goto(`/templates?offset=${invalidOffset}`)
+    await expect(page).toHaveURL(/\/templates$/)
+    await expect(page.getByText('아직 프로젝트 템플릿이 없습니다')).toBeVisible()
+  }
 })
 
 test('전체 검색이 그룹 결과를 보여주고 문서로 이동한다', async ({ page }) => {

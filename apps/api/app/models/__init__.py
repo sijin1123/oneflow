@@ -21,6 +21,12 @@ from app.models.notification_setting import UserNotificationSettings
 from app.models.personal_note import PersonalNote
 from app.models.project import Project
 from app.models.project_status import ProjectStatus
+from app.models.project_template import (
+    ProjectTemplate,
+    ProjectTemplateApplication,
+    ProjectTemplateEvent,
+    ProjectTemplateRevision,
+)
 from app.models.project_type import ProjectType
 from app.models.relation import WorkPackageRelation
 from app.models.saved_filter import SavedFilter
@@ -50,6 +56,10 @@ __all__ = [
     "Notification",
     "SavedFilter",
     "ProjectStatus",
+    "ProjectTemplate",
+    "ProjectTemplateRevision",
+    "ProjectTemplateApplication",
+    "ProjectTemplateEvent",
     "ProjectType",
     "AutomationRule",
     "DocumentWorkPackageLink",
