@@ -10,6 +10,7 @@ import time
 import uuid
 from collections.abc import Awaitable, Callable
 from contextlib import suppress
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 from urllib.parse import urlsplit
 
@@ -21,10 +22,35 @@ from app.core.config import Settings
 from app.models.webhook import WebhookDelivery, WebhookEndpoint
 from app.models.work_package import WorkPackage
 
-WebhookSender = Callable[[str, bytes, dict[str, str]], Awaitable[int]]
+
+@dataclass(frozen=True)
+class ResolvedWebhookTarget:
+    """One parse/resolution result used for both validation and transport.
+
+    It deliberately keeps the original authority separate from literal dial
+    candidates, preventing a second DNS lookup between policy and connect.
+    """
+
+    url: str
+    hostname: str
+    authority: str
+    port: int
+    candidates: tuple[str, ...]
+
+    def __str__(self) -> str:
+        return self.url
+
+
+WebhookSender = Callable[[ResolvedWebhookTarget, bytes, dict[str, str]], Awaitable[int]]
 MAX_ERROR_LENGTH = 500
 MAX_PENDING_PER_ENDPOINT = 100
 CLAIM_BATCH_SIZE = 50
+WEBHOOK_DELIVERY_DEADLINE_SECONDS = 8.0
+WEBHOOK_CONNECT_TIMEOUT_SECONDS = 2.0
+NAT64_NETWORKS = (
+    ipaddress.ip_network("64:ff9b::/96"),
+    ipaddress.ip_network("64:ff9b:1::/48"),
+)
 logger = logging.getLogger("oneflow.webhooks")
 
 
@@ -36,8 +62,18 @@ async def database_now(session: AsyncSession) -> datetime:
     return (await session.execute(select(func.clock_timestamp()))).scalar_one()
 
 
-def derive_signing_secret(settings: Settings, endpoint_id: uuid.UUID, version: int) -> str:
-    key = (settings.webhook_signing_key or "").encode()
+class SigningKeyUnavailable(RuntimeError):
+    pass
+
+
+def derive_signing_secret(
+    settings: Settings, endpoint_id: uuid.UUID, version: int, signing_key_id: str | None = None
+) -> str:
+    key_id = signing_key_id or settings.webhook_active_signing_key_id_effective
+    key_value = settings.webhook_signing_key_for(key_id or "")
+    if key_value is None:
+        raise SigningKeyUnavailable(f"signing key {key_id!r} is unavailable")
+    key = key_value.encode()
     digest = hmac.new(key, f"{endpoint_id}:{version}".encode(), hashlib.sha256).digest()
     return "ofw_" + base64.urlsafe_b64encode(digest).decode().rstrip("=")
 
@@ -53,7 +89,9 @@ def signature_headers(
     body: bytes,
     timestamp: int,
 ) -> dict[str, str]:
-    secret = derive_signing_secret(settings, endpoint.id, endpoint.secret_version).encode()
+    secret = derive_signing_secret(
+        settings, endpoint.id, delivery.secret_version, delivery.signing_key_id
+    ).encode()
     signature = hmac.new(secret, f"{timestamp}.".encode() + body, hashlib.sha256).hexdigest()
     return {
         "content-type": "application/json",
@@ -62,28 +100,60 @@ def signature_headers(
         "x-oneflow-delivery": str(delivery.id),
         "x-oneflow-timestamp": str(timestamp),
         "x-oneflow-signature": f"sha256={signature}",
+        "x-oneflow-key-id": delivery.signing_key_id,
+        "x-oneflow-secret-version": str(delivery.secret_version),
     }
 
 
-def _host_port(url: str) -> tuple[str, int]:
+def _host_port(url: str) -> tuple[str, int, str]:
     parts = urlsplit(url)
     if parts.scheme != "https" or not parts.hostname:
         raise ValueError("webhook URL must use https")
     if parts.username or parts.password or parts.fragment:
         raise ValueError("webhook URL cannot contain userinfo or fragment")
+    if "%" in parts.hostname:
+        raise ValueError("webhook URL cannot use an IP zone")
     try:
         port = parts.port or 443
     except ValueError as exc:
         raise ValueError("webhook URL port is invalid") from exc
-    return parts.hostname.lower(), port
+    return parts.hostname.lower(), port, parts.netloc
 
 
-async def validate_webhook_url(url: str, settings: Settings) -> str:
+def _interleave_candidates(addresses: set[tuple[int, str]]) -> tuple[str, ...]:
+    # Deterministic within family and alternating families avoids a v6-only
+    # outage starving viable v4 without multiplying attempts.
+    grouped = {socket.AF_INET6: [], socket.AF_INET: []}
+    for family, address in addresses:
+        grouped[family].append(address)
+    for items in grouped.values():
+        items.sort()
+    result: list[str] = []
+    while grouped[socket.AF_INET6] or grouped[socket.AF_INET]:
+        for family in (socket.AF_INET6, socket.AF_INET):
+            if grouped[family]:
+                result.append(grouped[family].pop(0))
+    return tuple(result[:8])
+
+
+def _is_public_webhook_address(address: str) -> bool:
+    ip = ipaddress.ip_address(address)
+    if not ip.is_global:
+        return False
+    if isinstance(ip, ipaddress.IPv6Address):
+        if ip.ipv4_mapped is not None or ip.sixtofour is not None or ip.teredo is not None:
+            return False
+        if any(ip in network for network in NAT64_NETWORKS):
+            return False
+    return True
+
+
+async def validate_webhook_url(url: str, settings: Settings) -> ResolvedWebhookTarget:
     url = url.strip()
-    host, port = _host_port(url)
+    host, port, original_authority = _host_port(url)
     allowed = set(settings.webhook_allowed_host_list)
-    authority = host if port == 443 else f"{host}:{port}"
-    if authority not in allowed and not (port == 443 and host in allowed):
+    allowed_authority = host if port == 443 else f"{host}:{port}"
+    if allowed_authority not in allowed and not (port == 443 and host in allowed):
         raise ValueError("webhook host is not in ONEFLOW_WEBHOOK_ALLOWED_HOSTS")
     try:
         literal = ipaddress.ip_address(host)
@@ -92,8 +162,14 @@ async def validate_webhook_url(url: str, settings: Settings) -> str:
     if literal is not None:
         raise ValueError("webhook URL cannot use an IP literal")
 
-    def resolve() -> set[str]:
-        return {item[4][0] for item in socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)}
+    def resolve() -> set[tuple[int, str]]:
+        return {
+            (item[0], item[4][0])
+            for item in socket.getaddrinfo(
+                host, port, family=socket.AF_UNSPEC, type=socket.SOCK_STREAM
+            )
+            if item[0] in {socket.AF_INET, socket.AF_INET6}
+        }
 
     try:
         addresses = await asyncio.wait_for(asyncio.to_thread(resolve), timeout=2)
@@ -101,20 +177,52 @@ async def validate_webhook_url(url: str, settings: Settings) -> str:
         raise ValueError("webhook host could not be resolved") from exc
     if not addresses:
         raise ValueError("webhook host could not be resolved")
-    for address in addresses:
-        ip = ipaddress.ip_address(address)
-        if not ip.is_global:
+    for _, address in addresses:
+        if not _is_public_webhook_address(address):
             raise ValueError("webhook host resolves to a non-public address")
-    return url
+    candidates = _interleave_candidates(addresses)
+    if not candidates:
+        raise ValueError("webhook host could not be resolved")
+    return ResolvedWebhookTarget(url, host, original_authority, port, candidates)
 
 
-async def default_sender(url: str, body: bytes, headers: dict[str, str]) -> int:
-    timeout = httpx.Timeout(5.0, connect=2.0)
-    async with (
-        httpx.AsyncClient(timeout=timeout, follow_redirects=False) as client,
-        client.stream("POST", url, content=body, headers=headers) as response,
-    ):
-        return response.status_code
+async def default_sender(
+    target: ResolvedWebhookTarget, body: bytes, headers: dict[str, str]
+) -> int:
+    """Send only to a checked literal, retaining the origin Host and TLS SNI.
+
+    Failover is intentionally limited to connection setup: after a request is
+    handed to httpx, retrying another address could duplicate a webhook.
+    """
+    deadline = time.monotonic() + WEBHOOK_DELIVERY_DEADLINE_SECONDS
+    last_error: Exception | None = None
+    for literal in target.candidates:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise TimeoutError("webhook delivery deadline exceeded")
+        dial_url = httpx.URL(target.url).copy_with(host=literal)
+        request_headers = {**headers, "host": target.authority}
+        timeout = httpx.Timeout(
+            min(remaining, 5.0), connect=min(remaining, WEBHOOK_CONNECT_TIMEOUT_SECONDS)
+        )
+        try:
+            async with asyncio.timeout(remaining):
+                async with httpx.AsyncClient(
+                    timeout=timeout, follow_redirects=False, trust_env=False, http2=False
+                ) as client:
+                    request = client.build_request(
+                        "POST", dial_url, content=body, headers=request_headers
+                    )
+                    request.extensions["sni_hostname"] = target.hostname
+                    response = await client.send(request, stream=True)
+                    try:
+                        return response.status_code
+                    finally:
+                        await response.aclose()
+        except (httpx.ConnectError, httpx.ConnectTimeout, httpx.PoolTimeout) as exc:
+            last_error = exc
+            continue
+    raise last_error or TimeoutError("webhook delivery deadline exceeded")
 
 
 async def attempt_delivery(
@@ -148,11 +256,30 @@ async def attempt_delivery(
         await session.commit()
     if status is None:
         body = serialize_payload(delivery.payload)
-        headers = signature_headers(settings, endpoint, delivery, body, int(time.time()))
+        try:
+            headers = signature_headers(settings, endpoint, delivery, body, int(time.time()))
+        except SigningKeyUnavailable:
+            status = "failed"
+            error = f"signing_key_unavailable:{delivery.signing_key_id}"[:MAX_ERROR_LENGTH]
+            response_status = None
+            duration_ms = 0
+            automatic = False
+            headers = None
+        # Resolve only after signing metadata is known to be usable. A missing
+        # historical key must cause no DNS or socket activity.
+        target = None
+        if headers is not None:
+            try:
+                target = await validate_webhook_url(endpoint.url, settings)
+            except Exception as exc:
+                status, error, response_status = "failed", str(exc)[:MAX_ERROR_LENGTH], None
         started = time.monotonic()
         try:
-            await validate_webhook_url(endpoint.url, settings)
-            response_status = await (sender or default_sender)(endpoint.url, body, headers)
+            if target is None:
+                raise RuntimeError(error or "webhook target validation failed")
+            if headers is None:
+                raise SigningKeyUnavailable(error or "signing key unavailable")
+            response_status = await (sender or default_sender)(target, body, headers)
             status = "succeeded" if 200 <= response_status < 300 else "failed"
             error = None if status == "succeeded" else f"HTTP {response_status}"
         except Exception as exc:  # transport failures are durable audit states
@@ -243,6 +370,8 @@ async def enqueue_event(
             error="backpressure: pending delivery limit reached" if saturated else None,
             next_attempt_at=None if saturated else now,
             completed_at=now if saturated else None,
+            signing_key_id=endpoint.signing_key_id,
+            secret_version=endpoint.secret_version,
         )
         session.add(delivery)
     return len(endpoints)

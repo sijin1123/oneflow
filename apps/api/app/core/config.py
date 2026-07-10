@@ -4,23 +4,30 @@ Startup guards (PLAN §9) live here as validators: a misconfigured process must
 fail to boot with an explicit error, never degrade silently.
 """
 
+import re
 from functools import lru_cache
 from urllib.parse import urlsplit
 
-from pydantic import model_validator
+from pydantic import SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 ALLOWED_ENVS = {"development", "test", "staging", "production"}
 ALLOWED_AUTH_MODES = {"dev", "oidc"}
 ALLOWED_LOG_LEVELS = {"DEBUG", "INFO", "WARNING", "ERROR"}
 DB_URL_SCHEME = "postgresql+asyncpg://"
+WEBHOOK_LEGACY_KEY_ID = "legacy-v1"
+WEBHOOK_KEY_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
 # ONEFLOW_ALLOW_DESTRUCTIVE_RESET must be EXACTLY this value to unlock dev-DB reset.
 DESTRUCTIVE_RESET_TOKEN = "local-dev-only"
 
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_prefix="ONEFLOW_", env_file=".env", extra="ignore", case_sensitive=False
+        env_prefix="ONEFLOW_",
+        env_file=".env",
+        extra="ignore",
+        case_sensitive=False,
+        hide_input_in_errors=True,
     )
 
     env: str = "development"
@@ -44,7 +51,10 @@ class Settings(BaseSettings):
     command_palette_enabled: str = "false"
     # Workspace webhook delivery is fail-closed. Both a stable signing key and
     # an explicit outbound host allowlist are required before the surface is enabled.
-    webhook_signing_key: str | None = None
+    webhook_signing_key: SecretStr | None = None
+    # JSON object supplied by the deployment secret store. Values never leave Settings.
+    webhook_signing_keys: dict[str, SecretStr] | None = None
+    webhook_active_signing_key_id: str | None = None
     webhook_allowed_hosts: str = ""
     webhook_poll_interval_seconds: float = 5.0
     webhook_lease_seconds: int = 30
@@ -93,7 +103,27 @@ class Settings(BaseSettings):
 
     @property
     def webhooks_enabled(self) -> bool:
-        return bool(self.webhook_signing_key and self.webhook_allowed_host_list)
+        return bool(self.webhook_active_signing_key_id_effective and self.webhook_allowed_host_list)
+
+    @property
+    def webhook_active_signing_key_id_effective(self) -> str | None:
+        if self.webhook_active_signing_key_id:
+            return self.webhook_active_signing_key_id
+        return WEBHOOK_LEGACY_KEY_ID if self.webhook_signing_key else None
+
+    @property
+    def webhook_signing_key_ids(self) -> tuple[str, ...]:
+        keys = set((self.webhook_signing_keys or {}).keys())
+        if self.webhook_signing_key:
+            keys.add(WEBHOOK_LEGACY_KEY_ID)
+        return tuple(sorted(keys))
+
+    def webhook_signing_key_for(self, key_id: str) -> str | None:
+        """Return a key for internal signing only; never serialize it."""
+        if key_id == WEBHOOK_LEGACY_KEY_ID and self.webhook_signing_key:
+            return self.webhook_signing_key.get_secret_value()
+        secret = (self.webhook_signing_keys or {}).get(key_id)
+        return secret.get_secret_value() if secret is not None else None
 
     @property
     def destructive_reset_enabled(self) -> bool:
@@ -156,8 +186,38 @@ class Settings(BaseSettings):
             raise ValueError("ONEFLOW_AI_SUMMARY accepts exactly 'true' or 'false'")
         if self.command_palette_enabled not in {"true", "false"}:
             raise ValueError("ONEFLOW_COMMAND_PALETTE_ENABLED accepts exactly 'true' or 'false'")
-        if self.webhook_signing_key is not None and len(self.webhook_signing_key) < 32:
+        if (
+            self.webhook_signing_key is not None
+            and len(self.webhook_signing_key.get_secret_value()) < 32
+        ):
             raise ValueError("ONEFLOW_WEBHOOK_SIGNING_KEY must be at least 32 characters")
+        ring = self.webhook_signing_keys or {}
+        for key_id, key in ring.items():
+            if not WEBHOOK_KEY_ID_RE.fullmatch(key_id):
+                raise ValueError("ONEFLOW_WEBHOOK_SIGNING_KEYS contains an invalid key id")
+            if len(key.get_secret_value()) < 32:
+                raise ValueError(
+                    "ONEFLOW_WEBHOOK_SIGNING_KEYS values must be strings of at least 32 characters"
+                )
+        legacy_in_ring = ring.get(WEBHOOK_LEGACY_KEY_ID)
+        legacy_value = legacy_in_ring.get_secret_value() if legacy_in_ring is not None else None
+        configured_legacy = (
+            self.webhook_signing_key.get_secret_value() if self.webhook_signing_key else None
+        )
+        if legacy_value is not None and legacy_value != configured_legacy:
+            raise ValueError(
+                "ONEFLOW_WEBHOOK_SIGNING_KEYS legacy-v1 must exactly equal "
+                "ONEFLOW_WEBHOOK_SIGNING_KEY"
+            )
+        if ring and not self.webhook_active_signing_key_id:
+            raise ValueError(
+                "ONEFLOW_WEBHOOK_ACTIVE_SIGNING_KEY_ID is required with a signing key ring"
+            )
+        active = self.webhook_active_signing_key_id_effective
+        if active and active not in self.webhook_signing_key_ids:
+            raise ValueError(
+                "ONEFLOW_WEBHOOK_ACTIVE_SIGNING_KEY_ID is not configured in the signing key ring"
+            )
         for host in self.webhook_allowed_host_list:
             if "://" in host or "/" in host or "@" in host:
                 raise ValueError(

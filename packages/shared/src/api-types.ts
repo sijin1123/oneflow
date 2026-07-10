@@ -5332,6 +5332,15 @@ export interface components {
             next_attempt_at: string | null;
             /** Response Status */
             response_status: number | null;
+            /** Secret Version */
+            secret_version: number;
+            /** Signing Key Id */
+            signing_key_id: string;
+            /**
+             * Signing Snapshot Source
+             * @enum {string}
+             */
+            signing_snapshot_source: "captured" | "migrated_current";
             /**
              * Status
              * @enum {string}
@@ -5355,10 +5364,16 @@ export interface components {
         };
         /** WebhookEndpointList */
         WebhookEndpointList: {
+            /** Active Signing Key Id */
+            active_signing_key_id: string | null;
+            /** Available Signing Key Ids */
+            available_signing_key_ids: string[];
             /** Enabled */
             enabled: boolean;
             /** Items */
             items: components["schemas"]["WebhookEndpointRead"][];
+            /** Rotations */
+            rotations: components["schemas"]["WebhookSecretRotationRead"][];
             /** Total */
             total: number;
         };
@@ -5384,6 +5399,8 @@ export interface components {
             name: string;
             /** Secret Version */
             secret_version: number;
+            /** Signing Key Id */
+            signing_key_id: string;
             /**
              * Updated At
              * Format: date-time
@@ -5402,6 +5419,45 @@ export interface components {
             name?: string | null;
             /** Url */
             url?: string | null;
+        };
+        /** WebhookRotateSecret */
+        WebhookRotateSecret: {
+            /** Expected Secret Version */
+            expected_secret_version: number;
+            /** Reason */
+            reason: string;
+            /** Target Signing Key Id */
+            target_signing_key_id: string;
+        };
+        /** WebhookSecretRotationRead */
+        WebhookSecretRotationRead: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Created By */
+            created_by: string | null;
+            /**
+             * Endpoint Id
+             * Format: uuid
+             */
+            endpoint_id: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Previous Secret Version */
+            previous_secret_version: number;
+            /** Previous Signing Key Id */
+            previous_signing_key_id: string;
+            /** Reason */
+            reason: string;
+            /** Secret Version */
+            secret_version: number;
+            /** Signing Key Id */
+            signing_key_id: string;
         };
         /** WorkPackageCreate */
         WorkPackageCreate: {
@@ -10516,7 +10572,11 @@ export interface operations {
                 oneflow_session?: string | null;
             };
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WebhookRotateSecret"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {

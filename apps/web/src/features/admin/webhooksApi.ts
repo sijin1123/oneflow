@@ -12,6 +12,7 @@ export type WebhookEndpoint = {
   event_types: WebhookEvent[]
   is_active: boolean
   secret_version: number
+  signing_key_id: string
   created_at: string
   updated_at: string
   deleted_at: string | null
@@ -21,9 +22,24 @@ export type WebhookEndpointList = {
   items: WebhookEndpoint[]
   total: number
   enabled: boolean
+  active_signing_key_id: string | null
+  available_signing_key_ids: string[]
+  rotations: WebhookSecretRotation[]
 }
 
 export type WebhookEndpointCreated = { item: WebhookEndpoint; secret: string }
+
+export type WebhookSecretRotation = {
+  id: string
+  endpoint_id: string
+  previous_signing_key_id: string
+  signing_key_id: string
+  previous_secret_version: number
+  secret_version: number
+  reason: string
+  created_by: string | null
+  created_at: string
+}
 
 export type WebhookDelivery = {
   id: string
@@ -40,6 +56,9 @@ export type WebhookDelivery = {
   next_attempt_at: string | null
   leased_until: string | null
   completed_at: string | null
+  signing_key_id: string
+  secret_version: number
+  signing_snapshot_source: 'captured' | 'migrated_current'
 }
 
 export type WebhookDeliveryList = { items: WebhookDelivery[]; total: number }
@@ -101,9 +120,17 @@ export function useDeleteWebhook() {
 export function useRotateWebhookSecret() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (id: string) =>
-      api<WebhookEndpointCreated>(`/api/v1/webhooks/${id}/rotate-secret`, { method: 'POST' }),
+    mutationFn: (input: { id: string; target_signing_key_id: string; expected_secret_version: number; reason: string }) =>
+      api<WebhookEndpointCreated>(`/api/v1/webhooks/${input.id}/rotate-secret`, {
+        method: 'POST',
+        body: JSON.stringify({
+          target_signing_key_id: input.target_signing_key_id,
+          expected_secret_version: input.expected_secret_version,
+          reason: input.reason,
+        }),
+      }),
     onSuccess: () => invalidate(queryClient),
+    onError: () => invalidate(queryClient),
   })
 }
 
