@@ -3823,6 +3823,61 @@ test('저장된 필터를 적용하면 목록 쿼리에 반영된다', async ({ 
   await req
 })
 
+test('저장 뷰 관리 surface는 모바일에서 활성·잠금·저장 흐름을 유지한다', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await mockApi(page)
+  await page.route(`**/api/v1/projects/${project.id}/saved-filters`, (route) =>
+    route.fulfill({
+      json: {
+        items: [
+          {
+            id: 'sf-active',
+            project_id: project.id,
+            name: '긴급 작업',
+            params: { status: 'todo' },
+            layout: 'list',
+            sort: null,
+            is_shared: true,
+            is_locked: false,
+            is_mine: true,
+            owner_name: 'Dev User',
+            created_at: '2026-07-01T00:00:00Z',
+          },
+          {
+            id: 'sf-locked',
+            project_id: project.id,
+            name: '잠긴 뷰',
+            params: { priority: 'high' },
+            layout: 'list',
+            sort: null,
+            is_shared: false,
+            is_locked: true,
+            is_mine: true,
+            owner_name: 'Dev User',
+            created_at: '2026-07-02T00:00:00Z',
+          },
+        ],
+        total: 2,
+      },
+    }),
+  )
+
+  await page.goto(`/projects/${project.id}/work-packages?status=todo`)
+  const surface = page.getByRole('region', { name: '저장 뷰 관리' })
+  await expect(surface.getByText('활성 긴급 작업')).toBeVisible()
+  await expect(surface.getByRole('button', { name: '긴급 작업', exact: true })).toBeVisible()
+  await expect(surface.getByLabel('잠긴 뷰 잠금 해제')).toBeVisible()
+  await expect(surface.getByLabel('잠긴 뷰 삭제')).toBeHidden()
+  await surface.getByRole('button', { name: '현재 필터를 뷰로 저장' }).click()
+  await expect(surface.getByLabel('뷰 이름')).toBeVisible()
+  await expect(surface.getByLabel('뷰 레이아웃')).toBeVisible()
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/saved-views-ui/mobile.png',
+    fullPage: true,
+  })
+})
+
 test('현재 필터를 보드 레이아웃 공유 뷰로 저장한다', async ({ page }) => {
   await mockApi(page)
   await page.goto(`/projects/${project.id}/work-packages?status=todo`)
