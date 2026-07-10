@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { useMe, useMemberNames, useMembers } from '@/features/members/api'
 import type { Member } from '@/features/members/types'
+import { PlanningSurface } from '@/features/planning/PlanningSurface'
 import { dayIndex, pct } from '@/features/work-packages/timeline'
 import { todayISO } from '@/lib/datetime'
 
@@ -434,21 +435,48 @@ export function ModulesPage() {
     text: string
     tone: 'info' | 'success' | 'error'
   } | null>(null)
+  const description =
+    '기능이나 릴리스 단위의 작업 묶음을 관리하고, 범위 상태를 계획 화면에서 이어 봅니다.'
 
-  if (modules.isPending || members.isPending) return <ListSkeleton />
-  if (modules.isError) return <ErrorState error={modules.error} onRetry={() => modules.refetch()} />
+  if (modules.isPending || members.isPending) {
+    return (
+      <PlanningSurface projectId={projectId} active="modules" title="모듈" description={description}>
+        <ListSkeleton />
+      </PlanningSurface>
+    )
+  }
+  if (modules.isError) {
+    return (
+      <PlanningSurface projectId={projectId} active="modules" title="모듈" description={description}>
+        <ErrorState error={modules.error} onRetry={() => modules.refetch()} />
+      </PlanningSurface>
+    )
+  }
 
   const myRole = members.data?.items.find((m) => m.user_id === me.data?.id)?.role
   const isOwner = myRole === 'owner'
   const items = modules.data.items
+  const inFlight = items.filter((module) => module.state === 'in_progress').length
+  const scoped = items.reduce((total, module) => total + module.work_package_count, 0)
+  const done = items.reduce((total, module) => total + module.done_work_package_count, 0)
+  const participants = items.reduce((total, module) => total + module.member_count, 0)
 
   return (
-    <div className="mx-auto max-w-4xl p-6">
-      <h1 className="mb-1 text-base font-semibold">모듈</h1>
-      <div className="mb-4 flex items-center justify-between gap-2">
-        <p className="text-xs text-of-muted">
-          기능/릴리스 단위로 작업을 묶어 상태와 진행률을 봅니다. 작업 배정은 각 작업의 드로어에서 합니다.
-        </p>
+    <PlanningSurface
+      projectId={projectId}
+      active="modules"
+      title="모듈"
+      description={description}
+      metrics={[
+        { label: '모듈', value: items.length, hint: '전체 범위' },
+        { label: '진행 중', value: inFlight, hint: '활성 모듈' },
+        { label: '작업 범위', value: scoped, hint: `${done}건 완료` },
+        { label: '참여자', value: participants, hint: '모듈 멤버 합계' },
+      ]}
+    >
+      <div className="space-y-5">
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-of border border-of-border bg-of-surface px-3 py-2">
+          <p className="text-xs text-of-muted">보기 방식</p>
         <div className="flex shrink-0 items-center gap-1 text-xs">
           {(['list', 'gallery', 'timeline'] as const).map((l) => (
             <button
@@ -466,8 +494,8 @@ export function ModulesPage() {
             </button>
           ))}
         </div>
-      </div>
-      {actionMessage ? (
+        </div>
+        {actionMessage ? (
         <p
           role={actionMessage.tone === 'error' ? 'alert' : 'status'}
           className={
@@ -478,10 +506,10 @@ export function ModulesPage() {
         >
           {actionMessage.text}
         </p>
-      ) : null}
+        ) : null}
 
-      {isOwner ? (
-        <div className="mb-5 flex flex-wrap items-center gap-2 rounded-of border border-of-border bg-of-surface p-3">
+        {isOwner ? (
+        <div className="flex flex-wrap items-center gap-2 rounded-of border border-of-border bg-of-surface p-3">
           <Input
             value={name}
             onChange={(e) => setName(e.target.value)}
@@ -525,14 +553,14 @@ export function ModulesPage() {
             </p>
           ) : null}
         </div>
-      ) : null}
+        ) : null}
 
-      {items.length === 0 ? (
+        {items.length === 0 ? (
         <EmptyState
           title="모듈이 없습니다"
           hint={isOwner ? '위에서 첫 모듈을 만들어 보세요.' : '소유자가 모듈을 만들 수 있습니다.'}
         />
-      ) : (
+        ) : (
         <div className="space-y-5">
           {layout === 'timeline' ? (
             <ModuleTimeline modules={items} projectId={projectId} />
@@ -571,7 +599,8 @@ export function ModulesPage() {
             )
           })}
         </div>
-      )}
-    </div>
+        )}
+      </div>
+    </PlanningSurface>
   )
 }
