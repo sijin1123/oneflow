@@ -582,6 +582,95 @@ test('모바일 작업 상세 드로어가 속성과 활동 탭을 유지한다'
   })
 })
 
+test('시간·비용 표면은 모바일에서 기록 카드와 ledger를 유지한다', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await mockApi(page)
+  await page.route(`**/api/v1/work-packages/${wpA.id}/time-entries`, (route) =>
+    route.fulfill({
+      json: {
+        items: [
+          {
+            id: 'te-mobile-1',
+            work_package_id: wpA.id,
+            user_id: 'me-1',
+            hours: 6.5,
+            spent_on: '2026-07-02',
+            comment: 'API 설계',
+            created_at: '2026-07-02T01:00:00Z',
+          },
+          {
+            id: 'te-mobile-2',
+            work_package_id: wpA.id,
+            user_id: 'me-1',
+            hours: 4,
+            spent_on: '2026-07-03',
+            comment: null,
+            created_at: '2026-07-03T01:00:00Z',
+          },
+        ],
+        total: 2,
+        total_hours: 10.5,
+      },
+    }),
+  )
+  await page.route(`**/api/v1/work-packages/${wpA.id}/cost-entries`, (route) =>
+    route.fulfill({
+      json: {
+        items: [
+          {
+            id: 'ce-mobile-1',
+            work_package_id: wpA.id,
+            user_id: 'me-1',
+            amount: 120000,
+            kind: 'labor',
+            spent_on: '2026-07-02',
+            comment: '개발 인건비',
+            created_at: '2026-07-02T01:00:00Z',
+          },
+          {
+            id: 'ce-mobile-2',
+            work_package_id: wpA.id,
+            user_id: 'me-1',
+            amount: 35000,
+            kind: 'material',
+            spent_on: '2026-07-03',
+            comment: null,
+            created_at: '2026-07-03T01:00:00Z',
+          },
+        ],
+        total: 2,
+        total_amount: 155000,
+      },
+    }),
+  )
+
+  await page.goto(`/projects/${project.id}/work-packages`)
+  await page.getByRole('button', { name: '워크패키지 API 구현' }).click()
+  const drawer = page.getByRole('dialog', { name: '워크패키지 API 구현' })
+  const timeSection = drawer.getByRole('region', { name: '시간 추적' })
+  const costSection = drawer.getByRole('region', { name: '비용' })
+
+  await expect(timeSection.getByText('10.5h')).toBeVisible()
+  await expect(timeSection.getByText('예상 대비 진행')).toBeVisible()
+  await expect(timeSection.getByText('API 설계')).toBeVisible()
+  await expect(timeSection.getByLabel('기록할 시간')).toBeVisible()
+  await expect(costSection.getByText('₩155,000').first()).toBeVisible()
+  await expect(costSection.getByText('인건비 ₩120,000')).toBeVisible()
+  await expect(costSection.getByText('개발 인건비')).toBeVisible()
+  await expect(costSection.getByLabel('비용 금액')).toBeVisible()
+  await expectNoHorizontalOverflow(page)
+  await timeSection.scrollIntoViewIfNeeded()
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/time-cost-ui/mobile-time.png',
+    fullPage: true,
+  })
+  await costSection.scrollIntoViewIfNeeded()
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/time-cost-ui/mobile-cost.png',
+    fullPage: true,
+  })
+})
+
 test('작업 상세 전체 페이지가 드로어 IA와 활동 탭을 재사용한다', async ({ page }) => {
   await mockApi(page)
   await page.goto(`/projects/${project.id}/work-packages`)
