@@ -4,10 +4,12 @@ import { useParams, useSearchParams } from 'react-router-dom'
 
 import { ErrorState, ListSkeleton } from '@/components/shell/states'
 import { Button } from '@/components/ui/button'
+import { useCanWrite } from '@/features/members/useCanWrite'
 import { PlanningSurface } from '@/features/planning/PlanningSurface'
 import { localYearMonth, todayISO } from '@/lib/datetime'
 import { cn } from '@/lib/utils'
 
+import { CalendarItemActions, type CalendarItemActionMessage } from './CalendarItemActions'
 import { DetailDrawer } from './DetailDrawer'
 import { useWorkPackages } from './api'
 import { buildCalendar, shiftMonth } from './calendar'
@@ -22,7 +24,9 @@ export function CalendarPage() {
   const { projectId } = useParams() as { projectId: string }
   const [, setSearchParams] = useSearchParams()
   const [cursor, setCursor] = useState(currentMonth)
+  const [itemActionMessage, setItemActionMessage] = useState<CalendarItemActionMessage | null>(null)
   const { data, isPending, isError, error, refetch } = useWorkPackages(projectId, {})
+  const canWrite = useCanWrite(projectId)
 
   const cal = useMemo(
     () => buildCalendar(cursor.year, cursor.month, data?.items ?? []),
@@ -35,10 +39,12 @@ export function CalendarPage() {
   const description =
     '기한이 있는 작업을 월 단위로 훑고, 일정 충돌이나 비어 있는 마감 구간을 빠르게 확인합니다.'
 
-  const openDrawer = (id: string) => {
+  const openDrawer = (id: string, options: { move?: boolean } = {}) => {
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev)
       next.set('wp', id)
+      if (options.move) next.set('move', '1')
+      else next.delete('move')
       return next
     })
   }
@@ -87,6 +93,17 @@ export function CalendarPage() {
               <ChevronRight size={16} />
             </Button>
           </div>
+          {itemActionMessage ? (
+            <p
+              role={itemActionMessage.kind === 'error' ? 'alert' : 'status'}
+              aria-live="polite"
+              className={`w-full text-xs ${
+                itemActionMessage.kind === 'error' ? 'text-of-danger' : 'text-of-muted'
+              }`}
+            >
+              {itemActionMessage.text}
+            </p>
+          ) : null}
         </div>
 
         {isPending ? (
@@ -122,15 +139,27 @@ export function CalendarPage() {
                   </div>
                   <div className="space-y-0.5">
                     {cell.items.map((wp) => (
-                      <button
+                      <article
                         key={wp.id}
-                        type="button"
-                        title={wp.subject}
-                        onClick={() => openDrawer(wp.id)}
-                        className="block w-full truncate rounded-of bg-of-accent-soft px-1 py-0.5 text-left text-[11px] text-of-accent hover:opacity-80"
+                        className="group flex min-w-0 items-center gap-0.5 rounded-of bg-of-accent-soft px-1 py-0.5 text-[11px] text-of-accent"
                       >
-                        {wp.subject}
-                      </button>
+                        <button
+                          type="button"
+                          title={wp.subject}
+                          onClick={() => openDrawer(wp.id)}
+                          className="min-w-0 flex-1 truncate text-left hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus"
+                        >
+                          {wp.subject}
+                        </button>
+                        <CalendarItemActions
+                          projectId={projectId}
+                          wp={wp}
+                          canWrite={canWrite}
+                          onOpenDrawer={(id) => openDrawer(id)}
+                          onOpenMove={(id) => openDrawer(id, { move: true })}
+                          onMessage={setItemActionMessage}
+                        />
+                      </article>
                     ))}
                   </div>
                 </div>

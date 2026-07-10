@@ -3550,6 +3550,109 @@ test('캘린더가 기한이 있는 작업을 해당 날짜에 표시하고 월 
   await expect(page.getByRole('button', { name: '워크패키지 API 구현' })).toBeHidden()
 })
 
+test('캘린더 항목 액션 메뉴가 링크·복제·이동·전체 페이지 흐름을 연결한다', async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: {
+        writeText: async (text: string) => window.localStorage.setItem('__copied_calendar_item_link', text),
+      },
+    })
+  })
+  await mockApi(page)
+  await page.clock.install({ time: new Date('2026-07-05T12:00:00Z') })
+  await page.route(`**/api/v1/work-packages/${wpA.id}/duplicate`, (route) =>
+    route.fulfill({
+      status: 201,
+      json: {
+        work_package: { ...wpA, id: 'dup-calendar', subject: '(복사) 워크패키지 API 구현' },
+        skipped_custom_values: 0,
+      },
+    }),
+  )
+
+  const openItemActions = async () => {
+    const item = page.locator('article').filter({ hasText: '워크패키지 API 구현' }).first()
+    await item.hover()
+    const trigger = item.getByRole('button', { name: '캘린더 항목 작업' })
+    await expect(trigger).toBeVisible()
+    await trigger.click()
+  }
+
+  await page.goto(`/projects/${project.id}/calendar`)
+
+  await openItemActions()
+  await page.getByRole('menuitem', { name: /링크 복사/ }).click()
+  await expect(page.getByRole('status')).toContainText('링크를 복사했습니다')
+  await expect
+    .poll(() => page.evaluate(() => window.localStorage.getItem('__copied_calendar_item_link')))
+    .toContain(`/projects/${project.id}/work-packages/${wpA.id}`)
+
+  await openItemActions()
+  const duplicatePost = page.waitForRequest(
+    (r) => r.method() === 'POST' && r.url().includes(`/work-packages/${wpA.id}/duplicate`),
+  )
+  await page.getByRole('menuitem', { name: '복제' }).click()
+  await duplicatePost
+  await expect(page.getByRole('status')).toContainText("'(복사) 워크패키지 API 구현' 생성됨")
+
+  await openItemActions()
+  await page.getByRole('menuitem', { name: '이동' }).click()
+  await expect(page).toHaveURL(new RegExp(`wp=${wpA.id}`))
+  await expect(page).toHaveURL(/move=1/)
+  await expect(page.getByRole('dialog').getByLabel('이동 대상 프로젝트')).toBeVisible()
+
+  await page.goto(`/projects/${project.id}/calendar`)
+  await openItemActions()
+  await page.getByRole('menuitem', { name: /전체 페이지/ }).click()
+  await expect(page).toHaveURL(new RegExp(`/projects/${project.id}/work-packages/${wpA.id}$`))
+})
+
+test('모바일 캘린더 항목 액션 메뉴는 hover 없이 열리고 폭을 넘지 않는다', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await mockApi(page)
+  await page.clock.install({ time: new Date('2026-07-05T12:00:00Z') })
+
+  await page.goto(`/projects/${project.id}/calendar`)
+  const item = page.locator('article').filter({ hasText: '워크패키지 API 구현' }).first()
+  const trigger = item.getByRole('button', { name: '캘린더 항목 작업' })
+  await expect(trigger).toBeVisible()
+  await trigger.click()
+  await expect(page.getByRole('menuitem', { name: /상세 드로어/ })).toBeVisible()
+  await expect(page.getByRole('menuitem', { name: /링크 복사/ })).toBeVisible()
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)
+  expect(overflow).toBeLessThanOrEqual(1)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/calendar-item-actions-ui/mobile.png',
+    fullPage: true,
+  })
+})
+
+test('뷰어 캘린더 항목 액션 메뉴는 쓰기 액션 없이 읽기 전용으로 표시된다', async ({ page }) => {
+  await mockApi(page)
+  await page.clock.install({ time: new Date('2026-07-05T12:00:00Z') })
+  await page.route(`**/api/v1/projects/${project.id}/members`, (route) =>
+    route.fulfill({
+      json: {
+        items: [
+          { user_id: 'me-1', email: 'dev@oneflow.local', display_name: 'Dev User', role: 'viewer' },
+        ],
+        total: 1,
+      },
+    }),
+  )
+  await page.route(`**/api/v1/projects/${project.id}`, (route) => route.fulfill({ json: project }))
+
+  await page.goto(`/projects/${project.id}/calendar`)
+  const item = page.locator('article').filter({ hasText: '워크패키지 API 구현' }).first()
+  await item.hover()
+  await item.getByRole('button', { name: '캘린더 항목 작업' }).click()
+  const menu = page.getByRole('menu')
+  await expect(menu.getByText('읽기 전용', { exact: true })).toBeVisible()
+  await expect(page.getByRole('menuitem', { name: '복제' })).toHaveCount(0)
+  await expect(page.getByRole('menuitem', { name: '이동' })).toHaveCount(0)
+})
+
 test('알림 벨이 미확인 개수를 보여주고 모두 읽음을 보낸다', async ({ page }) => {
   await mockApi(page)
   const inbox = {
