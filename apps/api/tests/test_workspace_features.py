@@ -28,6 +28,7 @@ async def test_wiki_policy_defaults_and_admin_contract(client):
         },
         "initiatives": {"enabled": True, "revision": 1},
         "releases": {"enabled": True, "revision": 1},
+        "customers": {"enabled": False, "revision": 1},
     }
 
     policy = await client.get("/api/v1/admin/workspace/features/wiki")
@@ -76,6 +77,7 @@ async def test_wiki_policy_defaults_and_admin_contract(client):
         },
         "initiatives": {"enabled": True, "revision": 1},
         "releases": {"enabled": True, "revision": 1},
+        "customers": {"enabled": False, "revision": 1},
     }
 
     stale = await set_wiki(client, True)
@@ -112,6 +114,14 @@ async def test_wiki_policy_is_admin_only(client, app):
         await client.patch(
             "/api/v1/admin/workspace/features/releases",
             json={"enabled": False},
+            headers={"If-Match": '"1"'},
+        )
+    ).status_code == 403
+    assert (await client.get("/api/v1/admin/workspace/features/customers")).status_code == 403
+    assert (
+        await client.patch(
+            "/api/v1/admin/workspace/features/customers",
+            json={"enabled": True},
             headers={"If-Match": '"1"'},
         )
     ).status_code == 403

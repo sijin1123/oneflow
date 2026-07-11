@@ -19,6 +19,7 @@ class WorkspaceCapabilitiesRead(BaseModel):
     ai: AiWorkspaceFeatureCapability
     initiatives: WorkspaceFeatureCapability
     releases: WorkspaceFeatureCapability
+    customers: WorkspaceFeatureCapability
 
 
 class WorkspaceFeaturePolicyRead(BaseModel):

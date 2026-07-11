@@ -22,6 +22,7 @@ export type WpFilters = {
   type?: string
   assignee_id?: string
   milestone_id?: string
+  customer_id?: string
   cycle_id?: string
   module_id?: string
   q?: string
@@ -264,6 +265,7 @@ export function useDuplicateWorkPackage(projectId: string) {
       api<DuplicateResult>(`/api/v1/work-packages/${wpId}/duplicate`, { method: 'POST' }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['work-packages', projectId] })
+      void queryClient.invalidateQueries({ queryKey: ['customers'] })
     },
   })
 }
@@ -288,6 +290,7 @@ export function useBulkUpdate(projectId: string) {
       }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['work-packages', projectId] })
+      void queryClient.invalidateQueries({ queryKey: ['customers'] })
     },
   })
 }
@@ -340,6 +343,7 @@ export function useCreateWorkPackage(projectId: string) {
       void queryClient.invalidateQueries({ queryKey: ['work-packages', projectId] })
       void queryClient.invalidateQueries({ queryKey: ['dashboard', projectId] })
       void queryClient.invalidateQueries({ queryKey: ['project-activities', projectId] })
+      void queryClient.invalidateQueries({ queryKey: ['customers'] })
     },
   })
 }
@@ -363,6 +367,7 @@ export function usePatchWorkPackage(projectId: string) {
       void queryClient.invalidateQueries({ queryKey: ['dashboard', projectId] })
       void queryClient.invalidateQueries({ queryKey: ['project-activities', projectId] })
       void queryClient.invalidateQueries({ queryKey: ['work-package-activities', updated.id] })
+      void queryClient.invalidateQueries({ queryKey: ['customers'] })
     },
     onError: (error, { wpId }) => {
       // The drawer surfaces the failure inline via patch.isError; here we only handle
@@ -425,6 +430,7 @@ export function useMoveWorkPackage(projectId: string) {
       void queryClient.invalidateQueries({ queryKey: ['work-packages', projectId] })
       void queryClient.invalidateQueries({ queryKey: ['work-package'] })
       void queryClient.invalidateQueries({ queryKey: ['projects'] })
+      void queryClient.invalidateQueries({ queryKey: ['customers'] })
     },
   })
 }

@@ -28,6 +28,7 @@ async def test_saved_filter_crud(client, project):
         "type": "bug",
         "assignee_id": None,
         "milestone_id": None,
+        "customer_id": None,
         "cycle_id": None,
         "module_id": None,
         "q": None,

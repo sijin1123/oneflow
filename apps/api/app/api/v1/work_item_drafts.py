@@ -34,7 +34,7 @@ from app.schemas.work_item_draft import (
     WorkItemDraftSubmit,
 )
 from app.schemas.work_package import WorkPackageCreate, WorkPackageRead
-from app.services.workspace_features import RELEASES_FEATURE, feature_enabled
+from app.services.workspace_features import CUSTOMERS_FEATURE, RELEASES_FEATURE, feature_enabled
 
 router = APIRouter()
 
@@ -258,6 +258,7 @@ async def submit_work_item_draft(
         return _work_package_read(
             work_package,
             releases_enabled=await feature_enabled(session, RELEASES_FEATURE),
+            customers_enabled=await feature_enabled(session, CUSTOMERS_FEATURE),
         )
 
     if draft.version != body.expected_version:
@@ -283,6 +284,7 @@ async def submit_work_item_draft(
     return _work_package_read(
         work_package,
         releases_enabled=await feature_enabled(session, RELEASES_FEATURE),
+        customers_enabled=await feature_enabled(session, CUSTOMERS_FEATURE),
     )
 
 

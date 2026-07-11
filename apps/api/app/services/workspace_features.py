@@ -6,6 +6,7 @@ from app.core.config import Settings
 from app.models.workspace_feature_policy import WorkspaceFeaturePolicy
 
 AI_FEATURE = "ai"
+CUSTOMERS_FEATURE = "customers"
 INITIATIVES_FEATURE = "initiatives"
 RELEASES_FEATURE = "releases"
 WIKI_FEATURE = "wiki"

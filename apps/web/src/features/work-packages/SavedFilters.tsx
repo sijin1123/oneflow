@@ -26,6 +26,7 @@ const KEYS = [
   'type',
   'assignee_id',
   'milestone_id',
+  'customer_id',
   'cycle_id',
   'module_id',
   'q',

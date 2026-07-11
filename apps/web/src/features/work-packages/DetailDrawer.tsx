@@ -12,6 +12,7 @@ import { useMembers } from '@/features/members/api'
 import { useCanWrite } from '@/features/members/useCanWrite'
 import { useProjects } from '@/features/projects/api'
 import { useCycles } from '@/features/cycles/api'
+import { useCustomers } from '@/features/customers/api'
 import { useMilestones } from '@/features/milestones/api'
 import { useModules } from '@/features/modules/api'
 import { useProjectTypes } from '@/features/project-types/api'
@@ -203,7 +204,9 @@ export function WorkPackageDetailPanel({
   const queryClient = useQueryClient()
   const capabilities = useWorkspaceCapabilities()
   const releasesEnabled = capabilities.data?.releases.enabled === true
+  const customersEnabled = capabilities.data?.customers.enabled === true
   const milestones = useMilestones(projectId, releasesEnabled)
+  const customers = useCustomers({ includeArchived: true, enabled: customersEnabled })
   const cycles = useCycles(projectId)
   const modules = useModules(projectId)
   const projectTypes = useProjectTypes(projectId)
@@ -535,6 +538,30 @@ export function WorkPackageDetailPanel({
                   ))}
                 </Select>
               </div> : null}
+              {customersEnabled ? (
+                <div className="space-y-1.5">
+                  <label htmlFor="wp-customer" className="text-xs font-medium text-of-muted">
+                    고객
+                  </label>
+                  <Select
+                    id="wp-customer"
+                    value={wp.customer_id ?? ''}
+                    disabled={!canWrite || patch.isPending}
+                    onChange={(e) => send({ customer_id: e.target.value || null })}
+                  >
+                    <option value="">없음</option>
+                    {customers.data?.items.map((customer) => (
+                      <option
+                        key={customer.id}
+                        value={customer.id}
+                        disabled={customer.archived_at !== null && customer.id !== wp.customer_id}
+                      >
+                        {customer.name}{customer.archived_at ? ' (보관)' : ''}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+              ) : null}
               <div className="space-y-1.5">
                 <label htmlFor="wp-cycle" className="text-xs font-medium text-of-muted">
                   사이클

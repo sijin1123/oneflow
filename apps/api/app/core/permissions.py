@@ -318,6 +318,17 @@ ENDPOINT_ALLOWLIST: dict[str, str] = {
     "PATCH /api/v1/admin/workspace/features/releases": (
         "워크스페이스 admin 릴리스 정책 — is_admin 전용"
     ),
+    "PATCH /api/v1/admin/workspace/features/customers": (
+        "워크스페이스 admin 고객 정책 — is_admin 전용"
+    ),
+    "POST /api/v1/customers": "워크스페이스 admin 고객 생성 — is_admin 전용",
+    "PATCH /api/v1/customers/{customer_id}": "워크스페이스 admin 고객 수정 — is_admin 전용",
+    "POST /api/v1/customers/{customer_id}/archive": (
+        "워크스페이스 admin 고객 보관 — is_admin 전용"
+    ),
+    "POST /api/v1/customers/{customer_id}/restore": (
+        "워크스페이스 admin 고객 복원 — is_admin 전용"
+    ),
     "POST /api/v1/project-templates": "워크스페이스 템플릿 — 생성자 또는 활성 admin 관리",
     "POST /api/v1/project-templates/{template_id}/revisions": (
         "워크스페이스 템플릿 — 생성자 또는 활성 admin 관리"

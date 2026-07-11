@@ -14,7 +14,7 @@ class WorkspaceFeaturePolicy(Base):
     __tablename__ = "workspace_feature_policies"
     __table_args__ = (
         CheckConstraint(
-            "feature_key IN ('wiki','ai','initiatives','releases')",
+            "feature_key IN ('wiki','ai','initiatives','releases','customers')",
             name="feature_key_allowed",
         ),
         CheckConstraint("revision >= 1", name="revision_positive"),

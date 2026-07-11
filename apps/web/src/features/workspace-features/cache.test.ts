@@ -20,6 +20,7 @@ const capabilities = {
   },
   initiatives: { enabled: true, revision: 1 },
   releases: { enabled: true, revision: 1 },
+  customers: { enabled: false, revision: 1 },
 }
 
 test('workspace policy cache updates one capability without losing the other', () => {
