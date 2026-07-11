@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.auth import get_current_user
 from app.core.authz import require_member, require_role
 from app.db.session import get_session
+from app.models.document import ProjectDocument
 from app.models.member import ProjectMember
 from app.models.user import User
 from app.schemas.member import MemberCreate, MemberList, MemberRead, MemberRoleUpdate
@@ -154,6 +155,20 @@ async def remove_member(
         raise HTTPException(status_code=404, detail="not found")
     if membership.role == "owner" and await _owner_count(session, project_id) <= 1:
         raise HTTPException(status_code=422, detail="a project must keep at least one owner")
+    private_documents = await session.scalar(
+        select(func.count())
+        .select_from(ProjectDocument)
+        .where(
+            ProjectDocument.project_id == project_id,
+            ProjectDocument.author_id == user_id,
+            ProjectDocument.visibility == "private",
+        )
+    )
+    if private_documents:
+        raise HTTPException(
+            status_code=409,
+            detail="share or delete the member's private documents before removal",
+        )
     await session.delete(membership)
     await session.commit()
     return Response(status_code=204)

@@ -1195,6 +1195,7 @@ async def move_work_package(
     from app.models.notification import Notification
     from app.models.project import Project
     from app.models.watcher import WpWatcher
+    from app.services.document_access import document_visible_clause
     from app.services.storage_usage import used_bytes
 
     wp = (
@@ -1282,7 +1283,10 @@ async def move_work_package(
                     DocumentWorkPackageLink,
                     DocumentWorkPackageLink.document_id == ProjectDocument.id,
                 )
-                .where(DocumentWorkPackageLink.work_package_id == wp_id)
+                .where(
+                    DocumentWorkPackageLink.work_package_id == wp_id,
+                    document_visible_clause(user.id),
+                )
                 .order_by(ProjectDocument.title.asc())
             )
         )

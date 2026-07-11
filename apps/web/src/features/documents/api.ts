@@ -8,6 +8,10 @@ export type DocumentListItem = {
   parent_id: string | null
   title: string
   author_id: string | null
+  visibility: 'shared' | 'private'
+  archived_at: string | null
+  archived_by_user_id: string | null
+  archived_by_name: string | null
   version: number
   created_at: string
   updated_at: string
@@ -17,10 +21,17 @@ export type ProjectDocument = DocumentListItem & { body: string | null }
 
 export type DocumentList = { items: DocumentListItem[]; total: number }
 
-export function useDocuments(projectId: string, enabled = true) {
+export type DocumentBucket = 'shared' | 'private' | 'archived'
+
+export function useDocuments(
+  projectId: string,
+  bucket: DocumentBucket = 'shared',
+  enabled = true,
+) {
   return useQuery({
-    queryKey: ['documents', projectId],
-    queryFn: () => api<DocumentList>(`/api/v1/projects/${projectId}/documents`),
+    queryKey: ['documents', projectId, bucket],
+    queryFn: () =>
+      api<DocumentList>(`/api/v1/projects/${projectId}/documents?bucket=${bucket}`),
     enabled,
   })
 }
@@ -36,7 +47,12 @@ export function useDocument(docId: string | null) {
 export function useCreateDocument(projectId: string) {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (input: { title: string; body?: string | null; parent_id?: string | null }) =>
+    mutationFn: (input: {
+      title: string
+      body?: string | null
+      parent_id?: string | null
+      visibility?: 'shared' | 'private'
+    }) =>
       api<ProjectDocument>(`/api/v1/projects/${projectId}/documents`, {
         method: 'POST',
         body: JSON.stringify(input),
@@ -58,6 +74,7 @@ export function useUpdateDocument(projectId: string) {
       title?: string
       body?: string | null
       parent_id?: string | null
+      visibility?: 'shared' | 'private'
     }) => {
       const { docId, ...patch } = input
       return api<ProjectDocument>(`/api/v1/documents/${docId}`, {
@@ -147,6 +164,30 @@ export function useDeleteDocument(projectId: string) {
       api<void>(`/api/v1/documents/${docId}`, { method: 'DELETE' }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['documents', projectId] })
+    },
+  })
+}
+
+export function useDocumentLifecycle(projectId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({
+      docId,
+      expectedVersion,
+      archived,
+    }: {
+      docId: string
+      expectedVersion: number
+      archived: boolean
+    }) =>
+      api<ProjectDocument>(`/api/v1/documents/${docId}/${archived ? 'archive' : 'restore'}`, {
+        method: 'POST',
+        body: JSON.stringify({ expected_version: expectedVersion }),
+      }),
+    onSuccess: (document) => {
+      queryClient.setQueryData(['document', document.id], document)
+      void queryClient.invalidateQueries({ queryKey: ['documents', projectId] })
+      void queryClient.invalidateQueries({ queryKey: ['work-package-documents'] })
     },
   })
 }
