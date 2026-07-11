@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.v1 import (
     access_tokens,
+    admin_worklogs,
     ai,
     attachments,
     auth,
@@ -128,6 +129,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app.include_router(health.router, prefix="/api/v1", tags=["health"])
     app.include_router(ops.router, prefix="/api/v1", tags=["ops"])
+    app.include_router(admin_worklogs.router, prefix="/api/v1", tags=["admin-worklogs"])
     app.include_router(auth.router, prefix="/api/v1", tags=["auth"])
     app.include_router(access_tokens.router, prefix="/api/v1", tags=["access-tokens"])
     app.include_router(webhooks.router, prefix="/api/v1", tags=["webhooks"])

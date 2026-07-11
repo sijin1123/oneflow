@@ -53,6 +53,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/worklogs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Worklogs */
+        get: operations["list_worklogs_api_v1_admin_worklogs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/worklogs/export.csv": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Export Worklogs */
+        get: operations["export_worklogs_api_v1_admin_worklogs_export_csv_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/worklogs/options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Worklog Options */
+        get: operations["worklog_options_api_v1_admin_worklogs_options_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/attachments/{attachment_id}": {
         parameters: {
             query?: never;
@@ -2633,6 +2684,112 @@ export interface components {
              * Format: uuid
              */
             work_package_id: string;
+        };
+        /** AdminWorklogList */
+        AdminWorklogList: {
+            /**
+             * From Date
+             * Format: date
+             */
+            from_date: string;
+            /** Items */
+            items: components["schemas"]["AdminWorklogRead"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /**
+             * To Date
+             * Format: date
+             */
+            to_date: string;
+            /** Total */
+            total: number;
+            /** Total Hours */
+            total_hours: number;
+        };
+        /** AdminWorklogOptions */
+        AdminWorklogOptions: {
+            /** Projects */
+            projects: components["schemas"]["AdminWorklogProjectOption"][];
+            /** Users */
+            users: components["schemas"]["AdminWorklogUserOption"][];
+        };
+        /** AdminWorklogProjectOption */
+        AdminWorklogProjectOption: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Is Archived */
+            is_archived: boolean;
+            /** Key */
+            key: string;
+            /** Name */
+            name: string;
+        };
+        /** AdminWorklogRead */
+        AdminWorklogRead: {
+            /** Comment */
+            comment: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Hours */
+            hours: number;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            /** Project Is Archived */
+            project_is_archived: boolean;
+            /** Project Key */
+            project_key: string;
+            /** Project Name */
+            project_name: string;
+            /**
+             * Spent On
+             * Format: date
+             */
+            spent_on: string;
+            /** User Display Name */
+            user_display_name: string | null;
+            /** User Email */
+            user_email: string | null;
+            /** User Id */
+            user_id: string | null;
+            /** User Is Active */
+            user_is_active: boolean | null;
+            /**
+             * Work Package Id
+             * Format: uuid
+             */
+            work_package_id: string;
+            /** Work Package Subject */
+            work_package_subject: string;
+        };
+        /** AdminWorklogUserOption */
+        AdminWorklogUserOption: {
+            /** Display Name */
+            display_name: string;
+            /** Email */
+            email: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Is Active */
+            is_active: boolean;
         };
         /** AiCapabilities */
         AiCapabilities: {
@@ -6427,6 +6584,117 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ActionItemRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_worklogs_api_v1_admin_worklogs_get: {
+        parameters: {
+            query: {
+                from: string;
+                to: string;
+                user_id?: string | null;
+                project_id?: string | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminWorklogList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_worklogs_api_v1_admin_worklogs_export_csv_get: {
+        parameters: {
+            query: {
+                from: string;
+                to: string;
+                user_id?: string | null;
+                project_id?: string | null;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    worklog_options_api_v1_admin_worklogs_options_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminWorklogOptions"];
                 };
             };
             /** @description Validation Error */
