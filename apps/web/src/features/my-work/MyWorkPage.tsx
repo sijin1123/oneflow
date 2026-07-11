@@ -639,12 +639,14 @@ function MyWorkOverview() {
         <MyWorkTabs active="overview" />
       </header>
 
+      <AiWorkspacePanel assigned={assigned_to_me} dueSoon={due_soon} created={created_by_me} />
+
       <section aria-label="빠른 이동" className="min-w-0">
         <div className="mb-2 flex items-center justify-between gap-2 px-1">
           <h2 className="text-sm font-semibold">빠른 이동</h2>
           <span className="text-xs text-of-muted">자주 쓰는 표면</span>
         </div>
-        <div className="grid min-w-0 gap-2 sm:grid-cols-2 xl:grid-cols-5">
+        <div className="grid min-w-0 gap-2 sm:grid-cols-2 lg:grid-cols-3">
           <QuickLink
             to="/work-items"
             label="전체 작업"
@@ -679,10 +681,6 @@ function MyWorkOverview() {
           />
         </div>
       </section>
-
-      <PersonalNotesPanel />
-
-      <AiWorkspacePanel assigned={assigned_to_me} dueSoon={due_soon} created={created_by_me} />
 
       <section aria-label="프로젝트 바로가기" className="min-w-0">
         <div className="mb-2 flex items-center justify-between gap-2 px-1">
@@ -724,6 +722,59 @@ function MyWorkOverview() {
         )}
       </section>
 
+      <section aria-label="최근 항목" className="min-w-0 border-y border-of-border py-4">
+        <div className="mb-3 flex min-w-0 items-center justify-between gap-3">
+          <div className="min-w-0">
+            <h2 className="text-sm font-semibold">최근 항목</h2>
+            <p className="mt-0.5 text-xs text-of-muted">지금 이어서 볼 작업과 변경입니다.</p>
+          </div>
+          <Link to="/my?tab=activity" className="shrink-0 text-xs text-of-accent hover:underline">
+            전체 활동
+          </Link>
+        </div>
+        <div className="grid min-w-0 gap-5 lg:grid-cols-[minmax(0,1.35fr)_minmax(18rem,0.65fr)]">
+          <div className="min-w-0 space-y-5">
+            <section aria-label="기한 임박">
+              <h3 className="mb-2 text-xs font-semibold text-of-secondary">
+                기한 임박 <span className="font-normal text-of-muted">(7일 이내)</span>
+              </h3>
+              <WorkList items={due_soon} emptyText="7일 내 마감되는 작업이 없습니다." />
+            </section>
+            <section aria-label="나에게 배정됨">
+              <h3 className="mb-2 text-xs font-semibold text-of-secondary">
+                나에게 배정됨 <span className="font-normal text-of-muted">{assigned_to_me.length}건</span>
+              </h3>
+              <WorkList items={assigned_to_me} emptyText="배정된 미완료 작업이 없습니다." />
+            </section>
+          </div>
+          <section aria-label="최근 활동" className="min-w-0 border-t border-of-border pt-4 lg:border-l lg:border-t-0 lg:pl-5 lg:pt-0">
+            <h3 className="mb-2 text-xs font-semibold text-of-secondary">최근 활동</h3>
+            {recent_activity.length === 0 ? (
+              <p className="text-xs text-of-muted">아직 활동이 없습니다.</p>
+            ) : (
+              <ul className="space-y-2">
+                {recent_activity.slice(0, 6).map((activity) => (
+                  <li key={activity.id} className="min-w-0 text-xs">
+                    <button
+                      type="button"
+                      className="block w-full min-w-0 text-left hover:text-of-accent"
+                      onClick={() => navigate(`/projects/${activity.project_id}/work-packages?wp=${activity.work_package_id}`)}
+                    >
+                      <span className="block truncate font-medium">{activity.work_package_subject}</span>
+                      <span className="mt-0.5 block truncate text-[11px] text-of-muted">
+                        {activity.project_name} · {actionText(activity)} · {formatDateTime(activity.created_at)}
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        </div>
+      </section>
+
+      <PersonalNotesPanel />
+
       {assigned_to_me.length === 0 && created_by_me.length === 0 && recent_activity.length === 0 ? (
         <EmptyState
           title="아직 배정된 작업이 없습니다"
@@ -740,21 +791,6 @@ function MyWorkOverview() {
         </EmptyState>
       ) : (
         <div className="space-y-6">
-          <section aria-label="기한 임박">
-            <h2 className="mb-2 text-sm font-semibold">
-              기한 임박 <span className="text-xs font-normal text-of-muted">(7일 이내)</span>
-            </h2>
-            <WorkList items={due_soon} emptyText="7일 내 마감되는 작업이 없습니다." />
-          </section>
-
-          <section aria-label="나에게 배정됨">
-            <h2 className="mb-2 text-sm font-semibold">
-              나에게 배정됨{' '}
-              <span className="text-xs font-normal text-of-muted">{assigned_to_me.length}건</span>
-            </h2>
-            <WorkList items={assigned_to_me} emptyText="배정된 미완료 작업이 없습니다." />
-          </section>
-
           <section aria-label="내 시간" className="rounded-of border border-of-border bg-of-surface p-4">
             <h2 className="mb-2 text-sm font-semibold">
               내 시간{' '}
@@ -813,7 +849,7 @@ function MyWorkOverview() {
             />
           </section>
 
-          <div className="grid gap-6 lg:grid-cols-2">
+          <div className="min-w-0">
             <section aria-label="알림" className="rounded-of border border-of-border bg-of-surface p-4">
               <div className="mb-3 flex items-center justify-between gap-2">
                 <h2 className="text-sm font-semibold">알림</h2>
@@ -852,34 +888,6 @@ function MyWorkOverview() {
               )}
             </section>
 
-            <section
-              aria-label="최근 활동"
-              className="rounded-of border border-of-border bg-of-surface p-4"
-            >
-              <h2 className="mb-3 text-sm font-semibold">최근 활동</h2>
-              {recent_activity.length === 0 ? (
-                <p className="text-xs text-of-muted">아직 활동이 없습니다.</p>
-              ) : (
-                <ul className="space-y-1.5">
-                  {recent_activity.map((a) => (
-                    <li key={a.id} className="flex items-baseline gap-2 text-xs">
-                      <span className="shrink-0 font-medium text-of-muted">
-                        {a.actor_name ?? '시스템'}
-                      </span>
-                      <span className="min-w-0 flex-1 truncate">
-                        <span className="text-of-muted">
-                          {a.project_name} · {a.work_package_subject}
-                        </span>{' '}
-                        · {actionText(a)}
-                      </span>
-                      <span className="shrink-0 text-[11px] text-of-muted">
-                        {formatDateTime(a.created_at)}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </section>
           </div>
 
           <section aria-label="홈 작업 도구" className="grid gap-2 sm:grid-cols-3">
