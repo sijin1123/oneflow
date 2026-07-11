@@ -15,6 +15,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useAuthConfig } from '@/features/auth/api'
 import { useCommandPaletteSearch } from '@/features/search/api'
+import { useWorkspaceCapabilities } from '@/features/workspace-features/api'
 import {
   COMMAND_PALETTE_KIND_LABELS,
   COMMAND_PALETTE_TABS,
@@ -41,6 +42,8 @@ function useDebouncedValue(value: string, delayMs: number) {
 export function CommandPalette() {
   const auth = useAuthConfig()
   const enabled = auth.data?.command_palette_enabled === true
+  const capabilities = useWorkspaceCapabilities()
+  const wikiEnabled = capabilities.data?.wiki.enabled === true
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
   const [activeTab, setActiveTab] = useState<CommandPaletteTab>('all')
@@ -55,7 +58,10 @@ export function CommandPalette() {
   const search = useCommandPaletteSearch(debounced, enabled && open)
   const queryReady = query.trim().length >= 2 && debounced === query.trim()
   const data = queryReady ? search.data : undefined
-  const allItems = useMemo(() => flattenCommandPaletteResults(data), [data])
+  const allItems = useMemo(
+    () => flattenCommandPaletteResults(data, wikiEnabled),
+    [data, wikiEnabled],
+  )
   const counts = useMemo(() => countCommandPaletteItems(allItems), [allItems])
   const items = useMemo(() => filterCommandPaletteItems(allItems, activeTab), [activeTab, allItems])
   const advancedHref = advancedSearchHref(query)
@@ -116,6 +122,10 @@ export function CommandPalette() {
   useEffect(() => {
     setActiveIndex(0)
   }, [activeTab, query])
+
+  useEffect(() => {
+    if (!wikiEnabled && activeTab === 'documents') setActiveTab('all')
+  }, [activeTab, wikiEnabled])
 
   const runItem = (item: CommandPaletteItem) => {
     close()
@@ -216,7 +226,9 @@ export function CommandPalette() {
               aria-label="검색 범위"
               className="flex gap-1 overflow-x-auto border-b border-of-border px-3 py-2"
             >
-              {COMMAND_PALETTE_TABS.map((tab) => (
+              {COMMAND_PALETTE_TABS.filter(
+                (tab) => tab.key !== 'documents' || wikiEnabled,
+              ).map((tab) => (
                 <button
                   key={tab.key}
                   type="button"

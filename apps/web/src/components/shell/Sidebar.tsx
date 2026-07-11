@@ -2,6 +2,7 @@ import {
   Activity,
   BarChart3,
   BellRing,
+  BookOpen,
   Boxes,
   CalendarClock,
   CalendarDays,
@@ -36,6 +37,7 @@ import { NavLink, useParams } from 'react-router-dom'
 import { useAuthConfig } from '@/features/auth/api'
 import { useMe } from '@/features/members/api'
 import { useProjects } from '@/features/projects/api'
+import { useWorkspaceCapabilities } from '@/features/workspace-features/api'
 import { cn } from '@/lib/utils'
 
 type WorkspaceNavItem = {
@@ -138,12 +140,14 @@ function SidebarContent({
   const { data } = useProjects()
   const auth = useAuthConfig()
   const me = useMe()
+  const capabilities = useWorkspaceCapabilities()
 
   const operationItems: WorkspaceNavItem[] = me.data?.is_admin
     ? [
         ...operationsNav,
         { to: '/admin/users', label: '사용자 관리', icon: UsersRound },
         { to: '/admin/worklogs', label: 'Worklogs', icon: Clock3 },
+        { to: '/admin/wiki', label: 'Wiki 설정', icon: BookOpen },
         { to: '/admin/webhooks', label: 'Webhooks', icon: Webhook },
       ]
     : operationsNav
@@ -240,20 +244,25 @@ function SidebarContent({
                               {section.label}
                             </p>
                             <div className="space-y-0.5">
-                              {section.items.map((item) => {
-                                const Icon = item.icon
-                                return (
-                                  <NavLink
-                                    key={item.path}
-                                    to={`/projects/${project.id}/${item.path}`}
-                                    className={navLinkClass}
-                                    onClick={onNavigate}
-                                  >
-                                    <Icon />
-                                    <span className="truncate">{item.label}</span>
-                                  </NavLink>
+                              {section.items
+                                .filter(
+                                  (item) =>
+                                    item.path !== 'documents' || capabilities.data?.wiki.enabled,
                                 )
-                              })}
+                                .map((item) => {
+                                  const Icon = item.icon
+                                  return (
+                                    <NavLink
+                                      key={item.path}
+                                      to={`/projects/${project.id}/${item.path}`}
+                                      className={navLinkClass}
+                                      onClick={onNavigate}
+                                    >
+                                      <Icon />
+                                      <span className="truncate">{item.label}</span>
+                                    </NavLink>
+                                  )
+                                })}
                             </div>
                           </div>
                         ))}

@@ -98,6 +98,15 @@ async def _clean_tables(app):
                 "project_members, projects, users RESTART IDENTITY CASCADE"
             )
         )
+        await session.execute(
+            text(
+                "INSERT INTO workspace_feature_policies "
+                "(feature_key, enabled, revision, updated_by_user_id, updated_by_name) "
+                "VALUES ('wiki', true, 1, NULL, NULL) "
+                "ON CONFLICT (feature_key) DO UPDATE SET enabled = true, revision = 1, "
+                "updated_by_user_id = NULL, updated_by_name = NULL, updated_at = now()"
+            )
+        )
         # Mirrors dev auto-provisioning: the fixed dev user is workspace admin.
         session.add(User(email=DEV_USER_EMAIL, display_name="Dev User", is_admin=True))
 

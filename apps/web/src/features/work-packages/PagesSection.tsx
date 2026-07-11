@@ -2,13 +2,18 @@ import { FileText } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 
 import { useLinkedDocuments } from '@/features/documents/api'
+import { useWorkspaceCapabilities } from '@/features/workspace-features/api'
 
 /* '페이지' — documents linked to this work package (reverse of the editor's
    '연결된 작업' section, Pass 9 PR-V). Read-only here: linking is managed from
    the document editor, the drawer just navigates. */
 export function PagesSection({ wpId, projectId }: { wpId: string; projectId: string }) {
-  const docs = useLinkedDocuments(wpId)
+  const capabilities = useWorkspaceCapabilities()
+  const enabled = capabilities.data?.wiki.enabled === true
+  const docs = useLinkedDocuments(wpId, enabled)
   const navigate = useNavigate()
+
+  if (!enabled) return null
 
   return (
     <section aria-label="페이지" className="space-y-2 border-t border-of-border pt-3">

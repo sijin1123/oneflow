@@ -26,6 +26,7 @@ from app.models.work_package import WorkPackage
 from app.schemas.attachment import AttachmentCreate, AttachmentList, AttachmentRead, StorageRead
 from app.services.storage import LocalStorage, storage_key
 from app.services.storage_usage import storage_usage, used_bytes
+from app.services.workspace_features import require_feature_enabled
 
 router = APIRouter()
 
@@ -74,6 +75,7 @@ async def _validate_anchor(
                 status_code=422, detail="work package must exist in the same project"
             )
     if document_id is not None:
+        await require_feature_enabled(session)
         row = (
             await session.execute(
                 select(ProjectDocument.id).where(

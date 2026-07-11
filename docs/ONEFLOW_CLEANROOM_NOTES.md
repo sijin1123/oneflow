@@ -83,6 +83,12 @@
 - CI: `.github/workflows/ci.yml`의 `cleanroom` 잡에서 동일 스크립트 실행.
 - 게이트 4번(파일명 교집합) 보고 항목 검토: `button.tsx`·`badge.tsx`·`input.tsx` 등 UI 프리미티브 관례명과 `health.py`·`projects.py` 등 도메인 관례명은 이름만 겹칠 뿐이며, 내용은 전부 본 저장소에서 신규 작성(shadcn 스타일 프리미티브는 MIT 패턴의 자체 구현). — filename-overlap-reviewed
 
+## UI-50 Wiki workspace policy
+
+`docs/plane-poc-reverse-spec/` D047에서 관찰한 것은 workspace settings의 Wiki 활성화 행동과 정보구조뿐이다. OneFlow 구현은 기존 자체 문서/검색/첨부 모델 위에 migration 0070 singleton policy, revision CAS admin API, React Query capability cache, OneFlow `SettingsFrame`/token/lucide 기반 UI를 새로 작성했다. Plane source, package, asset, CSS, DOM, wording, schema는 복사하지 않았다. disable 시 데이터 보존과 API enforcement도 OneFlow 제품 경계에 맞춰 독립 설계했다.
+
+스크린샷은 `docs/screenshots/redevelopment/wiki-settings-ui/`에 보존했다. `make cleanroom-check`는 frontend/backend license와 filename overlap attestation까지 PASS했으며 신규 외부 의존성은 없다. — attested-independent-derivation
+
 ## 자동 게이트의 한계(PLAN §10)
 
 리터럴 `@plane/` 문자열·라이선스 텍스트·파일명 수준만 자동 탐지된다. 소스를 보며 변수명만 바꿔 옮기는 이식은 자동으로 잡히지 않으므로, PR 설명의 수동 확인 체크박스("소스 파일을 열어 보며 옮겨 적지 않았음")가 이중 방어선이다.

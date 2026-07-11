@@ -24,6 +24,7 @@ import { useDocuments } from '@/features/documents/api'
 import { useCanWrite } from '@/features/members/useCanWrite'
 import { useProject } from '@/features/projects/api'
 import { useWorkPackages } from '@/features/work-packages/api'
+import { useWorkspaceCapabilities } from '@/features/workspace-features/api'
 import { ApiError } from '@/lib/api'
 import { confirmDestructive } from '@/lib/guards'
 
@@ -57,6 +58,7 @@ export function FilesPage() {
   const del = useDeleteAttachment(projectId)
   const uploadFile = useUploadAttachment(projectId)
   const canWrite = useCanWrite(projectId)
+  const capabilities = useWorkspaceCapabilities()
   const fileInput = useRef<HTMLInputElement>(null)
 
   const [filename, setFilename] = useState('')
@@ -64,7 +66,8 @@ export function FilesPage() {
   const [anchor, setAnchor] = useState('')
   const [query, setQuery] = useState('')
   const { data: wps } = useWorkPackages(projectId, {})
-  const { data: docs } = useDocuments(projectId)
+  const wikiEnabled = capabilities.data?.wiki.enabled === true
+  const { data: docs } = useDocuments(projectId, wikiEnabled)
 
   const workItems = wps?.items ?? []
   const documents = docs?.items ?? []
@@ -163,6 +166,7 @@ export function FilesPage() {
                 uploadPending={uploadFile.isPending}
                 url={url}
                 urlValid={urlValid}
+                wikiEnabled={wikiEnabled}
                 workItems={workItems}
               />
             ) : null}
@@ -270,6 +274,7 @@ function FileComposer({
   uploadPending,
   url,
   urlValid,
+  wikiEnabled,
   workItems,
 }: {
   anchor: string
@@ -289,6 +294,7 @@ function FileComposer({
   uploadPending: boolean
   url: string
   urlValid: boolean
+  wikiEnabled: boolean
   workItems: Array<{ id: string; subject: string }>
 }) {
   return (
@@ -300,7 +306,8 @@ function FileComposer({
         <div className="min-w-0">
           <p className="text-xs font-medium">파일 추가</p>
           <p className="mt-1 text-xs leading-5 text-of-muted">
-            업로드와 외부 링크 모두 선택한 작업 또는 문서에 바로 연결할 수 있습니다.
+            업로드와 외부 링크 모두 선택한 작업
+            {wikiEnabled ? ' 또는 문서' : ''}에 바로 연결할 수 있습니다.
           </p>
         </div>
         <div className="flex min-w-0 flex-wrap items-center gap-2">
@@ -336,13 +343,15 @@ function FileComposer({
             </option>
           ))}
         </optgroup>
-        <optgroup label="문서">
-          {documents.map((d) => (
-            <option key={d.id} value={`doc:${d.id}`}>
-              {d.title}
-            </option>
-          ))}
-        </optgroup>
+        {wikiEnabled ? (
+          <optgroup label="문서">
+            {documents.map((d) => (
+              <option key={d.id} value={`doc:${d.id}`}>
+                {d.title}
+              </option>
+            ))}
+          </optgroup>
+        ) : null}
       </Select>
 
       <div className="grid min-w-0 gap-2 lg:grid-cols-[minmax(0,12rem)_minmax(0,1fr)_auto]">

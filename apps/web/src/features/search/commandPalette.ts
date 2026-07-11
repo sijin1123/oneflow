@@ -80,7 +80,10 @@ export function countCommandPaletteItems(
   return counts
 }
 
-export function flattenCommandPaletteResults(data: UnifiedSearchResults | null | undefined) {
+export function flattenCommandPaletteResults(
+  data: UnifiedSearchResults | null | undefined,
+  includeDocuments = true,
+) {
   const items: CommandPaletteItem[] = []
   const seen = new Set<string>()
   const push = (item: CommandPaletteItem) => {
@@ -92,8 +95,10 @@ export function flattenCommandPaletteResults(data: UnifiedSearchResults | null |
   for (const item of data?.work_packages.items ?? []) {
     push(fromWorkPackage(item))
   }
-  for (const item of data?.documents.items ?? []) {
-    push(fromDocument(item))
+  if (includeDocuments) {
+    for (const item of data?.documents.items ?? []) {
+      push(fromDocument(item))
+    }
   }
   for (const item of data?.meetings.items ?? []) {
     push(fromMeeting(item))

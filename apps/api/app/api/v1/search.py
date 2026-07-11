@@ -39,6 +39,7 @@ from app.schemas.search import (
     WpGroup,
 )
 from app.services.snippet import extract_snippet
+from app.services.workspace_features import feature_enabled
 
 router = APIRouter()
 
@@ -121,6 +122,7 @@ async def unified_search(
     cycles/modules/initiatives by name asc; ties break on id asc."""
     visible_member_projects = _visible_member_project_ids(user)
     probe = limit + 1  # limit+1 fetch → truncated without a COUNT round-trip
+    wiki_is_enabled = await feature_enabled(session)
 
     def scoped(model, text_col, *content_cols):
         # Content predicates live INSIDE the member/archive scope — the OR
@@ -155,13 +157,15 @@ async def unified_search(
             .limit(probe)
         )
     ).all()
-    doc_rows = (
-        await session.execute(
-            scoped(ProjectDocument, ProjectDocument.title, ProjectDocument.body)
-            .order_by(ProjectDocument.title.asc(), ProjectDocument.id.asc())
-            .limit(probe)
-        )
-    ).all()
+    doc_rows = []
+    if wiki_is_enabled:
+        doc_rows = (
+            await session.execute(
+                scoped(ProjectDocument, ProjectDocument.title, ProjectDocument.body)
+                .order_by(ProjectDocument.title.asc(), ProjectDocument.id.asc())
+                .limit(probe)
+            )
+        ).all()
     meeting_rows = (
         await session.execute(
             scoped(Meeting, Meeting.title, Meeting.agenda, Meeting.minutes)

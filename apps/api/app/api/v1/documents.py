@@ -49,8 +49,14 @@ from app.schemas.document_comment import (
     DocumentCommentRead,
 )
 from app.services.sanitize import sanitize_document_html
+from app.services.workspace_features import require_feature_enabled
 
-router = APIRouter()
+
+async def _require_wiki_enabled(session: AsyncSession = Depends(get_session)) -> None:
+    await require_feature_enabled(session)
+
+
+router = APIRouter(dependencies=[Depends(_require_wiki_enabled)])
 
 # Serializes document parent changes and deletes per project (WP parent-move
 # 427001 pattern). Exactly one advisory lock per transaction.

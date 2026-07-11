@@ -18,6 +18,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { PriorityChip, StatusChip, TypeChip } from '@/features/work-packages/chips'
+import { useWorkspaceCapabilities } from '@/features/workspace-features/api'
 import { cn } from '@/lib/utils'
 
 import { useUnifiedSearch, type UnifiedSearchResults } from './api'
@@ -30,6 +31,8 @@ export function SearchPage() {
   const q = searchParams.get('q') ?? ''
   const [input, setInput] = useState(q)
   const navigate = useNavigate()
+  const capabilities = useWorkspaceCapabilities()
+  const wikiEnabled = capabilities.data?.wiki.enabled === true
 
   const { data, isFetching, isError, error, refetch } = useUnifiedSearch(q)
 
@@ -61,7 +64,7 @@ export function SearchPage() {
   }
 
   const trimmedQuery = q.trim()
-  const summaries = useMemo(() => groupSummaries(data), [data])
+  const summaries = useMemo(() => groupSummaries(data, wikiEnabled), [data, wikiEnabled])
   const totalReturned = summaries.reduce((sum, group) => sum + group.returned, 0)
   const empty = data ? totalReturned === 0 : false
   const waitingForQuery = trimmedQuery.length < 2
@@ -191,25 +194,27 @@ export function SearchPage() {
             ))}
           </GroupSection>
 
-          <GroupSection
-            icon={FileText}
-            title="문서"
-            returned={data.documents.returned}
-            truncated={data.documents.truncated}
-          >
-            {data.documents.items.map((item) => (
-              <ResultRow
-                key={item.id}
-                icon={FileText}
-                projectKey={item.project_key}
-                projectName={item.project_name}
-                title={item.title}
-                onClick={() => navigate(`/projects/${item.project_id}/documents/${item.id}`)}
-              >
-                <ContentMatch item={item} className="mt-2" />
-              </ResultRow>
-            ))}
-          </GroupSection>
+          {wikiEnabled ? (
+            <GroupSection
+              icon={FileText}
+              title="문서"
+              returned={data.documents.returned}
+              truncated={data.documents.truncated}
+            >
+              {data.documents.items.map((item) => (
+                <ResultRow
+                  key={item.id}
+                  icon={FileText}
+                  projectKey={item.project_key}
+                  projectName={item.project_name}
+                  title={item.title}
+                  onClick={() => navigate(`/projects/${item.project_id}/documents/${item.id}`)}
+                >
+                  <ContentMatch item={item} className="mt-2" />
+                </ResultRow>
+              ))}
+            </GroupSection>
+          ) : null}
 
           <GroupSection
             icon={CalendarClock}
@@ -293,11 +298,13 @@ export function SearchPage() {
   )
 }
 
-function groupSummaries(data: UnifiedSearchResults | undefined) {
+function groupSummaries(data: UnifiedSearchResults | undefined, includeDocuments: boolean) {
   if (!data) return []
   return [
     { key: 'work', label: '작업', returned: data.work_packages.returned, icon: ListChecks },
-    { key: 'docs', label: '문서', returned: data.documents.returned, icon: FileText },
+    ...(includeDocuments
+      ? [{ key: 'docs', label: '문서', returned: data.documents.returned, icon: FileText }]
+      : []),
     { key: 'meetings', label: '회의', returned: data.meetings.returned, icon: CalendarClock },
     { key: 'cycles', label: '사이클', returned: data.cycles.returned, icon: CalendarDays },
     { key: 'modules', label: '모듈', returned: data.modules.returned, icon: Boxes },
