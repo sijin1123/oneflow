@@ -2103,3 +2103,34 @@ Chromium typed mock fixture에서 1440x960과 390x844 viewport를 사용했다. 
 ## 이연 항목
 
 - 없음. 모든 visible control은 기존 실제 route, capability, permission, query state에 연결된다.
+
+---
+
+# UI-62 Central Workspace Home Composition 검증 (2026-07-12)
+
+> 범위: D001의 중앙 정보 흐름을 OneFlow의 실제 workspace 데이터로 재구성한 `/my` home surface.
+
+| 항목 | 명령 | 결과 |
+|---|---|---:|
+| Typecheck/build | `npm run build` | **PASS** — 기존 large chunk 경고만 유지 |
+| Pure unit | `npm run test:unit` | **PASS — 67** |
+| Component | `npm run test:component` | **PASS — 8** |
+| Focused home/AI | `npx playwright test ... --grep "내 작업 홈이 배정|AI workspace가 켜진" --workers=1` | **PASS — 2** |
+| Full frontend E2E | `npm run test:e2e -- --workers=2 --reporter=dot` | **PASS — 204, opt-in visual QA 1 skipped** |
+| Diff hygiene | `git diff --check` | **PASS** |
+
+## UI 변경
+
+- 중앙 영역을 AI availability/status band, compact quick links, project shortcuts, dense Recents, personal notes, supporting time/created/inbox/tools 순으로 재배치했다.
+- Recents는 기한 임박, 배정 작업, 최근 활동을 같은 scan surface로 묶되 기존 접근성 landmark를 유지한다.
+- 1440x960과 390x844 증적은 `docs/screenshots/redevelopment/workspace-home/{desktop,mobile}.png`에 보존한다.
+
+## 기능/API 반영
+
+- 기존 `/me/work`, notifications, projects, personal notes, AI capability, time entries query를 그대로 사용한다.
+- 모든 quick link와 project/work/activity item은 기존 실제 route로 이동하며 최근 활동은 owning project의 work-item drawer를 연다.
+- API, DB, migration, permission, environment variable, dependency 변경은 없다.
+
+## 이연 항목
+
+- 없음. 새 widget 설정이나 mock quick-link 관리 UI를 만들지 않았으며 visible entry는 모두 실제 기능에 연결된다.
