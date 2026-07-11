@@ -12,7 +12,7 @@ from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from fastapi.responses import FileResponse
-from sqlalchemy import select, text
+from sqlalchemy import or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import get_current_user
@@ -24,6 +24,7 @@ from app.models.document import ProjectDocument
 from app.models.user import User
 from app.models.work_package import WorkPackage
 from app.schemas.attachment import AttachmentCreate, AttachmentList, AttachmentRead, StorageRead
+from app.services.document_access import document_is_visible, document_visible_clause
 from app.services.storage import LocalStorage, storage_key
 from app.services.storage_usage import storage_usage, used_bytes
 from app.services.workspace_features import require_feature_enabled
@@ -56,6 +57,7 @@ async def _validate_anchor(
     project_id: uuid.UUID,
     work_package_id: uuid.UUID | None,
     document_id: uuid.UUID | None,
+    user: User,
 ) -> None:
     """CREATE-side anchor contract (v23.1 R1-②: strict on write, lenient on
     read): at most one anchor; it must exist in THIS project (missing or
@@ -78,12 +80,14 @@ async def _validate_anchor(
         await require_feature_enabled(session)
         row = (
             await session.execute(
-                select(ProjectDocument.id).where(
-                    ProjectDocument.id == document_id, ProjectDocument.project_id == project_id
+                select(ProjectDocument).where(
+                    ProjectDocument.id == document_id,
+                    ProjectDocument.project_id == project_id,
+                    ProjectDocument.archived_at.is_(None),
                 )
             )
         ).scalar_one_or_none()
-        if row is None:
+        if row is None or not document_is_visible(row, user.id):
             raise HTTPException(status_code=422, detail="document must exist in the same project")
 
 
@@ -105,7 +109,29 @@ async def list_attachments(
     if work_package_id is not None:
         stmt = stmt.where(Attachment.work_package_id == work_package_id)
     if document_id is not None:
+        document = (
+            await session.execute(
+                select(ProjectDocument).where(
+                    ProjectDocument.id == document_id,
+                    ProjectDocument.project_id == project_id,
+                )
+            )
+        ).scalar_one_or_none()
+        if document is None or not document_is_visible(document, user.id):
+            return AttachmentList(items=[], total=0)
         stmt = stmt.where(Attachment.document_id == document_id)
+    else:
+        visible_active_documents = select(ProjectDocument.id).where(
+            ProjectDocument.project_id == project_id,
+            ProjectDocument.archived_at.is_(None),
+            document_visible_clause(user.id),
+        )
+        stmt = stmt.where(
+            or_(
+                Attachment.document_id.is_(None),
+                Attachment.document_id.in_(visible_active_documents),
+            )
+        )
     rows = (
         (await session.execute(stmt.order_by(Attachment.created_at.desc(), Attachment.id.asc())))
         .scalars()
@@ -122,7 +148,7 @@ async def create_attachment(
     user: User = Depends(get_current_user),
 ) -> AttachmentRead:
     await require_member(session, project_id, user, write=True)
-    await _validate_anchor(session, project_id, body.work_package_id, body.document_id)
+    await _validate_anchor(session, project_id, body.work_package_id, body.document_id, user)
     att = Attachment(
         project_id=project_id,
         work_package_id=body.work_package_id,
@@ -152,6 +178,12 @@ async def delete_attachment(
     # Existence hiding: unknown id or a non-member's project both surface as 404.
     if att is None or not await is_member(session, att.project_id, user.id):
         raise HTTPException(status_code=404, detail="not found")
+    if att.document_id is not None:
+        document = await session.get(ProjectDocument, att.document_id)
+        if document is None or not document_is_visible(document, user.id):
+            raise HTTPException(status_code=404, detail="not found")
+        if document.archived_at is not None:
+            raise HTTPException(status_code=409, detail="archived document is read-only")
     await require_writer(session, att.project_id, user.id)
     await require_active_project(session, att.project_id)
     key = att.storage_key
@@ -187,7 +219,7 @@ async def upload_attachment(
     an (harmless) orphan blob — a broken row is unrepresentable."""
     await require_member(session, project_id, user, write=True)
     # Anchor contract runs BEFORE any row/blob exists (v23.1 R1-⑤).
-    await _validate_anchor(session, project_id, work_package_id, document_id)
+    await _validate_anchor(session, project_id, work_package_id, document_id, user)
 
     # ① Content-Length pre-check: cheap rejection before reading anything.
     declared = request.headers.get("content-length")
@@ -270,6 +302,10 @@ async def download_attachment(
         or not await is_member(session, att.project_id, user.id)
     ):
         raise HTTPException(status_code=404, detail="not found")
+    if att.document_id is not None:
+        document = await session.get(ProjectDocument, att.document_id)
+        if document is None or not document_is_visible(document, user.id):
+            raise HTTPException(status_code=404, detail="not found")
     path = LocalStorage(settings.storage_dir).path(att.storage_key)
     if path is None:  # blob lost or racing delete
         raise HTTPException(status_code=404, detail="not found")
@@ -300,7 +336,7 @@ async def project_storage(
     self-consistent aggregate; the quota itself is env-owned (editing it is
     an explicit non-goal — restart required, see the env rules)."""
     await require_member(session, project_id, user)
-    used, files, links = await storage_usage(session, project_id)
+    used, files, links = await storage_usage(session, project_id, user.id)
     return StorageRead(
         used_bytes=used,
         quota_bytes=settings.project_storage_quota_bytes,

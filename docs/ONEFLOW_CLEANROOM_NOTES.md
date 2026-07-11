@@ -95,6 +95,12 @@
 
 스크린샷은 `docs/screenshots/redevelopment/data-transfer-jobs-ui/`에 보존했다. 신규 외부 의존성은 없으며 `make cleanroom-check`와 dependency audit가 PASS했다. — attested-independent-derivation
 
+## UI-52 Wiki content lifecycle surface
+
+`docs/plane-poc-reverse-spec/` D005/D028-D030과 RSP-009에서 관찰한 것은 Wiki의 shared/private/archived 정보구조와 보관·복원 행동이다. OneFlow 구현은 기존 자체 `ProjectDocument` 모델과 문서 에디터 위에 migration 0072, 작성자 전용 private 가시성, version CAS 보관·복원, 파생 검색·링크·첨부·저장공간 경계를 독립 설계했다. Plane source, package, asset, CSS, DOM, wording, schema는 복사하지 않았다.
+
+스크린샷은 `docs/screenshots/redevelopment/wiki-lifecycle-ui/`에 보존했다. 신규 외부 의존성은 없으며 `make cleanroom-check`와 dependency audit를 동일 게이트로 사용한다. — attested-independent-derivation
+
 ## 자동 게이트의 한계(PLAN §10)
 
 리터럴 `@plane/` 문자열·라이선스 텍스트·파일명 수준만 자동 탐지된다. 소스를 보며 변수명만 바꿔 옮기는 이식은 자동으로 잡히지 않으므로, PR 설명의 수동 확인 체크박스("소스 파일을 열어 보며 옮겨 적지 않았음")가 이중 방어선이다.

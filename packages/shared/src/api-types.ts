@@ -336,6 +336,23 @@ export interface paths {
         patch: operations["update_document_api_v1_documents__doc_id__patch"];
         trace?: never;
     };
+    "/api/v1/documents/{doc_id}/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Archive Document */
+        post: operations["archive_document_api_v1_documents__doc_id__archive_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/documents/{doc_id}/comments": {
         parameters: {
             query?: never;
@@ -353,6 +370,23 @@ export interface paths {
         put?: never;
         /** Create Document Comment */
         post: operations["create_document_comment_api_v1_documents__doc_id__comments_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/documents/{doc_id}/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Restore Document */
+        post: operations["restore_document_api_v1_documents__doc_id__restore_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3744,6 +3778,12 @@ export interface components {
             parent_id?: string | null;
             /** Title */
             title: string;
+            /**
+             * Visibility
+             * @default shared
+             * @enum {string}
+             */
+            visibility: "shared" | "private";
         };
         /** DocumentGroup */
         DocumentGroup: {
@@ -3753,6 +3793,11 @@ export interface components {
             returned: number;
             /** Truncated */
             truncated: boolean;
+        };
+        /** DocumentLifecycleRequest */
+        DocumentLifecycleRequest: {
+            /** Expected Version */
+            expected_version: number;
         };
         /** DocumentLinkCreate */
         DocumentLinkCreate: {
@@ -3809,6 +3854,12 @@ export interface components {
          * @description List view omits the (potentially large) body.
          */
         DocumentListItem: {
+            /** Archived At */
+            archived_at: string | null;
+            /** Archived By Name */
+            archived_by_name: string | null;
+            /** Archived By User Id */
+            archived_by_user_id: string | null;
             /** Author Id */
             author_id: string | null;
             /**
@@ -3837,9 +3888,20 @@ export interface components {
             updated_at: string;
             /** Version */
             version: number;
+            /**
+             * Visibility
+             * @enum {string}
+             */
+            visibility: "shared" | "private";
         };
         /** DocumentRead */
         DocumentRead: {
+            /** Archived At */
+            archived_at: string | null;
+            /** Archived By Name */
+            archived_by_name: string | null;
+            /** Archived By User Id */
+            archived_by_user_id: string | null;
             /** Author Id */
             author_id: string | null;
             /** Body */
@@ -3870,6 +3932,11 @@ export interface components {
             updated_at: string;
             /** Version */
             version: number;
+            /**
+             * Visibility
+             * @enum {string}
+             */
+            visibility: "shared" | "private";
         };
         /**
          * DocumentUpdate
@@ -3885,6 +3952,8 @@ export interface components {
             parent_id?: string | null;
             /** Title */
             title?: string | null;
+            /** Visibility */
+            visibility?: ("shared" | "private") | null;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -7458,6 +7527,54 @@ export interface operations {
             };
         };
     };
+    archive_document_api_v1_documents__doc_id__archive_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                doc_id: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DocumentLifecycleRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentRead"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentConflict"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_document_comments_api_v1_documents__doc_id__comments_get: {
         parameters: {
             query?: {
@@ -7522,6 +7639,54 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DocumentCommentRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    restore_document_api_v1_documents__doc_id__restore_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                doc_id: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DocumentLifecycleRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentRead"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentConflict"];
                 };
             };
             /** @description Validation Error */
@@ -10356,7 +10521,9 @@ export interface operations {
     };
     list_documents_api_v1_projects__project_id__documents_get: {
         parameters: {
-            query?: never;
+            query?: {
+                bucket?: "shared" | "private" | "archived";
+            };
             header?: {
                 authorization?: string | null;
             };

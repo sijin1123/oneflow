@@ -12,6 +12,8 @@ into a surprising final state (PLAN v9.1 R1-②). Depth contract: root is depth
 
 import re
 import uuid
+from datetime import UTC, datetime
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from fastapi.encoders import jsonable_encoder
@@ -35,6 +37,7 @@ from app.models.work_package import WorkPackage
 from app.schemas.document import (
     DocumentConflict,
     DocumentCreate,
+    DocumentLifecycleRequest,
     DocumentLinkCreate,
     DocumentLinkList,
     DocumentLinkRead,
@@ -48,6 +51,7 @@ from app.schemas.document_comment import (
     DocumentCommentList,
     DocumentCommentRead,
 )
+from app.services.document_access import document_is_visible, document_visible_clause
 from app.services.sanitize import sanitize_document_html
 from app.services.workspace_features import require_feature_enabled
 
@@ -115,7 +119,7 @@ async def _subtree_height(session: AsyncSession, doc_id: uuid.UUID, project_id: 
 
 
 async def _check_parent_guards(
-    session: AsyncSession, doc: ProjectDocument, new_parent_id: uuid.UUID
+    session: AsyncSession, doc: ProjectDocument, new_parent_id: uuid.UUID, user: User
 ) -> None:
     """Self/cross-project/cycle/depth guards. Caller must hold the project lock."""
     if new_parent_id == doc.id:
@@ -123,7 +127,13 @@ async def _check_parent_guards(
     parent = (
         await session.execute(select(ProjectDocument).where(ProjectDocument.id == new_parent_id))
     ).scalar_one_or_none()
-    if parent is None or parent.project_id != doc.project_id:
+    if (
+        parent is None
+        or parent.project_id != doc.project_id
+        or parent.archived_at is not None
+        or not document_is_visible(parent, user.id)
+        or parent.visibility != doc.visibility
+    ):
         raise HTTPException(status_code=422, detail="parent must exist in the same project")
     # Ancestor walk — same-project (DB-enforced), bounded by project size.
     seen: set[uuid.UUID] = set()
@@ -150,32 +160,57 @@ async def _check_parent_guards(
 
 
 async def _get_doc_scoped(
-    session: AsyncSession, doc_id: uuid.UUID, user: User, *, write: bool = False
+    session: AsyncSession,
+    doc_id: uuid.UUID,
+    user: User,
+    *,
+    write: bool = False,
+    lifecycle: bool = False,
 ) -> ProjectDocument:
     doc = (
         await session.execute(select(ProjectDocument).where(ProjectDocument.id == doc_id))
     ).scalar_one_or_none()
-    if doc is None or not await is_member(session, doc.project_id, user.id):
+    if (
+        doc is None
+        or not await is_member(session, doc.project_id, user.id)
+        or not document_is_visible(doc, user.id)
+    ):
         raise HTTPException(status_code=404, detail="not found")
     if write:
         await require_writer(session, doc.project_id, user.id)
         await require_active_project(session, doc.project_id)
+        if doc.archived_at is not None and not lifecycle:
+            raise HTTPException(status_code=409, detail="archived document is read-only")
     return doc
 
 
 @router.get("/projects/{project_id}/documents", response_model=DocumentList)
 async def list_documents(
     project_id: uuid.UUID,
+    bucket: Literal["shared", "private", "archived"] = Query(default="shared"),
     session: AsyncSession = Depends(get_session),
     user: User = Depends(get_current_user),
 ) -> DocumentList:
     await require_member(session, project_id, user)
+    stmt = select(ProjectDocument).where(ProjectDocument.project_id == project_id)
+    if bucket == "shared":
+        stmt = stmt.where(
+            ProjectDocument.visibility == "shared", ProjectDocument.archived_at.is_(None)
+        )
+    elif bucket == "private":
+        stmt = stmt.where(
+            ProjectDocument.visibility == "private",
+            ProjectDocument.author_id == user.id,
+            ProjectDocument.archived_at.is_(None),
+        )
+    else:
+        stmt = stmt.where(
+            ProjectDocument.archived_at.is_not(None), document_visible_clause(user.id)
+        )
     rows = (
         (
             await session.execute(
-                select(ProjectDocument)
-                .where(ProjectDocument.project_id == project_id)
-                .order_by(ProjectDocument.updated_at.desc(), ProjectDocument.id.asc())
+                stmt.order_by(ProjectDocument.updated_at.desc(), ProjectDocument.id.asc())
             )
         )
         .scalars()
@@ -201,7 +236,13 @@ async def create_document(
                 select(ProjectDocument).where(ProjectDocument.id == body.parent_id)
             )
         ).scalar_one_or_none()
-        if parent is None or parent.project_id != project_id:
+        if (
+            parent is None
+            or parent.project_id != project_id
+            or parent.archived_at is not None
+            or not document_is_visible(parent, user.id)
+            or parent.visibility != body.visibility
+        ):
             raise HTTPException(status_code=422, detail="parent must exist in the same project")
         parent_depth = await _ancestor_path_len(session, body.parent_id, project_id)
         if parent_depth + 1 > MAX_DOCUMENT_DEPTH:
@@ -218,6 +259,7 @@ async def create_document(
             session, project_id, None, sanitize_document_html(body.body)
         ),
         author_id=user.id,
+        visibility=body.visibility,
     )
     session.add(doc)
     await session.flush()
@@ -313,11 +355,39 @@ async def update_document(
             # Serialize reparent against concurrent moves/deletes, then guard
             # (self/cycle/depth). Moving to root (null) needs no guards.
             await _lock_project_documents(session, doc.project_id)
-            await _check_parent_guards(session, doc, body.parent_id)
+            await _check_parent_guards(session, doc, body.parent_id, user)
+    if "visibility" in provided and body.visibility is not None:
+        if doc.author_id != user.id:
+            raise HTTPException(status_code=404, detail="not found")
+        mismatched_child = (
+            await session.execute(
+                select(ProjectDocument.id)
+                .where(
+                    ProjectDocument.parent_id == doc.id,
+                    ProjectDocument.visibility != body.visibility,
+                )
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        if mismatched_child is not None:
+            raise HTTPException(
+                status_code=422,
+                detail="parent and child documents must use the same visibility",
+            )
+        if doc.parent_id is not None:
+            parent_visibility = await session.scalar(
+                select(ProjectDocument.visibility).where(ProjectDocument.id == doc.parent_id)
+            )
+            if parent_visibility != body.visibility:
+                raise HTTPException(
+                    status_code=422,
+                    detail="parent and child documents must use the same visibility",
+                )
+        changes["visibility"] = body.visibility
 
     if not changes:
         fresh = await _reselect(session, doc_id)
-        if fresh is None:
+        if fresh is None or not document_is_visible(fresh, user.id):
             raise HTTPException(status_code=404, detail="not found")
         if fresh.version != body.expected_version:
             return _conflict(fresh)
@@ -339,9 +409,102 @@ async def update_document(
         return DocumentRead.model_validate(updated)
 
     fresh = await _reselect(session, doc_id)
-    if fresh is None:
+    if fresh is None or not document_is_visible(fresh, user.id):
         raise HTTPException(status_code=404, detail="not found")
     return _conflict(fresh)
+
+
+async def _set_archive_state(
+    session: AsyncSession,
+    doc: ProjectDocument,
+    user: User,
+    body: DocumentLifecycleRequest,
+    *,
+    archived: bool,
+):
+    if archived == (doc.archived_at is not None):
+        if doc.version != body.expected_version:
+            return _conflict(doc)
+        return DocumentRead.model_validate(doc)
+    values = (
+        {
+            "archived_at": datetime.now(UTC),
+            "archived_by_user_id": user.id,
+            "archived_by_name": user.display_name,
+        }
+        if archived
+        else {
+            "archived_at": None,
+            "archived_by_user_id": None,
+            "archived_by_name": None,
+        }
+    )
+    updated = (
+        await session.execute(
+            sa_update(ProjectDocument)
+            .where(
+                ProjectDocument.id == doc.id,
+                ProjectDocument.version == body.expected_version,
+            )
+            .values(**values, version=ProjectDocument.version + 1, updated_at=func.now())
+            .returning(ProjectDocument)
+            .execution_options(synchronize_session=False, populate_existing=True)
+        )
+    ).scalar_one_or_none()
+    await session.commit()
+    if updated is not None:
+        return DocumentRead.model_validate(updated)
+    fresh = await _reselect(session, doc.id)
+    if fresh is None or not document_is_visible(fresh, user.id):
+        raise HTTPException(status_code=404, detail="not found")
+    return _conflict(fresh)
+
+
+async def _require_lifecycle_actor(
+    session: AsyncSession, document: ProjectDocument, user: User
+) -> None:
+    if document.author_id == user.id:
+        return
+    role = await session.scalar(
+        select(ProjectMember.role).where(
+            ProjectMember.project_id == document.project_id,
+            ProjectMember.user_id == user.id,
+        )
+    )
+    if role != "owner":
+        raise HTTPException(status_code=404, detail="not found")
+
+
+@router.post(
+    "/documents/{doc_id}/archive",
+    response_model=DocumentRead,
+    responses={409: {"model": DocumentConflict}},
+)
+async def archive_document(
+    doc_id: uuid.UUID,
+    body: DocumentLifecycleRequest,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+):
+    doc = await _get_doc_scoped(session, doc_id, user, write=True, lifecycle=True)
+    await _require_lifecycle_actor(session, doc, user)
+    return await _set_archive_state(session, doc, user, body, archived=True)
+
+
+@router.post(
+    "/documents/{doc_id}/restore",
+    response_model=DocumentRead,
+    responses={409: {"model": DocumentConflict}},
+)
+async def restore_document(
+    doc_id: uuid.UUID,
+    body: DocumentLifecycleRequest,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+):
+    doc = await _get_doc_scoped(session, doc_id, user, write=True, lifecycle=True)
+    await _require_lifecycle_actor(session, doc, user)
+    return await _set_archive_state(session, doc, user, body, archived=False)
 
 
 @router.delete("/documents/{doc_id}", status_code=204)
@@ -477,6 +640,8 @@ async def list_work_package_documents(
                 .where(
                     DocumentWorkPackageLink.work_package_id == wp_id,
                     DocumentWorkPackageLink.project_id == wp.project_id,
+                    ProjectDocument.archived_at.is_(None),
+                    document_visible_clause(user.id),
                 )
                 .order_by(ProjectDocument.title.asc(), ProjectDocument.id.asc())
             )
@@ -579,8 +744,7 @@ async def delete_document_comment(
     ).scalar_one_or_none()
     if comment is None or not await is_member(session, comment.project_id, user.id):
         raise HTTPException(status_code=404, detail="not found")
-    await require_writer(session, comment.project_id, user.id)
-    await require_active_project(session, comment.project_id)
+    await _get_doc_scoped(session, comment.document_id, user, write=True)
     if comment.author_id != user.id:
         role = (
             await session.execute(

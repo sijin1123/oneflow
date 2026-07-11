@@ -67,7 +67,7 @@ export function FilesPage() {
   const [query, setQuery] = useState('')
   const { data: wps } = useWorkPackages(projectId, {})
   const wikiEnabled = capabilities.data?.wiki.enabled === true
-  const { data: docs } = useDocuments(projectId, wikiEnabled)
+  const { data: docs } = useDocuments(projectId, 'shared', wikiEnabled)
 
   const workItems = wps?.items ?? []
   const documents = docs?.items ?? []

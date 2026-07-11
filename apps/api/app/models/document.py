@@ -2,6 +2,7 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import (
+    CheckConstraint,
     DateTime,
     ForeignKey,
     ForeignKeyConstraint,
@@ -33,6 +34,12 @@ class ProjectDocument(Base):
 
     __tablename__ = "project_documents"
     __table_args__ = (
+        CheckConstraint("visibility IN ('shared','private')", name="visibility_allowed"),
+        CheckConstraint(
+            "(archived_at IS NULL AND archived_by_user_id IS NULL AND archived_by_name IS NULL) "
+            "OR (archived_at IS NOT NULL AND archived_by_name IS NOT NULL)",
+            name="archive_audit_shape",
+        ),
         UniqueConstraint("id", "project_id", name="uq_project_documents_id_project"),
         ForeignKeyConstraint(
             ["parent_id", "project_id"],
@@ -42,6 +49,13 @@ class ProjectDocument(Base):
         ),
         Index("ix_project_documents_parent", "parent_id"),
         Index("ix_project_documents_project_updated", "project_id", "updated_at"),
+        Index(
+            "ix_project_documents_project_visibility_archive",
+            "project_id",
+            "visibility",
+            "archived_at",
+            "updated_at",
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -54,6 +68,12 @@ class ProjectDocument(Base):
     author_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
+    visibility: Mapped[str] = mapped_column(String(12), nullable=False, default="shared")
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    archived_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    archived_by_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
     version: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()

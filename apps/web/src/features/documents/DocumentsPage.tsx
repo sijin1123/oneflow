@@ -5,11 +5,14 @@ import {
   FileSearch,
   FileText,
   FolderTree,
+  Archive,
+  LockKeyhole,
   Plus,
   Search,
+  Users,
 } from 'lucide-react'
 import { useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 
 import { ReadOnlyNotice } from '@/components/shell/ReadOnlyNotice'
 import { EmptyState, ErrorState, ListSkeleton } from '@/components/shell/states'
@@ -21,14 +24,18 @@ import { useProject } from '@/features/projects/api'
 import { formatDateTime } from '@/lib/datetime'
 import { cn } from '@/lib/utils'
 
-import { useCreateDocument, useDocuments } from './api'
+import { type DocumentBucket, useCreateDocument, useDocuments } from './api'
 import type { DocTreeNode } from './tree'
 import { buildDocTree } from './tree'
 
 export function DocumentsPage() {
   const { projectId } = useParams() as { projectId: string }
   const navigate = useNavigate()
-  const { data, isPending, isError, error, refetch } = useDocuments(projectId)
+  const [params, setParams] = useSearchParams()
+  const rawBucket = params.get('bucket')
+  const bucket: DocumentBucket =
+    rawBucket === 'private' || rawBucket === 'archived' ? rawBucket : 'shared'
+  const { data, isPending, isError, error, refetch } = useDocuments(projectId, bucket)
   const project = useProject(projectId)
   const create = useCreateDocument(projectId)
   const canWrite = useCanWrite(projectId)
@@ -36,8 +43,9 @@ export function DocumentsPage() {
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
 
   const newDoc = () => {
+    if (bucket === 'archived') return
     create.mutate(
-      { title: '제목 없는 문서' },
+      { title: '제목 없는 문서', visibility: bucket },
       { onSuccess: (doc) => navigate(`/projects/${projectId}/documents/${doc.id}`) },
     )
   }
@@ -51,6 +59,7 @@ export function DocumentsPage() {
   const nestedCount = Math.max(0, items.length - rootCount)
   const lastUpdated = items[0]?.updated_at ?? null
   const archived = project.data?.archived_at !== null && project.data?.archived_at !== undefined
+  const bucketLabel = { shared: '공유', private: '비공개', archived: '보관됨' }[bucket]
 
   const toggle = (id: string) => {
     setCollapsed((prev) => {
@@ -84,8 +93,8 @@ export function DocumentsPage() {
           <div className="flex min-w-0 flex-wrap items-center gap-2">
             {project.data ? <Badge variant="outline">{project.data.key}</Badge> : null}
             <Badge variant={archived ? 'outline' : 'accent'}>{archived ? '보관됨' : '활성'}</Badge>
-            <Badge variant="outline">문서 {data?.total ?? 0}</Badge>
-            {canWrite ? (
+            <Badge variant="outline">{bucketLabel} {data?.total ?? 0}</Badge>
+            {canWrite && bucket !== 'archived' ? (
               <Button size="sm" disabled={create.isPending || archived} onClick={newDoc}>
                 <Plus size={14} /> 새 문서
               </Button>
@@ -95,13 +104,46 @@ export function DocumentsPage() {
       </header>
       {!canWrite ? <ReadOnlyNotice /> : null}
 
+      <nav aria-label="문서 범위" className="flex min-w-0 gap-1 overflow-x-auto border-b border-of-border pb-2">
+        {[
+          { key: 'shared', label: '공유', icon: Users },
+          { key: 'private', label: '비공개', icon: LockKeyhole },
+          { key: 'archived', label: '보관됨', icon: Archive },
+        ].map((item) => {
+          const Icon = item.icon
+          return (
+            <button
+              key={item.key}
+              type="button"
+              aria-current={bucket === item.key ? 'page' : undefined}
+              className={cn(
+                'inline-flex h-8 shrink-0 items-center gap-1.5 rounded-of px-2.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus',
+                bucket === item.key
+                  ? 'bg-of-accent-soft text-of-accent'
+                  : 'text-of-muted hover:bg-of-surface-2 hover:text-of-text',
+              )}
+              onClick={() => {
+                setQuery('')
+                setCollapsed(new Set())
+                setParams(item.key === 'shared' ? {} : { bucket: item.key })
+              }}
+            >
+              <Icon size={13} aria-hidden="true" /> {item.label}
+            </button>
+          )
+        })}
+      </nav>
+
       {isPending ? (
         <ListSkeleton />
       ) : isError ? (
         <ErrorState error={error} onRetry={() => refetch()} />
       ) : data.total === 0 ? (
-        <EmptyState title="문서가 없습니다" hint="새 문서를 만들어 회의록·위키·정책을 정리하세요.">
-          {canWrite && !archived ? (
+        <EmptyState
+          title={`${bucketLabel} 문서가 없습니다`}
+          hint={bucket === 'archived' ? '보관한 문서가 여기에 표시됩니다.' : '새 문서를 만들어 회의록·위키·정책을 정리하세요.'}
+        >
+          {canWrite && !archived && bucket !== 'archived' ? (
             <Button size="sm" disabled={create.isPending} onClick={newDoc}>
               <Plus size={14} /> 새 문서
             </Button>
@@ -168,6 +210,8 @@ export function DocumentsPage() {
                         <span className="flex min-w-0 items-center gap-2">
                           <FileText size={15} className="shrink-0 text-of-muted" />
                           <span className="min-w-0 truncate text-sm font-medium">{doc.title}</span>
+                          {doc.visibility === 'private' ? <LockKeyhole size={12} className="shrink-0 text-of-muted" aria-label="비공개" /> : null}
+                          {doc.archived_at ? <Badge variant="outline">보관됨</Badge> : null}
                           {children.length > 0 && !searching ? (
                             <span className="shrink-0 text-[11px] text-of-muted">
                               하위 {children.length}

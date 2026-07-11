@@ -38,6 +38,7 @@ from app.schemas.search import (
     UnifiedSearchResults,
     WpGroup,
 )
+from app.services.document_access import document_visible_clause
 from app.services.snippet import extract_snippet
 from app.services.workspace_features import feature_enabled
 
@@ -162,6 +163,8 @@ async def unified_search(
         doc_rows = (
             await session.execute(
                 scoped(ProjectDocument, ProjectDocument.title, ProjectDocument.body)
+                .where(ProjectDocument.archived_at.is_(None))
+                .where(document_visible_clause(user.id))
                 .order_by(ProjectDocument.title.asc(), ProjectDocument.id.asc())
                 .limit(probe)
             )

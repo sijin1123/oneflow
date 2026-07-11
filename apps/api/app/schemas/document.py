@@ -1,5 +1,6 @@
 import uuid
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, field_validator
 
@@ -23,6 +24,7 @@ class DocumentCreate(BaseModel):
     title: str
     body: str | None = None
     parent_id: uuid.UUID | None = None
+    visibility: Literal["shared", "private"] = "shared"
 
     @field_validator("title")
     @classmethod
@@ -43,6 +45,7 @@ class DocumentUpdate(BaseModel):
     title: str | None = None
     body: str | None = None
     parent_id: uuid.UUID | None = None
+    visibility: Literal["shared", "private"] | None = None
 
     @field_validator("expected_version")
     @classmethod
@@ -71,6 +74,10 @@ class DocumentRead(BaseModel):
     title: str
     body: str | None
     author_id: uuid.UUID | None
+    visibility: Literal["shared", "private"]
+    archived_at: datetime | None
+    archived_by_user_id: uuid.UUID | None
+    archived_by_name: str | None
     version: int
     created_at: datetime
     updated_at: datetime
@@ -86,6 +93,10 @@ class DocumentListItem(BaseModel):
     parent_id: uuid.UUID | None
     title: str
     author_id: uuid.UUID | None
+    visibility: Literal["shared", "private"]
+    archived_at: datetime | None
+    archived_by_user_id: uuid.UUID | None
+    archived_by_name: str | None
     version: int
     created_at: datetime
     updated_at: datetime
@@ -99,6 +110,17 @@ class DocumentList(BaseModel):
 class DocumentConflict(BaseModel):
     detail: str
     current: DocumentRead
+
+
+class DocumentLifecycleRequest(BaseModel):
+    expected_version: int
+
+    @field_validator("expected_version")
+    @classmethod
+    def _version(cls, v: int) -> int:
+        if not 0 <= v <= 2_147_483_647:
+            raise ValueError("expected_version must be between 0 and 2147483647")
+        return v
 
 
 class DocumentLinkCreate(BaseModel):
