@@ -5704,6 +5704,101 @@ test('저장 뷰 관리 surface는 모바일에서 활성·잠금·저장 흐름
   })
 })
 
+test('Project Views directory는 생성·공유 뷰 열기·소유자 관리를 연결한다', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await mockApi(page)
+  let ownedLocked = false
+  const items = [
+    {
+      id: 'view-owned',
+      project_id: project.id,
+      name: '내 일정',
+      params: { priority: 'high' },
+      layout: 'calendar',
+      sort: null,
+      is_shared: false,
+      is_locked: ownedLocked,
+      is_mine: true,
+      owner_name: 'Dev User',
+      created_at: '2026-07-01T00:00:00Z',
+    },
+    {
+      id: 'view-shared',
+      project_id: project.id,
+      name: '팀 보드',
+      params: { status: 'todo' },
+      layout: 'board',
+      sort: 'subject',
+      is_shared: true,
+      is_locked: false,
+      is_mine: false,
+      owner_name: 'Alex Kim',
+      created_at: '2026-07-02T00:00:00Z',
+    },
+  ]
+  await page.route(`**/api/v1/projects/${project.id}/saved-filters`, async (route) => {
+    if (route.request().method() === 'POST') {
+      const body = route.request().postDataJSON() as Record<string, unknown>
+      await route.fulfill({
+        status: 201,
+        json: {
+          id: 'view-new',
+          project_id: project.id,
+          ...body,
+          is_locked: false,
+          is_mine: true,
+          owner_name: 'Dev User',
+          created_at: '2026-07-03T00:00:00Z',
+        },
+      })
+      return
+    }
+    await route.fulfill({ json: { items, total: items.length } })
+  })
+  await page.route(`**/api/v1/projects/${project.id}/saved-filters/view-owned`, async (route) => {
+    const body = route.request().postDataJSON() as { is_locked?: boolean }
+    if (body.is_locked !== undefined) ownedLocked = body.is_locked
+    items[0].is_locked = ownedLocked
+    await route.fulfill({ json: items[0] })
+  })
+
+  await page.goto(`/projects/${project.id}/views`)
+  await expect(page.getByRole('heading', { name: '프로젝트 뷰' })).toBeVisible()
+  await expect(page.getByText('Alex Kim님이 공유')).toBeVisible()
+  await expect(page.getByRole('button', { name: '잠금' })).toHaveCount(1)
+  await page.getByRole('link', { name: '팀 보드 열기' }).click()
+  await expect(page).toHaveURL(
+    new RegExp(`/projects/${project.id}/board\\?status=todo&sort=subject`),
+  )
+
+  await page.goto(`/projects/${project.id}/views`)
+  await page.getByRole('button', { name: '뷰 만들기' }).click()
+  await page.getByLabel('뷰 이름').fill('주간 캘린더')
+  await page.getByLabel('레이아웃').selectOption('calendar')
+  await page.getByRole('checkbox', { name: '팀과 공유' }).check()
+  const post = page.waitForRequest(
+    (request) => request.method() === 'POST' && request.url().endsWith('/saved-filters'),
+  )
+  await page.getByRole('button', { name: '저장' }).click()
+  expect((await post).postDataJSON()).toEqual({
+    name: '주간 캘린더',
+    params: {},
+    layout: 'calendar',
+    sort: null,
+    is_shared: true,
+  })
+  const patch = page.waitForRequest(
+    (request) => request.method() === 'PATCH' && request.url().endsWith('/view-owned'),
+  )
+  await page.getByRole('button', { name: '잠금' }).click()
+  expect((await patch).postDataJSON()).toEqual({ is_locked: true })
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/project-views-ui/mobile.png',
+    fullPage: true,
+  })
+})
+
 test('현재 필터를 보드 레이아웃 공유 뷰로 저장한다', async ({ page }) => {
   await mockApi(page)
   await page.goto(`/projects/${project.id}/work-packages?status=todo`)

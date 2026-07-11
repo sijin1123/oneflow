@@ -18,6 +18,7 @@ const workspaceRouteLabels: Array<{ path: string; title: string; parent: string 
   { path: '/drafts', title: '작업 초안', parent: '워크스페이스' },
   { path: '/inbox', title: '인박스', parent: '워크스페이스' },
   { path: '/work-items', title: '전체 작업', parent: '워크스페이스' },
+  { path: '/customers', title: '고객', parent: '워크스페이스' },
   { path: '/projects', title: '프로젝트', parent: '워크스페이스' },
   { path: '/templates', title: '프로젝트 템플릿', parent: '워크스페이스' },
   { path: '/initiatives', title: '이니셔티브', parent: '워크스페이스' },
@@ -31,6 +32,7 @@ const workspaceRouteLabels: Array<{ path: string; title: string; parent: string 
   { path: '/admin/ai', title: 'AI 설정', parent: '운영' },
   { path: '/admin/initiatives', title: 'Initiatives 설정', parent: '운영' },
   { path: '/admin/releases', title: 'Releases 설정', parent: '운영' },
+  { path: '/admin/customers', title: 'Customers 설정', parent: '운영' },
   { path: '/admin/webhooks', title: 'Webhooks', parent: '운영' },
   { path: '/settings', title: '개인 설정', parent: '설정' },
 ]
@@ -40,6 +42,7 @@ const projectRouteLabels: Array<{ suffix: string; title: string; parent: string 
   { suffix: '/board', title: 'Board', parent: '작업' },
   { suffix: '/backlog', title: 'Backlog', parent: '작업' },
   { suffix: '/tree', title: 'Hierarchy', parent: '작업' },
+  { suffix: '/views', title: 'Views', parent: '작업' },
   { suffix: '/timeline', title: 'Timeline', parent: '계획' },
   { suffix: '/calendar', title: 'Calendar', parent: '계획' },
   { suffix: '/cycles', title: 'Cycles', parent: '계획' },
