@@ -28,6 +28,7 @@ const workspaceRouteLabels: Array<{ path: string; title: string; parent: string 
   { path: '/admin/users', title: '사용자 관리', parent: '운영' },
   { path: '/admin/worklogs', title: 'Worklogs', parent: '운영' },
   { path: '/admin/wiki', title: 'Wiki 설정', parent: '운영' },
+  { path: '/admin/ai', title: 'AI 설정', parent: '운영' },
   { path: '/admin/webhooks', title: 'Webhooks', parent: '운영' },
   { path: '/settings', title: '개인 설정', parent: '설정' },
 ]

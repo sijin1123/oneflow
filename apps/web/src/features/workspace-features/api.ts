@@ -1,8 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { api } from '@/lib/api'
+import { aiCapabilitiesKey, type AiCapabilities } from '@/features/ai/api'
 
-import { clearWikiDataCache } from './cache'
+import { clearWikiDataCache, mergeWorkspaceCapability } from './cache'
 
 export type WorkspaceFeatureCapability = {
   enabled: boolean
@@ -11,6 +12,10 @@ export type WorkspaceFeatureCapability = {
 
 export type WorkspaceCapabilities = {
   wiki: WorkspaceFeatureCapability
+  ai: WorkspaceFeatureCapability & {
+    deployment_enabled: boolean
+    effective_enabled: boolean
+  }
 }
 
 export type WorkspaceFeaturePolicy = WorkspaceFeatureCapability & {
@@ -20,8 +25,18 @@ export type WorkspaceFeaturePolicy = WorkspaceFeatureCapability & {
   updated_at: string
 }
 
+export type AiWorkspaceFeaturePolicy = WorkspaceFeatureCapability & {
+  feature_key: 'ai'
+  deployment_enabled: boolean
+  effective_enabled: boolean
+  updated_by_user_id: string | null
+  updated_by_name: string | null
+  updated_at: string
+}
+
 export const workspaceCapabilitiesKey = ['workspace-capabilities'] as const
 export const wikiPolicyKey = ['admin-workspace-feature', 'wiki'] as const
+export const aiPolicyKey = ['admin-workspace-feature', 'ai'] as const
 
 export function useWorkspaceCapabilities() {
   return useQuery({
@@ -51,14 +66,54 @@ export function useUpdateWikiPolicy() {
       }),
     onSuccess: (policy) => {
       queryClient.setQueryData(wikiPolicyKey, policy)
-      queryClient.setQueryData<WorkspaceCapabilities>(workspaceCapabilitiesKey, {
-        wiki: { enabled: policy.enabled, revision: policy.revision },
-      })
+      queryClient.setQueryData<WorkspaceCapabilities>(workspaceCapabilitiesKey, (current) =>
+        mergeWorkspaceCapability(current, 'wiki', {
+          enabled: policy.enabled,
+          revision: policy.revision,
+        }),
+      )
       clearWikiDataCache(queryClient)
     },
     onError: () => {
       void queryClient.invalidateQueries({ queryKey: wikiPolicyKey })
       void queryClient.invalidateQueries({ queryKey: workspaceCapabilitiesKey })
+    },
+  })
+}
+
+export function useAiPolicy() {
+  return useQuery({
+    queryKey: aiPolicyKey,
+    queryFn: () => api<AiWorkspaceFeaturePolicy>('/api/v1/admin/workspace/features/ai'),
+  })
+}
+
+export function useUpdateAiPolicy() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ enabled, revision }: WorkspaceFeatureCapability) =>
+      api<AiWorkspaceFeaturePolicy>('/api/v1/admin/workspace/features/ai', {
+        method: 'PATCH',
+        headers: { 'If-Match': `"${revision}"` },
+        body: JSON.stringify({ enabled }),
+      }),
+    onSuccess: (policy) => {
+      queryClient.setQueryData(aiPolicyKey, policy)
+      queryClient.setQueryData<WorkspaceCapabilities>(workspaceCapabilitiesKey, (current) =>
+        mergeWorkspaceCapability(current, 'ai', {
+          enabled: policy.enabled,
+          revision: policy.revision,
+          deployment_enabled: policy.deployment_enabled,
+          effective_enabled: policy.effective_enabled,
+        }),
+      )
+      queryClient.setQueryData<AiCapabilities>(aiCapabilitiesKey, {
+        ai_summary_enabled: policy.effective_enabled,
+      })
+    },
+    onError: () => {
+      void queryClient.invalidateQueries({ queryKey: aiPolicyKey })
+      void queryClient.invalidateQueries({ queryKey: aiCapabilitiesKey })
     },
   })
 }

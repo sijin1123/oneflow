@@ -9844,3 +9844,119 @@ test('Wiki 설정 mobile surface는 가로 overflow 없이 동작한다', async 
     fullPage: true,
   })
 })
+
+async function mockAiPolicy(
+  page: Page,
+  options: { staleFirstPatch?: boolean; forbidden?: boolean; deploymentEnabled?: boolean } = {},
+) {
+  let enabled = false
+  let revision = 1
+  let patchCount = 0
+  const deploymentEnabled = options.deploymentEnabled ?? true
+  const requests: string[] = []
+
+  await page.route('**/api/v1/capabilities', (route) =>
+    route.fulfill({
+      json: { ai_summary_enabled: deploymentEnabled && enabled },
+    }),
+  )
+  await page.route('**/api/v1/admin/workspace/features/ai', async (route) => {
+    if (options.forbidden) {
+      await route.fulfill({ status: 403, json: { detail: 'workspace admin required' } })
+      return
+    }
+    if (route.request().method() === 'PATCH') {
+      patchCount += 1
+      requests.push(route.request().headers()['if-match'] ?? '')
+      const body = route.request().postDataJSON() as { enabled: boolean }
+      if (options.staleFirstPatch && patchCount === 1) {
+        enabled = true
+        revision = 2
+        await route.fulfill({
+          status: 412,
+          headers: { ETag: '"2"' },
+          json: { detail: { code: 'stale_revision', current_revision: 2 } },
+        })
+        return
+      }
+      enabled = body.enabled
+      revision += 1
+    }
+    await route.fulfill({
+      headers: { ETag: `"${revision}"` },
+      json: {
+        feature_key: 'ai',
+        enabled,
+        revision,
+        deployment_enabled: deploymentEnabled,
+        effective_enabled: deploymentEnabled && enabled,
+        updated_by_user_id: patchCount ? 'me-1' : null,
+        updated_by_name: patchCount ? 'Dev User' : null,
+        updated_at: '2026-07-11T09:00:00Z',
+      },
+    })
+  })
+  return { requests }
+}
+
+test('AI workspace 정책은 실제 요약 진입점과 즉시 연결된다', async ({ page }) => {
+  await mockApi(page)
+  const policy = await mockAiPolicy(page)
+  await page.goto('/admin/ai')
+
+  await expect(page.getByRole('heading', { name: 'AI', exact: true })).toBeVisible()
+  const toggle = page.getByRole('switch', { name: 'AI 작업 요약 사용' })
+  await expect(toggle).not.toBeChecked()
+  await toggle.click()
+  await expect(toggle).toBeChecked()
+  await expect(page.getByText('정책 revision 2')).toBeVisible()
+  expect(policy.requests).toEqual(['"1"'])
+
+  await page.goto(`/projects/${project.id}/work-packages?wp=${wpA.id}`)
+  const drawer = page.getByRole('dialog')
+  await expect(drawer.getByText('AI 요약')).toBeVisible()
+  await expect(drawer.getByRole('button', { name: '요약 생성' })).toBeVisible()
+})
+
+test('AI workspace 정책은 stale revision을 최신 상태로 복구한다', async ({ page }) => {
+  await mockApi(page)
+  await mockAiPolicy(page, { staleFirstPatch: true })
+  await page.goto('/admin/ai')
+
+  const toggle = page.getByRole('switch', { name: 'AI 작업 요약 사용' })
+  await toggle.click()
+  await expect(page.getByRole('alert')).toContainText('다른 관리자가 정책을 변경했습니다')
+  await expect(toggle).toBeChecked()
+  await expect(page.getByText('정책 revision 2')).toBeVisible()
+})
+
+test('AI workspace 정책은 배포 상한과 관리자 권한을 fail-closed로 표시한다', async ({
+  page,
+}) => {
+  await mockApi(page)
+  await mockAiPolicy(page, { deploymentEnabled: false })
+  await page.goto('/admin/ai')
+  const toggle = page.getByRole('switch', { name: 'AI 작업 요약 사용' })
+  await expect(toggle).toBeDisabled()
+  await expect(page.getByText('배포 상한이 꺼져 있어 변경할 수 없습니다')).toBeVisible()
+
+  await page.unroute('**/api/v1/admin/workspace/features/ai')
+  await mockAiPolicy(page, { forbidden: true })
+  await page.reload()
+  await expect(page.getByText('접근 권한이 없습니다')).toBeVisible()
+  await expect(page.getByRole('switch')).toHaveCount(0)
+})
+
+test('AI workspace 정책 mobile surface는 가로 overflow 없이 동작한다', async ({ page }) => {
+  await mockApi(page)
+  await mockAiPolicy(page)
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto('/admin/ai')
+  await expect(page.getByRole('heading', { name: 'AI', exact: true })).toBeVisible()
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)
+  expect(overflow).toBe(false)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/ai-policy-ui/mobile-settings.png',
+    fullPage: true,
+  })
+})
