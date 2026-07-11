@@ -1,7 +1,7 @@
 """Orphan-blob sweep for the local storage root (expansion Pass 11 PR-Y).
 
 The storage contract (PR #70) can strand two kinds of files: `.upload-*` temp
-files from a crashed stream, and final blobs whose attachment row is gone (the
+files from a crashed stream, and final blobs whose owning database row is gone (the
 row delete commits first; a crash before the blob delete leaves the blob — the
 safe direction, but it accumulates). The sweep handles both, under hard safety
 rails (PLAN v11.1 R1 판정):
@@ -13,7 +13,7 @@ rails (PLAN v11.1 R1 판정):
   in-flight upload's temp file and a just-committed row whose key snapshot
   predates it both look like orphans for a moment.
 - only `.upload-*` temps and paths shaped like the server-generated
-  `{project_uuid}/{attachment_uuid}` key are eligible; symlinks and anything
+  `{project_uuid}/{object_uuid}` key are eligible; symlinks and anything
   else are reported as unrecognized and left alone.
 - rows whose blob is MISSING are reported only — restoring or deleting data is
   an operator decision, never the sweep's.
@@ -77,7 +77,7 @@ def sweep_storage(
     now: datetime | None = None,
 ) -> SweepReport:
     """Pure sweep over the storage root. `known_keys` is the full set of live
-    attachment storage_keys. In delete mode candidates are MOVED under
+    attachment and export-artifact storage keys. In delete mode candidates are MOVED under
     `<root>/.quarantine/<runstamp>/` (never unlinked); failures land in
     report.errors and leave the file in place."""
     root_path = Path(root).resolve()
@@ -178,11 +178,12 @@ async def _fetch_keys() -> set[str]:
 
     from app.core.config import get_settings
     from app.models.attachment import Attachment
+    from app.models.data_transfer_job import DataTransferJob
 
     engine = create_async_engine(get_settings().database_url)
     try:
         async with engine.connect() as conn:
-            return set(
+            attachment_keys = set(
                 (
                     await conn.execute(
                         select(Attachment.storage_key).where(Attachment.storage_key.is_not(None))
@@ -191,6 +192,18 @@ async def _fetch_keys() -> set[str]:
                 .scalars()
                 .all()
             )
+            transfer_keys = set(
+                (
+                    await conn.execute(
+                        select(DataTransferJob.artifact_storage_key).where(
+                            DataTransferJob.artifact_storage_key.is_not(None)
+                        )
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            return attachment_keys | transfer_keys
     finally:
         await engine.dispose()
 

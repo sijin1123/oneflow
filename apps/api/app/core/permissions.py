@@ -305,6 +305,9 @@ ENDPOINT_VERBS: dict[str, str] = {
 # route → reason (kept human-readable; the coverage test only checks presence).
 ENDPOINT_ALLOWLIST: dict[str, str] = {
     "POST /api/v1/projects": "워크스페이스 — 모든 활성 사용자가 프로젝트를 만들 수 있음",
+    "POST /api/v1/projects/{project_id}/data-transfer-jobs/export": (
+        "읽기 가능한 프로젝트 export artifact/audit 생성 — viewer 포함 current member"
+    ),
     "PATCH /api/v1/admin/workspace/features/wiki": "워크스페이스 admin 기능 정책 — is_admin 전용",
     "POST /api/v1/project-templates": "워크스페이스 템플릿 — 생성자 또는 활성 admin 관리",
     "POST /api/v1/project-templates/{template_id}/revisions": (

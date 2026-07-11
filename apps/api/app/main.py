@@ -19,6 +19,7 @@ from app.api.v1 import (
     custom_fields,
     cycles,
     dashboard,
+    data_transfers,
     documents,
     health,
     initiatives,
@@ -143,6 +144,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     app.include_router(work_packages.router, prefix="/api/v1", tags=["work-packages"])
     app.include_router(csv_io.router, prefix="/api/v1", tags=["csv"])
+    app.include_router(data_transfers.router, prefix="/api/v1", tags=["data-transfers"])
     app.include_router(comments.router, prefix="/api/v1", tags=["comments"])
     app.include_router(members.router, prefix="/api/v1", tags=["members"])
     app.include_router(permissions.router, prefix="/api/v1", tags=["permissions"])
