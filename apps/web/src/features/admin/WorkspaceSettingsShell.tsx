@@ -14,6 +14,7 @@ import { NavLink, Outlet } from 'react-router-dom'
 
 import { EmptyState, ErrorState, ListSkeleton } from '@/components/shell/states'
 import { useMe } from '@/features/members/api'
+import { useWorkspaceProfile } from '@/features/workspace-profile/api'
 import { cn } from '@/lib/utils'
 
 type SettingsLink = { to: string; label: string; icon: LucideIcon }
@@ -22,6 +23,7 @@ const groups: Array<{ label: string; items: SettingsLink[] }> = [
   {
     label: 'Administration',
     items: [
+      { to: '/admin/general', label: '일반', icon: Settings },
       { to: '/admin/users', label: '사용자', icon: UsersRound },
       { to: '/admin/worklogs', label: 'Worklogs', icon: Clock3 },
     ],
@@ -81,6 +83,7 @@ function SettingsNavigation() {
 
 export function WorkspaceSettingsShell() {
   const me = useMe()
+  const profile = useWorkspaceProfile()
 
   if (me.isPending) return <ListSkeleton />
   if (me.isError) return <ErrorState error={me.error} onRetry={() => me.refetch()} />
@@ -100,7 +103,9 @@ export function WorkspaceSettingsShell() {
           <Settings size={16} className="text-of-muted" aria-hidden="true" />
           <div className="min-w-0">
             <p className="text-sm font-semibold">Workspace settings</p>
-            <p className="text-[11px] text-of-muted">OneFlow administration</p>
+            <p className="truncate text-[11px] text-of-muted">
+              {profile.data?.name ?? 'OneFlow'} administration
+            </p>
           </div>
         </div>
         <SettingsNavigation />

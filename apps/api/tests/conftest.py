@@ -100,6 +100,15 @@ async def _clean_tables(app):
         )
         await session.execute(
             text(
+                "INSERT INTO workspace_profiles "
+                "(id, name, revision, updated_by_user_id, updated_by_name) "
+                "VALUES (1, 'OneFlow', 1, NULL, NULL) "
+                "ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, revision = 1, "
+                "updated_by_user_id = NULL, updated_by_name = NULL, updated_at = now()"
+            )
+        )
+        await session.execute(
+            text(
                 "INSERT INTO workspace_feature_policies "
                 "(feature_key, enabled, revision, updated_by_user_id, updated_by_name) "
                 "VALUES ('wiki', true, 1, NULL, NULL), ('ai', false, 1, NULL, NULL), "
