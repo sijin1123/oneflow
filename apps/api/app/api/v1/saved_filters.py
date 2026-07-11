@@ -25,6 +25,7 @@ from app.schemas.saved_filter import (
     SavedFilterRead,
     SavedFilterUpdate,
 )
+from app.services.workspace_features import RELEASES_FEATURE, feature_enabled, feature_policy
 
 router = APIRouter()
 
@@ -71,7 +72,12 @@ async def list_saved_filters(
             .order_by(SavedFilter.created_at.asc(), SavedFilter.id.asc())
         )
     ).all()
-    items = [_to_read(r, me=user.id, owner_name=name) for (r, name) in rows]
+    releases_enabled = await feature_enabled(session, RELEASES_FEATURE)
+    items = [
+        _to_read(r, me=user.id, owner_name=name)
+        for (r, name) in rows
+        if releases_enabled or not (r.params or {}).get("milestone_id")
+    ]
     return SavedFilterList(items=items, total=len(items))
 
 
@@ -85,6 +91,11 @@ async def create_saved_filter(
     user: User = Depends(get_current_user),
 ) -> SavedFilterRead:
     await require_member(session, project_id, user, write=True)
+    if (
+        body.params.milestone_id is not None
+        and not (await feature_policy(session, RELEASES_FEATURE, for_update=True)).enabled
+    ):
+        raise HTTPException(status_code=404, detail="not found")
     row = SavedFilter(
         project_id=project_id,
         user_id=user.id,
@@ -133,7 +144,17 @@ async def update_saved_filter(
 ) -> SavedFilterRead:
     await require_member(session, project_id, user, write=True)
     row = await _get_own(session, project_id, filter_id, user)
+    if (row.params or {}).get("milestone_id") and not (
+        await feature_policy(session, RELEASES_FEATURE, for_update=True)
+    ).enabled:
+        raise HTTPException(status_code=404, detail="not found")
     fields = body.model_dump(exclude_unset=True)
+    if (
+        fields.get("params") is not None
+        and fields["params"].get("milestone_id") is not None
+        and not (await feature_policy(session, RELEASES_FEATURE, for_update=True)).enabled
+    ):
+        raise HTTPException(status_code=404, detail="not found")
     for key in ("name", "layout", "is_shared", "is_locked"):
         if key in fields and fields[key] is None:
             raise HTTPException(status_code=422, detail=f"{key} cannot be null")
@@ -162,6 +183,10 @@ async def delete_saved_filter(
 ) -> Response:
     await require_member(session, project_id, user, write=True)
     row = await _get_own(session, project_id, filter_id, user)
+    if (row.params or {}).get("milestone_id") and not (
+        await feature_policy(session, RELEASES_FEATURE, for_update=True)
+    ).enabled:
+        raise HTTPException(status_code=404, detail="not found")
     if row.is_locked:
         raise HTTPException(status_code=409, detail="view is locked — unlock it first")
     await session.delete(row)

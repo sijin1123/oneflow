@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { useSearchParams } from 'react-router-dom'
 
 import { Select } from '@/components/ui/select'
@@ -6,6 +7,7 @@ import { useCustomFields } from '@/features/custom-fields/api'
 import { useMilestones } from '@/features/milestones/api'
 import { useModules } from '@/features/modules/api'
 import { useMembers } from '@/features/members/api'
+import { useWorkspaceCapabilities } from '@/features/workspace-features/api'
 
 import { PRIORITY_LABELS, WP_PRIORITIES, WP_STATUSES, WP_TYPES } from './types'
 import { useStatusLabels } from './useStatusLabels'
@@ -17,10 +19,21 @@ export function Filters({ projectId }: { projectId: string }) {
   const statusLabel = useStatusLabels(projectId)
   const typeLabel = useTypeLabels(projectId)
   const members = useMembers(projectId)
-  const milestones = useMilestones(projectId)
+  const capabilities = useWorkspaceCapabilities()
+  const releasesEnabled = capabilities.data?.releases.enabled === true
+  const milestones = useMilestones(projectId, releasesEnabled)
   const cycles = useCycles(projectId)
   const modules = useModules(projectId)
   const customFields = useCustomFields(projectId)
+
+  useEffect(() => {
+    if (!capabilities.isSuccess || releasesEnabled || !searchParams.has('milestone_id')) return
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev)
+      next.delete('milestone_id')
+      return next
+    }, { replace: true })
+  }, [capabilities.isSuccess, releasesEnabled, searchParams, setSearchParams])
 
   const cfField = searchParams.get('cf_field') ?? ''
   const cfOp = searchParams.get('cf_op') ?? ''
@@ -128,7 +141,7 @@ export function Filters({ projectId }: { projectId: string }) {
           ))}
         </Select>
       </label>
-      <label className="flex items-center gap-1.5 text-xs text-of-muted">
+      {releasesEnabled ? <label className="flex items-center gap-1.5 text-xs text-of-muted">
         마일스톤
         <Select
           aria-label="마일스톤 필터"
@@ -143,7 +156,7 @@ export function Filters({ projectId }: { projectId: string }) {
             </option>
           ))}
         </Select>
-      </label>
+      </label> : null}
       <label className="flex items-center gap-1.5 text-xs text-of-muted">
         사이클
         <Select

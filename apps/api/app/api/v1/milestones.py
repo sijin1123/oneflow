@@ -16,8 +16,22 @@ from app.schemas.milestone import (
     MilestoneRead,
     MilestoneUpdate,
 )
+from app.services.workspace_features import RELEASES_FEATURE, feature_enabled, feature_policy
 
-router = APIRouter()
+
+async def _require_releases_enabled(
+    session: AsyncSession = Depends(get_session),
+) -> None:
+    if not await feature_enabled(session, RELEASES_FEATURE):
+        raise HTTPException(status_code=404, detail="not found")
+
+
+async def _lock_releases_enabled(session: AsyncSession) -> None:
+    if not (await feature_policy(session, RELEASES_FEATURE, for_update=True)).enabled:
+        raise HTTPException(status_code=404, detail="not found")
+
+
+router = APIRouter(dependencies=[Depends(_require_releases_enabled)])
 
 
 async def _get_scoped(session: AsyncSession, project_id: uuid.UUID, milestone_id: uuid.UUID):
@@ -84,6 +98,7 @@ async def create_milestone(
     user: User = Depends(get_current_user),
 ) -> MilestoneRead:
     await require_member(session, project_id, user, write=True)
+    await _lock_releases_enabled(session)
     m = Milestone(
         project_id=project_id,
         name=body.name,
@@ -104,6 +119,7 @@ async def update_milestone(
     user: User = Depends(get_current_user),
 ) -> MilestoneRead:
     await require_member(session, project_id, user, write=True)
+    await _lock_releases_enabled(session)
     m = await _get_scoped(session, project_id, milestone_id)
     fields = body.model_dump(exclude_unset=True)
     # `name` is NOT NULL: an explicit null is a client error (422), never an
@@ -125,6 +141,7 @@ async def delete_milestone(
     user: User = Depends(get_current_user),
 ) -> Response:
     await require_member(session, project_id, user, write=True)
+    await _lock_releases_enabled(session)
     m = await _get_scoped(session, project_id, milestone_id)
     await session.delete(m)  # work_packages.milestone_id SET NULL via FK
     await session.commit()

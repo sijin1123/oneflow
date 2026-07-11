@@ -12,6 +12,7 @@ import {
   Copy,
   Compass,
   FileText,
+  Flag,
   FilePenLine,
   FolderKanban,
   Inbox,
@@ -155,6 +156,7 @@ function SidebarContent({
         { to: '/admin/wiki', label: 'Wiki 설정', icon: BookOpen },
         { to: '/admin/ai', label: 'AI 설정', icon: Sparkles },
         { to: '/admin/initiatives', label: 'Initiatives 설정', icon: Compass },
+        { to: '/admin/releases', label: 'Releases 설정', icon: Flag },
         { to: '/admin/webhooks', label: 'Webhooks', icon: Webhook },
       ]
     : operationsNav

@@ -55,6 +55,7 @@ from app.services.automation import bump_fired, change_candidates, record_applie
 from app.services.notification import notify_watchers, record_assignment
 from app.services.sanitize import sanitize_html
 from app.services.webhooks import dispatch_event, enqueue_work_package_event
+from app.services.workspace_features import RELEASES_FEATURE, feature_enabled, feature_policy
 
 logger = logging.getLogger("oneflow.work_packages")
 
@@ -87,6 +88,13 @@ PATCH_DATA_FIELDS = (
     "due_date",
     "estimated_hours",
 )
+
+
+def _work_package_read(wp: WorkPackage, *, releases_enabled: bool) -> WorkPackageRead:
+    item = WorkPackageRead.model_validate(wp)
+    if not releases_enabled:
+        item.milestone_id = None
+    return item
 
 
 async def _enqueue_webhook(
@@ -405,6 +413,9 @@ async def list_work_packages(
     user: User = Depends(get_current_user),
 ) -> WorkPackageList:
     await require_member(session, project_id, user)
+    releases_enabled = await feature_enabled(session, RELEASES_FEATURE)
+    if milestone_id is not None and not releases_enabled:
+        raise HTTPException(status_code=404, detail="not found")
     requested_fields = await _parse_custom_fields(session, project_id, custom_fields)
     cf_predicate = await _custom_value_filter(session, project_id, cf_field, cf_op, cf_value)
     stmt = select(WorkPackage).where(WorkPackage.project_id == project_id)
@@ -443,7 +454,7 @@ async def list_work_packages(
     rows = (
         (await session.execute(stmt.order_by(*order).limit(limit).offset(offset))).scalars().all()
     )
-    items = [WorkPackageRead.model_validate(w) for w in rows]
+    items = [_work_package_read(w, releases_enabled=releases_enabled) for w in rows]
     if requested_fields is not None:
         await _attach_custom_values(session, items, requested_fields)
     return WorkPackageList(items=items, total=total)
@@ -461,6 +472,11 @@ async def stage_work_package_create(
     await require_member(session, project_id, user, write=True)
     # New usage of a disabled work-item type is rejected (Pass 7 PR-R).
     await require_type_enabled(session, project_id, body.type)
+    if (
+        body.milestone_id is not None
+        and not (await feature_policy(session, RELEASES_FEATURE, for_update=True)).enabled
+    ):
+        raise HTTPException(status_code=404, detail="not found")
     if body.assignee_id is not None:
         await _require_assignee_member(session, project_id, body.assignee_id)
     if body.milestone_id is not None:
@@ -518,7 +534,7 @@ async def create_work_package(
     )
     await session.commit()
     _schedule_webhook(background_tasks, request, webhook_event_id)
-    return WorkPackageRead.model_validate(wp)
+    return _work_package_read(wp, releases_enabled=await feature_enabled(session, RELEASES_FEATURE))
 
 
 @router.post("/projects/{project_id}/work-packages/bulk-update", response_model=BulkUpdateResult)
@@ -675,6 +691,11 @@ async def duplicate_work_package(
     duplication), relations, watchers, comments, activities, attachments,
     time/cost entries."""
     src = await _get_wp_scoped(session, wp_id, user, write=True)
+    releases_enabled = await feature_enabled(session, RELEASES_FEATURE)
+    if src.milestone_id is not None:
+        releases_enabled = (
+            await feature_policy(session, RELEASES_FEATURE, for_update=True)
+        ).enabled
     # A duplicate is NEW usage of the type — the disabled-type gate applies.
     await require_type_enabled(session, src.project_id, src.type)
 
@@ -691,7 +712,7 @@ async def duplicate_work_package(
         status="backlog",
         priority=src.priority,
         assignee_id=assignee,
-        milestone_id=src.milestone_id,
+        milestone_id=src.milestone_id if releases_enabled else None,
         cycle_id=src.cycle_id,
         module_id=src.module_id,
         start_date=src.start_date,
@@ -760,7 +781,8 @@ async def duplicate_work_package(
     )
     await session.commit()
     return WorkPackageDuplicateResult(
-        work_package=WorkPackageRead.model_validate(dup), skipped_custom_values=skipped
+        work_package=_work_package_read(dup, releases_enabled=releases_enabled),
+        skipped_custom_values=skipped,
     )
 
 
@@ -771,7 +793,7 @@ async def get_work_package(
     user: User = Depends(get_current_user),
 ) -> WorkPackageRead:
     wp = await _get_wp_scoped(session, wp_id, user)
-    return WorkPackageRead.model_validate(wp)
+    return _work_package_read(wp, releases_enabled=await feature_enabled(session, RELEASES_FEATURE))
 
 
 def _effective_dates(wp: WorkPackage, changes: dict) -> None:
@@ -821,8 +843,15 @@ async def patch_work_package(
     settings: Settings = Depends(get_settings),
 ):
     wp = await _get_wp_scoped(session, wp_id, user, write=True)
+    releases_enabled = await feature_enabled(session, RELEASES_FEATURE)
 
     provided = body.model_fields_set - {"expected_version"}
+    if "milestone_id" in provided:
+        releases_enabled = (
+            await feature_policy(session, RELEASES_FEATURE, for_update=True)
+        ).enabled
+        if not releases_enabled:
+            raise HTTPException(status_code=404, detail="not found")
     for field in provided & NON_NULLABLE_PATCH_FIELDS:
         if getattr(body, field) is None:
             raise HTTPException(status_code=422, detail=f"{field} cannot be null")
@@ -838,8 +867,8 @@ async def patch_work_package(
         if fresh is None:
             raise HTTPException(status_code=404, detail="not found")
         if fresh.version != body.expected_version:
-            return _conflict_response(fresh)
-        return WorkPackageRead.model_validate(fresh)
+            return _conflict_response(fresh, releases_enabled=releases_enabled)
+        return _work_package_read(fresh, releases_enabled=releases_enabled)
 
     _effective_dates(wp, changes)
     if changes.get("type") is not None and changes["type"] != wp.type:
@@ -988,13 +1017,13 @@ async def patch_work_package(
 
     if updated is not None:
         _schedule_webhook(background_tasks, request, webhook_event_id)
-        return WorkPackageRead.model_validate(updated)
+        return _work_package_read(updated, releases_enabled=releases_enabled)
 
     # 0 rows affected: distinguish 404 vs 409 by re-select.
     fresh = await _reselect_fresh(session, wp_id)
     if fresh is None:
         raise HTTPException(status_code=404, detail="not found")
-    return _conflict_response(fresh)
+    return _conflict_response(fresh, releases_enabled=releases_enabled)
 
 
 async def _reselect_fresh(session: AsyncSession, wp_id: uuid.UUID) -> WorkPackage | None:
@@ -1014,10 +1043,10 @@ async def _reselect_fresh(session: AsyncSession, wp_id: uuid.UUID) -> WorkPackag
     ).scalar_one_or_none()
 
 
-def _conflict_response(current: WorkPackage) -> JSONResponse:
+def _conflict_response(current: WorkPackage, *, releases_enabled: bool = True) -> JSONResponse:
     payload = ConflictResponse(
         detail="version conflict — resource was modified by someone else",
-        current=WorkPackageRead.model_validate(current),
+        current=_work_package_read(current, releases_enabled=releases_enabled),
     )
     return JSONResponse(status_code=409, content=jsonable_encoder(payload))
 
@@ -1203,6 +1232,9 @@ async def move_work_package(
     ).scalar_one_or_none()
     if wp is None or not await is_member(session, wp.project_id, user.id):
         raise HTTPException(status_code=404, detail="not found")
+    releases_enabled = (await feature_policy(session, RELEASES_FEATURE, for_update=True)).enabled
+    if not releases_enabled:
+        raise HTTPException(status_code=404, detail="not found")
     # Source OWNER (v66.1 R1-② — destructive cleanup + visibility transfer),
     # archived source refuses writes; then target membership/write.
     await require_role(session, wp.project_id, user, {"owner"}, write=True)
@@ -1228,7 +1260,7 @@ async def move_work_package(
         ).scalar_one()
     if wp.version != body.expected_version:
         fresh = await _reselect_fresh(session, wp_id)
-        return _conflict_response(fresh)
+        return _conflict_response(fresh, releases_enabled=releases_enabled)
 
     # ---- gather the cleared-reference summaries (shared by dry_run) --------
     children = (
@@ -1492,5 +1524,7 @@ async def move_work_package(
     await session.commit()
     fresh = await _reselect_fresh(session, wp_id)
     return WorkPackageMoveResult(
-        work_package=WorkPackageRead.model_validate(fresh), cleared=cleared, dry_run=False
+        work_package=_work_package_read(fresh, releases_enabled=releases_enabled),
+        cleared=cleared,
+        dry_run=False,
     )

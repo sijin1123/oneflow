@@ -16,10 +16,11 @@ export type Milestone = {
 
 export type MilestoneList = { items: Milestone[]; total: number }
 
-export function useMilestones(projectId: string) {
+export function useMilestones(projectId: string, enabled = true) {
   return useQuery({
     queryKey: ['milestones', projectId],
     queryFn: () => api<MilestoneList>(`/api/v1/projects/${projectId}/milestones`),
+    enabled: enabled && Boolean(projectId),
   })
 }
 

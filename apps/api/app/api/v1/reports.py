@@ -36,6 +36,7 @@ from app.schemas.report import (
     PortfolioTimelineRead,
     PortfolioTotals,
 )
+from app.services.workspace_features import RELEASES_FEATURE, feature_enabled
 
 router = APIRouter()
 
@@ -286,7 +287,7 @@ async def portfolio_timeline(
     ).all()
     ids = [r[0] for r in rows]
     ms_by_project: dict[uuid.UUID, list[PortfolioTimelineMilestone]] = {}
-    if ids:
+    if ids and await feature_enabled(session, RELEASES_FEATURE):
         ms_rows = (
             await session.execute(
                 select(Milestone.project_id, Milestone.id, Milestone.name, Milestone.due_date)

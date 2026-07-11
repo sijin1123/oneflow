@@ -11,7 +11,11 @@ from sqlalchemy import func, select, text, update
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.v1.work_packages import _schedule_webhook, stage_work_package_create
+from app.api.v1.work_packages import (
+    _schedule_webhook,
+    _work_package_read,
+    stage_work_package_create,
+)
 from app.core.auth import get_current_user
 from app.core.authz import require_member
 from app.core.config import Settings, get_settings
@@ -30,6 +34,7 @@ from app.schemas.work_item_draft import (
     WorkItemDraftSubmit,
 )
 from app.schemas.work_package import WorkPackageCreate, WorkPackageRead
+from app.services.workspace_features import RELEASES_FEATURE, feature_enabled
 
 router = APIRouter()
 
@@ -250,7 +255,10 @@ async def submit_work_item_draft(
         ).scalar_one_or_none()
         if work_package is None:
             raise HTTPException(status_code=409, detail="draft was already submitted")
-        return WorkPackageRead.model_validate(work_package)
+        return _work_package_read(
+            work_package,
+            releases_enabled=await feature_enabled(session, RELEASES_FEATURE),
+        )
 
     if draft.version != body.expected_version:
         return await _conflict_or_404(session, draft_id, user.id)
@@ -272,7 +280,10 @@ async def submit_work_item_draft(
     await session.flush()
     await session.commit()
     _schedule_webhook(background_tasks, request, webhook_event_id)
-    return WorkPackageRead.model_validate(work_package)
+    return _work_package_read(
+        work_package,
+        releases_enabled=await feature_enabled(session, RELEASES_FEATURE),
+    )
 
 
 @router.delete(

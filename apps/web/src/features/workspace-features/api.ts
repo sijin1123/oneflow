@@ -5,6 +5,7 @@ import { aiCapabilitiesKey, type AiCapabilities } from '@/features/ai/api'
 
 import {
   clearInitiativesDataCache,
+  clearReleasesDataCache,
   clearWikiDataCache,
   mergeWorkspaceCapability,
 } from './cache'
@@ -21,6 +22,7 @@ export type WorkspaceCapabilities = {
     effective_enabled: boolean
   }
   initiatives: WorkspaceFeatureCapability
+  releases: WorkspaceFeatureCapability
 }
 
 export type WorkspaceFeaturePolicy = WorkspaceFeatureCapability & {
@@ -46,10 +48,18 @@ export type InitiativesWorkspaceFeaturePolicy = WorkspaceFeatureCapability & {
   updated_at: string
 }
 
+export type ReleasesWorkspaceFeaturePolicy = WorkspaceFeatureCapability & {
+  feature_key: 'releases'
+  updated_by_user_id: string | null
+  updated_by_name: string | null
+  updated_at: string
+}
+
 export const workspaceCapabilitiesKey = ['workspace-capabilities'] as const
 export const wikiPolicyKey = ['admin-workspace-feature', 'wiki'] as const
 export const aiPolicyKey = ['admin-workspace-feature', 'ai'] as const
 export const initiativesPolicyKey = ['admin-workspace-feature', 'initiatives'] as const
+export const releasesPolicyKey = ['admin-workspace-feature', 'releases'] as const
 
 export function useWorkspaceCapabilities() {
   return useQuery({
@@ -165,6 +175,40 @@ export function useUpdateInitiativesPolicy() {
     },
     onError: () => {
       void queryClient.invalidateQueries({ queryKey: initiativesPolicyKey })
+      void queryClient.invalidateQueries({ queryKey: workspaceCapabilitiesKey })
+    },
+  })
+}
+
+export function useReleasesPolicy() {
+  return useQuery({
+    queryKey: releasesPolicyKey,
+    queryFn: () =>
+      api<ReleasesWorkspaceFeaturePolicy>('/api/v1/admin/workspace/features/releases'),
+  })
+}
+
+export function useUpdateReleasesPolicy() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ enabled, revision }: WorkspaceFeatureCapability) =>
+      api<ReleasesWorkspaceFeaturePolicy>('/api/v1/admin/workspace/features/releases', {
+        method: 'PATCH',
+        headers: { 'If-Match': `"${revision}"` },
+        body: JSON.stringify({ enabled }),
+      }),
+    onSuccess: (policy) => {
+      queryClient.setQueryData(releasesPolicyKey, policy)
+      queryClient.setQueryData<WorkspaceCapabilities>(workspaceCapabilitiesKey, (current) =>
+        mergeWorkspaceCapability(current, 'releases', {
+          enabled: policy.enabled,
+          revision: policy.revision,
+        }),
+      )
+      clearReleasesDataCache(queryClient)
+    },
+    onError: () => {
+      void queryClient.invalidateQueries({ queryKey: releasesPolicyKey })
       void queryClient.invalidateQueries({ queryKey: workspaceCapabilitiesKey })
     },
   })

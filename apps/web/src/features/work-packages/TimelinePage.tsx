@@ -11,6 +11,7 @@ import { EmptyState, ErrorState, ListSkeleton } from '@/components/shell/states'
 import { useCanWrite } from '@/features/members/useCanWrite'
 import { useMilestones } from '@/features/milestones/api'
 import { PlanningSurface } from '@/features/planning/PlanningSurface'
+import { useWorkspaceCapabilities } from '@/features/workspace-features/api'
 import { ApiError } from '@/lib/api'
 import { todayISO } from '@/lib/datetime'
 import { cn } from '@/lib/utils'
@@ -300,7 +301,9 @@ export function TimelinePage() {
   const { projectId } = useParams() as { projectId: string }
   const [, setSearchParams] = useSearchParams()
   const { data, isPending, isError, error, refetch } = useWorkPackages(projectId, {})
-  const milestones = useMilestones(projectId)
+  const capabilities = useWorkspaceCapabilities()
+  const releasesEnabled = capabilities.data?.releases.enabled === true
+  const milestones = useMilestones(projectId, releasesEnabled)
   const relations = useProjectRelations(projectId)
   const editable = useCanWrite(projectId)
   const patch = usePatchWorkPackage(projectId)
@@ -410,7 +413,9 @@ export function TimelinePage() {
       metrics={[
         { label: '작업', value: data.total, hint: '전체 범위' },
         { label: '일정 있음', value: dated.length, hint: `${undated.length}건 미정` },
-        { label: '마일스톤', value: milestones.data?.items.length ?? '-', hint: '표시 가능한 기준점' },
+        ...(releasesEnabled
+          ? [{ label: '마일스톤', value: milestones.data?.items.length ?? '-', hint: '표시 가능한 기준점' }]
+          : []),
         { label: '줌', value: ZOOM_LABELS[zoom], hint: editable ? '드래그 가능' : '읽기 전용' },
       ]}
     >
@@ -456,7 +461,7 @@ export function TimelinePage() {
         <div className="min-h-0 flex-1">
           <GanttChart
             items={data.items}
-            milestones={milestones.data?.items ?? []}
+            milestones={releasesEnabled ? (milestones.data?.items ?? []) : []}
             relations={relations.data?.items ?? []}
             zoom={zoom}
             editable={editable}
