@@ -2134,3 +2134,35 @@ Chromium typed mock fixture에서 1440x960과 390x844 viewport를 사용했다. 
 ## 이연 항목
 
 - 없음. 새 widget 설정이나 mock quick-link 관리 UI를 만들지 않았으며 visible entry는 모두 실제 기능에 연결된다.
+
+---
+
+# UI-63 Project Directory Composition 검증 (2026-07-12)
+
+> 범위: D002 project discovery를 OneFlow의 실제 project rollup, 생성, 검색, 정렬, 보관, display preference와 통합한 `/projects` surface.
+
+| 항목 | 명령 | 결과 |
+|---|---|---:|
+| Typecheck/lint/build | `npm run typecheck && npm run lint && npm run build` | **PASS** — 기존 경고만 유지 |
+| Pure unit | `npm run test:unit` | **PASS — 67** |
+| Component | `npm run test:component` | **PASS — 8** |
+| Focused project directory | `npx playwright test ... --grep "프로젝트 목록 정렬|프로젝트 목록 이니셔티브|프로젝트 디렉터리는 모바일|새 프로젝트 폼" --workers=1` | **PASS — 4** |
+| Full frontend E2E | `npm run test:e2e -- --workers=2 --reporter=dot` | **PASS — 204, opt-in visual QA 1 skipped** |
+| Diff hygiene | `git diff --check` | **PASS** |
+
+## UI 변경
+
+- content header에 project count와 create action을 통합하고 6개 summary card를 compact operational strip으로 바꿨다.
+- responsive project card를 기본 layout으로 추가하고 기존 dense list를 실제 layout toggle로 유지한다.
+- 카드에는 health, completion, selected rollups, initiatives, dashboard/settings/open actions를 배치했다.
+- 1440x960과 390x844 증적은 `docs/screenshots/redevelopment/project-directory-ui/{desktop,mobile}.png`에 보존한다.
+
+## 기능/API 반영
+
+- 기존 project query/create API와 client search, persisted sort/column preferences를 재사용한다.
+- card/list layout도 browser preference로 저장하며 archive filter, refresh, initiative highlight, project/dashboard/settings routes를 모두 실제 동작에 연결한다.
+- API, DB, migration, permission, environment variable, dependency 변경은 없다.
+
+## 이연 항목
+
+- 없음. cover image나 owner field처럼 OneFlow 계약에 없는 데이터를 추측해 표시하지 않았다.
