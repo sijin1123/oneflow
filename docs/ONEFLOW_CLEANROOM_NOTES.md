@@ -160,3 +160,9 @@ OneFlow 구현은 기존 `AppShell`, workspace profile query, project membership
 `docs/plane-poc-reverse-spec/` D001과 사용자 참조 화면에서 사용한 입력은 AI/status, quick links, recents, personal notes로 이어지는 정보 우선순위뿐이다. OneFlow 구현은 기존 자체 `/me/work`, projects, notifications, time entries, personal notes, AI capability 데이터와 route를 재배치해 독립 작성했다.
 
 Plane source, package, asset, CSS, DOM hierarchy, exact spacing/colors, wording, onboarding content는 복사하지 않았다. 신규 dependency/API/DB/schema/environment 변경은 없다. — attested-independent-derivation
+
+## UI-63 Project Directory Composition
+
+`docs/plane-poc-reverse-spec/` D002에서 사용한 입력은 project card/list discovery, compact toolbar, search/sort/filter/add 행동뿐이다. OneFlow 구현은 기존 자체 project rollup, health, initiative, create API와 local display preference를 사용해 card/list surface를 독립 작성했다.
+
+Plane cover image, source, package, asset, CSS, DOM hierarchy, exact visual tokens, wording, branding은 복사하지 않았다. OneFlow 계약에 없는 lead/cover는 만들지 않았고 신규 dependency/API/DB/schema/environment 변경은 없다. — attested-independent-derivation

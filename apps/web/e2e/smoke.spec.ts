@@ -8698,6 +8698,16 @@ test('프로젝트 디렉터리는 모바일에서 요약·검색·카드 링크
   await page.goto('/projects')
   await expect(page.getByRole('heading', { name: '프로젝트' })).toBeVisible()
   await expect(page.getByLabel('프로젝트 요약')).toContainText('열린 작업')
+  await expect(page.getByRole('button', { name: '카드 보기' })).toHaveAttribute('aria-pressed', 'true')
+  await page.setViewportSize({ width: 1440, height: 960 })
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/project-directory-ui/desktop.png',
+    fullPage: false,
+  })
+  await page.getByRole('button', { name: '목록 보기' }).click()
+  await expect(page.getByRole('button', { name: '목록 보기' })).toHaveAttribute('aria-pressed', 'true')
+  await page.getByRole('button', { name: '카드 보기' }).click()
+  await page.setViewportSize({ width: 390, height: 844 })
   await page.getByLabel('프로젝트 검색어').fill('운영')
   await expect(page.getByRole('list', { name: '프로젝트 디렉터리' })).toContainText('운영 자동화')
   await expect(page.getByRole('list', { name: '프로젝트 디렉터리' })).not.toContainText('OneFlow 도입')

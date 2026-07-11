@@ -3,6 +3,8 @@ import {
   ArrowDown,
   ArrowUp,
   ArrowUpRight,
+  LayoutGrid,
+  List,
   Plus,
   RefreshCw,
   Search,
@@ -69,6 +71,8 @@ function loadColumns(): RollupKey[] {
 }
 
 const SORT_STORAGE_KEY = 'oneflow.projects.sort.v1'
+const LAYOUT_STORAGE_KEY = 'oneflow.projects.layout.v1'
+type ProjectLayout = 'grid' | 'list'
 
 /** Broken values fall back to the server default (#97 contract). */
 function loadSort(): { key: ProjectSortKey; dir: SortDir } {
@@ -89,6 +93,22 @@ function loadSort(): { key: ProjectSortKey; dir: SortDir } {
 function saveSort(sort: { key: ProjectSortKey; dir: SortDir }) {
   try {
     localStorage.setItem(SORT_STORAGE_KEY, JSON.stringify(sort))
+  } catch {
+    // private mode / quota — in-memory only
+  }
+}
+
+function loadLayout(): ProjectLayout {
+  try {
+    return localStorage.getItem(LAYOUT_STORAGE_KEY) === 'list' ? 'list' : 'grid'
+  } catch {
+    return 'grid'
+  }
+}
+
+function saveLayout(layout: ProjectLayout) {
+  try {
+    localStorage.setItem(LAYOUT_STORAGE_KEY, layout)
   } catch {
     // private mode / quota — in-memory only
   }
@@ -230,30 +250,6 @@ function NewProjectForm({ onClose }: { onClose: () => void }) {
         </Button>
       </div>
     </form>
-  )
-}
-
-function SummaryMetric({
-  label,
-  value,
-  tone = 'neutral',
-}: {
-  label: string
-  value: number
-  tone?: 'neutral' | 'accent' | 'danger'
-}) {
-  return (
-    <div className="min-w-0 rounded-of border border-of-border bg-of-surface px-3 py-2">
-      <p className="truncate text-[11px] font-medium text-of-muted">{label}</p>
-      <p
-        className={cn(
-          'mt-1 text-lg font-semibold tabular-nums',
-          tone === 'accent' ? 'text-of-accent' : tone === 'danger' ? 'text-of-danger' : '',
-        )}
-      >
-        {value}
-      </p>
-    </div>
   )
 }
 
@@ -411,6 +407,93 @@ function ProjectRow({
   )
 }
 
+function ProjectCard({
+  project,
+  columns,
+  onOpenInitiative,
+}: {
+  project: ProjectListItem
+  columns: RollupKey[]
+  onOpenInitiative: (id: string) => void
+}) {
+  const archived = Boolean(project.archived_at)
+  const progress = project.work_package_count
+    ? Math.round(
+        ((project.work_package_count - project.open_work_package_count) /
+          project.work_package_count) *
+          100,
+      )
+    : 0
+
+  return (
+    <li className="group flex min-h-52 min-w-0 flex-col overflow-hidden rounded-of border border-of-border bg-of-surface transition-colors hover:border-of-border-strong hover:bg-of-surface-hover">
+      <div className="flex min-h-14 items-center gap-3 border-b border-of-border bg-of-surface-2 px-3 py-2.5">
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-of bg-of-accent-soft font-mono text-[11px] font-semibold text-of-accent">
+          {project.key.slice(0, 2)}
+        </span>
+        <div className="min-w-0 flex-1">
+          <Link
+            to={`/projects/${project.id}/work-packages`}
+            className="block truncate text-sm font-semibold hover:text-of-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus"
+          >
+            {project.name}
+          </Link>
+          <p className="truncate font-mono text-[11px] text-of-muted">{project.key}</p>
+        </div>
+        <ProjectHealthBadge health={project.health} note={project.health_note} />
+      </div>
+
+      <div className="flex min-h-0 flex-1 flex-col p-3">
+        <p className="min-h-10 line-clamp-2 text-xs leading-5 text-of-muted">
+          {project.description || '프로젝트 설명이 없습니다.'}
+        </p>
+        <ProjectInitiatives
+          project={project}
+          enabled={columns.includes('initiatives')}
+          onOpen={onOpenInitiative}
+        />
+        <div className="mt-3">
+          <div className="mb-1 flex items-center justify-between text-[11px] text-of-muted">
+            <span>완료 흐름</span>
+            <span className="tabular-nums">{progress}%</span>
+          </div>
+          <div className="h-1.5 overflow-hidden rounded-full bg-of-surface-3">
+            <span className="block h-full rounded-full bg-of-accent" style={{ width: `${progress}%` }} />
+          </div>
+        </div>
+        <div className="mt-3">
+          <RollupCells project={project} columns={columns} />
+        </div>
+      </div>
+
+      <div className="flex items-center gap-2 border-t border-of-border px-3 py-2">
+        {archived ? <Badge variant="outline">보관됨</Badge> : <Badge variant="accent">참여 중</Badge>}
+        <div className="ml-auto flex items-center gap-1.5">
+          <Link
+            to={`/projects/${project.id}/dashboard`}
+            className="inline-flex h-7 items-center rounded-of px-2 text-xs font-medium text-of-secondary hover:bg-of-surface-2 hover:text-of-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus"
+          >
+            대시보드
+          </Link>
+          <Link
+            to={`/projects/${project.id}/settings`}
+            className="inline-flex h-7 items-center rounded-of px-2 text-xs font-medium text-of-secondary hover:bg-of-surface-2 hover:text-of-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus"
+          >
+            설정
+          </Link>
+          <Link
+            to={`/projects/${project.id}/work-packages`}
+            aria-label={`${project.name} 열기`}
+            className="flex h-7 w-7 items-center justify-center rounded-of text-of-muted hover:bg-of-surface-2 hover:text-of-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus"
+          >
+            <ArrowUpRight size={14} aria-hidden="true" />
+          </Link>
+        </div>
+      </div>
+    </li>
+  )
+}
+
 function matchesProject(project: ProjectListItem, query: string) {
   const q = query.trim().toLowerCase()
   if (!q) return true
@@ -427,6 +510,7 @@ export function ProjectsPage() {
   const [includeArchived, setIncludeArchived] = useState(false)
   const [columns, setColumns] = useState<RollupKey[]>(loadColumns)
   const [sort, setSort] = useState<{ key: ProjectSortKey; dir: SortDir }>(loadSort)
+  const [layout, setLayout] = useState<ProjectLayout>(loadLayout)
   const [query, setQuery] = useState('')
   const [creating, setCreating] = useState(false)
   const capabilities = useWorkspaceCapabilities()
@@ -451,6 +535,11 @@ export function ProjectsPage() {
       saveColumns(next)
       return next
     })
+  }
+
+  const changeLayout = (next: ProjectLayout) => {
+    setLayout(next)
+    saveLayout(next)
   }
 
   const summary = useMemo(() => {
@@ -483,41 +572,34 @@ export function ProjectsPage() {
     : `${summary.total}개 프로젝트`
 
   return (
-    <div className="mx-auto flex w-full max-w-7xl flex-col gap-4 px-4 py-4 sm:px-6">
-      <header className="border-b border-of-border pb-4">
-        <div className="flex min-w-0 flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+    <div className="mx-auto flex w-full max-w-7xl flex-col px-4 py-3 sm:px-6">
+      <header className="flex min-h-12 min-w-0 flex-col gap-3 border-b border-of-border py-2 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex min-w-0 items-center gap-3">
           <div className="min-w-0">
-            <p className="text-[11px] font-medium uppercase text-of-muted">Workspace directory</p>
-            <h1 className="mt-1 text-base font-semibold">프로젝트</h1>
-            <p className="mt-1 max-w-3xl text-xs leading-5 text-of-muted">
-              워크스페이스 프로젝트를 상태와 작업 규모 기준으로 스캔합니다.
-            </p>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <Badge variant="outline">{resultText}</Badge>
-            <Button size="sm" onClick={() => setCreating(true)} disabled={creating}>
-              <Plus size={14} /> 새 프로젝트
-            </Button>
+            <h1 className="text-sm font-semibold">프로젝트</h1>
+            <p className="text-[11px] text-of-muted">워크스페이스 디렉터리 · {resultText}</p>
           </div>
         </div>
+        <Button size="sm" onClick={() => setCreating(true)} disabled={creating}>
+          <Plus size={14} /> 새 프로젝트
+        </Button>
       </header>
 
-      <section aria-label="프로젝트 요약" className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-6">
-        <SummaryMetric label="전체" value={summary.total} />
-        <SummaryMetric label="활성" value={summary.active} tone="accent" />
-        <SummaryMetric label="보관" value={summary.archived} />
-        <SummaryMetric label="열린 작업" value={summary.open} />
-        <SummaryMetric label="기한 초과" value={summary.overdue} tone={summary.overdue > 0 ? 'danger' : 'neutral'} />
+      <section aria-label="프로젝트 요약" className="flex min-w-0 flex-wrap items-center gap-x-5 gap-y-2 border-b border-of-border py-2.5 text-xs">
+        <span><span className="text-of-muted">활성</span> <strong className="ml-1 font-semibold tabular-nums text-of-accent">{summary.active}</strong></span>
+        <span><span className="text-of-muted">보관</span> <strong className="ml-1 font-semibold tabular-nums">{summary.archived}</strong></span>
+        <span><span className="text-of-muted">열린 작업</span> <strong className="ml-1 font-semibold tabular-nums">{summary.open}</strong></span>
+        <span><span className="text-of-muted">기한 초과</span> <strong className={cn('ml-1 font-semibold tabular-nums', summary.overdue > 0 && 'text-of-danger')}>{summary.overdue}</strong></span>
         {initiativesEnabled ? (
-          <SummaryMetric label="연결 이니셔티브" value={summary.initiatives} />
+          <span><span className="text-of-muted">이니셔티브</span> <strong className="ml-1 font-semibold tabular-nums">{summary.initiatives}</strong></span>
         ) : null}
       </section>
 
-      {creating ? <NewProjectForm onClose={() => setCreating(false)} /> : null}
+      {creating ? <div className="py-3"><NewProjectForm onClose={() => setCreating(false)} /></div> : null}
 
       <section
         aria-label="프로젝트 보기 제어"
-        className="flex flex-col gap-2 rounded-of border border-of-border bg-of-surface p-3 md:flex-row md:items-center md:justify-between"
+        className="flex flex-col gap-2 border-b border-of-border py-2.5 md:flex-row md:items-center md:justify-between"
       >
         <div className="flex min-w-0 flex-1 flex-col gap-2 sm:flex-row sm:items-center">
           <div className="relative min-w-0 flex-1 sm:max-w-sm">
@@ -580,6 +662,26 @@ export function ProjectsPage() {
           >
             {sort.dir === 'asc' ? <ArrowUp size={13} /> : <ArrowDown size={13} />}
           </Button>
+          <div className="flex h-7 items-center rounded-of border border-of-border bg-of-surface p-0.5" role="group" aria-label="프로젝트 레이아웃">
+            <button
+              type="button"
+              aria-label="카드 보기"
+              aria-pressed={layout === 'grid'}
+              className={cn('flex h-6 w-7 items-center justify-center rounded-[4px] text-of-muted hover:text-of-text', layout === 'grid' && 'bg-of-surface-selected text-of-accent')}
+              onClick={() => changeLayout('grid')}
+            >
+              <LayoutGrid size={13} aria-hidden="true" />
+            </button>
+            <button
+              type="button"
+              aria-label="목록 보기"
+              aria-pressed={layout === 'list'}
+              className={cn('flex h-6 w-7 items-center justify-center rounded-[4px] text-of-muted hover:text-of-text', layout === 'list' && 'bg-of-surface-selected text-of-accent')}
+              onClick={() => changeLayout('list')}
+            >
+              <List size={13} aria-hidden="true" />
+            </button>
+          </div>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="outline" size="sm">
@@ -631,22 +733,23 @@ export function ProjectsPage() {
           ) : null}
         </EmptyState>
       ) : (
-        <section className="min-w-0 overflow-hidden rounded-of border border-of-border bg-of-surface">
-          <div className="hidden grid-cols-[minmax(0,1.5fr)_9rem_minmax(12rem,0.8fr)_14rem_2rem] border-b border-of-border bg-of-surface-2 px-4 py-2 text-[11px] font-medium text-of-muted md:grid">
-            <span>프로젝트</span>
-            <span>상태</span>
-            <span className="text-right">롤업</span>
-            <span className="text-right">바로가기</span>
-            <span className="sr-only">열기</span>
-          </div>
-          <ul aria-label="프로젝트 디렉터리" className="divide-y divide-of-border">
+        <section className={cn('min-w-0 py-3', layout === 'list' && 'overflow-hidden rounded-of border border-of-border bg-of-surface')}>
+          {layout === 'list' ? (
+            <div className="hidden grid-cols-[minmax(0,1.5fr)_9rem_minmax(12rem,0.8fr)_14rem_2rem] border-b border-of-border bg-of-surface-2 px-4 py-2 text-[11px] font-medium text-of-muted md:grid">
+              <span>프로젝트</span>
+              <span>상태</span>
+              <span className="text-right">롤업</span>
+              <span className="text-right">바로가기</span>
+              <span className="sr-only">열기</span>
+            </div>
+          ) : null}
+          <ul aria-label="프로젝트 디렉터리" className={cn(layout === 'grid' ? 'grid gap-3 md:grid-cols-2 xl:grid-cols-3' : 'divide-y divide-of-border')}>
             {visibleProjects.map((project) => (
-              <ProjectRow
-                key={project.id}
-                project={project}
-                columns={visibleColumns}
-                onOpenInitiative={(id) => navigate(`/initiatives?highlight=${id}`)}
-              />
+              layout === 'grid' ? (
+                <ProjectCard key={project.id} project={project} columns={visibleColumns} onOpenInitiative={(id) => navigate(`/initiatives?highlight=${id}`)} />
+              ) : (
+                <ProjectRow key={project.id} project={project} columns={visibleColumns} onOpenInitiative={(id) => navigate(`/initiatives?highlight=${id}`)} />
+              )
             ))}
           </ul>
         </section>
