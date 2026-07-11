@@ -303,21 +303,21 @@ export function WorkPackageDetailPanel({
           <WatchRow wpId={wp.id} canWrite={canWrite} />
           {canWrite ? (
             <div className="flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                className="rounded-of border border-of-border px-2 py-1 text-xs text-of-muted hover:bg-of-surface-2"
+              <Button
+                variant="outline"
+                size="sm"
                 disabled={duplicate.isPending}
                 onClick={() => duplicate.mutate(wp.id)}
               >
                 복제
-              </button>
-              <button
-                type="button"
-                className="rounded-of border border-of-border px-2 py-1 text-xs text-of-muted hover:bg-of-surface-2"
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
                 onClick={() => setMoveOpen((v) => !v)}
               >
                 이동
-              </button>
+              </Button>
               {fullPageLink}
             </div>
           ) : (
@@ -341,7 +341,7 @@ export function WorkPackageDetailPanel({
         ) : null}
       </header>
 
-      <div role="tablist" aria-label="작업 상세 탭" className="flex gap-1 border-b border-of-border">
+      <div role="tablist" aria-label="작업 상세 탭" className="flex gap-1 border-b border-of-border-subtle">
         {[
           ['overview', '개요'],
           ['activity', '활동'],
@@ -405,7 +405,7 @@ export function WorkPackageDetailPanel({
             <AttachmentsSection wpId={wp.id} projectId={projectId} />
           </div>
 
-          <aside className="order-first space-y-3 rounded-of border border-of-border bg-of-surface-2/35 p-3 lg:order-none">
+          <aside className="of-surface order-first space-y-3 bg-of-surface-raised p-3 lg:order-none lg:sticky lg:top-0 lg:self-start">
             <h3 className="text-xs font-semibold text-of-muted">속성</h3>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-1 [&>*]:min-w-0">
               <div className="space-y-1.5">

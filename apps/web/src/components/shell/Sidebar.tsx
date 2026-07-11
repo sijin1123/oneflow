@@ -110,14 +110,14 @@ const projectNavSections: Array<{ label: string; items: ProjectNavItem[] }> = [
 
 const navLinkClass = ({ isActive }: { isActive: boolean }) =>
   cn(
-    'group flex min-h-8 items-center gap-2 rounded-of px-2 text-[13px] transition-colors hover:bg-of-surface-2 [&_svg]:size-3.5 [&_svg]:shrink-0 [&_svg]:text-of-muted',
-    isActive && 'bg-of-accent-soft font-medium text-of-accent [&_svg]:text-of-accent',
+    'group flex min-h-8 items-center gap-2 rounded-of px-2 text-[13px] text-of-secondary transition-colors duration-[var(--of-duration-fast)] hover:bg-of-surface-hover hover:text-of-text [&_svg]:size-3.5 [&_svg]:shrink-0 [&_svg]:text-of-muted',
+    isActive && 'bg-of-surface-selected font-medium text-of-accent [&_svg]:text-of-accent',
   )
 
 const projectLinkClass = (isActive: boolean) =>
   cn(
-    'flex min-h-8 items-center gap-2 rounded-of px-2 text-[13px] transition-colors hover:bg-of-surface-2',
-    isActive && 'bg-of-surface-2 font-medium text-of-text',
+    'flex min-h-8 items-center gap-2 rounded-of px-2 text-[13px] text-of-secondary transition-colors duration-[var(--of-duration-fast)] hover:bg-of-surface-hover hover:text-of-text',
+    isActive && 'bg-of-surface-selected font-medium text-of-accent',
   )
 
 function SectionLabel({ children }: { children: string }) {
@@ -160,8 +160,8 @@ function SidebarContent({
 
   return (
     <>
-      <div className="flex items-center gap-2 px-3 py-3">
-        <div className="flex h-7 w-7 items-center justify-center rounded-of bg-of-accent text-xs font-bold text-white">
+      <div className="flex h-[var(--of-topbar-height)] items-center gap-2 border-b border-of-border-subtle px-3">
+        <div className="flex h-7 w-7 items-center justify-center rounded-of bg-of-accent text-xs font-bold text-white shadow-[var(--of-shadow-xs)]">
           OF
         </div>
         <div className="min-w-0">
@@ -182,7 +182,7 @@ function SidebarContent({
         ) : null}
       </div>
 
-      <nav className="flex-1 overflow-y-auto px-2 pb-4" aria-label="주 메뉴">
+      <nav className="of-scrollbar flex-1 overflow-y-auto px-2 py-3" aria-label="주 메뉴">
         <div className="space-y-4">
           <div>
             <SectionLabel>워크스페이스</SectionLabel>
@@ -239,13 +239,13 @@ function SidebarContent({
                       className={() => projectLinkClass(expanded)}
                       onClick={onNavigate}
                     >
-                      <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded bg-of-surface-2 text-[10px] font-semibold text-of-muted">
+                      <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-[4px] border border-of-border-subtle bg-of-surface text-[10px] font-semibold text-of-muted">
                         {project.key.slice(0, 2)}
                       </span>
                       <span className="min-w-0 flex-1 truncate">{project.name}</span>
                     </NavLink>
                     {expanded ? (
-                      <div className="mt-1 space-y-2 border-l border-of-border pl-2">
+                      <div className="mt-1 space-y-2 border-l border-of-border-subtle pl-2">
                         {projectNavSections.map((section) => (
                           <div key={section.label}>
                             <p className="px-2 pb-1 text-[10px] font-medium uppercase text-of-muted">
@@ -285,7 +285,7 @@ function SidebarContent({
         </div>
       </nav>
 
-      <div className="border-t border-of-border px-3 py-2 text-[11px] text-of-muted">
+      <div className="border-t border-of-border-subtle px-3 py-2 text-[11px] text-of-muted">
         {auth.data?.auth_mode === 'oidc'
           ? `OIDC · ${auth.data.oidc_issuer ? new URL(auth.data.oidc_issuer).host : '구성됨'}`
           : 'dev 모드 · 로컬 전용'}
@@ -303,7 +303,7 @@ export function Sidebar({
 }) {
   return (
     <>
-      <aside className="hidden w-64 shrink-0 flex-col border-r border-of-border bg-of-surface md:flex">
+      <aside className="hidden w-[var(--of-sidebar-width)] shrink-0 flex-col border-r border-of-border-subtle bg-of-surface-raised md:flex">
         <SidebarContent />
       </aside>
 
@@ -317,10 +317,10 @@ export function Sidebar({
           <button
             type="button"
             aria-label="사이드바 닫기"
-            className="absolute inset-0 bg-black/20"
+            className="absolute inset-0 bg-of-overlay"
             onClick={onMobileClose}
           />
-          <aside className="relative flex h-full w-[min(18rem,calc(100vw-3rem))] flex-col border-r border-of-border bg-of-surface shadow-xl">
+          <aside className="relative flex h-full w-[min(18rem,calc(100vw-3rem))] flex-col border-r border-of-border bg-of-surface-raised shadow-[var(--of-shadow-popover)]">
             <SidebarContent
               showClose
               onClose={onMobileClose}

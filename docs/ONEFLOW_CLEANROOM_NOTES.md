@@ -131,6 +131,18 @@
 
 스크린샷은 `docs/screenshots/redevelopment/workspace-general-settings-ui/`에 보존했다. 신규 외부 의존성은 없으며 clean-room/dependency gate가 PASS했다. — attested-independent-derivation
 
+## B-033 OneFlow Precision design system
+
+`docs/plane-poc-reverse-spec/`에서 사용한 입력은 compact workspace shell, consolidated display menu, grouped command search, semantic state chip, full-page/drawer detail, grouped settings, empty/loading/error state의 행동·정보구조·밀도 원칙뿐이다. Plane source, package, asset, DOM, CSS class, exact color, wording, screenshot, logo, or trade dress는 구현 입력으로 사용하지 않았다.
+
+OneFlow 구현은 자체 OKLCH palette, 4/6/8px shape scale, 36/44px density, 52px topbar, 240px rail, border-first elevation, reduced-motion/focus/coarse-pointer contracts와 in-repository React primitives를 새로 작성했다. 기능 아이콘은 기존 `lucide-react`를 사용하며, backend/schema/permission/environment contract와 외부 production dependency는 변경하지 않았다.
+
+`apps/web/src/assets/generated/oneflow-empty-flow.png`는 reference image 없이 built-in `image_gen`으로 생성한 원본 프로젝트 자산이다. Plane mark, UI, logo, source asset를 입력하거나 재현하지 않았고, prompt·치수·해시·접근성·사용 위치는 `docs/ONEFLOW_GENERATED_ASSETS.md`에 보존했다. 기능 아이콘이나 상태 의미에는 사용하지 않는다.
+
+`avatar.tsx`, `controls.tsx`, `icon-button.tsx`, `tooltip.tsx` 등의 일반 파일명은 reference checkout과 겹칠 수 있으나, 모든 구현은 OneFlow의 local API, 토큰, 접근성 계약에 맞춰 독립 작성했다. `make cleanroom-check`의 filename overlap은 이 수동 attestation과 함께 검토한다. — attested-independent-derivation
+
+시각 증적은 `docs/screenshots/design-system/`의 Chromium 1440x960 및 390x844 캡처로 보존한다. 캡처는 OneFlow typed fixture와 API mocking만 사용하고 reference product imagery는 포함하지 않는다.
+
 ## 자동 게이트의 한계(PLAN §10)
 
 리터럴 `@plane/` 문자열·라이선스 텍스트·파일명 수준만 자동 탐지된다. 소스를 보며 변수명만 바꿔 옮기는 이식은 자동으로 잡히지 않으므로, PR 설명의 수동 확인 체크박스("소스 파일을 열어 보며 옮겨 적지 않았음")가 이중 방어선이다.

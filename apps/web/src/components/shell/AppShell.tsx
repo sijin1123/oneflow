@@ -11,12 +11,12 @@ export function AppShell() {
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
 
   return (
-    <div className="flex h-screen overflow-hidden bg-of-bg text-of-text">
+    <div className="of-shell flex h-screen overflow-hidden">
       <GlobalShortcutLayer />
       <Sidebar mobileOpen={mobileSidebarOpen} onMobileClose={() => setMobileSidebarOpen(false)} />
       <div className="flex min-w-0 flex-1 flex-col">
         <Topbar onOpenMobileSidebar={() => setMobileSidebarOpen(true)} />
-        <main className="min-h-0 flex-1 overflow-y-auto">
+        <main className="of-scrollbar min-h-0 flex-1 overflow-y-auto bg-of-bg">
           <Outlet />
         </main>
       </div>

@@ -1,44 +1,106 @@
 @import 'tailwindcss';
 
-/* OneFlow design tokens (PLAN §8): neutral, dense-but-calm, one accent color.
-   Original palette — not copied from any reference product. */
+/* OneFlow Precision tokens. Original clean-room palette and interaction rules. */
 :root {
-  --of-bg: oklch(0.985 0.002 90);
+  color-scheme: light;
+  --of-bg: oklch(0.978 0.004 220);
   --of-surface: oklch(1 0 0);
-  --of-surface-2: oklch(0.965 0.003 90);
-  --of-surface-hover: oklch(0.948 0.004 90);
-  --of-border: oklch(0.91 0.004 90);
-  --of-text: oklch(0.24 0.01 260);
-  --of-text-muted: oklch(0.5 0.012 260);
-  --of-accent: oklch(0.55 0.16 265);
-  --of-accent-hover: oklch(0.5 0.17 265);
-  --of-accent-soft: oklch(0.94 0.03 265);
-  --of-danger: oklch(0.55 0.19 25);
-  --of-danger-hover: oklch(0.5 0.2 25);
-  --of-focus: oklch(0.64 0.14 265);
-  --of-skeleton: oklch(0.935 0.005 90);
-  --of-overlay: oklch(0.2 0.01 260 / 0.22);
-  --of-shadow-popover: 0 12px 28px oklch(0.24 0.01 260 / 0.12);
+  --of-surface-raised: oklch(0.995 0.002 220);
+  --of-surface-2: oklch(0.958 0.006 220);
+  --of-surface-3: oklch(0.935 0.008 220);
+  --of-surface-hover: oklch(0.942 0.009 220);
+  --of-surface-selected: oklch(0.94 0.026 166);
+  --of-border-subtle: oklch(0.928 0.006 220);
+  --of-border: oklch(0.882 0.009 220);
+  --of-border-strong: oklch(0.76 0.015 220);
+  --of-text: oklch(0.255 0.018 235);
+  --of-text-secondary: oklch(0.405 0.018 235);
+  --of-text-muted: oklch(0.535 0.016 235);
+  --of-text-faint: oklch(0.65 0.012 235);
+  --of-accent: oklch(0.49 0.105 166);
+  --of-accent-hover: oklch(0.435 0.112 166);
+  --of-accent-strong: oklch(0.365 0.09 166);
+  --of-accent-soft: oklch(0.94 0.03 166);
+  --of-accent-faint: oklch(0.97 0.014 166);
+  --of-info: oklch(0.52 0.12 278);
+  --of-info-soft: oklch(0.955 0.025 278);
+  --of-success: oklch(0.5 0.11 155);
+  --of-success-soft: oklch(0.95 0.032 155);
+  --of-warning: oklch(0.66 0.13 70);
+  --of-warning-soft: oklch(0.96 0.04 82);
+  --of-danger: oklch(0.54 0.175 25);
+  --of-danger-hover: oklch(0.48 0.18 25);
+  --of-danger-soft: oklch(0.955 0.03 25);
+  --of-priority-low: oklch(0.56 0.09 235);
+  --of-priority-medium: oklch(0.61 0.12 80);
+  --of-priority-high: oklch(0.59 0.15 45);
+  --of-priority-urgent: var(--of-danger);
+  --of-focus: oklch(0.61 0.12 166);
+  --of-skeleton: oklch(0.925 0.008 220);
+  --of-overlay: oklch(0.18 0.018 235 / 0.34);
+  --of-shadow-xs: 0 1px 1px oklch(0.2 0.015 235 / 0.05);
+  --of-shadow-sm: 0 1px 2px oklch(0.2 0.015 235 / 0.07), 0 4px 12px oklch(0.2 0.015 235 / 0.035);
+  --of-shadow-popover: 0 16px 40px oklch(0.2 0.015 235 / 0.14), 0 2px 8px oklch(0.2 0.015 235 / 0.08);
+  --of-radius-xs: 4px;
   --of-radius: 6px;
+  --of-radius-lg: 8px;
+  --of-control-compact: 28px;
+  --of-control-default: 32px;
+  --of-row-compact: 36px;
+  --of-row-default: 44px;
+  --of-sidebar-width: 240px;
+  --of-topbar-height: 52px;
+  --of-duration-fast: 120ms;
+  --of-duration-default: 180ms;
+  --of-duration-overlay: 220ms;
+  --of-ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --of-ease-emphasized: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --of-z-sticky: 20;
+  --of-z-popover: 50;
+  --of-z-modal: 60;
 }
 
 @theme inline {
   --color-of-bg: var(--of-bg);
   --color-of-surface: var(--of-surface);
+  --color-of-surface-raised: var(--of-surface-raised);
   --color-of-surface-2: var(--of-surface-2);
+  --color-of-subtle: var(--of-surface-2);
+  --color-of-surface-3: var(--of-surface-3);
   --color-of-surface-hover: var(--of-surface-hover);
+  --color-of-surface-selected: var(--of-surface-selected);
+  --color-of-border-subtle: var(--of-border-subtle);
   --color-of-border: var(--of-border);
+  --color-of-border-strong: var(--of-border-strong);
   --color-of-text: var(--of-text);
+  --color-of-fg: var(--of-text);
+  --color-of-secondary: var(--of-text-secondary);
   --color-of-muted: var(--of-text-muted);
+  --color-of-faint: var(--of-text-faint);
   --color-of-accent: var(--of-accent);
   --color-of-accent-hover: var(--of-accent-hover);
+  --color-of-accent-strong: var(--of-accent-strong);
   --color-of-accent-soft: var(--of-accent-soft);
+  --color-of-accent-faint: var(--of-accent-faint);
+  --color-of-info: var(--of-info);
+  --color-of-info-soft: var(--of-info-soft);
+  --color-of-success: var(--of-success);
+  --color-of-success-soft: var(--of-success-soft);
+  --color-of-warning: var(--of-warning);
+  --color-of-warning-soft: var(--of-warning-soft);
   --color-of-danger: var(--of-danger);
   --color-of-danger-hover: var(--of-danger-hover);
+  --color-of-danger-soft: var(--of-danger-soft);
+  --color-of-priority-low: var(--of-priority-low);
+  --color-of-priority-medium: var(--of-priority-medium);
+  --color-of-priority-high: var(--of-priority-high);
+  --color-of-priority-urgent: var(--of-priority-urgent);
   --color-of-focus: var(--of-focus);
   --color-of-skeleton: var(--of-skeleton);
   --color-of-overlay: var(--of-overlay);
+  --radius-of-xs: var(--of-radius-xs);
   --radius-of: var(--of-radius);
+  --radius-of-lg: var(--of-radius-lg);
 }
 
 html,
@@ -61,15 +123,133 @@ body {
     sans-serif;
   font-size: 14px;
   line-height: 1.5;
+  letter-spacing: 0;
+  text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  letter-spacing: 0;
+}
+
+button,
+[role='button'],
+a,
+input,
+select,
+textarea {
+  -webkit-tap-highlight-color: transparent;
 }
 
 *:focus-visible {
   outline: 2px solid var(--of-focus);
-  outline-offset: 1px;
+  outline-offset: 2px;
 }
 
 ::selection {
   background: var(--of-accent-soft);
   color: var(--of-text);
+}
+
+.of-shell {
+  min-height: 100%;
+  background: var(--of-bg);
+  color: var(--of-text);
+}
+
+.of-page-header {
+  min-height: 56px;
+  border-bottom: 1px solid var(--of-border-subtle);
+  background: color-mix(in oklab, var(--of-surface) 94%, transparent);
+}
+
+.of-toolbar {
+  min-height: 44px;
+  border-bottom: 1px solid var(--of-border-subtle);
+  background: var(--of-surface);
+}
+
+.of-surface {
+  border: 1px solid var(--of-border-subtle);
+  border-radius: var(--of-radius-lg);
+  background: var(--of-surface);
+  box-shadow: var(--of-shadow-xs);
+}
+
+.of-floating-surface {
+  border: 1px solid var(--of-border);
+  border-radius: var(--of-radius-lg);
+  background: var(--of-surface-raised);
+  box-shadow: var(--of-shadow-popover);
+}
+
+.of-data-grid {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 12px;
+}
+
+.of-data-grid thead {
+  color: var(--of-text-muted);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.of-data-grid th {
+  height: 34px;
+  border-bottom: 1px solid var(--of-border);
+  background: color-mix(in oklab, var(--of-surface) 96%, transparent);
+}
+
+.of-data-grid td {
+  height: var(--of-row-default);
+  border-bottom: 1px solid var(--of-border-subtle);
+}
+
+[data-density='compact'] .of-data-grid td,
+.of-data-grid[data-density='compact'] td {
+  height: var(--of-row-compact);
+}
+
+.of-data-grid tbody tr {
+  transition: background-color var(--of-duration-fast) var(--of-ease-standard);
+}
+
+.of-data-grid tbody tr:hover,
+.of-data-grid tbody tr:focus-within,
+.of-data-grid tbody tr[aria-selected='true'] {
+  background: var(--of-surface-hover);
+}
+
+.of-scrollbar {
+  scrollbar-color: var(--of-border-strong) transparent;
+  scrollbar-width: thin;
+}
+
+.of-motion {
+  transition-duration: var(--of-duration-default);
+  transition-timing-function: var(--of-ease-standard);
+}
+
+@media (pointer: coarse) {
+  .of-touch-target {
+    min-width: 44px;
+    min-height: 44px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

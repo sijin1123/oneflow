@@ -5,7 +5,9 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { EmptyState, ErrorState, ListSkeleton } from '@/components/shell/states'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { DataGrid, DataGridFrame, DensityControl, type GridDensity } from '@/components/ui/data-grid'
 import { Input } from '@/components/ui/input'
+import { PageHeader, Toolbar } from '@/components/ui/surface'
 import { useWorkspaceWorkItems } from '@/features/search/api'
 import { PriorityChip, StatusChip, TypeChip } from '@/features/work-packages/chips'
 
@@ -14,6 +16,7 @@ export function AllWorkPage() {
   const navigate = useNavigate()
   const q = searchParams.get('q') ?? ''
   const [input, setInput] = useState(q)
+  const [density, setDensity] = useState<GridDensity>('comfortable')
   const { data, isPending, isFetching, isError, error, refetch } = useWorkspaceWorkItems(q)
 
   useEffect(() => {
@@ -55,19 +58,13 @@ export function AllWorkPage() {
 
   return (
     <div className="flex h-full min-w-0 flex-col bg-of-surface">
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-of-border px-4 py-2.5">
-        <div className="flex min-w-0 items-center gap-2 sm:flex-1">
-          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-of border border-of-border bg-of-surface-2 text-of-muted">
-            <ListChecks size={15} />
-          </span>
-          <div className="min-w-0">
-            <h1 className="truncate text-sm font-semibold">전체 작업</h1>
-            <p className="truncate text-xs text-of-muted" aria-live="polite">
-              {countText}
-              {isFetching && !isPending ? ' · 업데이트 중' : ''}
-            </p>
-          </div>
-        </div>
+      <PageHeader
+        icon={<ListChecks />}
+        title="전체 작업"
+        eyebrow="워크스페이스"
+        description={<span aria-live="polite">{countText}{isFetching && !isPending ? ' · 업데이트 중' : ''}</span>}
+      />
+      <Toolbar className="justify-between">
         <form onSubmit={submit} className="flex w-full min-w-0 gap-2 sm:max-w-xl sm:flex-1">
           <div className="relative min-w-0 flex-1">
             <Search
@@ -106,7 +103,10 @@ export function AllWorkPage() {
             <RefreshCw size={13} className={isFetching ? 'animate-spin' : undefined} />
           </Button>
         </form>
-      </div>
+        <div className="hidden lg:block">
+          <DensityControl value={density} onChange={setDensity} />
+        </div>
+      </Toolbar>
 
       {isPending ? (
         <ListSkeleton />
@@ -116,10 +116,11 @@ export function AllWorkPage() {
         <EmptyState
           title={q ? '검색 결과가 없습니다' : '작업이 없습니다'}
           hint={q ? '검색어를 지우거나 다른 단어로 다시 찾아보세요.' : undefined}
+          visual="illustration"
         />
       ) : (
-        <div className="min-h-0 flex-1 overflow-auto">
-          <table className="w-full min-w-[1040px] table-fixed border-collapse text-left text-xs">
+        <DataGridFrame density={density} className="flex-1" aria-label="전체 작업 표 스크롤 영역">
+          <DataGrid className="min-w-[1040px] table-fixed text-left">
             <thead className="sticky top-0 z-10 bg-of-surface/95 backdrop-blur">
               <tr className="border-b border-of-border text-[11px] font-medium text-of-muted">
                 <th className="h-9 w-[24%] px-4">작업</th>
@@ -180,8 +181,8 @@ export function AllWorkPage() {
                 </tr>
               ))}
             </tbody>
-          </table>
-        </div>
+          </DataGrid>
+        </DataGridFrame>
       )}
     </div>
   )

@@ -3,6 +3,8 @@ import { useEffect, useState } from 'react'
 import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 
 import { Button } from '@/components/ui/button'
+import { Avatar } from '@/components/ui/avatar'
+import { IconButton } from '@/components/ui/icon-button'
 import { Input } from '@/components/ui/input'
 import { useLogout } from '@/features/auth/api'
 import { useMe } from '@/features/members/api'
@@ -95,16 +97,16 @@ function AccountMenu() {
         type="button"
         aria-label="계정 메뉴"
         aria-expanded={open}
-        className="flex h-7 w-7 items-center justify-center rounded-full bg-of-accent-soft text-xs font-semibold text-of-accent hover:ring-2 hover:ring-of-accent/30"
+        className="rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus focus-visible:ring-offset-2"
         onClick={() => setOpen((v) => !v)}
       >
-        {me.data.display_name.slice(0, 1)}
+        <Avatar name={me.data.display_name} size="md" />
       </button>
       {open ? (
         <div
           role="menu"
           aria-label="계정"
-          className="absolute right-0 top-9 z-30 w-56 rounded-of border border-of-border bg-of-surface p-1 shadow-md"
+          className="of-floating-surface absolute right-0 top-10 z-30 w-60 p-1"
         >
           <div className="border-b border-of-border px-2.5 py-2">
             <p className="truncate text-xs font-medium">{me.data.display_name}</p>
@@ -185,15 +187,14 @@ export function Topbar({ onOpenMobileSidebar }: { onOpenMobileSidebar?: () => vo
   }
 
   return (
-    <header className="flex min-h-14 shrink-0 items-center gap-3 border-b border-of-border bg-of-surface px-3 md:px-4">
-      <button
-        type="button"
-        aria-label="사이드바 열기"
-        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-of text-of-muted hover:bg-of-surface-2 md:hidden"
+    <header className="flex h-[var(--of-topbar-height)] shrink-0 items-center gap-3 border-b border-of-border-subtle bg-of-surface-raised px-3 md:px-4">
+      <IconButton
+        label="사이드바 열기"
+        className="md:hidden"
         onClick={onOpenMobileSidebar}
       >
         <Menu size={16} />
-      </button>
+      </IconButton>
 
       <div className="min-w-0">
         <nav className="flex min-w-0 items-center gap-1.5 text-[11px] text-of-muted" aria-label="현재 위치">

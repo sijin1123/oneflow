@@ -5,6 +5,7 @@ import { useParams, useSearchParams } from 'react-router-dom'
 import { EmptyState, ErrorState, ListSkeleton } from '@/components/shell/states'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { DataGrid, DataGridFrame, type GridDensity } from '@/components/ui/data-grid'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { useCustomFields } from '@/features/custom-fields/api'
@@ -130,6 +131,7 @@ export function ListPage() {
   const query = searchParams.get('q') ?? ''
   const importOpen = searchParams.get('ops') === 'import'
   const [queryDraft, setQueryDraft] = useState(query)
+  const [density, setDensity] = useState<GridDensity>('compact')
 
   useEffect(() => {
     setQueryDraft(query)
@@ -341,6 +343,8 @@ export function ListPage() {
                 onSortChange={setSort}
                 onToggleColumn={toggleColumn}
                 onToggleCustomColumn={toggleCustomColumn}
+                density={density}
+                onDensityChange={setDensity}
               />
               <Button
                 variant="outline"
@@ -500,8 +504,8 @@ export function ListPage() {
       ) : data.total === 0 ? (
         <EmptyState title="조건에 맞는 작업이 없습니다" hint="필터를 조정하거나 새 작업을 만들어 보세요." />
       ) : (
-        <div className="min-w-0 overflow-x-auto">
-          <table className="w-full min-w-[760px] border-collapse text-sm">
+        <DataGridFrame density={density} aria-label="프로젝트 작업 표 스크롤 영역">
+          <DataGrid className="min-w-[760px] text-left">
             <thead>
               <tr className="border-b border-of-border text-left text-xs text-of-muted">
                 {canWrite ? (
@@ -615,8 +619,8 @@ export function ListPage() {
                 </tr>
               ))}
             </tbody>
-          </table>
-        </div>
+          </DataGrid>
+        </DataGridFrame>
       )}
 
       <DetailDrawer projectId={projectId} />
