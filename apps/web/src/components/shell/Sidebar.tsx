@@ -36,6 +36,7 @@ import { useAuthConfig } from '@/features/auth/api'
 import { useMe } from '@/features/members/api'
 import { useProjects } from '@/features/projects/api'
 import { useWorkspaceCapabilities } from '@/features/workspace-features/api'
+import { useWorkspaceProfile } from '@/features/workspace-profile/api'
 import { cn } from '@/lib/utils'
 
 type WorkspaceNavItem = {
@@ -141,6 +142,7 @@ function SidebarContent({
   const auth = useAuthConfig()
   const me = useMe()
   const capabilities = useWorkspaceCapabilities()
+  const workspaceProfile = useWorkspaceProfile()
   const initiativesEnabled = capabilities.data?.initiatives.enabled === true
   const customersEnabled = capabilities.data?.customers.enabled === true
   const workspaceItems = workspaceNav.filter(
@@ -164,7 +166,9 @@ function SidebarContent({
         </div>
         <div className="min-w-0">
           <p className="truncate text-sm font-semibold leading-4">OneFlow</p>
-          <p className="truncate text-[11px] text-of-muted">Workspace</p>
+          <p className="truncate text-[11px] text-of-muted">
+            {workspaceProfile.data?.name ?? 'Workspace'}
+          </p>
         </div>
         {showClose ? (
           <button

@@ -339,6 +339,14 @@ async function mockApi(page: Page, opts: { conflictOnPatch?: boolean } = {}) {
     }
     await route.fulfill({ json: { items: [], total: 0 } })
   })
+  await page.route('**/api/v1/workspace/profile', (route) =>
+    route.fulfill({
+      json: {
+        name: 'OneFlow',
+        revision: 1,
+      },
+    }),
+  )
   // The meetings page's template select fetches on mount — default to none.
   await page.route('**/api/v1/projects/*/meeting-templates', (route) =>
     route.fulfill({ json: { items: [], total: 0 } }),
@@ -3577,6 +3585,119 @@ test('개인 설정은 인증 모드별로 지원되는 세션 동작만 노출�
   await expect(oidcSection.getByText('oneflow-web')).toBeVisible()
   await expect(oidcSection.getByRole('button', { name: /세션 종료/ })).toHaveCount(0)
   expect(sessionRequests).toBe(0)
+})
+
+test('워크스페이스 일반 설정은 이름을 저장하고 shell identity에 즉시 반영한다', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await mockApi(page)
+  let profile = {
+    id: 1,
+    name: 'OneFlow',
+    revision: 1,
+    updated_by_user_id: null as string | null,
+    updated_by_name: null as string | null,
+    updated_at: '2026-07-01T00:00:00Z',
+  }
+  await page.route('**/api/v1/workspace/profile', (route) => route.fulfill({ json: profile }))
+  await page.route('**/api/v1/admin/workspace/profile', async (route) => {
+    if (route.request().method() === 'GET') {
+      await route.fulfill({ json: profile, headers: { ETag: `"${profile.revision}"` } })
+      return
+    }
+    const sent = route.request().postDataJSON() as { name: string }
+    expect(route.request().headers()['if-match']).toBe('"1"')
+    profile = {
+      ...profile,
+      name: sent.name,
+      revision: 2,
+      updated_by_user_id: 'me-1',
+      updated_by_name: 'Dev User',
+      updated_at: '2026-07-11T10:00:00Z',
+    }
+    await route.fulfill({ json: profile, headers: { ETag: '"2"' } })
+  })
+
+  await page.goto('/admin/general')
+  const settingsNav = page.getByRole('navigation', { name: '워크스페이스 설정' })
+  await expect(settingsNav.getByRole('link', { name: '일반' })).toHaveAttribute(
+    'aria-current',
+    'page',
+  )
+  const input = page.getByLabel('워크스페이스 이름')
+  await expect(input).toHaveValue('OneFlow')
+  await input.fill('Delivery Workspace')
+  const patchRequest = page.waitForRequest(
+    (request) =>
+      request.method() === 'PATCH' && request.url().endsWith('/admin/workspace/profile'),
+  )
+  await page.getByRole('button', { name: '변경 저장' }).click()
+  expect((await patchRequest).postDataJSON()).toEqual({ name: 'Delivery Workspace' })
+  await expect(page.getByText('Delivery Workspace administration')).toBeVisible()
+  await expect(page.getByText('revision 2')).toBeVisible()
+
+  await page.getByRole('button', { name: '사이드바 열기' }).click()
+  const mobileNav = page.getByRole('dialog', { name: '모바일 내비게이션' })
+  await expect(mobileNav.getByText('Delivery Workspace')).toBeVisible()
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/workspace-general-settings-ui/mobile.png',
+    fullPage: true,
+  })
+})
+
+test('워크스페이스 이름 충돌은 입력을 보존하고 최신 revision으로 다시 저장한다', async ({ page }) => {
+  await mockApi(page)
+  let profile = {
+    id: 1,
+    name: 'OneFlow',
+    revision: 1,
+    updated_by_user_id: null as string | null,
+    updated_by_name: null as string | null,
+    updated_at: '2026-07-01T00:00:00Z',
+  }
+  let patchCount = 0
+  await page.route('**/api/v1/workspace/profile', (route) =>
+    route.fulfill({ json: { name: profile.name, revision: profile.revision } }),
+  )
+  await page.route('**/api/v1/admin/workspace/profile', async (route) => {
+    if (route.request().method() === 'GET') {
+      await route.fulfill({ json: profile, headers: { ETag: `"${profile.revision}"` } })
+      return
+    }
+    patchCount += 1
+    if (patchCount === 1) {
+      expect(route.request().headers()['if-match']).toBe('"1"')
+      profile = {
+        ...profile,
+        name: 'Operations Workspace',
+        revision: 2,
+        updated_by_user_id: 'other-admin',
+        updated_by_name: 'Other Admin',
+        updated_at: '2026-07-11T10:00:00Z',
+      }
+      await route.fulfill({
+        status: 412,
+        json: { detail: { code: 'stale_revision', current_revision: 2 } },
+        headers: { ETag: '"2"' },
+      })
+      return
+    }
+    expect(route.request().headers()['if-match']).toBe('"2"')
+    const sent = route.request().postDataJSON() as { name: string }
+    profile = { ...profile, name: sent.name, revision: 3, updated_by_name: 'Dev User' }
+    await route.fulfill({ json: profile, headers: { ETag: '"3"' } })
+  })
+
+  await page.goto('/admin/general')
+  const input = page.getByLabel('워크스페이스 이름')
+  await input.fill('Delivery Draft')
+  await page.getByRole('button', { name: '변경 저장' }).click()
+  await expect(page.getByRole('alert')).toContainText('입력값은 유지')
+  await expect(input).toHaveValue('Delivery Draft')
+  await expect(page.getByText('revision 2')).toBeVisible()
+  await page.getByRole('button', { name: '변경 저장' }).click()
+  await expect(page.getByText('revision 3')).toBeVisible()
+  await expect(input).toHaveValue('Delivery Draft')
 })
 
 test('settings/admin IA는 모바일 폭에서 표면별 탐색을 유지한다', async ({ page }) => {

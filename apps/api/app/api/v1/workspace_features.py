@@ -9,6 +9,7 @@ from app.core.config import Settings, get_settings
 from app.db.session import get_session
 from app.models.user import User
 from app.models.workspace_feature_policy import WorkspaceFeaturePolicy
+from app.models.workspace_profile import WorkspaceProfile
 from app.schemas.workspace_feature_policy import (
     AiWorkspaceFeatureCapability,
     AiWorkspaceFeaturePolicyRead,
@@ -16,6 +17,11 @@ from app.schemas.workspace_feature_policy import (
     WorkspaceFeatureCapability,
     WorkspaceFeaturePolicyRead,
     WorkspaceFeaturePolicyUpdate,
+)
+from app.schemas.workspace_profile import (
+    WorkspaceIdentityRead,
+    WorkspaceProfileRead,
+    WorkspaceProfileUpdate,
 )
 from app.services.workspace_features import (
     AI_FEATURE,
@@ -58,6 +64,17 @@ def _etag(revision: int) -> str:
     return f'"{revision}"'
 
 
+def _profile_read(row: WorkspaceProfile) -> WorkspaceProfileRead:
+    return WorkspaceProfileRead(
+        id=row.id,
+        name=row.name,
+        revision=row.revision,
+        updated_by_user_id=row.updated_by_user_id,
+        updated_by_name=row.updated_by_name,
+        updated_at=row.updated_at,
+    )
+
+
 def _expected_revision(if_match: str | None) -> int:
     if if_match is None:
         raise HTTPException(status_code=428, detail="If-Match is required")
@@ -71,6 +88,75 @@ def _expected_revision(if_match: str | None) -> int:
             detail='If-Match must be one quoted positive revision, for example "1"',
         )
     return int(match.group(1))
+
+
+@router.get("/workspace/profile", response_model=WorkspaceIdentityRead)
+async def get_workspace_profile(
+    response: Response,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+) -> WorkspaceIdentityRead:
+    del user
+    row = await session.get(WorkspaceProfile, 1)
+    if row is None:
+        raise HTTPException(status_code=500, detail="workspace profile is missing")
+    response.headers["ETag"] = _etag(row.revision)
+    return WorkspaceIdentityRead(name=row.name, revision=row.revision)
+
+
+@router.get("/admin/workspace/profile", response_model=WorkspaceProfileRead)
+async def get_admin_workspace_profile(
+    response: Response,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+) -> WorkspaceProfileRead:
+    _require_admin(user)
+    row = await session.get(WorkspaceProfile, 1)
+    if row is None:
+        raise HTTPException(status_code=500, detail="workspace profile is missing")
+    response.headers["ETag"] = _etag(row.revision)
+    return _profile_read(row)
+
+
+@router.patch("/admin/workspace/profile", response_model=WorkspaceProfileRead)
+async def update_workspace_profile(
+    body: WorkspaceProfileUpdate,
+    response: Response,
+    if_match: str | None = Header(default=None, alias="If-Match"),
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+) -> WorkspaceProfileRead:
+    _require_admin(user)
+    expected = _expected_revision(if_match)
+    row = (
+        await session.execute(
+            update(WorkspaceProfile)
+            .where(WorkspaceProfile.id == 1, WorkspaceProfile.revision == expected)
+            .values(
+                name=body.name,
+                revision=WorkspaceProfile.revision + 1,
+                updated_by_user_id=user.id,
+                updated_by_name=user.display_name,
+                updated_at=func.now(),
+            )
+            .returning(WorkspaceProfile)
+        )
+    ).scalar_one_or_none()
+    if row is None:
+        current = await session.get(WorkspaceProfile, 1)
+        if current is None:
+            await session.rollback()
+            raise HTTPException(status_code=500, detail="workspace profile is missing")
+        current_revision = current.revision
+        await session.rollback()
+        raise HTTPException(
+            status_code=412,
+            detail={"code": "stale_revision", "current_revision": current_revision},
+            headers={"ETag": _etag(current_revision)},
+        )
+    await session.commit()
+    response.headers["ETag"] = _etag(row.revision)
+    return _profile_read(row)
 
 
 @router.get("/workspace/capabilities", response_model=WorkspaceCapabilitiesRead)
