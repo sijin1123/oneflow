@@ -16,6 +16,7 @@ class TimeEntry(Base):
     __table_args__ = (
         CheckConstraint("hours > 0 AND hours <= 1000", name="hours_range"),
         Index("ix_time_entries_wp", "work_package_id", "spent_on"),
+        Index("ix_time_entries_spent_created_id", "spent_on", "created_at", "id"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)

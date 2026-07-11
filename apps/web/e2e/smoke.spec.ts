@@ -8938,6 +8938,248 @@ test('보고 표면은 모바일에서 포트폴리오와 이니셔티브를 넘
   })
 })
 
+type AdminWorklogFixture = {
+  id: string
+  work_package_id: string
+  work_package_subject: string
+  project_id: string
+  project_key: string
+  project_name: string
+  project_is_archived: boolean
+  user_id: string | null
+  user_display_name: string | null
+  user_email: string | null
+  user_is_active: boolean | null
+  hours: number
+  spent_on: string
+  comment: string | null
+  created_at: string
+}
+
+function adminWorklogFixture(
+  overrides: Partial<AdminWorklogFixture> & { id: string },
+): AdminWorklogFixture {
+  const { id, ...rest } = overrides
+  return {
+    id,
+    work_package_id: wpA.id,
+    work_package_subject: '관리자 Worklog 검토',
+    project_id: project.id,
+    project_key: project.key,
+    project_name: project.name,
+    project_is_archived: false,
+    user_id: 'u-dev',
+    user_display_name: 'Dev User',
+    user_email: 'dev@oneflow.local',
+    user_is_active: true,
+    hours: 2.5,
+    spent_on: '2026-07-10',
+    comment: '운영 검토',
+    created_at: '2026-07-10T08:00:00Z',
+    ...rest,
+  }
+}
+
+async function mockAdminWorklogs(page: Page, items: AdminWorklogFixture[]) {
+  await page.route('**/api/v1/admin/worklogs**', async (route) => {
+    const request = route.request()
+    const url = new URL(request.url())
+    if (url.pathname.endsWith('/options')) {
+      await route.fulfill({
+        json: {
+          users: [
+            { id: 'u-dev', display_name: 'Dev User', email: 'dev@oneflow.local', is_active: true },
+            { id: 'u-old', display_name: 'Old User', email: 'old@oneflow.local', is_active: false },
+          ],
+          projects: [
+            { id: project.id, key: project.key, name: project.name, is_archived: false },
+            { id: 'p-archived', key: 'ARC', name: '보관 프로젝트', is_archived: true },
+          ],
+        },
+      })
+      return
+    }
+    if (url.pathname.endsWith('/export.csv')) {
+      await route.fulfill({
+        status: 200,
+        headers: {
+          'content-type': 'text/csv; charset=utf-8',
+          'content-disposition': 'attachment; filename="oneflow-worklogs-2026-07-01-to-2026-07-31.csv"',
+          'access-control-expose-headers': 'content-disposition',
+        },
+        body: '\ufeffid,hours\nworklog-1,2.5\n',
+      })
+      return
+    }
+    const userId = url.searchParams.get('user_id')
+    const projectId = url.searchParams.get('project_id')
+    if (userId && !['u-dev', 'u-old', 'deleted'].includes(userId)) {
+      await route.fulfill({ status: 422, json: { detail: 'invalid user filter' } })
+      return
+    }
+    if (projectId && ![project.id, 'p-archived'].includes(projectId)) {
+      await route.fulfill({ status: 422, json: { detail: 'invalid project filter' } })
+      return
+    }
+    const offset = Number(url.searchParams.get('offset') ?? 0)
+    const filtered = items.filter(
+      (item) =>
+        (!userId || (userId === 'deleted' ? item.user_id === null : item.user_id === userId)) &&
+        (!projectId || item.project_id === projectId),
+    )
+    await route.fulfill({
+      json: {
+        from_date: url.searchParams.get('from'),
+        to_date: url.searchParams.get('to'),
+        items: filtered.slice(offset, offset + 50),
+        total: filtered.length,
+        total_hours: filtered.reduce((sum, item) => sum + item.hours, 0),
+        limit: 50,
+        offset,
+      },
+    })
+  })
+}
+
+test('Workspace Worklogs는 관리자 필터·다운로드·모바일 탐색을 실제 요청에 연결한다', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await mockApi(page)
+  await mockAdminWorklogs(page, [
+    adminWorklogFixture({ id: 'worklog-1' }),
+    adminWorklogFixture({
+      id: 'worklog-2',
+      project_id: 'p-archived',
+      project_key: 'ARC',
+      project_name: '보관 프로젝트',
+      project_is_archived: true,
+      user_id: 'u-old',
+      user_display_name: 'Old User',
+      user_email: 'old@oneflow.local',
+      user_is_active: false,
+      hours: 1,
+    }),
+  ])
+
+  await page.goto('/my')
+  await page.getByRole('button', { name: '사이드바 열기' }).click()
+  await page
+    .getByRole('dialog', { name: '모바일 내비게이션' })
+    .getByRole('link', { name: 'Worklogs' })
+    .click()
+  await expect(page.getByRole('heading', { name: 'Worklogs' })).toBeVisible()
+  await expect(page).toHaveURL(/from=\d{4}-\d{2}-01&to=\d{4}-\d{2}-\d{2}/)
+  const mobileList = page.getByRole('list', { name: '모바일 Worklogs 목록' })
+  await expect(mobileList.getByText('관리자 Worklog 검토').first()).toBeVisible()
+
+  await page.getByLabel('Worklogs 사용자').selectOption('u-old')
+  await page.getByLabel('Worklogs 프로젝트').selectOption('p-archived')
+  await expect(page).toHaveURL(/user=u-old/)
+  await expect(page).toHaveURL(/project=p-archived/)
+  await expect(mobileList.getByText('Old User')).toBeVisible()
+  await expect(mobileList.getByText('보관됨')).toBeVisible()
+
+  await page.getByLabel('Worklogs 시작일').fill('2026-08-01')
+  await page.getByLabel('Worklogs 종료일').fill('2026-07-31')
+  await expect(page.getByRole('alert')).toContainText('시작일은 종료일보다 늦을 수 없습니다')
+  await expect(page.getByRole('button', { name: '적용', exact: true })).toBeDisabled()
+  await page.getByLabel('Worklogs 시작일').fill('2026-07-01')
+  const filteredRequest = page.waitForRequest(
+    (request) => request.url().includes('/admin/worklogs?') && request.url().includes('from=2026-07-01'),
+  )
+  await page.getByRole('button', { name: '적용', exact: true }).click()
+  await filteredRequest
+  await expect(page).toHaveURL(/from=2026-07-01/)
+  await expect(page).toHaveURL(/to=2026-07-31/)
+
+  const download = page.waitForEvent('download')
+  await page.getByRole('button', { name: 'CSV' }).click()
+  expect((await download).suggestedFilename()).toBe(
+    'oneflow-worklogs-2026-07-01-to-2026-07-31.csv',
+  )
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/worklogs-admin-ui/mobile.png',
+    fullPage: true,
+  })
+})
+
+test('Workspace Worklogs는 범위 밖 페이지와 빈 결과를 canonical URL로 복구한다', async ({
+  page,
+}) => {
+  await mockApi(page)
+  const items = Array.from({ length: 51 }, (_, index) =>
+    adminWorklogFixture({ id: `worklog-${index + 1}`, comment: null }),
+  )
+  await mockAdminWorklogs(page, items)
+  await page.goto('/admin/worklogs?from=2026-07-01&to=2026-07-31&offset=100')
+  await expect(page).toHaveURL(/offset=50/)
+  await expect(page.getByText('51-51 / 51')).toBeVisible()
+  await page.getByRole('button', { name: '이전 Worklogs 페이지' }).click()
+  await expect(page).not.toHaveURL(/offset=/)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/worklogs-admin-ui/desktop.png',
+    fullPage: true,
+  })
+
+  await page.goto('/admin/worklogs?from=2026-08-01&to=2026-07-31&project=missing&offset=17')
+  await expect(page).not.toHaveURL(/project=missing/)
+  await expect(page).not.toHaveURL(/offset=/)
+  await expect(page).not.toHaveURL(/from=2026-08-01/)
+  await expect(page.getByText('관리자 Worklog 검토').first()).toBeVisible()
+
+  await page.goto('/admin/worklogs?from=2026-02-31&to=2026-03-02')
+  await expect(page).not.toHaveURL(/from=2026-02-31/)
+  await expect(page.getByText('관리자 Worklog 검토').first()).toBeVisible()
+
+  await page.goto(
+    '/admin/worklogs?from=2026-07-01&to=2026-07-31&user=deleted&offset=50',
+  )
+  await expect(page).not.toHaveURL(/offset=/)
+  await expect(page.getByText('조회 범위에 Worklog가 없습니다')).toBeVisible()
+})
+
+test('Workspace Worklogs는 비관리자에게 데이터를 노출하지 않는다', async ({ page }) => {
+  await mockApi(page)
+  await page.route('**/api/v1/admin/worklogs**', (route) =>
+    route.fulfill({ status: 403, json: { detail: 'workspace admin required' } }),
+  )
+  await page.goto('/admin/worklogs?from=2026-07-01&to=2026-07-31')
+  await expect(page.getByText('접근 권한이 없습니다')).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Worklogs' })).toHaveCount(0)
+})
+
+test('Workspace Worklogs 목록 오류는 명시적 재시도로 복구한다', async ({ page }) => {
+  await mockApi(page)
+  let listCalls = 0
+  await page.route('**/api/v1/admin/worklogs**', (route) => {
+    const url = new URL(route.request().url())
+    if (url.pathname.endsWith('/options')) {
+      return route.fulfill({ json: { users: [], projects: [] } })
+    }
+    listCalls += 1
+    if (listCalls <= 2) {
+      return route.fulfill({ status: 500, json: { detail: 'worklogs unavailable' } })
+    }
+    return route.fulfill({
+      json: {
+        from_date: '2026-07-01',
+        to_date: '2026-07-31',
+        items: [],
+        total: 0,
+        total_hours: 0,
+        limit: 50,
+        offset: 0,
+      },
+    })
+  })
+  await page.goto('/admin/worklogs?from=2026-07-01&to=2026-07-31')
+  await expect(page.getByRole('alert')).toContainText('데이터를 불러오지 못했습니다')
+  await page.getByRole('button', { name: '다시 시도' }).click()
+  await expect(page.getByText('조회 범위에 Worklog가 없습니다')).toBeVisible()
+})
+
 function draftFixture(
   overrides: Partial<WorkItemDraft> & { id: string },
 ): WorkItemDraft {

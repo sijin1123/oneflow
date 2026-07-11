@@ -7,6 +7,7 @@ import {
   CalendarDays,
   CalendarRange,
   ClipboardList,
+  Clock3,
   Copy,
   Compass,
   FileText,
@@ -142,6 +143,7 @@ function SidebarContent({
     ? [
         ...operationsNav,
         { to: '/admin/users', label: '사용자 관리', icon: UsersRound },
+        { to: '/admin/worklogs', label: 'Worklogs', icon: Clock3 },
         { to: '/admin/webhooks', label: 'Webhooks', icon: Webhook },
       ]
     : operationsNav
