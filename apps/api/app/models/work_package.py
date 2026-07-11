@@ -82,6 +82,7 @@ class WorkPackage(Base):
         Index("ix_work_packages_parent", "parent_id"),
         Index("ix_work_packages_assignee", "assignee_id"),
         Index("ix_work_packages_milestone", "milestone_id"),
+        Index("ix_work_packages_customer", "customer_id"),
         Index("ix_work_packages_cycle", "cycle_id"),
         Index("ix_work_packages_module", "module_id"),
     )
@@ -104,6 +105,9 @@ class WorkPackage(Base):
     # Optional milestone assignment (Phase 2). SET NULL on milestone delete.
     milestone_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("milestones.id", ondelete="SET NULL"), nullable=True
+    )
+    customer_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("customers.id", ondelete="RESTRICT"), nullable=True
     )
     # Optional cycle/sprint assignment — constrained by the composite FK above.
     cycle_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)

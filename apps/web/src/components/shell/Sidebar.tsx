@@ -3,6 +3,7 @@ import {
   BarChart3,
   BellRing,
   BookOpen,
+  Building2,
   Boxes,
   CalendarClock,
   CalendarDays,
@@ -61,6 +62,7 @@ const workspaceNav: WorkspaceNavItem[] = [
   { to: '/drafts', label: '작업 초안', icon: FilePenLine },
   { to: '/inbox', label: '인박스', icon: BellRing },
   { to: '/work-items', label: '전체 작업', icon: ListChecks },
+  { to: '/customers', label: '고객', icon: Building2 },
   { to: '/projects', label: '프로젝트', icon: FolderKanban, end: true },
   { to: '/templates', label: '템플릿', icon: Copy },
   { to: '/initiatives', label: '이니셔티브', icon: Compass },
@@ -144,8 +146,11 @@ function SidebarContent({
   const me = useMe()
   const capabilities = useWorkspaceCapabilities()
   const initiativesEnabled = capabilities.data?.initiatives.enabled === true
+  const customersEnabled = capabilities.data?.customers.enabled === true
   const workspaceItems = workspaceNav.filter(
-    (item) => item.to !== '/initiatives' || initiativesEnabled,
+    (item) =>
+      (item.to !== '/initiatives' || initiativesEnabled) &&
+      (item.to !== '/customers' || customersEnabled),
   )
 
   const operationItems: WorkspaceNavItem[] = me.data?.is_admin
@@ -157,6 +162,7 @@ function SidebarContent({
         { to: '/admin/ai', label: 'AI 설정', icon: Sparkles },
         { to: '/admin/initiatives', label: 'Initiatives 설정', icon: Compass },
         { to: '/admin/releases', label: 'Releases 설정', icon: Flag },
+        { to: '/admin/customers', label: 'Customers 설정', icon: Building2 },
         { to: '/admin/webhooks', label: 'Webhooks', icon: Webhook },
       ]
     : operationsNav

@@ -4,6 +4,7 @@ import { api } from '@/lib/api'
 import { aiCapabilitiesKey, type AiCapabilities } from '@/features/ai/api'
 
 import {
+  clearCustomersDataCache,
   clearInitiativesDataCache,
   clearReleasesDataCache,
   clearWikiDataCache,
@@ -23,6 +24,7 @@ export type WorkspaceCapabilities = {
   }
   initiatives: WorkspaceFeatureCapability
   releases: WorkspaceFeatureCapability
+  customers: WorkspaceFeatureCapability
 }
 
 export type WorkspaceFeaturePolicy = WorkspaceFeatureCapability & {
@@ -55,11 +57,19 @@ export type ReleasesWorkspaceFeaturePolicy = WorkspaceFeatureCapability & {
   updated_at: string
 }
 
+export type CustomersWorkspaceFeaturePolicy = WorkspaceFeatureCapability & {
+  feature_key: 'customers'
+  updated_by_user_id: string | null
+  updated_by_name: string | null
+  updated_at: string
+}
+
 export const workspaceCapabilitiesKey = ['workspace-capabilities'] as const
 export const wikiPolicyKey = ['admin-workspace-feature', 'wiki'] as const
 export const aiPolicyKey = ['admin-workspace-feature', 'ai'] as const
 export const initiativesPolicyKey = ['admin-workspace-feature', 'initiatives'] as const
 export const releasesPolicyKey = ['admin-workspace-feature', 'releases'] as const
+export const customersPolicyKey = ['admin-workspace-feature', 'customers'] as const
 
 export function useWorkspaceCapabilities() {
   return useQuery({
@@ -209,6 +219,40 @@ export function useUpdateReleasesPolicy() {
     },
     onError: () => {
       void queryClient.invalidateQueries({ queryKey: releasesPolicyKey })
+      void queryClient.invalidateQueries({ queryKey: workspaceCapabilitiesKey })
+    },
+  })
+}
+
+export function useCustomersPolicy() {
+  return useQuery({
+    queryKey: customersPolicyKey,
+    queryFn: () =>
+      api<CustomersWorkspaceFeaturePolicy>('/api/v1/admin/workspace/features/customers'),
+  })
+}
+
+export function useUpdateCustomersPolicy() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ enabled, revision }: WorkspaceFeatureCapability) =>
+      api<CustomersWorkspaceFeaturePolicy>('/api/v1/admin/workspace/features/customers', {
+        method: 'PATCH',
+        headers: { 'If-Match': `"${revision}"` },
+        body: JSON.stringify({ enabled }),
+      }),
+    onSuccess: (policy) => {
+      queryClient.setQueryData(customersPolicyKey, policy)
+      queryClient.setQueryData<WorkspaceCapabilities>(workspaceCapabilitiesKey, (current) =>
+        mergeWorkspaceCapability(current, 'customers', {
+          enabled: policy.enabled,
+          revision: policy.revision,
+        }),
+      )
+      clearCustomersDataCache(queryClient)
+    },
+    onError: () => {
+      void queryClient.invalidateQueries({ queryKey: customersPolicyKey })
       void queryClient.invalidateQueries({ queryKey: workspaceCapabilitiesKey })
     },
   })

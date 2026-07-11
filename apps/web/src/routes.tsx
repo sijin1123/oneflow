@@ -6,6 +6,7 @@ import { LoginPage } from '@/features/auth/LoginPage'
 import { NotFound, RouteError } from '@/components/shell/RouteError'
 import { FilesPage } from '@/features/attachments/FilesPage'
 import { InitiativesPage } from '@/features/initiatives/InitiativesPage'
+import { CustomersPage } from '@/features/customers/CustomersPage'
 import { IntakePage } from '@/features/intake/IntakePage'
 import { DashboardPage } from '@/features/dashboard/DashboardPage'
 import { DocumentEditorPage } from '@/features/documents/DocumentEditorPage'
@@ -28,12 +29,14 @@ import { WikiSettingsPage } from '@/features/admin/WikiSettingsPage'
 import { AiSettingsPage } from '@/features/admin/AiSettingsPage'
 import { InitiativesSettingsPage } from '@/features/admin/InitiativesSettingsPage'
 import { ReleasesSettingsPage } from '@/features/admin/ReleasesSettingsPage'
+import { CustomersSettingsPage } from '@/features/admin/CustomersSettingsPage'
 import { PersonalSettingsPage } from '@/features/settings/PersonalSettingsPage'
 import { SettingsPage } from '@/features/settings/SettingsPage'
 import { AllWorkPage } from '@/features/work-items/AllWorkPage'
 import { WorkItemDraftsPage } from '@/features/work-item-drafts/WorkItemDraftsPage'
 import { WikiRoute } from '@/features/workspace-features/WikiRoute'
 import { InitiativesRoute } from '@/features/workspace-features/InitiativesRoute'
+import { CustomersRoute } from '@/features/workspace-features/CustomersRoute'
 import { BacklogPage } from '@/features/work-packages/BacklogPage'
 import { BoardPage } from '@/features/work-packages/BoardPage'
 import { CyclesPage } from '@/features/cycles/CyclesPage'
@@ -66,6 +69,10 @@ export const router = createBrowserRouter([
       { path: 'inbox', element: <InboxPage /> },
       { path: 'work-items', element: <AllWorkPage /> },
       {
+        path: 'customers',
+        element: <CustomersRoute><CustomersPage /></CustomersRoute>,
+      },
+      {
         path: 'initiatives',
         element: <InitiativesRoute><InitiativesPage /></InitiativesRoute>,
       },
@@ -89,6 +96,7 @@ export const router = createBrowserRouter([
       { path: 'admin/ai', element: <AiSettingsPage /> },
       { path: 'admin/initiatives', element: <InitiativesSettingsPage /> },
       { path: 'admin/releases', element: <ReleasesSettingsPage /> },
+      { path: 'admin/customers', element: <CustomersSettingsPage /> },
       { path: 'settings', element: <PersonalSettingsPage /> },
       { path: 'projects/:projectId/work-packages', element: <ListPage /> },
       { path: 'projects/:projectId/work-packages/:wpId', element: <WorkPackageDetailPage /> },

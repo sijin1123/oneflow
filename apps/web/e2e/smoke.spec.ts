@@ -8,6 +8,7 @@
 import { expect, test, type Page } from '@playwright/test'
 
 import type { Milestone } from '../src/features/milestones/api'
+import type { Customer } from '../src/features/customers/types'
 import type { DataTransferJob } from '../src/features/ops/dataTransfersApi'
 import type { Project, ProjectList } from '../src/features/projects/types'
 import type { ProjectTemplate } from '../src/features/project-templates/api'
@@ -53,7 +54,8 @@ const wpA: WorkPackage = {
   priority: 'high',
   assignee_id: null,
   parent_id: null,
-  milestone_id: null,
+      milestone_id: null,
+      customer_id: null,
   cycle_id: null,
   module_id: null,
   start_date: '2026-07-01',
@@ -182,6 +184,7 @@ const defaultWorkspaceCapabilities = {
   },
   initiatives: { enabled: true, revision: 1 },
   releases: { enabled: true, revision: 1 },
+  customers: { enabled: false, revision: 1 },
 }
 
 test.beforeEach(async ({ page }) => {
@@ -9732,6 +9735,7 @@ async function mockWikiPolicy(
         },
         initiatives: { enabled: true, revision: 1 },
         releases: { enabled: true, revision: 1 },
+        customers: { enabled: false, revision: 1 },
       },
     }),
   )
@@ -10012,6 +10016,7 @@ async function mockInitiativesPolicy(
         },
         initiatives: { enabled, revision },
         releases: { enabled: true, revision: 1 },
+        customers: { enabled: false, revision: 1 },
       },
     }),
   )
@@ -10140,6 +10145,7 @@ async function mockReleasesPolicy(
         },
         initiatives: { enabled: true, revision: 1 },
         releases: { enabled, revision },
+        customers: { enabled: false, revision: 1 },
       },
     }),
   )
@@ -10239,4 +10245,113 @@ test('Releases 정책은 비관리자와 모바일 상태를 안전하게 처리
   await page.reload()
   await expect(page.getByText('접근 권한이 없습니다')).toBeVisible()
   await expect(page.getByRole('switch')).toHaveCount(0)
+})
+
+async function mockCustomersSurface(page: Page) {
+  let enabled = true
+  let revision = 1
+  const customerId = '88888888-8888-4888-8888-888888888888'
+  let customers: Customer[] = [
+    {
+      id: customerId,
+      name: '한빛 고객사',
+      description: '모바일 전환 프로젝트',
+      email: 'team@hanbit.test',
+      url: 'https://example.com',
+      archived_at: null,
+      created_at: '2026-07-11T00:00:00Z',
+      updated_at: '2026-07-11T00:00:00Z',
+      progress: { total: 8, open: 5, done: 3, overdue: 1, project_count: 2 },
+    },
+  ]
+
+  await page.route('**/api/v1/workspace/capabilities', (route) =>
+    route.fulfill({
+      json: {
+        ...defaultWorkspaceCapabilities,
+        customers: { enabled, revision },
+      },
+    }),
+  )
+  await page.route('**/api/v1/admin/workspace/features/customers', async (route) => {
+    if (route.request().method() === 'PATCH') {
+      enabled = (route.request().postDataJSON() as { enabled: boolean }).enabled
+      revision += 1
+    }
+    await route.fulfill({
+      headers: { ETag: `"${revision}"` },
+      json: {
+        feature_key: 'customers',
+        enabled,
+        revision,
+        updated_by_user_id: revision > 1 ? 'me-1' : null,
+        updated_by_name: revision > 1 ? 'Dev User' : null,
+        updated_at: '2026-07-11T09:00:00Z',
+      },
+    })
+  })
+  await page.route('**/api/v1/customers**', async (route) => {
+    const request = route.request()
+    const url = new URL(request.url())
+    if (request.method() === 'POST' && url.pathname === '/api/v1/customers') {
+      const body = request.postDataJSON() as { name: string; email?: string | null }
+      customers = [
+        ...customers,
+        {
+          id: '99999999-8888-4888-8888-888888888888',
+          name: body.name,
+          description: null,
+          email: body.email ?? null,
+          url: null,
+          archived_at: null,
+          created_at: '2026-07-11T01:00:00Z',
+          updated_at: '2026-07-11T01:00:00Z',
+          progress: { total: 0, open: 0, done: 0, overdue: 0, project_count: 0 },
+        },
+      ]
+      await route.fulfill({ status: 201, json: customers.at(-1) })
+      return
+    }
+    await route.fulfill({ json: { items: customers, total: customers.length } })
+  })
+  return { customerId, isEnabled: () => enabled }
+}
+
+test('Customers surface는 고객 관리와 작업 연결을 기능적으로 제공한다', async ({ page }) => {
+  await mockApi(page)
+  const customers = await mockCustomersSurface(page)
+
+  await page.goto('/customers')
+  await expect(page.getByRole('heading', { name: '고객', exact: true })).toBeVisible()
+  await expect(page.getByText('한빛 고객사')).toBeVisible()
+  await expect(page.getByText('8', { exact: true })).toBeVisible()
+  await page.getByRole('button', { name: '고객 만들기' }).first().click()
+  await page.getByRole('textbox', { name: /^이름/ }).fill('새 고객사')
+  await page.getByRole('textbox', { name: /이메일/ }).fill('new@example.com')
+  await page.getByRole('button', { name: '고객 만들기' }).last().click()
+  await expect(page.getByText('새 고객사')).toBeVisible()
+
+  await page.goto(`/projects/${project.id}/work-packages?customer_id=${customers.customerId}`)
+  await expect(page.getByLabel('고객 필터')).toHaveValue(customers.customerId)
+  await page.getByRole('button', { name: '워크패키지 API 구현' }).click()
+  await expect(page.getByLabel('고객')).toBeVisible()
+  await page.getByLabel('고객').selectOption(customers.customerId)
+
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto('/customers')
+  await expect(page.getByText('한빛 고객사')).toBeVisible()
+  expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)).toBe(
+    false,
+  )
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/customers-ui/mobile-customers.png',
+    fullPage: true,
+  })
+
+  await page.goto('/admin/customers')
+  await page.getByRole('switch', { name: 'Customers 사용' }).click()
+  await expect(page.getByRole('switch', { name: 'Customers 사용' })).not.toBeChecked()
+  expect(customers.isEnabled()).toBe(false)
+  await page.goto('/customers')
+  await expect(page.getByText('고객 기능이 비활성화되어 있습니다')).toBeVisible()
 })

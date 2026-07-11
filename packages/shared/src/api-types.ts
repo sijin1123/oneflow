@@ -122,6 +122,24 @@ export interface paths {
         patch: operations["update_ai_policy_api_v1_admin_workspace_features_ai_patch"];
         trace?: never;
     };
+    "/api/v1/admin/workspace/features/customers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Customers Policy */
+        get: operations["get_customers_policy_api_v1_admin_workspace_features_customers_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update Customers Policy */
+        patch: operations["update_customers_policy_api_v1_admin_workspace_features_customers_patch"];
+        trace?: never;
+    };
     "/api/v1/admin/workspace/features/initiatives": {
         parameters: {
             query?: never;
@@ -310,6 +328,76 @@ export interface paths {
          * @description Idempotent remove — a conditional DELETE whose rowcount is ignored.
          */
         delete: operations["delete_reaction_api_v1_comments__comment_id__reactions__emoji__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/customers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Customers */
+        get: operations["list_customers_api_v1_customers_get"];
+        put?: never;
+        /** Create Customer */
+        post: operations["create_customer_api_v1_customers_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/customers/{customer_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Customer */
+        get: operations["get_customer_api_v1_customers__customer_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update Customer */
+        patch: operations["update_customer_api_v1_customers__customer_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/customers/{customer_id}/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Archive Customer */
+        post: operations["archive_customer_api_v1_customers__customer_id__archive_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/customers/{customer_id}/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Restore Customer */
+        post: operations["restore_customer_api_v1_customers__customer_id__restore_post"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -3579,6 +3667,92 @@ export interface components {
             /** Values */
             values: components["schemas"]["CustomValueWrite"][];
         };
+        /** CustomerCreate */
+        CustomerCreate: {
+            /** Description */
+            description?: string | null;
+            /** Email */
+            email?: string | null;
+            /** Name */
+            name: string;
+            /** Url */
+            url?: string | null;
+        };
+        /** CustomerList */
+        CustomerList: {
+            /** Items */
+            items: components["schemas"]["CustomerRead"][];
+            /** Total */
+            total: number;
+        };
+        /** CustomerProgress */
+        CustomerProgress: {
+            /**
+             * Done
+             * @default 0
+             */
+            done: number;
+            /**
+             * Open
+             * @default 0
+             */
+            open: number;
+            /**
+             * Overdue
+             * @default 0
+             */
+            overdue: number;
+            /**
+             * Project Count
+             * @default 0
+             */
+            project_count: number;
+            /**
+             * Total
+             * @default 0
+             */
+            total: number;
+        };
+        /** CustomerRead */
+        CustomerRead: {
+            /** Archived At */
+            archived_at: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Description */
+            description: string | null;
+            /** Email */
+            email: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            progress?: components["schemas"]["CustomerProgress"];
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Url */
+            url: string | null;
+        };
+        /** CustomerUpdate */
+        CustomerUpdate: {
+            /** Description */
+            description?: string | null;
+            /** Email */
+            email?: string | null;
+            /** Name */
+            name?: string | null;
+            /** Url */
+            url?: string | null;
+        };
         /** CycleCreate */
         CycleCreate: {
             /** Description */
@@ -5922,6 +6096,8 @@ export interface components {
             cf_value?: string | null;
             /** Columns */
             columns?: string | null;
+            /** Customer Id */
+            customer_id?: string | null;
             /** Cycle Id */
             cycle_id?: string | null;
             /** Milestone Id */
@@ -6631,6 +6807,8 @@ export interface components {
         WorkPackageCreate: {
             /** Assignee Id */
             assignee_id?: string | null;
+            /** Customer Id */
+            customer_id?: string | null;
             /** Cycle Id */
             cycle_id?: string | null;
             /** Description */
@@ -6717,6 +6895,8 @@ export interface components {
         WorkPackagePatch: {
             /** Assignee Id */
             assignee_id?: string | null;
+            /** Customer Id */
+            customer_id?: string | null;
             /** Cycle Id */
             cycle_id?: string | null;
             /** Description */
@@ -6757,6 +6937,8 @@ export interface components {
             created_by: string | null;
             /** Custom Values */
             custom_values?: components["schemas"]["CustomValueRead"][] | null;
+            /** Customer Id */
+            customer_id: string | null;
             /** Cycle Id */
             cycle_id: string | null;
             /** Description */
@@ -6802,6 +6984,7 @@ export interface components {
         /** WorkspaceCapabilitiesRead */
         WorkspaceCapabilitiesRead: {
             ai: components["schemas"]["AiWorkspaceFeatureCapability"];
+            customers: components["schemas"]["WorkspaceFeatureCapability"];
             initiatives: components["schemas"]["WorkspaceFeatureCapability"];
             releases: components["schemas"]["WorkspaceFeatureCapability"];
             wiki: components["schemas"]["WorkspaceFeatureCapability"];
@@ -7130,6 +7313,77 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AiWorkspaceFeaturePolicyRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_customers_policy_api_v1_admin_workspace_features_customers_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceFeaturePolicyRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_customers_policy_api_v1_admin_workspace_features_customers_patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                "If-Match"?: string | null;
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkspaceFeaturePolicyUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceFeaturePolicyRead"];
                 };
             };
             /** @description Validation Error */
@@ -7597,6 +7851,225 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_customers_api_v1_customers_get: {
+        parameters: {
+            query?: {
+                query?: string | null;
+                include_archived?: boolean;
+                limit?: number;
+                offset?: number;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CustomerList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_customer_api_v1_customers_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CustomerCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CustomerRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_customer_api_v1_customers__customer_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                customer_id: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CustomerRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_customer_api_v1_customers__customer_id__patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                customer_id: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CustomerUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CustomerRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    archive_customer_api_v1_customers__customer_id__archive_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                customer_id: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CustomerRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    restore_customer_api_v1_customers__customer_id__restore_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                customer_id: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CustomerRead"];
+                };
             };
             /** @description Validation Error */
             422: {
@@ -12263,6 +12736,7 @@ export interface operations {
                 type?: ("task" | "bug" | "feature" | "milestone") | null;
                 assignee_id?: string | null;
                 milestone_id?: string | null;
+                customer_id?: string | null;
                 cycle_id?: string | null;
                 no_cycle?: boolean;
                 open_only?: boolean;

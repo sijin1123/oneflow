@@ -4,6 +4,7 @@ import { useSearchParams } from 'react-router-dom'
 import { Select } from '@/components/ui/select'
 import { useCycles } from '@/features/cycles/api'
 import { useCustomFields } from '@/features/custom-fields/api'
+import { useCustomers } from '@/features/customers/api'
 import { useMilestones } from '@/features/milestones/api'
 import { useModules } from '@/features/modules/api'
 import { useMembers } from '@/features/members/api'
@@ -21,7 +22,9 @@ export function Filters({ projectId }: { projectId: string }) {
   const members = useMembers(projectId)
   const capabilities = useWorkspaceCapabilities()
   const releasesEnabled = capabilities.data?.releases.enabled === true
+  const customersEnabled = capabilities.data?.customers.enabled === true
   const milestones = useMilestones(projectId, releasesEnabled)
+  const customers = useCustomers({ includeArchived: true, enabled: customersEnabled })
   const cycles = useCycles(projectId)
   const modules = useModules(projectId)
   const customFields = useCustomFields(projectId)
@@ -34,6 +37,15 @@ export function Filters({ projectId }: { projectId: string }) {
       return next
     }, { replace: true })
   }, [capabilities.isSuccess, releasesEnabled, searchParams, setSearchParams])
+
+  useEffect(() => {
+    if (!capabilities.isSuccess || customersEnabled || !searchParams.has('customer_id')) return
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev)
+      next.delete('customer_id')
+      return next
+    }, { replace: true })
+  }, [capabilities.isSuccess, customersEnabled, searchParams, setSearchParams])
 
   const cfField = searchParams.get('cf_field') ?? ''
   const cfOp = searchParams.get('cf_op') ?? ''
@@ -157,6 +169,24 @@ export function Filters({ projectId }: { projectId: string }) {
           ))}
         </Select>
       </label> : null}
+      {customersEnabled ? (
+        <label className="flex items-center gap-1.5 text-xs text-of-muted">
+          고객
+          <Select
+            aria-label="고객 필터"
+            className="h-7 w-32 text-xs"
+            value={searchParams.get('customer_id') ?? ''}
+            onChange={(e) => set('customer_id', e.target.value)}
+          >
+            <option value="">전체</option>
+            {customers.data?.items.map((customer) => (
+              <option key={customer.id} value={customer.id}>
+                {customer.name}{customer.archived_at ? ' (보관)' : ''}
+              </option>
+            ))}
+          </Select>
+        </label>
+      ) : null}
       <label className="flex items-center gap-1.5 text-xs text-of-muted">
         사이클
         <Select

@@ -6,6 +6,7 @@ from app.models.automation_rule import AutomationRule
 from app.models.comment import WorkPackageComment
 from app.models.cost_entry import CostEntry
 from app.models.custom_field import CustomField, WpCustomValue
+from app.models.customer import Customer
 from app.models.cycle import Cycle
 from app.models.data_transfer_job import DataTransferJob
 from app.models.document import DocumentWorkPackageLink, ProjectDocument
@@ -43,6 +44,7 @@ __all__ = [
     "User",
     "PersonalAccessToken",
     "Project",
+    "Customer",
     "ProjectMember",
     "WorkPackage",
     "WorkspaceFeaturePolicy",

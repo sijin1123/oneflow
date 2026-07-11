@@ -29,6 +29,7 @@ class WorkPackageCreate(BaseModel):
     assignee_id: uuid.UUID | None = None
     parent_id: uuid.UUID | None = None
     milestone_id: uuid.UUID | None = None
+    customer_id: uuid.UUID | None = None
     cycle_id: uuid.UUID | None = None
     module_id: uuid.UUID | None = None
     start_date: date | None = None
@@ -96,6 +97,7 @@ class WorkPackagePatch(BaseModel):
     assignee_id: uuid.UUID | None = None
     parent_id: uuid.UUID | None = None
     milestone_id: uuid.UUID | None = None
+    customer_id: uuid.UUID | None = None
     cycle_id: uuid.UUID | None = None
     module_id: uuid.UUID | None = None
     start_date: date | None = None
@@ -168,6 +170,7 @@ class WorkPackageRead(BaseModel):
     assignee_id: uuid.UUID | None
     parent_id: uuid.UUID | None
     milestone_id: uuid.UUID | None
+    customer_id: uuid.UUID | None
     cycle_id: uuid.UUID | None
     module_id: uuid.UUID | None
     start_date: date | None

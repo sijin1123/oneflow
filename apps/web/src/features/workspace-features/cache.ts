@@ -45,6 +45,20 @@ export function clearReleasesDataCache(queryClient: QueryClient) {
   })
 }
 
+const CUSTOMERS_QUERY_ROOTS = new Set([
+  'customers',
+  'customer',
+  'work-packages',
+  'work-package',
+  'saved-filters',
+])
+
+export function clearCustomersDataCache(queryClient: QueryClient) {
+  queryClient.removeQueries({
+    predicate: (query) => CUSTOMERS_QUERY_ROOTS.has(String(query.queryKey[0])),
+  })
+}
+
 export function mergeWorkspaceCapability<K extends keyof WorkspaceCapabilities>(
   current: WorkspaceCapabilities | undefined,
   key: K,

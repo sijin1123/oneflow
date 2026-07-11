@@ -17,6 +17,7 @@ from app.api.v1 import (
     cost_entries,
     csv_io,
     custom_fields,
+    customers,
     cycles,
     dashboard,
     data_transfers,
@@ -155,6 +156,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(time_entries.router, prefix="/api/v1", tags=["time-entries"])
     app.include_router(dashboard.router, prefix="/api/v1", tags=["dashboard"])
     app.include_router(cost_entries.router, prefix="/api/v1", tags=["cost-entries"])
+    app.include_router(customers.router, prefix="/api/v1", tags=["customers"])
     app.include_router(milestones.router, prefix="/api/v1", tags=["milestones"])
     app.include_router(cycles.router, prefix="/api/v1", tags=["cycles"])
     app.include_router(modules.router, prefix="/api/v1", tags=["modules"])
