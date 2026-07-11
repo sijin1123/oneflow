@@ -44,6 +44,7 @@ import { CyclesPage } from '@/features/cycles/CyclesPage'
 import { CalendarPage } from '@/features/work-packages/CalendarPage'
 import { WorkPackageDetailPage } from '@/features/work-packages/DetailPage'
 import { ListPage } from '@/features/work-packages/ListPage'
+import { ViewsPage } from '@/features/work-packages/ViewsPage'
 // DHTMLX Gantt is heavy — routes that pull it in are code-split (v73.1 R1-⑥).
 const ReportsPage = lazy(() =>
   import('@/features/reports/ReportsPage').then((m) => ({ default: m.ReportsPage })),
@@ -111,6 +112,7 @@ export const router = createBrowserRouter([
       { path: 'projects/:projectId/board', element: <BoardPage /> },
       { path: 'projects/:projectId/backlog', element: <BacklogPage /> },
       { path: 'projects/:projectId/tree', element: <TreePage /> },
+      { path: 'projects/:projectId/views', element: <ViewsPage /> },
       {
         path: 'projects/:projectId/timeline',
         element: (

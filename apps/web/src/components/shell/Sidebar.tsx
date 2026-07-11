@@ -2,6 +2,7 @@ import {
   Activity,
   BarChart3,
   BellRing,
+  Bookmark,
   Building2,
   Boxes,
   CalendarClock,
@@ -78,6 +79,7 @@ const projectNavSections: Array<{ label: string; items: ProjectNavItem[] }> = [
       { path: 'board', label: 'Board', icon: SquareKanban },
       { path: 'backlog', label: 'Backlog', icon: ClipboardList },
       { path: 'tree', label: 'Hierarchy', icon: ListTree },
+      { path: 'views', label: 'Views', icon: Bookmark },
     ],
   },
   {
