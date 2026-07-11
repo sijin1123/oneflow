@@ -261,6 +261,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/data-transfer-jobs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Data Transfer Jobs */
+        get: operations["list_data_transfer_jobs_api_v1_data_transfer_jobs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/data-transfer-jobs/{job_id}/artifact": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Download Data Transfer Artifact */
+        get: operations["download_data_transfer_artifact_api_v1_data_transfer_jobs__job_id__artifact_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/document-comments/{comment_id}": {
         parameters: {
             query?: never;
@@ -1406,6 +1440,23 @@ export interface paths {
          */
         put: operations["put_dashboard_layout_api_v1_projects__project_id__dashboard_layout_put"];
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/data-transfer-jobs/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Export Job */
+        post: operations["create_export_job_api_v1_projects__project_id__data_transfer_jobs_export_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3550,6 +3601,91 @@ export interface components {
             total_work_packages: number;
             /** Type Counts */
             type_counts: components["schemas"]["Bucket"][];
+        };
+        /** DataTransferExportCreated */
+        DataTransferExportCreated: {
+            /** Artifact Filename */
+            artifact_filename: string;
+            /** Artifact Sha256 */
+            artifact_sha256: string;
+            /** Artifact Size Bytes */
+            artifact_size_bytes: number;
+            /** Checksum */
+            checksum: string;
+            /**
+             * Job Id
+             * Format: uuid
+             */
+            job_id: string;
+            /** Row Count */
+            row_count: number;
+        };
+        /** DataTransferJobList */
+        DataTransferJobList: {
+            /** Items */
+            items: components["schemas"]["DataTransferJobRead"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Total */
+            total: number;
+        };
+        /** DataTransferJobRead */
+        DataTransferJobRead: {
+            /** Actor Id */
+            actor_id: string | null;
+            /** Actor Name */
+            actor_name: string;
+            /** Artifact Available */
+            artifact_available: boolean;
+            /** Artifact Filename */
+            artifact_filename: string | null;
+            /** Artifact Sha256 */
+            artifact_sha256: string | null;
+            /** Artifact Size Bytes */
+            artifact_size_bytes: number | null;
+            /** Checksum */
+            checksum: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Direction */
+            direction: string;
+            /** Dry Run */
+            dry_run: boolean;
+            /** Errors Truncated */
+            errors_truncated: boolean;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Inserted Rows */
+            inserted_rows: number;
+            /** Invalid Rows */
+            invalid_rows: number;
+            /** Notes */
+            notes: string[];
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            /** Project Key */
+            project_key: string;
+            /** Project Name */
+            project_name: string;
+            /** Source */
+            source: string;
+            /** Status */
+            status: string;
+            /** Total Rows */
+            total_rows: number;
+            /** Valid Rows */
+            valid_rows: number;
         };
         /**
          * DocumentCommentCreate
@@ -7101,6 +7237,78 @@ export interface operations {
             };
         };
     };
+    list_data_transfer_jobs_api_v1_data_transfer_jobs_get: {
+        parameters: {
+            query?: {
+                project_id?: string | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataTransferJobList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    download_data_transfer_artifact_api_v1_data_transfer_jobs__job_id__artifact_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                job_id: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     delete_document_comment_api_v1_document_comments__comment_id__delete: {
         parameters: {
             query?: never;
@@ -10098,6 +10306,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DashboardLayoutRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_export_job_api_v1_projects__project_id__data_transfer_jobs_export_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataTransferExportCreated"];
                 };
             };
             /** @description Validation Error */

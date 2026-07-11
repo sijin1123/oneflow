@@ -32,10 +32,13 @@ from app.schemas.csv_io import (
     CsvImportResult,
     CsvRowError,
 )
+from app.schemas.data_transfer_job import DataTransferExportCreated
 from app.schemas.work_package import WorkPackageCreate
 from app.services.activity import record_created
+from app.services.data_transfers import persist_import_job, persist_transfer_job
 from app.services.importers import JiraMapResult, map_jira_csv, map_linear_csv
 from app.services.sanitize import sanitize_html
+from app.services.storage import LocalStorage
 from app.services.webhooks import enqueue_work_package_event
 
 router = APIRouter()
@@ -124,6 +127,21 @@ async def export_work_packages_csv(
     user: User = Depends(get_current_user),
 ) -> Response:
     await require_member(session, project_id, user)
+    content, dict_rows, checksum = await _build_export(session, project_id)
+    return Response(
+        content=content,
+        media_type="text/csv; charset=utf-8",
+        headers={
+            "Content-Disposition": 'attachment; filename="work-packages.csv"',
+            "X-OneFlow-Row-Count": str(len(dict_rows)),
+            "X-OneFlow-Checksum": checksum,
+        },
+    )
+
+
+async def _build_export(
+    session: AsyncSession, project_id: uuid.UUID
+) -> tuple[str, list[dict], str]:
     rows = (
         (
             await session.execute(
@@ -144,15 +162,50 @@ async def export_work_packages_csv(
     for r in dict_rows:
         writer.writerow([_guard_formula(_cell(r[c])) for c in IMPORT_COLUMNS])
 
-    return Response(
-        content=buf.getvalue(),
-        media_type="text/csv; charset=utf-8",
-        headers={
-            "Content-Disposition": 'attachment; filename="work-packages.csv"',
-            # Reconciliation headers (건수/체크섬 대사): compare against the import result.
-            "X-OneFlow-Row-Count": str(len(dict_rows)),
-            "X-OneFlow-Checksum": _checksum(dict_rows),
-        },
+    content = buf.getvalue()
+    return content, dict_rows, _checksum(dict_rows)
+
+
+@router.post(
+    "/projects/{project_id}/data-transfer-jobs/export",
+    response_model=DataTransferExportCreated,
+    status_code=201,
+)
+async def create_export_job(
+    project_id: uuid.UUID,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+    settings: Settings = Depends(get_settings),
+) -> DataTransferExportCreated:
+    await require_member(session, project_id, user)
+    content, dict_rows, checksum = await _build_export(session, project_id)
+    filename = f"oneflow-work-packages-{project_id}.csv"
+    job = await persist_transfer_job(
+        session,
+        storage=LocalStorage(settings.storage_dir),
+        project_id=project_id,
+        user=user,
+        direction="export",
+        source="oneflow",
+        dry_run=False,
+        total_rows=len(dict_rows),
+        valid_rows=len(dict_rows),
+        invalid_rows=0,
+        inserted_rows=0,
+        checksum=checksum,
+        artifact=content.encode("utf-8"),
+        artifact_filename=filename,
+        artifact_max_bytes=settings.upload_max_bytes,
+    )
+    assert job.artifact_sha256 is not None
+    assert job.artifact_size_bytes is not None
+    return DataTransferExportCreated(
+        job_id=job.id,
+        row_count=len(dict_rows),
+        checksum=checksum,
+        artifact_sha256=job.artifact_sha256,
+        artifact_filename=filename,
+        artifact_size_bytes=job.artifact_size_bytes,
     )
 
 
@@ -284,10 +337,9 @@ async def import_work_packages_csv(
                 session, settings, "work_package.created", wp, list(data)
             )
         await session.flush()
-        await session.commit()
         inserted = len(valid_models)
 
-    return CsvImportResult(
+    result = CsvImportResult(
         dry_run=body.dry_run,
         total_rows=total,
         valid=len(valid_models),
@@ -296,6 +348,15 @@ async def import_work_packages_csv(
         checksum=_checksum(valid_dicts),
         errors=errors,
     )
+    await persist_import_job(
+        session,
+        storage=LocalStorage(settings.storage_dir),
+        project_id=project_id,
+        user=user,
+        source="oneflow",
+        result=result,
+    )
+    return result
 
 
 async def _run_mapped_import(
@@ -409,7 +470,6 @@ async def _run_mapped_import(
                 session, settings, "work_package.created", wp, list(data)
             )
         await session.flush()
-        await session.commit()
         inserted = len(valid_models)
 
     return CsvImportResult(
@@ -438,9 +498,18 @@ async def import_jira_csv(
     applies row-level isolation, disabled-type rejection, dry-run preview and
     the idempotent-re-upload duplicate guard ("[KEY] Summary" subjects)."""
     await require_member(session, project_id, user, write=True)
-    return await _run_mapped_import(
+    result = await _run_mapped_import(
         session, user, project_id, map_jira_csv(body.content), body.dry_run, settings
     )
+    await persist_import_job(
+        session,
+        storage=LocalStorage(settings.storage_dir),
+        project_id=project_id,
+        user=user,
+        source="jira",
+        result=result,
+    )
+    return result
 
 
 @router.post("/projects/{project_id}/work-packages/import/linear", response_model=CsvImportResult)
@@ -454,6 +523,15 @@ async def import_linear_csv(
     """Linear CSV export → work packages (Pass 25 PR-AQ, PLAN v25.1 contract —
     same pipeline and response shape as the Jira adapter)."""
     await require_member(session, project_id, user, write=True)
-    return await _run_mapped_import(
+    result = await _run_mapped_import(
         session, user, project_id, map_linear_csv(body.content), body.dry_run, settings
     )
+    await persist_import_job(
+        session,
+        storage=LocalStorage(settings.storage_dir),
+        project_id=project_id,
+        user=user,
+        source="linear",
+        result=result,
+    )
+    return result

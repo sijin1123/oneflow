@@ -89,6 +89,12 @@
 
 스크린샷은 `docs/screenshots/redevelopment/wiki-settings-ui/`에 보존했다. `make cleanroom-check`는 frontend/backend license와 filename overlap attestation까지 PASS했으며 신규 외부 의존성은 없다. — attested-independent-derivation
 
+## UI-51 Data Transfers operations surface
+
+`docs/plane-poc-reverse-spec/` D037-D038에서 관찰한 것은 import/export 작업의 미리보기, 결과 이력, 파일 재다운로드 정보구조다. OneFlow 구현은 기존 자체 CSV/Jira/Linear parser와 LocalStorage 위에 migration 0071, PostgreSQL project-scoped retention lock, membership authz, immutable artifact checksum, 자체 Operations history UI를 독립 설계했다. Plane source, package, asset, CSS, DOM, wording, schema는 복사하지 않았다.
+
+스크린샷은 `docs/screenshots/redevelopment/data-transfer-jobs-ui/`에 보존했다. 신규 외부 의존성은 없으며 `make cleanroom-check`와 dependency audit가 PASS했다. — attested-independent-derivation
+
 ## 자동 게이트의 한계(PLAN §10)
 
 리터럴 `@plane/` 문자열·라이선스 텍스트·파일명 수준만 자동 탐지된다. 소스를 보며 변수명만 바꿔 옮기는 이식은 자동으로 잡히지 않으므로, PR 설명의 수동 확인 체크박스("소스 파일을 열어 보며 옮겨 적지 않았음")가 이중 방어선이다.

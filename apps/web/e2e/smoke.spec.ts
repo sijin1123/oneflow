@@ -8,6 +8,7 @@
 import { expect, test, type Page } from '@playwright/test'
 
 import type { Milestone } from '../src/features/milestones/api'
+import type { DataTransferJob } from '../src/features/ops/dataTransfersApi'
 import type { Project, ProjectList } from '../src/features/projects/types'
 import type { ProjectTemplate } from '../src/features/project-templates/api'
 import type { SearchResults } from '../src/features/search/api'
@@ -251,6 +252,9 @@ async function mockApi(page: Page, opts: { conflictOnPatch?: boolean } = {}) {
   })
   await page.route('**/api/v1/projects', (route) =>
     route.fulfill({ json: projects }),
+  )
+  await page.route('**/api/v1/data-transfer-jobs**', (route) =>
+    route.fulfill({ json: { items: [], total: 0, limit: 50, offset: 0 } }),
   )
   await page.route('**/api/v1/search/work-packages**', (route) => {
     const url = new URL(route.request().url())
@@ -3538,29 +3542,76 @@ test('settings/admin IA는 모바일 폭에서 표면별 탐색을 유지한다'
   })
 })
 
-test('운영 허브는 import/export 진입을 모바일에서 유지한다', async ({ page }) => {
-  await page.setViewportSize({ width: 390, height: 844 })
+test('운영 허브는 데이터 이전 이력과 고정 export 파일을 제공한다', async ({ page }) => {
   await mockApi(page)
-  await page.route(`**/api/v1/projects/${project.id}/work-packages/export.csv`, (route) =>
-    route.fulfill({
-      body: 'subject,status\n워크패키지 API 구현,todo\n보드 뷰 구현,in_progress\n',
-      headers: {
-        'content-type': 'text/csv; charset=utf-8',
-        'x-oneflow-row-count': '2',
-        'x-oneflow-checksum': 'abc123',
-      },
-    }),
+  const checksum = 'a'.repeat(64)
+  const job: DataTransferJob = {
+    id: '77777777-7777-4777-8777-777777777777',
+    project_id: project.id,
+    project_key: project.key,
+    project_name: project.name,
+    actor_id: 'me-1',
+    actor_name: 'Dev User',
+    direction: 'export',
+    source: 'oneflow',
+    dry_run: false,
+    status: 'completed',
+    total_rows: 2,
+    valid_rows: 2,
+    invalid_rows: 0,
+    inserted_rows: 0,
+    checksum,
+    errors_truncated: false,
+    notes: [],
+    artifact_available: true,
+    artifact_filename: 'oneflow-work-packages.csv',
+    artifact_size_bytes: 82,
+    artifact_sha256: 'b'.repeat(64),
+    created_at: '2026-07-11T03:00:00Z',
+  }
+  let history: DataTransferJob[] = []
+  let artifactAttempts = 0
+  await page.route('**/api/v1/data-transfer-jobs**', async (route) => {
+    const url = new URL(route.request().url())
+    if (url.pathname.endsWith('/artifact')) {
+      artifactAttempts += 1
+      if (artifactAttempts === 1) {
+        await route.fulfill({ status: 503, json: { detail: 'temporary storage error' } })
+        return
+      }
+      await route.fulfill({
+        body: 'subject,status\n워크패키지 API 구현,todo\n보드 뷰 구현,in_progress\n',
+        headers: { 'content-type': 'text/csv; charset=utf-8' },
+      })
+      return
+    }
+    const selected = url.searchParams.get('project_id')
+    const items = selected ? history.filter((item) => item.project_id === selected) : history
+    await route.fulfill({ json: { items, total: items.length, limit: 50, offset: 0 } })
+  })
+  await page.route(
+    `**/api/v1/projects/${project.id}/data-transfer-jobs/export`,
+    async (route) => {
+      history = [job]
+      await route.fulfill({
+        status: 201,
+        json: {
+          job_id: job.id,
+          row_count: job.total_rows,
+          checksum: job.checksum,
+          artifact_sha256: job.artifact_sha256,
+          artifact_filename: job.artifact_filename,
+          artifact_size_bytes: job.artifact_size_bytes,
+        },
+      })
+    },
   )
 
   await page.goto('/operations')
   await expect(page.getByRole('heading', { name: '운영 허브' })).toBeVisible()
   await expect(page.getByLabel('데이터 작업').getByText('OneFlow 도입')).toBeVisible()
-  await expect(page.getByRole('link', { name: /시스템 상태/ })).toBeVisible()
-  await expectNoHorizontalOverflow(page)
-  await page.screenshot({
-    path: '../../docs/screenshots/redevelopment/operations-hub/mobile.png',
-    fullPage: true,
-  })
+  await expect(page.getByText('기록된 데이터 이전 작업이 없습니다.')).toBeVisible()
+  await expect(page.getByRole('link', { name: '시스템 상태', exact: true })).toBeVisible()
 
   await page.getByRole('link', { name: /가져오기/ }).click()
   await expect(page).toHaveURL(/ops=import/)
@@ -3569,9 +3620,35 @@ test('운영 허브는 import/export 진입을 모바일에서 유지한다', as
   await expect(page).not.toHaveURL(/ops=import/)
 
   await page.goto('/operations')
-  const exportReq = page.waitForRequest((req) => req.url().includes('/work-packages/export.csv'))
+  const exportReq = page.waitForRequest(
+    (req) => req.method() === 'POST' && req.url().includes('/data-transfer-jobs/export'),
+  )
+  const artifactReq = page.waitForRequest((req) => req.url().endsWith(`/${job.id}/artifact`))
   await page.getByRole('button', { name: /내보내기/ }).click()
   await exportReq
+  await artifactReq
+  const historyList = page.getByRole('list', { name: '데이터 이전 이력' })
+  await expect(historyList.getByText('OneFlow 도입')).toBeVisible()
+  await expect(historyList.getByText('OneFlow · 전체 2')).toBeVisible()
+  await expect(page.getByRole('alert')).toContainText('파일은 생성됐지만 자동 다운로드에 실패')
+
+  const repeatReq = page.waitForRequest((req) => req.url().endsWith(`/${job.id}/artifact`))
+  await page.getByRole('button', { name: '다시 받기' }).click()
+  await repeatReq
+  await page.getByLabel('데이터 이전 프로젝트 필터').selectOption(project.id)
+  await expect(historyList.getByText('OneFlow 도입')).toBeVisible()
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/data-transfer-jobs-ui/desktop.png',
+    fullPage: true,
+  })
+
+  await page.setViewportSize({ width: 390, height: 844 })
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/data-transfer-jobs-ui/mobile.png',
+    fullPage: true,
+  })
 })
 
 test('위험 구역에서 보관 확인 후 POST /archive를 보낸다', async ({ page }) => {
