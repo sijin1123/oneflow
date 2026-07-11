@@ -2061,3 +2061,45 @@ Chromium typed mock fixture에서 1440x960과 390x844 viewport를 사용했다. 
 - Backend, database schema, API, permission, environment variable, feature flag 변경 없음.
 - 신규 production dependency 없음.
 - Plane source/package/asset/class/palette/wording/trade dress 복사 없음.
+
+---
+
+# UI-61 Reference-Composition Global Shell 검증 (2026-07-12)
+
+> 범위: D001과 component pattern의 `topbar + app rail + contextual sidebar + content frame`을 OneFlow의 실제 Projects/Wiki/AI/Settings/search/create 계약에 통합한 clean-room shell surface.
+
+| 항목 | 명령 | 결과 |
+|---|---|---:|
+| Typecheck | `npm run typecheck` | **PASS** |
+| Lint | `npm run lint` | **PASS** — 기존 Fast Refresh 경고 3건만 유지 |
+| Production build | `npm run build` | **PASS** — 기존 large chunk 경고만 유지 |
+| Pure unit | `npm run test:unit` | **PASS — 67** |
+| Component | `npm run test:component` | **PASS — 8** |
+| Focused shell/route/authz | `npx playwright test ... --grep "글로벌 레일|모바일 앱 셸|flag OFF|단축키는 편집 필드"` | **PASS** |
+| Full frontend E2E | `npm run test:e2e -- --workers=2 --reporter=dot` | **PASS — 204, opt-in visual QA 1 skipped** |
+| Clean-room | `make cleanroom-check` | **PASS** |
+| Frontend audit | `npm audit --audit-level=high` | **PASS — 0 vulnerabilities** |
+| Diff hygiene | `git diff --check` | **PASS** |
+
+## UI 변경
+
+- 44px 전체 폭 topbar 아래에 64px global rail, 248px contextual sidebar, 유동 content frame을 배치했다.
+- desktop topbar는 실제 workspace profile, route context, 중앙 search entry, notification/account actions를 유지한다. mobile은 compact topbar와 global/context navigation을 한 drawer에 제공한다.
+- 시각 증적은 `docs/screenshots/redevelopment/ui-shell/{desktop-list,mobile-drawer}.png`에 보존한다.
+
+## 기능/API 반영
+
+- Projects는 `/projects`, Wiki는 capability가 켜지고 프로젝트가 있을 때 해당 project documents, AI는 `/my#ai-workspace`, Settings는 admin `/admin` 또는 member `/settings`로 연결된다.
+- 새 작업은 선택/첫 프로젝트의 기존 write permission을 통과할 때만 노출되고 실제 `?new=1` composer로 이동한다.
+- command palette flag ON은 기존 modal/shortcut을 유지하고, OFF는 dead trigger 대신 실제 `/search` 링크를 제공한다. API, DB, migration, environment variable, dependency 변경은 없다.
+
+## 실패와 재검증
+
+1. 첫 focused E2E에서 project root의 first-project expansion, Settings locator 중복, flag-OFF search absence를 발견해 기존 탐색을 복원하고 기능형 `/search` fallback을 추가했다.
+2. 첫 full E2E에서 새 search trigger의 부분 일치 locator와 mobile drawer workspace identity 회귀를 발견해 exact locator와 live workspace profile subtitle로 수정했다.
+3. 다음 full E2E에서 flag-OFF palette 계약, hidden local-search focus, user-directory `전체` 부분 일치를 발견해 fallback을 link로 분리하고 local search responsive visibility와 exact locator를 복원했다.
+4. 최종 full E2E는 204 PASS, 1 opt-in skip으로 종료했다. 독립 Sol reviewer는 출력 없이 정체되어 종료했고, root diff review에서 단일-workspace topbar의 장식성 chevron을 제거한 뒤 focused route test를 재통과했다.
+
+## 이연 항목
+
+- 없음. 모든 visible control은 기존 실제 route, capability, permission, query state에 연결된다.

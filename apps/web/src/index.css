@@ -48,8 +48,10 @@
   --of-control-default: 32px;
   --of-row-compact: 36px;
   --of-row-default: 44px;
-  --of-sidebar-width: 240px;
-  --of-topbar-height: 52px;
+  --of-global-nav-width: 64px;
+  --of-sidebar-width: 248px;
+  --of-navigation-width: calc(var(--of-global-nav-width) + var(--of-sidebar-width));
+  --of-topbar-height: 44px;
   --of-duration-fast: 120ms;
   --of-duration-default: 180ms;
   --of-duration-overlay: 220ms;
