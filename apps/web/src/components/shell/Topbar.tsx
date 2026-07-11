@@ -11,6 +11,7 @@ import { useMe } from '@/features/members/api'
 import { useCanWrite } from '@/features/members/useCanWrite'
 import { NotificationBell } from '@/features/notifications/NotificationBell'
 import { useProjects } from '@/features/projects/api'
+import { useWorkspaceProfile } from '@/features/workspace-profile/api'
 
 import { CommandPalette } from './CommandPalette'
 
@@ -161,6 +162,7 @@ export function Topbar({ onOpenMobileSidebar }: { onOpenMobileSidebar?: () => vo
   const location = useLocation()
   const [searchParams, setSearchParams] = useSearchParams()
   const { data } = useProjects()
+  const workspaceProfile = useWorkspaceProfile()
 
   const project = data?.items.find((p) => p.id === projectId)
   const shellContext = getShellContext(location.pathname, project?.name)
@@ -187,28 +189,42 @@ export function Topbar({ onOpenMobileSidebar }: { onOpenMobileSidebar?: () => vo
   }
 
   return (
-    <header className="flex h-[var(--of-topbar-height)] shrink-0 items-center gap-3 border-b border-of-border-subtle bg-of-surface-raised px-3 md:px-4">
-      <IconButton
-        label="사이드바 열기"
-        className="md:hidden"
-        onClick={onOpenMobileSidebar}
-      >
-        <Menu size={16} />
-      </IconButton>
-
-      <div className="min-w-0">
-        <nav className="flex min-w-0 items-center gap-1.5 text-[11px] text-of-muted" aria-label="현재 위치">
-          <span className="truncate">{shellContext.scope}</span>
-          <span>/</span>
-          <span className="truncate">{shellContext.parent}</span>
-        </nav>
-        <p className="truncate text-sm font-semibold leading-5">{shellContext.title}</p>
+    <header className="flex h-[var(--of-topbar-height)] shrink-0 border-b border-of-border-subtle bg-of-surface-raised">
+      <div className="hidden w-[var(--of-navigation-width)] shrink-0 items-center gap-2 border-r border-of-border-subtle px-3 md:flex">
+        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-of bg-of-accent text-[11px] font-bold text-white shadow-[var(--of-shadow-xs)]">
+          OF
+        </span>
+        <span className="min-w-0 flex-1 truncate text-sm font-semibold">
+          {workspaceProfile.data?.name ?? 'OneFlow'}
+        </span>
       </div>
 
-      <div className="ml-auto flex items-center gap-2">
-        <CommandPalette />
+      <div className="flex min-w-0 flex-1 items-center gap-2 px-2 md:grid md:grid-cols-[minmax(0,1fr)_minmax(14rem,30rem)_minmax(0,1fr)] md:gap-3 md:px-3">
+        <div className="flex min-w-0 items-center gap-2">
+          <IconButton
+            label="사이드바 열기"
+            className="shrink-0 md:hidden"
+            onClick={onOpenMobileSidebar}
+          >
+            <Menu size={16} />
+          </IconButton>
+          <div className="min-w-0">
+            <nav className="hidden min-w-0 items-center gap-1.5 text-[10px] text-of-muted sm:flex" aria-label="현재 위치">
+              <span className="truncate">{shellContext.scope}</span>
+              <span>/</span>
+              <span className="truncate">{shellContext.parent}</span>
+            </nav>
+            <p className="truncate text-sm font-semibold leading-5">{shellContext.title}</p>
+          </div>
+        </div>
+
+        <div className="ml-auto min-w-0 sm:ml-0">
+          <CommandPalette prominent />
+        </div>
+
+        <div className="flex min-w-0 items-center justify-end gap-1.5 md:gap-2">
         {onListView ? (
-          <div className="relative hidden sm:block">
+          <div className="relative hidden xl:block">
             <Search
               size={14}
               className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-of-muted"
@@ -221,12 +237,12 @@ export function Topbar({ onOpenMobileSidebar }: { onOpenMobileSidebar?: () => vo
               }}
               placeholder="제목 검색 (Enter)"
               aria-label="워크패키지 검색"
-              className="w-56 pl-8"
+              className="w-40 pl-8 2xl:w-56"
             />
           </div>
         ) : null}
         {onListView && projectId ? (
-          <div className="hidden md:block">
+          <div className="hidden 2xl:block">
             <NewWorkPackageButton
               projectId={projectId}
               onClick={() =>
@@ -241,6 +257,7 @@ export function Topbar({ onOpenMobileSidebar }: { onOpenMobileSidebar?: () => vo
         ) : null}
         <NotificationBell />
         <AccountMenu />
+        </div>
       </div>
     </header>
   )

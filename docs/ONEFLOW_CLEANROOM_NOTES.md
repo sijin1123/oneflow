@@ -148,3 +148,9 @@ OneFlow 구현은 자체 OKLCH palette, 4/6/8px shape scale, 36/44px density, 52
 리터럴 `@plane/` 문자열·라이선스 텍스트·파일명 수준만 자동 탐지된다. 소스를 보며 변수명만 바꿔 옮기는 이식은 자동으로 잡히지 않으므로, PR 설명의 수동 확인 체크박스("소스 파일을 열어 보며 옮겨 적지 않았음")가 이중 방어선이다.
 
 라이선스 스캔의 범위: 게이트 2번은 `apps/web`의 production 의존성만, 3번은 `apps/api` 백엔드만 자동 스캔한다. 프론트 devDependencies(vitest·playwright·oxlint·typescript 등)와 `packages/shared`(openapi-typescript)는 자동 스캔 대상에서 제외되지만, 전수 수동 확인 결과 모두 MIT/Apache-2.0(카피레프트 0건)임을 확인했다(THIRD-PARTY-NOTICES.md). GPL/AGPL/SSPL·`@plane/*`·`@tiptap-pro`는 전 트리에서 0건.
+
+## UI-61 Reference-Composition Global Shell
+
+`docs/plane-poc-reverse-spec/` D001과 component pattern에서 사용한 입력은 전체 폭 topbar, narrow app rail, contextual sidebar, central content frame이라는 행동·정보구조뿐이다. 사용자 참조 이미지는 레이아웃 관계와 정보 밀도 확인에만 사용했다.
+
+OneFlow 구현은 기존 `AppShell`, workspace profile query, project membership write gate, Wiki/AI capability, React Router route와 자체 OKLCH token을 사용해 독립 작성했다. Plane source, package, asset, CSS, DOM hierarchy, exact dimensions/colors, wording, branding은 복사하지 않았다. 신규 dependency/API/DB/schema/environment 변경은 없다. — attested-independent-derivation

@@ -9,7 +9,7 @@ import {
   useRef,
   useState,
 } from 'react'
-import { useLocation, useNavigate } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -39,7 +39,7 @@ function useDebouncedValue(value: string, delayMs: number) {
   return debounced
 }
 
-export function CommandPalette() {
+export function CommandPalette({ prominent = false }: { prominent?: boolean }) {
   const auth = useAuthConfig()
   const enabled = auth.data?.command_palette_enabled === true
   const capabilities = useWorkspaceCapabilities()
@@ -190,7 +190,30 @@ export function CommandPalette() {
     }
   }
 
-  if (!enabled) return null
+  if (!enabled) {
+    return (
+      <>
+        <Link
+          to="/search"
+          aria-label="전체 검색 페이지"
+          className={cn(
+            'of-touch-target hidden h-7 items-center gap-1.5 rounded-of border border-of-border bg-of-surface px-2 text-xs font-medium text-of-muted transition-colors hover:bg-of-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus sm:inline-flex',
+            prominent ? 'w-full max-w-[30rem]' : 'w-36',
+          )}
+        >
+          <Search size={14} />
+          <span className="truncate">검색</span>
+        </Link>
+        <Link
+          to="/search"
+          aria-label="전체 검색 페이지"
+          className="of-touch-target flex h-8 w-8 items-center justify-center rounded-of text-of-secondary hover:bg-of-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus sm:hidden"
+        >
+          <Search size={16} />
+        </Link>
+      </>
+    )
+  }
 
   return (
     <>
@@ -200,10 +223,16 @@ export function CommandPalette() {
         aria-label="전체 검색 열기"
         aria-keyshortcuts="/ Meta+K Control+K"
         onClick={openPalette}
-        className="hidden w-36 justify-start text-of-muted sm:inline-flex"
+        className={cn(
+          'hidden justify-start text-of-muted sm:inline-flex',
+          prominent ? 'w-full max-w-[30rem]' : 'w-36',
+        )}
       >
         <Search />
-        <span className="truncate">전체 검색</span>
+        <span className="truncate">검색</span>
+        {prominent ? (
+          <span className="ml-auto hidden text-[10px] text-of-muted lg:inline">⌘ K</span>
+        ) : null}
       </Button>
       <Button
         variant="ghost"
