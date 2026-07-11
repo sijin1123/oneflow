@@ -1,5 +1,7 @@
 import type { QueryClient } from '@tanstack/react-query'
 
+import type { WorkspaceCapabilities } from './api'
+
 const WIKI_QUERY_ROOTS = new Set([
   'documents',
   'document',
@@ -14,4 +16,12 @@ export function clearWikiDataCache(queryClient: QueryClient) {
   queryClient.removeQueries({
     predicate: (query) => WIKI_QUERY_ROOTS.has(String(query.queryKey[0])),
   })
+}
+
+export function mergeWorkspaceCapability<K extends keyof WorkspaceCapabilities>(
+  current: WorkspaceCapabilities | undefined,
+  key: K,
+  capability: WorkspaceCapabilities[K],
+) {
+  return current ? { ...current, [key]: capability } : current
 }

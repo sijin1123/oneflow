@@ -13,12 +13,14 @@ class WorkspaceFeaturePolicy(Base):
 
     __tablename__ = "workspace_feature_policies"
     __table_args__ = (
-        CheckConstraint("feature_key IN ('wiki')", name="feature_key_allowed"),
+        CheckConstraint("feature_key IN ('wiki','ai')", name="feature_key_allowed"),
         CheckConstraint("revision >= 1", name="revision_positive"),
     )
 
     feature_key: Mapped[str] = mapped_column(String(40), primary_key=True)
-    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
     revision: Mapped[int] = mapped_column(BigInteger, nullable=False, default=1)
     updated_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True

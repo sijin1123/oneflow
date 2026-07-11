@@ -22,6 +22,7 @@ import {
   ListTree,
   Paperclip,
   Search,
+  Sparkles,
   StickyNote,
   Settings,
   SlidersHorizontal,
@@ -148,6 +149,7 @@ function SidebarContent({
         { to: '/admin/users', label: '사용자 관리', icon: UsersRound },
         { to: '/admin/worklogs', label: 'Worklogs', icon: Clock3 },
         { to: '/admin/wiki', label: 'Wiki 설정', icon: BookOpen },
+        { to: '/admin/ai', label: 'AI 설정', icon: Sparkles },
         { to: '/admin/webhooks', label: 'Webhooks', icon: Webhook },
       ]
     : operationsNav

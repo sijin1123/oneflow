@@ -104,6 +104,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/workspace/features/ai": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Ai Policy */
+        get: operations["get_ai_policy_api_v1_admin_workspace_features_ai_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update Ai Policy */
+        patch: operations["update_ai_policy_api_v1_admin_workspace_features_ai_patch"];
+        trace?: never;
+    };
     "/api/v1/admin/workspace/features/wiki": {
         parameters: {
             query?: never;
@@ -2927,6 +2945,39 @@ export interface components {
              * Format: uuid
              */
             work_package_id: string;
+        };
+        /** AiWorkspaceFeatureCapability */
+        AiWorkspaceFeatureCapability: {
+            /** Deployment Enabled */
+            deployment_enabled: boolean;
+            /** Effective Enabled */
+            effective_enabled: boolean;
+            /** Enabled */
+            enabled: boolean;
+            /** Revision */
+            revision: number;
+        };
+        /** AiWorkspaceFeaturePolicyRead */
+        AiWorkspaceFeaturePolicyRead: {
+            /** Deployment Enabled */
+            deployment_enabled: boolean;
+            /** Effective Enabled */
+            effective_enabled: boolean;
+            /** Enabled */
+            enabled: boolean;
+            /** Feature Key */
+            feature_key: string;
+            /** Revision */
+            revision: number;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Updated By Name */
+            updated_by_name: string | null;
+            /** Updated By User Id */
+            updated_by_user_id: string | null;
         };
         /** AttachmentCreate */
         AttachmentCreate: {
@@ -6714,6 +6765,7 @@ export interface components {
         };
         /** WorkspaceCapabilitiesRead */
         WorkspaceCapabilitiesRead: {
+            ai: components["schemas"]["AiWorkspaceFeatureCapability"];
             wiki: components["schemas"]["WorkspaceFeatureCapability"];
         };
         /** WorkspaceFeatureCapability */
@@ -6969,6 +7021,77 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AdminWorklogOptions"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_ai_policy_api_v1_admin_workspace_features_ai_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AiWorkspaceFeaturePolicyRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_ai_policy_api_v1_admin_workspace_features_ai_patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                "If-Match"?: string | null;
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkspaceFeaturePolicyUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AiWorkspaceFeaturePolicyRead"];
                 };
             };
             /** @description Validation Error */

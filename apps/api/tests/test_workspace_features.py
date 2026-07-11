@@ -18,7 +18,15 @@ async def set_wiki(client, enabled: bool, revision: int = 1):
 async def test_wiki_policy_defaults_and_admin_contract(client):
     capabilities = await client.get("/api/v1/workspace/capabilities")
     assert capabilities.status_code == 200
-    assert capabilities.json() == {"wiki": {"enabled": True, "revision": 1}}
+    assert capabilities.json() == {
+        "wiki": {"enabled": True, "revision": 1},
+        "ai": {
+            "enabled": False,
+            "revision": 1,
+            "deployment_enabled": False,
+            "effective_enabled": False,
+        },
+    }
 
     policy = await client.get("/api/v1/admin/workspace/features/wiki")
     assert policy.status_code == 200
@@ -57,7 +65,13 @@ async def test_wiki_policy_defaults_and_admin_contract(client):
     assert updated.json()["updated_by_name"] == "Dev User"
     assert updated.json()["updated_by_user_id"] is not None
     assert (await client.get("/api/v1/workspace/capabilities")).json() == {
-        "wiki": {"enabled": False, "revision": 2}
+        "wiki": {"enabled": False, "revision": 2},
+        "ai": {
+            "enabled": False,
+            "revision": 1,
+            "deployment_enabled": False,
+            "effective_enabled": False,
+        },
     }
 
     stale = await set_wiki(client, True)
@@ -73,6 +87,14 @@ async def test_wiki_policy_is_admin_only(client, app):
     assert (await client.get("/api/v1/workspace/capabilities")).status_code == 200
     assert (await client.get("/api/v1/admin/workspace/features/wiki")).status_code == 403
     assert (await set_wiki(client, False)).status_code == 403
+    assert (await client.get("/api/v1/admin/workspace/features/ai")).status_code == 403
+    assert (
+        await client.patch(
+            "/api/v1/admin/workspace/features/ai",
+            json={"enabled": False},
+            headers={"If-Match": '"1"'},
+        )
+    ).status_code == 403
 
 
 async def test_wiki_policy_compare_and_swap_allows_one_writer(client):

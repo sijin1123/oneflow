@@ -10,11 +10,14 @@ export type AiSummaryResponse = {
   provider: string
 }
 
+export const aiCapabilitiesKey = ['capabilities'] as const
+
 export function useCapabilities() {
   return useQuery({
-    queryKey: ['capabilities'],
+    queryKey: aiCapabilitiesKey,
     queryFn: () => api<AiCapabilities>('/api/v1/capabilities'),
-    staleTime: Infinity, // flags change only at deploy time
+    staleTime: 10_000,
+    refetchInterval: 30_000,
   })
 }
 

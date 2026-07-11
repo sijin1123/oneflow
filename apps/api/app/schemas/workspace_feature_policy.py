@@ -9,8 +9,14 @@ class WorkspaceFeatureCapability(BaseModel):
     revision: int
 
 
+class AiWorkspaceFeatureCapability(WorkspaceFeatureCapability):
+    deployment_enabled: bool
+    effective_enabled: bool
+
+
 class WorkspaceCapabilitiesRead(BaseModel):
     wiki: WorkspaceFeatureCapability
+    ai: AiWorkspaceFeatureCapability
 
 
 class WorkspaceFeaturePolicyRead(BaseModel):
@@ -24,3 +30,8 @@ class WorkspaceFeaturePolicyRead(BaseModel):
 
 class WorkspaceFeaturePolicyUpdate(BaseModel):
     enabled: bool
+
+
+class AiWorkspaceFeaturePolicyRead(WorkspaceFeaturePolicyRead):
+    deployment_enabled: bool
+    effective_enabled: bool

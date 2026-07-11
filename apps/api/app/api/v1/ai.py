@@ -20,6 +20,7 @@ from app.models.user import User
 from app.models.work_package import WorkPackage
 from app.schemas.ai import AiCapabilities, AiSummaryResponse
 from app.services.ai_summary import PROVIDER, summarize_work_package
+from app.services.workspace_features import ai_effective_enabled
 
 router = APIRouter()
 
@@ -27,10 +28,11 @@ router = APIRouter()
 @router.get("/capabilities", response_model=AiCapabilities)
 async def capabilities(
     settings: Settings = Depends(get_settings),
+    session: AsyncSession = Depends(get_session),
     user: User = Depends(get_current_user),
 ) -> AiCapabilities:
     """Runtime feature flags the UI reads to decide which optional controls to show."""
-    return AiCapabilities(ai_summary_enabled=settings.ai_summary_enabled)
+    return AiCapabilities(ai_summary_enabled=await ai_effective_enabled(session, settings))
 
 
 @router.post("/work-packages/{wp_id}/summary", response_model=AiSummaryResponse)
@@ -40,7 +42,7 @@ async def summarize(
     session: AsyncSession = Depends(get_session),
     user: User = Depends(get_current_user),
 ) -> AiSummaryResponse:
-    if not settings.ai_summary_enabled:
+    if not await ai_effective_enabled(session, settings):
         raise HTTPException(status_code=503, detail="AI 요약 기능이 비활성화되어 있습니다")
 
     wp = (

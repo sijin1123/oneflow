@@ -3,7 +3,36 @@ import test from 'node:test'
 
 import { QueryClient } from '@tanstack/react-query'
 
-import { clearWikiDataCache } from './cache.ts'
+import { clearWikiDataCache, mergeWorkspaceCapability } from './cache.ts'
+
+const capabilities = {
+  wiki: { enabled: true, revision: 3 },
+  ai: {
+    enabled: false,
+    revision: 2,
+    deployment_enabled: true,
+    effective_enabled: false,
+  },
+}
+
+test('workspace policy cache updates one capability without losing the other', () => {
+  const ai = mergeWorkspaceCapability(capabilities, 'ai', {
+    enabled: true,
+    revision: 3,
+    deployment_enabled: true,
+    effective_enabled: true,
+  })
+  assert.equal(ai?.wiki.revision, 3)
+  assert.equal(ai?.ai.effective_enabled, true)
+
+  const wiki = mergeWorkspaceCapability(capabilities, 'wiki', {
+    enabled: false,
+    revision: 4,
+  })
+  assert.equal(wiki?.ai.revision, 2)
+  assert.equal(wiki?.wiki.enabled, false)
+  assert.equal(mergeWorkspaceCapability(undefined, 'wiki', capabilities.wiki), undefined)
+})
 
 test('Wiki policy changes evict Wiki/search data and preserve unrelated caches', () => {
   const queryClient = new QueryClient()
