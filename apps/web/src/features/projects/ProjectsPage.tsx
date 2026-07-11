@@ -27,6 +27,7 @@ import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { ApiError } from '@/lib/api'
 import { cn } from '@/lib/utils'
+import { useWorkspaceCapabilities } from '@/features/workspace-features/api'
 
 import { useCreateProject, useProjects } from './api'
 import { SORT_KEYS, SORT_LABELS, sortProjects, type ProjectSortKey, type SortDir } from './sort'
@@ -428,6 +429,14 @@ export function ProjectsPage() {
   const [sort, setSort] = useState<{ key: ProjectSortKey; dir: SortDir }>(loadSort)
   const [query, setQuery] = useState('')
   const [creating, setCreating] = useState(false)
+  const capabilities = useWorkspaceCapabilities()
+  const initiativesEnabled = capabilities.data?.initiatives.enabled === true
+  const availableColumns = initiativesEnabled
+    ? ROLLUP_COLUMNS
+    : ROLLUP_COLUMNS.filter((column) => column.key !== 'initiatives')
+  const visibleColumns = columns.filter(
+    (column) => column !== 'initiatives' || initiativesEnabled,
+  )
 
   const { data, isPending, isFetching, isError, error, refetch } = useProjects(includeArchived)
 
@@ -481,7 +490,7 @@ export function ProjectsPage() {
             <p className="text-[11px] font-medium uppercase text-of-muted">Workspace directory</p>
             <h1 className="mt-1 text-base font-semibold">프로젝트</h1>
             <p className="mt-1 max-w-3xl text-xs leading-5 text-of-muted">
-              워크스페이스 프로젝트를 상태, 작업 규모, 이니셔티브 연결 기준으로 스캔합니다.
+              워크스페이스 프로젝트를 상태와 작업 규모 기준으로 스캔합니다.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -499,7 +508,9 @@ export function ProjectsPage() {
         <SummaryMetric label="보관" value={summary.archived} />
         <SummaryMetric label="열린 작업" value={summary.open} />
         <SummaryMetric label="기한 초과" value={summary.overdue} tone={summary.overdue > 0 ? 'danger' : 'neutral'} />
-        <SummaryMetric label="연결 이니셔티브" value={summary.initiatives} />
+        {initiativesEnabled ? (
+          <SummaryMetric label="연결 이니셔티브" value={summary.initiatives} />
+        ) : null}
       </section>
 
       {creating ? <NewProjectForm onClose={() => setCreating(false)} /> : null}
@@ -577,7 +588,7 @@ export function ProjectsPage() {
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-48">
               <DropdownMenuLabel>프로젝트 열</DropdownMenuLabel>
-              {ROLLUP_COLUMNS.map((column) => (
+              {availableColumns.map((column) => (
                 <DropdownMenuCheckboxItem
                   key={column.key}
                   checked={columns.includes(column.key)}
@@ -633,7 +644,7 @@ export function ProjectsPage() {
               <ProjectRow
                 key={project.id}
                 project={project}
-                columns={columns}
+                columns={visibleColumns}
                 onOpenInitiative={(id) => navigate(`/initiatives?highlight=${id}`)}
               />
             ))}

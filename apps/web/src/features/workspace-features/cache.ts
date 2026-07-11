@@ -18,6 +18,19 @@ export function clearWikiDataCache(queryClient: QueryClient) {
   })
 }
 
+const INITIATIVES_QUERY_ROOTS = new Set([
+  'initiatives',
+  'projects',
+  'unified-search',
+  'command-palette-search',
+])
+
+export function clearInitiativesDataCache(queryClient: QueryClient) {
+  queryClient.removeQueries({
+    predicate: (query) => INITIATIVES_QUERY_ROOTS.has(String(query.queryKey[0])),
+  })
+}
+
 export function mergeWorkspaceCapability<K extends keyof WorkspaceCapabilities>(
   current: WorkspaceCapabilities | undefined,
   key: K,

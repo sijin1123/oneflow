@@ -22,8 +22,17 @@ from app.schemas.initiative import (
     InitiativeUpdate,
 )
 from app.services.health import apply_health_patch
+from app.services.workspace_features import INITIATIVES_FEATURE, feature_enabled
 
-router = APIRouter()
+
+async def _require_initiatives_enabled(
+    session: AsyncSession = Depends(get_session),
+) -> None:
+    if not await feature_enabled(session, INITIATIVES_FEATURE):
+        raise HTTPException(status_code=404, detail="not found")
+
+
+router = APIRouter(dependencies=[Depends(_require_initiatives_enabled)])
 
 # Visibility contract (PLAN P3-3 → PR-L): an initiative is visible if you
 # created it OR you are a member of at least one connected project. Roll-ups

@@ -33,6 +33,7 @@ export function SearchPage() {
   const navigate = useNavigate()
   const capabilities = useWorkspaceCapabilities()
   const wikiEnabled = capabilities.data?.wiki.enabled === true
+  const initiativesEnabled = capabilities.data?.initiatives.enabled === true
 
   const { data, isFetching, isError, error, refetch } = useUnifiedSearch(q)
 
@@ -64,7 +65,10 @@ export function SearchPage() {
   }
 
   const trimmedQuery = q.trim()
-  const summaries = useMemo(() => groupSummaries(data, wikiEnabled), [data, wikiEnabled])
+  const summaries = useMemo(
+    () => groupSummaries(data, wikiEnabled, initiativesEnabled),
+    [data, initiativesEnabled, wikiEnabled],
+  )
   const totalReturned = summaries.reduce((sum, group) => sum + group.returned, 0)
   const empty = data ? totalReturned === 0 : false
   const waitingForQuery = trimmedQuery.length < 2
@@ -276,29 +280,35 @@ export function SearchPage() {
             ))}
           </GroupSection>
 
-          <GroupSection
-            icon={Compass}
-            title="이니셔티브"
-            returned={data.initiatives.returned}
-            truncated={data.initiatives.truncated}
-          >
-            {data.initiatives.items.map((item) => (
-              <ResultRow
-                key={item.id}
-                icon={Compass}
-                title={item.name}
-                meta={item.state}
-                onClick={() => navigate(`/initiatives?highlight=${item.id}`)}
-              />
-            ))}
-          </GroupSection>
+          {initiativesEnabled ? (
+            <GroupSection
+              icon={Compass}
+              title="이니셔티브"
+              returned={data.initiatives.returned}
+              truncated={data.initiatives.truncated}
+            >
+              {data.initiatives.items.map((item) => (
+                <ResultRow
+                  key={item.id}
+                  icon={Compass}
+                  title={item.name}
+                  meta={item.state}
+                  onClick={() => navigate(`/initiatives?highlight=${item.id}`)}
+                />
+              ))}
+            </GroupSection>
+          ) : null}
         </div>
       )}
     </div>
   )
 }
 
-function groupSummaries(data: UnifiedSearchResults | undefined, includeDocuments: boolean) {
+function groupSummaries(
+  data: UnifiedSearchResults | undefined,
+  includeDocuments: boolean,
+  includeInitiatives: boolean,
+) {
   if (!data) return []
   return [
     { key: 'work', label: '작업', returned: data.work_packages.returned, icon: ListChecks },
@@ -308,7 +318,16 @@ function groupSummaries(data: UnifiedSearchResults | undefined, includeDocuments
     { key: 'meetings', label: '회의', returned: data.meetings.returned, icon: CalendarClock },
     { key: 'cycles', label: '사이클', returned: data.cycles.returned, icon: CalendarDays },
     { key: 'modules', label: '모듈', returned: data.modules.returned, icon: Boxes },
-    { key: 'initiatives', label: '이니셔티브', returned: data.initiatives.returned, icon: Compass },
+    ...(includeInitiatives
+      ? [
+          {
+            key: 'initiatives',
+            label: '이니셔티브',
+            returned: data.initiatives.returned,
+            icon: Compass,
+          },
+        ]
+      : []),
   ].filter((group) => group.returned > 0)
 }
 

@@ -26,11 +26,13 @@ import { WebhooksPage } from '@/features/admin/WebhooksPage'
 import { WorklogsPage } from '@/features/admin/WorklogsPage'
 import { WikiSettingsPage } from '@/features/admin/WikiSettingsPage'
 import { AiSettingsPage } from '@/features/admin/AiSettingsPage'
+import { InitiativesSettingsPage } from '@/features/admin/InitiativesSettingsPage'
 import { PersonalSettingsPage } from '@/features/settings/PersonalSettingsPage'
 import { SettingsPage } from '@/features/settings/SettingsPage'
 import { AllWorkPage } from '@/features/work-items/AllWorkPage'
 import { WorkItemDraftsPage } from '@/features/work-item-drafts/WorkItemDraftsPage'
 import { WikiRoute } from '@/features/workspace-features/WikiRoute'
+import { InitiativesRoute } from '@/features/workspace-features/InitiativesRoute'
 import { BacklogPage } from '@/features/work-packages/BacklogPage'
 import { BoardPage } from '@/features/work-packages/BoardPage'
 import { CyclesPage } from '@/features/cycles/CyclesPage'
@@ -62,7 +64,10 @@ export const router = createBrowserRouter([
       { path: 'drafts', element: <WorkItemDraftsPage /> },
       { path: 'inbox', element: <InboxPage /> },
       { path: 'work-items', element: <AllWorkPage /> },
-      { path: 'initiatives', element: <InitiativesPage /> },
+      {
+        path: 'initiatives',
+        element: <InitiativesRoute><InitiativesPage /></InitiativesRoute>,
+      },
       { path: 'projects', element: <ProjectsPage /> },
       { path: 'search', element: <SearchPage /> },
       { path: 'templates', element: <TemplatesPage /> },
@@ -81,6 +86,7 @@ export const router = createBrowserRouter([
       { path: 'admin/worklogs', element: <WorklogsPage /> },
       { path: 'admin/wiki', element: <WikiSettingsPage /> },
       { path: 'admin/ai', element: <AiSettingsPage /> },
+      { path: 'admin/initiatives', element: <InitiativesSettingsPage /> },
       { path: 'settings', element: <PersonalSettingsPage /> },
       { path: 'projects/:projectId/work-packages', element: <ListPage /> },
       { path: 'projects/:projectId/work-packages/:wpId', element: <WorkPackageDetailPage /> },

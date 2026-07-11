@@ -188,7 +188,18 @@ async function mockApi(page: Page, opts: { conflictOnPatch?: boolean } = {}) {
   // request wiring without relying on a backend fixture.
   let personalNotes: PersonalNoteFixture[] = []
   await page.route('**/api/v1/workspace/capabilities', (route) =>
-    route.fulfill({ json: { wiki: { enabled: true, revision: 1 } } }),
+    route.fulfill({
+      json: {
+        wiki: { enabled: true, revision: 1 },
+        ai: {
+          enabled: false,
+          revision: 1,
+          deployment_enabled: false,
+          effective_enabled: false,
+        },
+        initiatives: { enabled: true, revision: 1 },
+      },
+    }),
   )
   await page.route('**/api/v1/me/personal-notes**', async (route) => {
     const request = route.request()
@@ -9703,7 +9714,18 @@ async function mockWikiPolicy(
   const requests: string[] = []
 
   await page.route('**/api/v1/workspace/capabilities', (route) =>
-    route.fulfill({ json: { wiki: { enabled, revision } } }),
+    route.fulfill({
+      json: {
+        wiki: { enabled, revision },
+        ai: {
+          enabled: false,
+          revision: 1,
+          deployment_enabled: false,
+          effective_enabled: false,
+        },
+        initiatives: { enabled: true, revision: 1 },
+      },
+    }),
   )
   await page.route('**/api/v1/admin/workspace/features/wiki', async (route) => {
     if (options.forbidden) {
@@ -9959,4 +9981,131 @@ test('AI workspace 정책 mobile surface는 가로 overflow 없이 동작한다'
     path: '../../docs/screenshots/redevelopment/ai-policy-ui/mobile-settings.png',
     fullPage: true,
   })
+})
+
+async function mockInitiativesPolicy(
+  page: Page,
+  options: { staleFirstPatch?: boolean; forbidden?: boolean } = {},
+) {
+  let enabled = true
+  let revision = 1
+  let patchCount = 0
+  const requests: string[] = []
+
+  await page.route('**/api/v1/workspace/capabilities', (route) =>
+    route.fulfill({
+      json: {
+        wiki: { enabled: true, revision: 1 },
+        ai: {
+          enabled: false,
+          revision: 1,
+          deployment_enabled: false,
+          effective_enabled: false,
+        },
+        initiatives: { enabled, revision },
+      },
+    }),
+  )
+  await page.route('**/api/v1/admin/workspace/features/initiatives', async (route) => {
+    if (options.forbidden) {
+      await route.fulfill({ status: 403, json: { detail: 'workspace admin required' } })
+      return
+    }
+    if (route.request().method() === 'PATCH') {
+      patchCount += 1
+      requests.push(route.request().headers()['if-match'] ?? '')
+      const body = route.request().postDataJSON() as { enabled: boolean }
+      if (options.staleFirstPatch && patchCount === 1) {
+        enabled = false
+        revision = 2
+        await route.fulfill({
+          status: 412,
+          headers: { ETag: '"2"' },
+          json: { detail: { code: 'stale_revision', current_revision: 2 } },
+        })
+        return
+      }
+      enabled = body.enabled
+      revision += 1
+    }
+    await route.fulfill({
+      headers: { ETag: `"${revision}"` },
+      json: {
+        feature_key: 'initiatives',
+        enabled,
+        revision,
+        updated_by_user_id: patchCount ? 'me-1' : null,
+        updated_by_name: patchCount ? 'Dev User' : null,
+        updated_at: '2026-07-11T09:00:00Z',
+      },
+    })
+  })
+  return { requests }
+}
+
+test('Initiatives 정책은 navigation과 API surface를 함께 끄고 복구한다', async ({ page }) => {
+  await mockApi(page)
+  const policy = await mockInitiativesPolicy(page)
+  let initiativeRequests = 0
+  await page.route('**/api/v1/initiatives', (route) => {
+    initiativeRequests += 1
+    return route.fulfill({ json: { items: [], total: 0 } })
+  })
+  await page.goto('/admin/initiatives')
+
+  const toggle = page.getByRole('switch', { name: '이니셔티브 사용' })
+  await expect(toggle).toBeChecked()
+  await expect(page.getByRole('link', { name: '이니셔티브', exact: true })).toBeVisible()
+  await toggle.click()
+  await expect(toggle).not.toBeChecked()
+  await expect(page.getByRole('link', { name: '이니셔티브', exact: true })).toHaveCount(0)
+  expect(policy.requests).toEqual(['"1"'])
+
+  await page.goto('/reports')
+  await expect(page.getByRole('link', { name: '이니셔티브', exact: true })).toHaveCount(0)
+
+  initiativeRequests = 0
+  await page.goto('/initiatives')
+  await expect(page.getByText('이니셔티브가 비활성화되어 있습니다')).toBeVisible()
+  expect(initiativeRequests).toBe(0)
+
+  await page.goto('/admin/initiatives')
+  await page.getByRole('switch', { name: '이니셔티브 사용' }).click()
+  await expect(page.getByRole('switch', { name: '이니셔티브 사용' })).toBeChecked()
+  expect(policy.requests).toEqual(['"1"', '"2"'])
+
+  await page.goto('/initiatives')
+  await expect(page.getByRole('heading', { name: '이니셔티브', exact: true })).toBeVisible()
+  expect(initiativeRequests).toBe(1)
+})
+
+test('Initiatives 정책은 stale revision을 최신 상태로 복구한다', async ({ page }) => {
+  await mockApi(page)
+  await mockInitiativesPolicy(page, { staleFirstPatch: true })
+  await page.goto('/admin/initiatives')
+  const toggle = page.getByRole('switch', { name: '이니셔티브 사용' })
+  await toggle.click()
+  await expect(page.getByRole('alert')).toContainText('다른 관리자가 정책을 변경했습니다')
+  await expect(toggle).not.toBeChecked()
+  await expect(page.getByText('정책 revision 2')).toBeVisible()
+})
+
+test('Initiatives 정책은 비관리자와 모바일 상태를 안전하게 처리한다', async ({ page }) => {
+  await mockApi(page)
+  await mockInitiativesPolicy(page)
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto('/admin/initiatives')
+  await expect(page.getByRole('heading', { name: 'Initiatives', exact: true })).toBeVisible()
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)
+  expect(overflow).toBe(false)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/initiatives-policy-ui/mobile-settings.png',
+    fullPage: true,
+  })
+
+  await page.unroute('**/api/v1/admin/workspace/features/initiatives')
+  await mockInitiativesPolicy(page, { forbidden: true })
+  await page.reload()
+  await expect(page.getByText('접근 권한이 없습니다')).toBeVisible()
+  await expect(page.getByRole('switch')).toHaveCount(0)
 })

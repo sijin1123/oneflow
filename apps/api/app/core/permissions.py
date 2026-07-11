@@ -312,6 +312,9 @@ ENDPOINT_ALLOWLIST: dict[str, str] = {
     ),
     "PATCH /api/v1/admin/workspace/features/wiki": "워크스페이스 admin 기능 정책 — is_admin 전용",
     "PATCH /api/v1/admin/workspace/features/ai": "워크스페이스 admin AI 정책 — is_admin 전용",
+    "PATCH /api/v1/admin/workspace/features/initiatives": (
+        "워크스페이스 admin 이니셔티브 정책 — is_admin 전용"
+    ),
     "POST /api/v1/project-templates": "워크스페이스 템플릿 — 생성자 또는 활성 admin 관리",
     "POST /api/v1/project-templates/{template_id}/revisions": (
         "워크스페이스 템플릿 — 생성자 또는 활성 admin 관리"

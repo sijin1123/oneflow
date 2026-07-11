@@ -3,7 +3,11 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import { aiCapabilitiesKey, type AiCapabilities } from '@/features/ai/api'
 
-import { clearWikiDataCache, mergeWorkspaceCapability } from './cache'
+import {
+  clearInitiativesDataCache,
+  clearWikiDataCache,
+  mergeWorkspaceCapability,
+} from './cache'
 
 export type WorkspaceFeatureCapability = {
   enabled: boolean
@@ -16,6 +20,7 @@ export type WorkspaceCapabilities = {
     deployment_enabled: boolean
     effective_enabled: boolean
   }
+  initiatives: WorkspaceFeatureCapability
 }
 
 export type WorkspaceFeaturePolicy = WorkspaceFeatureCapability & {
@@ -34,9 +39,17 @@ export type AiWorkspaceFeaturePolicy = WorkspaceFeatureCapability & {
   updated_at: string
 }
 
+export type InitiativesWorkspaceFeaturePolicy = WorkspaceFeatureCapability & {
+  feature_key: 'initiatives'
+  updated_by_user_id: string | null
+  updated_by_name: string | null
+  updated_at: string
+}
+
 export const workspaceCapabilitiesKey = ['workspace-capabilities'] as const
 export const wikiPolicyKey = ['admin-workspace-feature', 'wiki'] as const
 export const aiPolicyKey = ['admin-workspace-feature', 'ai'] as const
+export const initiativesPolicyKey = ['admin-workspace-feature', 'initiatives'] as const
 
 export function useWorkspaceCapabilities() {
   return useQuery({
@@ -114,6 +127,45 @@ export function useUpdateAiPolicy() {
     onError: () => {
       void queryClient.invalidateQueries({ queryKey: aiPolicyKey })
       void queryClient.invalidateQueries({ queryKey: aiCapabilitiesKey })
+    },
+  })
+}
+
+export function useInitiativesPolicy() {
+  return useQuery({
+    queryKey: initiativesPolicyKey,
+    queryFn: () =>
+      api<InitiativesWorkspaceFeaturePolicy>(
+        '/api/v1/admin/workspace/features/initiatives',
+      ),
+  })
+}
+
+export function useUpdateInitiativesPolicy() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ enabled, revision }: WorkspaceFeatureCapability) =>
+      api<InitiativesWorkspaceFeaturePolicy>(
+        '/api/v1/admin/workspace/features/initiatives',
+        {
+          method: 'PATCH',
+          headers: { 'If-Match': `"${revision}"` },
+          body: JSON.stringify({ enabled }),
+        },
+      ),
+    onSuccess: (policy) => {
+      queryClient.setQueryData(initiativesPolicyKey, policy)
+      queryClient.setQueryData<WorkspaceCapabilities>(workspaceCapabilitiesKey, (current) =>
+        mergeWorkspaceCapability(current, 'initiatives', {
+          enabled: policy.enabled,
+          revision: policy.revision,
+        }),
+      )
+      clearInitiativesDataCache(queryClient)
+    },
+    onError: () => {
+      void queryClient.invalidateQueries({ queryKey: initiativesPolicyKey })
+      void queryClient.invalidateQueries({ queryKey: workspaceCapabilitiesKey })
     },
   })
 }

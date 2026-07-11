@@ -17,7 +17,12 @@ from app.schemas.workspace_feature_policy import (
     WorkspaceFeaturePolicyRead,
     WorkspaceFeaturePolicyUpdate,
 )
-from app.services.workspace_features import AI_FEATURE, WIKI_FEATURE, feature_policy
+from app.services.workspace_features import (
+    AI_FEATURE,
+    INITIATIVES_FEATURE,
+    WIKI_FEATURE,
+    feature_policy,
+)
 
 router = APIRouter()
 
@@ -75,6 +80,7 @@ async def workspace_capabilities(
     del user
     wiki = await feature_policy(session)
     ai = await feature_policy(session, AI_FEATURE)
+    initiatives = await feature_policy(session, INITIATIVES_FEATURE)
     deployment_enabled = settings.ai_summary_enabled
     return WorkspaceCapabilitiesRead(
         wiki=WorkspaceFeatureCapability(enabled=wiki.enabled, revision=wiki.revision),
@@ -83,6 +89,10 @@ async def workspace_capabilities(
             revision=ai.revision,
             deployment_enabled=deployment_enabled,
             effective_enabled=deployment_enabled and ai.enabled,
+        ),
+        initiatives=WorkspaceFeatureCapability(
+            enabled=initiatives.enabled,
+            revision=initiatives.revision,
         ),
     )
 
@@ -210,3 +220,62 @@ async def update_ai_policy(
     await session.commit()
     response.headers["ETag"] = _etag(row.revision)
     return _ai_read(row, settings)
+
+
+@router.get(
+    "/admin/workspace/features/initiatives",
+    response_model=WorkspaceFeaturePolicyRead,
+)
+async def get_initiatives_policy(
+    response: Response,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+) -> WorkspaceFeaturePolicyRead:
+    _require_admin(user)
+    row = await feature_policy(session, INITIATIVES_FEATURE)
+    response.headers["ETag"] = _etag(row.revision)
+    return _read(row)
+
+
+@router.patch(
+    "/admin/workspace/features/initiatives",
+    response_model=WorkspaceFeaturePolicyRead,
+)
+async def update_initiatives_policy(
+    body: WorkspaceFeaturePolicyUpdate,
+    response: Response,
+    if_match: str | None = Header(default=None, alias="If-Match"),
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+) -> WorkspaceFeaturePolicyRead:
+    _require_admin(user)
+    expected = _expected_revision(if_match)
+    row = (
+        await session.execute(
+            update(WorkspaceFeaturePolicy)
+            .where(
+                WorkspaceFeaturePolicy.feature_key == INITIATIVES_FEATURE,
+                WorkspaceFeaturePolicy.revision == expected,
+            )
+            .values(
+                enabled=body.enabled,
+                revision=WorkspaceFeaturePolicy.revision + 1,
+                updated_by_user_id=user.id,
+                updated_by_name=user.display_name,
+                updated_at=func.now(),
+            )
+            .returning(WorkspaceFeaturePolicy)
+        )
+    ).scalar_one_or_none()
+    if row is None:
+        current = await feature_policy(session, INITIATIVES_FEATURE)
+        current_revision = current.revision
+        await session.rollback()
+        raise HTTPException(
+            status_code=412,
+            detail={"code": "stale_revision", "current_revision": current_revision},
+            headers={"ETag": _etag(current_revision)},
+        )
+    await session.commit()
+    response.headers["ETag"] = _etag(row.revision)
+    return _read(row)
