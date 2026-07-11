@@ -27,6 +27,7 @@ async def test_wiki_policy_defaults_and_admin_contract(client):
             "effective_enabled": False,
         },
         "initiatives": {"enabled": True, "revision": 1},
+        "releases": {"enabled": True, "revision": 1},
     }
 
     policy = await client.get("/api/v1/admin/workspace/features/wiki")
@@ -74,6 +75,7 @@ async def test_wiki_policy_defaults_and_admin_contract(client):
             "effective_enabled": False,
         },
         "initiatives": {"enabled": True, "revision": 1},
+        "releases": {"enabled": True, "revision": 1},
     }
 
     stale = await set_wiki(client, True)
@@ -105,6 +107,54 @@ async def test_wiki_policy_is_admin_only(client, app):
             headers={"If-Match": '"1"'},
         )
     ).status_code == 403
+    assert (await client.get("/api/v1/admin/workspace/features/releases")).status_code == 403
+    assert (
+        await client.patch(
+            "/api/v1/admin/workspace/features/releases",
+            json={"enabled": False},
+            headers={"If-Match": '"1"'},
+        )
+    ).status_code == 403
+
+
+async def test_releases_policy_admin_contract_and_cas(client):
+    policy = await client.get("/api/v1/admin/workspace/features/releases")
+    assert policy.status_code == 200
+    assert policy.headers["etag"] == '"1"'
+    assert policy.json()["feature_key"] == "releases"
+    assert policy.json()["enabled"] is True
+    assert policy.json()["updated_by_user_id"] is None
+
+    missing = await client.patch(
+        "/api/v1/admin/workspace/features/releases", json={"enabled": False}
+    )
+    assert missing.status_code == 428
+    malformed = await client.patch(
+        "/api/v1/admin/workspace/features/releases",
+        json={"enabled": False},
+        headers={"If-Match": 'W/"1"'},
+    )
+    assert malformed.status_code == 422
+
+    updated = await client.patch(
+        "/api/v1/admin/workspace/features/releases",
+        json={"enabled": False},
+        headers={"If-Match": '"1"'},
+    )
+    assert updated.status_code == 200
+    assert updated.headers["etag"] == '"2"'
+    assert updated.json()["revision"] == 2
+    assert updated.json()["updated_by_name"] == "Dev User"
+    assert updated.json()["updated_by_user_id"] is not None
+
+    stale = await client.patch(
+        "/api/v1/admin/workspace/features/releases",
+        json={"enabled": True},
+        headers={"If-Match": '"1"'},
+    )
+    assert stale.status_code == 412
+    assert stale.headers["etag"] == '"2"'
+    assert stale.json()["detail"] == {"code": "stale_revision", "current_revision": 2}
 
 
 async def test_wiki_policy_compare_and_swap_allows_one_writer(client):

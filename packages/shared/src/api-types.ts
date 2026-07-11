@@ -140,6 +140,24 @@ export interface paths {
         patch: operations["update_initiatives_policy_api_v1_admin_workspace_features_initiatives_patch"];
         trace?: never;
     };
+    "/api/v1/admin/workspace/features/releases": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Releases Policy */
+        get: operations["get_releases_policy_api_v1_admin_workspace_features_releases_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update Releases Policy */
+        patch: operations["update_releases_policy_api_v1_admin_workspace_features_releases_patch"];
+        trace?: never;
+    };
     "/api/v1/admin/workspace/features/wiki": {
         parameters: {
             query?: never;
@@ -6785,6 +6803,7 @@ export interface components {
         WorkspaceCapabilitiesRead: {
             ai: components["schemas"]["AiWorkspaceFeatureCapability"];
             initiatives: components["schemas"]["WorkspaceFeatureCapability"];
+            releases: components["schemas"]["WorkspaceFeatureCapability"];
             wiki: components["schemas"]["WorkspaceFeatureCapability"];
         };
         /** WorkspaceFeatureCapability */
@@ -7158,6 +7177,77 @@ export interface operations {
         };
     };
     update_initiatives_policy_api_v1_admin_workspace_features_initiatives_patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                "If-Match"?: string | null;
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkspaceFeaturePolicyUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceFeaturePolicyRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_releases_policy_api_v1_admin_workspace_features_releases_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceFeaturePolicyRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_releases_policy_api_v1_admin_workspace_features_releases_patch: {
         parameters: {
             query?: never;
             header?: {

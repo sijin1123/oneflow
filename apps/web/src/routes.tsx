@@ -27,6 +27,7 @@ import { WorklogsPage } from '@/features/admin/WorklogsPage'
 import { WikiSettingsPage } from '@/features/admin/WikiSettingsPage'
 import { AiSettingsPage } from '@/features/admin/AiSettingsPage'
 import { InitiativesSettingsPage } from '@/features/admin/InitiativesSettingsPage'
+import { ReleasesSettingsPage } from '@/features/admin/ReleasesSettingsPage'
 import { PersonalSettingsPage } from '@/features/settings/PersonalSettingsPage'
 import { SettingsPage } from '@/features/settings/SettingsPage'
 import { AllWorkPage } from '@/features/work-items/AllWorkPage'
@@ -87,6 +88,7 @@ export const router = createBrowserRouter([
       { path: 'admin/wiki', element: <WikiSettingsPage /> },
       { path: 'admin/ai', element: <AiSettingsPage /> },
       { path: 'admin/initiatives', element: <InitiativesSettingsPage /> },
+      { path: 'admin/releases', element: <ReleasesSettingsPage /> },
       { path: 'settings', element: <PersonalSettingsPage /> },
       { path: 'projects/:projectId/work-packages', element: <ListPage /> },
       { path: 'projects/:projectId/work-packages/:wpId', element: <WorkPackageDetailPage /> },

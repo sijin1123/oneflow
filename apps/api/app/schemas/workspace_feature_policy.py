@@ -18,6 +18,7 @@ class WorkspaceCapabilitiesRead(BaseModel):
     wiki: WorkspaceFeatureCapability
     ai: AiWorkspaceFeatureCapability
     initiatives: WorkspaceFeatureCapability
+    releases: WorkspaceFeatureCapability
 
 
 class WorkspaceFeaturePolicyRead(BaseModel):

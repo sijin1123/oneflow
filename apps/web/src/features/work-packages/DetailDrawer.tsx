@@ -15,6 +15,7 @@ import { useCycles } from '@/features/cycles/api'
 import { useMilestones } from '@/features/milestones/api'
 import { useModules } from '@/features/modules/api'
 import { useProjectTypes } from '@/features/project-types/api'
+import { useWorkspaceCapabilities } from '@/features/workspace-features/api'
 
 import { CustomFieldsSection } from './CustomFieldsSection'
 import { Select } from '@/components/ui/select'
@@ -200,7 +201,9 @@ export function WorkPackageDetailPanel({
 }) {
   const patch = usePatchWorkPackage(projectId)
   const queryClient = useQueryClient()
-  const milestones = useMilestones(projectId)
+  const capabilities = useWorkspaceCapabilities()
+  const releasesEnabled = capabilities.data?.releases.enabled === true
+  const milestones = useMilestones(projectId, releasesEnabled)
   const cycles = useCycles(projectId)
   const modules = useModules(projectId)
   const projectTypes = useProjectTypes(projectId)
@@ -514,7 +517,7 @@ export function WorkPackageDetailPanel({
                   )}
                 </Select>
               </div>
-              <div className="space-y-1.5">
+              {releasesEnabled ? <div className="space-y-1.5">
                 <label htmlFor="wp-milestone" className="text-xs font-medium text-of-muted">
                   마일스톤
                 </label>
@@ -531,7 +534,7 @@ export function WorkPackageDetailPanel({
                     </option>
                   ))}
                 </Select>
-              </div>
+              </div> : null}
               <div className="space-y-1.5">
                 <label htmlFor="wp-cycle" className="text-xs font-medium text-of-muted">
                   사이클

@@ -20,6 +20,7 @@ import { useMe, useMembers } from '@/features/members/api'
 import { StatusManager } from '@/features/project-statuses/StatusManager'
 import { TypeManager } from '@/features/project-types/TypeManager'
 import { useUnsavedLocationPrompt } from '@/lib/guards'
+import { useWorkspaceCapabilities } from '@/features/workspace-features/api'
 
 import { DangerPanel } from './DangerPanel'
 import { FieldsPanel } from './FieldsPanel'
@@ -49,6 +50,7 @@ export function SettingsPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const me = useMe()
   const members = useMembers(projectId)
+  const capabilities = useWorkspaceCapabilities()
 
   // A tab switch unmounts the active panel, so only that panel can hold dirty
   // edits — one flag + one router blocker covers tab clicks, sidebar links,
@@ -61,10 +63,20 @@ export function SettingsPage() {
   // The notification toggles are USER-scoped (/me) and moved to /settings —
   // old project-settings deep links follow them (Pass 64 PR-CD).
   if (requested === 'notifications') return <Navigate to="/settings" replace />
-  const tab: TabKey = TABS.some((t) => t.key === requested) ? (requested as TabKey) : 'general'
+  const releasesEnabled = capabilities.data?.releases.enabled === true
+  const availableTabs = TABS.filter((item) => item.key !== 'milestones' || releasesEnabled)
+  const tab: TabKey = availableTabs.some((t) => t.key === requested)
+    ? (requested as TabKey)
+    : 'general'
 
   if (members.isPending || me.isPending) return <ListSkeleton />
   if (members.isError) return <ErrorState error={members.error} onRetry={() => members.refetch()} />
+  if (requested === 'milestones' && capabilities.isPending) {
+    return <ListSkeleton />
+  }
+  if (requested === 'milestones' && !releasesEnabled) {
+    return <Navigate to={`/projects/${projectId}/settings`} replace />
+  }
 
   const myRole = members.data.items.find((m) => m.user_id === me.data?.id)?.role
   const isOwner = myRole === 'owner'
@@ -78,7 +90,7 @@ export function SettingsPage() {
     >
       <div className="flex min-w-0 flex-col gap-4 lg:flex-row">
         <SettingsTabList
-          items={TABS}
+          items={availableTabs}
           activeKey={tab}
           ariaLabel="설정 섹션"
           panelId="settings-panel"

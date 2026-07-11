@@ -172,6 +172,24 @@ const activities: ActivityList = {
 }
 const noComments: CommentList = { items: [], total: 0 }
 
+const defaultWorkspaceCapabilities = {
+  wiki: { enabled: true, revision: 1 },
+  ai: {
+    enabled: false,
+    revision: 1,
+    deployment_enabled: false,
+    effective_enabled: false,
+  },
+  initiatives: { enabled: true, revision: 1 },
+  releases: { enabled: true, revision: 1 },
+}
+
+test.beforeEach(async ({ page }) => {
+  await page.route('**/api/v1/workspace/capabilities', (route) =>
+    route.fulfill({ json: defaultWorkspaceCapabilities }),
+  )
+})
+
 type PersonalNoteFixture = {
   id: string
   title: string
@@ -188,18 +206,7 @@ async function mockApi(page: Page, opts: { conflictOnPatch?: boolean } = {}) {
   // request wiring without relying on a backend fixture.
   let personalNotes: PersonalNoteFixture[] = []
   await page.route('**/api/v1/workspace/capabilities', (route) =>
-    route.fulfill({
-      json: {
-        wiki: { enabled: true, revision: 1 },
-        ai: {
-          enabled: false,
-          revision: 1,
-          deployment_enabled: false,
-          effective_enabled: false,
-        },
-        initiatives: { enabled: true, revision: 1 },
-      },
-    }),
+    route.fulfill({ json: defaultWorkspaceCapabilities }),
   )
   await page.route('**/api/v1/me/personal-notes**', async (route) => {
     const request = route.request()
@@ -9724,6 +9731,7 @@ async function mockWikiPolicy(
           effective_enabled: false,
         },
         initiatives: { enabled: true, revision: 1 },
+        releases: { enabled: true, revision: 1 },
       },
     }),
   )
@@ -10003,6 +10011,7 @@ async function mockInitiativesPolicy(
           effective_enabled: false,
         },
         initiatives: { enabled, revision },
+        releases: { enabled: true, revision: 1 },
       },
     }),
   )
@@ -10105,6 +10114,128 @@ test('Initiatives 정책은 비관리자와 모바일 상태를 안전하게 처
 
   await page.unroute('**/api/v1/admin/workspace/features/initiatives')
   await mockInitiativesPolicy(page, { forbidden: true })
+  await page.reload()
+  await expect(page.getByText('접근 권한이 없습니다')).toBeVisible()
+  await expect(page.getByRole('switch')).toHaveCount(0)
+})
+
+async function mockReleasesPolicy(
+  page: Page,
+  options: { staleFirstPatch?: boolean; forbidden?: boolean } = {},
+) {
+  let enabled = true
+  let revision = 1
+  let patchCount = 0
+  const requests: string[] = []
+
+  await page.route('**/api/v1/workspace/capabilities', (route) =>
+    route.fulfill({
+      json: {
+        wiki: { enabled: true, revision: 1 },
+        ai: {
+          enabled: false,
+          revision: 1,
+          deployment_enabled: false,
+          effective_enabled: false,
+        },
+        initiatives: { enabled: true, revision: 1 },
+        releases: { enabled, revision },
+      },
+    }),
+  )
+  await page.route('**/api/v1/admin/workspace/features/releases', async (route) => {
+    if (options.forbidden) {
+      await route.fulfill({ status: 403, json: { detail: 'workspace admin required' } })
+      return
+    }
+    if (route.request().method() === 'PATCH') {
+      patchCount += 1
+      requests.push(route.request().headers()['if-match'] ?? '')
+      const body = route.request().postDataJSON() as { enabled: boolean }
+      if (options.staleFirstPatch && patchCount === 1) {
+        enabled = false
+        revision = 2
+        await route.fulfill({
+          status: 412,
+          headers: { ETag: '"2"' },
+          json: { detail: { code: 'stale_revision', current_revision: 2 } },
+        })
+        return
+      }
+      enabled = body.enabled
+      revision += 1
+    }
+    await route.fulfill({
+      headers: { ETag: `"${revision}"` },
+      json: {
+        feature_key: 'releases',
+        enabled,
+        revision,
+        updated_by_user_id: patchCount ? 'me-1' : null,
+        updated_by_name: patchCount ? 'Dev User' : null,
+        updated_at: '2026-07-11T09:00:00Z',
+      },
+    })
+  })
+  return { requests }
+}
+
+test('Releases 정책은 milestone UI surface를 함께 끄고 복구한다', async ({ page }) => {
+  await mockApi(page)
+  const policy = await mockReleasesPolicy(page)
+  await page.goto('/admin/releases')
+
+  const toggle = page.getByRole('switch', { name: 'Releases 사용' })
+  await expect(toggle).toBeChecked()
+  await toggle.click()
+  await expect(toggle).not.toBeChecked()
+  expect(policy.requests).toEqual(['"1"'])
+
+  await page.goto(`/projects/${project.id}/settings?tab=milestones`)
+  await expect(page).toHaveURL(new RegExp(`/projects/${project.id}/settings$`))
+  await expect(page.getByRole('tab', { name: /마일스톤/ })).toHaveCount(0)
+
+  await page.goto(`/projects/${project.id}/work-packages?milestone_id=ms-1`)
+  await expect(page).not.toHaveURL(/milestone_id=/)
+  await expect(page.getByLabel('마일스톤 필터')).toHaveCount(0)
+
+  await page.goto(`/projects/${project.id}/timeline`)
+  await expect(page.getByText('마일스톤', { exact: true })).toHaveCount(0)
+
+  await page.goto('/admin/releases')
+  await page.getByRole('switch', { name: 'Releases 사용' }).click()
+  await expect(page.getByRole('switch', { name: 'Releases 사용' })).toBeChecked()
+  expect(policy.requests).toEqual(['"1"', '"2"'])
+  await page.goto(`/projects/${project.id}/settings?tab=milestones`)
+  await expect(page.getByRole('tab', { name: /마일스톤/ })).toBeVisible()
+})
+
+test('Releases 정책은 stale revision을 최신 상태로 복구한다', async ({ page }) => {
+  await mockApi(page)
+  await mockReleasesPolicy(page, { staleFirstPatch: true })
+  await page.goto('/admin/releases')
+  const toggle = page.getByRole('switch', { name: 'Releases 사용' })
+  await toggle.click()
+  await expect(page.getByRole('alert')).toContainText('다른 관리자가 정책을 변경했습니다')
+  await expect(toggle).not.toBeChecked()
+  await expect(page.getByText('정책 revision 2')).toBeVisible()
+})
+
+test('Releases 정책은 비관리자와 모바일 상태를 안전하게 처리한다', async ({ page }) => {
+  await mockApi(page)
+  await mockReleasesPolicy(page)
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto('/admin/releases')
+  await expect(page.getByRole('heading', { name: 'Releases', exact: true })).toBeVisible()
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)
+  expect(overflow).toBe(false)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/releases-policy-ui/mobile-settings.png',
+    fullPage: true,
+  })
+
+  await page.unroute('**/api/v1/admin/workspace/features/releases')
+  await mockReleasesPolicy(page, { forbidden: true })
   await page.reload()
   await expect(page.getByText('접근 권한이 없습니다')).toBeVisible()
   await expect(page.getByRole('switch')).toHaveCount(0)

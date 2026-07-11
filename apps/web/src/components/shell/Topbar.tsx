@@ -30,6 +30,7 @@ const workspaceRouteLabels: Array<{ path: string; title: string; parent: string 
   { path: '/admin/wiki', title: 'Wiki 설정', parent: '운영' },
   { path: '/admin/ai', title: 'AI 설정', parent: '운영' },
   { path: '/admin/initiatives', title: 'Initiatives 설정', parent: '운영' },
+  { path: '/admin/releases', title: 'Releases 설정', parent: '운영' },
   { path: '/admin/webhooks', title: 'Webhooks', parent: '운영' },
   { path: '/settings', title: '개인 설정', parent: '설정' },
 ]

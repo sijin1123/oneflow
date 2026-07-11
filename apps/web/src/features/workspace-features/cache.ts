@@ -31,6 +31,20 @@ export function clearInitiativesDataCache(queryClient: QueryClient) {
   })
 }
 
+const RELEASES_QUERY_ROOTS = new Set([
+  'milestones',
+  'work-packages',
+  'work-package',
+  'saved-filters',
+  'portfolio-timeline',
+])
+
+export function clearReleasesDataCache(queryClient: QueryClient) {
+  queryClient.removeQueries({
+    predicate: (query) => RELEASES_QUERY_ROOTS.has(String(query.queryKey[0])),
+  })
+}
+
 export function mergeWorkspaceCapability<K extends keyof WorkspaceCapabilities>(
   current: WorkspaceCapabilities | undefined,
   key: K,

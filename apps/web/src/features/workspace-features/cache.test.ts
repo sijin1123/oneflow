@@ -5,6 +5,7 @@ import { QueryClient } from '@tanstack/react-query'
 
 import {
   clearInitiativesDataCache,
+  clearReleasesDataCache,
   clearWikiDataCache,
   mergeWorkspaceCapability,
 } from './cache.ts'
@@ -18,6 +19,7 @@ const capabilities = {
     effective_enabled: false,
   },
   initiatives: { enabled: true, revision: 1 },
+  releases: { enabled: true, revision: 1 },
 }
 
 test('workspace policy cache updates one capability without losing the other', () => {
@@ -36,8 +38,29 @@ test('workspace policy cache updates one capability without losing the other', (
   })
   assert.equal(wiki?.ai.revision, 2)
   assert.equal(wiki?.initiatives.enabled, true)
+  assert.equal(wiki?.releases.enabled, true)
   assert.equal(wiki?.wiki.enabled, false)
   assert.equal(mergeWorkspaceCapability(undefined, 'wiki', capabilities.wiki), undefined)
+})
+
+test('Releases policy changes evict release-derived data and preserve unrelated caches', () => {
+  const queryClient = new QueryClient()
+  const releaseKeys = [
+    ['milestones', 'project-1'],
+    ['work-packages', 'project-1', { milestone_id: 'milestone-1' }],
+    ['work-package', 'work-1'],
+    ['saved-filters', 'project-1'],
+    ['portfolio-timeline', false],
+  ]
+  for (const key of releaseKeys) queryClient.setQueryData(key, { stale: true })
+  queryClient.setQueryData(['projects'], { items: ['keep'] })
+  queryClient.setQueryData(['documents'], { items: ['keep'] })
+
+  clearReleasesDataCache(queryClient)
+
+  for (const key of releaseKeys) assert.equal(queryClient.getQueryData(key), undefined)
+  assert.deepEqual(queryClient.getQueryData(['projects']), { items: ['keep'] })
+  assert.deepEqual(queryClient.getQueryData(['documents']), { items: ['keep'] })
 })
 
 test('Initiatives policy changes evict derived data and preserve unrelated caches', () => {
