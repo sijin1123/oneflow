@@ -102,7 +102,8 @@ async def _clean_tables(app):
             text(
                 "INSERT INTO workspace_feature_policies "
                 "(feature_key, enabled, revision, updated_by_user_id, updated_by_name) "
-                "VALUES ('wiki', true, 1, NULL, NULL), ('ai', false, 1, NULL, NULL) "
+                "VALUES ('wiki', true, 1, NULL, NULL), ('ai', false, 1, NULL, NULL), "
+                "('initiatives', true, 1, NULL, NULL) "
                 "ON CONFLICT (feature_key) DO UPDATE SET enabled = EXCLUDED.enabled, revision = 1, "
                 "updated_by_user_id = NULL, updated_by_name = NULL, updated_at = now()"
             )

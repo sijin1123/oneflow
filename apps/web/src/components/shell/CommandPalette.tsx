@@ -44,6 +44,7 @@ export function CommandPalette() {
   const enabled = auth.data?.command_palette_enabled === true
   const capabilities = useWorkspaceCapabilities()
   const wikiEnabled = capabilities.data?.wiki.enabled === true
+  const initiativesEnabled = capabilities.data?.initiatives.enabled === true
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
   const [activeTab, setActiveTab] = useState<CommandPaletteTab>('all')
@@ -59,8 +60,8 @@ export function CommandPalette() {
   const queryReady = query.trim().length >= 2 && debounced === query.trim()
   const data = queryReady ? search.data : undefined
   const allItems = useMemo(
-    () => flattenCommandPaletteResults(data, wikiEnabled),
-    [data, wikiEnabled],
+    () => flattenCommandPaletteResults(data, wikiEnabled, initiativesEnabled),
+    [data, initiativesEnabled, wikiEnabled],
   )
   const counts = useMemo(() => countCommandPaletteItems(allItems), [allItems])
   const items = useMemo(() => filterCommandPaletteItems(allItems, activeTab), [activeTab, allItems])
@@ -125,7 +126,8 @@ export function CommandPalette() {
 
   useEffect(() => {
     if (!wikiEnabled && activeTab === 'documents') setActiveTab('all')
-  }, [activeTab, wikiEnabled])
+    if (!initiativesEnabled && activeTab === 'initiatives') setActiveTab('all')
+  }, [activeTab, initiativesEnabled, wikiEnabled])
 
   const runItem = (item: CommandPaletteItem) => {
     close()

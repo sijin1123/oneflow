@@ -107,6 +107,12 @@
 
 스크린샷은 `docs/screenshots/redevelopment/ai-policy-ui/`에 보존했다. 신규 외부 의존성이나 외부 AI credential은 없으며 clean-room/dependency gate로 독립성을 검증한다. — attested-independent-derivation
 
+## UI-54 Initiatives workspace policy surface
+
+`docs/plane-poc-reverse-spec/` D045에서 관찰한 것은 workspace Initiatives feature toggle과 활성화된 surface의 정보구조다. OneFlow 구현은 기존 자체 initiative/project-link 모델 위에 migration 0074, workspace-admin revision CAS, capability cache, API 존재 은닉, search/project rollup 집행과 자체 Settings UI를 독립 설계했다. Plane source, package, asset, CSS, DOM, wording, schema는 복사하지 않았다.
+
+스크린샷은 `docs/screenshots/redevelopment/initiatives-policy-ui/`에 보존했다. 신규 외부 의존성은 없으며 `make cleanroom-check`와 dependency audit가 PASS했다. — attested-independent-derivation
+
 ## 자동 게이트의 한계(PLAN §10)
 
 리터럴 `@plane/` 문자열·라이선스 텍스트·파일명 수준만 자동 탐지된다. 소스를 보며 변수명만 바꿔 옮기는 이식은 자동으로 잡히지 않으므로, PR 설명의 수동 확인 체크박스("소스 파일을 열어 보며 옮겨 적지 않았음")가 이중 방어선이다.

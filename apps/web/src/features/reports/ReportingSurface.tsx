@@ -2,6 +2,7 @@ import type * as React from 'react'
 import { BarChart3, Gauge, Target, type LucideIcon } from 'lucide-react'
 import { Link, useLocation } from 'react-router-dom'
 
+import { useWorkspaceCapabilities } from '@/features/workspace-features/api'
 import { cn } from '@/lib/utils'
 
 type ReportingNavItem = {
@@ -31,6 +32,11 @@ export function ReportingSurface({
   navItems?: ReportingNavItem[]
 }) {
   const location = useLocation()
+  const capabilities = useWorkspaceCapabilities()
+  const initiativesEnabled = capabilities.data?.initiatives.enabled === true
+  const visibleNavItems = navItems.filter(
+    (item) => item.to !== '/initiatives' || initiativesEnabled,
+  )
   return (
     <div className="mx-auto flex w-full max-w-6xl min-w-0 flex-col gap-5 px-4 py-5 sm:px-6">
       <header className="flex min-w-0 flex-col gap-4 border-b border-of-border pb-4">
@@ -58,7 +64,7 @@ export function ReportingSurface({
           aria-label="Reporting navigation"
           className="flex min-w-0 gap-1 overflow-x-auto rounded-of border border-of-border bg-of-surface p-1 text-xs"
         >
-          {navItems.map((item) => {
+          {visibleNavItems.map((item) => {
             const Icon = item.icon
             const active = location.pathname === item.to
             return (

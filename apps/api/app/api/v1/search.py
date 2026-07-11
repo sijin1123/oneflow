@@ -40,7 +40,7 @@ from app.schemas.search import (
 )
 from app.services.document_access import document_visible_clause
 from app.services.snippet import extract_snippet
-from app.services.workspace_features import feature_enabled
+from app.services.workspace_features import INITIATIVES_FEATURE, feature_enabled
 
 router = APIRouter()
 
@@ -124,6 +124,7 @@ async def unified_search(
     visible_member_projects = _visible_member_project_ids(user)
     probe = limit + 1  # limit+1 fetch → truncated without a COUNT round-trip
     wiki_is_enabled = await feature_enabled(session)
+    initiatives_are_enabled = await feature_enabled(session, INITIATIVES_FEATURE)
 
     def scoped(model, text_col, *content_cols):
         # Content predicates live INSIDE the member/archive scope — the OR
@@ -189,28 +190,30 @@ async def unified_search(
     # Initiatives are workspace-level: visible if you created one or you are a
     # member of at least one connected *visible* project. Hidden/archived-only
     # connections must not affect counts, truncation, or snippets in global search.
-    initiative_rows = (
-        (
-            await session.execute(
-                select(Initiative)
-                .where(Initiative.name.icontains(q, autoescape=True))
-                .where(
-                    or_(
-                        Initiative.owner_id == user.id,
-                        Initiative.id.in_(
-                            select(InitiativeProject.initiative_id).where(
-                                InitiativeProject.project_id.in_(visible_member_projects)
-                            )
-                        ),
+    initiative_rows = []
+    if initiatives_are_enabled:
+        initiative_rows = (
+            (
+                await session.execute(
+                    select(Initiative)
+                    .where(Initiative.name.icontains(q, autoescape=True))
+                    .where(
+                        or_(
+                            Initiative.owner_id == user.id,
+                            Initiative.id.in_(
+                                select(InitiativeProject.initiative_id).where(
+                                    InitiativeProject.project_id.in_(visible_member_projects)
+                                )
+                            ),
+                        )
                     )
+                    .order_by(Initiative.name.asc(), Initiative.id.asc())
+                    .limit(probe)
                 )
-                .order_by(Initiative.name.asc(), Initiative.id.asc())
-                .limit(probe)
             )
+            .scalars()
+            .all()
         )
-        .scalars()
-        .all()
-    )
 
     def cut(rows):
         return rows[:limit], len(rows) > limit

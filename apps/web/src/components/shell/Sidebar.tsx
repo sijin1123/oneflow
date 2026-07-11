@@ -142,6 +142,10 @@ function SidebarContent({
   const auth = useAuthConfig()
   const me = useMe()
   const capabilities = useWorkspaceCapabilities()
+  const initiativesEnabled = capabilities.data?.initiatives.enabled === true
+  const workspaceItems = workspaceNav.filter(
+    (item) => item.to !== '/initiatives' || initiativesEnabled,
+  )
 
   const operationItems: WorkspaceNavItem[] = me.data?.is_admin
     ? [
@@ -150,6 +154,7 @@ function SidebarContent({
         { to: '/admin/worklogs', label: 'Worklogs', icon: Clock3 },
         { to: '/admin/wiki', label: 'Wiki 설정', icon: BookOpen },
         { to: '/admin/ai', label: 'AI 설정', icon: Sparkles },
+        { to: '/admin/initiatives', label: 'Initiatives 설정', icon: Compass },
         { to: '/admin/webhooks', label: 'Webhooks', icon: Webhook },
       ]
     : operationsNav
@@ -181,7 +186,7 @@ function SidebarContent({
           <div>
             <SectionLabel>워크스페이스</SectionLabel>
             <div className="space-y-0.5">
-              {workspaceNav.map((item) => {
+              {workspaceItems.map((item) => {
                 const Icon = item.icon
                 return (
                   <NavLink

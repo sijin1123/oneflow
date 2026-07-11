@@ -83,6 +83,7 @@ export function countCommandPaletteItems(
 export function flattenCommandPaletteResults(
   data: UnifiedSearchResults | null | undefined,
   includeDocuments = true,
+  includeInitiatives = true,
 ) {
   const items: CommandPaletteItem[] = []
   const seen = new Set<string>()
@@ -109,8 +110,10 @@ export function flattenCommandPaletteResults(
   for (const item of data?.modules.items ?? []) {
     push(fromNamed(item, 'modules'))
   }
-  for (const item of data?.initiatives.items ?? []) {
-    push(fromInitiative(item))
+  if (includeInitiatives) {
+    for (const item of data?.initiatives.items ?? []) {
+      push(fromInitiative(item))
+    }
   }
 
   return items

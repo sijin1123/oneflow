@@ -28,6 +28,7 @@ from app.schemas.project import (
 )
 from app.services.health import apply_health_patch
 from app.services.project_templates import capture_project_settings, materialize_project_settings
+from app.services.workspace_features import INITIATIVES_FEATURE, feature_enabled
 
 router = APIRouter()
 
@@ -99,7 +100,7 @@ async def list_projects(
     # many-to-many never joins into the row/count queries (no distortion).
     # Connection implies visibility (every listed project is the caller's).
     ini_agg: dict = {}
-    if ids:
+    if ids and await feature_enabled(session, INITIATIVES_FEATURE):
         ini_rows = (
             await session.execute(
                 select(InitiativeProject.project_id, Initiative.id, Initiative.name)
