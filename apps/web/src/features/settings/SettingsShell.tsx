@@ -29,8 +29,8 @@ export function SettingsFrame({
   className?: string
 }) {
   return (
-    <div className={cn('mx-auto flex w-full max-w-6xl flex-col gap-4 px-4 py-4 sm:px-6', className)}>
-      <header className="border-b border-of-border pb-4">
+    <div className={cn('mx-auto flex w-full max-w-6xl flex-col gap-4 px-4 py-5 sm:px-6', className)}>
+      <header className="border-b border-of-border-subtle pb-4">
         <div className="flex min-w-0 flex-col gap-3 md:flex-row md:items-end md:justify-between">
           <div className="min-w-0">
             <p className="text-[11px] font-medium uppercase text-of-muted">{eyebrow}</p>
@@ -66,7 +66,7 @@ export function SettingsSection({
   return (
     <section
       aria-label={ariaLabel ?? title}
-      className={cn('rounded-of border border-of-border bg-of-surface p-4', className)}
+      className={cn('of-surface p-4 sm:p-5', className)}
     >
       <div className="mb-3 flex min-w-0 flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
@@ -99,7 +99,7 @@ export function SettingsTabList({
     <nav
       role="tablist"
       aria-label={ariaLabel}
-      className="flex min-w-0 gap-1 overflow-x-auto border-b border-of-border pb-2 lg:w-64 lg:flex-col lg:overflow-visible lg:border-b-0 lg:border-r lg:pb-0 lg:pr-3"
+      className="of-scrollbar flex min-w-0 gap-1 overflow-x-auto border-b border-of-border-subtle pb-2 lg:w-64 lg:flex-col lg:overflow-visible lg:border-b-0 lg:border-r lg:pb-0 lg:pr-3"
     >
       {items.map((item) => {
         const Icon = item.icon
@@ -116,7 +116,7 @@ export function SettingsTabList({
             className={cn(
               'flex min-h-10 min-w-[9rem] items-start gap-2 rounded-of px-2.5 py-2 text-left text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus lg:min-w-0',
               selected
-                ? 'bg-of-accent-soft font-medium text-of-accent'
+                ? 'bg-of-surface-selected font-medium text-of-accent'
                 : 'text-of-muted hover:bg-of-surface-2 hover:text-of-text',
             )}
             onClick={() => onSelect(item.key)}

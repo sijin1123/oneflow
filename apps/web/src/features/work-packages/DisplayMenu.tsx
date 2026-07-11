@@ -1,6 +1,7 @@
-import { ArrowDownAZ, Check, Columns3, Settings2 } from 'lucide-react'
+import { ArrowDownAZ, Check, Columns3, Rows2, Rows3, Settings2 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
+import type { GridDensity } from '@/components/ui/data-grid'
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -32,6 +33,8 @@ type DisplayMenuProps = {
   onSortChange: (value: WorkPackageSort) => void
   onToggleColumn: (key: ListColumn) => void
   onToggleCustomColumn: (id: string) => void
+  density: GridDensity
+  onDensityChange: (value: GridDensity) => void
 }
 
 export function DisplayMenu({
@@ -42,6 +45,8 @@ export function DisplayMenu({
   onSortChange,
   onToggleColumn,
   onToggleCustomColumn,
+  density,
+  onDensityChange,
 }: DisplayMenuProps) {
   const activeCustomFields = customFields.filter((field) => field.is_active)
   const show = (key: ListColumn) => columns.includes(key)
@@ -66,6 +71,22 @@ export function DisplayMenu({
           >
             <span>{WORK_PACKAGE_SORT_LABELS[key]}</span>
             {sort === key ? <Check size={12} aria-hidden="true" /> : null}
+          </DropdownMenuItem>
+        ))}
+
+        <DropdownMenuSeparator />
+        <DropdownMenuLabel className="text-[11px] uppercase text-of-muted">밀도</DropdownMenuLabel>
+        {([
+          ['compact', '촘촘하게', Rows2],
+          ['comfortable', '여유롭게', Rows3],
+        ] as const).map(([value, label, Icon]) => (
+          <DropdownMenuItem
+            key={value}
+            className="flex items-center justify-between gap-3 text-xs"
+            onSelect={() => onDensityChange(value)}
+          >
+            <span className="flex items-center gap-2"><Icon size={13} />{label}</span>
+            {density === value ? <Check size={12} aria-hidden="true" /> : null}
           </DropdownMenuItem>
         ))}
 

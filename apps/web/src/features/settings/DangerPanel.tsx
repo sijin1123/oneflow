@@ -15,7 +15,7 @@ export function DangerPanel({ isOwner }: { isOwner: boolean }) {
   const archived = project.data.archived_at !== null
 
   return (
-    <div className="space-y-3 rounded-of border border-of-danger/40 bg-of-surface p-3">
+    <section className="space-y-3 rounded-of-lg border border-of-danger/30 bg-of-danger-soft/35 p-4" aria-label="위험 구역">
       <p className="text-xs font-semibold text-of-danger">위험 구역</p>
       {archived ? (
         <p className="rounded-of bg-of-surface-2 px-3 py-2 text-xs">
@@ -55,6 +55,6 @@ export function DangerPanel({ isOwner }: { isOwner: boolean }) {
           처리하지 못했습니다.
         </p>
       ) : null}
-    </div>
+    </section>
   )
 }

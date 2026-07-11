@@ -50,6 +50,8 @@ export function CommandPalette() {
   const [activeTab, setActiveTab] = useState<CommandPaletteTab>('all')
   const [activeIndex, setActiveIndex] = useState(0)
   const inputRef = useRef<HTMLInputElement | null>(null)
+  const dialogRef = useRef<HTMLElement | null>(null)
+  const previouslyFocused = useRef<HTMLElement | null>(null)
   const navigate = useNavigate()
   const location = useLocation()
   const locationKey = `${location.pathname}?${location.search}`
@@ -65,6 +67,9 @@ export function CommandPalette() {
   )
   const counts = useMemo(() => countCommandPaletteItems(allItems), [allItems])
   const items = useMemo(() => filterCommandPaletteItems(allItems, activeTab), [activeTab, allItems])
+  const visibleTabs = COMMAND_PALETTE_TABS.filter(
+    (tab) => (tab.key !== 'documents' || wikiEnabled) && (tab.key !== 'initiatives' || initiativesEnabled),
+  )
   const advancedHref = advancedSearchHref(query)
   const commandCount = query.trim().length >= 2 ? items.length + 1 : items.length
 
@@ -73,10 +78,14 @@ export function CommandPalette() {
     setActiveIndex(0)
     void queryClient.removeQueries({ queryKey: commandPaletteSearchKey('') })
     void queryClient.removeQueries({ queryKey: ['command-palette-search'] })
+    window.setTimeout(() => previouslyFocused.current?.focus(), 0)
   }, [queryClient])
 
   const openPalette = useCallback(() => {
-    if (enabled) setOpen(true)
+    if (enabled) {
+      previouslyFocused.current = document.activeElement as HTMLElement | null
+      setOpen(true)
+    }
   }, [enabled])
 
   useEffect(() => {
@@ -160,6 +169,24 @@ export function CommandPalette() {
       const item = items[activeIndex]
       if (item) runItem(item)
       else runAdvancedSearch()
+      return
+    }
+    if (event.key === 'Tab' && dialogRef.current) {
+      const focusable = Array.from(
+        dialogRef.current.querySelectorAll<HTMLElement>(
+          'button:not([disabled]), input:not([disabled]), [href], [tabindex]:not([tabindex="-1"])',
+        ),
+      )
+      if (focusable.length === 0) return
+      const first = focusable[0]
+      const last = focusable[focusable.length - 1]
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault()
+        last.focus()
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault()
+        first.focus()
+      }
     }
   }
 
@@ -191,16 +218,17 @@ export function CommandPalette() {
       {open ? (
         <div
           role="presentation"
-          className="fixed inset-0 z-50 bg-of-overlay"
+          className="fixed inset-0 z-[var(--of-z-modal)] bg-of-overlay backdrop-blur-[2px]"
           onMouseDown={(event) => {
             if (event.target === event.currentTarget) close()
           }}
         >
           <section
+            ref={dialogRef}
             role="dialog"
             aria-modal="true"
             aria-label="전체 검색"
-            className="fixed inset-x-3 top-14 mx-auto flex max-h-[min(78vh,640px)] max-w-2xl flex-col overflow-hidden rounded-of border border-of-border bg-of-surface shadow-[var(--of-shadow-popover)] sm:top-20"
+            className="of-floating-surface fixed inset-x-3 top-14 mx-auto flex max-h-[min(82vh,680px)] max-w-2xl flex-col overflow-hidden sm:top-20"
             onKeyDown={onKeyDown}
           >
             <div className="flex items-center gap-2 border-b border-of-border px-3 py-2">
@@ -210,6 +238,12 @@ export function CommandPalette() {
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
                 aria-label="전체 검색어"
+                role="combobox"
+                aria-expanded="true"
+                aria-controls={items.length > 0 ? 'command-palette-listbox' : 'command-palette-panel'}
+                aria-activedescendant={
+                  activeIndex < items.length ? `command-palette-item-${activeIndex}` : undefined
+                }
                 placeholder="검색어를 입력하세요"
                 className="h-9 border-0 bg-transparent px-0 focus-visible:border-0"
               />
@@ -228,19 +262,42 @@ export function CommandPalette() {
               aria-label="검색 범위"
               className="flex gap-1 overflow-x-auto border-b border-of-border px-3 py-2"
             >
-              {COMMAND_PALETTE_TABS.filter(
-                (tab) => tab.key !== 'documents' || wikiEnabled,
-              ).map((tab) => (
+              {visibleTabs.map((tab, index) => (
                 <button
                   key={tab.key}
                   type="button"
                   role="tab"
+                  id={`command-palette-tab-${tab.key}`}
+                  aria-controls="command-palette-panel"
                   aria-selected={activeTab === tab.key}
+                  tabIndex={activeTab === tab.key ? 0 : -1}
                   className={cn(
                     'shrink-0 rounded-of px-2 py-1 text-xs text-of-muted transition-colors hover:bg-of-surface-hover',
-                    activeTab === tab.key && 'bg-of-accent-soft font-medium text-of-accent',
+                    activeTab === tab.key && 'bg-of-surface-selected font-medium text-of-accent',
                   )}
                   onClick={() => setActiveTab(tab.key)}
+                  onKeyDown={(event) => {
+                    const direction =
+                      event.key === 'ArrowRight'
+                        ? 1
+                        : event.key === 'ArrowLeft'
+                          ? -1
+                          : 0
+                    const targetIndex =
+                      event.key === 'Home'
+                        ? 0
+                        : event.key === 'End'
+                          ? visibleTabs.length - 1
+                          : direction
+                            ? (index + direction + visibleTabs.length) % visibleTabs.length
+                            : -1
+                    if (targetIndex < 0) return
+                    event.preventDefault()
+                    setActiveTab(visibleTabs[targetIndex].key)
+                    event.currentTarget.parentElement
+                      ?.querySelectorAll<HTMLButtonElement>('[role="tab"]')
+                      [targetIndex]?.focus()
+                  }}
                 >
                   {tab.label}
                   {counts[tab.key] > 0 ? (
@@ -250,7 +307,12 @@ export function CommandPalette() {
               ))}
             </div>
 
-            <div className="min-h-0 flex-1 overflow-y-auto p-2">
+            <div
+              id="command-palette-panel"
+              role="tabpanel"
+              aria-labelledby={`command-palette-tab-${activeTab}`}
+              className="of-scrollbar min-h-0 flex-1 overflow-y-auto p-2"
+            >
               {query.trim().length < 2 ? (
                 <p className="px-2 py-8 text-center text-xs text-of-muted">2자 이상 입력하세요.</p>
               ) : !queryReady || search.isFetching ? (
@@ -264,16 +326,17 @@ export function CommandPalette() {
               ) : items.length === 0 ? (
                 <p className="px-2 py-8 text-center text-xs text-of-muted">결과가 없습니다.</p>
               ) : (
-                <ul role="listbox" aria-label="검색 결과" className="space-y-1">
+                <ul id="command-palette-listbox" role="listbox" aria-label="검색 결과" className="space-y-1">
                   {items.map((item, index) => (
                     <li key={item.key}>
                       <button
+                        id={`command-palette-item-${index}`}
                         type="button"
                         role="option"
                         aria-selected={activeIndex === index}
                         className={cn(
-                          'flex w-full min-w-0 items-center gap-2 rounded-of px-2 py-2 text-left hover:bg-of-surface-2',
-                          activeIndex === index && 'bg-of-accent-soft',
+                          'flex w-full min-w-0 items-center gap-2 rounded-of px-2 py-2 text-left transition-colors hover:bg-of-surface-hover',
+                          activeIndex === index && 'bg-of-surface-selected',
                         )}
                         onClick={() => runItem(item)}
                         onMouseEnter={() => setActiveIndex(index)}
@@ -304,7 +367,7 @@ export function CommandPalette() {
                   type="button"
                   className={cn(
                     'flex w-full items-center gap-2 rounded-of px-2 py-2 text-left text-xs hover:bg-of-surface-2',
-                    activeIndex === items.length && 'bg-of-accent-soft',
+                    activeIndex === items.length && 'bg-of-surface-selected',
                   )}
                   onClick={runAdvancedSearch}
                   onMouseEnter={() => setActiveIndex(items.length)}

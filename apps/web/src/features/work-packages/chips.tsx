@@ -14,12 +14,12 @@ import {
    OneFlow's own tokens — dots keep information visible without color-only cues. */
 
 const STATUS_DOT: Record<WpStatus, string> = {
-  backlog: 'bg-gray-400',
-  todo: 'bg-sky-500',
-  in_progress: 'bg-amber-500',
-  in_review: 'bg-violet-500',
-  done: 'bg-emerald-500',
-  cancelled: 'bg-gray-300',
+  backlog: 'bg-of-faint',
+  todo: 'bg-of-info',
+  in_progress: 'bg-of-warning',
+  in_review: 'bg-of-accent',
+  done: 'bg-of-success',
+  cancelled: 'bg-of-border-strong',
 }
 
 export function StatusChip({ status, label }: { status: WpStatus; label?: string }) {
@@ -33,10 +33,10 @@ export function StatusChip({ status, label }: { status: WpStatus; label?: string
 
 const PRIORITY_STYLE: Record<WpPriority, string> = {
   none: 'text-of-muted',
-  low: 'text-sky-700',
-  medium: 'text-amber-700',
-  high: 'text-orange-700',
-  urgent: 'text-of-danger font-semibold',
+  low: 'text-of-priority-low',
+  medium: 'text-of-priority-medium font-medium',
+  high: 'text-of-priority-high font-medium',
+  urgent: 'text-of-priority-urgent font-semibold',
 }
 
 export function PriorityChip({ priority }: { priority: WpPriority }) {

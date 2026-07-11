@@ -21,7 +21,7 @@ type SettingsLink = { to: string; label: string; icon: LucideIcon }
 
 const groups: Array<{ label: string; items: SettingsLink[] }> = [
   {
-    label: 'Administration',
+    label: '관리',
     items: [
       { to: '/admin/general', label: '일반', icon: Settings },
       { to: '/admin/users', label: '사용자', icon: UsersRound },
@@ -29,7 +29,7 @@ const groups: Array<{ label: string; items: SettingsLink[] }> = [
     ],
   },
   {
-    label: 'Features',
+    label: '기능',
     items: [
       { to: '/admin/wiki', label: 'Wiki', icon: BookOpen },
       { to: '/admin/ai', label: 'AI', icon: Bot },
@@ -39,7 +39,7 @@ const groups: Array<{ label: string; items: SettingsLink[] }> = [
     ],
   },
   {
-    label: 'Developer',
+    label: '개발자 도구',
     items: [{ to: '/admin/webhooks', label: 'Webhooks', icon: Webhook }],
   },
 ]
@@ -48,7 +48,7 @@ function SettingsNavigation() {
   return (
     <nav
       aria-label="워크스페이스 설정"
-      className="flex min-w-0 gap-4 overflow-x-auto px-4 py-2 lg:flex-col lg:gap-5 lg:overflow-visible lg:px-3 lg:py-4"
+      className="of-scrollbar flex min-w-0 gap-4 overflow-x-auto px-4 py-2 lg:flex-col lg:gap-5 lg:overflow-visible lg:px-3 lg:py-4"
     >
       {groups.map((group) => (
         <div key={group.label} className="shrink-0 lg:shrink">
@@ -65,7 +65,7 @@ function SettingsNavigation() {
                   className={({ isActive }) =>
                     cn(
                       'flex h-8 min-w-max items-center gap-2 rounded-of px-2 text-xs text-of-muted transition-colors hover:bg-of-surface-2 hover:text-of-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus lg:min-w-0',
-                      isActive && 'bg-of-accent-soft font-medium text-of-accent',
+                      isActive && 'bg-of-surface-selected font-medium text-of-accent',
                     )
                   }
                 >
@@ -97,14 +97,14 @@ export function WorkspaceSettingsShell() {
   }
 
   return (
-    <div className="min-h-full lg:grid lg:grid-cols-[13rem_minmax(0,1fr)]">
-      <aside className="border-b border-of-border bg-of-surface lg:border-b-0 lg:border-r">
-        <div className="flex items-center gap-2 border-b border-of-border px-4 py-3 lg:px-5">
+    <div className="min-h-full bg-of-bg lg:grid lg:grid-cols-[14rem_minmax(0,1fr)]">
+      <aside className="border-b border-of-border-subtle bg-of-surface-raised lg:border-b-0 lg:border-r">
+        <div className="flex h-14 items-center gap-2 border-b border-of-border-subtle px-4 lg:px-5">
           <Settings size={16} className="text-of-muted" aria-hidden="true" />
           <div className="min-w-0">
-            <p className="text-sm font-semibold">Workspace settings</p>
+            <p className="text-sm font-semibold">워크스페이스 설정</p>
             <p className="truncate text-[11px] text-of-muted">
-              {profile.data?.name ?? 'OneFlow'} administration
+              {profile.data?.name ?? 'OneFlow'} 관리
             </p>
           </div>
         </div>

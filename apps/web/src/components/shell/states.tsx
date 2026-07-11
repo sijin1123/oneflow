@@ -1,6 +1,7 @@
 import type * as React from 'react'
-import { CircleAlert, Inbox } from 'lucide-react'
+import { CircleAlert, Inbox, RefreshCw } from 'lucide-react'
 
+import emptyFlowVisual from '@/assets/generated/oneflow-empty-flow.png'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { ApiError } from '@/lib/api'
@@ -37,11 +38,13 @@ export function EmptyState({
   hint,
   children,
   className,
+  visual = 'icon',
 }: {
   title: string
   hint?: string
   children?: React.ReactNode
   className?: string
+  visual?: 'icon' | 'illustration'
 }) {
   return (
     <section
@@ -51,10 +54,21 @@ export function EmptyState({
       )}
       aria-live="polite"
     >
-      <div className="flex max-w-[28rem] min-w-0 flex-col items-center gap-2">
-        <span className="flex h-9 w-9 items-center justify-center rounded-of border border-of-border bg-of-surface-2 text-of-muted">
-          <Inbox size={20} strokeWidth={1.75} aria-hidden="true" />
-        </span>
+      <div className="flex max-w-[32rem] min-w-0 flex-col items-center gap-2">
+        {visual === 'illustration' ? (
+          <img
+            src={emptyFlowVisual}
+            alt=""
+            width={720}
+            height={540}
+            loading="lazy"
+            className="mb-2 h-auto w-full max-w-[20rem] rounded-of-lg object-contain"
+          />
+        ) : (
+          <span className="flex h-9 w-9 items-center justify-center rounded-of border border-of-border-subtle bg-of-surface-2 text-of-muted shadow-[var(--of-shadow-xs)]">
+            <Inbox size={19} strokeWidth={1.75} aria-hidden="true" />
+          </span>
+        )}
         <p className="max-w-full break-words text-sm font-medium text-of-text">{title}</p>
         {hint ? (
           <p className="max-w-full break-words text-xs leading-5 text-of-muted">{hint}</p>
@@ -88,8 +102,8 @@ export function ErrorState({
       )}
       role="alert"
     >
-      <div className="flex max-w-[30rem] min-w-0 flex-col items-center gap-2">
-        <span className="flex h-9 w-9 items-center justify-center rounded-of border border-of-border bg-of-surface-2 text-of-danger">
+      <div className="flex max-w-[30rem] min-w-0 flex-col items-center gap-2 rounded-of-lg border border-of-danger/15 bg-of-danger-soft/45 px-6 py-5">
+        <span className="flex h-9 w-9 items-center justify-center rounded-of border border-of-danger/20 bg-of-surface text-of-danger shadow-[var(--of-shadow-xs)]">
           <CircleAlert size={20} strokeWidth={1.75} aria-hidden="true" />
         </span>
         <p className="max-w-full break-words text-sm font-medium text-of-text">
@@ -102,7 +116,7 @@ export function ErrorState({
           </p>
         ) : null}
         <Button variant="outline" size="sm" className="mt-2" onClick={onRetry}>
-          다시 시도
+          <RefreshCw size={13} /> 다시 시도
         </Button>
       </div>
     </section>
