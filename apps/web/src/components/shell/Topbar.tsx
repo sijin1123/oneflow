@@ -1,14 +1,11 @@
-import { LogOut, Menu, Plus, Search, SlidersHorizontal } from 'lucide-react'
-import { useEffect, useState } from 'react'
-import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { LogOut, Menu, SlidersHorizontal } from 'lucide-react'
+import { useState } from 'react'
+import { useLocation, useNavigate, useParams } from 'react-router-dom'
 
-import { Button } from '@/components/ui/button'
 import { Avatar } from '@/components/ui/avatar'
 import { IconButton } from '@/components/ui/icon-button'
-import { Input } from '@/components/ui/input'
 import { useLogout } from '@/features/auth/api'
 import { useMe } from '@/features/members/api'
-import { useCanWrite } from '@/features/members/useCanWrite'
 import { NotificationBell } from '@/features/notifications/NotificationBell'
 import { useProjects } from '@/features/projects/api'
 import { useWorkspaceProfile } from '@/features/workspace-profile/api'
@@ -145,49 +142,14 @@ function AccountMenu() {
   )
 }
 
-/** Gated behind write access — a viewer never sees the create button
-    (Pass 76). Own component so useCanWrite only runs with a real projectId. */
-function NewWorkPackageButton({ projectId, onClick }: { projectId: string; onClick: () => void }) {
-  const canWrite = useCanWrite(projectId)
-  if (!canWrite) return null
-  return (
-    <Button size="sm" onClick={onClick}>
-      <Plus /> 새 작업
-    </Button>
-  )
-}
-
 export function Topbar({ onOpenMobileSidebar }: { onOpenMobileSidebar?: () => void }) {
   const { projectId } = useParams()
   const location = useLocation()
-  const [searchParams, setSearchParams] = useSearchParams()
   const { data } = useProjects()
   const workspaceProfile = useWorkspaceProfile()
 
   const project = data?.items.find((p) => p.id === projectId)
   const shellContext = getShellContext(location.pathname, project?.name)
-  // Search (?q=) and inline creation (?new=1) are consumed by the list view
-  // only — showing them on Board/Timeline would be dead controls (finding #6).
-  const onListView = Boolean(projectId) && location.pathname.endsWith('/work-packages')
-  const query = searchParams.get('q') ?? ''
-  const [searchDraft, setSearchDraft] = useState(query)
-
-  useEffect(() => {
-    setSearchDraft(query)
-  }, [query])
-
-  const onSearch = (value: string) => {
-    setSearchParams(
-      (prev) => {
-        const next = new URLSearchParams(prev)
-        if (value) next.set('q', value)
-        else next.delete('q')
-        return next
-      },
-      { replace: true },
-    )
-  }
-
   return (
     <header className="flex h-[var(--of-topbar-height)] shrink-0 border-b border-of-border-subtle bg-of-surface-raised">
       <div className="hidden w-[var(--of-navigation-width)] shrink-0 items-center gap-2 border-r border-of-border-subtle px-3 md:flex">
@@ -223,38 +185,6 @@ export function Topbar({ onOpenMobileSidebar }: { onOpenMobileSidebar?: () => vo
         </div>
 
         <div className="flex min-w-0 items-center justify-end gap-1.5 md:gap-2">
-        {onListView ? (
-          <div className="relative hidden xl:block">
-            <Search
-              size={14}
-              className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-of-muted"
-            />
-            <Input
-              value={searchDraft}
-              onChange={(event) => setSearchDraft(event.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') onSearch(e.currentTarget.value)
-              }}
-              placeholder="제목 검색 (Enter)"
-              aria-label="워크패키지 검색"
-              className="w-40 pl-8 2xl:w-56"
-            />
-          </div>
-        ) : null}
-        {onListView && projectId ? (
-          <div className="hidden 2xl:block">
-            <NewWorkPackageButton
-              projectId={projectId}
-              onClick={() =>
-                setSearchParams((prev) => {
-                  const next = new URLSearchParams(prev)
-                  next.set('new', '1')
-                  return next
-                })
-              }
-            />
-          </div>
-        ) : null}
         <NotificationBell />
         <AccountMenu />
         </div>

@@ -1,6 +1,21 @@
-import { AlertCircle, CheckCircle2, ClipboardList, Download, RotateCcw, Search, X } from 'lucide-react'
+import {
+  AlertCircle,
+  BarChart3,
+  CalendarDays,
+  CheckCircle2,
+  ClipboardList,
+  Columns3,
+  Download,
+  List,
+  Plus,
+  RotateCcw,
+  Search,
+  SlidersHorizontal,
+  SquareKanban,
+  X,
+} from 'lucide-react'
 import { type FormEvent, useEffect, useState } from 'react'
-import { useParams, useSearchParams } from 'react-router-dom'
+import { Link, useParams, useSearchParams } from 'react-router-dom'
 
 import { EmptyState, ErrorState, ListSkeleton } from '@/components/shell/states'
 import { Badge } from '@/components/ui/badge'
@@ -132,6 +147,7 @@ export function ListPage() {
   const importOpen = searchParams.get('ops') === 'import'
   const [queryDraft, setQueryDraft] = useState(query)
   const [density, setDensity] = useState<GridDensity>('compact')
+  const [filtersOpen, setFiltersOpen] = useState(true)
 
   useEffect(() => {
     setQueryDraft(query)
@@ -289,9 +305,89 @@ export function ListPage() {
     })
   }
 
+  const openCreate = () => {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev)
+      next.set('new', '1')
+      return next
+    })
+  }
+
+  const projectViews = [
+    { label: '목록', path: 'work-packages', icon: List, active: true },
+    { label: '보드', path: 'board', icon: SquareKanban, active: false },
+    { label: '백로그', path: 'backlog', icon: Columns3, active: false },
+    { label: '캘린더', path: 'calendar', icon: CalendarDays, active: false },
+  ]
+
   return (
     <div className="flex h-full flex-col">
       {members.data && !canWrite ? <ReadOnlyNotice className="mx-4 mt-2" /> : null}
+      <section aria-label="작업 화면 제어" className="border-b border-of-border bg-of-surface">
+        <div className="flex min-w-0 flex-col gap-2 px-4 py-2 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex min-w-0 items-center gap-2">
+            <h1 className="truncate text-sm font-semibold">Work Packages</h1>
+            {data ? <Badge variant="outline">{data.total}</Badge> : null}
+          </div>
+
+          <div className="flex min-w-0 flex-wrap items-center gap-2 lg:justify-end">
+            <nav
+              aria-label="프로젝트 작업 보기"
+              className="flex h-7 items-center rounded-of border border-of-border bg-of-surface-2 p-0.5"
+            >
+              {projectViews.map((view) => {
+                const Icon = view.icon
+                return (
+                  <Link
+                    key={view.path}
+                    to={`/projects/${projectId}/${view.path}`}
+                    aria-label={`${view.label} 보기`}
+                    aria-current={view.active ? 'page' : undefined}
+                    title={`${view.label} 보기`}
+                    className={`flex h-6 w-7 items-center justify-center rounded-[4px] text-of-muted hover:text-of-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus ${
+                      view.active ? 'bg-of-surface-selected text-of-accent' : ''
+                    }`}
+                  >
+                    <Icon size={13} aria-hidden="true" />
+                  </Link>
+                )
+              })}
+            </nav>
+            <Button
+              variant="outline"
+              size="sm"
+              aria-expanded={filtersOpen}
+              aria-controls="project-work-item-filters"
+              onClick={() => setFiltersOpen((open) => !open)}
+            >
+              <SlidersHorizontal size={13} /> 필터
+              {activeControlCount > 0 ? <span className="tabular-nums">{activeControlCount}</span> : null}
+            </Button>
+            <DisplayMenu
+              sort={sort}
+              columns={columns}
+              customColumns={customColumns}
+              customFields={customFields.data?.items ?? []}
+              onSortChange={setSort}
+              onToggleColumn={toggleColumn}
+              onToggleCustomColumn={toggleCustomColumn}
+              density={density}
+              onDensityChange={setDensity}
+            />
+            <Link
+              to={`/projects/${projectId}/dashboard`}
+              className="inline-flex h-7 items-center gap-1.5 rounded-of border border-of-border bg-of-surface px-2 text-xs font-medium text-of-text hover:bg-of-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus"
+            >
+              <BarChart3 size={13} aria-hidden="true" /> 분석
+            </Link>
+            {canWrite ? (
+              <Button size="sm" onClick={openCreate}>
+                <Plus size={13} /> 새 작업
+              </Button>
+            ) : null}
+          </div>
+        </div>
+      </section>
       <div className="border-b border-of-border bg-of-surface">
         <div className="flex flex-col gap-2 px-4 py-2.5">
           <div className="flex flex-col gap-2 xl:flex-row xl:items-center xl:justify-between">
@@ -324,7 +420,11 @@ export function ListPage() {
                   <Search size={13} /> 검색
                 </Button>
               </form>
-              <Filters projectId={projectId} />
+              {filtersOpen ? (
+                <div id="project-work-item-filters">
+                  <Filters projectId={projectId} />
+                </div>
+              ) : null}
             </div>
 
             <div className="flex shrink-0 flex-wrap items-center gap-2">
@@ -335,17 +435,6 @@ export function ListPage() {
                     : `${data.total}건`}
                 </span>
               ) : null}
-              <DisplayMenu
-                sort={sort}
-                columns={columns}
-                customColumns={customColumns}
-                customFields={customFields.data?.items ?? []}
-                onSortChange={setSort}
-                onToggleColumn={toggleColumn}
-                onToggleCustomColumn={toggleCustomColumn}
-                density={density}
-                onDensityChange={setDensity}
-              />
               <Button
                 variant="outline"
                 size="sm"

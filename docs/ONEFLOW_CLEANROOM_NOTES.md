@@ -166,3 +166,9 @@ Plane source, package, asset, CSS, DOM hierarchy, exact spacing/colors, wording,
 `docs/plane-poc-reverse-spec/` D002에서 사용한 입력은 project card/list discovery, compact toolbar, search/sort/filter/add 행동뿐이다. OneFlow 구현은 기존 자체 project rollup, health, initiative, create API와 local display preference를 사용해 card/list surface를 독립 작성했다.
 
 Plane cover image, source, package, asset, CSS, DOM hierarchy, exact visual tokens, wording, branding은 복사하지 않았다. OneFlow 계약에 없는 lead/cover는 만들지 않았고 신규 dependency/API/DB/schema/environment 변경은 없다. — attested-independent-derivation
+
+## UI-64 Project Work Items Composition
+
+`docs/plane-poc-reverse-spec/` D003에서 사용한 입력은 work-item title/count, view switching, filter/display/analytics/create controls와 dense list의 행동·정보구조뿐이다. OneFlow 구현은 기존 자체 React Router routes, URL query state, saved filters, CSV import/export, project membership permission과 composer를 재배치해 독립 작성했다.
+
+Plane source, package, asset, CSS, DOM hierarchy, exact dimensions/colors, wording, icons, branding은 복사하지 않았다. 신규 dependency/API/DB/schema/environment 변경은 없으며 `bash scripts/check_cleanroom.sh`가 PASS했다. — attested-independent-derivation
