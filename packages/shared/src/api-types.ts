@@ -882,6 +882,40 @@ export interface paths {
         patch: operations["update_personal_note_api_v1_me_personal_notes__note_id__patch"];
         trace?: never;
     };
+    "/api/v1/me/sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List My Sessions */
+        get: operations["list_my_sessions_api_v1_me_sessions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/me/sessions/{session_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Revoke My Session */
+        delete: operations["revoke_my_session_api_v1_me_sessions__session_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/me/time-entries": {
         parameters: {
             query?: never;
@@ -3180,6 +3214,38 @@ export interface components {
             oidc_client_id?: string | null;
             /** Oidc Issuer */
             oidc_issuer?: string | null;
+            /**
+             * Session Management Enabled
+             * @default false
+             */
+            session_management_enabled: boolean;
+        };
+        /** AuthSessionList */
+        AuthSessionList: {
+            /** Items */
+            items: components["schemas"]["AuthSessionRead"][];
+            /** Total */
+            total: number;
+        };
+        /** AuthSessionRead */
+        AuthSessionRead: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Is Current */
+            is_current: boolean;
         };
         /** AutomationRuleCreate */
         AutomationRuleCreate: {
@@ -9439,6 +9505,68 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PersonalNoteError"];
+                };
+            };
+        };
+    };
+    list_my_sessions_api_v1_me_sessions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthSessionList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    revoke_my_session_api_v1_me_sessions__session_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

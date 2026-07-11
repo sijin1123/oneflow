@@ -10,6 +10,7 @@ export type AuthConfig = {
   oidc_client_id: string | null
   has_client_secret: boolean
   command_palette_enabled: boolean
+  session_management_enabled: boolean
 }
 
 export function useAuthConfig() {
@@ -42,6 +43,39 @@ export function useLogout() {
     mutationFn: () => api<void>('/api/v1/auth/logout', { method: 'POST' }),
     onSuccess: () => {
       queryClient.clear()
+    },
+  })
+}
+
+export type AuthSession = {
+  id: string
+  created_at: string
+  expires_at: string
+  is_current: boolean
+}
+
+export type AuthSessionList = { items: AuthSession[]; total: number }
+
+export function useAuthSessions(enabled: boolean) {
+  return useQuery({
+    queryKey: ['auth-sessions'],
+    queryFn: () => api<AuthSessionList>('/api/v1/me/sessions'),
+    enabled,
+  })
+}
+
+export function useRevokeAuthSession() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id }: { id: string; isCurrent: boolean }) =>
+      api<void>(`/api/v1/me/sessions/${id}`, { method: 'DELETE' }),
+    onSuccess: (_, variables) => {
+      if (variables.isCurrent) {
+        queryClient.clear()
+        window.location.assign('/login')
+        return
+      }
+      void queryClient.invalidateQueries({ queryKey: ['auth-sessions'] })
     },
   })
 }

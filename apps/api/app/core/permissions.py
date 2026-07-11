@@ -347,6 +347,7 @@ ENDPOINT_ALLOWLIST: dict[str, str] = {
     ),
     "POST /api/v1/auth/login": "인증 축 — dev 로그인(loopback 한정, 프로젝트 verb 아님)",
     "POST /api/v1/auth/logout": "인증 축 — 세션 폐기(비인증·멱등)",
+    "DELETE /api/v1/me/sessions/{session_id}": "개인 브라우저 세션 폐기 — 쿠키 사용자 스코프",
     "POST /api/v1/users": "워크스페이스 admin 축 (is_admin — 프로젝트 역할과 별개)",
     "PATCH /api/v1/users/{user_id}": "워크스페이스 admin 축 (is_admin — 프로젝트 역할과 별개)",
     "POST /api/v1/me/notifications/read-all": "개인 알림 — 사용자 스코프",

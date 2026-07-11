@@ -21,6 +21,7 @@ async def test_dev_mode_config_is_minimal(client):
         "oidc_client_id": None,
         "has_client_secret": False,
         "command_palette_enabled": False,
+        "session_management_enabled": False,
     }
 
 
@@ -52,6 +53,7 @@ async def test_oidc_mode_answers_config_but_501s_everything_else():
         assert body["oidc_client_id"] == "oneflow-web"
         assert body["has_client_secret"] is True
         assert body["command_palette_enabled"] is False
+        assert body["session_management_enabled"] is False
         # …and the secret VALUE appears nowhere in the response.
         assert "s3cr3t-value" not in res.text
 

@@ -3463,6 +3463,122 @@ test('개인 설정에서 액세스 토큰을 생성하고 폐기한다', async 
   await expect(tokenSection.getByText('폐기됨')).toBeVisible()
 })
 
+test('개인 설정에서 활성 브라우저 세션을 확인하고 종료한다', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await mockApi(page)
+  await page.route('**/api/v1/auth/config', (route) =>
+    route.fulfill({
+      json: {
+        auth_mode: 'dev',
+        oidc_issuer: null,
+        oidc_client_id: null,
+        has_client_secret: false,
+        command_palette_enabled: false,
+        session_management_enabled: true,
+      },
+    }),
+  )
+  let sessions = [
+    {
+      id: 'session-current',
+      created_at: '2026-07-11T08:00:00Z',
+      expires_at: '2026-07-18T08:00:00Z',
+      is_current: true,
+    },
+    {
+      id: 'session-other',
+      created_at: '2026-07-10T08:00:00Z',
+      expires_at: '2026-07-17T08:00:00Z',
+      is_current: false,
+    },
+  ]
+  let otherRevokeFailed = false
+  await page.route('**/api/v1/me/sessions**', async (route) => {
+    if (route.request().method() === 'DELETE') {
+      const id = route.request().url().split('/').pop()
+      if (id === 'session-other' && !otherRevokeFailed) {
+        otherRevokeFailed = true
+        await route.fulfill({ status: 503, json: { detail: 'temporary failure' } })
+        return
+      }
+      sessions = sessions.filter((session) => session.id !== id)
+      await route.fulfill({ status: 204, body: '' })
+      return
+    }
+    await route.fulfill({ json: { items: sessions, total: sessions.length } })
+  })
+
+  await page.goto('/settings')
+  const section = page.getByRole('region', { name: '로그인 및 세션' })
+  await expect(section.getByText('현재 세션')).toBeVisible()
+  const otherSessionButton = section.getByRole('button', { name: /^26\..*세션 종료$/ })
+  await expect(otherSessionButton).toBeVisible()
+
+  const otherDelete = page.waitForRequest(
+    (request) =>
+      request.method() === 'DELETE' && request.url().endsWith('/me/sessions/session-other'),
+  )
+  await otherSessionButton.click()
+  await otherDelete
+  await expect(section.getByRole('alert')).toContainText('세션을 종료하지 못했습니다.')
+  const retryDelete = page.waitForRequest(
+    (request) =>
+      request.method() === 'DELETE' && request.url().endsWith('/me/sessions/session-other'),
+  )
+  await section.getByRole('button', { name: '다시 시도' }).click()
+  await retryDelete
+  await expect(otherSessionButton).toHaveCount(0)
+  await expectNoHorizontalOverflow(page)
+  await section.scrollIntoViewIfNeeded()
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/identity-security-ui/mobile.png',
+    fullPage: true,
+  })
+
+  const currentDelete = page.waitForRequest(
+    (request) =>
+      request.method() === 'DELETE' && request.url().endsWith('/me/sessions/session-current'),
+  )
+  await section.getByRole('button', { name: '현재 세션 종료' }).click()
+  await currentDelete
+  await expect(page).toHaveURL(/\/login$/)
+})
+
+test('개인 설정은 인증 모드별로 지원되는 세션 동작만 노출한다', async ({ page }) => {
+  await mockApi(page)
+  let sessionRequests = 0
+  await page.route('**/api/v1/me/sessions**', async (route) => {
+    sessionRequests += 1
+    await route.fulfill({ json: { items: [], total: 0 } })
+  })
+
+  await page.goto('/settings')
+  const devSection = page.getByRole('region', { name: '로그인 및 세션' })
+  await expect(devSection.getByText('자동 개발 로그인이 사용 중입니다.')).toBeVisible()
+  await expect(devSection.getByRole('button', { name: /세션 종료/ })).toHaveCount(0)
+  expect(sessionRequests).toBe(0)
+
+  await page.route('**/api/v1/auth/config', (route) =>
+    route.fulfill({
+      json: {
+        auth_mode: 'oidc',
+        oidc_issuer: 'https://login.example.com/tenant',
+        oidc_client_id: 'oneflow-web',
+        has_client_secret: true,
+        command_palette_enabled: false,
+        session_management_enabled: false,
+      },
+    }),
+  )
+  await page.reload()
+  const oidcSection = page.getByRole('region', { name: '로그인 및 세션' })
+  await expect(oidcSection.getByText('SSO 공급자가 세션을 관리합니다.')).toBeVisible()
+  await expect(oidcSection.getByText('https://login.example.com/tenant')).toBeVisible()
+  await expect(oidcSection.getByText('oneflow-web')).toBeVisible()
+  await expect(oidcSection.getByRole('button', { name: /세션 종료/ })).toHaveCount(0)
+  expect(sessionRequests).toBe(0)
+})
+
 test('settings/admin IA는 모바일 폭에서 표면별 탐색을 유지한다', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 })
   await mockApi(page)
