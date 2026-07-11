@@ -2198,3 +2198,33 @@ Chromium typed mock fixture에서 1440x960과 390x844 viewport를 사용했다. 
 ## 이연 항목
 
 - 없음. 새로 노출한 모든 control은 실제 route, query state 또는 권한 기반 mutation entry에 연결된다.
+
+---
+
+# UI-65 Detail Activity Taxonomy 검증 (2026-07-12)
+
+> 범위: D017-D023/RSP-005 activity taxonomy를 drawer/full-page 공통 feed와 기존 activities/comments 계약에 통합.
+
+| 항목 | 명령 | 결과 |
+|---|---|---:|
+| Typecheck/lint/build | `npm run typecheck`, `npm run lint`, `npm run build` | **PASS** — 기존 경고만 유지 |
+| Pure unit / Component | `npm run test:unit`, `npm run test:component` | **PASS — 67 / 8** |
+| Focused detail activity | `npm run test:e2e -- --workers=1 --grep "드로어에서 활동 이력을|작업 상세 전체 페이지가|모바일 작업 상세 전체 페이지"` | **PASS — 3** |
+| Full frontend E2E | `npm run test:e2e` | **204 PASS, opt-in 1 skipped; 기존 webhook 1건 병렬 failure** |
+| Failed-test recheck | `npm run test:e2e -- --workers=1 --grep "webhook 재시도 실패와"` | **PASS — 1** |
+| Clean-room / Diff | `bash scripts/check_cleanroom.sh`, `git diff --check` | **PASS** |
+
+## UI 변경
+
+- activity feed에 전체, 활동, 댓글, 업데이트, 전환, 이력 탭과 범위별 empty state를 추가했다.
+- drawer와 full-page가 같은 `HistorySection`을 사용하므로 taxonomy와 comment composer 동작이 일치한다.
+- 시각 증적은 `docs/screenshots/redevelopment/detail-activity-ui/{desktop,mobile}.png`에 보존한다.
+
+## 기능/API 반영
+
+- Updates는 `action=field_changed`, Transition은 `action=field_changed&field=status`, History는 `action=created`로 기존 서버 필터에 연결된다.
+- Comments/All은 기존 thread/reaction/mention/composer 계약을 유지한다. API, DB, migration, permission, env, dependency 변경은 없다.
+
+## 이연 항목
+
+- 없음. RSP-005 taxonomy는 현재 activity action/field 계약 안에서 기능형으로 흡수했다.
