@@ -1157,8 +1157,17 @@ test('드로어에서 상태 변경 PATCH가 expected_version을 동봉한다', 
   await mockApi(page)
   await page.goto(`/projects/${project.id}/work-packages`)
   await page.getByRole('button', { name: '워크패키지 API 구현' }).click()
-  const statusSelect = page.getByRole('dialog').getByLabel('상태', { exact: true })
+  const drawer = page.getByRole('dialog')
+  const properties = drawer.getByRole('complementary', { name: '작업 속성' })
+  const statusSelect = drawer.getByLabel('상태', { exact: true })
   await expect(statusSelect).toBeVisible()
+  await properties.getByRole('button', { name: '속성' }).click()
+  await expect(statusSelect).toHaveCount(0)
+  await drawer.getByRole('button', { name: '상태 속성 편집' }).click()
+  await expect(statusSelect).toBeFocused()
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/detail-properties-ui/desktop.png',
+  })
   await page.screenshot({ path: '../../docs/screenshots/web-drawer.png', fullPage: true })
   await page.screenshot({
     path: '../../docs/screenshots/redevelopment/detail-ui/desktop.png',
@@ -1185,6 +1194,9 @@ test('모바일 작업 상세 드로어가 속성과 활동 탭을 유지한다'
   await expectNoHorizontalOverflow(page)
   await expect(drawer.getByText('속성')).toBeVisible()
   await expect(drawer.getByRole('tab', { name: '개요' })).toHaveAttribute('aria-selected', 'true')
+  await drawer.getByRole('complementary', { name: '작업 속성' }).screenshot({
+    path: '../../docs/screenshots/redevelopment/detail-properties-ui/mobile.png',
+  })
   await page.screenshot({
     path: '../../docs/screenshots/redevelopment/detail-ui/mobile.png',
     fullPage: true,

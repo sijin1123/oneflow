@@ -1,6 +1,6 @@
-import { Bell, BellOff, CheckCircle2, ExternalLink, Eye, Users } from 'lucide-react'
+import { Bell, BellOff, CheckCircle2, ChevronDown, ExternalLink, Eye, Users } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
-import { Suspense, lazy, useEffect, useState } from 'react'
+import { Suspense, lazy, useEffect, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 
 import { ErrorState, ListSkeleton } from '@/components/shell/states'
@@ -216,6 +216,8 @@ export function WorkPackageDetailPanel({
   const canWrite = useCanWrite(projectId)
   const [moveOpen, setMoveOpen] = useState(false)
   const [activeTab, setActiveTab] = useState<'overview' | 'activity'>('overview')
+  const [propertiesOpen, setPropertiesOpen] = useState(true)
+  const propertiesRef = useRef<HTMLElement>(null)
 
   useEffect(() => {
     if (initialMoveOpen) setMoveOpen(true)
@@ -257,6 +259,13 @@ export function WorkPackageDetailPanel({
   const createdByName = wp.created_by
     ? members.data?.items.find((m) => m.user_id === wp.created_by)?.display_name ?? '알 수 없음'
     : null
+  const focusProperty = (id: string) => {
+    setActiveTab('overview')
+    setPropertiesOpen(true)
+    window.requestAnimationFrame(() => {
+      propertiesRef.current?.querySelector<HTMLElement>(`#${id}`)?.focus()
+    })
+  }
   const fullPageLink = showFullPageLink ? (
     <Link
       to={`/projects/${projectId}/work-packages/${wp.id}`}
@@ -293,8 +302,30 @@ export function WorkPackageDetailPanel({
         </div>
 
         <div className="flex flex-wrap items-center gap-2 text-xs text-of-muted">
-          <StatusChip status={wp.status} label={statusLabel(wp.status)} />
-          <PriorityChip priority={wp.priority} />
+          {canWrite ? (
+            <button
+              type="button"
+              aria-label="상태 속성 편집"
+              className="rounded-of focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus"
+              onClick={() => focusProperty('wp-status')}
+            >
+              <StatusChip status={wp.status} label={statusLabel(wp.status)} />
+            </button>
+          ) : (
+            <StatusChip status={wp.status} label={statusLabel(wp.status)} />
+          )}
+          {canWrite ? (
+            <button
+              type="button"
+              aria-label="우선순위 속성 편집"
+              className="rounded-of focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus"
+              onClick={() => focusProperty('wp-priority')}
+            >
+              <PriorityChip priority={wp.priority} />
+            </button>
+          ) : (
+            <PriorityChip priority={wp.priority} />
+          )}
           {createdByName ? <span>만든 사람: {createdByName}</span> : null}
           <span>v{wp.version}</span>
         </div>
@@ -405,9 +436,25 @@ export function WorkPackageDetailPanel({
             <AttachmentsSection wpId={wp.id} projectId={projectId} />
           </div>
 
-          <aside className="of-surface order-first space-y-3 bg-of-surface-raised p-3 lg:order-none lg:sticky lg:top-0 lg:self-start">
-            <h3 className="text-xs font-semibold text-of-muted">속성</h3>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-1 [&>*]:min-w-0">
+          <aside
+            ref={propertiesRef}
+            aria-label="작업 속성"
+            className="of-surface order-first space-y-3 bg-of-surface-raised p-3 lg:order-none lg:sticky lg:top-0 lg:self-start"
+          >
+            <button
+              type="button"
+              aria-expanded={propertiesOpen}
+              className="flex w-full items-center justify-between gap-2 text-xs font-semibold text-of-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus"
+              onClick={() => setPropertiesOpen((open) => !open)}
+            >
+              속성
+              <ChevronDown
+                size={14}
+                aria-hidden="true"
+                className={`transition-transform ${propertiesOpen ? 'rotate-180' : ''}`}
+              />
+            </button>
+            {propertiesOpen ? <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-1 [&>*]:min-w-0">
               <div className="space-y-1.5">
                 <label htmlFor="wp-status" className="text-xs font-medium text-of-muted">
                   상태
@@ -616,7 +663,9 @@ export function WorkPackageDetailPanel({
                   ))}
                 </Select>
               </div>
-            </div>
+            </div> : (
+              <p className="text-xs text-of-muted">상태, 담당자, 일정 등 작업 속성이 접혀 있습니다.</p>
+            )}
           </aside>
         </div>
       ) : (
