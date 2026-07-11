@@ -169,8 +169,18 @@ const activities: ActivityList = {
       new_value: '스프린트 2',
       created_at: '2026-07-02T00:00:00Z',
     },
+    {
+      id: 'a3',
+      work_package_id: wpA.id,
+      actor_id: null,
+      action: 'field_changed',
+      field: 'status',
+      old_value: 'todo',
+      new_value: 'in_progress',
+      created_at: '2026-07-03T00:00:00Z',
+    },
   ],
-  total: 2,
+  total: 3,
 }
 const noComments: CommentList = { items: [], total: 0 }
 
@@ -458,9 +468,15 @@ async function mockApi(page: Page, opts: { conflictOnPatch?: boolean } = {}) {
       },
     }),
   )
-  await page.route(`**/api/v1/work-packages/${wpA.id}/activities`, (route) =>
-    route.fulfill({ json: activities }),
-  )
+  await page.route(`**/api/v1/work-packages/${wpA.id}/activities**`, (route) => {
+    const url = new URL(route.request().url())
+    const action = url.searchParams.get('action')
+    const field = url.searchParams.get('field')
+    const items = activities.items.filter(
+      (activity) => (!action || activity.action === action) && (!field || activity.field === field),
+    )
+    return route.fulfill({ json: { items, total: items.length } })
+  })
   await page.route(`**/api/v1/work-packages/${wpA.id}/comments`, async (route) => {
     if (route.request().method() === 'POST') {
       const sent = route.request().postDataJSON() as { body: string; parent_id?: string | null }
@@ -1392,6 +1408,11 @@ test('모바일 작업 상세 전체 페이지가 속성과 활동 탭을 유지
   await expect(page.getByText('속성')).toBeVisible()
   await page.getByRole('tab', { name: '활동' }).click()
   await expect(page.getByText('작업을 생성했습니다')).toBeVisible()
+  await page.getByRole('tablist', { name: '활동 피드 필터' }).getByRole('tab', { name: '전환' }).click()
+  await expect(page.getByText('상태: 할 일 → 진행 중')).toBeVisible()
+  await page.getByRole('region', { name: '활동 및 댓글' }).screenshot({
+    path: '../../docs/screenshots/redevelopment/detail-activity-ui/mobile.png',
+  })
   await page.screenshot({
     path: '../../docs/screenshots/redevelopment/detail-ui/full-page-mobile.png',
     fullPage: true,
@@ -1435,6 +1456,22 @@ test('드로어에서 활동 이력을 보여주고 댓글을 추가한다', asy
   await expect(drawer.getByText('작업을 생성했습니다')).toBeVisible() // activity feed
   // Cycle assignment history renders NAME snapshots (Pass 71).
   await expect(drawer.getByText('사이클: 스프린트 1 → 스프린트 2')).toBeVisible()
+
+  const activityFilters = drawer.getByRole('tablist', { name: '활동 피드 필터' })
+  const transitionRequest = page.waitForRequest(
+    (req) => req.url().includes(`/work-packages/${wpA.id}/activities`) && req.url().includes('field=status'),
+  )
+  await activityFilters.getByRole('tab', { name: '전환' }).click()
+  await transitionRequest
+  await expect(drawer.getByText('상태: 할 일 → 진행 중')).toBeVisible()
+  await expect(drawer.getByText('사이클: 스프린트 1 → 스프린트 2')).toHaveCount(0)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/detail-activity-ui/desktop.png',
+  })
+
+  await activityFilters.getByRole('tab', { name: '댓글' }).click()
+  await expect(drawer.getByText('이 범위에 표시할 활동이 없습니다.')).toBeVisible()
+  await activityFilters.getByRole('tab', { name: '전체' }).click()
 
   const commentPost = page.waitForRequest(
     (req) => req.method() === 'POST' && req.url().includes(`/work-packages/${wpA.id}/comments`),

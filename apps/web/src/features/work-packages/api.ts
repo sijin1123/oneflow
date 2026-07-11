@@ -224,10 +224,20 @@ export function useComments(wpId: string | null) {
   })
 }
 
-export function useActivities(wpId: string | null) {
+export type ActivityFilters = {
+  action?: 'created' | 'field_changed' | 'commented'
+  field?: string
+}
+
+export function useActivities(wpId: string | null, filters: ActivityFilters = {}) {
+  const params = new URLSearchParams()
+  if (filters.action) params.set('action', filters.action)
+  if (filters.field) params.set('field', filters.field)
+  const query = params.toString()
   return useQuery({
-    queryKey: ['work-package-activities', wpId],
-    queryFn: () => api<ActivityList>(`/api/v1/work-packages/${wpId}/activities`),
+    queryKey: ['work-package-activities', wpId, filters.action, filters.field],
+    queryFn: () =>
+      api<ActivityList>(`/api/v1/work-packages/${wpId}/activities${query ? `?${query}` : ''}`),
     enabled: wpId !== null,
   })
 }

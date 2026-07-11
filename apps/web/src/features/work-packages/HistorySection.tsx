@@ -32,6 +32,17 @@ type FeedItem =
   | { kind: 'activity'; at: string; activity: Activity }
   | { kind: 'thread'; at: string; thread: CommentThread }
 
+type FeedFilter = 'all' | 'activity' | 'comments' | 'updates' | 'transitions' | 'history'
+
+const FEED_FILTERS: Array<{ key: FeedFilter; label: string }> = [
+  { key: 'all', label: '전체' },
+  { key: 'activity', label: '활동' },
+  { key: 'comments', label: '댓글' },
+  { key: 'updates', label: '업데이트' },
+  { key: 'transitions', label: '전환' },
+  { key: 'history', label: '이력' },
+]
+
 function FeedMetric({
   icon: Icon,
   label,
@@ -119,7 +130,16 @@ function FreeReactionInput({
 }
 
 export function HistorySection({ wpId, projectId }: { wpId: string; projectId: string }) {
-  const activities = useActivities(wpId)
+  const [feedFilter, setFeedFilter] = useState<FeedFilter>('all')
+  const activityFilters =
+    feedFilter === 'updates'
+      ? { action: 'field_changed' as const }
+      : feedFilter === 'transitions'
+        ? { action: 'field_changed' as const, field: 'status' }
+        : feedFilter === 'history'
+          ? { action: 'created' as const }
+          : {}
+  const activities = useActivities(wpId, activityFilters)
   const comments = useComments(wpId)
   const createComment = useCreateComment(wpId)
   const toggleReaction = useToggleReaction(wpId)
@@ -150,11 +170,18 @@ export function HistorySection({ wpId, projectId }: { wpId: string; projectId: s
     return `${field}: ${labelValue(a.field, a.old_value)} → ${labelValue(a.field, a.new_value)}`
   }
 
+  const visibleActivities =
+    feedFilter === 'comments'
+      ? []
+      : feedFilter === 'updates'
+        ? (activities.data?.items ?? []).filter((activity) => activity.field !== 'status')
+        : (activities.data?.items ?? [])
+  const showComments = feedFilter === 'all' || feedFilter === 'comments'
   const feed: FeedItem[] = [
-    ...(activities.data?.items ?? []).map(
+    ...visibleActivities.map(
       (a): FeedItem => ({ kind: 'activity', at: a.created_at, activity: a }),
     ),
-    ...groupThreads(comments.data?.items ?? []).map(
+    ...(showComments ? groupThreads(comments.data?.items ?? []) : []).map(
       (t): FeedItem => ({ kind: 'thread', at: t.root.created_at, thread: t }),
     ),
   ].sort((x, y) => x.at.localeCompare(y.at))
@@ -305,6 +332,30 @@ export function HistorySection({ wpId, projectId }: { wpId: string; projectId: s
         <FeedMetric icon={UsersRound} label="멘션" value={`${mentionCount}건`} />
       </div>
 
+      <div
+        role="tablist"
+        aria-label="활동 피드 필터"
+        className="mt-3 flex max-w-full gap-1 overflow-x-auto border-b border-of-border-subtle"
+      >
+        {FEED_FILTERS.map((filter) => (
+          <button
+            key={filter.key}
+            type="button"
+            role="tab"
+            aria-selected={feedFilter === filter.key}
+            className={cn(
+              'shrink-0 border-b-2 px-2.5 py-2 text-xs font-medium transition-colors',
+              feedFilter === filter.key
+                ? 'border-of-accent text-of-accent'
+                : 'border-transparent text-of-muted hover:text-of-text',
+            )}
+            onClick={() => setFeedFilter(filter.key)}
+          >
+            {filter.label}
+          </button>
+        ))}
+      </div>
+
       {pending ? (
         <div className="mt-3 rounded-of border border-dashed border-of-border bg-of-surface-2/35 px-3 py-4 text-xs text-of-muted">
           불러오는 중...
@@ -315,7 +366,7 @@ export function HistorySection({ wpId, projectId }: { wpId: string; projectId: s
         </div>
       ) : feed.length === 0 ? (
         <div className="mt-3 rounded-of border border-dashed border-of-border bg-of-surface-2/35 px-3 py-4 text-xs text-of-muted">
-          아직 활동이 없습니다.
+          이 범위에 표시할 활동이 없습니다.
         </div>
       ) : (
         <ul className="mt-3 space-y-2">
