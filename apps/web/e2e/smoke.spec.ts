@@ -603,6 +603,57 @@ test('앱 셸과 프로젝트/워크패키지 목록이 렌더링된다', async 
   })
 })
 
+test('프로젝트 작업 화면 제어가 보기·필터·분석·생성 흐름에 연결된다', async ({ page }) => {
+  await mockApi(page)
+  await page.goto(`/projects/${project.id}/work-packages`)
+
+  const controls = page.getByRole('region', { name: '작업 화면 제어' })
+  await expect(controls.getByRole('heading', { name: 'Work Packages' })).toBeVisible()
+  await expect(controls.getByRole('link', { name: '목록 보기' })).toHaveAttribute(
+    'href',
+    `/projects/${project.id}/work-packages`,
+  )
+  await expect(controls.getByRole('link', { name: '보드 보기' })).toHaveAttribute(
+    'href',
+    `/projects/${project.id}/board`,
+  )
+  await expect(controls.getByRole('link', { name: '백로그 보기' })).toHaveAttribute(
+    'href',
+    `/projects/${project.id}/backlog`,
+  )
+  await expect(controls.getByRole('link', { name: '캘린더 보기' })).toHaveAttribute(
+    'href',
+    `/projects/${project.id}/calendar`,
+  )
+  await expect(controls.getByRole('link', { name: '분석' })).toHaveAttribute(
+    'href',
+    `/projects/${project.id}/dashboard`,
+  )
+  await expect(controls.getByRole('button', { name: '표시' })).toBeVisible()
+
+  const filterButton = controls.getByRole('button', { name: '필터' })
+  await expect(page.getByLabel('상태 필터')).toBeVisible()
+  await filterButton.click()
+  await expect(page.getByLabel('상태 필터')).toHaveCount(0)
+  await expect(filterButton).toHaveAttribute('aria-expanded', 'false')
+  await filterButton.click()
+  await expect(page.getByLabel('상태 필터')).toBeVisible()
+
+  await controls.getByRole('button', { name: '새 작업' }).click()
+  await expect(page).toHaveURL(new RegExp(`/projects/${project.id}/work-packages\\?new=1`))
+  await expect(page.getByRole('region', { name: '새 작업 생성' })).toBeVisible()
+
+  await page.setViewportSize({ width: 1440, height: 960 })
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/project-work-items-composition-ui/desktop.png',
+  })
+  await page.setViewportSize({ width: 390, height: 844 })
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/project-work-items-composition-ui/mobile.png',
+  })
+})
+
 test('글로벌 레일과 전체 폭 검색 topbar가 실제 제품 경로에 연결된다', async ({ page }) => {
   await mockApi(page)
   await page.goto('/projects')
@@ -5892,7 +5943,7 @@ test('커맨드 팔레트 단축키는 편집 필드를 침범하지 않는다',
   await mockCommandPaletteSearch(page)
   await page.goto(`/projects/${project.id}/work-packages`)
 
-  await page.getByLabel('워크패키지 검색').focus()
+  await page.getByLabel('작업 목록 검색어').focus()
   await page.keyboard.press('Control+K')
   await expect(page.getByRole('dialog', { name: '전체 검색' })).toHaveCount(0)
 

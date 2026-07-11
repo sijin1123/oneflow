@@ -2166,3 +2166,35 @@ Chromium typed mock fixture에서 1440x960과 390x844 viewport를 사용했다. 
 ## 이연 항목
 
 - 없음. cover image나 owner field처럼 OneFlow 계약에 없는 데이터를 추측해 표시하지 않았다.
+
+---
+
+# UI-64 Project Work Items Composition 검증 (2026-07-12)
+
+> 범위: D003 Work items의 중앙 header/view/action 구성을 기존 OneFlow list, query state, saved view, import/export, permissions와 통합한 기능형 surface.
+
+| 항목 | 명령 | 결과 |
+|---|---|---:|
+| Typecheck/lint/build | `npm run typecheck`, `npm run lint`, `npm run build` | **PASS** — 기존 경고만 유지 |
+| Pure unit | `npm run test:unit` | **PASS — 67** |
+| Component | `npm run test:component` | **PASS — 8** |
+| Focused composition | `npm run test:e2e -- --grep "프로젝트 작업 화면 제어"` | **PASS — 1** |
+| Full frontend E2E | `npm run test:e2e` | **202 PASS, opt-in 1 skipped; 기존 3건 병렬 timeout** |
+| Failed-test recheck | `npm run test:e2e -- --workers=1 --grep "포트폴리오 리포트가 행|Initiatives 정책은 navigation|Releases 정책은 milestone"` | **PASS — 3** |
+| Clean-room | `bash scripts/check_cleanroom.sh` | **PASS** |
+| Diff hygiene | `git diff --check` | **PASS** |
+
+## UI 변경
+
+- Work Packages 제목/count와 list/board/backlog/calendar mode navigation, Filter, Display, Analytics, Add action을 하나의 compact control region으로 구성했다.
+- search, filters, result count, import/export, saved views는 두 번째 band에서 기존 기능을 보존한다.
+- 1440x960과 390x844 증적은 `docs/screenshots/redevelopment/project-work-items-composition-ui/{desktop,mobile}.png`에 보존한다.
+
+## 기능/API 반영
+
+- mode와 analytics는 기존 project routes, Filter는 실제 controls visibility, Display는 URL column/sort state, Add는 write permission과 `?new=1` composer에 연결된다.
+- API, DB, migration, permission contract, environment variable, dependency 변경은 없다.
+
+## 이연 항목
+
+- 없음. 새로 노출한 모든 control은 실제 route, query state 또는 권한 기반 mutation entry에 연결된다.
