@@ -30,6 +30,7 @@ import { AiSettingsPage } from '@/features/admin/AiSettingsPage'
 import { InitiativesSettingsPage } from '@/features/admin/InitiativesSettingsPage'
 import { ReleasesSettingsPage } from '@/features/admin/ReleasesSettingsPage'
 import { CustomersSettingsPage } from '@/features/admin/CustomersSettingsPage'
+import { WorkspaceSettingsShell } from '@/features/admin/WorkspaceSettingsShell'
 import { PersonalSettingsPage } from '@/features/settings/PersonalSettingsPage'
 import { SettingsPage } from '@/features/settings/SettingsPage'
 import { AllWorkPage } from '@/features/work-items/AllWorkPage'
@@ -89,14 +90,21 @@ export const router = createBrowserRouter([
       },
       { path: 'operations', element: <OperationsPage /> },
       { path: 'status', element: <StatusPage /> },
-      { path: 'admin/users', element: <UsersPage /> },
-      { path: 'admin/webhooks', element: <WebhooksPage /> },
-      { path: 'admin/worklogs', element: <WorklogsPage /> },
-      { path: 'admin/wiki', element: <WikiSettingsPage /> },
-      { path: 'admin/ai', element: <AiSettingsPage /> },
-      { path: 'admin/initiatives', element: <InitiativesSettingsPage /> },
-      { path: 'admin/releases', element: <ReleasesSettingsPage /> },
-      { path: 'admin/customers', element: <CustomersSettingsPage /> },
+      {
+        path: 'admin',
+        element: <WorkspaceSettingsShell />,
+        children: [
+          { index: true, element: <Navigate to="users" replace /> },
+          { path: 'users', element: <UsersPage /> },
+          { path: 'webhooks', element: <WebhooksPage /> },
+          { path: 'worklogs', element: <WorklogsPage /> },
+          { path: 'wiki', element: <WikiSettingsPage /> },
+          { path: 'ai', element: <AiSettingsPage /> },
+          { path: 'initiatives', element: <InitiativesSettingsPage /> },
+          { path: 'releases', element: <ReleasesSettingsPage /> },
+          { path: 'customers', element: <CustomersSettingsPage /> },
+        ],
+      },
       { path: 'settings', element: <PersonalSettingsPage /> },
       { path: 'projects/:projectId/work-packages', element: <ListPage /> },
       { path: 'projects/:projectId/work-packages/:wpId', element: <WorkPackageDetailPage /> },
