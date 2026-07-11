@@ -13,6 +13,8 @@ oidc mode keeps 501 for login/logout; the dev loopback guard blocks
 non-local callers before any of this runs.
 """
 
+import asyncio
+import uuid
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -92,6 +94,133 @@ async def test_flag_on_requires_valid_session(app, login_client):
     # Forged token → 401.
     login_client.cookies.set("oneflow_session", "forged")
     assert (await login_client.get("/api/v1/me")).status_code == 401
+
+
+async def test_session_management_lists_only_own_active_sessions(login_app, login_client):
+    login = await login_client.post("/api/v1/auth/login", json={"email": DEV_USER_EMAIL})
+    assert login.status_code == 200
+    transport = ASGITransport(app=login_app)
+    async with AsyncClient(transport=transport, base_url="http://test") as second:
+        login = await second.post("/api/v1/auth/login", json={"email": DEV_USER_EMAIL})
+        assert login.status_code == 200
+
+        async with login_app.state.sessionmaker() as session, session.begin():
+            dev_id = (
+                await session.execute(select(User.id).where(User.email == DEV_USER_EMAIL))
+            ).scalar_one()
+            stranger = User(email="other@oneflow.local", display_name="Other")
+            session.add(stranger)
+            await session.flush()
+            session.add_all(
+                [
+                    AuthSession(
+                        token_hash="a" * 64,
+                        user_id=stranger.id,
+                        expires_at=datetime.now(UTC) + timedelta(days=1),
+                    ),
+                    AuthSession(
+                        token_hash="b" * 64,
+                        user_id=dev_id,
+                        expires_at=datetime.now(UTC) - timedelta(seconds=1),
+                    ),
+                ]
+            )
+
+        listed = await login_client.get("/api/v1/me/sessions")
+        assert listed.status_code == 200, listed.text
+        assert listed.headers["cache-control"] == "no-store"
+        body = listed.json()
+        assert body["total"] == 2
+        assert sum(item["is_current"] for item in body["items"]) == 1
+        assert set(body["items"][0]) == {"id", "created_at", "expires_at", "is_current"}
+        assert all("token" not in key for item in body["items"] for key in item)
+
+
+async def test_session_revoke_is_owner_scoped_idempotent_and_clears_current(
+    login_app, login_client
+):
+    login = await login_client.post("/api/v1/auth/login", json={"email": DEV_USER_EMAIL})
+    assert login.status_code == 200
+    transport = ASGITransport(app=login_app)
+    async with AsyncClient(transport=transport, base_url="http://test") as second:
+        login = await second.post("/api/v1/auth/login", json={"email": DEV_USER_EMAIL})
+        assert login.status_code == 200
+        second_id = next(
+            item["id"]
+            for item in (await second.get("/api/v1/me/sessions")).json()["items"]
+            if item["is_current"]
+        )
+        endpoint = f"/api/v1/me/sessions/{second_id}"
+        concurrent = await asyncio.gather(
+            login_client.delete(endpoint), login_client.delete(endpoint)
+        )
+        assert [response.status_code for response in concurrent] == [204, 204]
+        assert (await login_client.delete(endpoint)).status_code == 204
+        assert (await second.get("/api/v1/me/sessions")).status_code == 401
+
+    async with login_app.state.sessionmaker() as session, session.begin():
+        stranger = User(email="foreign@oneflow.local", display_name="Foreign")
+        session.add(stranger)
+        await session.flush()
+        foreign = AuthSession(
+            token_hash="c" * 64,
+            user_id=stranger.id,
+            expires_at=datetime.now(UTC) + timedelta(days=1),
+        )
+        session.add(foreign)
+        await session.flush()
+        foreign_id = foreign.id
+    assert (await login_client.delete(f"/api/v1/me/sessions/{foreign_id}")).status_code == 204
+    async with login_app.state.sessionmaker() as session:
+        assert (await session.get(AuthSession, foreign_id)).revoked_at is None
+
+    current_id = next(
+        item["id"]
+        for item in (await login_client.get("/api/v1/me/sessions")).json()["items"]
+        if item["is_current"]
+    )
+    revoked = await login_client.delete(f"/api/v1/me/sessions/{current_id}")
+    assert revoked.status_code == 204
+    assert "oneflow_session=" in revoked.headers["set-cookie"]
+    assert "Max-Age=0" in revoked.headers["set-cookie"]
+    assert (await login_client.get("/api/v1/me/sessions")).status_code == 401
+
+
+async def test_session_management_rejects_wrong_mode_bearer_and_foreign_origin(
+    client, login_client
+):
+    off = await client.get("/api/v1/auth/config")
+    assert off.json()["session_management_enabled"] is False
+    assert (await client.get("/api/v1/me/sessions")).status_code == 404
+
+    cfg = await login_client.get("/api/v1/auth/config")
+    assert cfg.json()["session_management_enabled"] is True
+    bearer_only = await login_client.get(
+        "/api/v1/me/sessions", headers={"Authorization": "Bearer fake"}
+    )
+    assert bearer_only.status_code == 401
+    login = await login_client.post("/api/v1/auth/login", json={"email": DEV_USER_EMAIL})
+    assert login.status_code == 200
+    current_id = next(
+        item["id"]
+        for item in (await login_client.get("/api/v1/me/sessions")).json()["items"]
+        if item["is_current"]
+    )
+    denied = await login_client.delete(
+        f"/api/v1/me/sessions/{current_id}", headers={"Origin": "https://evil.example"}
+    )
+    assert denied.status_code == 403
+    denied_referer = await login_client.delete(
+        f"/api/v1/me/sessions/{current_id}",
+        headers={"Referer": "https://evil.example/settings"},
+    )
+    assert denied_referer.status_code == 403
+    allowed_referer = await login_client.delete(
+        f"/api/v1/me/sessions/{uuid.uuid4()}",
+        headers={"Referer": "http://localhost:5173/settings"},
+    )
+    assert allowed_referer.status_code == 204
+    assert (await login_client.get("/api/v1/me/sessions")).status_code == 200
 
 
 async def test_flag_on_expired_session_401_and_login_lazy_cleanup(app, login_client):

@@ -1,10 +1,15 @@
 import { useState } from 'react'
-import { Copy, KeyRound } from 'lucide-react'
+import { Copy, KeyRound, LogOut, MonitorSmartphone, ShieldCheck } from 'lucide-react'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { useAuthConfig, useLogout } from '@/features/auth/api'
+import {
+  type AuthConfig,
+  useAuthConfig,
+  useAuthSessions,
+  useRevokeAuthSession,
+} from '@/features/auth/api'
 import { useMe } from '@/features/members/api'
 import { formatDateTime } from '@/lib/datetime'
 
@@ -146,13 +151,157 @@ function AccessTokensPanel() {
   )
 }
 
+function SessionsPanel({
+  auth,
+  authError,
+  retryAuth,
+}: {
+  auth: AuthConfig | undefined
+  authError: boolean
+  retryAuth: () => void
+}) {
+  const supported = auth?.session_management_enabled === true
+  const sessions = useAuthSessions(supported)
+  const revokeSession = useRevokeAuthSession()
+
+  return (
+    <SettingsSection
+      title="로그인 및 세션"
+      description="인증 제공 경계를 확인하고 이 계정의 활성 브라우저 세션을 종료합니다."
+      actions={
+        <Badge variant={supported ? 'accent' : 'outline'}>
+          {auth?.auth_mode === 'oidc' ? 'SSO (OIDC)' : '개발 모드'}
+        </Badge>
+      }
+    >
+      {authError ? (
+        <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+          <p className="text-of-danger">인증 구성을 불러오지 못했습니다.</p>
+          <Button size="sm" variant="outline" onClick={retryAuth}>
+            다시 시도
+          </Button>
+        </div>
+      ) : !auth ? (
+        <p className="text-xs text-of-muted">인증 구성을 불러오는 중입니다.</p>
+      ) : auth.auth_mode === 'oidc' ? (
+        <div className="space-y-3 text-xs">
+          <div className="flex items-start gap-2 rounded-of border border-of-border bg-of-subtle p-3">
+            <ShieldCheck size={16} className="mt-0.5 shrink-0 text-of-accent" aria-hidden="true" />
+            <div className="min-w-0">
+              <p className="font-medium">SSO 공급자가 세션을 관리합니다.</p>
+              <p className="mt-1 text-of-muted">
+                OneFlow에서는 OIDC 연결 상태만 확인하며 세션 종료는 조직의 인증 공급자 정책을
+                따릅니다.
+              </p>
+            </div>
+          </div>
+          <dl className="grid min-w-0 gap-2 sm:grid-cols-2">
+            <div className="min-w-0">
+              <dt className="text-of-muted">Issuer</dt>
+              <dd className="mt-0.5 break-all font-mono text-[11px]">
+                {auth.oidc_issuer ?? '미설정'}
+              </dd>
+            </div>
+            <div className="min-w-0">
+              <dt className="text-of-muted">Client ID</dt>
+              <dd className="mt-0.5 break-all font-mono text-[11px]">
+                {auth.oidc_client_id ?? '미설정'}
+              </dd>
+            </div>
+          </dl>
+        </div>
+      ) : !supported ? (
+        <div className="flex items-start gap-2 rounded-of border border-of-border bg-of-subtle p-3 text-xs">
+          <ShieldCheck size={16} className="mt-0.5 shrink-0 text-of-muted" aria-hidden="true" />
+          <div>
+            <p className="font-medium">자동 개발 로그인이 사용 중입니다.</p>
+            <p className="mt-1 text-of-muted">
+              브라우저 세션을 만들지 않는 로컬 전용 모드입니다. 세션 관리는 배포 시
+              ONEFLOW_DEV_LOGIN_REQUIRED를 활성화한 환경에서 제공됩니다.
+            </p>
+          </div>
+        </div>
+      ) : sessions.isPending ? (
+        <div className="space-y-2" aria-label="세션 목록을 불러오는 중">
+          <div className="h-12 animate-pulse rounded-of bg-of-subtle" />
+          <div className="h-12 animate-pulse rounded-of bg-of-subtle" />
+        </div>
+      ) : sessions.isError ? (
+        <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+          <p className="text-of-danger">활성 세션을 불러오지 못했습니다.</p>
+          <Button size="sm" variant="outline" onClick={() => void sessions.refetch()}>
+            다시 시도
+          </Button>
+        </div>
+      ) : (
+        <>
+          {revokeSession.isError ? (
+            <div
+              className="mb-2 flex flex-wrap items-center justify-between gap-2 rounded-of border border-of-danger/30 bg-of-danger/5 p-2 text-xs"
+              role="alert"
+            >
+              <p className="text-of-danger">세션을 종료하지 못했습니다.</p>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={!revokeSession.variables || revokeSession.isPending}
+                onClick={() => {
+                  if (revokeSession.variables) revokeSession.mutate(revokeSession.variables)
+                }}
+              >
+                다시 시도
+              </Button>
+            </div>
+          ) : null}
+          <ul className="divide-y divide-of-border border-y border-of-border">
+            {sessions.data.items.map((session) => (
+              <li
+                key={session.id}
+                className="grid min-w-0 gap-2 py-2.5 text-xs sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"
+              >
+                <div className="flex min-w-0 items-start gap-2">
+                  <MonitorSmartphone
+                    size={16}
+                    className="mt-0.5 shrink-0 text-of-muted"
+                    aria-hidden="true"
+                  />
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="font-medium">브라우저 세션</span>
+                      {session.is_current ? <Badge variant="accent">현재 세션</Badge> : null}
+                    </div>
+                    <p className="mt-1 text-[11px] text-of-muted">
+                      시작 {formatDateTime(session.created_at)} · 만료{' '}
+                      {formatDateTime(session.expires_at)}
+                    </p>
+                  </div>
+                </div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={revokeSession.isPending}
+                  aria-label={session.is_current ? '현재 세션 종료' : `${formatDateTime(session.created_at)} 세션 종료`}
+                  onClick={() =>
+                    revokeSession.mutate({ id: session.id, isCurrent: session.is_current })
+                  }
+                >
+                  <LogOut size={13} aria-hidden="true" /> 종료
+                </Button>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+    </SettingsSection>
+  )
+}
+
 /* Personal settings (Pass 64 PR-CD): user-scoped configuration split OUT of
    project settings — the notification toggles are /me contracts and never
    belonged to a project. Read-only account card + the moved panel. */
 export function PersonalSettingsPage() {
   const me = useMe()
   const auth = useAuthConfig()
-  const logout = useLogout()
 
   return (
     <SettingsFrame
@@ -188,37 +337,11 @@ export function PersonalSettingsPage() {
             ) : null}
           </SettingsSection>
 
-          <SettingsSection
-            title="로그인/세션"
-            description="현재 인증 모드와 세션 종료 동작을 확인합니다."
-          >
-            <div className="space-y-1.5 text-xs">
-              <p>
-                인증 모드:{' '}
-                <Badge variant="neutral">
-                  {auth.data?.auth_mode === 'oidc' ? 'SSO (OIDC)' : '개발 모드'}
-                </Badge>
-              </p>
-              {auth.data?.auth_mode !== 'oidc' ? (
-                <p className="text-of-muted">
-                  개발 모드에서는 로그인 세션이 필수 설정(ONEFLOW_DEV_LOGIN_REQUIRED)에 따라
-                  적용됩니다. 꺼져 있으면 자동 개발 로그인으로 동작합니다.
-                </p>
-              ) : null}
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={logout.isPending}
-                onClick={() =>
-                  logout.mutate(undefined, {
-                    onSuccess: () => window.location.assign('/login'),
-                  })
-                }
-              >
-                로그아웃
-              </Button>
-            </div>
-          </SettingsSection>
+          <SessionsPanel
+            auth={auth.data}
+            authError={auth.isError}
+            retryAuth={() => void auth.refetch()}
+          />
 
           <AccessTokensPanel />
         </div>
