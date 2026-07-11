@@ -17,10 +17,11 @@ export type ProjectDocument = DocumentListItem & { body: string | null }
 
 export type DocumentList = { items: DocumentListItem[]; total: number }
 
-export function useDocuments(projectId: string) {
+export function useDocuments(projectId: string, enabled = true) {
   return useQuery({
     queryKey: ['documents', projectId],
     queryFn: () => api<DocumentList>(`/api/v1/projects/${projectId}/documents`),
+    enabled,
   })
 }
 
@@ -131,11 +132,11 @@ export function useDeleteDocLink(docId: string) {
 }
 
 /** Reverse lookup for the WP drawer: documents linked to a work package. */
-export function useLinkedDocuments(wpId: string | null) {
+export function useLinkedDocuments(wpId: string | null, enabled = true) {
   return useQuery({
     queryKey: ['work-package-documents', wpId],
     queryFn: () => api<DocumentList>(`/api/v1/work-packages/${wpId}/documents`),
-    enabled: wpId !== null,
+    enabled: wpId !== null && enabled,
   })
 }
 

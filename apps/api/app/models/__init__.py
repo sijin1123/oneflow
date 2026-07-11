@@ -36,6 +36,7 @@ from app.models.watcher import WpWatcher
 from app.models.webhook import WebhookDelivery, WebhookEndpoint, WebhookSecretRotation
 from app.models.work_item_draft import WorkItemDraft
 from app.models.work_package import WorkPackage
+from app.models.workspace_feature_policy import WorkspaceFeaturePolicy
 
 __all__ = [
     "User",
@@ -43,6 +44,7 @@ __all__ = [
     "Project",
     "ProjectMember",
     "WorkPackage",
+    "WorkspaceFeaturePolicy",
     "WorkItemDraft",
     "WorkPackageRelation",
     "WorkPackageComment",

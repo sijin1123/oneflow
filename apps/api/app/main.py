@@ -44,6 +44,7 @@ from app.api.v1 import (
     webhooks,
     work_item_drafts,
     work_packages,
+    workspace_features,
 )
 from app.core.config import Settings, get_settings
 from app.core.logging import setup_logging
@@ -128,6 +129,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.add_middleware(RequestIdMiddleware)
 
     app.include_router(health.router, prefix="/api/v1", tags=["health"])
+    app.include_router(workspace_features.router, prefix="/api/v1", tags=["workspace-features"])
     app.include_router(ops.router, prefix="/api/v1", tags=["ops"])
     app.include_router(admin_worklogs.router, prefix="/api/v1", tags=["admin-worklogs"])
     app.include_router(auth.router, prefix="/api/v1", tags=["auth"])

@@ -104,6 +104,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/workspace/features/wiki": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Wiki Policy */
+        get: operations["get_wiki_policy_api_v1_admin_workspace_features_wiki_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update Wiki Policy */
+        patch: operations["update_wiki_policy_api_v1_admin_workspace_features_wiki_patch"];
+        trace?: never;
+    };
     "/api/v1/attachments/{attachment_id}": {
         parameters: {
             query?: never;
@@ -2603,6 +2621,23 @@ export interface paths {
         post?: never;
         /** Unwatch */
         delete: operations["unwatch_api_v1_work_packages__wp_id__watchers_me_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspace/capabilities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Workspace Capabilities */
+        get: operations["workspace_capabilities_api_v1_workspace_capabilities_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -6472,6 +6507,40 @@ export interface components {
             /** Version */
             version: number;
         };
+        /** WorkspaceCapabilitiesRead */
+        WorkspaceCapabilitiesRead: {
+            wiki: components["schemas"]["WorkspaceFeatureCapability"];
+        };
+        /** WorkspaceFeatureCapability */
+        WorkspaceFeatureCapability: {
+            /** Enabled */
+            enabled: boolean;
+            /** Revision */
+            revision: number;
+        };
+        /** WorkspaceFeaturePolicyRead */
+        WorkspaceFeaturePolicyRead: {
+            /** Enabled */
+            enabled: boolean;
+            /** Feature Key */
+            feature_key: string;
+            /** Revision */
+            revision: number;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Updated By Name */
+            updated_by_name: string | null;
+            /** Updated By User Id */
+            updated_by_user_id: string | null;
+        };
+        /** WorkspaceFeaturePolicyUpdate */
+        WorkspaceFeaturePolicyUpdate: {
+            /** Enabled */
+            enabled: boolean;
+        };
         /** WpGroup */
         WpGroup: {
             /** Items */
@@ -6695,6 +6764,77 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AdminWorklogOptions"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_wiki_policy_api_v1_admin_workspace_features_wiki_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceFeaturePolicyRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_wiki_policy_api_v1_admin_workspace_features_wiki_patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                "If-Match"?: string | null;
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkspaceFeaturePolicyUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceFeaturePolicyRead"];
                 };
             };
             /** @description Validation Error */
@@ -13309,6 +13449,39 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    workspace_capabilities_api_v1_workspace_capabilities_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceCapabilitiesRead"];
+                };
             };
             /** @description Validation Error */
             422: {

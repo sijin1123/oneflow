@@ -24,10 +24,12 @@ import { StatusPage } from '@/features/ops/StatusPage'
 import { UsersPage } from '@/features/admin/UsersPage'
 import { WebhooksPage } from '@/features/admin/WebhooksPage'
 import { WorklogsPage } from '@/features/admin/WorklogsPage'
+import { WikiSettingsPage } from '@/features/admin/WikiSettingsPage'
 import { PersonalSettingsPage } from '@/features/settings/PersonalSettingsPage'
 import { SettingsPage } from '@/features/settings/SettingsPage'
 import { AllWorkPage } from '@/features/work-items/AllWorkPage'
 import { WorkItemDraftsPage } from '@/features/work-item-drafts/WorkItemDraftsPage'
+import { WikiRoute } from '@/features/workspace-features/WikiRoute'
 import { BacklogPage } from '@/features/work-packages/BacklogPage'
 import { BoardPage } from '@/features/work-packages/BoardPage'
 import { CyclesPage } from '@/features/cycles/CyclesPage'
@@ -76,6 +78,7 @@ export const router = createBrowserRouter([
       { path: 'admin/users', element: <UsersPage /> },
       { path: 'admin/webhooks', element: <WebhooksPage /> },
       { path: 'admin/worklogs', element: <WorklogsPage /> },
+      { path: 'admin/wiki', element: <WikiSettingsPage /> },
       { path: 'settings', element: <PersonalSettingsPage /> },
       { path: 'projects/:projectId/work-packages', element: <ListPage /> },
       { path: 'projects/:projectId/work-packages/:wpId', element: <WorkPackageDetailPage /> },
@@ -95,8 +98,14 @@ export const router = createBrowserRouter([
       { path: 'projects/:projectId/modules', element: <ModulesPage /> },
       { path: 'projects/:projectId/intake', element: <IntakePage /> },
       { path: 'projects/:projectId/dashboard', element: <DashboardPage /> },
-      { path: 'projects/:projectId/documents', element: <DocumentsPage /> },
-      { path: 'projects/:projectId/documents/:docId', element: <DocumentEditorPage /> },
+      {
+        path: 'projects/:projectId/documents',
+        element: <WikiRoute><DocumentsPage /></WikiRoute>,
+      },
+      {
+        path: 'projects/:projectId/documents/:docId',
+        element: <WikiRoute><DocumentEditorPage /></WikiRoute>,
+      },
       { path: 'projects/:projectId/meetings', element: <MeetingsPage /> },
       { path: 'projects/:projectId/meetings/:meetingId', element: <MeetingDetailPage /> },
       { path: 'projects/:projectId/files', element: <FilesPage /> },

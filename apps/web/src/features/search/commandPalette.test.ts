@@ -120,6 +120,10 @@ test('flattenCommandPaletteResults maps every group to a stable route', () => {
       ['initiatives', '/initiatives?highlight=ini-1'],
     ],
   )
+  assert.equal(
+    flattenCommandPaletteResults(data, false).some((item) => item.kind === 'documents'),
+    false,
+  )
 })
 
 test('duplicate ids are only removed inside the same result kind', () => {
