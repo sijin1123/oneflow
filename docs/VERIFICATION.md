@@ -2250,3 +2250,14 @@ Chromium typed mock fixture에서 1440x960과 390x844 viewport를 사용했다. 
 - Production build, unit 67, component 8, full frontend E2E 206 PASS와 opt-in visual QA 1 skip, clean-room gate가 통과했다.
 - 시각 증적은 `docs/screenshots/redevelopment/states-mobile/{empty-list,list-skeleton,error-list}.png`에 보존한다.
 - API, DB, migration, permission contract, environment variable, dependency 변경과 이연 항목은 없다.
+
+---
+
+# UI-68 Wiki Central Composition 검증 (2026-07-12)
+
+- Global Wiki rail이 활성일 때 context sidebar는 Projects/새 작업 대신 공유·비공개·보관됨 bucket과 프로젝트 Wiki 공간을 제공한다.
+- 중앙 surface는 compact Wiki header, lifecycle tabs, always-visible search/count, permission-gated create, tree/summary/empty states를 공유한다.
+- Focused Playwright 3건이 Wiki shell route, document open, private create/archive/restore를 검증했다.
+- Production build, unit 67, component 8, clean-room이 통과했다. Full E2E는 206 PASS와 opt-in 1 skip 후 제거한 `Content surface` 문구를 기대한 1건을 Wiki heading 계약으로 갱신해 단독 재검증 PASS했다.
+- Chromium 1440x960과 390x844 증적은 `docs/screenshots/redevelopment/wiki-central-composition-ui/{desktop,mobile}.png`에 보존한다.
+- API, DB, migration, permission contract, environment variable, dependency 변경과 이연 항목은 없다.

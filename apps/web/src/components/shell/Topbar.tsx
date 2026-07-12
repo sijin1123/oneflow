@@ -49,7 +49,7 @@ const projectRouteLabels: Array<{ suffix: string; title: string; parent: string 
   { suffix: '/modules', title: 'Modules', parent: '계획' },
   { suffix: '/intake', title: 'Intake', parent: '계획' },
   { suffix: '/dashboard', title: 'Dashboard', parent: '협업' },
-  { suffix: '/documents', title: 'Documents', parent: '협업' },
+  { suffix: '/documents', title: 'Wiki', parent: '문서' },
   { suffix: '/meetings', title: 'Meetings', parent: '협업' },
   { suffix: '/files', title: 'Files', parent: '협업' },
   { suffix: '/settings', title: 'Settings', parent: '운영' },
@@ -62,7 +62,7 @@ function getShellContext(pathname: string, projectName?: string) {
     if (pathname.includes('/work-packages/')) {
       nestedRoute = { title: 'Work Package', parent: '작업' }
     } else if (pathname.includes('/documents/')) {
-      nestedRoute = { title: 'Document', parent: '협업' }
+      nestedRoute = { title: 'Wiki Page', parent: '문서' }
     } else if (pathname.includes('/meetings/')) {
       nestedRoute = { title: 'Meeting', parent: '협업' }
     }
