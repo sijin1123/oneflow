@@ -224,3 +224,9 @@ Plane source, package, asset, CSS, DOM hierarchy, exact dimensions/colors, wordi
 `docs/plane-poc-reverse-spec/` D001-D003/S017에서 사용한 입력은 workspace/project scope와 current surface를 구분하는 compact breadcrumb 정보구조뿐이다. OneFlow 구현은 기존 자체 React Router pathname/query, project/workspace query와 canonical routes로 독립 작성했다.
 
 Plane source, package, asset, CSS, DOM hierarchy, exact dimensions/colors, wording, project menu behavior, branding은 복사하지 않았다. 신규 dependency/API/DB/schema/environment 변경은 없다. — attested-independent-derivation
+
+## UI-75 Global App Contexts + Wiki Home
+
+`docs/plane-poc-reverse-spec/` D005-D007/D028-D030에서 사용한 입력은 Wiki가 app rail의 독립 앱이고 Projects/Wiki/AI/Settings가 서로 다른 contextual navigation을 가지며 Wiki가 shared/private/archived 범위를 제공한다는 행동·정보구조뿐이다. OneFlow 구현은 기존 자체 workspace capability, project membership, document visibility/archive schema와 React Router를 사용하고 workspace document read endpoint를 독립 설계했다.
+
+Plane source, package, asset, CSS, DOM hierarchy, exact dimensions/colors, wording, icons, branding은 복사하지 않았다. membership 및 document visibility를 집행하는 OneFlow 고유 workspace document read API를 추가했으며 신규 dependency/DB/schema/environment 변경은 없다. — attested-independent-derivation

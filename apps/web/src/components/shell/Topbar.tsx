@@ -13,6 +13,7 @@ import { useWorkspaceProfile } from '@/features/workspace-profile/api'
 import { CommandPalette } from './CommandPalette'
 
 const workspaceRouteLabels: Array<{ path: string; title: string; parent: string }> = [
+  { path: '/wiki', title: 'Wiki', parent: '워크스페이스' },
   { path: '/my', title: '내 작업', parent: '워크스페이스' },
   { path: '/ai', title: '작업 요약', parent: 'AI workspace' },
   { path: '/notes', title: '개인 메모', parent: '워크스페이스' },

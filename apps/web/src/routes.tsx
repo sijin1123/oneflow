@@ -11,6 +11,7 @@ import { IntakePage } from '@/features/intake/IntakePage'
 import { DashboardPage } from '@/features/dashboard/DashboardPage'
 import { DocumentEditorPage } from '@/features/documents/DocumentEditorPage'
 import { DocumentsPage } from '@/features/documents/DocumentsPage'
+import { WikiHomePage } from '@/features/documents/WikiHomePage'
 import { MeetingDetailPage } from '@/features/meetings/MeetingDetailPage'
 import { MeetingsPage } from '@/features/meetings/MeetingsPage'
 import { ModulesPage } from '@/features/modules/ModulesPage'
@@ -82,6 +83,7 @@ export const router = createBrowserRouter([
         element: <InitiativesRoute><InitiativesPage /></InitiativesRoute>,
       },
       { path: 'projects', element: <ProjectsPage /> },
+      { path: 'wiki', element: <WikiRoute><WikiHomePage /></WikiRoute> },
       { path: 'search', element: <SearchPage /> },
       { path: 'templates', element: <TemplatesPage /> },
       {

@@ -36,6 +36,13 @@ export function useDocuments(
   })
 }
 
+export function useWorkspaceDocuments(bucket: DocumentBucket = 'shared') {
+  return useQuery({
+    queryKey: ['workspace-documents', bucket],
+    queryFn: () => api<DocumentList>(`/api/v1/documents?bucket=${bucket}`),
+  })
+}
+
 export function useDocument(docId: string | null) {
   return useQuery({
     queryKey: ['document', docId],

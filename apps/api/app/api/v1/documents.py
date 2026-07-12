@@ -219,6 +219,46 @@ async def list_documents(
     return DocumentList(items=[DocumentListItem.model_validate(r) for r in rows], total=len(rows))
 
 
+@router.get("/documents", response_model=DocumentList)
+async def list_workspace_documents(
+    bucket: Literal["shared", "private", "archived"] = Query(default="shared"),
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+) -> DocumentList:
+    """List visible Wiki pages across projects the caller currently belongs to."""
+    stmt = (
+        select(ProjectDocument)
+        .join(ProjectMember, ProjectMember.project_id == ProjectDocument.project_id)
+        .where(ProjectMember.user_id == user.id)
+    )
+    if bucket == "shared":
+        stmt = stmt.where(
+            ProjectDocument.visibility == "shared", ProjectDocument.archived_at.is_(None)
+        )
+    elif bucket == "private":
+        stmt = stmt.where(
+            ProjectDocument.visibility == "private",
+            ProjectDocument.author_id == user.id,
+            ProjectDocument.archived_at.is_(None),
+        )
+    else:
+        stmt = stmt.where(
+            ProjectDocument.archived_at.is_not(None), document_visible_clause(user.id)
+        )
+    rows = (
+        (
+            await session.execute(
+                stmt.order_by(ProjectDocument.updated_at.desc(), ProjectDocument.id.asc())
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return DocumentList(
+        items=[DocumentListItem.model_validate(row) for row in rows], total=len(rows)
+    )
+
+
 @router.post("/projects/{project_id}/documents", response_model=DocumentRead, status_code=201)
 async def create_document(
     project_id: uuid.UUID,

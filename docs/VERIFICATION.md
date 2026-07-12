@@ -2323,3 +2323,14 @@ Chromium typed mock fixture에서 1440x960과 390x844 viewport를 사용했다. 
 - Production build, lint, `CI=true` focused Playwright와 full frontend E2E 213 PASS 및 opt-in visual QA 1 skip이 통과했다.
 - Chromium 1440x960 및 390x844 증적은 `docs/screenshots/redevelopment/topbar-context-ui/{desktop,mobile}.png`에 보존한다.
 - API, DB, migration, permission contract, environment variable, dependency 변경과 이연 항목은 없다.
+
+---
+
+# UI-75 Global App Contexts + Wiki Home 검증 (2026-07-12)
+
+- Wiki global rail은 capability loading/error/OFF와 접근 프로젝트 0건에도 항상 `/wiki` first-class app entry로 유지된다.
+- Projects/Wiki/AI/Settings를 선택하면 각각 `Projects 컨텍스트 내비게이션`, `Wiki 컨텍스트 내비게이션`, `AI 컨텍스트 내비게이션`, `설정 컨텍스트 내비게이션`으로 교체된다.
+- `/wiki`는 기존 Wiki capability gate 안에서 신규 `GET /api/v1/documents?bucket=` workspace 조회를 사용해 membership/private visibility를 SQL에서 집행하고 shared/private/archived 범위, 검색, 프로젝트 필터, 문서/project-space links를 제공한다.
+- Focused API lifecycle 7과 full API 637, disabled/no-request, zero-project, aggregate search/filter, invalid bucket, desktop/mobile context switching focused Playwright 7건, production build, API lint, OpenAPI drift, clean-room이 통과했다. 최종 full frontend E2E는 216 PASS와 opt-in visual QA 1 skip으로 통과했다.
+- 시각 증적은 `docs/screenshots/redevelopment/global-app-contexts-ui/`에 보존한다.
+- API는 membership-filtered workspace document list GET 1개를 추가했다. DB, migration, permission model, environment variable, dependency 변경과 이연 항목은 없다.
