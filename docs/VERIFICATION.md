@@ -2272,3 +2272,14 @@ Chromium typed mock fixture에서 1440x960과 390x844 viewport를 사용했다. 
 - Production build, unit 67, component 8, focused E2E 3, full E2E 208 PASS와 opt-in visual QA 1 skip이 통과했다. lint는 기존 Fast Refresh 경고 3건만 유지한다.
 - Chromium 1440x960 및 390x844 증적은 `docs/screenshots/redevelopment/ai-central-composition-ui/{desktop,mobile}.png`에 보존한다.
 - API, DB, migration, permission contract, environment variable, dependency 변경과 이연 항목은 없다.
+
+---
+
+# UI-70 Settings Central Composition 검증 (2026-07-12)
+
+- Global Settings rail은 `/settings`와 `/admin/*`에서 Projects/새 작업 대신 personal/workspace/features/developer context navigation을 제공한다.
+- 관리자에게만 workspace 설정 links를 노출하고 기존 `WorkspaceSettingsShell`의 fail-closed gate는 유지한다. 중앙의 중복 navigation만 제거해 실제 설정 form을 주 surface로 만든다.
+- 기존 personal settings, workspace profile CAS, Wiki/AI/Initiatives/Releases/Customers policy, Webhooks, Worklogs route/API는 변경하지 않았다.
+- Production build, unit 67, component 8, focused E2E 5가 통과했다. Full E2E는 205 PASS와 opt-in 1 skip 후 기존 병렬 timing 2건 및 Settings 문맥 assertion 2건을 1 worker로 재검증해 4 PASS했다.
+- Chromium 1440x960 및 390x844 증적은 `docs/screenshots/redevelopment/settings-central-composition-ui/{desktop,mobile}.png`에 보존한다.
+- API, DB, migration, permission contract, environment variable, dependency 변경과 이연 항목은 없다.
