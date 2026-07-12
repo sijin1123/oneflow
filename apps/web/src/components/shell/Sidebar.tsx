@@ -177,10 +177,10 @@ function GlobalRail({
         }]
       : []),
     {
-      href: '/my#ai-workspace',
+      href: '/ai',
       label: 'AI',
       icon: Sparkles,
-      active: location.pathname === '/my' && location.hash === '#ai-workspace',
+      active: location.pathname === '/ai',
     },
   ]
 
@@ -256,6 +256,7 @@ function SidebarContent({
   const settingsHref = me.data?.is_admin ? '/admin' : '/settings'
   const location = useLocation()
   const wikiMode = location.pathname.includes('/documents')
+  const aiMode = location.pathname === '/ai'
   const wikiBucket = new URLSearchParams(location.search).get('bucket') ?? 'shared'
 
   return (
@@ -269,7 +270,7 @@ function SidebarContent({
       <div className="flex min-w-0 flex-1 flex-col bg-of-surface-raised">
         <div className="flex h-11 shrink-0 items-center gap-2 px-3">
           <div className="min-w-0 flex-1">
-            <h2 className="truncate text-sm font-semibold leading-4">{wikiMode ? 'Wiki' : 'Projects'}</h2>
+            <h2 className="truncate text-sm font-semibold leading-4">{wikiMode ? 'Wiki' : aiMode ? 'AI' : 'Projects'}</h2>
             <p className="truncate text-[10px] leading-3 text-of-muted">
               {workspaceProfile.data?.name ?? 'OneFlow'}
             </p>
@@ -286,11 +287,27 @@ function SidebarContent({
           ) : null}
         </div>
 
-        {selectedProject && !wikiMode ? (
+        {selectedProject && !wikiMode && !aiMode ? (
           <NewWorkItemButton projectId={selectedProject.id} onNavigate={onNavigate} />
         ) : null}
 
-        {wikiMode && selectedProject ? (
+        {aiMode ? (
+          <nav className="of-scrollbar flex-1 overflow-y-auto px-2 pb-3" aria-label="AI 컨텍스트 내비게이션">
+            <div className="space-y-4">
+              <div>
+                <SectionLabel>AI workspace</SectionLabel>
+                <div className="space-y-0.5">
+                  <Link to="/ai" aria-current="page" className={projectLinkClass(true)} onClick={onNavigate}><Sparkles size={14} aria-hidden="true" /><span>작업 요약</span></Link>
+                  <Link to="/ai#summary-candidates" className={projectLinkClass(false)} onClick={onNavigate}><ListChecks size={14} aria-hidden="true" /><span>요약 후보</span></Link>
+                  <Link to="/work-items" className={projectLinkClass(false)} onClick={onNavigate}><List size={14} aria-hidden="true" /><span>전체 작업</span></Link>
+                </div>
+              </div>
+              {me.data?.is_admin ? (
+                <div><SectionLabel>관리</SectionLabel><Link to="/admin/ai" className={projectLinkClass(false)} onClick={onNavigate}><Settings size={14} aria-hidden="true" /><span>AI 설정</span></Link></div>
+              ) : null}
+            </div>
+          </nav>
+        ) : wikiMode && selectedProject ? (
           <nav className="of-scrollbar flex-1 overflow-y-auto px-2 pb-3" aria-label="Wiki 컨텍스트 내비게이션">
             <div className="space-y-4">
               <div>

@@ -687,16 +687,61 @@ test('글로벌 레일과 전체 폭 검색 topbar가 실제 제품 경로에 �
   )
   await expect(globalNav.getByRole('link', { name: 'AI' })).toHaveAttribute(
     'href',
-    '/my#ai-workspace',
+    '/ai',
   )
   await expect(globalNav.getByRole('link', { name: 'Settings' })).toHaveAttribute('href', '/admin')
   await expect(page.getByRole('link', { name: '전체 검색 페이지' })).toBeVisible()
 
   await globalNav.getByRole('link', { name: 'AI' }).click()
-  await expect(page).toHaveURL('/my#ai-workspace')
+  await expect(page).toHaveURL('/ai')
+  await expect(page.getByRole('navigation', { name: 'AI 컨텍스트 내비게이션' })).toBeVisible()
+  await expect(page.getByRole('button', { name: '새 작업' })).toHaveCount(0)
+})
 
-  await page.getByRole('button', { name: '새 작업' }).click()
-  await expect(page).toHaveURL(`/projects/${project.id}/work-packages?new=1`)
+test('AI rail은 실제 capability와 작업 요약 경로를 전용 workspace에 연결한다', async ({ page }) => {
+  await mockApi(page)
+  await page.route('**/api/v1/capabilities', (route) => route.fulfill({ json: { ai_summary_enabled: true } }))
+  await page.route('**/api/v1/me/work', (route) => route.fulfill({
+    json: {
+      assigned_to_me: [{
+        id: wpA.id,
+        project_id: project.id,
+        project_name: project.name,
+        subject: wpA.subject,
+        type: wpA.type,
+        status: wpA.status,
+        priority: wpA.priority,
+        due_date: wpA.due_date,
+        assignee_id: 'me-1',
+        assignee_name: 'Dev User',
+      }],
+      due_soon: [],
+      created_by_me: [],
+      recent_activity: [],
+    },
+  }))
+  await page.goto('/ai')
+
+  const globalNav = page.getByRole('navigation', { name: '글로벌 내비게이션' })
+  await expect(globalNav.getByRole('link', { name: 'AI' })).toHaveAttribute('aria-current', 'page')
+  const aiNav = page.getByRole('navigation', { name: 'AI 컨텍스트 내비게이션' })
+  await expect(aiNav.getByRole('link', { name: '작업 요약' })).toHaveAttribute('href', '/ai')
+  await expect(aiNav.getByRole('link', { name: '요약 후보' })).toHaveAttribute('href', '/ai#summary-candidates')
+  await expect(aiNav.getByRole('link', { name: 'AI 설정' })).toHaveAttribute('href', '/admin/ai')
+  await expect(page.getByRole('heading', { name: '작업 요약' })).toBeVisible()
+  await expect(page.getByText('AI 요약 사용 가능')).toBeVisible()
+  const candidates = page.getByRole('region', { name: 'AI 요약 후보' })
+  await expect(candidates.getByText(wpA.subject)).toBeVisible()
+  await expect(candidates.getByRole('link', { name: new RegExp(wpA.subject) })).toHaveAttribute('href', `/projects/${project.id}/work-packages?wp=${wpA.id}`)
+
+  await page.setViewportSize({ width: 1440, height: 960 })
+  await page.screenshot({ path: '../../docs/screenshots/redevelopment/ai-central-composition-ui/desktop.png' })
+  await page.setViewportSize({ width: 390, height: 844 })
+  await expectNoHorizontalOverflow(page)
+  await page.getByRole('button', { name: '사이드바 열기' }).click()
+  await expect(page.getByRole('dialog', { name: '모바일 내비게이션' })).toBeVisible()
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({ path: '../../docs/screenshots/redevelopment/ai-central-composition-ui/mobile.png' })
 })
 
 test('Wiki rail은 전용 context navigation과 중앙 lifecycle surface를 연다', async ({ page }) => {

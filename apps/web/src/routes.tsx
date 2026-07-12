@@ -27,6 +27,7 @@ import { WebhooksPage } from '@/features/admin/WebhooksPage'
 import { WorklogsPage } from '@/features/admin/WorklogsPage'
 import { WikiSettingsPage } from '@/features/admin/WikiSettingsPage'
 import { AiSettingsPage } from '@/features/admin/AiSettingsPage'
+import { AiWorkspacePage } from '@/features/ai/AiWorkspacePage'
 import { InitiativesSettingsPage } from '@/features/admin/InitiativesSettingsPage'
 import { ReleasesSettingsPage } from '@/features/admin/ReleasesSettingsPage'
 import { CustomersSettingsPage } from '@/features/admin/CustomersSettingsPage'
@@ -67,6 +68,7 @@ export const router = createBrowserRouter([
     children: [
       { index: true, element: <Navigate to="/projects" replace /> },
       { path: 'my', element: <MyWorkPage /> },
+      { path: 'ai', element: <AiWorkspacePage /> },
       { path: 'notes', element: <PersonalNotesPage /> },
       { path: 'drafts', element: <WorkItemDraftsPage /> },
       { path: 'inbox', element: <InboxPage /> },
