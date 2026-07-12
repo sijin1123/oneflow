@@ -10,6 +10,7 @@ import {
   CalendarClock,
   CalendarDays,
   CalendarRange,
+  ChevronRight,
   ClipboardList,
   Clock3,
   Compass,
@@ -18,7 +19,7 @@ import {
   FileText,
   Flag,
   FolderKanban,
-  Inbox,
+  House,
   IterationCcw,
   LayoutDashboard,
   List,
@@ -39,6 +40,7 @@ import {
   X,
   type LucideIcon,
 } from 'lucide-react'
+import { useEffect, useState } from 'react'
 import { Link, NavLink, useLocation, useNavigate, useParams } from 'react-router-dom'
 
 import { useAuthConfig } from '@/features/auth/api'
@@ -62,23 +64,26 @@ type ProjectNavItem = {
   icon: LucideIcon
 }
 
-const workspaceNav: WorkspaceNavItem[] = [
-  { to: '/my', label: '내 작업', icon: Inbox },
+const primaryNav: WorkspaceNavItem[] = [
+  { to: '/my', label: '홈', icon: House, end: true },
+  { to: '/drafts', label: '초안', icon: FilePenLine },
+  { to: '/my?tab=assigned', label: '내 작업', icon: ListChecks },
   { to: '/notes', label: '개인 메모', icon: StickyNote },
-  { to: '/drafts', label: '작업 초안', icon: FilePenLine },
-  { to: '/inbox', label: '인박스', icon: BellRing },
-  { to: '/work-items', label: '전체 작업', icon: ListChecks },
-  { to: '/customers', label: '고객', icon: Building2 },
+]
+
+const workspaceNav: WorkspaceNavItem[] = [
   { to: '/projects', label: '프로젝트', icon: FolderKanban, end: true },
+  { to: '/work-items', label: '전체 작업', icon: ListChecks },
+]
+
+const moreNav: WorkspaceNavItem[] = [
+  { to: '/inbox', label: '인박스', icon: BellRing },
+  { to: '/customers', label: '고객', icon: Building2 },
   { to: '/templates', label: '템플릿', icon: Copy },
   { to: '/initiatives', label: '이니셔티브', icon: Compass },
   { to: '/search', label: '검색', icon: Search },
   { to: '/reports', label: '리포트', icon: BarChart3 },
-]
-
-const operationsNav: WorkspaceNavItem[] = [
   { to: '/operations', label: '운영 허브', icon: SquareActivity },
-  { to: '/settings', label: '개인 설정', icon: SlidersHorizontal },
   { to: '/status', label: '시스템 상태', icon: Activity },
 ]
 
@@ -126,8 +131,8 @@ const navLinkClass = ({ isActive }: { isActive: boolean }) =>
 
 const projectLinkClass = (isActive: boolean) =>
   cn(
-    'flex min-h-8 items-center gap-2 rounded-of px-2 text-[13px] text-of-secondary transition-colors duration-[var(--of-duration-fast)] hover:bg-of-surface-hover hover:text-of-text',
-    isActive && 'bg-of-surface-selected font-medium text-of-accent',
+    'flex min-h-8 items-center gap-2 rounded-of px-2 text-[13px] text-of-secondary transition-colors duration-[var(--of-duration-fast)] hover:bg-of-surface-hover hover:text-of-text [&_svg]:size-3.5 [&_svg]:shrink-0 [&_svg]:text-of-muted',
+    isActive && 'bg-of-surface-selected font-medium text-of-accent [&_svg]:text-of-accent',
   )
 
 function SectionLabel({ children }: { children: string }) {
@@ -249,14 +254,11 @@ function SidebarContent({
   const workspaceProfile = useWorkspaceProfile()
   const initiativesEnabled = capabilities.data?.initiatives.enabled === true
   const customersEnabled = capabilities.data?.customers.enabled === true
-  const workspaceItems = workspaceNav.filter(
+  const moreItems = moreNav.filter(
     (item) =>
       (item.to !== '/initiatives' || initiativesEnabled) &&
       (item.to !== '/customers' || customersEnabled),
   )
-  const operationItems: WorkspaceNavItem[] = me.data?.is_admin
-    ? [...operationsNav, { to: '/admin', label: '워크스페이스 설정', icon: Settings }]
-    : operationsNav
   const selectedProject = data?.items.find((project) => project.id === projectId) ?? data?.items[0]
   const wikiEnabled = capabilities.data?.wiki.enabled === true
   const wikiHref = selectedProject ? `/projects/${selectedProject.id}/documents` : undefined
@@ -266,6 +268,17 @@ function SidebarContent({
   const aiMode = location.pathname === '/ai'
   const settingsMode = location.pathname === '/settings' || location.pathname.startsWith('/admin')
   const wikiBucket = new URLSearchParams(location.search).get('bucket') ?? 'shared'
+  const myWorkTab = new URLSearchParams(location.search).get('tab')
+  const profileWorkMode =
+    location.pathname === '/my' && myWorkTab !== null && myWorkTab !== 'overview'
+  const moreRoute = moreItems.some(
+    (item) => location.pathname === item.to || location.pathname.startsWith(`${item.to}/`),
+  )
+  const [moreOpen, setMoreOpen] = useState(moreRoute)
+
+  useEffect(() => {
+    if (moreRoute) setMoreOpen(true)
+  }, [moreRoute])
 
   return (
     <div className="flex min-h-0 flex-1">
@@ -414,21 +427,32 @@ function SidebarContent({
         <nav className="of-scrollbar flex-1 overflow-y-auto px-2 pb-3" aria-label="컨텍스트 내비게이션">
           <div className="space-y-4">
             <div className="space-y-0.5">
-              {workspaceItems.map((item) => {
+              {primaryNav.map((item) => {
                 const Icon = item.icon
+                const active = item.to === '/my'
+                  ? location.pathname === '/my' && !profileWorkMode
+                  : item.to === '/my?tab=assigned'
+                    ? profileWorkMode
+                    : location.pathname === item.to
                 return (
-                  <NavLink key={item.to} to={item.to} end={item.end} className={navLinkClass} onClick={onNavigate}>
+                  <Link
+                    key={item.to}
+                    to={item.to}
+                    aria-current={active ? 'page' : undefined}
+                    className={projectLinkClass(active)}
+                    onClick={onNavigate}
+                  >
                     <Icon />
                     <span className="truncate">{item.label}</span>
-                  </NavLink>
+                  </Link>
                 )
               })}
             </div>
 
             <div>
-              <SectionLabel>운영</SectionLabel>
+              <SectionLabel>워크스페이스</SectionLabel>
               <div className="space-y-0.5">
-                {operationItems.map((item) => {
+                {workspaceNav.map((item) => {
                   const Icon = item.icon
                   return (
                     <NavLink key={item.to} to={item.to} end={item.end} className={navLinkClass} onClick={onNavigate}>
@@ -440,12 +464,34 @@ function SidebarContent({
               </div>
             </div>
 
+            <details
+              open={moreOpen}
+              className="group"
+              onToggle={(event) => setMoreOpen(event.currentTarget.open)}
+            >
+              <summary className="flex min-h-8 cursor-pointer list-none items-center rounded-of px-2 text-[13px] text-of-secondary transition-colors hover:bg-of-surface-hover hover:text-of-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus [&::-webkit-details-marker]:hidden">
+                <ChevronRight size={14} className="mr-2 shrink-0 transition-transform group-open:rotate-90" aria-hidden="true" />
+                더 보기
+              </summary>
+              <div className="mt-0.5 space-y-0.5">
+                {moreItems.map((item) => {
+                  const Icon = item.icon
+                  return (
+                    <NavLink key={item.to} to={item.to} end={item.end} className={navLinkClass} onClick={onNavigate}>
+                      <Icon />
+                      <span className="truncate">{item.label}</span>
+                    </NavLink>
+                  )
+                })}
+              </div>
+            </details>
+
             <div>
               <SectionLabel>프로젝트</SectionLabel>
               <div className="space-y-2">
-                {data?.items.map((project, index) => {
+                {data?.items.map((project) => {
                   const activeProject = project.id === projectId
-                  const expanded = activeProject || (!projectId && index === 0)
+                  const expanded = activeProject
                   return (
                     <div key={project.id}>
                       <NavLink

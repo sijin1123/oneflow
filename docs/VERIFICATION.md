@@ -2302,3 +2302,14 @@ Chromium typed mock fixture에서 1440x960과 390x844 viewport를 사용했다. 
 - Production build, lint, unit 67, component 8, focused E2E 2, full E2E 211 PASS와 opt-in visual QA 1 skip이 통과했다.
 - Chromium desktop/mobile 증적은 `docs/screenshots/redevelopment/workspace-home-widgets-ui/{desktop,mobile}.png`에 보존한다.
 - API, DB, migration, permission contract, environment variable, dependency 변경과 이연 항목은 없다.
+
+---
+
+# UI-73 Projects Sidebar Hierarchy 검증 (2026-07-12)
+
+- Projects context navigation을 개인 primary, workspace, 기능형 `더 보기`, project-scoped navigation 순으로 재구성했다.
+- `더 보기`는 native disclosure로 동작하고 direct child route에서는 자동으로 열리며, Customers/Initiatives는 기존 capability에 따라 노출된다.
+- 프로젝트 하위 navigation은 실제 project route에서만 펼쳐지고 New Work는 기존 membership write 권한을 유지한다.
+- Focused Playwright 8건이 desktop/mobile hierarchy, settings 이동, report, drafts, worklogs, initiatives 정책 회귀를 검증했다. Production build, lint, full frontend E2E 212 PASS와 opt-in visual QA 1 skip, clean-room과 diff gate도 통과했다.
+- 시각 증적은 `docs/screenshots/redevelopment/projects-sidebar-hierarchy-ui/{desktop,mobile}.png`에 보존한다.
+- API, DB, migration, permission contract, environment variable, dependency 변경과 이연 항목은 없다.
