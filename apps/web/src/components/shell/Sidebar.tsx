@@ -12,6 +12,7 @@ import {
   CalendarClock,
   CalendarDays,
   CalendarRange,
+  ChevronsLeftRight,
   ChevronRight,
   ClipboardList,
   Clock3,
@@ -21,6 +22,7 @@ import {
   FileText,
   Flag,
   FolderKanban,
+  GripVertical,
   House,
   IterationCcw,
   LayoutDashboard,
@@ -54,7 +56,13 @@ import { useWorkspaceCapabilities } from '@/features/workspace-features/api'
 import { useWorkspaceProfile } from '@/features/workspace-profile/api'
 import { cn } from '@/lib/utils'
 
-import type { SidebarNavKey, SidebarPreferences } from './sidebar-preferences'
+import {
+  DEFAULT_SIDEBAR_WIDTH,
+  MAX_SIDEBAR_WIDTH,
+  MIN_SIDEBAR_WIDTH,
+  type SidebarNavKey,
+  type SidebarPreferences,
+} from './sidebar-preferences'
 
 type WorkspaceNavItem = {
   to: SidebarNavKey
@@ -102,7 +110,7 @@ function visibleNav(items: WorkspaceNavItem[], preferences: SidebarPreferences) 
   return orderedNav(items, preferences).filter((item) => !preferences.hidden.includes(item.to))
 }
 
-const projectNavSections: Array<{ label: string; items: ProjectNavItem[] }> = [
+export const projectNavSections: Array<{ label: string; items: ProjectNavItem[] }> = [
   {
     label: '작업',
     items: [
@@ -177,15 +185,24 @@ function NavigationCustomizer({
   preferences,
   onNavVisibleChange,
   onMoveNav,
+  onMoveNavTo,
+  onProjectNavigationChange,
+  onLimitProjectsChange,
+  onProjectLimitChange,
   onReset,
 }: {
   groups: Array<{ label: string; items: WorkspaceNavItem[] }>
   preferences: SidebarPreferences
   onNavVisibleChange: (key: SidebarNavKey, visible: boolean) => void
   onMoveNav: (key: SidebarNavKey, direction: -1 | 1, groupKeys: SidebarNavKey[]) => void
+  onMoveNavTo: (key: SidebarNavKey, targetKey: SidebarNavKey, groupKeys: SidebarNavKey[]) => void
+  onProjectNavigationChange: (value: 'accordion' | 'tabs') => void
+  onLimitProjectsChange: (value: boolean) => void
+  onProjectLimitChange: (value: number) => void
   onReset: () => void
 }) {
   const [open, setOpen] = useState(false)
+  const [draggedKey, setDraggedKey] = useState<SidebarNavKey | null>(null)
   const triggerRef = useRef<HTMLButtonElement>(null)
   const dialogRef = useRef<HTMLDivElement>(null)
   const wasOpen = useRef(false)
@@ -224,7 +241,7 @@ function NavigationCustomizer({
   }, [open])
 
   return (
-    <div className="relative">
+    <div>
       <button
         ref={triggerRef}
         type="button"
@@ -242,7 +259,7 @@ function NavigationCustomizer({
             type="button"
             tabIndex={-1}
             aria-label="내비게이션 사용자 지정 닫기"
-            className="fixed inset-0 z-40 cursor-default"
+            className="fixed inset-0 z-[var(--of-z-modal)] cursor-default bg-of-overlay animate-in fade-in duration-[var(--of-duration-overlay)] motion-reduce:animate-none"
             onClick={() => setOpen(false)}
           />
           <div
@@ -250,35 +267,60 @@ function NavigationCustomizer({
             role="dialog"
             aria-label="내비게이션 사용자 지정"
             aria-modal="true"
-            className="of-floating-surface absolute right-0 top-9 z-50 w-72 max-w-[calc(100vw-1.5rem)] p-2 md:left-0 md:right-auto"
+            className="fixed left-1/2 top-1/2 z-[calc(var(--of-z-modal)+1)] flex max-h-[min(50rem,calc(100vh-2rem))] w-[min(42rem,calc(100vw-1.5rem))] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-of-lg border border-of-border bg-of-surface-raised shadow-[var(--of-shadow-popover)] animate-in fade-in zoom-in-95 duration-[var(--of-duration-overlay)] motion-reduce:animate-none"
           >
-            <div className="flex items-center justify-between px-1 pb-2">
-              <p className="text-xs font-semibold">내비게이션</p>
+            <div className="flex shrink-0 items-center justify-between border-b border-of-border-subtle px-5 py-4">
+              <h2 className="text-base font-semibold">내비게이션 사용자 지정</h2>
               <button
                 type="button"
-                className="rounded-of px-1.5 py-1 text-[11px] text-of-muted hover:bg-of-surface-hover hover:text-of-text"
-                onClick={onReset}
+                aria-label="내비게이션 사용자 지정 닫기"
+                className="flex h-7 w-7 items-center justify-center rounded-of text-of-muted hover:bg-of-surface-hover hover:text-of-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus"
+                onClick={() => setOpen(false)}
               >
-                기본값 복원
+                <X size={15} aria-hidden="true" />
               </button>
             </div>
-            <div className="of-scrollbar max-h-[min(32rem,calc(100vh-8rem))] space-y-3 overflow-y-auto">
+            <div className="of-scrollbar min-h-0 flex-1 space-y-5 overflow-y-auto px-5 py-4">
               {groups.map((group) => {
                 const orderedItems = orderedNav(group.items, preferences)
                 const groupKeys = group.items.map((item) => item.to)
                 return (
                   <section key={group.label} aria-label={group.label}>
                     <SectionLabel>{group.label}</SectionLabel>
-                    <div className="space-y-0.5">
+                    <div className="overflow-hidden rounded-of border border-of-border-subtle bg-of-surface">
                       {orderedItems.map((item, index) => {
                         const Icon = item.icon
                         const visible = !preferences.hidden.includes(item.to)
                         return (
                           <div
                             key={item.to}
-                            className="grid min-h-8 grid-cols-[minmax(0,1fr)_28px_28px] items-center rounded-of hover:bg-of-surface-hover"
+                            data-testid={`nav-row-${item.to}`}
+                            data-drag-target={draggedKey && draggedKey !== item.to ? true : undefined}
+                            className="group grid min-h-9 grid-cols-[28px_minmax(0,1fr)_28px_28px] items-center border-b border-of-border-subtle last:border-b-0 hover:bg-of-surface-hover data-[drag-target]:border-t-of-info"
+                            onDragOver={(event) => {
+                              if (draggedKey && draggedKey !== item.to) event.preventDefault()
+                            }}
+                            onDrop={(event) => {
+                              event.preventDefault()
+                              if (draggedKey) onMoveNavTo(draggedKey, item.to, groupKeys)
+                              setDraggedKey(null)
+                            }}
                           >
-                            <label className="flex min-w-0 cursor-pointer items-center gap-2 px-2 text-xs">
+                            <span
+                              draggable
+                              data-testid={`nav-drag-${item.to}`}
+                              className="flex cursor-grab items-center justify-center text-of-faint active:cursor-grabbing"
+                              aria-hidden="true"
+                              onDragStart={(event) => {
+                                setDraggedKey(item.to)
+                                event.dataTransfer.effectAllowed = 'move'
+                                event.dataTransfer.setData('text/plain', item.to)
+                              }}
+                              onDragEnd={() => setDraggedKey(null)}
+                            >
+                              <GripVertical size={13} />
+                            </span>
+                            <label className="flex min-w-0 cursor-pointer items-center gap-2 pr-2 text-xs">
                               <input
                                 type="checkbox"
                                 aria-label={`${item.label} 표시`}
@@ -293,7 +335,7 @@ function NavigationCustomizer({
                               aria-label={`${item.label} 위로 이동`}
                               title="위로 이동"
                               disabled={index === 0}
-                              className="flex h-7 w-7 items-center justify-center rounded-of text-of-muted hover:bg-of-surface-2 disabled:opacity-30"
+                              className="flex h-7 w-7 items-center justify-center rounded-of text-of-muted opacity-60 hover:bg-of-surface-2 group-hover:opacity-100 disabled:opacity-20"
                               onClick={() => onMoveNav(item.to, -1, groupKeys)}
                             >
                               <ArrowUp size={12} aria-hidden="true" />
@@ -303,7 +345,7 @@ function NavigationCustomizer({
                               aria-label={`${item.label} 아래로 이동`}
                               title="아래로 이동"
                               disabled={index === orderedItems.length - 1}
-                              className="flex h-7 w-7 items-center justify-center rounded-of text-of-muted hover:bg-of-surface-2 disabled:opacity-30"
+                              className="flex h-7 w-7 items-center justify-center rounded-of text-of-muted opacity-60 hover:bg-of-surface-2 group-hover:opacity-100 disabled:opacity-20"
                               onClick={() => onMoveNav(item.to, 1, groupKeys)}
                             >
                               <ArrowDown size={12} aria-hidden="true" />
@@ -315,6 +357,65 @@ function NavigationCustomizer({
                   </section>
                 )
               })}
+
+              <section aria-label="프로젝트 탐색">
+                <SectionLabel>프로젝트 탐색</SectionLabel>
+                <div className="space-y-3 rounded-of border border-of-border-subtle bg-of-surface p-3">
+                  <label className="flex cursor-pointer items-start gap-2 text-xs">
+                    <input
+                      type="radio"
+                      name="project-navigation"
+                      value="accordion"
+                      checked={preferences.projectNavigation === 'accordion'}
+                      onChange={() => onProjectNavigationChange('accordion')}
+                    />
+                    <span className="font-medium">사이드바 아코디언</span>
+                  </label>
+                  <label className="flex cursor-pointer items-start gap-2 text-xs">
+                    <input
+                      type="radio"
+                      name="project-navigation"
+                      value="tabs"
+                      checked={preferences.projectNavigation === 'tabs'}
+                      onChange={() => onProjectNavigationChange('tabs')}
+                    />
+                    <span className="font-medium">상단 탭</span>
+                  </label>
+                  <div className="border-t border-of-border-subtle pt-3">
+                    <label className="flex cursor-pointer items-center gap-2 text-xs">
+                      <input
+                        type="checkbox"
+                        aria-label="사이드바 프로젝트 수 제한"
+                        checked={preferences.limitProjects}
+                        onChange={(event) => onLimitProjectsChange(event.target.checked)}
+                      />
+                      사이드바 프로젝트 수 제한
+                    </label>
+                    {preferences.limitProjects ? (
+                      <label className="mt-2 grid max-w-48 gap-1 pl-5 text-[11px] text-of-muted">
+                        표시할 프로젝트 수
+                        <input
+                          type="number"
+                          min={1}
+                          max={50}
+                          value={preferences.projectLimit}
+                          className="h-8 rounded-of border border-of-border bg-of-surface px-2 text-xs text-of-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus"
+                          onChange={(event) => onProjectLimitChange(Number(event.target.value))}
+                        />
+                      </label>
+                    ) : null}
+                  </div>
+                </div>
+              </section>
+            </div>
+            <div className="flex shrink-0 justify-end border-t border-of-border-subtle px-5 py-3">
+              <button
+                type="button"
+                className="h-8 rounded-of border border-of-border bg-of-surface px-3 text-xs font-medium text-of-secondary hover:bg-of-surface-hover hover:text-of-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus"
+                onClick={onReset}
+              >
+                기본값 복원
+              </button>
             </div>
           </div>
         </>
@@ -407,6 +508,10 @@ function SidebarContent({
   onCollapsedChange,
   onNavVisibleChange,
   onMoveNav,
+  onMoveNavTo,
+  onProjectNavigationChange,
+  onLimitProjectsChange,
+  onProjectLimitChange,
   onResetNavigation,
 }: {
   onNavigate?: () => void
@@ -417,6 +522,10 @@ function SidebarContent({
   onCollapsedChange?: (collapsed: boolean) => void
   onNavVisibleChange: (key: SidebarNavKey, visible: boolean) => void
   onMoveNav: (key: SidebarNavKey, direction: -1 | 1, groupKeys: SidebarNavKey[]) => void
+  onMoveNavTo: (key: SidebarNavKey, targetKey: SidebarNavKey, groupKeys: SidebarNavKey[]) => void
+  onProjectNavigationChange: (value: 'accordion' | 'tabs') => void
+  onLimitProjectsChange: (value: boolean) => void
+  onProjectLimitChange: (value: number) => void
   onResetNavigation: () => void
 }) {
   const { projectId } = useParams()
@@ -436,6 +545,12 @@ function SidebarContent({
   const visibleWorkspaceNav = visibleNav(workspaceNav, preferences)
   const visibleMoreItems = visibleNav(moreItems, preferences)
   const selectedProject = data?.items.find((project) => project.id === projectId) ?? data?.items[0]
+  const limitedProjects = preferences.limitProjects
+    ? (data?.items ?? []).slice(0, preferences.projectLimit)
+    : (data?.items ?? [])
+  const sidebarProjects = selectedProject && !limitedProjects.some((project) => project.id === selectedProject.id)
+    ? [selectedProject, ...limitedProjects.slice(0, Math.max(0, preferences.projectLimit - 1))]
+    : limitedProjects
   const wikiEnabled = capabilities.data?.wiki.enabled === true
   const settingsHref = me.data?.is_admin ? '/admin' : '/settings'
   const location = useLocation()
@@ -486,6 +601,10 @@ function SidebarContent({
               preferences={preferences}
               onNavVisibleChange={onNavVisibleChange}
               onMoveNav={onMoveNav}
+              onMoveNavTo={onMoveNavTo}
+              onProjectNavigationChange={onProjectNavigationChange}
+              onLimitProjectsChange={onLimitProjectsChange}
+              onProjectLimitChange={onProjectLimitChange}
               onReset={onResetNavigation}
             />
           ) : null}
@@ -607,7 +726,7 @@ function SidebarContent({
               <div>
                 <SectionLabel>프로젝트 공간</SectionLabel>
                 <div className="space-y-0.5">
-                  {data?.items.map((project) => {
+                  {sidebarProjects.map((project) => {
                     const active = project.id === projectId
                     return (
                       <Link
@@ -700,7 +819,7 @@ function SidebarContent({
             <div>
               <SectionLabel>프로젝트</SectionLabel>
               <div className="space-y-2">
-                {data?.items.map((project) => {
+                {sidebarProjects.map((project) => {
                   const activeProject = project.id === projectId
                   const expanded = activeProject
                   return (
@@ -715,7 +834,7 @@ function SidebarContent({
                         </span>
                         <span className="min-w-0 flex-1 truncate">{project.name}</span>
                       </NavLink>
-                      {expanded ? (
+                      {expanded && preferences.projectNavigation === 'accordion' ? (
                         <div className="mt-1 space-y-2 border-l border-of-border-subtle pl-2">
                           {projectNavSections.map((section) => (
                             <div key={section.label}>
@@ -770,6 +889,11 @@ export function Sidebar({
   onCollapsedChange,
   onNavVisibleChange,
   onMoveNav,
+  onMoveNavTo,
+  onWidthChange,
+  onProjectNavigationChange,
+  onLimitProjectsChange,
+  onProjectLimitChange,
   onResetNavigation,
 }: {
   mobileOpen?: boolean
@@ -778,8 +902,36 @@ export function Sidebar({
   onCollapsedChange: (collapsed: boolean) => void
   onNavVisibleChange: (key: SidebarNavKey, visible: boolean) => void
   onMoveNav: (key: SidebarNavKey, direction: -1 | 1, groupKeys: SidebarNavKey[]) => void
+  onMoveNavTo: (key: SidebarNavKey, targetKey: SidebarNavKey, groupKeys: SidebarNavKey[]) => void
+  onWidthChange: (width: number) => void
+  onProjectNavigationChange: (value: 'accordion' | 'tabs') => void
+  onLimitProjectsChange: (value: boolean) => void
+  onProjectLimitChange: (value: number) => void
   onResetNavigation: () => void
 }) {
+  const [resizing, setResizing] = useState(false)
+  const resizeStart = useRef<{ x: number; width: number } | null>(null)
+
+  useEffect(() => {
+    if (!resizing) return
+    const handlePointerMove = (event: PointerEvent) => {
+      if (!resizeStart.current) return
+      onWidthChange(resizeStart.current.width + event.clientX - resizeStart.current.x)
+    }
+    const stopResizing = () => {
+      resizeStart.current = null
+      setResizing(false)
+    }
+    window.addEventListener('pointermove', handlePointerMove)
+    window.addEventListener('pointerup', stopResizing, { once: true })
+    window.addEventListener('pointercancel', stopResizing, { once: true })
+    return () => {
+      window.removeEventListener('pointermove', handlePointerMove)
+      window.removeEventListener('pointerup', stopResizing)
+      window.removeEventListener('pointercancel', stopResizing)
+    }
+  }, [onWidthChange, resizing])
+
   useEffect(() => {
     if (!mobileOpen) return
     const closeOnEscape = (event: KeyboardEvent) => {
@@ -800,11 +952,14 @@ export function Sidebar({
   return (
     <>
       <aside
-        className="hidden shrink-0 border-r border-of-border-subtle transition-[width] duration-[var(--of-duration-default)] md:flex"
+        className={cn(
+          'relative hidden shrink-0 border-r border-of-border-subtle md:flex',
+          !resizing && 'transition-[width] duration-[var(--of-duration-default)] motion-reduce:transition-none',
+        )}
         style={{
           width: preferences.collapsed
             ? 'var(--of-global-nav-width)'
-            : 'var(--of-navigation-width)',
+            : `calc(var(--of-global-nav-width) + ${preferences.width}px)`,
         }}
       >
         <SidebarContent
@@ -813,8 +968,45 @@ export function Sidebar({
           onCollapsedChange={onCollapsedChange}
           onNavVisibleChange={onNavVisibleChange}
           onMoveNav={onMoveNav}
+          onMoveNavTo={onMoveNavTo}
+          onProjectNavigationChange={onProjectNavigationChange}
+          onLimitProjectsChange={onLimitProjectsChange}
+          onProjectLimitChange={onProjectLimitChange}
           onResetNavigation={onResetNavigation}
         />
+        {!preferences.collapsed ? (
+          <div
+            role="separator"
+            aria-label="사이드바 너비 조절"
+            aria-orientation="vertical"
+            aria-valuemin={MIN_SIDEBAR_WIDTH}
+            aria-valuemax={MAX_SIDEBAR_WIDTH}
+            aria-valuenow={preferences.width}
+            tabIndex={0}
+            data-resizing={resizing || undefined}
+            className="group absolute inset-y-0 -right-1 z-30 w-2 cursor-col-resize touch-none focus-visible:outline-none"
+            onPointerDown={(event) => {
+              event.preventDefault()
+              resizeStart.current = { x: event.clientX, width: preferences.width }
+              setResizing(true)
+            }}
+            onDoubleClick={() => onWidthChange(DEFAULT_SIDEBAR_WIDTH)}
+            onKeyDown={(event) => {
+              const step = event.shiftKey ? 24 : 8
+              if (event.key === 'ArrowLeft') onWidthChange(preferences.width - step)
+              else if (event.key === 'ArrowRight') onWidthChange(preferences.width + step)
+              else if (event.key === 'Home') onWidthChange(MIN_SIDEBAR_WIDTH)
+              else if (event.key === 'End') onWidthChange(MAX_SIDEBAR_WIDTH)
+              else return
+              event.preventDefault()
+            }}
+          >
+            <span className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-transparent transition-colors duration-[var(--of-duration-fast)] group-hover:bg-of-info group-focus-visible:bg-of-info group-data-[resizing]:bg-of-info motion-reduce:transition-none" />
+            <span className="absolute left-1/2 top-1/2 flex h-5 w-5 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-of-border bg-of-surface text-of-muted opacity-0 shadow-[var(--of-shadow-xs)] transition-opacity duration-[var(--of-duration-fast)] group-hover:opacity-100 group-focus-visible:opacity-100 group-data-[resizing]:opacity-100 motion-reduce:transition-none">
+              <ChevronsLeftRight size={11} aria-hidden="true" />
+            </span>
+          </div>
+        ) : null}
       </aside>
 
       {mobileOpen ? (
@@ -839,6 +1031,10 @@ export function Sidebar({
               preferences={preferences}
               onNavVisibleChange={onNavVisibleChange}
               onMoveNav={onMoveNav}
+              onMoveNavTo={onMoveNavTo}
+              onProjectNavigationChange={onProjectNavigationChange}
+              onLimitProjectsChange={onLimitProjectsChange}
+              onProjectLimitChange={onProjectLimitChange}
               onResetNavigation={onResetNavigation}
             />
           </aside>

@@ -6,6 +6,7 @@ import { cn } from '@/lib/utils'
 import { GlobalShortcutLayer } from './GlobalShortcutLayer'
 import { FrameContextBar } from './FrameContextBar'
 import { QuickDock } from './QuickDock'
+import { ProjectNavigationTabs } from './ProjectNavigationTabs'
 import { Sidebar } from './Sidebar'
 import { useSidebarPreferences } from './sidebar-preferences'
 import { Topbar } from './Topbar'
@@ -34,6 +35,11 @@ export function AppShell() {
           onCollapsedChange={sidebar.setCollapsed}
           onNavVisibleChange={sidebar.setNavVisible}
           onMoveNav={sidebar.moveNav}
+          onMoveNavTo={sidebar.moveNavTo}
+          onWidthChange={sidebar.setWidth}
+          onProjectNavigationChange={sidebar.setProjectNavigation}
+          onLimitProjectsChange={sidebar.setLimitProjects}
+          onProjectLimitChange={sidebar.setProjectLimit}
           onResetNavigation={sidebar.resetNavigation}
         />
         <main
@@ -44,6 +50,7 @@ export function AppShell() {
           )}
         >
           <FrameContextBar sidebarCollapsed={sidebar.preferences.collapsed} onExpandSidebar={() => sidebar.setCollapsed(false)} />
+          <ProjectNavigationTabs enabled={sidebar.preferences.projectNavigation === 'tabs'} />
           <div data-shell-scroll-region className="of-scrollbar min-h-0 flex-1 overflow-y-auto">
             <Outlet />
             <div

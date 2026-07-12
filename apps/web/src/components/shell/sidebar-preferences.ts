@@ -25,12 +25,33 @@ export type SidebarPreferences = {
   collapsed: boolean
   hidden: SidebarNavKey[]
   order: SidebarNavKey[]
+  width: number
+  projectNavigation: 'accordion' | 'tabs'
+  limitProjects: boolean
+  projectLimit: number
+}
+
+export const DEFAULT_SIDEBAR_WIDTH = 248
+export const MIN_SIDEBAR_WIDTH = 220
+export const MAX_SIDEBAR_WIDTH = 420
+export const DEFAULT_PROJECT_LIMIT = 10
+
+export function clampSidebarWidth(value: number) {
+  return Math.min(MAX_SIDEBAR_WIDTH, Math.max(MIN_SIDEBAR_WIDTH, Math.round(value)))
+}
+
+function clampProjectLimit(value: number) {
+  return Math.min(50, Math.max(1, Math.round(value)))
 }
 
 export const DEFAULT_SIDEBAR_PREFERENCES: SidebarPreferences = {
   collapsed: false,
   hidden: [],
   order: [...SIDEBAR_NAV_KEYS],
+  width: DEFAULT_SIDEBAR_WIDTH,
+  projectNavigation: 'accordion',
+  limitProjects: false,
+  projectLimit: DEFAULT_PROJECT_LIMIT,
 }
 
 const validKeys = new Set<string>(SIDEBAR_NAV_KEYS)
@@ -55,6 +76,14 @@ export function parseSidebarPreferences(raw: string | null): SidebarPreferences 
       collapsed: typeof value.collapsed === 'boolean' ? value.collapsed : false,
       hidden: validStoredKeys(value.hidden),
       order: [...storedOrder, ...SIDEBAR_NAV_KEYS.filter((key) => !storedOrder.includes(key))],
+      width: typeof value.width === 'number' && Number.isFinite(value.width)
+        ? clampSidebarWidth(value.width)
+        : DEFAULT_SIDEBAR_WIDTH,
+      projectNavigation: value.projectNavigation === 'tabs' ? 'tabs' : 'accordion',
+      limitProjects: typeof value.limitProjects === 'boolean' ? value.limitProjects : false,
+      projectLimit: typeof value.projectLimit === 'number' && Number.isFinite(value.projectLimit)
+        ? clampProjectLimit(value.projectLimit)
+        : DEFAULT_PROJECT_LIMIT,
     }
   } catch {
     return DEFAULT_SIDEBAR_PREFERENCES
@@ -73,6 +102,10 @@ function readSidebarPreferences() {
 function samePreferences(left: SidebarPreferences, right: SidebarPreferences) {
   return (
     left.collapsed === right.collapsed &&
+    left.width === right.width &&
+    left.projectNavigation === right.projectNavigation &&
+    left.limitProjects === right.limitProjects &&
+    left.projectLimit === right.projectLimit &&
     left.hidden.join('|') === right.hidden.join('|') &&
     left.order.join('|') === right.order.join('|')
   )
@@ -101,6 +134,22 @@ export function useSidebarPreferences() {
 
   const setCollapsed = useCallback((collapsed: boolean) => {
     setPreferences((current) => ({ ...current, collapsed }))
+  }, [])
+
+  const setWidth = useCallback((width: number) => {
+    setPreferences((current) => ({ ...current, width: clampSidebarWidth(width) }))
+  }, [])
+
+  const setProjectNavigation = useCallback((projectNavigation: 'accordion' | 'tabs') => {
+    setPreferences((current) => ({ ...current, projectNavigation }))
+  }, [])
+
+  const setLimitProjects = useCallback((limitProjects: boolean) => {
+    setPreferences((current) => ({ ...current, limitProjects }))
+  }, [])
+
+  const setProjectLimit = useCallback((projectLimit: number) => {
+    setPreferences((current) => ({ ...current, projectLimit: clampProjectLimit(projectLimit) }))
   }, [])
 
   const setNavVisible = useCallback((key: SidebarNavKey, visible: boolean) => {
@@ -132,12 +181,41 @@ export function useSidebarPreferences() {
     })
   }, [])
 
+  const moveNavTo = useCallback((
+    key: SidebarNavKey,
+    targetKey: SidebarNavKey,
+    groupKeys: SidebarNavKey[],
+  ) => {
+    setPreferences((current) => {
+      if (key === targetKey || !groupKeys.includes(key) || !groupKeys.includes(targetKey)) return current
+      const order = [...current.order]
+      const fromIndex = order.indexOf(key)
+      const targetIndex = order.indexOf(targetKey)
+      if (fromIndex < 0 || targetIndex < 0) return current
+      order.splice(fromIndex, 1)
+      order.splice(order.indexOf(targetKey), 0, key)
+      return { ...current, order }
+    })
+  }, [])
+
   const resetNavigation = useCallback(() => {
     setPreferences((current) => ({
       ...DEFAULT_SIDEBAR_PREFERENCES,
       collapsed: current.collapsed,
+      width: current.width,
     }))
   }, [])
 
-  return { preferences, setCollapsed, setNavVisible, moveNav, resetNavigation }
+  return {
+    preferences,
+    setCollapsed,
+    setWidth,
+    setProjectNavigation,
+    setLimitProjects,
+    setProjectLimit,
+    setNavVisible,
+    moveNav,
+    moveNavTo,
+    resetNavigation,
+  }
 }
