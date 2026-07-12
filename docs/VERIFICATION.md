@@ -2313,3 +2313,13 @@ Chromium typed mock fixture에서 1440x960과 390x844 viewport를 사용했다. 
 - Focused Playwright 8건이 desktop/mobile hierarchy, settings 이동, report, drafts, worklogs, initiatives 정책 회귀를 검증했다. Production build, lint, full frontend E2E 212 PASS와 opt-in visual QA 1 skip, clean-room과 diff gate도 통과했다.
 - 시각 증적은 `docs/screenshots/redevelopment/projects-sidebar-hierarchy-ui/{desktop,mobile}.png`에 보존한다.
 - API, DB, migration, permission contract, environment variable, dependency 변경과 이연 항목은 없다.
+
+---
+
+# UI-74 Topbar Context Navigation 검증 (2026-07-12)
+
+- Topbar title은 `/my` overview와 assigned/created/subscribed/activity query, workspace route, project route를 구분한다.
+- Workspace/project scope와 route group breadcrumb는 canonical route를 가진 실제 links이며 현재 page title은 `aria-current=page`로 표시한다.
+- Production build, lint, `CI=true` focused Playwright와 full frontend E2E 213 PASS 및 opt-in visual QA 1 skip이 통과했다.
+- Chromium 1440x960 및 390x844 증적은 `docs/screenshots/redevelopment/topbar-context-ui/{desktop,mobile}.png`에 보존한다.
+- API, DB, migration, permission contract, environment variable, dependency 변경과 이연 항목은 없다.

@@ -1,6 +1,6 @@
-import { LogOut, Menu, SlidersHorizontal } from 'lucide-react'
+import { ChevronRight, LogOut, Menu, SlidersHorizontal } from 'lucide-react'
 import { useState } from 'react'
-import { useLocation, useNavigate, useParams } from 'react-router-dom'
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 
 import { Avatar } from '@/components/ui/avatar'
 import { IconButton } from '@/components/ui/icon-button'
@@ -27,59 +27,105 @@ const workspaceRouteLabels: Array<{ path: string; title: string; parent: string 
   { path: '/reports', title: '리포트', parent: '워크스페이스' },
   { path: '/operations', title: '운영 허브', parent: '운영' },
   { path: '/status', title: '시스템 상태', parent: '운영' },
-  { path: '/admin/users', title: '사용자 관리', parent: '운영' },
-  { path: '/admin/worklogs', title: 'Worklogs', parent: '운영' },
-  { path: '/admin/wiki', title: 'Wiki 설정', parent: '운영' },
-  { path: '/admin/ai', title: 'AI 설정', parent: '운영' },
-  { path: '/admin/initiatives', title: 'Initiatives 설정', parent: '운영' },
-  { path: '/admin/releases', title: 'Releases 설정', parent: '운영' },
-  { path: '/admin/customers', title: 'Customers 설정', parent: '운영' },
-  { path: '/admin/webhooks', title: 'Webhooks', parent: '운영' },
+  { path: '/admin/general', title: '일반 설정', parent: '워크스페이스 설정' },
+  { path: '/admin/users', title: '사용자 관리', parent: '워크스페이스 설정' },
+  { path: '/admin/worklogs', title: 'Worklogs', parent: '워크스페이스 설정' },
+  { path: '/admin/wiki', title: 'Wiki 설정', parent: '기능 설정' },
+  { path: '/admin/ai', title: 'AI 설정', parent: '기능 설정' },
+  { path: '/admin/initiatives', title: 'Initiatives 설정', parent: '기능 설정' },
+  { path: '/admin/releases', title: 'Releases 설정', parent: '기능 설정' },
+  { path: '/admin/customers', title: 'Customers 설정', parent: '기능 설정' },
+  { path: '/admin/webhooks', title: 'Webhooks', parent: '개발자 설정' },
   { path: '/settings', title: '개인 설정', parent: '설정' },
 ]
 
-const projectRouteLabels: Array<{ suffix: string; title: string; parent: string }> = [
-  { suffix: '/work-packages', title: 'Work Packages', parent: '작업' },
-  { suffix: '/board', title: 'Board', parent: '작업' },
-  { suffix: '/backlog', title: 'Backlog', parent: '작업' },
-  { suffix: '/tree', title: 'Hierarchy', parent: '작업' },
-  { suffix: '/views', title: 'Views', parent: '작업' },
-  { suffix: '/timeline', title: 'Timeline', parent: '계획' },
-  { suffix: '/calendar', title: 'Calendar', parent: '계획' },
-  { suffix: '/cycles', title: 'Cycles', parent: '계획' },
-  { suffix: '/modules', title: 'Modules', parent: '계획' },
-  { suffix: '/intake', title: 'Intake', parent: '계획' },
-  { suffix: '/dashboard', title: 'Dashboard', parent: '협업' },
-  { suffix: '/documents', title: 'Wiki', parent: '문서' },
-  { suffix: '/meetings', title: 'Meetings', parent: '협업' },
-  { suffix: '/files', title: 'Files', parent: '협업' },
-  { suffix: '/settings', title: 'Settings', parent: '운영' },
+const projectRouteLabels: Array<{ suffix: string; title: string; parent: string; parentPath: string }> = [
+  { suffix: '/work-packages', title: 'Work Packages', parent: '작업', parentPath: 'work-packages' },
+  { suffix: '/board', title: 'Board', parent: '작업', parentPath: 'work-packages' },
+  { suffix: '/backlog', title: 'Backlog', parent: '작업', parentPath: 'work-packages' },
+  { suffix: '/tree', title: 'Hierarchy', parent: '작업', parentPath: 'work-packages' },
+  { suffix: '/views', title: 'Views', parent: '작업', parentPath: 'work-packages' },
+  { suffix: '/timeline', title: 'Timeline', parent: '계획', parentPath: 'timeline' },
+  { suffix: '/calendar', title: 'Calendar', parent: '계획', parentPath: 'timeline' },
+  { suffix: '/cycles', title: 'Cycles', parent: '계획', parentPath: 'timeline' },
+  { suffix: '/modules', title: 'Modules', parent: '계획', parentPath: 'timeline' },
+  { suffix: '/intake', title: 'Intake', parent: '계획', parentPath: 'timeline' },
+  { suffix: '/dashboard', title: 'Dashboard', parent: '협업', parentPath: 'dashboard' },
+  { suffix: '/documents', title: 'Wiki', parent: '문서', parentPath: 'documents' },
+  { suffix: '/meetings', title: 'Meetings', parent: '협업', parentPath: 'dashboard' },
+  { suffix: '/files', title: 'Files', parent: '협업', parentPath: 'dashboard' },
+  { suffix: '/settings', title: 'Settings', parent: '운영', parentPath: 'settings' },
 ]
 
-function getShellContext(pathname: string, projectName?: string) {
-  if (projectName) {
+const myWorkTabTitles: Record<string, string> = {
+  assigned: '배정됨',
+  created: '생성함',
+  subscribed: '구독',
+  activity: '활동',
+}
+
+const workspaceParentHrefs: Record<string, string> = {
+  워크스페이스: '/projects',
+  'AI workspace': '/ai',
+  운영: '/operations',
+  설정: '/settings',
+  '워크스페이스 설정': '/admin/general',
+  '기능 설정': '/admin/wiki',
+  '개발자 설정': '/admin/webhooks',
+}
+
+function getShellContext(
+  pathname: string,
+  search: string,
+  workspaceName: string,
+  projectId?: string,
+  projectName?: string,
+) {
+  if (projectId && projectName) {
+    const projectBase = `/projects/${projectId}`
     const projectRoute = projectRouteLabels.find((item) => pathname.endsWith(item.suffix))
-    let nestedRoute: { title: string; parent: string } | null = null
+    let nestedRoute: { title: string; parent: string; parentPath: string } | null = null
     if (pathname.includes('/work-packages/')) {
-      nestedRoute = { title: 'Work Package', parent: '작업' }
+      nestedRoute = { title: 'Work Package', parent: '작업', parentPath: 'work-packages' }
     } else if (pathname.includes('/documents/')) {
-      nestedRoute = { title: 'Wiki Page', parent: '문서' }
+      nestedRoute = { title: 'Wiki Page', parent: '문서', parentPath: 'documents' }
     } else if (pathname.includes('/meetings/')) {
-      nestedRoute = { title: 'Meeting', parent: '협업' }
+      nestedRoute = { title: 'Meeting', parent: '협업', parentPath: 'dashboard' }
     }
 
-    const route = nestedRoute ?? projectRoute ?? { title: 'Work Packages', parent: '작업' }
+    const route = nestedRoute ?? projectRoute ?? {
+      title: 'Work Packages',
+      parent: '작업',
+      parentPath: 'work-packages',
+    }
     return {
       parent: route.parent,
+      parentHref: `${projectBase}/${route.parentPath}`,
       scope: projectName,
+      scopeHref: `${projectBase}/dashboard`,
       title: route.title,
     }
   }
 
+  if (pathname === '/my') {
+    const tab = new URLSearchParams(search).get('tab')
+    const title = tab ? myWorkTabTitles[tab] : undefined
+    return {
+      parent: title ? '내 작업' : '워크스페이스',
+      parentHref: title ? '/my?tab=assigned' : '/projects',
+      scope: workspaceName,
+      scopeHref: '/my',
+      title: title ?? '홈',
+    }
+  }
+
   const workspaceRoute = workspaceRouteLabels.find((item) => pathname === item.path)
+  const parent = workspaceRoute?.parent ?? '워크스페이스'
   return {
-    parent: workspaceRoute?.parent ?? '워크스페이스',
-    scope: 'OneFlow',
+    parent,
+    parentHref: workspaceParentHrefs[parent] ?? '/projects',
+    scope: workspaceName,
+    scopeHref: '/my',
     title: workspaceRoute?.title ?? '프로젝트',
   }
 }
@@ -150,7 +196,13 @@ export function Topbar({ onOpenMobileSidebar }: { onOpenMobileSidebar?: () => vo
   const workspaceProfile = useWorkspaceProfile()
 
   const project = data?.items.find((p) => p.id === projectId)
-  const shellContext = getShellContext(location.pathname, project?.name)
+  const shellContext = getShellContext(
+    location.pathname,
+    location.search,
+    workspaceProfile.data?.name ?? 'OneFlow',
+    projectId,
+    project?.name,
+  )
   return (
     <header className="flex h-[var(--of-topbar-height)] shrink-0 border-b border-of-border-subtle bg-of-surface-raised">
       <div className="hidden w-[var(--of-navigation-width)] shrink-0 items-center gap-2 border-r border-of-border-subtle px-3 md:flex">
@@ -172,12 +224,22 @@ export function Topbar({ onOpenMobileSidebar }: { onOpenMobileSidebar?: () => vo
             <Menu size={16} />
           </IconButton>
           <div className="min-w-0">
-            <nav className="hidden min-w-0 items-center gap-1.5 text-[10px] text-of-muted sm:flex" aria-label="현재 위치">
-              <span className="truncate">{shellContext.scope}</span>
-              <span>/</span>
-              <span className="truncate">{shellContext.parent}</span>
+            <nav className="hidden min-w-0 items-center gap-1 text-[10px] text-of-muted sm:flex" aria-label="현재 위치">
+              <Link
+                to={shellContext.scopeHref}
+                className="truncate rounded-[2px] hover:text-of-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus"
+              >
+                {shellContext.scope}
+              </Link>
+              <ChevronRight size={10} className="shrink-0" aria-hidden="true" />
+              <Link
+                to={shellContext.parentHref}
+                className="truncate rounded-[2px] hover:text-of-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus"
+              >
+                {shellContext.parent}
+              </Link>
             </nav>
-            <p className="truncate text-sm font-semibold leading-5">{shellContext.title}</p>
+            <p aria-current="page" className="truncate text-sm font-semibold leading-5">{shellContext.title}</p>
           </div>
         </div>
 
