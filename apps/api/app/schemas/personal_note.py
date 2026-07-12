@@ -1,21 +1,21 @@
 import uuid
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 MAX_INT4 = 2_147_483_647
+PersonalNoteColor = Literal["lavender", "mint", "yellow", "rose", "blue", "gray"]
 
 
 def _title(value: str) -> str:
-    value = value.strip()
-    if not value:
-        raise ValueError("title must not be blank")
-    return value
+    return value.strip()
 
 
 class PersonalNoteCreate(BaseModel):
-    title: str = Field(min_length=1, max_length=120)
+    title: str = Field(default="", max_length=120)
     body: str = Field(default="", max_length=4000)
+    color: PersonalNoteColor = "lavender"
     is_pinned: bool = False
 
     _clean_title = field_validator("title")(_title)
@@ -23,8 +23,9 @@ class PersonalNoteCreate(BaseModel):
 
 class PersonalNoteUpdate(BaseModel):
     expected_version: int = Field(ge=0, le=MAX_INT4)
-    title: str | None = Field(default=None, min_length=1, max_length=120)
+    title: str | None = Field(default=None, max_length=120)
     body: str | None = Field(default=None, max_length=4000)
+    color: PersonalNoteColor | None = None
     is_pinned: bool | None = None
 
     @field_validator("title")
@@ -51,6 +52,7 @@ class PersonalNoteRead(BaseModel):
     id: uuid.UUID
     title: str
     body: str
+    color: PersonalNoteColor
     is_pinned: bool
     position: int
     version: int

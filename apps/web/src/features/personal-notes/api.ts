@@ -6,6 +6,7 @@ export type PersonalNote = {
   id: string
   title: string
   body: string
+  color: PersonalNoteColor
   is_pinned: boolean
   position: number
   version: number
@@ -13,13 +14,20 @@ export type PersonalNote = {
   updated_at: string
 }
 
+export type PersonalNoteColor = 'lavender' | 'mint' | 'yellow' | 'rose' | 'blue' | 'gray'
+
 export type PersonalNoteList = {
   items: PersonalNote[]
   total: number
   limit: number
   offset: number
 }
-export type PersonalNoteInput = { title: string; body: string; is_pinned?: boolean }
+export type PersonalNoteInput = {
+  title?: string
+  body?: string
+  color?: PersonalNoteColor
+  is_pinned?: boolean
+}
 export type PersonalNoteUpdate = Partial<PersonalNoteInput> & { expected_version: number }
 
 const key = (q = '', limit = 50, offset = 0) => ['personal-notes', q, limit, offset] as const

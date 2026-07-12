@@ -242,3 +242,9 @@ Plane source, package, asset, CSS, DOM hierarchy, exact dimensions/colors, wordi
 사용자 참조 화면과 `docs/plane-poc-reverse-spec/` D001-D003에서 사용한 입력은 topbar/global rail이 하나의 outer chrome처럼 보이고 central work surface가 떠 있으며 우측 하단 도구가 세로로 확장된다는 시각 구성·상호작용뿐이다. OneFlow 구현은 자체 shell tokens, existing routes, `useCanWrite` permission gate, responsive frame와 focus lifecycle로 독립 작성했다.
 
 Plane source, package, asset, CSS, DOM hierarchy, exact dimensions/colors, wording, dock actions, icons, branding은 복사하지 않았다. 신규 dependency/API/DB/schema/environment 변경은 없다. — attested-independent-derivation
+
+## UI-78 Quick Notes Dock + Sticky Notes
+
+사용자 참조 화면과 `docs/plane-poc-reverse-spec/` D001/RSP-001에서 사용한 입력은 우측 하단의 접히는 개인 메모 도구, sticky-note grid, inline editing과 색상·서식 행동뿐이다. OneFlow 구현은 자체 personal-note API, 사용자 advisory lock, 낙관적 version 계약, React Query cache와 shell collision observer를 사용해 독립 설계했다.
+
+Plane source, package, asset, CSS, DOM hierarchy, exact dimensions/colors, wording, note schema, icons, branding은 복사하지 않았다. OneFlow 고유 color와 사용자별 빈 메모 무결성 migration을 추가했으며 신규 dependency/environment 변경은 없다. — attested-independent-derivation

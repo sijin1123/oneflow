@@ -11,7 +11,7 @@ async def _create(client, title: str, **extra):
 
 
 async def test_personal_notes_crud_search_pin_and_order(client):
-    alpha = await _create(client, "alpha plan", body="plain text")
+    alpha = await _create(client, "alpha plan", body="plain text", color="mint")
     beta = await _create(client, "beta", is_pinned=True)
     listed = await client.get("/api/v1/me/personal-notes?q=alpha&limit=1&offset=0")
     assert listed.status_code == 200
@@ -19,6 +19,7 @@ async def test_personal_notes_crud_search_pin_and_order(client):
     assert listed.json()["limit"] == 1
     assert listed.json()["offset"] == 0
     assert listed.json()["items"][0]["id"] == alpha["id"]
+    assert listed.json()["items"][0]["color"] == "mint"
 
     patched = await client.patch(
         f"/api/v1/me/personal-notes/{alpha['id']}",
@@ -61,7 +62,17 @@ async def test_personal_notes_validation_conflict_and_owner_isolation(client, ap
     assert conflict.status_code == 409
     assert conflict.json()["detail"] == "note was changed elsewhere"
     assert conflict.json()["current"]["version"] == 1
-    assert (await client.post("/api/v1/me/personal-notes", json={"title": " "})).status_code == 422
+    blank = await client.post("/api/v1/me/personal-notes", json={})
+    assert blank.status_code == 201
+    duplicate_blank = await client.post("/api/v1/me/personal-notes", json={"title": " "})
+    assert duplicate_blank.status_code == 409
+    assert duplicate_blank.json()["detail"] == "a blank personal note already exists"
+    update_to_duplicate_blank = await client.patch(
+        f"/api/v1/me/personal-notes/{note['id']}",
+        json={"expected_version": 1, "title": "", "body": ""},
+    )
+    assert update_to_duplicate_blank.status_code == 409
+    assert update_to_duplicate_blank.json()["detail"] == "a blank personal note already exists"
     too_long = await client.post(
         "/api/v1/me/personal-notes", json={"title": "x", "body": "a" * 4001}
     )
@@ -78,9 +89,9 @@ async def test_personal_notes_validation_conflict_and_owner_isolation(client, ap
             f"/api/v1/me/personal-notes/{foreign_id}", json={"expected_version": 0, "title": "no"}
         )
     ).status_code == 404
-    assert (await client.get("/api/v1/me/personal-notes")).json()["total"] == 1
+    assert (await client.get("/api/v1/me/personal-notes")).json()["total"] == 2
 
-    for field in ("title", "body", "is_pinned"):
+    for field in ("title", "body", "color", "is_pinned"):
         invalid = await client.patch(
             f"/api/v1/me/personal-notes/{note['id']}",
             json={"expected_version": 1, field: None},

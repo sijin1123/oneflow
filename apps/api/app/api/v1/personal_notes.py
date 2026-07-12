@@ -120,6 +120,18 @@ async def create_personal_note(
     user: User = Depends(get_current_user),
 ) -> PersonalNoteRead:
     await _lock_user_notes(session, user.id)
+    if not body.title.strip() and not body.body.strip():
+        blank_exists = (
+            await session.execute(
+                select(PersonalNote.id).where(
+                    PersonalNote.user_id == user.id,
+                    func.btrim(PersonalNote.title) == "",
+                    func.btrim(PersonalNote.body) == "",
+                )
+            )
+        ).scalar_one_or_none()
+        if blank_exists is not None:
+            raise HTTPException(status_code=409, detail="a blank personal note already exists")
     count = (
         await session.execute(select(func.count()).where(PersonalNote.user_id == user.id))
     ).scalar_one()
@@ -136,6 +148,7 @@ async def create_personal_note(
         user_id=user.id,
         title=body.title,
         body=body.body,
+        color=body.color,
         is_pinned=body.is_pinned,
         position=next_position,
     )
@@ -174,6 +187,21 @@ async def update_personal_note(
                 )
             )
         ).scalar_one()
+    next_title = values.get("title", current.title)
+    next_body = values.get("body", current.body)
+    if not next_title.strip() and not next_body.strip():
+        blank_exists = (
+            await session.execute(
+                select(PersonalNote.id).where(
+                    PersonalNote.user_id == user.id,
+                    PersonalNote.id != note_id,
+                    func.btrim(PersonalNote.title) == "",
+                    func.btrim(PersonalNote.body) == "",
+                )
+            )
+        ).scalar_one_or_none()
+        if blank_exists is not None:
+            raise HTTPException(status_code=409, detail="a blank personal note already exists")
     values["version"] = PersonalNote.version + 1
     values["updated_at"] = func.now()
     result = await session.execute(
