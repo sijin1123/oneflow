@@ -178,3 +178,7 @@ Plane source, package, asset, CSS, DOM hierarchy, exact dimensions/colors, wordi
 `docs/plane-poc-reverse-spec/` D017-D023/S020/RSP-005에서 사용한 입력은 activity taxonomy와 detail feed 정보구조뿐이다. OneFlow 구현은 기존 자체 activity action/field API, comment threads, reactions, mentions, drawer/full-page shared panel과 local tokens로 독립 작성했다.
 
 Plane source, package, asset, CSS, DOM hierarchy, exact dimensions/colors, wording, icons, branding은 복사하지 않았다. 신규 dependency/API/DB/schema/environment 변경은 없으며 clean-room gate가 PASS했다. — attested-independent-derivation
+
+## UI-66 Detail Properties
+
+`docs/plane-poc-reverse-spec/` D017-D023/S018-S019/S023의 inline property entry와 collapsible properties 행동만 사용했다. OneFlow의 기존 PATCH/version rollback, select controls, permission gate와 local tokens로 독립 작성했으며 Plane source/package/asset/CSS/DOM/wording은 복사하지 않았다. — attested-independent-derivation

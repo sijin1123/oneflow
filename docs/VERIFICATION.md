@@ -2228,3 +2228,13 @@ Chromium typed mock fixture에서 1440x960과 390x844 viewport를 사용했다. 
 ## 이연 항목
 
 - 없음. RSP-005 taxonomy는 현재 activity action/field 계약 안에서 기능형으로 흡수했다.
+
+---
+
+# UI-66 Detail Properties 검증 (2026-07-12)
+
+- Inline status/priority chips는 drawer/full-page 공통 panel의 실제 select editor를 열고 초점한다.
+- Properties heading은 `aria-expanded`를 가진 collapse control이며 panel 폭과 입력 계약을 유지한다.
+- Typecheck/lint와 focused drawer/mobile E2E 2건, Chromium desktop/mobile visual QA가 PASS했다.
+- 시각 증적: `docs/screenshots/redevelopment/detail-properties-ui/{desktop,mobile}.png`.
+- API, DB, migration, permission, environment variable, dependency 변경과 이연 항목은 없다.
