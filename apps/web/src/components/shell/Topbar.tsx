@@ -211,7 +211,7 @@ export function Topbar({
     project?.name,
   )
   return (
-    <header className="flex h-[var(--of-topbar-height)] shrink-0 border-b border-of-border-subtle bg-of-surface-raised">
+    <header className="flex h-[var(--of-topbar-height)] shrink-0 bg-of-surface-2">
       <div
         className="hidden shrink-0 items-center gap-2 border-r border-of-border-subtle px-3 transition-[width] duration-[var(--of-duration-default)] md:flex"
         style={{

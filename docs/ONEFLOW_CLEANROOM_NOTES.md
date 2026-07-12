@@ -236,3 +236,9 @@ Plane source, package, asset, CSS, DOM hierarchy, exact dimensions/colors, wordi
 `docs/plane-poc-reverse-spec/` D001-D003과 사용자 참조 화면에서 사용한 입력은 desktop context sidebar collapse/expand와 사용자별 navigation customization 행동뿐이다. OneFlow 구현은 자체 global rail/context sidebar 구조, React state, versioned browser storage, focus lifecycle과 existing route/capability 계약으로 독립 작성했다.
 
 Plane source, package, asset, CSS, DOM hierarchy, exact dimensions/colors, wording, preference schema, icons, branding은 복사하지 않았다. 신규 dependency/API/DB/schema/environment 변경은 없다. — attested-independent-derivation
+
+## UI-77 Floating Shell Frame + Quick Tools
+
+사용자 참조 화면과 `docs/plane-poc-reverse-spec/` D001-D003에서 사용한 입력은 topbar/global rail이 하나의 outer chrome처럼 보이고 central work surface가 떠 있으며 우측 하단 도구가 세로로 확장된다는 시각 구성·상호작용뿐이다. OneFlow 구현은 자체 shell tokens, existing routes, `useCanWrite` permission gate, responsive frame와 focus lifecycle로 독립 작성했다.
+
+Plane source, package, asset, CSS, DOM hierarchy, exact dimensions/colors, wording, dock actions, icons, branding은 복사하지 않았다. 신규 dependency/API/DB/schema/environment 변경은 없다. — attested-independent-derivation

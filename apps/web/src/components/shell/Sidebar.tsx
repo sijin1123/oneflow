@@ -484,7 +484,7 @@ function SidebarContent({
         onExpand={() => onCollapsedChange?.(false)}
       />
       {!collapsed ? (
-      <div className="flex min-w-0 flex-1 flex-col bg-of-surface-raised">
+      <div className="flex min-w-0 flex-1 flex-col bg-of-surface-raised md:mb-2 md:rounded-l-[var(--of-radius-lg)] md:border-y md:border-l md:border-of-border-subtle md:shadow-[var(--of-shadow-sm)]">
         <div className="flex h-11 shrink-0 items-center gap-2 px-3">
           <div className="min-w-0 flex-1">
             <h2 className="truncate text-sm font-semibold leading-4">
@@ -798,6 +798,23 @@ export function Sidebar({
   onMoveNav: (key: SidebarNavKey, direction: -1 | 1, groupKeys: SidebarNavKey[]) => void
   onResetNavigation: () => void
 }) {
+  useEffect(() => {
+    if (!mobileOpen) return
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return
+      if (event.defaultPrevented) return
+      const activeDialog =
+        document.activeElement instanceof HTMLElement
+          ? document.activeElement.closest('[role="dialog"]')
+          : null
+      if (activeDialog && !activeDialog.hasAttribute('data-mobile-navigation-dialog')) return
+      event.preventDefault()
+      onMobileClose?.()
+    }
+    window.addEventListener('keydown', closeOnEscape)
+    return () => window.removeEventListener('keydown', closeOnEscape)
+  }, [mobileOpen, onMobileClose])
+
   return (
     <>
       <aside
@@ -819,7 +836,13 @@ export function Sidebar({
       </aside>
 
       {mobileOpen ? (
-        <div role="dialog" aria-label="모바일 내비게이션" aria-modal="true" className="fixed inset-0 z-40 md:hidden">
+        <div
+          role="dialog"
+          aria-label="모바일 내비게이션"
+          aria-modal="true"
+          data-mobile-navigation-dialog
+          className="fixed inset-0 z-40 md:hidden"
+        >
           <button
             type="button"
             aria-label="사이드바 닫기"
