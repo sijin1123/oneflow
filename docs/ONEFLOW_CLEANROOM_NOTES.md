@@ -206,3 +206,9 @@ Plane source, package, asset, CSS, DOM hierarchy, exact dimensions/colors, wordi
 ## UI-71 Shell Route State
 
 UI-61~UI-70에서 독립 구현한 OneFlow global rail의 route-state 일관성 보정이다. reference source/package/asset/CSS/DOM을 새 입력으로 사용하지 않았으며 OneFlow 자체 React Router pathname과 app context 규칙만 사용했다. — attested-independent-derivation
+
+## UI-72 Workspace Home Widgets
+
+`docs/plane-poc-reverse-spec/` D001/RSP-013과 사용자 참조 화면에서 사용한 입력은 workspace home의 widget management 행동과 quick links/recents/stickies 정보구조뿐이다. OneFlow 구현은 기존 자체 AI capability, work/project/notification/note data, Radix menu primitive와 versioned browser preference로 독립 작성했다.
+
+Plane source, package, asset, CSS, DOM hierarchy, exact dimensions/colors, wording, widget schema, branding은 복사하지 않았다. 신규 dependency/API/DB/schema/environment 변경은 없다. — attested-independent-derivation

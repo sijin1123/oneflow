@@ -2292,3 +2292,13 @@ Chromium typed mock fixture에서 1440x960과 390x844 viewport를 사용했다. 
 - Wiki/AI/Settings active 우선순위와 실제 route href는 변경하지 않았다.
 - Production build와 focused Playwright shell E2E 5건이 통과했다.
 - API, DB, migration, permission contract, environment variable, dependency 변경과 이연 항목은 없다.
+
+---
+
+# UI-72 Workspace Home Widgets 검증 (2026-07-12)
+
+- `/my` header의 `위젯 관리` menu는 AI workspace, 빠른 이동, 프로젝트 바로가기, 최근 항목, 개인 메모의 실제 기존 section을 즉시 표시하거나 숨긴다.
+- 선택은 `oneflow.workspace-home.widgets.v1` browser preference로 저장되며 reload 후 유지되고 `모든 위젯 복원`으로 기본 전체 표시를 복구한다. 손상되거나 사용할 수 없는 storage는 기본값으로 안전하게 복구한다.
+- Production build, lint, unit 67, component 8, focused E2E 2, full E2E 211 PASS와 opt-in visual QA 1 skip이 통과했다.
+- Chromium desktop/mobile 증적은 `docs/screenshots/redevelopment/workspace-home-widgets-ui/{desktop,mobile}.png`에 보존한다.
+- API, DB, migration, permission contract, environment variable, dependency 변경과 이연 항목은 없다.

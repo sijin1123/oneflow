@@ -9,12 +9,14 @@ import {
   Pin,
   Plus,
   Search,
+  SlidersHorizontal,
   Sparkles,
   SquareActivity,
   StickyNote,
   TimerReset,
   type LucideIcon,
 } from 'lucide-react'
+import { useEffect, useState } from 'react'
 import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom'
 
 import { EmptyState, ErrorState, ListSkeleton } from '@/components/shell/states'
@@ -22,6 +24,15 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { useCapabilities } from '@/features/ai/api'
 import { useNotifications } from '@/features/notifications/api'
 import {
@@ -87,6 +98,64 @@ function MyWorkTabs({ active }: { active: MyWorkTab }) {
 }
 
 const PROFILE_PAGE_SIZE = 25
+
+const WORKSPACE_HOME_WIDGETS_STORAGE_KEY = 'oneflow.workspace-home.widgets.v1'
+
+const WORKSPACE_HOME_WIDGETS = [
+  { key: 'ai', label: 'AI workspace' },
+  { key: 'quickLinks', label: '빠른 이동' },
+  { key: 'projectShortcuts', label: '프로젝트 바로가기' },
+  { key: 'recents', label: '최근 항목' },
+  { key: 'personalNotes', label: '개인 메모' },
+] as const
+
+type WorkspaceHomeWidgetKey = (typeof WORKSPACE_HOME_WIDGETS)[number]['key']
+type WorkspaceHomeWidgets = Record<WorkspaceHomeWidgetKey, boolean>
+
+const DEFAULT_WORKSPACE_HOME_WIDGETS: WorkspaceHomeWidgets = {
+  ai: true,
+  quickLinks: true,
+  projectShortcuts: true,
+  recents: true,
+  personalNotes: true,
+}
+
+function parseWorkspaceHomeWidgets(raw: string | null): WorkspaceHomeWidgets {
+  try {
+    const stored: unknown = JSON.parse(raw ?? '')
+    if (!stored || typeof stored !== 'object' || Array.isArray(stored)) {
+      return DEFAULT_WORKSPACE_HOME_WIDGETS
+    }
+    const widgets = stored as Partial<WorkspaceHomeWidgets>
+    return Object.fromEntries(
+      WORKSPACE_HOME_WIDGETS.map(({ key }) => [
+        key,
+        typeof widgets[key] === 'boolean' ? widgets[key] : true,
+      ]),
+    ) as WorkspaceHomeWidgets
+  } catch {
+    return DEFAULT_WORKSPACE_HOME_WIDGETS
+  }
+}
+
+function readWorkspaceHomeWidgets(): WorkspaceHomeWidgets {
+  if (typeof window === 'undefined') return DEFAULT_WORKSPACE_HOME_WIDGETS
+  try {
+    return parseWorkspaceHomeWidgets(
+      window.localStorage.getItem(WORKSPACE_HOME_WIDGETS_STORAGE_KEY),
+    )
+  } catch {
+    return DEFAULT_WORKSPACE_HOME_WIDGETS
+  }
+}
+
+function saveWorkspaceHomeWidgets(widgets: WorkspaceHomeWidgets) {
+  try {
+    window.localStorage.setItem(WORKSPACE_HOME_WIDGETS_STORAGE_KEY, JSON.stringify(widgets))
+  } catch {
+    // Storage may be unavailable (for example, a privacy-restricted browser).
+  }
+}
 
 function MyWorkProfileSurface({
   tab,
@@ -605,6 +674,23 @@ function MyWorkOverview() {
   const notifications = useNotifications()
   const projects = useProjects()
   const navigate = useNavigate()
+  const [visibleWidgets, setVisibleWidgets] = useState(readWorkspaceHomeWidgets)
+
+  useEffect(() => {
+    saveWorkspaceHomeWidgets(visibleWidgets)
+  }, [visibleWidgets])
+
+  useEffect(() => {
+    const syncWidgets = (event: StorageEvent) => {
+      if (event.key !== null && event.key !== WORKSPACE_HOME_WIDGETS_STORAGE_KEY) return
+      const next = parseWorkspaceHomeWidgets(event.newValue)
+      setVisibleWidgets((current) =>
+        WORKSPACE_HOME_WIDGETS.every(({ key }) => current[key] === next[key]) ? current : next,
+      )
+    }
+    window.addEventListener('storage', syncWidgets)
+    return () => window.removeEventListener('storage', syncWidgets)
+  }, [])
 
   if (myWork.isPending) return <ListSkeleton />
   if (myWork.isError) return <ErrorState error={myWork.error} onRetry={() => myWork.refetch()} />
@@ -615,6 +701,14 @@ function MyWorkOverview() {
   const projectItems = projects.data?.items ?? []
   const activeProjects = projectItems.filter((project) => !project.archived_at)
   const firstProject = activeProjects[0]
+
+  const setWidgetVisibility = (key: WorkspaceHomeWidgetKey, visible: boolean) => {
+    setVisibleWidgets((current) => ({ ...current, [key]: visible }))
+  }
+
+  const resetWidgets = () => {
+    setVisibleWidgets(DEFAULT_WORKSPACE_HOME_WIDGETS)
+  }
 
   return (
     <div className="mx-auto flex w-full max-w-6xl min-w-0 flex-col gap-5 px-4 py-5 sm:px-6">
@@ -627,62 +721,94 @@ function MyWorkOverview() {
               내가 확인해야 할 작업, 알림, 프로젝트 이동 경로를 한 화면에서 시작합니다.
             </p>
           </div>
-          <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
             <Badge variant={assigned_to_me.length > 0 ? 'accent' : 'outline'}>
               배정 {assigned_to_me.length}
             </Badge>
             <Badge variant={due_soon.length > 0 ? 'accent' : 'outline'}>기한 {due_soon.length}</Badge>
             <Badge variant={unread > 0 ? 'accent' : 'outline'}>알림 {unread}</Badge>
             <Badge variant="outline">프로젝트 {projects.data?.total ?? 0}</Badge>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-of border border-of-border bg-of-surface px-2 text-xs font-medium hover:bg-of-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus"
+                >
+                  <SlidersHorizontal size={13} aria-hidden="true" />
+                  위젯 관리
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56 max-w-[calc(100vw-2rem)]">
+                <DropdownMenuLabel>홈에 표시할 위젯</DropdownMenuLabel>
+                {WORKSPACE_HOME_WIDGETS.map((widget) => (
+                  <DropdownMenuCheckboxItem
+                    key={widget.key}
+                    checked={visibleWidgets[widget.key]}
+                    onCheckedChange={(checked) => setWidgetVisibility(widget.key, checked === true)}
+                  >
+                    {widget.label}
+                  </DropdownMenuCheckboxItem>
+                ))}
+                <DropdownMenuSeparator />
+                <DropdownMenuItem className="text-xs text-of-muted" onSelect={resetWidgets}>
+                  모든 위젯 복원
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </div>
         <MyWorkTabs active="overview" />
       </header>
 
-      <AiWorkspacePanel assigned={assigned_to_me} dueSoon={due_soon} created={created_by_me} />
+      {visibleWidgets.ai ? (
+        <AiWorkspacePanel assigned={assigned_to_me} dueSoon={due_soon} created={created_by_me} />
+      ) : null}
 
-      <section aria-label="빠른 이동" className="min-w-0">
-        <div className="mb-2 flex items-center justify-between gap-2 px-1">
-          <h2 className="text-sm font-semibold">빠른 이동</h2>
-          <span className="text-xs text-of-muted">자주 쓰는 표면</span>
-        </div>
-        <div className="grid min-w-0 gap-2 sm:grid-cols-2 lg:grid-cols-3">
-          <QuickLink
-            to="/work-items"
-            label="전체 작업"
-            detail="프로젝트 전체 작업 검색"
-            icon={ListChecks}
-            accent
-          />
-          <QuickLink
-            to="/inbox"
-            label="인박스"
-            detail={unread > 0 ? `읽지 않음 ${unread}건` : '새 알림 없음'}
-            icon={BellRing}
-            accent={unread > 0}
-          />
-          <QuickLink
-            to="/projects"
-            label="프로젝트"
-            detail={`${projects.data?.total ?? 0}개 프로젝트`}
-            icon={FolderKanban}
-          />
-          <QuickLink
-            to="/operations"
-            label="운영 허브"
-            detail="가져오기·내보내기·상태"
-            icon={SquareActivity}
-          />
-          <QuickLink
-            to="/notes?new=1"
-            label="개인 메모"
-            detail="빠르게 기록하고 정리"
-            icon={StickyNote}
-          />
-        </div>
-      </section>
+      {visibleWidgets.quickLinks ? (
+        <section aria-label="빠른 이동" className="min-w-0">
+          <div className="mb-2 flex items-center justify-between gap-2 px-1">
+            <h2 className="text-sm font-semibold">빠른 이동</h2>
+            <span className="text-xs text-of-muted">자주 쓰는 표면</span>
+          </div>
+          <div className="grid min-w-0 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            <QuickLink
+              to="/work-items"
+              label="전체 작업"
+              detail="프로젝트 전체 작업 검색"
+              icon={ListChecks}
+              accent
+            />
+            <QuickLink
+              to="/inbox"
+              label="인박스"
+              detail={unread > 0 ? `읽지 않음 ${unread}건` : '새 알림 없음'}
+              icon={BellRing}
+              accent={unread > 0}
+            />
+            <QuickLink
+              to="/projects"
+              label="프로젝트"
+              detail={`${projects.data?.total ?? 0}개 프로젝트`}
+              icon={FolderKanban}
+            />
+            <QuickLink
+              to="/operations"
+              label="운영 허브"
+              detail="가져오기·내보내기·상태"
+              icon={SquareActivity}
+            />
+            <QuickLink
+              to="/notes?new=1"
+              label="개인 메모"
+              detail="빠르게 기록하고 정리"
+              icon={StickyNote}
+            />
+          </div>
+        </section>
+      ) : null}
 
-      <section aria-label="프로젝트 바로가기" className="min-w-0">
+      {visibleWidgets.projectShortcuts ? (
+        <section aria-label="프로젝트 바로가기" className="min-w-0">
         <div className="mb-2 flex items-center justify-between gap-2 px-1">
           <h2 className="text-sm font-semibold">프로젝트 바로가기</h2>
           <Link
@@ -720,9 +846,11 @@ function MyWorkOverview() {
             ))}
           </div>
         )}
-      </section>
+        </section>
+      ) : null}
 
-      <section aria-label="최근 항목" className="min-w-0 border-y border-of-border py-4">
+      {visibleWidgets.recents ? (
+        <section aria-label="최근 항목" className="min-w-0 border-y border-of-border py-4">
         <div className="mb-3 flex min-w-0 items-center justify-between gap-3">
           <div className="min-w-0">
             <h2 className="text-sm font-semibold">최근 항목</h2>
@@ -771,9 +899,10 @@ function MyWorkOverview() {
             )}
           </section>
         </div>
-      </section>
+        </section>
+      ) : null}
 
-      <PersonalNotesPanel />
+      {visibleWidgets.personalNotes ? <PersonalNotesPanel /> : null}
 
       {assigned_to_me.length === 0 && created_by_me.length === 0 && recent_activity.length === 0 ? (
         <EmptyState
