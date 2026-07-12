@@ -158,18 +158,14 @@ function NewWorkItemButton({ projectId, onNavigate }: { projectId: string; onNav
 }
 
 function GlobalRail({
-  wikiHref,
   settingsHref,
-  wikiEnabled,
   onNavigate,
 }: {
-  wikiHref?: string
   settingsHref: string
-  wikiEnabled: boolean
   onNavigate?: () => void
 }) {
   const location = useLocation()
-  const wikiActive = location.pathname.includes('/documents')
+  const wikiActive = location.pathname === '/wiki' || location.pathname.includes('/documents')
   const aiActive = location.pathname === '/ai'
   const settingsActive =
     location.pathname === '/settings' || location.pathname.startsWith('/admin')
@@ -180,14 +176,12 @@ function GlobalRail({
       icon: FolderKanban,
       active: !wikiActive && !aiActive && !settingsActive,
     },
-    ...(wikiEnabled && wikiHref
-      ? [{
-          href: wikiHref,
-          label: 'Wiki',
-          icon: BookOpenText,
-          active: wikiActive,
-        }]
-      : []),
+    {
+      href: '/wiki',
+      label: 'Wiki',
+      icon: BookOpenText,
+      active: wikiActive,
+    },
     {
       href: '/ai',
       label: 'AI',
@@ -261,13 +255,16 @@ function SidebarContent({
   )
   const selectedProject = data?.items.find((project) => project.id === projectId) ?? data?.items[0]
   const wikiEnabled = capabilities.data?.wiki.enabled === true
-  const wikiHref = selectedProject ? `/projects/${selectedProject.id}/documents` : undefined
   const settingsHref = me.data?.is_admin ? '/admin' : '/settings'
   const location = useLocation()
-  const wikiMode = location.pathname.includes('/documents')
+  const wikiMode = location.pathname === '/wiki' || location.pathname.includes('/documents')
+  const wikiProjectId = projectId ?? selectedProject?.id
   const aiMode = location.pathname === '/ai'
   const settingsMode = location.pathname === '/settings' || location.pathname.startsWith('/admin')
-  const wikiBucket = new URLSearchParams(location.search).get('bucket') ?? 'shared'
+  const rawWikiBucket = new URLSearchParams(location.search).get('bucket')
+  const wikiBucket = rawWikiBucket === 'private' || rawWikiBucket === 'archived'
+    ? rawWikiBucket
+    : 'shared'
   const myWorkTab = new URLSearchParams(location.search).get('tab')
   const profileWorkMode =
     location.pathname === '/my' && myWorkTab !== null && myWorkTab !== 'overview'
@@ -283,9 +280,7 @@ function SidebarContent({
   return (
     <div className="flex min-h-0 flex-1">
       <GlobalRail
-        wikiHref={wikiHref}
         settingsHref={settingsHref}
-        wikiEnabled={wikiEnabled}
         onNavigate={onNavigate}
       />
       <div className="flex min-w-0 flex-1 flex-col bg-of-surface-raised">
@@ -368,7 +363,7 @@ function SidebarContent({
               ) : null}
             </div>
           </nav>
-        ) : wikiMode && selectedProject ? (
+        ) : wikiMode ? (
           <nav className="of-scrollbar flex-1 overflow-y-auto px-2 pb-3" aria-label="Wiki 컨텍스트 내비게이션">
             <div className="space-y-4">
               <div>
@@ -380,10 +375,12 @@ function SidebarContent({
                     { key: 'archived', label: '보관됨', icon: Archive },
                   ].map((item) => {
                     const Icon = item.icon
-                    const href =
-                      item.key === 'shared'
-                        ? `/projects/${selectedProject.id}/documents`
-                        : `/projects/${selectedProject.id}/documents?bucket=${item.key}`
+                    const wikiRoot = location.pathname === '/wiki'
+                    const href = wikiRoot
+                      ? item.key === 'shared' ? '/wiki' : `/wiki?bucket=${item.key}`
+                      : item.key === 'shared'
+                        ? `/projects/${wikiProjectId}/documents`
+                        : `/projects/${wikiProjectId}/documents?bucket=${item.key}`
                     return (
                       <Link
                         key={item.key}
@@ -404,7 +401,7 @@ function SidebarContent({
                 <SectionLabel>프로젝트 공간</SectionLabel>
                 <div className="space-y-0.5">
                   {data?.items.map((project) => {
-                    const active = project.id === selectedProject.id
+                    const active = project.id === projectId
                     return (
                       <Link
                         key={project.id}
@@ -419,12 +416,15 @@ function SidebarContent({
                       </Link>
                     )
                   })}
+                  {data?.items.length === 0 ? (
+                    <p className="px-2 py-1 text-xs text-of-muted">접근 가능한 프로젝트가 없습니다.</p>
+                  ) : null}
                 </div>
               </div>
             </div>
           </nav>
         ) : (
-        <nav className="of-scrollbar flex-1 overflow-y-auto px-2 pb-3" aria-label="컨텍스트 내비게이션">
+        <nav className="of-scrollbar flex-1 overflow-y-auto px-2 pb-3" aria-label="Projects 컨텍스트 내비게이션">
           <div className="space-y-4">
             <div className="space-y-0.5">
               {primaryNav.map((item) => {

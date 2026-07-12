@@ -10,6 +10,7 @@ import { expect, test, type Page } from '@playwright/test'
 import type { Milestone } from '../src/features/milestones/api'
 import type { Customer } from '../src/features/customers/types'
 import type { DataTransferJob } from '../src/features/ops/dataTransfersApi'
+import type { DocumentList } from '../src/features/documents/api'
 import type { Project, ProjectList } from '../src/features/projects/types'
 import type { ProjectTemplate } from '../src/features/project-templates/api'
 import type { SearchResults } from '../src/features/search/api'
@@ -389,6 +390,9 @@ async function mockApi(page: Page, opts: { conflictOnPatch?: boolean } = {}) {
   await page.route('**/api/v1/projects/*/documents**', (route) =>
     route.fulfill({ json: { items: [], total: 0 } }),
   )
+  await page.route('**/api/v1/documents?**', (route) =>
+    route.fulfill({ json: { items: [], total: 0 } }),
+  )
   // The timeline reads project-wide relations for dependency connectors.
   await page.route('**/api/v1/projects/*/relations**', (route) =>
     route.fulfill({ json: { items: [], total: 0, truncated: false } }),
@@ -683,7 +687,7 @@ test('글로벌 레일과 전체 폭 검색 topbar가 실제 제품 경로에 �
   await expect(globalNav.getByRole('link', { name: 'Projects' })).toHaveAttribute('href', '/projects')
   await expect(globalNav.getByRole('link', { name: 'Wiki' })).toHaveAttribute(
     'href',
-    `/projects/${project.id}/documents`,
+    '/wiki',
   )
   await expect(globalNav.getByRole('link', { name: 'AI' })).toHaveAttribute(
     'href',
@@ -709,6 +713,48 @@ test('Projects rail은 모든 core workspace route의 app context를 유지한�
     await expect(globalNav.getByRole('link', { name: 'AI' })).not.toHaveAttribute('aria-current', 'page')
     await expect(globalNav.getByRole('link', { name: 'Settings' })).not.toHaveAttribute('aria-current', 'page')
   }
+})
+
+test('글로벌 앱을 전환하면 Projects·Wiki·AI·Settings 고유 메뉴 트리가 교체된다', async ({ page }) => {
+  await mockApi(page)
+  await page.goto('/projects')
+
+  let globalNav = page.getByRole('navigation', { name: '글로벌 내비게이션' })
+  await expect(page.getByRole('navigation', { name: 'Projects 컨텍스트 내비게이션' })).toBeVisible()
+
+  await globalNav.getByRole('link', { name: 'Wiki' }).click()
+  await expect(page).toHaveURL('/wiki')
+  await expect(page.getByRole('navigation', { name: 'Wiki 컨텍스트 내비게이션' })).toBeVisible()
+  await expect(page.getByRole('navigation', { name: 'Projects 컨텍스트 내비게이션' })).toHaveCount(0)
+
+  globalNav = page.getByRole('navigation', { name: '글로벌 내비게이션' })
+  await globalNav.getByRole('link', { name: 'AI' }).click()
+  await expect(page).toHaveURL('/ai')
+  await expect(page.getByRole('navigation', { name: 'AI 컨텍스트 내비게이션' })).toBeVisible()
+  await expect(page.getByRole('navigation', { name: 'Wiki 컨텍스트 내비게이션' })).toHaveCount(0)
+
+  globalNav = page.getByRole('navigation', { name: '글로벌 내비게이션' })
+  await globalNav.getByRole('link', { name: 'Settings' }).click()
+  await expect(page).toHaveURL('/admin/users')
+  await expect(page.getByRole('navigation', { name: '설정 컨텍스트 내비게이션' })).toBeVisible()
+  await expect(page.getByRole('navigation', { name: 'AI 컨텍스트 내비게이션' })).toHaveCount(0)
+
+  globalNav = page.getByRole('navigation', { name: '글로벌 내비게이션' })
+  await globalNav.getByRole('link', { name: 'Projects' }).click()
+  await expect(page).toHaveURL('/projects')
+  await expect(page.getByRole('navigation', { name: 'Projects 컨텍스트 내비게이션' })).toBeVisible()
+
+  await page.setViewportSize({ width: 1440, height: 960 })
+  await page.screenshot({ path: '../../docs/screenshots/redevelopment/global-app-contexts-ui/projects.png' })
+  await globalNav.getByRole('link', { name: 'Wiki' }).click()
+  await page.screenshot({ path: '../../docs/screenshots/redevelopment/global-app-contexts-ui/wiki.png' })
+
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.getByRole('button', { name: '사이드바 열기' }).click()
+  const drawer = page.getByRole('dialog', { name: '모바일 내비게이션' })
+  await expect(drawer.getByRole('navigation', { name: 'Wiki 컨텍스트 내비게이션' })).toBeVisible()
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({ path: '../../docs/screenshots/redevelopment/global-app-contexts-ui/mobile-wiki.png' })
 })
 
 test('Topbar context는 workspace query와 project route를 실제 breadcrumb navigation으로 표현한다', async ({ page }) => {
@@ -751,7 +797,7 @@ test('Projects context sidebar는 primary·workspace·More·project 계층을 �
   await mockApi(page)
   await page.goto('/projects')
 
-  const contextNav = page.getByRole('navigation', { name: '컨텍스트 내비게이션' })
+  const contextNav = page.getByRole('navigation', { name: 'Projects 컨텍스트 내비게이션' })
   await expect(contextNav.getByRole('link', { name: '홈' })).toHaveAttribute('href', '/my')
   await expect(contextNav.getByRole('link', { name: '초안' })).toHaveAttribute('href', '/drafts')
   await expect(contextNav.getByRole('link', { name: '내 작업' })).toHaveAttribute('href', '/my?tab=assigned')
@@ -904,8 +950,13 @@ test('Wiki rail은 전용 context navigation과 중앙 lifecycle surface를 연�
   })
 })
 
-test('글로벌 레일은 capability와 사용자 권한에 맞춰 Wiki와 Settings를 결정한다', async ({ page }) => {
+test('Wiki global app은 capability와 무관하게 표시되고 비활성 상태를 안내한다', async ({ page }) => {
   await mockApi(page)
+  let workspaceDocumentRequests = 0
+  await page.route('**/api/v1/documents?**', (route) => {
+    workspaceDocumentRequests += 1
+    return route.fulfill({ json: { items: [], total: 0 } })
+  })
   await page.route('**/api/v1/workspace/capabilities', (route) =>
     route.fulfill({
       json: { ...defaultWorkspaceCapabilities, wiki: { enabled: false, revision: 2 } },
@@ -925,8 +976,113 @@ test('글로벌 레일은 capability와 사용자 권한에 맞춰 Wiki와 Setti
   await page.goto('/projects')
 
   const globalNav = page.getByRole('navigation', { name: '글로벌 내비게이션' })
-  await expect(globalNav.getByRole('link', { name: 'Wiki' })).toHaveCount(0)
+  await expect(globalNav.getByRole('link', { name: 'Wiki' })).toHaveAttribute('href', '/wiki')
   await expect(globalNav.getByRole('link', { name: 'Settings' })).toHaveAttribute('href', '/settings')
+  await globalNav.getByRole('link', { name: 'Wiki' }).click()
+  await expect(page.getByText('Wiki가 비활성화되어 있습니다')).toBeVisible()
+  expect(workspaceDocumentRequests).toBe(0)
+})
+
+test('Wiki global app은 zero-project workspace에서도 desktop과 mobile context tree를 유지한다', async ({ page }) => {
+  await mockApi(page)
+  await page.route('**/api/v1/projects', (route) =>
+    route.fulfill({ json: { items: [], total: 0 } satisfies ProjectList }),
+  )
+  await page.setViewportSize({ width: 1440, height: 960 })
+  await page.goto('/projects')
+
+  const globalNav = page.getByRole('navigation', { name: '글로벌 내비게이션' })
+  await globalNav.getByRole('link', { name: 'Wiki' }).click()
+  await expect(page).toHaveURL('/wiki')
+  const wikiNav = page.getByRole('navigation', { name: 'Wiki 컨텍스트 내비게이션' })
+  await expect(wikiNav.getByRole('link', { name: '공유' })).toHaveAttribute('href', '/wiki')
+  await expect(wikiNav.getByRole('link', { name: '비공개' })).toHaveAttribute('href', '/wiki?bucket=private')
+  await expect(wikiNav.getByText('접근 가능한 프로젝트가 없습니다.')).toBeVisible()
+  await expect(page.getByRole('region', { name: 'Wiki 홈' })).toBeVisible()
+
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.getByRole('button', { name: '사이드바 열기' }).click()
+  await expect(
+    page.getByRole('dialog', { name: '모바일 내비게이션' }).getByRole('navigation', { name: 'Wiki 컨텍스트 내비게이션' }),
+  ).toBeVisible()
+})
+
+test('Wiki home은 접근 가능한 프로젝트 문서를 범위·검색·프로젝트 필터로 탐색한다', async ({ page }) => {
+  await mockApi(page)
+  const secondProject = {
+    ...project,
+    ...projectRollups,
+    id: '99999999-9999-4999-8999-999999999999',
+    key: 'OPS',
+    name: '운영 개선',
+  }
+  await page.route('**/api/v1/projects', (route) =>
+    route.fulfill({ json: { items: [{ ...project, ...projectRollups }, secondProject], total: 2 } satisfies ProjectList }),
+  )
+  await page.route('**/api/v1/documents?**', (route) => {
+    const url = new URL(route.request().url())
+    const bucket = url.searchParams.get('bucket') ?? 'shared'
+    const items: DocumentList['items'] = bucket === 'shared'
+      ? [
+        {
+          id: 'doc-one',
+          project_id: project.id,
+          parent_id: null,
+          title: '제품 정책',
+          author_id: 'me-1',
+          visibility: 'shared',
+          archived_at: null,
+          archived_by_user_id: null,
+          archived_by_name: null,
+          version: 1,
+          created_at: '2026-07-01T00:00:00Z',
+          updated_at: '2026-07-12T02:00:00Z',
+        },
+        {
+          id: 'doc-ops',
+          project_id: secondProject.id,
+          parent_id: null,
+          title: '운영 매뉴얼',
+          author_id: 'me-1',
+          visibility: 'shared',
+          archived_at: null,
+          archived_by_user_id: null,
+          archived_by_name: null,
+          version: 1,
+          created_at: '2026-07-01T00:00:00Z',
+          updated_at: '2026-07-11T02:00:00Z',
+        },
+      ]
+      : []
+    route.fulfill({ json: { items, total: items.length } satisfies DocumentList })
+  })
+
+  await page.goto('/wiki')
+  const wikiHome = page.getByRole('region', { name: 'Wiki 홈' })
+  await expect(wikiHome.getByRole('link', { name: /제품 정책/ })).toHaveAttribute(
+    'href',
+    `/projects/${project.id}/documents/doc-one`,
+  )
+  await expect(wikiHome.getByRole('link', { name: /운영 매뉴얼/ })).toBeVisible()
+
+  await wikiHome.getByRole('textbox', { name: 'Wiki 검색' }).fill('운영')
+  await expect(wikiHome.getByRole('link', { name: /제품 정책/ })).toHaveCount(0)
+  await expect(wikiHome.getByRole('link', { name: /운영 매뉴얼/ })).toBeVisible()
+
+  await wikiHome.getByRole('textbox', { name: 'Wiki 검색' }).fill('')
+  await wikiHome.getByRole('combobox', { name: 'Wiki 프로젝트 필터' }).selectOption(project.id)
+  await expect(wikiHome.getByRole('link', { name: /제품 정책/ })).toBeVisible()
+  await expect(wikiHome.getByRole('link', { name: /운영 매뉴얼/ })).toHaveCount(0)
+
+  await wikiHome.getByRole('button', { name: '비공개' }).click()
+  await expect(page).toHaveURL('/wiki?bucket=private')
+  await expect(wikiHome.getByText('비공개 문서가 없습니다')).toBeVisible()
+
+  await page.goto('/wiki?bucket=unknown')
+  await expect(
+    page.getByRole('navigation', { name: 'Wiki 컨텍스트 내비게이션' }).getByRole('link', { name: '공유' }),
+  ).toHaveAttribute('aria-current', 'page')
+  await expect(wikiHome.getByRole('button', { name: '공유' })).toHaveAttribute('aria-current', 'page')
 })
 
 test('모바일 앱 셸에서 사이드바가 drawer로 열린다', async ({ page }) => {
@@ -10922,7 +11078,7 @@ test('Initiatives 정책은 navigation과 API surface를 함께 끄고 복구한
   let toggle = page.getByRole('switch', { name: '이니셔티브 사용' })
   await expect(toggle).toBeChecked()
   await page.goto('/projects')
-  await page.getByRole('navigation', { name: '컨텍스트 내비게이션' }).getByText('더 보기', { exact: true }).click()
+  await page.getByRole('navigation', { name: 'Projects 컨텍스트 내비게이션' }).getByText('더 보기', { exact: true }).click()
   await expect(page.getByRole('link', { name: '이니셔티브', exact: true })).toBeVisible()
   await page.goto('/admin/initiatives')
   toggle = page.getByRole('switch', { name: '이니셔티브 사용' })

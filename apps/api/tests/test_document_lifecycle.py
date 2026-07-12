@@ -5,6 +5,7 @@ from sqlalchemy import select
 
 from app.core.auth import DEV_USER_EMAIL, token_hash
 from app.models.access_token import PersonalAccessToken
+from app.models.document import ProjectDocument
 from app.models.member import ProjectMember
 from app.models.user import User
 from tests.conftest import create_project, create_wp
@@ -71,6 +72,52 @@ async def test_private_document_is_author_only_across_reads(client, project, oth
     assert hidden_search.json()["documents"]["returned"] == 0
     own_search = await client.get("/api/v1/search?q=Secret%20roadmap", headers=other["headers"])
     assert own_search.json()["documents"]["returned"] == 1
+
+
+async def test_workspace_document_list_is_membership_and_visibility_scoped(
+    client, app, project, other, foreign_project
+):
+    owner_shared = await _create(client, project["id"], "Owner shared")
+    member_private = await _create(
+        client,
+        project["id"],
+        "Member private",
+        headers=other["headers"],
+        visibility="private",
+    )
+    second = await create_project(client, key="WL2", name="Second Wiki")
+    second_shared = await _create(client, second["id"], "Second shared")
+
+    async with app.state.sessionmaker() as session, session.begin():
+        session.add(
+            ProjectDocument(
+                project_id=foreign_project["project_id"],
+                title="Foreign shared",
+                author_id=foreign_project["user_id"],
+                visibility="shared",
+            )
+        )
+
+    shared = await client.get("/api/v1/documents?bucket=shared")
+    assert shared.status_code == 200, shared.text
+    assert {item["id"] for item in shared.json()["items"]} == {
+        owner_shared["id"],
+        second_shared["id"],
+    }
+
+    assert (await client.get("/api/v1/documents?bucket=private")).json()["total"] == 0
+    member_private_list = await client.get(
+        "/api/v1/documents?bucket=private", headers=other["headers"]
+    )
+    assert [item["id"] for item in member_private_list.json()["items"]] == [member_private["id"]]
+
+    archived = await client.post(
+        f"/api/v1/documents/{owner_shared['id']}/archive",
+        json={"expected_version": owner_shared["version"]},
+    )
+    assert archived.status_code == 200, archived.text
+    archived_list = await client.get("/api/v1/documents?bucket=archived")
+    assert [item["id"] for item in archived_list.json()["items"]] == [owner_shared["id"]]
 
 
 async def test_private_links_and_attachments_do_not_leak(client, project, other):
