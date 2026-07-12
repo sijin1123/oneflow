@@ -164,26 +164,30 @@ function GlobalRail({
   onNavigate?: () => void
 }) {
   const location = useLocation()
+  const wikiActive = location.pathname.includes('/documents')
+  const aiActive = location.pathname === '/ai'
+  const settingsActive =
+    location.pathname === '/settings' || location.pathname.startsWith('/admin')
   const items = [
     {
       href: '/projects',
       label: 'Projects',
       icon: FolderKanban,
-      active: location.pathname.startsWith('/projects') && !location.pathname.includes('/documents'),
+      active: !wikiActive && !aiActive && !settingsActive,
     },
     ...(wikiEnabled && wikiHref
       ? [{
           href: wikiHref,
           label: 'Wiki',
           icon: BookOpenText,
-          active: location.pathname.includes('/documents'),
+          active: wikiActive,
         }]
       : []),
     {
       href: '/ai',
       label: 'AI',
       icon: Sparkles,
-      active: location.pathname === '/ai',
+      active: aiActive,
     },
   ]
 
@@ -214,10 +218,10 @@ function GlobalRail({
       </div>
       <Link
         to={settingsHref}
-        aria-current={location.pathname.startsWith('/settings') || location.pathname.startsWith('/admin') ? 'page' : undefined}
+        aria-current={settingsActive ? 'page' : undefined}
         className={cn(
           'mt-auto flex h-12 w-full flex-col items-center justify-center gap-1 rounded-of text-[10px] font-medium text-of-muted transition-colors hover:bg-of-surface-hover hover:text-of-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus',
-          (location.pathname.startsWith('/settings') || location.pathname.startsWith('/admin')) && 'bg-of-surface-selected text-of-accent',
+          settingsActive && 'bg-of-surface-selected text-of-accent',
         )}
         onClick={onNavigate}
       >

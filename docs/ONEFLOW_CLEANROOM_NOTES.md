@@ -202,3 +202,7 @@ Plane source, package, asset, CSS, DOM hierarchy, exact dimensions/colors, wordi
 `docs/plane-poc-reverse-spec/` D007/D031-D048과 사용자 참조 화면에서 사용한 입력은 Settings를 독립 app rail/context surface로 구성하고 설정 범주를 그룹화하는 정보구조뿐이다. OneFlow 구현은 기존 자체 personal/admin routes, admin permission gate, workspace policy forms, shell tokens와 responsive drawer를 재배치해 독립 작성했다.
 
 Plane source, package, asset, CSS, DOM hierarchy, exact dimensions/colors, wording, icons, branding은 복사하지 않았다. 신규 dependency/API/DB/schema/environment 변경은 없다. — attested-independent-derivation
+
+## UI-71 Shell Route State
+
+UI-61~UI-70에서 독립 구현한 OneFlow global rail의 route-state 일관성 보정이다. reference source/package/asset/CSS/DOM을 새 입력으로 사용하지 않았으며 OneFlow 자체 React Router pathname과 app context 규칙만 사용했다. — attested-independent-derivation
