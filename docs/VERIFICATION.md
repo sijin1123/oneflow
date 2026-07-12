@@ -2238,3 +2238,15 @@ Chromium typed mock fixture에서 1440x960과 390x844 viewport를 사용했다. 
 - Typecheck/lint와 focused drawer/mobile E2E 2건, Chromium desktop/mobile visual QA가 PASS했다.
 - 시각 증적: `docs/screenshots/redevelopment/detail-properties-ui/{desktop,mobile}.png`.
 - API, DB, migration, permission, environment variable, dependency 변경과 이연 항목은 없다.
+
+---
+
+# UI-67 Work Items State Workflow 검증 (2026-07-12)
+
+- True empty는 writer에게 실제 `?new=1` composer를 여는 `첫 작업 만들기`를 제공한다.
+- Filtered empty는 불가능한 create 안내를 제거하고 기존 `현재 보기 초기화` 명령을 사용한다.
+- Viewer empty는 생성 CTA 없이 권한에 맞는 안내만 제공한다.
+- Focused Playwright 4건이 empty writer/filter/viewer, skeleton, error retry/request-id와 390px overflow를 검증한다.
+- Production build, unit 67, component 8, full frontend E2E 206 PASS와 opt-in visual QA 1 skip, clean-room gate가 통과했다.
+- 시각 증적은 `docs/screenshots/redevelopment/states-mobile/{empty-list,list-skeleton,error-list}.png`에 보존한다.
+- API, DB, migration, permission contract, environment variable, dependency 변경과 이연 항목은 없다.
