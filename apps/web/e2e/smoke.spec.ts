@@ -746,6 +746,19 @@ test('AI rail은 실제 capability와 작업 요약 경로를 전용 workspace�
 
 test('Settings rail은 권한별 설정 navigation과 중앙 form을 중복 없이 연다', async ({ page }) => {
   await mockApi(page)
+  await page.route('**/api/v1/users', (route) => route.fulfill({
+    json: {
+      items: [{
+        id: 'me-1',
+        email: 'dev@oneflow.local',
+        display_name: 'Dev User',
+        is_active: true,
+        is_admin: true,
+        created_at: '2026-07-01T00:00:00Z',
+      }],
+      total: 1,
+    },
+  }))
   await page.goto('/admin/users')
 
   const globalNav = page.getByRole('navigation', { name: '글로벌 내비게이션' })
