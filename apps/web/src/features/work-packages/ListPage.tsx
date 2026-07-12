@@ -71,6 +71,21 @@ const VIEW_CONTROL_KEYS = [
   'cf_value',
 ] as const
 
+const RESULT_FILTER_KEYS = [
+  'status',
+  'priority',
+  'type',
+  'assignee_id',
+  'milestone_id',
+  'customer_id',
+  'cycle_id',
+  'module_id',
+  'q',
+  'cf_field',
+  'cf_op',
+  'cf_value',
+] as const
+
 const UNASSIGNED_BULK_VALUE = '__unassigned'
 
 /* Custom-column cell (Pass 67): the requested field list is the source of
@@ -213,6 +228,7 @@ export function ListPage() {
     )
   }
   const activeControlCount = VIEW_CONTROL_KEYS.filter((key) => searchParams.get(key)).length
+  const hasResultFilters = RESULT_FILTER_KEYS.some((key) => searchParams.get(key))
   const listFilters =
     customColumns.length > 0 ? { ...filters, custom_fields: customColumns.join(',') } : filters
   const { data, isPending, isError, error, refetch } = useWorkPackages(projectId, listFilters)
@@ -590,8 +606,26 @@ export function ListPage() {
         <ListSkeleton />
       ) : isError ? (
         <ErrorState error={error} onRetry={() => refetch()} />
+      ) : data.total === 0 && hasResultFilters ? (
+        <EmptyState
+          title="조건에 맞는 작업이 없습니다"
+          hint="검색이나 필터를 조정해 다른 작업을 찾아보세요."
+        />
       ) : data.total === 0 ? (
-        <EmptyState title="조건에 맞는 작업이 없습니다" hint="필터를 조정하거나 새 작업을 만들어 보세요." />
+        <EmptyState
+          title="아직 작업이 없습니다"
+          hint={
+            canWrite
+              ? '첫 작업을 만들어 프로젝트 실행을 시작하세요.'
+              : '프로젝트 멤버가 작업을 추가하면 이곳에 표시됩니다.'
+          }
+        >
+          {canWrite ? (
+            <Button size="sm" onClick={openCreate}>
+              <Plus size={13} /> 첫 작업 만들기
+            </Button>
+          ) : null}
+        </EmptyState>
       ) : (
         <DataGridFrame density={density} aria-label="프로젝트 작업 표 스크롤 영역">
           <DataGrid className="min-w-[760px] text-left">
