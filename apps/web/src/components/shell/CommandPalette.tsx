@@ -9,7 +9,7 @@ import {
   useRef,
   useState,
 } from 'react'
-import { Link, useLocation, useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -41,7 +41,7 @@ function useDebouncedValue(value: string, delayMs: number) {
 
 export function CommandPalette({ prominent = false }: { prominent?: boolean }) {
   const auth = useAuthConfig()
-  const enabled = auth.data?.command_palette_enabled === true
+  const shortcutEnabled = auth.data?.command_palette_enabled === true
   const capabilities = useWorkspaceCapabilities()
   const wikiEnabled = capabilities.data?.wiki.enabled === true
   const initiativesEnabled = capabilities.data?.initiatives.enabled === true
@@ -58,7 +58,7 @@ export function CommandPalette({ prominent = false }: { prominent?: boolean }) {
   const lastLocationKey = useRef(locationKey)
   const queryClient = useQueryClient()
   const debounced = useDebouncedValue(query.trim(), 180)
-  const search = useCommandPaletteSearch(debounced, enabled && open)
+  const search = useCommandPaletteSearch(debounced, open)
   const queryReady = query.trim().length >= 2 && debounced === query.trim()
   const data = queryReady ? search.data : undefined
   const allItems = useMemo(
@@ -82,22 +82,16 @@ export function CommandPalette({ prominent = false }: { prominent?: boolean }) {
   }, [queryClient])
 
   const openPalette = useCallback(() => {
-    if (enabled) {
-      previouslyFocused.current = document.activeElement as HTMLElement | null
-      setOpen(true)
-    }
-  }, [enabled])
+    previouslyFocused.current = document.activeElement as HTMLElement | null
+    setOpen(true)
+  }, [])
 
   useEffect(() => {
-    if (!enabled && open) close()
-  }, [close, enabled, open])
-
-  useEffect(() => {
-    if (!enabled) return
+    if (!shortcutEnabled) return
     const onOpen = () => openPalette()
     window.addEventListener(COMMAND_PALETTE_OPEN_EVENT, onOpen)
     return () => window.removeEventListener(COMMAND_PALETTE_OPEN_EVENT, onOpen)
-  }, [enabled, openPalette])
+  }, [openPalette, shortcutEnabled])
 
   useEffect(() => {
     if (!open) return
@@ -190,38 +184,13 @@ export function CommandPalette({ prominent = false }: { prominent?: boolean }) {
     }
   }
 
-  if (!enabled) {
-    return (
-      <>
-        <Link
-          to="/search"
-          aria-label="전체 검색 페이지"
-          className={cn(
-            'of-touch-target hidden h-7 items-center gap-1.5 rounded-of border border-of-border bg-of-surface px-2 text-xs font-medium text-of-muted transition-colors hover:bg-of-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus sm:inline-flex',
-            prominent ? 'w-full max-w-[30rem]' : 'w-36',
-          )}
-        >
-          <Search size={14} />
-          <span className="truncate">검색</span>
-        </Link>
-        <Link
-          to="/search"
-          aria-label="전체 검색 페이지"
-          className="of-touch-target flex h-8 w-8 items-center justify-center rounded-of text-of-secondary hover:bg-of-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus sm:hidden"
-        >
-          <Search size={16} />
-        </Link>
-      </>
-    )
-  }
-
   return (
     <>
       <Button
         variant="outline"
         size="sm"
         aria-label="전체 검색 열기"
-        aria-keyshortcuts="/ Meta+K Control+K"
+        aria-keyshortcuts={shortcutEnabled ? '/ Meta+K Control+K' : undefined}
         onClick={openPalette}
         className={cn(
           'hidden justify-start text-of-muted sm:inline-flex',
@@ -230,7 +199,7 @@ export function CommandPalette({ prominent = false }: { prominent?: boolean }) {
       >
         <Search />
         <span className="truncate">검색</span>
-        {prominent ? (
+        {prominent && shortcutEnabled ? (
           <span className="ml-auto hidden text-[10px] text-of-muted lg:inline">⌘ K</span>
         ) : null}
       </Button>
@@ -238,7 +207,7 @@ export function CommandPalette({ prominent = false }: { prominent?: boolean }) {
         variant="ghost"
         size="icon"
         aria-label="전체 검색 열기"
-        aria-keyshortcuts="/ Meta+K Control+K"
+        aria-keyshortcuts={shortcutEnabled ? '/ Meta+K Control+K' : undefined}
         onClick={openPalette}
         className="sm:hidden"
       >
@@ -247,7 +216,7 @@ export function CommandPalette({ prominent = false }: { prominent?: boolean }) {
       {open ? (
         <div
           role="presentation"
-          className="fixed inset-0 z-[var(--of-z-modal)] bg-of-overlay backdrop-blur-[2px]"
+          className="fixed inset-0 z-[var(--of-z-modal)] bg-of-overlay animate-in fade-in duration-[var(--of-duration-overlay)] motion-reduce:animate-none"
           onMouseDown={(event) => {
             if (event.target === event.currentTarget) close()
           }}
@@ -257,7 +226,7 @@ export function CommandPalette({ prominent = false }: { prominent?: boolean }) {
             role="dialog"
             aria-modal="true"
             aria-label="전체 검색"
-            className="of-floating-surface fixed inset-x-3 top-14 mx-auto flex max-h-[min(82vh,680px)] max-w-2xl flex-col overflow-hidden sm:top-20"
+            className="fixed inset-x-2 top-1 mx-auto flex max-h-[min(82vh,680px)] max-w-[36rem] flex-col overflow-hidden rounded-of-lg border border-of-border bg-of-surface-raised shadow-[var(--of-shadow-popover)] animate-in fade-in slide-in-from-top-2 zoom-in-95 duration-[var(--of-duration-overlay)] motion-reduce:animate-none sm:top-1"
             onKeyDown={onKeyDown}
           >
             <div className="flex items-center gap-2 border-b border-of-border px-3 py-2">
@@ -286,11 +255,8 @@ export function CommandPalette({ prominent = false }: { prominent?: boolean }) {
               </button>
             </div>
 
-            <div
-              role="tablist"
-              aria-label="검색 범위"
-              className="flex gap-1 overflow-x-auto border-b border-of-border px-3 py-2"
-            >
+            {query.trim().length >= 2 ? (
+            <div role="tablist" aria-label="검색 범위" className="flex gap-1 overflow-x-auto border-b border-of-border px-3 py-2">
               {visibleTabs.map((tab, index) => (
                 <button
                   key={tab.key}
@@ -335,15 +301,22 @@ export function CommandPalette({ prominent = false }: { prominent?: boolean }) {
                 </button>
               ))}
             </div>
+            ) : null}
 
             <div
               id="command-palette-panel"
-              role="tabpanel"
-              aria-labelledby={`command-palette-tab-${activeTab}`}
+              role={query.trim().length >= 2 ? 'tabpanel' : 'region'}
+              aria-label={query.trim().length < 2 ? '검색 시작' : undefined}
+              aria-labelledby={query.trim().length >= 2 ? `command-palette-tab-${activeTab}` : undefined}
               className="of-scrollbar min-h-0 flex-1 overflow-y-auto p-2"
             >
               {query.trim().length < 2 ? (
-                <p className="px-2 py-8 text-center text-xs text-of-muted">2자 이상 입력하세요.</p>
+                <div className="flex min-h-56 flex-col items-center justify-center gap-4 px-6 py-8 text-center">
+                  <span className="flex h-20 w-20 items-center justify-center rounded-full bg-of-surface-2 text-of-faint" aria-hidden="true">
+                    <Search size={40} strokeWidth={1.5} />
+                  </span>
+                  <h2 className="text-base font-semibold text-of-secondary">워크스페이스 검색</h2>
+                </div>
               ) : !queryReady || search.isFetching ? (
                 <div className="flex items-center justify-center gap-2 px-2 py-8 text-xs text-of-muted">
                   <Loader2 className="animate-spin" size={14} /> 검색 중
