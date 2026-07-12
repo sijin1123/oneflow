@@ -2370,3 +2370,15 @@ Chromium typed mock fixture에서 1440x960과 390x844 viewport를 사용했다. 
 - API focused 6와 full API 637, migration base downgrade/head upgrade, OpenAPI generation/drift, web unit 67, typecheck, lint, production build, clean-room, UI-78 focused E2E가 통과했다. Full frontend E2E는 217 PASS·1 skip 후 기존 보고/Worklogs 병렬 진입 timeout 3건을 단독 재실행해 3 PASS했다.
 - Chromium desktop/mobile 증적은 `docs/screenshots/redevelopment/quick-notes-dock-ui/`와 `docs/screenshots/redevelopment/personal-notes-ui/`에 보존한다.
 - 환경변수와 dependency 변경은 없다. DB migration 적용이 필요하며 기능·API 이연 항목은 없다.
+
+---
+
+# UI-79 Frame Context Header + Workspace Popover 검증 (2026-07-12)
+
+- 글로벌 topbar는 contextual sidebar의 접힘 상태와 무관하게 OneFlow 로고·workspace 이름·chevron을 유지하고 검색·알림·계정 surface와 같은 outer chrome을 구성한다.
+- route scope/parent/current title은 중앙 floating frame 내부의 44px `FrameContextBar`로 이동했다. Desktop contextual sidebar가 접히면 expand control은 global rail이 아니라 frame 좌측 44px 전용 슬롯에 표시되고, 펼친 상태의 collapse control은 sidebar header에 유지된다.
+- workspace popover는 실제 `/admin/general` 또는 `/settings`, 관리자 전용 `/admin/users`, `POST /api/v1/auth/logout`에 연결된다. 관리자/일반 멤버 권한별 action, 초기 포커스, Tab 순환, Escape/outside 종료, trigger 포커스 복원을 제공하며 우측 account menu와 하나의 open state를 공유한다.
+- main frame은 context bar를 고정하고 명시적 scroll region만 스크롤한다. Quick Dock collision observer도 해당 region의 scroll을 관찰하며 하단 action과의 비겹침을 E2E로 검증했다.
+- Production build, typecheck, lint, unit 67, clean-room, focused shell/menu/collision E2E 11건과 최종 full frontend E2E 224 PASS·opt-in visual QA 1 skip이 통과했다. lint는 기존 Fast Refresh 경고 3건만 유지한다.
+- Chromium 증적은 `docs/screenshots/redevelopment/shell-header-workspace-switcher-ui/`의 desktop, desktop-collapsed, desktop-popover, mobile 이미지에 보존한다.
+- API, DB, migration, environment variable, dependency 변경은 없다. OneFlow는 현재 단일 workspace이며 create-workspace와 workspace invitation lifecycle API가 없어 해당 control은 dead UI로 만들지 않고 후속 제품 범위로 이연한다.

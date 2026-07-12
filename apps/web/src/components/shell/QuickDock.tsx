@@ -58,7 +58,8 @@ export function QuickDock({
       return
     }
     const main = document.querySelector('main')
-    if (!main) return
+    const scrollRegion = main?.querySelector<HTMLElement>('[data-shell-scroll-region]')
+    if (!main || !scrollRegion) return
     let frame = 0
     const measure = () => {
       window.cancelAnimationFrame(frame)
@@ -106,13 +107,13 @@ export function QuickDock({
     observer.observe(main, { childList: true, subtree: true })
     const resizeObserver = new ResizeObserver(measure)
     resizeObserver.observe(main)
-    main.addEventListener('scroll', measure, { passive: true })
+    scrollRegion.addEventListener('scroll', measure, { passive: true })
     window.addEventListener('resize', measure)
     return () => {
       window.cancelAnimationFrame(frame)
       observer.disconnect()
       resizeObserver.disconnect()
-      main.removeEventListener('scroll', measure)
+      scrollRegion.removeEventListener('scroll', measure)
       window.removeEventListener('resize', measure)
     }
   }, [location.pathname, location.search, open])

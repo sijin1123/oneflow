@@ -248,3 +248,9 @@ Plane source, package, asset, CSS, DOM hierarchy, exact dimensions/colors, wordi
 사용자 참조 화면과 `docs/plane-poc-reverse-spec/` D001/RSP-001에서 사용한 입력은 우측 하단의 접히는 개인 메모 도구, sticky-note grid, inline editing과 색상·서식 행동뿐이다. OneFlow 구현은 자체 personal-note API, 사용자 advisory lock, 낙관적 version 계약, React Query cache와 shell collision observer를 사용해 독립 설계했다.
 
 Plane source, package, asset, CSS, DOM hierarchy, exact dimensions/colors, wording, note schema, icons, branding은 복사하지 않았다. OneFlow 고유 color와 사용자별 빈 메모 무결성 migration을 추가했으며 신규 dependency/environment 변경은 없다. — attested-independent-derivation
+
+## UI-79 Frame Context Header + Workspace Popover
+
+사용자 참조 화면과 `docs/plane-poc-reverse-spec/` D001에서 사용한 입력은 global brand chevron, floating frame 내부 context bar, collapsed-sidebar toggle slot, workspace/account popover의 행동·정보구조뿐이다. OneFlow 구현은 자체 React Router context, persisted sidebar preference, workspace profile/me/logout API, admin user directory route와 shell tokens를 사용해 독립 작성했다.
+
+Plane source, package, asset, CSS, DOM hierarchy, exact dimensions/colors, wording, workspace menu schema, icons, branding은 복사하지 않았다. 현재 제품/API에 없는 create-workspace와 workspace invitation lifecycle은 구현하지 않았고 신규 API/DB/schema/environment/dependency 변경은 없다. — attested-independent-derivation
