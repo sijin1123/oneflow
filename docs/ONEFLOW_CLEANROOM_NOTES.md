@@ -190,3 +190,9 @@ Plane source, package, asset, CSS, DOM hierarchy, exact dimensions/colors, wordi
 ## UI-68 Wiki Central Composition
 
 `docs/plane-poc-reverse-spec/` D005/D028-D030의 Wiki rail, shared/private/archived lifecycle, compact page list 행동·정보구조만 사용했다. OneFlow의 기존 workspace capability, project routes, document visibility/archive API, tree/search/create controls와 자체 shell tokens로 독립 작성했으며 Plane source/package/asset/CSS/DOM/wording은 복사하지 않았다. — attested-independent-derivation
+
+## UI-69 AI Central Composition
+
+`docs/plane-poc-reverse-spec/` D034와 사용자 참조 화면에서 사용한 입력은 AI를 독립 workspace surface로 두는 정보구조와 compact navigation 관계뿐이다. OneFlow 구현은 기존 자체 capability, `/me/work`, work-item detail summary API, permission-aware settings route와 local design tokens를 사용해 독립 작성했다.
+
+Plane source, package, asset, CSS, DOM hierarchy, exact dimensions/colors, wording, prompt UI, branding은 복사하지 않았다. 실제 backend 계약이 없는 chat/composer는 만들지 않았고 신규 dependency/API/DB/schema/environment 변경은 없다. — attested-independent-derivation

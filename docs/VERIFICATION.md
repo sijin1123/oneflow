@@ -2261,3 +2261,14 @@ Chromium typed mock fixture에서 1440x960과 390x844 viewport를 사용했다. 
 - Production build, unit 67, component 8, clean-room이 통과했다. Full E2E는 206 PASS와 opt-in 1 skip 후 제거한 `Content surface` 문구를 기대한 1건을 Wiki heading 계약으로 갱신해 단독 재검증 PASS했다.
 - Chromium 1440x960과 390x844 증적은 `docs/screenshots/redevelopment/wiki-central-composition-ui/{desktop,mobile}.png`에 보존한다.
 - API, DB, migration, permission contract, environment variable, dependency 변경과 이연 항목은 없다.
+
+---
+
+# UI-69 AI Central Composition 검증 (2026-07-12)
+
+- Global AI rail은 first-class `/ai` route와 AI 전용 context navigation을 열며 Projects/새 작업 control을 노출하지 않는다.
+- 중앙 surface는 실제 `/api/v1/capabilities`와 `/api/v1/me/work`를 결합하고 후보를 기존 work-item detail의 AI summary mutation으로 연결한다.
+- disabled/error/empty/admin/non-admin 상태는 기존 권한과 capability 계약을 따르며 mock/dead control은 없다.
+- Production build, unit 67, component 8, focused E2E 3, full E2E 208 PASS와 opt-in visual QA 1 skip이 통과했다. lint는 기존 Fast Refresh 경고 3건만 유지한다.
+- Chromium 1440x960 및 390x844 증적은 `docs/screenshots/redevelopment/ai-central-composition-ui/{desktop,mobile}.png`에 보존한다.
+- API, DB, migration, permission contract, environment variable, dependency 변경과 이연 항목은 없다.
