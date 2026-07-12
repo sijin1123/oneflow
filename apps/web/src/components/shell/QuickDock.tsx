@@ -1,7 +1,7 @@
 import { BellRing, Plus, Sparkles, StickyNote, X, Zap } from 'lucide-react'
-import { useEffect, useRef } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useLocation, useParams } from 'react-router-dom'
 
 import { useCanWrite } from '@/features/members/useCanWrite'
 import { useProjects } from '@/features/projects/api'
@@ -52,13 +52,81 @@ export function QuickDock({
   open: boolean
   onOpenChange: (open: boolean) => void
 }) {
+  const location = useLocation()
   const { projectId } = useParams()
   const projects = useProjects()
   const firstActiveProject = projects.data?.items.find((project) => !project.archived_at)
   const targetProjectId = projectId ?? firstActiveProject?.id
   const triggerRef = useRef<HTMLButtonElement>(null)
+  const dockRootRef = useRef<HTMLDivElement>(null)
   const firstActionRef = useRef<HTMLAnchorElement>(null)
   const wasOpen = useRef(false)
+  const [collisionOffset, setCollisionOffset] = useState(0)
+
+  useLayoutEffect(() => {
+    if (open) {
+      setCollisionOffset(0)
+      return
+    }
+    const main = document.querySelector('main')
+    if (!main) return
+    let frame = 0
+    const measure = () => {
+      window.cancelAnimationFrame(frame)
+      frame = window.requestAnimationFrame(() => {
+        const root = dockRootRef.current
+        if (!root) return
+        const rootRect = root.getBoundingClientRect()
+        const mobile = window.innerWidth < 768
+        const baseBottom = window.innerHeight - (mobile ? 12 : 20)
+        const baseRight = window.innerWidth - (mobile ? 12 : 20)
+        const actions = Array.from(
+          main.querySelectorAll<HTMLElement>(
+            'button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [role="button"], [role="menuitem"]',
+          ),
+        )
+          .filter((element) => !element.closest('[data-quick-dock]'))
+          .map((element) => element.getBoundingClientRect())
+          .filter((rect) => rect.width > 0 && rect.height > 0)
+
+        const overlaps = (offset: number) => {
+          const candidate = {
+            left: baseRight - rootRect.width,
+            right: baseRight,
+            top: baseBottom - rootRect.height - offset,
+            bottom: baseBottom - offset,
+          }
+          return actions.some(
+            (rect) =>
+              candidate.left < rect.right + 6 &&
+              candidate.right > rect.left - 6 &&
+              candidate.top < rect.bottom + 6 &&
+              candidate.bottom > rect.top - 6,
+          )
+        }
+
+        const maxOffset = Math.max(0, baseBottom - rootRect.height - 52)
+        let nextOffset = 0
+        while (overlaps(nextOffset) && nextOffset + 52 <= maxOffset) nextOffset += 52
+        setCollisionOffset((current) => (current === nextOffset ? current : nextOffset))
+      })
+    }
+
+    measure()
+    const observer = new MutationObserver(measure)
+    observer.observe(main, { childList: true, subtree: true })
+    const resizeObserver = new ResizeObserver(measure)
+    resizeObserver.observe(main)
+    main.addEventListener('scroll', measure, { passive: true })
+    window.addEventListener('resize', measure)
+    return () => {
+      window.cancelAnimationFrame(frame)
+      observer.disconnect()
+      resizeObserver.disconnect()
+      main.removeEventListener('scroll', measure)
+      window.removeEventListener('resize', measure)
+    }
+  }, [location.pathname, location.search, open])
 
   useEffect(() => {
     if (!open) {
@@ -80,7 +148,12 @@ export function QuickDock({
   const close = () => onOpenChange(false)
 
   return (
-    <div className="fixed bottom-3 right-3 z-30 md:bottom-5 md:right-5">
+    <div
+      ref={dockRootRef}
+      data-quick-dock
+      className="fixed bottom-3 right-3 z-30 transition-transform duration-[var(--of-duration-default)] motion-reduce:transition-none md:bottom-5 md:right-5"
+      style={{ transform: `translateY(-${collisionOffset}px)` }}
+    >
       {open ? (
         <nav
           aria-label="빠른 도구"

@@ -2356,5 +2356,6 @@ Chromium typed mock fixture에서 1440x960과 390x844 viewport를 사용했다. 
 - Dock은 Escape 종료와 trigger focus 복원, reduced-motion, desktop/mobile viewport boundary를 제공한다. main 끝의 dynamic safe area는 expanded dock 높이 이상을 확보해 마지막 콘텐츠를 스크롤해 dock 위로 올릴 수 있다.
 - 모바일 sidebar를 열 때 dock은 먼저 닫혀 modal 뒤 focus 이동을 막는다. Navigation Customize가 drawer 안에서 열리면 첫 Escape는 nested dialog와 trigger focus만 복구하고, 두 번째 Escape가 drawer를 닫는다.
 - Production typecheck/lint와 focused shell regression 9, 최종 frame/dock/mobile-modal closure 3이 통과했다. 독립 reviewer가 발견한 mobile Escape/focus, collapsed frame boundary, dock safe inset을 모두 수정했으며 마지막 reviewer 도구 예산 종료 시에도 focused 3 PASS와 PR 진행 가능 상태를 확인했다.
+- PR #244 첫 frontend CI는 collapsed dock이 Modules 모바일 행 액션과 겹쳐 click을 가로채는 회귀를 정확히 검출했다. main interactive element의 사각형을 관찰해 같은 우측 축에서 가장 가까운 빈 슬롯으로 dock을 올리는 collision avoidance를 추가하고, frame/dock/Modules focused 3 PASS와 명시적 비겹침 assertion으로 재검증했다.
 - 시각 증적은 `docs/screenshots/redevelopment/floating-shell-tools-ui/`에 보존한다.
 - API, DB, migration, permission contract, environment variable, dependency 변경과 이연 항목은 없다.
