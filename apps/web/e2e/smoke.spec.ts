@@ -2981,6 +2981,59 @@ test('내 작업 홈이 배정·기한임박·활동을 모아 보여주고 딥�
   await expect(page).toHaveURL(new RegExp(`/projects/${project.id}/work-packages\\?wp=${wpA.id}`))
 })
 
+test('내 작업 홈 위젯 관리는 표시 상태를 저장하고 복원한다', async ({ page }) => {
+  await mockApi(page)
+  await page.route('**/api/v1/me/work', (route) =>
+    route.fulfill({
+      json: {
+        assigned_to_me: [],
+        due_soon: [],
+        created_by_me: [],
+        recent_activity: [],
+      },
+    }),
+  )
+  await page.route('**/api/v1/me/time-entries**', (route) =>
+    route.fulfill({ json: { items: [], total: 0, total_hours: 0, by_project: [] } }),
+  )
+
+  await page.goto('/my')
+  await expect(page.getByRole('region', { name: 'AI workspace' })).toBeVisible()
+  await page.getByRole('button', { name: '위젯 관리' }).click()
+  const widgetsMenu = page.getByRole('menu')
+  await expect(widgetsMenu.getByRole('menuitemcheckbox', { name: 'AI workspace' })).toHaveAttribute(
+    'data-state',
+    'checked',
+  )
+  await widgetsMenu.getByRole('menuitemcheckbox', { name: 'AI workspace' }).click()
+  await widgetsMenu.getByRole('menuitemcheckbox', { name: '개인 메모' }).click()
+  await page.keyboard.press('Escape')
+  await expect(page.getByRole('region', { name: 'AI workspace' })).toHaveCount(0)
+  await expect(page.getByRole('region', { name: '개인 메모' })).toHaveCount(0)
+  await expect(page.getByRole('region', { name: '빠른 이동' })).toBeVisible()
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/workspace-home-widgets-ui/desktop.png',
+    fullPage: true,
+  })
+
+  await page.reload()
+  await expect(page.getByRole('region', { name: 'AI workspace' })).toHaveCount(0)
+  await expect(page.getByRole('region', { name: '개인 메모' })).toHaveCount(0)
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.getByRole('button', { name: '위젯 관리' }).click()
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/workspace-home-widgets-ui/mobile.png',
+    fullPage: true,
+  })
+  await page.getByRole('menuitem', { name: '모든 위젯 복원' }).click()
+  await expect(page.getByRole('region', { name: 'AI workspace' })).toBeVisible()
+  await expect(page.getByRole('region', { name: '개인 메모' })).toBeVisible()
+  await page.reload()
+  await expect(page.getByRole('region', { name: 'AI workspace' })).toBeVisible()
+  await expect(page.getByRole('region', { name: '개인 메모' })).toBeVisible()
+})
+
 test('내 작업 탭이 관계·검색·범위·정렬·페이지 상태를 URL과 API에 연결한다', async ({
   page,
 }) => {
