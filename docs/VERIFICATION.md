@@ -2283,3 +2283,12 @@ Chromium typed mock fixture에서 1440x960과 390x844 viewport를 사용했다. 
 - Production build, unit 67, component 8, focused E2E 5가 통과했다. Full E2E는 205 PASS와 opt-in 1 skip 후 기존 병렬 timing 2건 및 Settings 문맥 assertion 2건을 1 worker로 재검증해 4 PASS했다.
 - Chromium 1440x960 및 390x844 증적은 `docs/screenshots/redevelopment/settings-central-composition-ui/{desktop,mobile}.png`에 보존한다.
 - API, DB, migration, permission contract, environment variable, dependency 변경과 이연 항목은 없다.
+
+---
+
+# UI-71 Shell Route State 검증 (2026-07-12)
+
+- Wiki, AI, Settings가 아닌 `/my`, `/work-items`, `/inbox`, project routes는 Projects global rail을 active app context로 표시한다.
+- Wiki/AI/Settings active 우선순위와 실제 route href는 변경하지 않았다.
+- Production build와 focused Playwright shell E2E 5건이 통과했다.
+- API, DB, migration, permission contract, environment variable, dependency 변경과 이연 항목은 없다.
