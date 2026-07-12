@@ -1,5 +1,6 @@
 import {
   Activity,
+  Archive,
   BarChart3,
   BellRing,
   Bookmark,
@@ -21,6 +22,7 @@ import {
   List,
   ListChecks,
   ListTree,
+  LockKeyhole,
   Paperclip,
   Plus,
   Search,
@@ -30,6 +32,7 @@ import {
   SquareActivity,
   SquareKanban,
   StickyNote,
+  Users,
   X,
   type LucideIcon,
 } from 'lucide-react'
@@ -251,6 +254,9 @@ function SidebarContent({
   const wikiEnabled = capabilities.data?.wiki.enabled === true
   const wikiHref = selectedProject ? `/projects/${selectedProject.id}/documents` : undefined
   const settingsHref = me.data?.is_admin ? '/admin' : '/settings'
+  const location = useLocation()
+  const wikiMode = location.pathname.includes('/documents')
+  const wikiBucket = new URLSearchParams(location.search).get('bucket') ?? 'shared'
 
   return (
     <div className="flex min-h-0 flex-1">
@@ -263,7 +269,7 @@ function SidebarContent({
       <div className="flex min-w-0 flex-1 flex-col bg-of-surface-raised">
         <div className="flex h-11 shrink-0 items-center gap-2 px-3">
           <div className="min-w-0 flex-1">
-            <h2 className="truncate text-sm font-semibold leading-4">Projects</h2>
+            <h2 className="truncate text-sm font-semibold leading-4">{wikiMode ? 'Wiki' : 'Projects'}</h2>
             <p className="truncate text-[10px] leading-3 text-of-muted">
               {workspaceProfile.data?.name ?? 'OneFlow'}
             </p>
@@ -280,10 +286,66 @@ function SidebarContent({
           ) : null}
         </div>
 
-        {selectedProject ? (
+        {selectedProject && !wikiMode ? (
           <NewWorkItemButton projectId={selectedProject.id} onNavigate={onNavigate} />
         ) : null}
 
+        {wikiMode && selectedProject ? (
+          <nav className="of-scrollbar flex-1 overflow-y-auto px-2 pb-3" aria-label="Wiki 컨텍스트 내비게이션">
+            <div className="space-y-4">
+              <div>
+                <SectionLabel>문서 범위</SectionLabel>
+                <div className="space-y-0.5">
+                  {[
+                    { key: 'shared', label: '공유', icon: Users },
+                    { key: 'private', label: '비공개', icon: LockKeyhole },
+                    { key: 'archived', label: '보관됨', icon: Archive },
+                  ].map((item) => {
+                    const Icon = item.icon
+                    const href =
+                      item.key === 'shared'
+                        ? `/projects/${selectedProject.id}/documents`
+                        : `/projects/${selectedProject.id}/documents?bucket=${item.key}`
+                    return (
+                      <Link
+                        key={item.key}
+                        to={href}
+                        aria-current={wikiBucket === item.key ? 'page' : undefined}
+                        className={projectLinkClass(wikiBucket === item.key)}
+                        onClick={onNavigate}
+                      >
+                        <Icon size={14} aria-hidden="true" />
+                        <span>{item.label}</span>
+                      </Link>
+                    )
+                  })}
+                </div>
+              </div>
+
+              <div>
+                <SectionLabel>프로젝트 공간</SectionLabel>
+                <div className="space-y-0.5">
+                  {data?.items.map((project) => {
+                    const active = project.id === selectedProject.id
+                    return (
+                      <Link
+                        key={project.id}
+                        to={`/projects/${project.id}/documents`}
+                        className={projectLinkClass(active)}
+                        onClick={onNavigate}
+                      >
+                        <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-[4px] border border-of-border-subtle bg-of-surface text-[10px] font-semibold text-of-muted">
+                          {project.key.slice(0, 2)}
+                        </span>
+                        <span className="min-w-0 flex-1 truncate">{project.name}</span>
+                      </Link>
+                    )
+                  })}
+                </div>
+              </div>
+            </div>
+          </nav>
+        ) : (
         <nav className="of-scrollbar flex-1 overflow-y-auto px-2 pb-3" aria-label="컨텍스트 내비게이션">
           <div className="space-y-4">
             <div className="space-y-0.5">
@@ -366,6 +428,7 @@ function SidebarContent({
             </div>
           </div>
         </nav>
+        )}
 
         <div className="border-t border-of-border-subtle px-3 py-2 text-[11px] text-of-muted">
           {auth.data?.auth_mode === 'oidc'

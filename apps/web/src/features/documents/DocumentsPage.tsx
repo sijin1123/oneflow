@@ -80,14 +80,13 @@ export function DocumentsPage() {
   flatten(forest)
 
   return (
-    <div className="mx-auto flex w-full max-w-6xl min-w-0 flex-col gap-4 px-4 py-5 sm:px-6">
-      <header className="border-b border-of-border pb-4">
-        <div className="flex min-w-0 flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+    <div className="flex h-full w-full min-w-0 flex-col bg-of-bg">
+      <header className="border-b border-of-border bg-of-surface px-4 py-2">
+        <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div className="min-w-0">
-            <p className="text-[11px] font-medium uppercase text-of-muted">Content surface</p>
-            <h1 className="mt-1 text-base font-semibold">문서</h1>
-            <p className="mt-1 max-w-2xl text-xs leading-5 text-of-muted">
-              {project.data?.name ?? '프로젝트'}의 위키, 회의록, 정책 문서를 한 곳에서 봅니다.
+            <h1 className="text-sm font-semibold">Wiki</h1>
+            <p className="mt-0.5 truncate text-[11px] text-of-muted">
+              {project.data?.name ?? '프로젝트'} · {bucketLabel}
             </p>
           </div>
           <div className="flex min-w-0 flex-wrap items-center gap-2">
@@ -102,9 +101,9 @@ export function DocumentsPage() {
           </div>
         </div>
       </header>
-      {!canWrite ? <ReadOnlyNotice /> : null}
+      {!canWrite ? <ReadOnlyNotice className="mx-4 mt-3" /> : null}
 
-      <nav aria-label="문서 범위" className="flex min-w-0 gap-1 overflow-x-auto border-b border-of-border pb-2">
+      <nav aria-label="문서 범위" className="flex min-w-0 gap-1 overflow-x-auto border-b border-of-border bg-of-surface px-4 py-2">
         {[
           { key: 'shared', label: '공유', icon: Users },
           { key: 'private', label: '비공개', icon: LockKeyhole },
@@ -134,6 +133,26 @@ export function DocumentsPage() {
         })}
       </nav>
 
+      <div className="flex min-w-0 flex-col gap-2 border-b border-of-border bg-of-surface px-4 py-2 sm:flex-row sm:items-center sm:justify-between">
+        <label className="relative min-w-0 flex-1 sm:max-w-md">
+          <Search
+            size={14}
+            className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-of-muted"
+            aria-hidden="true"
+          />
+          <Input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Wiki 검색"
+            aria-label="문서 제목 검색"
+            className="h-7 pl-8 text-xs"
+          />
+        </label>
+        <span className="shrink-0 text-xs text-of-muted" aria-live="polite">
+          {searching ? `검색 결과 ${rows.length}` : `${data?.total ?? 0}개 페이지`}
+        </span>
+      </div>
+
       {isPending ? (
         <ListSkeleton />
       ) : isError ? (
@@ -150,28 +169,8 @@ export function DocumentsPage() {
           ) : null}
         </EmptyState>
       ) : (
-        <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1fr)_18rem]">
+        <div className="grid min-w-0 gap-4 px-4 py-4 lg:grid-cols-[minmax(0,1fr)_18rem]">
           <section aria-label="문서 트리" className="min-w-0">
-            <div className="mb-3 grid min-w-0 gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
-              <label className="relative min-w-0">
-                <Search
-                  size={14}
-                  className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-of-muted"
-                  aria-hidden="true"
-                />
-                <Input
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  placeholder="문서 제목 검색"
-                  aria-label="문서 제목 검색"
-                  className="pl-8"
-                />
-              </label>
-              <span className="rounded-of border border-of-border px-2 py-1 text-xs text-of-muted">
-                {searching ? `검색 결과 ${rows.length}` : `트리 ${rows.length}`}
-              </span>
-            </div>
-
             {rows.length === 0 ? (
               <EmptyState
                 title="검색 결과가 없습니다"
