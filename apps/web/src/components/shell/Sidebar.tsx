@@ -1,5 +1,7 @@
 import {
   Activity,
+  ArrowDown,
+  ArrowUp,
   Archive,
   BarChart3,
   BellRing,
@@ -27,6 +29,8 @@ import {
   ListTree,
   LockKeyhole,
   Paperclip,
+  PanelLeftClose,
+  PanelLeftOpen,
   Plus,
   Search,
   Settings,
@@ -40,7 +44,7 @@ import {
   X,
   type LucideIcon,
 } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link, NavLink, useLocation, useNavigate, useParams } from 'react-router-dom'
 
 import { useAuthConfig } from '@/features/auth/api'
@@ -51,8 +55,10 @@ import { useWorkspaceCapabilities } from '@/features/workspace-features/api'
 import { useWorkspaceProfile } from '@/features/workspace-profile/api'
 import { cn } from '@/lib/utils'
 
+import type { SidebarNavKey, SidebarPreferences } from './sidebar-preferences'
+
 type WorkspaceNavItem = {
-  to: string
+  to: SidebarNavKey
   label: string
   icon: LucideIcon
   end?: boolean
@@ -86,6 +92,16 @@ const moreNav: WorkspaceNavItem[] = [
   { to: '/operations', label: '운영 허브', icon: SquareActivity },
   { to: '/status', label: '시스템 상태', icon: Activity },
 ]
+
+function orderedNav(items: WorkspaceNavItem[], preferences: SidebarPreferences) {
+  return [...items].sort(
+    (left, right) => preferences.order.indexOf(left.to) - preferences.order.indexOf(right.to),
+  )
+}
+
+function visibleNav(items: WorkspaceNavItem[], preferences: SidebarPreferences) {
+  return orderedNav(items, preferences).filter((item) => !preferences.hidden.includes(item.to))
+}
 
 const projectNavSections: Array<{ label: string; items: ProjectNavItem[] }> = [
   {
@@ -157,12 +173,167 @@ function NewWorkItemButton({ projectId, onNavigate }: { projectId: string; onNav
   )
 }
 
+function NavigationCustomizer({
+  groups,
+  preferences,
+  onNavVisibleChange,
+  onMoveNav,
+  onReset,
+}: {
+  groups: Array<{ label: string; items: WorkspaceNavItem[] }>
+  preferences: SidebarPreferences
+  onNavVisibleChange: (key: SidebarNavKey, visible: boolean) => void
+  onMoveNav: (key: SidebarNavKey, direction: -1 | 1, groupKeys: SidebarNavKey[]) => void
+  onReset: () => void
+}) {
+  const [open, setOpen] = useState(false)
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  const dialogRef = useRef<HTMLDivElement>(null)
+  const wasOpen = useRef(false)
+
+  useEffect(() => {
+    if (!open) {
+      if (wasOpen.current) triggerRef.current?.focus()
+      wasOpen.current = false
+      return
+    }
+    wasOpen.current = true
+    const dialog = dialogRef.current
+    const focusable = dialog?.querySelectorAll<HTMLElement>(
+      'button:not([disabled]), input:not([disabled]), [href], [tabindex]:not([tabindex="-1"])',
+    )
+    focusable?.[0]?.focus()
+    const handleDialogKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        setOpen(false)
+        return
+      }
+      if (event.key !== 'Tab' || !focusable?.length) return
+      const first = focusable[0]
+      const last = focusable[focusable.length - 1]
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault()
+        last.focus()
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault()
+        first.focus()
+      }
+    }
+    window.addEventListener('keydown', handleDialogKey)
+    return () => window.removeEventListener('keydown', handleDialogKey)
+  }, [open])
+
+  return (
+    <div className="relative">
+      <button
+        ref={triggerRef}
+        type="button"
+        aria-label="내비게이션 사용자 지정"
+        aria-expanded={open}
+        title="내비게이션 사용자 지정"
+        className="flex h-7 w-7 items-center justify-center rounded-of text-of-muted hover:bg-of-surface-2 hover:text-of-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus"
+        onClick={() => setOpen((current) => !current)}
+      >
+        <SlidersHorizontal size={14} aria-hidden="true" />
+      </button>
+      {open ? (
+        <>
+          <button
+            type="button"
+            tabIndex={-1}
+            aria-label="내비게이션 사용자 지정 닫기"
+            className="fixed inset-0 z-40 cursor-default"
+            onClick={() => setOpen(false)}
+          />
+          <div
+            ref={dialogRef}
+            role="dialog"
+            aria-label="내비게이션 사용자 지정"
+            aria-modal="true"
+            className="of-floating-surface absolute right-0 top-9 z-50 w-72 max-w-[calc(100vw-1.5rem)] p-2 md:left-0 md:right-auto"
+          >
+            <div className="flex items-center justify-between px-1 pb-2">
+              <p className="text-xs font-semibold">내비게이션</p>
+              <button
+                type="button"
+                className="rounded-of px-1.5 py-1 text-[11px] text-of-muted hover:bg-of-surface-hover hover:text-of-text"
+                onClick={onReset}
+              >
+                기본값 복원
+              </button>
+            </div>
+            <div className="of-scrollbar max-h-[min(32rem,calc(100vh-8rem))] space-y-3 overflow-y-auto">
+              {groups.map((group) => {
+                const orderedItems = orderedNav(group.items, preferences)
+                const groupKeys = group.items.map((item) => item.to)
+                return (
+                  <section key={group.label} aria-label={group.label}>
+                    <SectionLabel>{group.label}</SectionLabel>
+                    <div className="space-y-0.5">
+                      {orderedItems.map((item, index) => {
+                        const Icon = item.icon
+                        const visible = !preferences.hidden.includes(item.to)
+                        return (
+                          <div
+                            key={item.to}
+                            className="grid min-h-8 grid-cols-[minmax(0,1fr)_28px_28px] items-center rounded-of hover:bg-of-surface-hover"
+                          >
+                            <label className="flex min-w-0 cursor-pointer items-center gap-2 px-2 text-xs">
+                              <input
+                                type="checkbox"
+                                aria-label={`${item.label} 표시`}
+                                checked={visible}
+                                onChange={(event) => onNavVisibleChange(item.to, event.target.checked)}
+                              />
+                              <Icon size={13} className="shrink-0 text-of-muted" aria-hidden="true" />
+                              <span className="truncate">{item.label}</span>
+                            </label>
+                            <button
+                              type="button"
+                              aria-label={`${item.label} 위로 이동`}
+                              title="위로 이동"
+                              disabled={index === 0}
+                              className="flex h-7 w-7 items-center justify-center rounded-of text-of-muted hover:bg-of-surface-2 disabled:opacity-30"
+                              onClick={() => onMoveNav(item.to, -1, groupKeys)}
+                            >
+                              <ArrowUp size={12} aria-hidden="true" />
+                            </button>
+                            <button
+                              type="button"
+                              aria-label={`${item.label} 아래로 이동`}
+                              title="아래로 이동"
+                              disabled={index === orderedItems.length - 1}
+                              className="flex h-7 w-7 items-center justify-center rounded-of text-of-muted hover:bg-of-surface-2 disabled:opacity-30"
+                              onClick={() => onMoveNav(item.to, 1, groupKeys)}
+                            >
+                              <ArrowDown size={12} aria-hidden="true" />
+                            </button>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </section>
+                )
+              })}
+            </div>
+          </div>
+        </>
+      ) : null}
+    </div>
+  )
+}
+
 function GlobalRail({
   settingsHref,
   onNavigate,
+  collapsed,
+  onExpand,
 }: {
   settingsHref: string
   onNavigate?: () => void
+  collapsed?: boolean
+  onExpand?: () => void
 }) {
   const location = useLocation()
   const wikiActive = location.pathname === '/wiki' || location.pathname.includes('/documents')
@@ -215,11 +386,23 @@ function GlobalRail({
           )
         })}
       </div>
+      {collapsed ? (
+        <button
+          type="button"
+          aria-label="사이드바 펼치기"
+          title="사이드바 펼치기"
+          className="mt-auto flex h-10 w-full items-center justify-center rounded-of text-of-muted hover:bg-of-surface-hover hover:text-of-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus"
+          onClick={onExpand}
+        >
+          <PanelLeftOpen size={16} aria-hidden="true" />
+        </button>
+      ) : null}
       <Link
         to={settingsHref}
         aria-current={settingsActive ? 'page' : undefined}
         className={cn(
-          'mt-auto flex h-12 w-full flex-col items-center justify-center gap-1 rounded-of text-[10px] font-medium text-of-muted transition-colors hover:bg-of-surface-hover hover:text-of-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus',
+          'flex h-12 w-full flex-col items-center justify-center gap-1 rounded-of text-[10px] font-medium text-of-muted transition-colors hover:bg-of-surface-hover hover:text-of-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus',
+          !collapsed && 'mt-auto',
           settingsActive && 'bg-of-surface-selected text-of-accent',
         )}
         onClick={onNavigate}
@@ -235,10 +418,22 @@ function SidebarContent({
   onNavigate,
   onClose,
   showClose,
+  collapsed = false,
+  preferences,
+  onCollapsedChange,
+  onNavVisibleChange,
+  onMoveNav,
+  onResetNavigation,
 }: {
   onNavigate?: () => void
   onClose?: () => void
   showClose?: boolean
+  collapsed?: boolean
+  preferences: SidebarPreferences
+  onCollapsedChange?: (collapsed: boolean) => void
+  onNavVisibleChange: (key: SidebarNavKey, visible: boolean) => void
+  onMoveNav: (key: SidebarNavKey, direction: -1 | 1, groupKeys: SidebarNavKey[]) => void
+  onResetNavigation: () => void
 }) {
   const { projectId } = useParams()
   const { data } = useProjects()
@@ -253,6 +448,9 @@ function SidebarContent({
       (item.to !== '/initiatives' || initiativesEnabled) &&
       (item.to !== '/customers' || customersEnabled),
   )
+  const visiblePrimaryNav = visibleNav(primaryNav, preferences)
+  const visibleWorkspaceNav = visibleNav(workspaceNav, preferences)
+  const visibleMoreItems = visibleNav(moreItems, preferences)
   const selectedProject = data?.items.find((project) => project.id === projectId) ?? data?.items[0]
   const wikiEnabled = capabilities.data?.wiki.enabled === true
   const settingsHref = me.data?.is_admin ? '/admin' : '/settings'
@@ -268,7 +466,7 @@ function SidebarContent({
   const myWorkTab = new URLSearchParams(location.search).get('tab')
   const profileWorkMode =
     location.pathname === '/my' && myWorkTab !== null && myWorkTab !== 'overview'
-  const moreRoute = moreItems.some(
+  const moreRoute = visibleMoreItems.some(
     (item) => location.pathname === item.to || location.pathname.startsWith(`${item.to}/`),
   )
   const [moreOpen, setMoreOpen] = useState(moreRoute)
@@ -282,7 +480,10 @@ function SidebarContent({
       <GlobalRail
         settingsHref={settingsHref}
         onNavigate={onNavigate}
+        collapsed={collapsed}
+        onExpand={() => onCollapsedChange?.(false)}
       />
+      {!collapsed ? (
       <div className="flex min-w-0 flex-1 flex-col bg-of-surface-raised">
         <div className="flex h-11 shrink-0 items-center gap-2 px-3">
           <div className="min-w-0 flex-1">
@@ -293,6 +494,30 @@ function SidebarContent({
               {workspaceProfile.data?.name ?? 'OneFlow'}
             </p>
           </div>
+          {!wikiMode && !aiMode && !settingsMode ? (
+            <NavigationCustomizer
+              groups={[
+                { label: '개인', items: primaryNav },
+                { label: '워크스페이스', items: workspaceNav },
+                { label: '더 보기', items: moreItems },
+              ]}
+              preferences={preferences}
+              onNavVisibleChange={onNavVisibleChange}
+              onMoveNav={onMoveNav}
+              onReset={onResetNavigation}
+            />
+          ) : null}
+          {onCollapsedChange ? (
+            <button
+              type="button"
+              aria-label="사이드바 접기"
+              title="사이드바 접기"
+              className="flex h-7 w-7 items-center justify-center rounded-of text-of-muted hover:bg-of-surface-2 hover:text-of-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus"
+              onClick={() => onCollapsedChange(true)}
+            >
+              <PanelLeftClose size={14} aria-hidden="true" />
+            </button>
+          ) : null}
           {showClose ? (
             <button
               type="button"
@@ -427,7 +652,7 @@ function SidebarContent({
         <nav className="of-scrollbar flex-1 overflow-y-auto px-2 pb-3" aria-label="Projects 컨텍스트 내비게이션">
           <div className="space-y-4">
             <div className="space-y-0.5">
-              {primaryNav.map((item) => {
+              {visiblePrimaryNav.map((item) => {
                 const Icon = item.icon
                 const active = item.to === '/my'
                   ? location.pathname === '/my' && !profileWorkMode
@@ -449,10 +674,11 @@ function SidebarContent({
               })}
             </div>
 
+            {visibleWorkspaceNav.length > 0 ? (
             <div>
               <SectionLabel>워크스페이스</SectionLabel>
               <div className="space-y-0.5">
-                {workspaceNav.map((item) => {
+                {visibleWorkspaceNav.map((item) => {
                   const Icon = item.icon
                   return (
                     <NavLink key={item.to} to={item.to} end={item.end} className={navLinkClass} onClick={onNavigate}>
@@ -463,7 +689,9 @@ function SidebarContent({
                 })}
               </div>
             </div>
+            ) : null}
 
+            {visibleMoreItems.length > 0 ? (
             <details
               open={moreOpen}
               className="group"
@@ -474,7 +702,7 @@ function SidebarContent({
                 더 보기
               </summary>
               <div className="mt-0.5 space-y-0.5">
-                {moreItems.map((item) => {
+                {visibleMoreItems.map((item) => {
                   const Icon = item.icon
                   return (
                     <NavLink key={item.to} to={item.to} end={item.end} className={navLinkClass} onClick={onNavigate}>
@@ -485,6 +713,7 @@ function SidebarContent({
                 })}
               </div>
             </details>
+            ) : null}
 
             <div>
               <SectionLabel>프로젝트</SectionLabel>
@@ -547,6 +776,7 @@ function SidebarContent({
             : 'dev 모드 · 로컬 전용'}
         </div>
       </div>
+      ) : null}
     </div>
   )
 }
@@ -554,14 +784,38 @@ function SidebarContent({
 export function Sidebar({
   mobileOpen = false,
   onMobileClose,
+  preferences,
+  onCollapsedChange,
+  onNavVisibleChange,
+  onMoveNav,
+  onResetNavigation,
 }: {
   mobileOpen?: boolean
   onMobileClose?: () => void
+  preferences: SidebarPreferences
+  onCollapsedChange: (collapsed: boolean) => void
+  onNavVisibleChange: (key: SidebarNavKey, visible: boolean) => void
+  onMoveNav: (key: SidebarNavKey, direction: -1 | 1, groupKeys: SidebarNavKey[]) => void
+  onResetNavigation: () => void
 }) {
   return (
     <>
-      <aside className="hidden w-[var(--of-navigation-width)] shrink-0 border-r border-of-border-subtle md:flex">
-        <SidebarContent />
+      <aside
+        className="hidden shrink-0 border-r border-of-border-subtle transition-[width] duration-[var(--of-duration-default)] md:flex"
+        style={{
+          width: preferences.collapsed
+            ? 'var(--of-global-nav-width)'
+            : 'var(--of-navigation-width)',
+        }}
+      >
+        <SidebarContent
+          collapsed={preferences.collapsed}
+          preferences={preferences}
+          onCollapsedChange={onCollapsedChange}
+          onNavVisibleChange={onNavVisibleChange}
+          onMoveNav={onMoveNav}
+          onResetNavigation={onResetNavigation}
+        />
       </aside>
 
       {mobileOpen ? (
@@ -573,7 +827,15 @@ export function Sidebar({
             onClick={onMobileClose}
           />
           <aside className="relative flex h-full w-[min(22rem,calc(100vw-1rem))] border-r border-of-border bg-of-surface-raised shadow-[var(--of-shadow-popover)]">
-            <SidebarContent showClose onClose={onMobileClose} onNavigate={onMobileClose} />
+            <SidebarContent
+              showClose
+              onClose={onMobileClose}
+              onNavigate={onMobileClose}
+              preferences={preferences}
+              onNavVisibleChange={onNavVisibleChange}
+              onMoveNav={onMoveNav}
+              onResetNavigation={onResetNavigation}
+            />
           </aside>
         </div>
       ) : null}

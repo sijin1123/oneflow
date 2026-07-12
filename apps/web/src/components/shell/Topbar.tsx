@@ -190,7 +190,13 @@ function AccountMenu() {
   )
 }
 
-export function Topbar({ onOpenMobileSidebar }: { onOpenMobileSidebar?: () => void }) {
+export function Topbar({
+  onOpenMobileSidebar,
+  sidebarCollapsed = false,
+}: {
+  onOpenMobileSidebar?: () => void
+  sidebarCollapsed?: boolean
+}) {
   const { projectId } = useParams()
   const location = useLocation()
   const { data } = useProjects()
@@ -206,13 +212,22 @@ export function Topbar({ onOpenMobileSidebar }: { onOpenMobileSidebar?: () => vo
   )
   return (
     <header className="flex h-[var(--of-topbar-height)] shrink-0 border-b border-of-border-subtle bg-of-surface-raised">
-      <div className="hidden w-[var(--of-navigation-width)] shrink-0 items-center gap-2 border-r border-of-border-subtle px-3 md:flex">
+      <div
+        className="hidden shrink-0 items-center gap-2 border-r border-of-border-subtle px-3 transition-[width] duration-[var(--of-duration-default)] md:flex"
+        style={{
+          width: sidebarCollapsed
+            ? 'var(--of-global-nav-width)'
+            : 'var(--of-navigation-width)',
+        }}
+      >
         <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-of bg-of-accent text-[11px] font-bold text-white shadow-[var(--of-shadow-xs)]">
           OF
         </span>
-        <span className="min-w-0 flex-1 truncate text-sm font-semibold">
-          {workspaceProfile.data?.name ?? 'OneFlow'}
-        </span>
+        {!sidebarCollapsed ? (
+          <span className="min-w-0 flex-1 truncate text-sm font-semibold">
+            {workspaceProfile.data?.name ?? 'OneFlow'}
+          </span>
+        ) : null}
       </div>
 
       <div className="flex min-w-0 flex-1 items-center gap-2 px-2 md:grid md:grid-cols-[minmax(0,1fr)_minmax(14rem,30rem)_minmax(0,1fr)] md:gap-3 md:px-3">
