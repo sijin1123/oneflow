@@ -2359,3 +2359,14 @@ Chromium typed mock fixture에서 1440x960과 390x844 viewport를 사용했다. 
 - PR #244 첫 frontend CI는 collapsed dock이 Modules 모바일 행 액션과 겹쳐 click을 가로채는 회귀를 정확히 검출했다. main interactive element의 사각형을 관찰해 같은 우측 축에서 가장 가까운 빈 슬롯으로 dock을 올리는 collision avoidance를 추가하고, frame/dock/Modules focused 3 PASS와 명시적 비겹침 assertion으로 재검증했다.
 - 시각 증적은 `docs/screenshots/redevelopment/floating-shell-tools-ui/`에 보존한다.
 - API, DB, migration, permission contract, environment variable, dependency 변경과 이연 항목은 없다.
+
+---
+
+# UI-78 Quick Notes Dock + Sticky Notes 검증 (2026-07-12)
+
+- 우측 하단 Quick Dock의 개인 메모 도구는 접힘, compact 편집, expanded 편집, 전체 메모 modal을 오가며 동일한 개인 메모 CRUD API를 사용한다. 검색, 즉시 빈 메모 생성, 제목·본문 inline 저장, Markdown 굵게·기울임·체크리스트 삽입, 색상, 고정, 순서, 삭제가 실제 요청에 연결된다.
+- API와 migration `0078_personal_note_sticky_surface`는 빈 제목과 color를 지원하고 사용자별 완전한 빈 메모를 하나만 허용한다. 생성·수정은 기존 사용자 advisory lock과 `expected_version` 충돌 계약을 유지하며 DB partial unique index가 최종 무결성을 보장한다.
+- 활성 검색에 기존 빈 메모가 숨은 경우 검색을 해제해 해당 카드를 복원하고 제목에 포커스한다. mutation 중 모든 카드 변경 control을 잠그며 E2E mock도 운영 API와 같이 stale `expected_version`을 409로 거절한다.
+- API focused 6와 full API 637, migration base downgrade/head upgrade, OpenAPI generation/drift, web unit 67, typecheck, lint, production build, clean-room, UI-78 focused E2E가 통과했다. Full frontend E2E는 217 PASS·1 skip 후 기존 보고/Worklogs 병렬 진입 timeout 3건을 단독 재실행해 3 PASS했다.
+- Chromium desktop/mobile 증적은 `docs/screenshots/redevelopment/quick-notes-dock-ui/`와 `docs/screenshots/redevelopment/personal-notes-ui/`에 보존한다.
+- 환경변수와 dependency 변경은 없다. DB migration 적용이 필요하며 기능·API 이연 항목은 없다.

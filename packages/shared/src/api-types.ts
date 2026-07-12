@@ -5416,11 +5416,20 @@ export interface components {
              */
             body: string;
             /**
+             * Color
+             * @default lavender
+             * @enum {string}
+             */
+            color: "lavender" | "mint" | "yellow" | "rose" | "blue" | "gray";
+            /**
              * Is Pinned
              * @default false
              */
             is_pinned: boolean;
-            /** Title */
+            /**
+             * Title
+             * @default
+             */
             title: string;
         };
         /** PersonalNoteError */
@@ -5462,6 +5471,11 @@ export interface components {
             /** Body */
             body: string;
             /**
+             * Color
+             * @enum {string}
+             */
+            color: "lavender" | "mint" | "yellow" | "rose" | "blue" | "gray";
+            /**
              * Created At
              * Format: date-time
              */
@@ -5489,6 +5503,8 @@ export interface components {
         PersonalNoteUpdate: {
             /** Body */
             body?: string | null;
+            /** Color */
+            color?: ("lavender" | "mint" | "yellow" | "rose" | "blue" | "gray") | null;
             /** Expected Version */
             expected_version: number;
             /** Is Pinned */
