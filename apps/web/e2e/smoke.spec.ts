@@ -711,6 +711,42 @@ test('Projects rail은 모든 core workspace route의 app context를 유지한�
   }
 })
 
+test('Topbar context는 workspace query와 project route를 실제 breadcrumb navigation으로 표현한다', async ({ page }) => {
+  await mockApi(page)
+  await page.goto('/my')
+
+  let breadcrumb = page.getByRole('navigation', { name: '현재 위치' })
+  await expect(breadcrumb.getByRole('link', { name: 'OneFlow' })).toHaveAttribute('href', '/my')
+  await expect(breadcrumb.getByRole('link', { name: '워크스페이스' })).toHaveAttribute('href', '/projects')
+  await expect(page.getByRole('banner').locator('[aria-current="page"]', { hasText: '홈' })).toBeVisible()
+
+  await page.goto('/my?tab=created')
+  breadcrumb = page.getByRole('navigation', { name: '현재 위치' })
+  await expect(breadcrumb.getByRole('link', { name: '내 작업' })).toHaveAttribute('href', '/my?tab=assigned')
+  await expect(page.getByRole('banner').locator('[aria-current="page"]', { hasText: '생성함' })).toBeVisible()
+
+  await page.goto(`/projects/${project.id}/board`)
+  breadcrumb = page.getByRole('navigation', { name: '현재 위치' })
+  await expect(breadcrumb.getByRole('link', { name: project.name })).toHaveAttribute(
+    'href',
+    `/projects/${project.id}/dashboard`,
+  )
+  await expect(breadcrumb.getByRole('link', { name: '작업' })).toHaveAttribute(
+    'href',
+    `/projects/${project.id}/work-packages`,
+  )
+  await expect(page.getByRole('banner').locator('[aria-current="page"]', { hasText: 'Board' })).toBeVisible()
+  await breadcrumb.getByRole('link', { name: '작업' }).click()
+  await expect(page).toHaveURL(`/projects/${project.id}/work-packages`)
+
+  await page.setViewportSize({ width: 1440, height: 960 })
+  await page.screenshot({ path: '../../docs/screenshots/redevelopment/topbar-context-ui/desktop.png' })
+  await page.setViewportSize({ width: 390, height: 844 })
+  await expect(page.getByRole('banner').locator('[aria-current="page"]', { hasText: 'Work Packages' })).toBeVisible()
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({ path: '../../docs/screenshots/redevelopment/topbar-context-ui/mobile.png' })
+})
+
 test('Projects context sidebar는 primary·workspace·More·project 계층을 유지한다', async ({ page }) => {
   await mockApi(page)
   await page.goto('/projects')
@@ -812,6 +848,9 @@ test('Settings rail은 권한별 설정 navigation과 중앙 form을 중복 없�
   await expect(settingsNav.getByRole('link', { name: 'Webhooks' })).toHaveAttribute('href', '/admin/webhooks')
   await expect(page.getByRole('button', { name: '새 작업' })).toHaveCount(0)
   await expect(page.getByRole('heading', { name: '사용자 관리' })).toBeVisible()
+  const breadcrumb = page.getByRole('navigation', { name: '현재 위치' })
+  await expect(breadcrumb.getByRole('link', { name: '워크스페이스 설정' })).toHaveAttribute('href', '/admin/general')
+  await expect(page.getByRole('banner').locator('[aria-current="page"]', { hasText: '사용자 관리' })).toBeVisible()
 
   await page.setViewportSize({ width: 1440, height: 960 })
   await page.screenshot({ path: '../../docs/screenshots/redevelopment/settings-central-composition-ui/desktop.png' })
