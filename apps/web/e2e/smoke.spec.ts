@@ -924,11 +924,122 @@ test('모바일 Customize navigation은 손상된 저장값을 복구하고 draw
     .getByRole('checkbox', { name: '개인 메모 표시' })
     .uncheck()
   await page.keyboard.press('Escape')
+  await expect(customizer).toHaveCount(0)
+  await expect(drawer).toBeVisible()
+  await expect(drawer.getByRole('button', { name: '내비게이션 사용자 지정' })).toBeFocused()
   await expect(contextNav.getByRole('link', { name: '개인 메모' })).toHaveCount(0)
   await expectNoHorizontalOverflow(page)
   await page.screenshot({
     path: '../../docs/screenshots/redevelopment/sidebar-personalization-ui/mobile-customize.png',
   })
+  await page.keyboard.press('Escape')
+  await expect(drawer).toHaveCount(0)
+})
+
+test('outer chrome과 floating content frame은 desktop과 mobile 구성을 유지한다', async ({ page }) => {
+  await mockApi(page)
+  await page.setViewportSize({ width: 1440, height: 960 })
+  await page.goto('/projects')
+
+  const header = page.getByRole('banner')
+  const globalNav = page.getByRole('navigation', { name: '글로벌 내비게이션' })
+  const [headerBackground, railBackground] = await Promise.all([
+    header.evaluate((element) => getComputedStyle(element).backgroundColor),
+    globalNav.evaluate((element) => getComputedStyle(element).backgroundColor),
+  ])
+  expect(headerBackground).toBe(railBackground)
+
+  const main = page.locator('main')
+  const desktopBox = await main.boundingBox()
+  expect(desktopBox?.y).toBe(44)
+  expect((desktopBox?.x ?? 0) + (desktopBox?.width ?? 0)).toBe(1432)
+  expect((desktopBox?.y ?? 0) + (desktopBox?.height ?? 0)).toBe(952)
+  await expect(main).toHaveCSS('border-top-right-radius', '8px')
+  await page.getByRole('button', { name: '사이드바 접기' }).click()
+  await expect(main).toHaveCSS('border-top-left-radius', '8px')
+  await expect(main).toHaveCSS('border-left-width', '1px')
+  await page.getByRole('button', { name: '사이드바 펼치기' }).click()
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/floating-shell-tools-ui/desktop-frame.png',
+  })
+
+  await page.setViewportSize({ width: 390, height: 844 })
+  const mobileBox = await main.boundingBox()
+  expect(mobileBox?.x).toBe(0)
+  expect(mobileBox?.width).toBe(390)
+  expect((mobileBox?.y ?? 0) + (mobileBox?.height ?? 0)).toBe(844)
+  await expectNoHorizontalOverflow(page)
+})
+
+test('빠른 도구 dock은 실제 경로와 project write 권한에 연결된다', async ({ page }) => {
+  await mockApi(page)
+  await page.goto('/projects')
+
+  const trigger = page.getByRole('button', { name: '빠른 도구 열기' })
+  await trigger.click()
+  const dock = page.getByRole('navigation', { name: '빠른 도구' })
+  await expect(dock.getByRole('link', { name: '인박스 열기' })).toBeFocused()
+  await expect(dock.getByRole('link', { name: '인박스 열기' })).toHaveAttribute('href', '/inbox')
+  await expect(dock.getByRole('link', { name: 'AI workspace 열기' })).toHaveAttribute('href', '/ai')
+  await expect(dock.getByRole('link', { name: '개인 메모 열기' })).toHaveAttribute('href', '/notes')
+  await expect(dock.getByRole('link', { name: '빠른 작업 만들기' })).toHaveAttribute(
+    'href',
+    `/projects/${project.id}/work-packages?new=1`,
+  )
+  const safeArea = page.getByTestId('quick-dock-safe-area')
+  await expect(safeArea).toHaveCSS('height', '256px')
+  const safeAreaBox = await safeArea.boundingBox()
+  const expandedDockBox = await dock.boundingBox()
+  expect(safeAreaBox?.height).toBeGreaterThanOrEqual(expandedDockBox?.height ?? 0)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/floating-shell-tools-ui/desktop-dock.png',
+  })
+  await page.keyboard.press('Escape')
+  await expect(trigger).toBeFocused()
+
+  await trigger.click()
+  await dock.getByRole('link', { name: '빠른 작업 만들기' }).click()
+  await expect(page).toHaveURL(new RegExp(`/projects/${project.id}/work-packages\\?new=1`))
+  await expect(page.getByRole('region', { name: '새 작업 생성' })).toBeVisible()
+
+  await page.goto('/projects')
+  await page.getByRole('button', { name: '빠른 도구 열기' }).click()
+  await dock.getByRole('link', { name: '개인 메모 열기' }).click()
+  await expect(page).toHaveURL('/notes')
+  await expect(dock).toHaveCount(0)
+
+  const viewerPage = await page.context().newPage()
+  await mockApi(viewerPage)
+  await viewerPage.route(`**/api/v1/projects/${project.id}/members`, (route) =>
+    route.fulfill({
+      json: {
+        items: [
+          { user_id: 'me-1', email: 'dev@oneflow.local', display_name: 'Dev User', role: 'viewer' },
+        ],
+        total: 1,
+      },
+    }),
+  )
+  await viewerPage.setViewportSize({ width: 390, height: 844 })
+  await viewerPage.goto('/projects')
+  await viewerPage.getByRole('button', { name: '빠른 도구 열기' }).click()
+  const viewerDock = viewerPage.getByRole('navigation', { name: '빠른 도구' })
+  await expect(viewerDock.getByRole('link', { name: '빠른 작업 만들기' })).toHaveCount(0)
+
+  const dockBox = await viewerDock.boundingBox()
+  expect((dockBox?.x ?? 0) + (dockBox?.width ?? 0)).toBeLessThanOrEqual(390)
+  expect((dockBox?.y ?? 0) + (dockBox?.height ?? 0)).toBeLessThanOrEqual(844)
+  await expectNoHorizontalOverflow(viewerPage)
+  await viewerPage.screenshot({
+    path: '../../docs/screenshots/redevelopment/floating-shell-tools-ui/mobile-dock.png',
+  })
+  await viewerPage.getByRole('button', { name: '사이드바 열기' }).click()
+  await expect(viewerPage.getByRole('navigation', { name: '빠른 도구' })).toHaveCount(0)
+  await expect(viewerPage.getByRole('dialog', { name: '모바일 내비게이션' })).toBeVisible()
+  await viewerPage.keyboard.press('Escape')
+  await expect(viewerPage.getByRole('dialog', { name: '모바일 내비게이션' })).toHaveCount(0)
+  await expect(viewerPage.getByRole('button', { name: '빠른 도구 열기' })).toBeVisible()
+  await viewerPage.close()
 })
 
 test('AI rail은 실제 capability와 작업 요약 경로를 전용 workspace에 연결한다', async ({ page }) => {

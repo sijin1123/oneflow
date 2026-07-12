@@ -2346,3 +2346,15 @@ Chromium typed mock fixture에서 1440x960과 390x844 viewport를 사용했다. 
 - Production build, typecheck, lint와 focused personalization E2E 2건이 통과했다. Full E2E 첫 worker-4 run은 215 PASS·1 skip과 기존 장기 시나리오 3건의 환경 timeout, worker-2 run은 215 PASS·1 skip과 skeleton 캡처 race/장기 policy 2건을 확인했다. Skeleton hold를 2초로 고정하고 Wiki/Initiatives policy timeout을 60초로 조정한 후 affected 3건은 3 PASS로 재검증했다.
 - 시각 증적은 `docs/screenshots/redevelopment/sidebar-personalization-ui/`에 보존한다.
 - API, DB, migration, permission contract, environment variable, dependency 변경과 이연 항목은 없다.
+
+---
+
+# UI-77 Floating Shell Frame + Quick Tools 검증 (2026-07-12)
+
+- Topbar와 global rail은 같은 outer chrome surface를 사용하고, desktop context pane/main은 좌우 8px radius와 우측·하단 8px 여백을 공유하는 floating work frame을 구성한다. Sidebar collapse 시 main이 좌측 border/radius를 이어받으며 mobile은 full-bleed를 유지한다.
+- 우측 하단 Quick Dock은 collapsed icon에서 세로 toolbar로 확장되고 실제 Inbox, AI workspace, Personal Notes, permission-aware New Work route만 제공한다. New Work는 기존 `useCanWrite`의 member/owner·archive fail-closed 계약을 재사용하며 viewer에게 노출되지 않는다.
+- Dock은 Escape 종료와 trigger focus 복원, reduced-motion, desktop/mobile viewport boundary를 제공한다. main 끝의 dynamic safe area는 expanded dock 높이 이상을 확보해 마지막 콘텐츠를 스크롤해 dock 위로 올릴 수 있다.
+- 모바일 sidebar를 열 때 dock은 먼저 닫혀 modal 뒤 focus 이동을 막는다. Navigation Customize가 drawer 안에서 열리면 첫 Escape는 nested dialog와 trigger focus만 복구하고, 두 번째 Escape가 drawer를 닫는다.
+- Production typecheck/lint와 focused shell regression 9, 최종 frame/dock/mobile-modal closure 3이 통과했다. 독립 reviewer가 발견한 mobile Escape/focus, collapsed frame boundary, dock safe inset을 모두 수정했으며 마지막 reviewer 도구 예산 종료 시에도 focused 3 PASS와 PR 진행 가능 상태를 확인했다.
+- 시각 증적은 `docs/screenshots/redevelopment/floating-shell-tools-ui/`에 보존한다.
+- API, DB, migration, permission contract, environment variable, dependency 변경과 이연 항목은 없다.
