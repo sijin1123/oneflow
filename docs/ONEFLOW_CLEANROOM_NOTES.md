@@ -196,3 +196,9 @@ Plane source, package, asset, CSS, DOM hierarchy, exact dimensions/colors, wordi
 `docs/plane-poc-reverse-spec/` D034와 사용자 참조 화면에서 사용한 입력은 AI를 독립 workspace surface로 두는 정보구조와 compact navigation 관계뿐이다. OneFlow 구현은 기존 자체 capability, `/me/work`, work-item detail summary API, permission-aware settings route와 local design tokens를 사용해 독립 작성했다.
 
 Plane source, package, asset, CSS, DOM hierarchy, exact dimensions/colors, wording, prompt UI, branding은 복사하지 않았다. 실제 backend 계약이 없는 chat/composer는 만들지 않았고 신규 dependency/API/DB/schema/environment 변경은 없다. — attested-independent-derivation
+
+## UI-70 Settings Central Composition
+
+`docs/plane-poc-reverse-spec/` D007/D031-D048과 사용자 참조 화면에서 사용한 입력은 Settings를 독립 app rail/context surface로 구성하고 설정 범주를 그룹화하는 정보구조뿐이다. OneFlow 구현은 기존 자체 personal/admin routes, admin permission gate, workspace policy forms, shell tokens와 responsive drawer를 재배치해 독립 작성했다.
+
+Plane source, package, asset, CSS, DOM hierarchy, exact dimensions/colors, wording, icons, branding은 복사하지 않았다. 신규 dependency/API/DB/schema/environment 변경은 없다. — attested-independent-derivation

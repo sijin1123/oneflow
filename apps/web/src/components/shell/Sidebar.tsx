@@ -11,10 +11,12 @@ import {
   CalendarDays,
   CalendarRange,
   ClipboardList,
+  Clock3,
   Compass,
   Copy,
   FilePenLine,
   FileText,
+  Flag,
   FolderKanban,
   Inbox,
   IterationCcw,
@@ -33,6 +35,7 @@ import {
   SquareKanban,
   StickyNote,
   Users,
+  Webhook,
   X,
   type LucideIcon,
 } from 'lucide-react'
@@ -257,6 +260,7 @@ function SidebarContent({
   const location = useLocation()
   const wikiMode = location.pathname.includes('/documents')
   const aiMode = location.pathname === '/ai'
+  const settingsMode = location.pathname === '/settings' || location.pathname.startsWith('/admin')
   const wikiBucket = new URLSearchParams(location.search).get('bucket') ?? 'shared'
 
   return (
@@ -270,7 +274,9 @@ function SidebarContent({
       <div className="flex min-w-0 flex-1 flex-col bg-of-surface-raised">
         <div className="flex h-11 shrink-0 items-center gap-2 px-3">
           <div className="min-w-0 flex-1">
-            <h2 className="truncate text-sm font-semibold leading-4">{wikiMode ? 'Wiki' : aiMode ? 'AI' : 'Projects'}</h2>
+            <h2 className="truncate text-sm font-semibold leading-4">
+              {wikiMode ? 'Wiki' : aiMode ? 'AI' : settingsMode ? 'Settings' : 'Projects'}
+            </h2>
             <p className="truncate text-[10px] leading-3 text-of-muted">
               {workspaceProfile.data?.name ?? 'OneFlow'}
             </p>
@@ -287,11 +293,49 @@ function SidebarContent({
           ) : null}
         </div>
 
-        {selectedProject && !wikiMode && !aiMode ? (
+        {selectedProject && !wikiMode && !aiMode && !settingsMode ? (
           <NewWorkItemButton projectId={selectedProject.id} onNavigate={onNavigate} />
         ) : null}
 
-        {aiMode ? (
+        {settingsMode ? (
+          <nav className="of-scrollbar flex-1 overflow-y-auto px-2 pb-3" aria-label="설정 컨텍스트 내비게이션">
+            <div className="space-y-4">
+              <div>
+                <SectionLabel>개인</SectionLabel>
+                <NavLink to="/settings" end className={navLinkClass} onClick={onNavigate}>
+                  <SlidersHorizontal />
+                  <span>내 계정</span>
+                </NavLink>
+              </div>
+              {me.data?.is_admin ? (
+                <>
+                  <div>
+                    <SectionLabel>워크스페이스</SectionLabel>
+                    <div className="space-y-0.5">
+                      <NavLink to="/admin/general" className={navLinkClass} onClick={onNavigate}><Settings /><span>일반</span></NavLink>
+                      <NavLink to="/admin/users" className={navLinkClass} onClick={onNavigate}><Users /><span>사용자</span></NavLink>
+                      <NavLink to="/admin/worklogs" className={navLinkClass} onClick={onNavigate}><Clock3 /><span>Worklogs</span></NavLink>
+                    </div>
+                  </div>
+                  <div>
+                    <SectionLabel>기능</SectionLabel>
+                    <div className="space-y-0.5">
+                      <NavLink to="/admin/wiki" className={navLinkClass} onClick={onNavigate}><BookOpenText /><span>Wiki</span></NavLink>
+                      <NavLink to="/admin/ai" className={navLinkClass} onClick={onNavigate}><Sparkles /><span>AI</span></NavLink>
+                      <NavLink to="/admin/initiatives" className={navLinkClass} onClick={onNavigate}><Compass /><span>Initiatives</span></NavLink>
+                      <NavLink to="/admin/releases" className={navLinkClass} onClick={onNavigate}><Flag /><span>Releases</span></NavLink>
+                      <NavLink to="/admin/customers" className={navLinkClass} onClick={onNavigate}><Building2 /><span>Customers</span></NavLink>
+                    </div>
+                  </div>
+                  <div>
+                    <SectionLabel>개발자 도구</SectionLabel>
+                    <NavLink to="/admin/webhooks" className={navLinkClass} onClick={onNavigate}><Webhook /><span>Webhooks</span></NavLink>
+                  </div>
+                </>
+              ) : null}
+            </div>
+          </nav>
+        ) : aiMode ? (
           <nav className="of-scrollbar flex-1 overflow-y-auto px-2 pb-3" aria-label="AI 컨텍스트 내비게이션">
             <div className="space-y-4">
               <div>
