@@ -2334,3 +2334,15 @@ Chromium typed mock fixture에서 1440x960과 390x844 viewport를 사용했다. 
 - Focused API lifecycle 7과 full API 637, disabled/no-request, zero-project, aggregate search/filter, invalid bucket, desktop/mobile context switching focused Playwright 7건, production build, API lint, OpenAPI drift, clean-room이 통과했다. 최종 full frontend E2E는 216 PASS와 opt-in visual QA 1 skip으로 통과했다.
 - 시각 증적은 `docs/screenshots/redevelopment/global-app-contexts-ui/`에 보존한다.
 - API는 membership-filtered workspace document list GET 1개를 추가했다. DB, migration, permission model, environment variable, dependency 변경과 이연 항목은 없다.
+
+---
+
+# UI-76 Sidebar Personalization 검증 (2026-07-12)
+
+- Desktop context sidebar는 global app rail을 남긴 채 접고 펼칠 수 있으며 topbar workspace 영역과 main 시작점이 같은 persisted collapse 상태를 따른다.
+- Projects context의 개인·워크스페이스·더 보기 항목은 접근 가능한 modal Customize navigation에서 표시 여부와 그룹 내 순서를 변경하고 기본값으로 복원할 수 있다.
+- `oneflow.sidebar.preferences.v1` browser preference는 reload와 cross-tab에서 collapse/visibility/order/reset을 동기화하고 손상·누락·사용 불가 storage를 기본값으로 복구한다. 모바일 drawer는 desktop collapse와 무관하게 전체 navigation과 동일한 customization을 제공한다.
+- Dialog 초기 포커스, Tab/Shift+Tab 순환, Escape 종료와 trigger 포커스 복원, desktop/mobile viewport 경계를 Playwright로 검증했다. 독립 reviewer의 focus lifecycle과 persistence coverage 지적을 수정한 뒤 closure `APPROVED`를 받았다.
+- Production build, typecheck, lint와 focused personalization E2E 2건이 통과했다. Full E2E 첫 worker-4 run은 215 PASS·1 skip과 기존 장기 시나리오 3건의 환경 timeout, worker-2 run은 215 PASS·1 skip과 skeleton 캡처 race/장기 policy 2건을 확인했다. Skeleton hold를 2초로 고정하고 Wiki/Initiatives policy timeout을 60초로 조정한 후 affected 3건은 3 PASS로 재검증했다.
+- 시각 증적은 `docs/screenshots/redevelopment/sidebar-personalization-ui/`에 보존한다.
+- API, DB, migration, permission contract, environment variable, dependency 변경과 이연 항목은 없다.
