@@ -38,8 +38,9 @@ export function QuickDock({
   const dockRootRef = useRef<HTMLDivElement>(null)
   const firstActionRef = useRef<HTMLButtonElement>(null)
   const searchRef = useRef<HTMLInputElement>(null)
-  const wasOpen = useRef(false)
   const [collisionOffset, setCollisionOffset] = useState(0)
+  const [dockMounted, setDockMounted] = useState(open)
+  const [dockClosing, setDockClosing] = useState(false)
   const [panel, setPanel] = useState<NotePanel>('none')
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [search, setSearch] = useState('')
@@ -119,15 +120,30 @@ export function QuickDock({
   }, [location.pathname, location.search, open])
 
   useEffect(() => {
-    if (!open) {
-      setPanel('none')
-      if (wasOpen.current) triggerRef.current?.focus()
-      wasOpen.current = false
+    if (open) {
+      setDockClosing(false)
+      setDockMounted(true)
       return
     }
-    const justOpened = !wasOpen.current
-    wasOpen.current = true
-    if (justOpened) firstActionRef.current?.focus()
+    if (!dockMounted) return
+    setDockClosing(true)
+    const timer = window.setTimeout(() => {
+      setDockMounted(false)
+      setDockClosing(false)
+      requestAnimationFrame(() => triggerRef.current?.focus())
+    }, window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 160)
+    return () => window.clearTimeout(timer)
+  }, [dockMounted, open])
+
+  useEffect(() => {
+    if (open && dockMounted) firstActionRef.current?.focus()
+  }, [dockMounted, open])
+
+  useEffect(() => {
+    if (!open) {
+      setPanel('none')
+      return
+    }
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key !== 'Escape' || event.defaultPrevented) return
       event.preventDefault()
@@ -201,10 +217,10 @@ export function QuickDock({
         className="fixed bottom-3 right-3 z-40 transition-transform duration-[var(--of-duration-default)] motion-reduce:transition-none md:bottom-5 md:right-5"
         style={{ transform: `translateY(-${collisionOffset}px)` }}
       >
-        {open ? (
+        {dockMounted ? (
           <>
             {activeNote && (panel === 'compact' || panel === 'expanded') ? (
-              <div className="absolute bottom-0 right-14 animate-in fade-in slide-in-from-right-2 duration-200 motion-reduce:animate-none">
+              <div className="of-panel-enter absolute bottom-0 right-14">
                 <StickyNoteCard
                   note={activeNote}
                   variant={panel === 'compact' ? 'compact' : 'expanded'}
@@ -218,7 +234,11 @@ export function QuickDock({
             ) : null}
             <nav
               aria-label="빠른 도구"
-              className="flex w-12 origin-bottom animate-in flex-col items-center gap-1 rounded-full border border-of-border bg-of-surface p-1 shadow-[var(--of-shadow-popover)] duration-200 motion-reduce:animate-none"
+              data-testid="quick-dock-expanded"
+              className={cn(
+                'flex w-12 flex-col items-center gap-1 rounded-full border border-of-border bg-of-surface p-1 shadow-[var(--of-shadow-popover)]',
+                dockClosing ? 'of-dock-exit' : 'of-dock-enter',
+              )}
             >
               <button
                 ref={firstActionRef}

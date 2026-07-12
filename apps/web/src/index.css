@@ -238,6 +238,43 @@ textarea {
   transition-timing-function: var(--of-ease-standard);
 }
 
+@keyframes of-overlay-enter {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes of-menu-enter {
+  from { opacity: 0; transform: translateY(-4px) scale(0.96); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes of-search-enter {
+  from { opacity: 0; transform: translateY(-8px) scale(0.97); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes of-dock-enter {
+  from { opacity: 0; transform: translateY(12px) scale(0.76); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes of-dock-exit {
+  from { opacity: 1; transform: translateY(0) scale(1); }
+  to { opacity: 0; transform: translateY(10px) scale(0.8); }
+}
+
+@keyframes of-panel-enter {
+  from { opacity: 0; transform: translateX(8px) scale(0.98); }
+  to { opacity: 1; transform: translateX(0) scale(1); }
+}
+
+.of-overlay-enter { animation: of-overlay-enter var(--of-duration-overlay) var(--of-ease-standard) both; }
+.of-menu-enter { animation: of-menu-enter 150ms var(--of-ease-standard) both; transform-origin: top left; }
+.of-search-enter { animation: of-search-enter var(--of-duration-overlay) var(--of-ease-emphasized) both; transform-origin: top center; }
+.of-dock-enter { animation: of-dock-enter 200ms var(--of-ease-emphasized) both; transform-origin: bottom center; }
+.of-dock-exit { animation: of-dock-exit 160ms var(--of-ease-standard) both; transform-origin: bottom center; pointer-events: none; }
+.of-panel-enter { animation: of-panel-enter 200ms var(--of-ease-emphasized) both; transform-origin: right center; }
+
 @media (pointer: coarse) {
   .of-touch-target {
     min-width: 44px;
@@ -246,6 +283,15 @@ textarea {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .of-overlay-enter,
+  .of-menu-enter,
+  .of-search-enter,
+  .of-dock-enter,
+  .of-dock-exit,
+  .of-panel-enter {
+    animation: none !important;
+  }
+
   *,
   *::before,
   *::after {

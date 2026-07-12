@@ -70,12 +70,17 @@ function WorkspaceMenu({
       <button ref={triggerRef} type="button" aria-label="워크스페이스 전환" aria-expanded={open} className="flex min-w-0 items-center gap-2 rounded-of px-1.5 py-1 text-left hover:bg-of-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus" onClick={() => onOpenChange(!open)}>
         <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-of bg-of-accent text-[11px] font-bold text-white shadow-[var(--of-shadow-xs)]">OF</span>
         <span className="max-w-40 truncate text-sm font-semibold">{workspaceName}</span>
-        <ChevronDown size={14} className="shrink-0 text-of-muted" aria-hidden="true" />
+        <ChevronDown
+          size={14}
+          data-testid="workspace-menu-chevron"
+          className={`shrink-0 text-of-muted transition-transform duration-150 ease-[var(--of-ease-standard)] motion-reduce:transition-none ${open ? 'rotate-180' : ''}`}
+          aria-hidden="true"
+        />
       </button>
       {open ? (
         <>
           <button type="button" tabIndex={-1} aria-label="워크스페이스 메뉴 닫기" className="fixed inset-0 z-40 cursor-default" onClick={() => onOpenChange(false)} />
-          <div ref={menuRef} role="menu" aria-label="워크스페이스" className="of-floating-surface absolute left-0 top-10 z-50 w-72 p-1">
+          <div ref={menuRef} role="menu" aria-label="워크스페이스" className="of-floating-surface of-menu-enter absolute left-0 top-10 z-50 w-72 p-1">
             <div className="border-b border-of-border px-2.5 py-2">
               <p className="truncate text-[11px] text-of-muted">{me.data?.email ?? '계정 정보를 불러오는 중'}</p>
               <div aria-label="현재 워크스페이스" className="mt-2 flex items-center gap-2 rounded-of bg-of-surface-2 px-2 py-2">
