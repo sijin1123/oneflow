@@ -30,7 +30,6 @@ import {
   LockKeyhole,
   Paperclip,
   PanelLeftClose,
-  PanelLeftOpen,
   Plus,
   Search,
   Settings,
@@ -327,13 +326,9 @@ function NavigationCustomizer({
 function GlobalRail({
   settingsHref,
   onNavigate,
-  collapsed,
-  onExpand,
 }: {
   settingsHref: string
   onNavigate?: () => void
-  collapsed?: boolean
-  onExpand?: () => void
 }) {
   const location = useLocation()
   const wikiActive = location.pathname === '/wiki' || location.pathname.includes('/documents')
@@ -386,23 +381,12 @@ function GlobalRail({
           )
         })}
       </div>
-      {collapsed ? (
-        <button
-          type="button"
-          aria-label="사이드바 펼치기"
-          title="사이드바 펼치기"
-          className="mt-auto flex h-10 w-full items-center justify-center rounded-of text-of-muted hover:bg-of-surface-hover hover:text-of-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus"
-          onClick={onExpand}
-        >
-          <PanelLeftOpen size={16} aria-hidden="true" />
-        </button>
-      ) : null}
       <Link
         to={settingsHref}
         aria-current={settingsActive ? 'page' : undefined}
         className={cn(
           'flex h-12 w-full flex-col items-center justify-center gap-1 rounded-of text-[10px] font-medium text-of-muted transition-colors hover:bg-of-surface-hover hover:text-of-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus',
-          !collapsed && 'mt-auto',
+          'mt-auto',
           settingsActive && 'bg-of-surface-selected text-of-accent',
         )}
         onClick={onNavigate}
@@ -480,8 +464,6 @@ function SidebarContent({
       <GlobalRail
         settingsHref={settingsHref}
         onNavigate={onNavigate}
-        collapsed={collapsed}
-        onExpand={() => onCollapsedChange?.(false)}
       />
       {!collapsed ? (
       <div className="flex min-w-0 flex-1 flex-col bg-of-surface-raised md:mb-2 md:rounded-l-[var(--of-radius-lg)] md:border-y md:border-l md:border-of-border-subtle md:shadow-[var(--of-shadow-sm)]">
