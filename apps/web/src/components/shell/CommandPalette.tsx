@@ -216,7 +216,7 @@ export function CommandPalette({ prominent = false }: { prominent?: boolean }) {
       {open ? (
         <div
           role="presentation"
-          className="fixed inset-0 z-[var(--of-z-modal)] bg-of-overlay animate-in fade-in duration-[var(--of-duration-overlay)] motion-reduce:animate-none"
+          className="of-overlay-enter fixed inset-0 z-[var(--of-z-modal)] bg-of-overlay"
           onMouseDown={(event) => {
             if (event.target === event.currentTarget) close()
           }}
@@ -226,7 +226,7 @@ export function CommandPalette({ prominent = false }: { prominent?: boolean }) {
             role="dialog"
             aria-modal="true"
             aria-label="전체 검색"
-            className="fixed inset-x-2 top-1 mx-auto flex max-h-[min(82vh,680px)] max-w-[36rem] flex-col overflow-hidden rounded-of-lg border border-of-border bg-of-surface-raised shadow-[var(--of-shadow-popover)] animate-in fade-in slide-in-from-top-2 zoom-in-95 duration-[var(--of-duration-overlay)] motion-reduce:animate-none sm:top-1"
+            className="of-search-enter fixed inset-x-2 top-1 mx-auto flex max-h-[min(82vh,680px)] max-w-[36rem] flex-col overflow-hidden rounded-of-lg border border-of-border bg-of-surface-raised shadow-[var(--of-shadow-popover)] sm:top-1"
             onKeyDown={onKeyDown}
           >
             <div className="flex items-center gap-2 border-b border-of-border px-3 py-2">
