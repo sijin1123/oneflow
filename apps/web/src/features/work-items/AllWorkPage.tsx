@@ -33,6 +33,7 @@ import { cn } from '@/lib/utils'
 import { WorkspaceCalendarView } from './WorkspaceCalendarView'
 import { WorkspaceColumnSortMenu } from './WorkspaceColumnSortMenu'
 import { WorkspaceDisplayMenu } from './WorkspaceDisplayMenu'
+import { WorkspaceInlineAssigneeMenu } from './WorkspaceInlineAssigneeMenu'
 import { WorkspaceInlinePropertyMenu } from './WorkspaceInlinePropertyMenu'
 import { WorkspacePqlEditor, type WorkspaceFilterMode } from './WorkspacePqlEditor'
 import { WorkspaceSavedViewsControls } from './WorkspaceSavedViewsControls'
@@ -661,7 +662,11 @@ function WorkspaceTable({
                 </td>
               ) : null}
               {has('type') ? <td className="px-3 py-2"><TypeChip type={item.type} /></td> : null}
-              {has('assignee') ? <td className="h-10 truncate px-3 text-of-muted">{item.assignee_name ?? '—'}</td> : null}
+              {has('assignee') ? (
+                <td className="px-3 py-2">
+                  <WorkspaceInlineAssigneeMenu item={item} />
+                </td>
+              ) : null}
               {has('start') ? <td className="h-10 whitespace-nowrap px-2 text-of-muted">{dateOnly(item.start_date)}</td> : null}
               {has('due') ? <td className="h-10 whitespace-nowrap px-2 text-of-muted">{dateOnly(item.due_date)}</td> : null}
               {has('updated') ? <td className="h-10 whitespace-nowrap px-2 text-of-muted">{dateOnly(item.updated_at)}</td> : null}
