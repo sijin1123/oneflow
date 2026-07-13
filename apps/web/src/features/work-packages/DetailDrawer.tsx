@@ -22,7 +22,9 @@ import { useWorkspaceCapabilities } from '@/features/workspace-features/api'
 
 import { CustomFieldsSection } from './CustomFieldsSection'
 import { DetailInlineAssigneeMenu } from './DetailInlineAssigneeMenu'
+import { DetailInlineDateMenu } from './DetailInlineDateMenu'
 import { DetailInlinePropertyMenu } from './DetailInlinePropertyMenu'
+import { validateScheduleDates } from './scheduleDates'
 import { Select } from '@/components/ui/select'
 import { Sheet, SheetContent } from '@/components/ui/sheet'
 import { ApiError } from '@/lib/api'
@@ -354,6 +356,7 @@ export function WorkPackageDetailPanel({
     setDueDate(wp.due_date ?? '')
     setEstimate(wp.estimated_hours?.toString() ?? '')
   }, [wp.subject, wp.start_date, wp.due_date, wp.estimated_hours])
+  const scheduleError = validateScheduleDates(startDate || null, dueDate || null)
 
   const send = (fields: Partial<Record<string, unknown>>) => {
     // Token from the query cache, not the render snapshot: two quick edits in a
@@ -364,6 +367,16 @@ export function WorkPackageDetailPanel({
       wpId: wp.id,
       patch: { expected_version: cached?.version ?? wp.version, ...fields },
     })
+  }
+
+  const saveScheduleDates = () => {
+    if (scheduleError) return
+    const nextStart = startDate || null
+    const nextDue = dueDate || null
+    const fields: Partial<Record<'start_date' | 'due_date', string | null>> = {}
+    if (nextStart !== wp.start_date) fields.start_date = nextStart
+    if (nextDue !== wp.due_date) fields.due_date = nextDue
+    if (Object.keys(fields).length > 0) send(fields)
   }
 
   // A failed save must never be silent: 409 reloads the latest server values and
@@ -446,6 +459,22 @@ export function WorkPackageDetailPanel({
             rosterError={members.isError}
             onRetryRoster={() => { void members.refetch() }}
             onValueChange={(assigneeId) => send({ assignee_id: assigneeId })}
+          />
+          <DetailInlineDateMenu
+            property="start_date"
+            value={wp.start_date}
+            otherDate={wp.due_date}
+            canWrite={canWrite}
+            pending={patch.isPending}
+            onValueChange={(value) => send({ start_date: value })}
+          />
+          <DetailInlineDateMenu
+            property="due_date"
+            value={wp.due_date}
+            otherDate={wp.start_date}
+            canWrite={canWrite}
+            pending={patch.isPending}
+            onValueChange={(value) => send({ due_date: value })}
           />
           {createdByName ? <span>만든 사람: {createdByName}</span> : null}
           <span>v{wp.version}</span>
@@ -676,11 +705,10 @@ export function WorkPackageDetailPanel({
                   type="date"
                   value={startDate}
                   disabled={!canWrite || patch.isPending}
+                  max={dueDate || undefined}
+                  aria-invalid={Boolean(scheduleError)}
                   onChange={(e) => setStartDate(e.target.value)}
-                  onBlur={() => {
-                    const v = startDate || null
-                    if (v !== wp.start_date) send({ start_date: v })
-                  }}
+                  onBlur={saveScheduleDates}
                 />
               </div>
               <div className={propertyRowClass}>
@@ -693,13 +721,15 @@ export function WorkPackageDetailPanel({
                   type="date"
                   value={dueDate}
                   disabled={!canWrite || patch.isPending}
+                  min={startDate || undefined}
+                  aria-invalid={Boolean(scheduleError)}
                   onChange={(e) => setDueDate(e.target.value)}
-                  onBlur={() => {
-                    const v = dueDate || null
-                    if (v !== wp.due_date) send({ due_date: v })
-                  }}
+                  onBlur={saveScheduleDates}
                 />
               </div>
+              {scheduleError ? (
+                <p role="alert" className="text-xs text-of-danger lg:col-span-2">{scheduleError}</p>
+              ) : null}
               <div className={propertyRowClass}>
                 <label htmlFor="wp-estimate" className="text-xs font-medium text-of-muted">
                   예상 시간(h)
