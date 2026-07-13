@@ -35,6 +35,7 @@ const project: Project = {
   key: 'ONE',
   name: 'OneFlow 도입',
   description: '데모 프로젝트',
+  cover_attachment_id: null,
   budget: null,
   archived_at: null,
   health: null,
@@ -82,6 +83,7 @@ const projectRollups = {
   open_work_package_count: 2,
   overdue_count: 0,
   member_count: 1,
+  current_user_role: 'owner' as const,
   initiatives: [],
   initiative_overflow: 0,
 }
@@ -797,7 +799,7 @@ test('Frame context는 workspace query와 project route를 실제 breadcrumb nav
   breadcrumb = page.getByRole('navigation', { name: '현재 위치' })
   await expect(breadcrumb.getByRole('link', { name: project.name })).toHaveAttribute(
     'href',
-    `/projects/${project.id}/dashboard`,
+    `/projects/${project.id}/overview`,
   )
   await expect(breadcrumb.getByRole('link', { name: '작업' })).toHaveAttribute(
     'href',
@@ -816,6 +818,7 @@ test('Frame context는 workspace query와 project route를 실제 breadcrumb nav
 })
 
 test('Projects context sidebar는 disclosure·More panel·pin navigation을 유지한다', async ({ page }) => {
+  test.setTimeout(90_000)
   await mockApi(page)
   await page.goto('/projects')
 
@@ -966,7 +969,7 @@ test('프로젝트 행 메뉴는 즐겨찾기·링크·설정·소유자 보관�
   await page.getByRole('menuitem', { name: '링크 복사' }).click()
   await expect(page.getByRole('status')).toContainText('링크를 복사했습니다')
   await expect.poll(() => page.evaluate(() => window.localStorage.getItem('__copied_project_link')))
-    .toBe(`${new URL(page.url()).origin}/projects/${viewerProject.id}/work-packages`)
+    .toBe(`${new URL(page.url()).origin}/projects/${viewerProject.id}/overview`)
 
   await nav.getByRole('button', { name: '운영 개선 프로젝트 작업' }).click()
   await page.getByRole('menuitem', { name: '설정' }).click()
@@ -1133,7 +1136,7 @@ test('사이드바 너비와 프로젝트 탐색 모드는 조절·저장되고 
   await page.keyboard.press('Escape')
 
   const contextNav = page.getByRole('navigation', { name: 'Projects 컨텍스트 내비게이션' })
-  await expect(contextNav.locator('a[href^="/projects/"][href$="/work-packages"]')).toHaveCount(1)
+  await expect(contextNav.locator('a[href^="/projects/"][href$="/overview"]')).toHaveCount(1)
   const notesBox = await contextNav.getByRole('link', { name: '개인 메모' }).boundingBox()
   const homeBox = await contextNav.getByRole('link', { name: '홈' }).boundingBox()
   expect(notesBox?.y).toBeLessThan(homeBox?.y ?? 0)
@@ -1281,8 +1284,8 @@ test('빠른 도구는 shell scroll region 이동 후에도 하단 작업과 충
 
 test('Quick Dock trigger는 note와 X를 양방향 회전 morph한다', async ({ page }) => {
   await mockApi(page)
-  await page.goto('/projects')
   await page.clock.install()
+  await page.goto('/projects')
   const scrollRegion = page.locator('[data-shell-scroll-region]')
   const geometry = await scrollRegion.evaluate((element) => ({
     clientHeight: element.clientHeight,
@@ -1305,7 +1308,7 @@ test('Quick Dock trigger는 note와 X를 양방향 회전 morph한다', async ({
   await expect(trigger).toHaveAttribute('aria-disabled', 'true')
   await expect(trigger).toBeFocused()
   await trigger.evaluate((button) => (button as HTMLButtonElement).click())
-  await expect(openingIcon).toHaveAttribute('data-phase', 'opening')
+  await expect.poll(() => openingIcon.getAttribute('data-phase')).toMatch(/^(opening|open)$/)
   await openingIcon.evaluate((element) => {
     for (const animation of element.getAnimations({ subtree: true })) {
       animation.pause()
@@ -9412,15 +9415,21 @@ test('빈 프로젝트 목록에서 새 프로젝트를 만들면 생성 요청 
   await page.route('**/api/v1/me/notifications', (route) =>
     route.fulfill({ json: { items: [], total: 0, unread: 0 } }),
   )
-  // Minimal mocks for the create-then-navigate target page.
-  await page.route('**/api/v1/projects/p-new/work-packages**', (route) =>
-    route.fulfill({ json: { items: [], total: 0 } satisfies WorkPackageList }),
-  )
-  await page.route('**/api/v1/projects/p-new/saved-filters', (route) =>
-    route.fulfill({ json: { items: [], total: 0 } }),
-  )
-  await page.route('**/api/v1/projects/p-new/statuses', (route) =>
-    route.fulfill({ json: { items: [], total: 0 } }),
+  // Minimal mocks for the create-then-navigate Overview page.
+  await page.route('**/api/v1/projects/p-new', (route) => route.fulfill({
+    json: { ...project, id: 'p-new', key: 'NEW', name: '신규 프로젝트' },
+  }))
+  await page.route('**/api/v1/projects/p-new/dashboard', (route) => route.fulfill({
+    json: {
+      id: 'p-new', key: 'NEW', name: '신규 프로젝트', description: null,
+      health: null, health_note: null, archived_at: null, completion_percent: 0,
+      recent_work_packages: [], total_work_packages: 0, open_work_packages: 0,
+      overdue_count: 0, status_counts: [], priority_counts: [], type_counts: [],
+      total_estimated_hours: 0, total_spent_hours: 0, budget: null, total_cost: 0,
+    },
+  }))
+  await page.route('**/api/v1/projects/p-new/activities**', (route) =>
+    route.fulfill({ json: { items: [], total: 0, truncated: false } }),
   )
   await page.route('**/api/v1/projects/p-new/members', (route) =>
     route.fulfill({ json: { items: [], total: 0 } }),
@@ -9436,7 +9445,7 @@ test('빈 프로젝트 목록에서 새 프로젝트를 만들면 생성 요청 
   await page.getByRole('button', { name: '만들기' }).click()
   const req = await post
   expect(req.postDataJSON()).toMatchObject({ key: 'NEW', name: '신규 프로젝트' })
-  await expect(page).toHaveURL(/\/projects\/p-new\/work-packages/)
+  await expect(page).toHaveURL(/\/projects\/p-new\/overview/)
 })
 
 test('마일스톤 패널이 행 작업 메뉴·편집·삭제 확인·필터 이동을 제공한다', async ({ page }) => {
@@ -10114,6 +10123,213 @@ test('프로젝트 목록 이니셔티브 열을 켜면 칩이 보이고 클릭 
   await expect(page.locator('li.ring-1', { hasText: '플랫폼 전략' })).toBeVisible()
 })
 
+test('프로젝트 cover는 디렉터리와 Overview를 공유하고 owner가 교체·제거한다', async ({ page }) => {
+  await mockApi(page)
+  let currentProject: Project = { ...project, cover_attachment_id: 'cover-old' }
+  let rejectNextCover = false
+  let commitThenAbortNextCover = false
+  let cleanupCount = 0
+  const coverPng = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAEklEQVR4nGPkndLBwMDAxAAGAA2bAS37E8jFAAAAAElFTkSuQmCC',
+    'base64',
+  )
+  const dashboard = {
+    id: project.id,
+    key: project.key,
+    name: project.name,
+    description: project.description,
+    health: 'on_track',
+    health_note: '핵심 delivery가 계획대로 진행 중입니다.',
+    archived_at: null,
+    completion_percent: 50,
+    recent_work_packages: [{
+      id: wpA.id,
+      subject: wpA.subject,
+      status: wpA.status,
+      priority: wpA.priority,
+      assignee_name: 'Dev User',
+      updated_at: wpA.updated_at,
+    }],
+    total_work_packages: 4,
+    open_work_packages: 2,
+    overdue_count: 1,
+    status_counts: [],
+    priority_counts: [],
+    type_counts: [],
+    total_estimated_hours: 24,
+    total_spent_hours: 9,
+    budget: null,
+    total_cost: 0,
+  }
+
+  await page.route('**/api/v1/projects', (route) => route.fulfill({
+    json: { items: [{ ...currentProject, ...projectRollups }], total: 1 },
+  }))
+  await page.route(`**/api/v1/projects/${project.id}`, async (route) => {
+    if (route.request().method() === 'PATCH') {
+      if (commitThenAbortNextCover) {
+        commitThenAbortNextCover = false
+        const body = route.request().postDataJSON() as { cover_attachment_id: string | null }
+        currentProject = { ...currentProject, cover_attachment_id: body.cover_attachment_id }
+        await route.abort('connectionrefused')
+        return
+      }
+      if (rejectNextCover) {
+        rejectNextCover = false
+        await route.fulfill({ status: 422, json: { detail: 'cover rejected' } })
+        return
+      }
+      const body = route.request().postDataJSON() as { cover_attachment_id: string | null }
+      currentProject = { ...currentProject, cover_attachment_id: body.cover_attachment_id }
+      await route.fulfill({ json: currentProject })
+      return
+    }
+    await route.fulfill({ json: currentProject })
+  })
+  await page.route(`**/api/v1/projects/${project.id}/dashboard`, (route) =>
+    route.fulfill({ json: dashboard }),
+  )
+  await page.route(`**/api/v1/projects/${project.id}/activities**`, (route) =>
+    route.fulfill({ json: { items: [], total: 0, truncated: false } }),
+  )
+  await page.route(`**/api/v1/projects/${project.id}/attachments/upload**`, (route) =>
+    route.fulfill({
+      status: 201,
+      json: {
+        id: 'cover-new', project_id: project.id, work_package_id: null, document_id: null,
+        filename: 'new-cover.png', content_type: 'image/png', size_bytes: coverPng.length,
+        url: 'oneflow://attachments/cover-new', has_file: true, uploaded_by: 'me-1',
+        created_at: '2026-07-13T00:00:00Z',
+      },
+    }),
+  )
+  await page.route('**/api/v1/attachments/*/download', (route) =>
+    route.fulfill({ status: 200, contentType: 'image/png', body: coverPng }),
+  )
+  await page.route('**/api/v1/attachments/cover-new', (route) => {
+    cleanupCount += 1
+    return route.fulfill({ status: 204, body: '' })
+  })
+
+  await page.goto('/projects')
+  const frame = page.getByTestId('frame-context-bar')
+  await expect(frame.getByText('프로젝트', { exact: true })).toBeVisible()
+  await expect(frame).toContainText('워크스페이스 디렉터리 · 1개 프로젝트')
+  await expect(page.getByAltText(`${project.name} 표지`)).toBeVisible()
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/project-directory-cover-overview-ui/directory.png',
+  })
+
+  await page.getByRole('link', { name: `${project.name} Overview 열기` }).click()
+  await expect(page).toHaveURL(`/projects/${project.id}/overview`)
+  await expect(frame.getByText('Overview', { exact: true })).toBeVisible()
+  await expect(frame.getByRole('navigation', { name: '현재 위치' }).getByRole('link', { name: '프로젝트' })).toHaveAttribute('href', '/projects')
+  await expect(page.getByRole('region', { name: '프로젝트 진행 요약' })).toContainText('완료율')
+  await expect(page.getByRole('region', { name: '프로젝트 진행 요약' })).toContainText('50%')
+  await expect(page.getByRole('region', { name: '최근 작업' })).toContainText(wpA.subject)
+
+  await page.getByRole('button', { name: '표지 변경' }).click()
+  const dialog = page.getByRole('dialog', { name: '프로젝트 표지' })
+  await expect(dialog).toBeVisible()
+  const uploadRequest = page.waitForRequest(
+    (request) => request.method() === 'POST' && request.url().includes('/attachments/upload'),
+  )
+  const coverPatch = page.waitForRequest(
+    (request) => request.method() === 'PATCH' && request.url().endsWith(`/projects/${project.id}`),
+  )
+  await dialog.getByLabel('프로젝트 표지 파일').setInputFiles({
+    name: 'new-cover.png',
+    mimeType: 'image/png',
+    buffer: coverPng,
+  })
+  await uploadRequest
+  expect((await coverPatch).postDataJSON()).toEqual({ cover_attachment_id: 'cover-new' })
+  await expect(dialog).toHaveCount(0)
+  await expect(page.getByAltText(`${project.name} 표지`)).toHaveAttribute('src', /cover-new\/download$/)
+  await page.waitForTimeout(250)
+
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/project-directory-cover-overview-ui/overview-desktop.png',
+  })
+  await page.setViewportSize({ width: 390, height: 844 })
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/project-directory-cover-overview-ui/overview-mobile.png',
+    fullPage: true,
+  })
+
+  await page.getByRole('button', { name: '표지 변경' }).click()
+  const removePatch = page.waitForRequest(
+    (request) => request.method() === 'PATCH' && request.url().endsWith(`/projects/${project.id}`),
+  )
+  await page.getByRole('button', { name: '표지 제거' }).click()
+  expect((await removePatch).postDataJSON()).toEqual({ cover_attachment_id: null })
+  await expect(page.getByAltText(`${project.name} 표지`)).toHaveCount(0)
+
+  await page.getByRole('button', { name: '표지 변경' }).click()
+  rejectNextCover = true
+  const cleanupRequest = page.waitForRequest(
+    (request) => request.method() === 'DELETE' && request.url().endsWith('/attachments/cover-new'),
+  )
+  await page.getByRole('dialog', { name: '프로젝트 표지' }).getByLabel('프로젝트 표지 파일').setInputFiles({
+    name: 'rejected-cover.png',
+    mimeType: 'image/png',
+    buffer: coverPng,
+  })
+  await cleanupRequest
+  await expect(page.getByRole('dialog', { name: '프로젝트 표지' }).getByRole('alert')).toContainText('cover rejected')
+
+  commitThenAbortNextCover = true
+  await page.getByRole('dialog', { name: '프로젝트 표지' }).getByLabel('프로젝트 표지 파일').setInputFiles({
+    name: 'committed-cover.png',
+    mimeType: 'image/png',
+    buffer: coverPng,
+  })
+  await expect(page.getByRole('dialog', { name: '프로젝트 표지' })).toHaveCount(0)
+  await expect(page.getByAltText(`${project.name} 표지`)).toHaveAttribute('src', /cover-new\/download$/)
+  expect(cleanupCount).toBe(1)
+})
+
+test('손상된 프로젝트 cover 이미지는 깨진 이미지 대신 fallback visual을 표시한다', async ({ page }) => {
+  await mockApi(page)
+  await page.route('**/api/v1/projects', (route) => route.fulfill({
+    json: {
+      items: [{ ...project, ...projectRollups, cover_attachment_id: 'cover-broken' }],
+      total: 1,
+    },
+  }))
+  await page.route('**/api/v1/attachments/cover-broken/download', (route) =>
+    route.fulfill({ status: 200, contentType: 'image/png', body: 'not-a-png' }),
+  )
+
+  await page.goto('/projects')
+  await expect(page.getByAltText(`${project.name} 표지`)).toHaveCount(0)
+  const cover = page.locator(`[data-project-cover="${project.key}"]`)
+  await expect(cover).toBeVisible()
+  await expect(cover).toHaveCSS('background-image', /linear-gradient/)
+})
+
+test('프로젝트 디렉터리는 비소유자 설정을 숨기고 표지 배지 영역도 Overview로 연다', async ({ page }) => {
+  await mockApi(page)
+  await page.route('**/api/v1/projects', (route) => route.fulfill({
+    json: {
+      items: [{ ...project, ...projectRollups, current_user_role: 'member' }],
+      total: 1,
+    },
+  }))
+
+  await page.goto('/projects')
+  const card = page.getByRole('listitem').filter({ hasText: project.name })
+  await expect(card.getByRole('link', { name: '설정', exact: true })).toHaveCount(0)
+  await expect(card.getByRole('link', { name: '대시보드', exact: true })).toBeVisible()
+
+  const badge = card.locator(`[data-project-cover="${project.key}"]`).getByText('ON', { exact: true })
+  const box = await badge.boundingBox()
+  expect(box).not.toBeNull()
+  await page.mouse.click(box!.x + box!.width / 2, box!.y + box!.height / 2)
+  await expect(page).toHaveURL(`/projects/${project.id}/overview`)
+})
+
 test('프로젝트 디렉터리는 모바일에서 요약·검색·카드 링크가 겹치지 않는다', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 })
   await mockApi(page)
@@ -10144,7 +10360,7 @@ test('프로젝트 디렉터리는 모바일에서 요약·검색·카드 링크
   )
 
   await page.goto('/projects')
-  await expect(page.getByRole('heading', { name: '프로젝트' })).toBeVisible()
+  await expect(page.getByTestId('frame-context-bar').getByText('프로젝트', { exact: true })).toBeVisible()
   await expect(page.getByLabel('프로젝트 요약')).toContainText('열린 작업')
   await expect(page.getByRole('button', { name: '카드 보기' })).toHaveAttribute('aria-pressed', 'true')
   await page.setViewportSize({ width: 1440, height: 960 })

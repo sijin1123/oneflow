@@ -19,6 +19,7 @@ import { MyWorkPage } from '@/features/my-work/MyWorkPage'
 import { PersonalNotesPage } from '@/features/personal-notes/PersonalNotesPage'
 import { InboxPage } from '@/features/notifications/InboxPage'
 import { ProjectsPage } from '@/features/projects/ProjectsPage'
+import { ProjectOverviewPage } from '@/features/projects/ProjectOverviewPage'
 import { SearchPage } from '@/features/search/SearchPage'
 import { TemplatesPage } from '@/features/project-templates/TemplatesPage'
 import { OperationsPage } from '@/features/ops/OperationsPage'
@@ -113,6 +114,7 @@ export const router = createBrowserRouter([
         ],
       },
       { path: 'settings', element: <PersonalSettingsPage /> },
+      { path: 'projects/:projectId/overview', element: <ProjectOverviewPage /> },
       { path: 'projects/:projectId/work-packages', element: <ListPage /> },
       { path: 'projects/:projectId/work-packages/:wpId', element: <WorkPackageDetailPage /> },
       { path: 'projects/:projectId/board', element: <BoardPage /> },

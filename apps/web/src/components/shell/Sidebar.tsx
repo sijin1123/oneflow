@@ -130,6 +130,10 @@ function visibleNav(items: WorkspaceNavItem[], preferences: SidebarPreferences) 
 
 export const projectNavSections: Array<{ label: string; items: ProjectNavItem[] }> = [
   {
+    label: '프로젝트',
+    items: [{ path: 'overview', label: 'Overview', icon: House }],
+  },
+  {
     label: '작업',
     items: [
       { path: 'work-packages', label: 'Work Packages', icon: List },
@@ -222,7 +226,7 @@ function ProjectActions({
   ) === true
 
   const copyLink = async () => {
-    const href = `${window.location.origin}/projects/${project.id}/work-packages`
+    const href = `${window.location.origin}/projects/${project.id}/overview`
     try {
       if (!navigator.clipboard?.writeText) throw new Error('clipboard unavailable')
       await navigator.clipboard.writeText(href)
@@ -1024,7 +1028,7 @@ function SidebarContent({
                     <div key={project.id} data-project-row={project.id}>
                       <div className="group/project flex items-center gap-0.5">
                         <NavLink
-                          to={`/projects/${project.id}/work-packages`}
+                          to={`/projects/${project.id}/overview`}
                           className={() => cn(projectLinkClass(activeProject), 'min-w-0 flex-1')}
                           onClick={onNavigate}
                         >

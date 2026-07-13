@@ -7,6 +7,7 @@ export type Project = {
   key: string
   name: string
   description: string | null
+  cover_attachment_id: string | null
   budget: number | null
   archived_at: string | null
   health: ProjectHealth | null
@@ -36,6 +37,7 @@ export type ProjectListItem = Project & {
   open_work_package_count: number
   overdue_count: number
   member_count: number
+  current_user_role: 'owner' | 'member' | 'viewer'
   initiatives: Array<{ id: string; name: string }>
   initiative_overflow: number
 }

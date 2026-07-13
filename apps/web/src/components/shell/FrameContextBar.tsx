@@ -18,6 +18,7 @@ export function FrameContextBar({
   const { data } = useProjects()
   const workspaceProfile = useWorkspaceProfile()
   const project = data?.items.find((item) => item.id === projectId)
+  const isProjectDirectory = location.pathname === '/projects'
   const context = getShellContext(
     location.pathname,
     location.search,
@@ -51,6 +52,11 @@ export function FrameContextBar({
             <Link to={context.parentHref} className="truncate rounded-[2px] hover:text-of-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus">{context.parent}</Link>
           </nav>
           <p aria-current="page" className="truncate text-sm font-semibold leading-5">{context.title}</p>
+          {isProjectDirectory ? (
+            <p className="truncate text-[10px] leading-3 text-of-muted">
+              워크스페이스 디렉터리 · {data ? `${data.total}개 프로젝트` : '불러오는 중'}
+            </p>
+          ) : null}
         </div>
       </div>
     </div>

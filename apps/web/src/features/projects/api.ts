@@ -4,6 +4,10 @@ import { api } from '@/lib/api'
 
 import type { Project, ProjectList } from './types'
 
+export function getProject(projectId: string) {
+  return api<Project>(`/api/v1/projects/${projectId}`)
+}
+
 export function useProjects(includeArchived = false) {
   return useQuery({
     queryKey: ['projects', { includeArchived }],
@@ -15,7 +19,7 @@ export function useProjects(includeArchived = false) {
 export function useProject(projectId: string) {
   return useQuery({
     queryKey: ['project', projectId],
-    queryFn: () => api<Project>(`/api/v1/projects/${projectId}`),
+    queryFn: () => getProject(projectId),
   })
 }
 
@@ -40,6 +44,7 @@ export function useUpdateProject(projectId: string) {
     mutationFn: (patch: {
       name?: string
       description?: string | null
+      cover_attachment_id?: string | null
       budget?: number | null
       health?: string | null
       health_note?: string | null
@@ -48,7 +53,7 @@ export function useUpdateProject(projectId: string) {
         method: 'PATCH',
         body: JSON.stringify(patch),
       }),
-    onSuccess: () => {
+    onSettled: () => {
       void queryClient.invalidateQueries({ queryKey: ['project', projectId] })
       void queryClient.invalidateQueries({ queryKey: ['dashboard', projectId] })
       void queryClient.invalidateQueries({ queryKey: ['projects'] })
