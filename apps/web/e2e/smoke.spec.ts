@@ -1405,6 +1405,10 @@ test('Quick Dock trigger는 note와 X를 양방향 회전 morph한다', async ({
     scrollHeight: element.scrollHeight,
   }))
   const trigger = page.getByRole('button', { name: '빠른 도구 열기' })
+  const persistentToggle = page.getByTestId('quick-dock-toggle')
+  await persistentToggle.evaluate((element) => {
+    ;(window as Window & { __oneflowQuickDockToggle?: Element }).__oneflowQuickDockToggle = element
+  })
 
   // Interrupted path: dock enter and note -> X morph are visible in the same opening frame.
   await trigger.click()
@@ -1423,7 +1427,45 @@ test('Quick Dock trigger는 note와 X를 양방향 회전 morph한다', async ({
   await expect(openingActions).toHaveCSS('animation-duration', '1s')
   await expect(dock).toHaveCSS('pointer-events', 'none')
   await expect(openingToggle).toBeFocused()
+  expect(await openingToggle.evaluate((element) => (
+    window as Window & { __oneflowQuickDockToggle?: Element }
+  ).__oneflowQuickDockToggle === element)).toBe(true)
   await expect(firstAction).toBeDisabled()
+  const openingStart = await dock.evaluate((element) => {
+    for (const animation of element.getAnimations({ subtree: true })) {
+      animation.pause()
+      animation.currentTime = 0
+    }
+    const icon = element.querySelector<HTMLElement>('[data-testid="quick-dock-toggle-icon"]')!
+    const actions = element.querySelector<HTMLElement>('[data-testid="quick-dock-actions"]')!
+    return {
+      iconTransform: getComputedStyle(icon).transform,
+      note: Number.parseFloat(getComputedStyle(icon.querySelector('[data-icon="note"]')!).opacity),
+      close: Number.parseFloat(getComputedStyle(icon.querySelector('[data-icon="close"]')!).opacity),
+      actions: Number.parseFloat(getComputedStyle(actions).opacity),
+      clipPath: getComputedStyle(element).clipPath,
+    }
+  })
+  const openingEarly = await dock.evaluate((element) => {
+    for (const animation of element.getAnimations({ subtree: true })) animation.currentTime = 80
+    const icon = element.querySelector<HTMLElement>('[data-testid="quick-dock-toggle-icon"]')!
+    const actions = element.querySelector<HTMLElement>('[data-testid="quick-dock-actions"]')!
+    return {
+      iconTransform: getComputedStyle(icon).transform,
+      note: Number.parseFloat(getComputedStyle(icon.querySelector('[data-icon="note"]')!).opacity),
+      close: Number.parseFloat(getComputedStyle(icon.querySelector('[data-icon="close"]')!).opacity),
+      actions: Number.parseFloat(getComputedStyle(actions).opacity),
+      clipPath: getComputedStyle(element).clipPath,
+    }
+  })
+  expect(openingEarly.iconTransform).not.toBe(openingStart.iconTransform)
+  expect(openingEarly.note).toBeLessThan(openingStart.note)
+  expect(openingEarly.close).toBeGreaterThan(openingStart.close)
+  expect(openingEarly.actions).toBeGreaterThan(openingStart.actions)
+  expect(openingEarly.clipPath).not.toBe(openingStart.clipPath)
+  await dock.screenshot({
+    path: '../../docs/screenshots/redevelopment/quick-dock-simultaneous-motion-ui/early-opening.png',
+  })
   await openingToggle.evaluate((button) => (button as HTMLButtonElement).click())
   await expect(dock).toHaveAttribute('data-phase', 'opening')
   await dock.evaluate((element) => {
@@ -1435,11 +1477,11 @@ test('Quick Dock trigger는 note와 X를 양방향 회전 morph한다', async ({
   const openingBlend = await openingIcon.evaluate((element) => ({
     note: Number.parseFloat(getComputedStyle(element.querySelector('[data-icon="note"]')!).opacity),
     close: Number.parseFloat(getComputedStyle(element.querySelector('[data-icon="close"]')!).opacity),
-    clipPath: getComputedStyle(element.closest('nav')!).clipPath,
-    navTransform: getComputedStyle(element.closest('nav')!).transform,
+    clipPath: getComputedStyle(element.closest('[data-quick-dock-surface]')!).clipPath,
+    navTransform: getComputedStyle(element.closest('[data-quick-dock-surface]')!).transform,
     iconTransform: getComputedStyle(element).transform,
-    actionsOpacity: Number.parseFloat(getComputedStyle(element.closest('nav')!.querySelector('[data-testid="quick-dock-actions"]')!).opacity),
-    actionsTransform: getComputedStyle(element.closest('nav')!.querySelector('[data-testid="quick-dock-actions"]')!).transform,
+    actionsOpacity: Number.parseFloat(getComputedStyle(element.closest('[data-quick-dock-surface]')!.querySelector('[data-testid="quick-dock-actions"]')!).opacity),
+    actionsTransform: getComputedStyle(element.closest('[data-quick-dock-surface]')!.querySelector('[data-testid="quick-dock-actions"]')!).transform,
   }))
   expect(openingBlend.note).toBeLessThan(1)
   expect(openingBlend.close).toBeGreaterThan(0)
@@ -1484,6 +1526,27 @@ test('Quick Dock trigger는 note와 X를 양방향 회전 morph한다', async ({
   await expect(closeButton).toBeFocused()
   await closeButton.evaluate((button) => (button as HTMLButtonElement).click())
   await expect(closingIcon).toHaveAttribute('data-phase', 'closing')
+  const closingEarly = await dock.evaluate((element) => {
+    for (const animation of element.getAnimations({ subtree: true })) {
+      animation.pause()
+      animation.currentTime = 80
+    }
+    const icon = element.querySelector<HTMLElement>('[data-testid="quick-dock-toggle-icon"]')!
+    const actions = element.querySelector<HTMLElement>('[data-testid="quick-dock-actions"]')!
+    return {
+      note: Number.parseFloat(getComputedStyle(icon.querySelector('[data-icon="note"]')!).opacity),
+      close: Number.parseFloat(getComputedStyle(icon.querySelector('[data-icon="close"]')!).opacity),
+      actions: Number.parseFloat(getComputedStyle(actions).opacity),
+      clipPath: getComputedStyle(element).clipPath,
+    }
+  })
+  expect(closingEarly.note).toBeGreaterThan(reversalStart.note)
+  expect(closingEarly.close).toBeLessThan(reversalStart.close)
+  expect(closingEarly.actions).toBeLessThan(reversalStart.actionsOpacity)
+  expect(closingEarly.clipPath).not.toBe(reversalStart.clipPath)
+  await dock.screenshot({
+    path: '../../docs/screenshots/redevelopment/quick-dock-simultaneous-motion-ui/early-closing.png',
+  })
   await dock.evaluate((element) => {
     for (const animation of element.getAnimations({ subtree: true })) {
       animation.pause()
@@ -1493,7 +1556,7 @@ test('Quick Dock trigger는 note와 X를 양방향 회전 morph한다', async ({
   const closingBlend = await closingIcon.evaluate((element) => ({
     note: Number.parseFloat(getComputedStyle(element.querySelector('[data-icon="note"]')!).opacity),
     close: Number.parseFloat(getComputedStyle(element.querySelector('[data-icon="close"]')!).opacity),
-    clipPath: getComputedStyle(element.closest('nav')!).clipPath,
+    clipPath: getComputedStyle(element.closest('[data-quick-dock-surface]')!).clipPath,
   }))
   expect(closingBlend.note).toBeGreaterThan(0)
   expect(closingBlend.close).toBeLessThan(1)
@@ -1507,6 +1570,9 @@ test('Quick Dock trigger는 note와 X를 양방향 회전 morph한다', async ({
   await expect(dock).toHaveCount(0)
   await expect(trigger).toBeFocused()
   await expect(trigger.getByTestId('quick-dock-toggle-icon')).toHaveAttribute('data-phase', 'closed')
+  expect(await trigger.evaluate((element) => (
+    window as Window & { __oneflowQuickDockToggle?: Element }
+  ).__oneflowQuickDockToggle === element)).toBe(true)
 
   // Completed path: animationend commits open/closed and preserves focus handoff.
   await trigger.click()
