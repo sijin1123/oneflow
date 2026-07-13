@@ -27,6 +27,10 @@ async def test_workspace_saved_view_crud_and_canonical_params(client):
         priority="high",
         layout="timeline",
         density="compact",
+        group_by="assignee",
+        columns=["due", "project", "assignee", "status"],
+        show_empty_groups=False,
+        show_ids=True,
     )
     assert view["name"] == "Delivery"
     assert view["params"] == {
@@ -37,6 +41,10 @@ async def test_workspace_saved_view_crud_and_canonical_params(client):
         "priority": "high",
         "layout": "timeline",
         "density": "compact",
+        "group_by": "assignee",
+        "columns": ["project", "status", "assignee", "due"],
+        "show_empty_groups": False,
+        "show_ids": True,
         "filter_mode": "basic",
         "pql": "",
     }
@@ -74,12 +82,20 @@ async def test_workspace_saved_view_pql_mode_canonicalizes_and_rejects_invalid_v
         state="open",
         sort="due",
         priority="urgent",
+        group_by="priority",
+        columns=["status", "priority", "updated"],
+        show_empty_groups=False,
+        show_ids=True,
     )
     assert view["params"]["filter_mode"] == "pql"
     assert view["params"]["pql"] == "state = open ORDER BY updated DESC LIMIT 4"
     assert view["params"]["state"] == "all"
     assert view["params"]["sort"] == "updated"
     assert view["params"]["priority"] == "all"
+    assert view["params"]["group_by"] == "priority"
+    assert view["params"]["columns"] == ["status", "priority", "updated"]
+    assert view["params"]["show_empty_groups"] is False
+    assert view["params"]["show_ids"] is True
     for params in (
         {"filter_mode": "pql", "pql": " "},
         {"filter_mode": "pql", "pql": "priority = impossible"},
@@ -93,6 +109,36 @@ async def test_workspace_saved_view_pql_mode_canonicalizes_and_rejects_invalid_v
             assert response.json()["params"]["pql"] == ""
         else:
             assert response.status_code == 422
+
+
+async def test_workspace_saved_view_rejects_invalid_display_params(client):
+    for params in (
+        {"columns": []},
+        {"columns": ["project", "project"]},
+        {"columns": ["project", "unknown"]},
+        {"group_by": "unknown"},
+    ):
+        response = await client.post(
+            "/api/v1/me/workspace-views", json={"name": "invalid display", "params": params}
+        )
+        assert response.status_code == 422
+
+
+async def test_workspace_saved_view_display_defaults(client):
+    view = await _create(client, "Display defaults")
+    assert view["params"]["group_by"] == "state"
+    assert view["params"]["columns"] == [
+        "project",
+        "status",
+        "priority",
+        "type",
+        "assignee",
+        "start",
+        "due",
+        "updated",
+    ]
+    assert view["params"]["show_empty_groups"] is True
+    assert view["params"]["show_ids"] is False
 
 
 async def test_workspace_saved_view_pql_values_stay_inside_visible_membership(client, app):

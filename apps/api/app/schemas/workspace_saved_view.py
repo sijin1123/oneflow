@@ -17,6 +17,24 @@ class WorkspaceSavedViewParams(BaseModel):
     priority: Literal["all", "none", "low", "medium", "high", "urgent"] = "all"
     layout: Literal["board", "calendar", "table", "timeline"] = "board"
     density: Literal["comfortable", "compact"] = "comfortable"
+    group_by: Literal["state", "priority", "project", "assignee", "none"] = "state"
+    columns: list[
+        Literal["project", "status", "priority", "type", "assignee", "start", "due", "updated"]
+    ] = Field(
+        default_factory=lambda: [
+            "project",
+            "status",
+            "priority",
+            "type",
+            "assignee",
+            "start",
+            "due",
+            "updated",
+        ],
+        min_length=1,
+    )
+    show_empty_groups: bool = True
+    show_ids: bool = False
     filter_mode: Literal["basic", "pql"] = "basic"
     pql: str = Field(default="", max_length=1000)
 
@@ -29,6 +47,19 @@ class WorkspaceSavedViewParams(BaseModel):
     @classmethod
     def _clean_pql(cls, value: str) -> str:
         return value.strip()
+
+    @field_validator("columns")
+    @classmethod
+    def _require_unique_columns(cls, value: list[str]) -> list[str]:
+        if len(value) != len(set(value)):
+            raise ValueError("columns must not contain duplicates")
+        order = {
+            key: index
+            for index, key in enumerate(
+                ("project", "status", "priority", "type", "assignee", "start", "due", "updated")
+            )
+        }
+        return sorted(value, key=order.__getitem__)
 
     @model_validator(mode="after")
     def _validate_filter_mode(self) -> "WorkspaceSavedViewParams":
