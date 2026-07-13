@@ -8,7 +8,6 @@ import {
   ListChecks,
   RefreshCw,
   Search,
-  SlidersHorizontal,
   Table2,
   X,
 } from 'lucide-react'
@@ -19,14 +18,6 @@ import { EmptyState, ErrorState, ListSkeleton } from '@/components/shell/states'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { DataGrid, DataGridFrame, type GridDensity } from '@/components/ui/data-grid'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuLabel,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
 import { PageHeader, Toolbar } from '@/components/ui/surface'
 import {
@@ -39,9 +30,18 @@ import type { WpPriority } from '@/features/work-packages/types'
 import { cn } from '@/lib/utils'
 
 import { WorkspaceCalendarView } from './WorkspaceCalendarView'
+import { WorkspaceDisplayMenu } from './WorkspaceDisplayMenu'
 import { WorkspacePqlEditor, type WorkspaceFilterMode } from './WorkspacePqlEditor'
 import { WorkspaceSavedViewsControls } from './WorkspaceSavedViewsControls'
 import { WorkspaceTimelineView } from './WorkspaceTimelineView'
+import {
+  buildWorkspaceGroups,
+  parseWorkspaceColumns,
+  serializeWorkspaceColumns,
+  shortWorkspaceItemId,
+  type WorkspaceColumn,
+  type WorkspaceGroupBy,
+} from './workspaceDisplay'
 import {
   type WorkspaceSavedView,
   type WorkspaceSavedViewParams,
@@ -79,12 +79,21 @@ export function AllWorkPage() {
   )
   const layout = validChoice(searchParams.get('layout'), ['board', 'calendar', 'table', 'timeline'], 'board')
   const density = validChoice(searchParams.get('density'), ['compact', 'comfortable'], 'comfortable')
+  const groupBy = validChoice<WorkspaceGroupBy>(
+    searchParams.get('group_by'),
+    ['state', 'priority', 'project', 'assignee', 'none'],
+    'state',
+  )
+  const columns = parseWorkspaceColumns(searchParams.get('columns'))
+  const columnsKey = serializeWorkspaceColumns(columns)
+  const showEmptyGroups = searchParams.get('show_empty_groups') !== 'false'
+  const showIds = searchParams.get('show_ids') === 'true'
   const page = positiveInt(searchParams.get('page'))
   const activeViewId = searchParams.get('view')
   const [input, setInput] = useState(q)
   const [pqlDraft, setPqlDraft] = useState(pql)
   const [filtersOpen, setFiltersOpen] = useState(
-    state !== 'all' || priority !== 'all' || sort !== 'updated' || filterMode === 'pql',
+    state !== 'all' || priority !== 'all' || filterMode === 'pql',
   )
   const offset = (page - 1) * PAGE_SIZE
   const query = useWorkspaceWorkItems({
@@ -103,6 +112,29 @@ export function AllWorkPage() {
   useEffect(() => {
     if (pql) setPqlDraft(pql)
   }, [pql])
+
+  useEffect(() => {
+    const rawGroup = searchParams.get('group_by')
+    const rawColumns = searchParams.get('columns')
+    const rawEmptyGroups = searchParams.get('show_empty_groups')
+    const rawIds = searchParams.get('show_ids')
+    const groupInvalid = rawGroup !== null && rawGroup !== groupBy
+    const columnsInvalid = rawColumns !== null && rawColumns !== columnsKey
+    const emptyGroupsInvalid = rawEmptyGroups !== null && rawEmptyGroups !== 'false'
+    const idsInvalid = rawIds !== null && rawIds !== 'true'
+    if (!groupInvalid && !columnsInvalid && !emptyGroupsInvalid && !idsInvalid) return
+    setSearchParams((previous) => {
+      const next = new URLSearchParams(previous)
+      if (groupInvalid) next.delete('group_by')
+      if (columnsInvalid) {
+        if (isDefaultParam('columns', columnsKey)) next.delete('columns')
+        else next.set('columns', columnsKey)
+      }
+      if (emptyGroupsInvalid) next.delete('show_empty_groups')
+      if (idsInvalid) next.delete('show_ids')
+      return next
+    }, { replace: true })
+  }, [columnsKey, groupBy, searchParams, setSearchParams])
 
   useEffect(() => {
     if (!query.data) return
@@ -143,7 +175,7 @@ export function AllWorkPage() {
   const returnedFrom = data && data.items.length > 0 ? offset + 1 : 0
   const returnedTo = data ? offset + data.items.length : 0
   const scopeLabel = SCOPES.find((item) => item.value === scope)?.label ?? SCOPES[0].label
-  const basicFilterCount = Number(state !== 'all') + Number(priority !== 'all') + Number(sort !== 'updated')
+  const basicFilterCount = Number(state !== 'all') + Number(priority !== 'all')
   const activeFilterCount = filterMode === 'pql' ? Number(Boolean(pql)) : basicFilterCount
   const countText = data
     ? `${data.total}건${data.total > data.items.length ? ` · ${returnedFrom}-${returnedTo}` : ''}`
@@ -159,6 +191,10 @@ export function AllWorkPage() {
     pql: filterMode === 'pql' ? pql : '',
     layout,
     density,
+    group_by: groupBy,
+    columns,
+    show_empty_groups: showEmptyGroups,
+    show_ids: showIds,
   }
   const switchLayout = (nextLayout: 'board' | 'calendar' | 'table' | 'timeline') => {
     updateParams({ layout: nextLayout, page: String(page) })
@@ -166,11 +202,12 @@ export function AllWorkPage() {
   const applySavedView = (view: WorkspaceSavedView) => {
     setSearchParams((previous) => {
       const next = new URLSearchParams(previous)
-      for (const key of ['q', 'scope', 'state', 'sort', 'priority', 'filter_mode', 'pql', 'layout', 'density', 'page', 'month', 'view']) {
+      for (const key of ['q', 'scope', 'state', 'sort', 'priority', 'filter_mode', 'pql', 'layout', 'density', 'group_by', 'columns', 'show_empty_groups', 'show_ids', 'page', 'month', 'view']) {
         next.delete(key)
       }
       for (const [key, value] of Object.entries(view.params)) {
-        if (value && !isDefaultParam(key, value)) next.set(key, value)
+        const serialized = serializeSavedParam(value)
+        if (serialized && !isDefaultParam(key, serialized)) next.set(key, serialized)
       }
       next.set('view', view.id)
       return next
@@ -200,6 +237,13 @@ export function AllWorkPage() {
     })
   }
   const clearPql = () => updateParams({ filter_mode: 'pql', pql: null })
+  const toggleColumn = (column: WorkspaceColumn) => {
+    const next = columns.includes(column)
+      ? columns.filter((item) => item !== column)
+      : [...columns, column]
+    if (next.length === 0) return
+    updateParams({ columns: serializeWorkspaceColumns(next), page: String(page) })
+  }
 
   return (
     <div className="flex h-full min-w-0 flex-col bg-of-surface">
@@ -279,21 +323,22 @@ export function AllWorkPage() {
           >
             <Filter size={13} /> 필터{activeFilterCount > 0 ? ` ${activeFilterCount}` : ''}
           </Button>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button type="button" variant="outline" size="sm"><SlidersHorizontal size={13} /> Display</Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-44">
-              <DropdownMenuLabel>표 밀도</DropdownMenuLabel>
-              <DropdownMenuRadioGroup value={density} onValueChange={(value) => updateParams({ density: value, page: String(page) })}>
-                {(['comfortable', 'compact'] as GridDensity[]).map((option) => (
-                  <DropdownMenuRadioItem key={option} value={option}>
-                    {option === 'comfortable' ? '편안하게' : '조밀하게'}
-                  </DropdownMenuRadioItem>
-                ))}
-              </DropdownMenuRadioGroup>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <WorkspaceDisplayMenu
+            layout={layout}
+            groupBy={groupBy}
+            columns={columns}
+            sort={sort}
+            density={density}
+            showEmptyGroups={showEmptyGroups}
+            showIds={showIds}
+            pqlSorting={filterMode === 'pql'}
+            onGroupByChange={(value) => updateParams({ group_by: value, page: String(page) })}
+            onToggleColumn={toggleColumn}
+            onSortChange={(value) => updateParams({ sort: value })}
+            onDensityChange={(value) => updateParams({ density: value, page: String(page) })}
+            onShowEmptyGroupsChange={(value) => updateParams({ show_empty_groups: value ? null : 'false', page: String(page) })}
+            onShowIdsChange={(value) => updateParams({ show_ids: value ? 'true' : null, page: String(page) })}
+          />
           <WorkspaceSavedViewsControls
             activeViewId={activeViewId}
             currentParams={currentViewParams}
@@ -342,22 +387,13 @@ export function AllWorkPage() {
                 >
                   {PRIORITIES.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
                 </select>
-                <select
-                  aria-label="정렬 방식"
-                  value={sort}
-                  className="h-8 rounded-of border border-of-border bg-of-surface px-2 text-xs"
-                  onChange={(event) => updateParams({ sort: event.target.value })}
-                >
-                  <option value="updated">최근 수정순</option>
-                  <option value="due">기한 빠른순</option>
-                </select>
                 <Button
                   type="button"
                   variant="ghost"
                   size="sm"
                   className="ml-auto"
                   disabled={basicFilterCount === 0}
-                  onClick={() => updateParams({ state: null, priority: null, sort: null })}
+                  onClick={() => updateParams({ state: null, priority: null })}
                 >
                   Clear all
                 </Button>
@@ -379,7 +415,14 @@ export function AllWorkPage() {
             visual="illustration"
           />
         ) : layout === 'board' ? (
-          <WorkspaceBoard items={data.items} density={density} onOpen={(item) => navigate(workItemPath(item))} />
+          <WorkspaceBoard
+            items={data.items}
+            density={density}
+            groupBy={groupBy}
+            showEmptyGroups={showEmptyGroups}
+            showIds={showIds}
+            onOpen={(item) => navigate(workItemPath(item))}
+          />
         ) : layout === 'calendar' ? (
           <WorkspaceCalendarView
             items={data.items}
@@ -394,6 +437,8 @@ export function AllWorkPage() {
           <WorkspaceTable
             items={data.items}
             density={density}
+            columns={columns}
+            showIds={showIds}
             onOpen={(item) => navigate(workItemPath(item))}
           />
         ) : (
@@ -453,30 +498,25 @@ function LayoutButton({
   )
 }
 
-const BOARD_GROUPS: Array<{
-  key: string
-  label: string
-  statuses: SearchResultItem['status'][]
-}> = [
-  { key: 'backlog', label: 'Backlog', statuses: ['backlog'] },
-  { key: 'unstarted', label: 'Unstarted', statuses: ['todo'] },
-  { key: 'started', label: 'Started', statuses: ['in_progress', 'in_review'] },
-  { key: 'completed', label: 'Completed', statuses: ['done', 'cancelled'] },
-]
-
 function WorkspaceBoard({
   items,
   density,
+  groupBy,
+  showEmptyGroups,
+  showIds,
   onOpen,
 }: {
   items: SearchResultItem[]
   density: GridDensity
+  groupBy: WorkspaceGroupBy
+  showEmptyGroups: boolean
+  showIds: boolean
   onOpen: (item: SearchResultItem) => void
 }) {
+  const groups = buildWorkspaceGroups(items, groupBy, showEmptyGroups)
   return (
     <div className="of-scrollbar flex h-full min-h-0 gap-3 overflow-x-auto p-3" aria-label="전체 작업 Board">
-      {BOARD_GROUPS.map((group) => {
-        const groupItems = items.filter((item) => group.statuses.includes(item.status))
+      {groups.map((group) => {
         return (
           <section
             key={group.key}
@@ -490,10 +530,10 @@ function WorkspaceBoard({
             <header className="flex h-10 shrink-0 items-center gap-2 border-b border-of-border-subtle px-3 text-xs font-semibold">
               <span className="h-2 w-2 rounded-full border border-of-border bg-of-surface" />
               {group.label}
-              <Badge variant="neutral">{groupItems.length}</Badge>
+              <Badge variant="neutral">{group.items.length}</Badge>
             </header>
             <div className="of-scrollbar min-h-0 flex-1 space-y-2 overflow-y-auto p-2">
-              {groupItems.map((item) => (
+              {group.items.map((item) => (
                 <button
                   key={item.id}
                   type="button"
@@ -507,6 +547,7 @@ function WorkspaceBoard({
                     <span className="font-mono">{item.project_key}</span>
                     <span className="truncate">{item.project_name}</span>
                   </span>
+                  {showIds ? <span className="mt-1 block font-mono text-[10px] text-of-faint">{shortWorkspaceItemId(item)}</span> : null}
                   <span className="mt-2 block text-[13px] font-medium leading-5 text-of-text">{item.subject}</span>
                   <span className="mt-3 flex flex-wrap items-center gap-1.5">
                     <StatusChip status={item.status} />
@@ -519,7 +560,7 @@ function WorkspaceBoard({
                   </span>
                 </button>
               ))}
-              {groupItems.length === 0 ? <p className="px-2 py-4 text-center text-xs text-of-muted">작업 없음</p> : null}
+              {group.items.length === 0 ? <p className="px-2 py-4 text-center text-xs text-of-muted">작업 없음</p> : null}
             </div>
           </section>
         )
@@ -531,36 +572,48 @@ function WorkspaceBoard({
 function WorkspaceTable({
   items,
   density,
+  columns,
+  showIds,
   onOpen,
 }: {
   items: SearchResultItem[]
   density: GridDensity
+  columns: WorkspaceColumn[]
+  showIds: boolean
   onOpen: (item: SearchResultItem) => void
 }) {
+  const has = (column: WorkspaceColumn) => columns.includes(column)
   return (
     <DataGridFrame density={density} className="h-full" aria-label="전체 작업 표 스크롤 영역">
-      <DataGrid className="min-w-[1040px] table-fixed text-left">
+      <DataGrid className="table-fixed text-left" style={{ minWidth: `${360 + columns.length * 112}px` }}>
         <thead className="sticky top-0 z-10 bg-of-surface/95 backdrop-blur">
           <tr className="border-b border-of-border text-[11px] font-medium text-of-muted">
-            <th className="h-9 w-[24%] px-4">작업</th><th className="h-9 w-[15%] px-3">프로젝트</th>
-            <th className="h-9 w-[9%] px-3">상태</th><th className="h-9 w-[9%] px-3">우선순위</th>
-            <th className="h-9 w-[8%] px-3">타입</th><th className="h-9 w-[8%] px-3">담당자</th>
-            <th className="h-9 w-[9%] whitespace-nowrap px-2">시작일</th><th className="h-9 w-[9%] whitespace-nowrap px-2">기한</th>
-            <th className="h-9 w-[9%] whitespace-nowrap px-2">수정일</th>
+            <th className="h-9 w-72 px-4">작업</th>
+            {has('project') ? <th className="h-9 w-44 px-3">프로젝트</th> : null}
+            {has('status') ? <th className="h-9 w-28 px-3">상태</th> : null}
+            {has('priority') ? <th className="h-9 w-28 px-3">우선순위</th> : null}
+            {has('type') ? <th className="h-9 w-24 px-3">타입</th> : null}
+            {has('assignee') ? <th className="h-9 w-28 px-3">담당자</th> : null}
+            {has('start') ? <th className="h-9 w-28 whitespace-nowrap px-2">시작일</th> : null}
+            {has('due') ? <th className="h-9 w-28 whitespace-nowrap px-2">기한</th> : null}
+            {has('updated') ? <th className="h-9 w-28 whitespace-nowrap px-2">수정일</th> : null}
           </tr>
         </thead>
         <tbody>
           {items.map((item) => (
             <tr key={item.id} className="group border-b border-of-border hover:bg-of-surface-hover focus-within:bg-of-surface-hover">
-              <td className="h-10 px-4"><button type="button" className="block w-full truncate rounded-of text-left text-[13px] font-medium hover:text-of-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus" onClick={() => onOpen(item)}>{item.subject}</button></td>
-              <td className="h-10 px-3"><span className="flex min-w-0 items-center gap-1.5"><Badge variant="neutral" className="shrink-0 font-mono">{item.project_key}</Badge><span className="truncate text-of-muted">{item.project_name}</span></span></td>
-              <td className="px-3 py-2"><StatusChip status={item.status} /></td>
-              <td className="px-3 py-2"><PriorityChip priority={item.priority} /></td>
-              <td className="px-3 py-2"><TypeChip type={item.type} /></td>
-              <td className="h-10 truncate px-3 text-of-muted">{item.assignee_name ?? '—'}</td>
-              <td className="h-10 whitespace-nowrap px-2 text-of-muted">{dateOnly(item.start_date)}</td>
-              <td className="h-10 whitespace-nowrap px-2 text-of-muted">{dateOnly(item.due_date)}</td>
-              <td className="h-10 whitespace-nowrap px-2 text-of-muted">{dateOnly(item.updated_at)}</td>
+              <td className="h-10 px-4">
+                {showIds ? <span className="mr-2 font-mono text-[10px] text-of-faint">{shortWorkspaceItemId(item)}</span> : null}
+                <button type="button" className="max-w-full truncate rounded-of text-left text-[13px] font-medium hover:text-of-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus" onClick={() => onOpen(item)}>{item.subject}</button>
+              </td>
+              {has('project') ? <td className="h-10 px-3"><span className="flex min-w-0 items-center gap-1.5"><Badge variant="neutral" className="shrink-0 font-mono">{item.project_key}</Badge><span className="truncate text-of-muted">{item.project_name}</span></span></td> : null}
+              {has('status') ? <td className="px-3 py-2"><StatusChip status={item.status} /></td> : null}
+              {has('priority') ? <td className="px-3 py-2"><PriorityChip priority={item.priority} /></td> : null}
+              {has('type') ? <td className="px-3 py-2"><TypeChip type={item.type} /></td> : null}
+              {has('assignee') ? <td className="h-10 truncate px-3 text-of-muted">{item.assignee_name ?? '—'}</td> : null}
+              {has('start') ? <td className="h-10 whitespace-nowrap px-2 text-of-muted">{dateOnly(item.start_date)}</td> : null}
+              {has('due') ? <td className="h-10 whitespace-nowrap px-2 text-of-muted">{dateOnly(item.due_date)}</td> : null}
+              {has('updated') ? <td className="h-10 whitespace-nowrap px-2 text-of-muted">{dateOnly(item.updated_at)}</td> : null}
             </tr>
           ))}
         </tbody>
@@ -587,8 +640,18 @@ function isDefaultParam(key: string, value: string) {
     (key === 'filter_mode' && value === 'basic') ||
     (key === 'layout' && value === 'board') ||
     (key === 'density' && value === 'comfortable') ||
+    (key === 'group_by' && value === 'state') ||
+    (key === 'columns' && value === 'project,status,priority,type,assignee,start,due,updated') ||
+    (key === 'show_empty_groups' && value === 'true') ||
+    (key === 'show_ids' && value === 'false') ||
     (key === 'page' && value === '1')
   )
+}
+
+function serializeSavedParam(value: unknown) {
+  if (Array.isArray(value)) return value.join(',')
+  if (typeof value === 'boolean') return String(value)
+  return typeof value === 'string' ? value : null
 }
 
 function workItemPath(item: SearchResultItem) {

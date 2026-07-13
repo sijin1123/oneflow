@@ -153,7 +153,7 @@ export function WorkspaceSavedViewsControls({
               <div className="min-w-0 flex-1">
                 <Dialog.Title className="text-sm font-semibold">작업영역 뷰 저장</Dialog.Title>
                 <Dialog.Description className="mt-1 text-xs text-of-muted">
-                  현재 범위, 필터, 정렬, 레이아웃과 밀도를 내 뷰로 저장합니다.
+                  현재 범위, 필터, 정렬, 레이아웃, 그룹과 표시 속성을 내 뷰로 저장합니다.
                 </Dialog.Description>
               </div>
               <Dialog.Close asChild>

@@ -7282,13 +7282,26 @@ export interface components {
             name: string;
             /**
              * @default {
+             *       "columns": [
+             *         "project",
+             *         "status",
+             *         "priority",
+             *         "type",
+             *         "assignee",
+             *         "start",
+             *         "due",
+             *         "updated"
+             *       ],
              *       "density": "comfortable",
              *       "filter_mode": "basic",
+             *       "group_by": "state",
              *       "layout": "board",
              *       "pql": "",
              *       "priority": "all",
              *       "q": "",
              *       "scope": "all",
+             *       "show_empty_groups": true,
+             *       "show_ids": false,
              *       "sort": "updated",
              *       "state": "all"
              *     }
@@ -7309,6 +7322,8 @@ export interface components {
         };
         /** WorkspaceSavedViewParams */
         WorkspaceSavedViewParams: {
+            /** Columns */
+            columns?: ("project" | "status" | "priority" | "type" | "assignee" | "start" | "due" | "updated")[];
             /**
              * Density
              * @default comfortable
@@ -7321,6 +7336,12 @@ export interface components {
              * @enum {string}
              */
             filter_mode: "basic" | "pql";
+            /**
+             * Group By
+             * @default state
+             * @enum {string}
+             */
+            group_by: "state" | "priority" | "project" | "assignee" | "none";
             /**
              * Layout
              * @default board
@@ -7349,6 +7370,16 @@ export interface components {
              * @enum {string}
              */
             scope: "all" | "assigned" | "created" | "subscribed";
+            /**
+             * Show Empty Groups
+             * @default true
+             */
+            show_empty_groups: boolean;
+            /**
+             * Show Ids
+             * @default false
+             */
+            show_ids: boolean;
             /**
              * Sort
              * @default updated
