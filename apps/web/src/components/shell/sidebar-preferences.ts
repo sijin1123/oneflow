@@ -34,6 +34,7 @@ export type SidebarPreferences = {
   expandedProjectIds: string[]
   projectDisclosureInitialized: boolean
   pinned: SidebarNavKey[]
+  favoriteProjectIds: string[]
 }
 
 export const DEFAULT_SIDEBAR_WIDTH = 248
@@ -62,6 +63,7 @@ export const DEFAULT_SIDEBAR_PREFERENCES: SidebarPreferences = {
   expandedProjectIds: [],
   projectDisclosureInitialized: false,
   pinned: ['/work-items'],
+  favoriteProjectIds: [],
 }
 
 const validKeys = new Set<string>(SIDEBAR_NAV_KEYS)
@@ -107,6 +109,11 @@ export function parseSidebarPreferences(raw: string | null): SidebarPreferences 
       pinned: Array.isArray(value.pinned)
         ? validStoredKeys(value.pinned).filter((key) => key !== '/projects')
         : [...DEFAULT_SIDEBAR_PREFERENCES.pinned],
+      favoriteProjectIds: Array.isArray(value.favoriteProjectIds)
+        ? value.favoriteProjectIds.filter((id, index): id is string =>
+          typeof id === 'string' && id.length > 0 && value.favoriteProjectIds?.indexOf(id) === index,
+        )
+        : [],
     }
   } catch {
     return DEFAULT_SIDEBAR_PREFERENCES
@@ -135,7 +142,8 @@ function samePreferences(left: SidebarPreferences, right: SidebarPreferences) {
     left.hidden.join('|') === right.hidden.join('|') &&
     left.order.join('|') === right.order.join('|') &&
     left.expandedProjectIds.join('|') === right.expandedProjectIds.join('|') &&
-    left.pinned.join('|') === right.pinned.join('|')
+    left.pinned.join('|') === right.pinned.join('|') &&
+    left.favoriteProjectIds.join('|') === right.favoriteProjectIds.join('|')
   )
 }
 
@@ -216,6 +224,15 @@ export function useSidebarPreferences() {
     }))
   }, [])
 
+  const setFavoriteProject = useCallback((projectId: string, favorite: boolean) => {
+    setPreferences((current) => ({
+      ...current,
+      favoriteProjectIds: favorite
+        ? [...current.favoriteProjectIds.filter((id) => id !== projectId), projectId]
+        : current.favoriteProjectIds.filter((id) => id !== projectId),
+    }))
+  }, [])
+
   const setNavVisible = useCallback((key: SidebarNavKey, visible: boolean) => {
     setPreferences((current) => ({
       ...current,
@@ -281,6 +298,7 @@ export function useSidebarPreferences() {
     setProjectsExpanded,
     setProjectExpanded,
     setPinned,
+    setFavoriteProject,
     setNavVisible,
     moveNav,
     moveNavTo,

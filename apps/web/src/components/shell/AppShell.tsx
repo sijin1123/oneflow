@@ -45,6 +45,7 @@ export function AppShell() {
           onProjectsExpandedChange={sidebar.setProjectsExpanded}
           onProjectExpandedChange={sidebar.setProjectExpanded}
           onPinnedChange={sidebar.setPinned}
+          onFavoriteProjectChange={sidebar.setFavoriteProject}
         />
         <main
           className={cn(

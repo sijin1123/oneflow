@@ -30,7 +30,9 @@ import {
   List,
   ListChecks,
   ListTree,
+  Link as LinkIcon,
   LockKeyhole,
+  MoreHorizontal,
   Paperclip,
   PanelLeftClose,
   Plus,
@@ -40,6 +42,7 @@ import {
   Sparkles,
   SquareActivity,
   SquareKanban,
+  Star,
   StickyNote,
   Users,
   Webhook,
@@ -50,11 +53,21 @@ import { useEffect, useRef, useState } from 'react'
 import { Link, NavLink, useLocation, useNavigate, useParams } from 'react-router-dom'
 
 import { useAuthConfig } from '@/features/auth/api'
-import { useMe } from '@/features/members/api'
+import { useMe, useMembers } from '@/features/members/api'
 import { useCanWrite } from '@/features/members/useCanWrite'
-import { useProjects } from '@/features/projects/api'
+import { useArchiveProject, useProjects } from '@/features/projects/api'
+import type { ProjectListItem } from '@/features/projects/types'
 import { useWorkspaceCapabilities } from '@/features/workspace-features/api'
 import { useWorkspaceProfile } from '@/features/workspace-profile/api'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import { confirmDestructive } from '@/lib/guards'
 import { cn } from '@/lib/utils'
 
 import {
@@ -182,6 +195,109 @@ function NewWorkItemButton({ projectId, onNavigate }: { projectId: string; onNav
     >
       <Plus size={14} aria-hidden="true" /> 새 작업
     </button>
+  )
+}
+
+function ProjectActions({
+  project,
+  meId,
+  favorite,
+  onFavoriteChange,
+  onNavigate,
+  onMessage,
+}: {
+  project: ProjectListItem
+  meId?: string
+  favorite: boolean
+  onFavoriteChange: (projectId: string, favorite: boolean) => void
+  onNavigate?: () => void
+  onMessage: (message: string) => void
+}) {
+  const navigate = useNavigate()
+  const [open, setOpen] = useState(false)
+  const members = useMembers(project.id, open)
+  const archive = useArchiveProject(project.id)
+  const isOwner = members.data?.items.some(
+    (member) => member.user_id === meId && member.role === 'owner',
+  ) === true
+
+  const copyLink = async () => {
+    const href = `${window.location.origin}/projects/${project.id}/work-packages`
+    try {
+      if (!navigator.clipboard?.writeText) throw new Error('clipboard unavailable')
+      await navigator.clipboard.writeText(href)
+      onMessage(`'${project.name}' 링크를 복사했습니다.`)
+    } catch {
+      onMessage(`복사할 링크: ${href}`)
+    }
+  }
+
+  const archiveProject = () => {
+    if (!confirmDestructive(`'${project.name}' 프로젝트를 보관할까요?\n보관 중에는 모든 변경이 차단됩니다(복원 가능).`)) return
+    archive.mutate(true, {
+      onSuccess: () => {
+        onMessage(`'${project.name}' 프로젝트를 보관했습니다.`)
+      },
+      onError: () => onMessage(`'${project.name}' 프로젝트를 보관하지 못했습니다.`),
+    })
+  }
+
+  return (
+    <>
+      <DropdownMenu open={open} onOpenChange={setOpen}>
+        <DropdownMenuTrigger asChild>
+          <button
+            type="button"
+            aria-label={`${project.name} 프로젝트 작업`}
+            className="flex h-8 w-7 shrink-0 items-center justify-center rounded-of text-of-muted opacity-100 transition-[opacity,color,background-color] hover:bg-of-surface-hover hover:text-of-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus sm:opacity-0 sm:group-hover/project:opacity-100 sm:group-focus-within/project:opacity-100"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <MoreHorizontal size={14} aria-hidden="true" />
+          </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start" side="right" className="w-52">
+          <DropdownMenuLabel>{project.name}</DropdownMenuLabel>
+          <DropdownMenuItem
+            className="flex items-center gap-2 text-xs"
+            onSelect={() => onFavoriteChange(project.id, !favorite)}
+          >
+            <Star size={13} fill={favorite ? 'currentColor' : 'none'} aria-hidden="true" />
+            {favorite ? '즐겨찾기 해제' : '즐겨찾기에 추가'}
+          </DropdownMenuItem>
+          <DropdownMenuItem className="flex items-center gap-2 text-xs" onSelect={() => void copyLink()}>
+            <LinkIcon size={13} aria-hidden="true" /> 링크 복사
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            className="flex items-center gap-2 text-xs"
+            onSelect={() => {
+              navigate(`/projects/${project.id}/settings`)
+              onNavigate?.()
+            }}
+          >
+            <Settings size={13} aria-hidden="true" /> 설정
+          </DropdownMenuItem>
+          {members.isPending ? (
+            <DropdownMenuLabel className="text-xs normal-case">권한 확인 중…</DropdownMenuLabel>
+          ) : null}
+          {members.isError ? (
+            <DropdownMenuLabel className="text-xs normal-case text-of-danger">권한을 확인할 수 없습니다.</DropdownMenuLabel>
+          ) : null}
+          {isOwner ? (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                className="flex items-center gap-2 text-xs text-of-danger"
+                disabled={archive.isPending}
+                onSelect={archiveProject}
+              >
+                <Archive size={13} aria-hidden="true" />
+                {archive.isPending ? '보관 중…' : '프로젝트 보관'}
+              </DropdownMenuItem>
+            </>
+          ) : null}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </>
   )
 }
 
@@ -522,6 +638,7 @@ function SidebarContent({
   onProjectsExpandedChange,
   onProjectExpandedChange,
   onPinnedChange,
+  onFavoriteProjectChange,
 }: {
   onNavigate?: () => void
   onClose?: () => void
@@ -540,6 +657,7 @@ function SidebarContent({
   onProjectsExpandedChange: (value: boolean) => void
   onProjectExpandedChange: (projectId: string, expanded: boolean, preserveProjectId?: string) => void
   onPinnedChange: (key: SidebarNavKey, pinned: boolean) => void
+  onFavoriteProjectChange: (projectId: string, favorite: boolean) => void
 }) {
   const { projectId } = useParams()
   const { data } = useProjects()
@@ -559,12 +677,23 @@ function SidebarContent({
   const visibleWorkspacePanelItems = visibleNav(availableWorkspaceItems, preferences)
   const visibleWorkspaceNav = [workspaceNav[0], ...visibleWorkspacePanelItems.filter((item) => preferences.pinned.includes(item.to))]
   const selectedProject = data?.items.find((project) => project.id === projectId) ?? data?.items[0]
+  const activeSidebarProject = projectId
+    ? data?.items.find((project) => project.id === projectId)
+    : undefined
+  const favoriteOrderedProjects = [...(data?.items ?? [])].sort((left, right) =>
+    Number(preferences.favoriteProjectIds.includes(right.id)) -
+    Number(preferences.favoriteProjectIds.includes(left.id)),
+  )
   const limitedProjects = preferences.limitProjects
-    ? (data?.items ?? []).slice(0, preferences.projectLimit)
-    : (data?.items ?? [])
-  const sidebarProjects = selectedProject && !limitedProjects.some((project) => project.id === selectedProject.id)
-    ? [selectedProject, ...limitedProjects.slice(0, Math.max(0, preferences.projectLimit - 1))]
+    ? favoriteOrderedProjects.slice(0, preferences.projectLimit)
+    : favoriteOrderedProjects
+  const sidebarProjects = activeSidebarProject && !limitedProjects.some((project) => project.id === activeSidebarProject.id)
+    ? [activeSidebarProject, ...limitedProjects.slice(0, Math.max(0, preferences.projectLimit - 1))]
     : limitedProjects
+  const orderedSidebarProjects = [...sidebarProjects].sort((left, right) =>
+    Number(preferences.favoriteProjectIds.includes(right.id)) -
+    Number(preferences.favoriteProjectIds.includes(left.id)),
+  )
   const wikiEnabled = capabilities.data?.wiki.enabled === true
   const settingsHref = me.data?.is_admin ? '/admin' : '/settings'
   const location = useLocation()
@@ -580,9 +709,16 @@ function SidebarContent({
   const profileWorkMode =
     location.pathname === '/my' && myWorkTab !== null && myWorkTab !== 'overview'
   const [moreOpen, setMoreOpen] = useState(false)
+  const [projectActionMessage, setProjectActionMessage] = useState<string | null>(null)
   const moreTriggerRef = useRef<HTMLButtonElement>(null)
   const morePanelRef = useRef<HTMLDivElement>(null)
   const wasMoreOpen = useRef(false)
+
+  useEffect(() => {
+    if (!projectActionMessage) return
+    const timer = window.setTimeout(() => setProjectActionMessage(null), 4_000)
+    return () => window.clearTimeout(timer)
+  }, [projectActionMessage])
 
   useEffect(() => {
     if (!moreOpen) {
@@ -777,7 +913,7 @@ function SidebarContent({
               <div>
                 <SectionLabel>프로젝트 공간</SectionLabel>
                 <div className="space-y-0.5">
-                  {sidebarProjects.map((project) => {
+                  {orderedSidebarProjects.map((project) => {
                     const active = project.id === projectId
                     return (
                       <Link
@@ -878,14 +1014,15 @@ function SidebarContent({
                 프로젝트
               </button>
               {preferences.projectsExpanded ? <div className="mt-1 space-y-2">
-                {sidebarProjects.map((project) => {
+                {orderedSidebarProjects.map((project) => {
                   const activeProject = project.id === projectId
+                  const favorite = preferences.favoriteProjectIds.includes(project.id)
                   const expanded = preferences.expandedProjectIds.includes(project.id) || (
                     activeProject && !preferences.projectDisclosureInitialized
                   )
                   return (
-                    <div key={project.id}>
-                      <div className="flex items-center gap-0.5">
+                    <div key={project.id} data-project-row={project.id}>
+                      <div className="group/project flex items-center gap-0.5">
                         <NavLink
                           to={`/projects/${project.id}/work-packages`}
                           className={() => cn(projectLinkClass(activeProject), 'min-w-0 flex-1')}
@@ -895,7 +1032,16 @@ function SidebarContent({
                             {project.key.slice(0, 2)}
                           </span>
                           <span className="min-w-0 flex-1 truncate">{project.name}</span>
+                          {favorite ? <Star size={11} fill="currentColor" aria-label="즐겨찾기" /> : null}
                         </NavLink>
+                        <ProjectActions
+                          project={project}
+                          meId={me.data?.id}
+                          favorite={favorite}
+                          onFavoriteChange={onFavoriteProjectChange}
+                          onNavigate={onNavigate}
+                          onMessage={setProjectActionMessage}
+                        />
                         <button
                           type="button"
                           aria-label={`${project.name} 하위 내비게이션`}
@@ -1005,6 +1151,14 @@ function SidebarContent({
           </div>
         </div>
       ) : null}
+      {projectActionMessage ? (
+        <div
+          role="status"
+          className="fixed bottom-4 left-1/2 z-[80] max-w-[calc(100vw-2rem)] -translate-x-1/2 rounded-of border border-of-border bg-of-surface-raised px-3 py-2 text-xs text-of-text shadow-[var(--of-shadow-popover)]"
+        >
+          {projectActionMessage}
+        </div>
+      ) : null}
     </div>
   )
 }
@@ -1026,6 +1180,7 @@ export function Sidebar({
   onProjectsExpandedChange,
   onProjectExpandedChange,
   onPinnedChange,
+  onFavoriteProjectChange,
 }: {
   mobileOpen?: boolean
   onMobileClose?: () => void
@@ -1043,6 +1198,7 @@ export function Sidebar({
   onProjectsExpandedChange: (value: boolean) => void
   onProjectExpandedChange: (projectId: string, expanded: boolean, preserveProjectId?: string) => void
   onPinnedChange: (key: SidebarNavKey, pinned: boolean) => void
+  onFavoriteProjectChange: (projectId: string, favorite: boolean) => void
 }) {
   const [resizing, setResizing] = useState(false)
   const resizeStart = useRef<{ x: number; width: number } | null>(null)
@@ -1112,6 +1268,7 @@ export function Sidebar({
           onProjectsExpandedChange={onProjectsExpandedChange}
           onProjectExpandedChange={onProjectExpandedChange}
           onPinnedChange={onPinnedChange}
+          onFavoriteProjectChange={onFavoriteProjectChange}
         />
         {!preferences.collapsed ? (
           <div
@@ -1179,6 +1336,7 @@ export function Sidebar({
               onProjectsExpandedChange={onProjectsExpandedChange}
               onProjectExpandedChange={onProjectExpandedChange}
               onPinnedChange={onPinnedChange}
+              onFavoriteProjectChange={onFavoriteProjectChange}
             />
           </aside>
         </div>

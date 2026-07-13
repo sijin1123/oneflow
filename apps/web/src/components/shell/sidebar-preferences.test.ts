@@ -26,6 +26,7 @@ test('sidebar preferences keep legacy payloads compatible', () => {
   assert.deepEqual(parsed.expandedProjectIds, [])
   assert.equal(parsed.projectDisclosureInitialized, false)
   assert.deepEqual(parsed.pinned, ['/work-items'])
+  assert.deepEqual(parsed.favoriteProjectIds, [])
   assert.deepEqual(parsed.order.slice(0, 2), ['/notes', '/my'])
 })
 
@@ -59,6 +60,7 @@ test('sidebar preferences retain valid hierarchy and pinned navigation state', (
     expandedProjectIds: ['project-1', 'project-1', 5, 'project-2'],
     projectDisclosureInitialized: true,
     pinned: ['/work-items', '/reports', '/projects', '/reports', '/missing'],
+    favoriteProjectIds: ['project-2', 'project-2', 5, '', 'project-1'],
   }))
 
   assert.equal(parsed.workspaceExpanded, false)
@@ -66,4 +68,5 @@ test('sidebar preferences retain valid hierarchy and pinned navigation state', (
   assert.deepEqual(parsed.expandedProjectIds, ['project-1', 'project-2'])
   assert.equal(parsed.projectDisclosureInitialized, true)
   assert.deepEqual(parsed.pinned, ['/work-items', '/reports'])
+  assert.deepEqual(parsed.favoriteProjectIds, ['project-2', 'project-1'])
 })
