@@ -5701,6 +5701,8 @@ export interface components {
             archived_at: string | null;
             /** Budget */
             budget: number | null;
+            /** Cover Attachment Id */
+            cover_attachment_id: string | null;
             /**
              * Created At
              * Format: date-time
@@ -5760,11 +5762,15 @@ export interface components {
             archived_at: string | null;
             /** Budget */
             budget: number | null;
+            /** Cover Attachment Id */
+            cover_attachment_id: string | null;
             /**
              * Created At
              * Format: date-time
              */
             created_at: string;
+            /** Current User Role */
+            current_user_role: string;
             /** Description */
             description: string | null;
             /** Health */
@@ -5826,6 +5832,8 @@ export interface components {
             archived_at: string | null;
             /** Budget */
             budget: number | null;
+            /** Cover Attachment Id */
+            cover_attachment_id: string | null;
             /**
              * Created At
              * Format: date-time
@@ -6087,6 +6095,8 @@ export interface components {
         ProjectUpdate: {
             /** Budget */
             budget?: number | null;
+            /** Cover Attachment Id */
+            cover_attachment_id?: string | null;
             /** Description */
             description?: string | null;
             /** Health */

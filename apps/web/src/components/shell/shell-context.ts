@@ -27,6 +27,7 @@ const workspaceRouteLabels: Array<{ path: string; title: string; parent: string 
 ]
 
 const projectRouteLabels: Array<{ suffix: string; title: string; parent: string; parentPath: string }> = [
+  { suffix: '/overview', title: 'Overview', parent: '프로젝트', parentPath: 'overview' },
   { suffix: '/work-packages', title: 'Work Packages', parent: '작업', parentPath: 'work-packages' },
   { suffix: '/board', title: 'Board', parent: '작업', parentPath: 'work-packages' },
   { suffix: '/backlog', title: 'Backlog', parent: '작업', parentPath: 'work-packages' },
@@ -87,9 +88,9 @@ export function getShellContext(
     }
     return {
       parent: route.parent,
-      parentHref: `${projectBase}/${route.parentPath}`,
+      parentHref: route.parentPath === 'overview' ? '/projects' : `${projectBase}/${route.parentPath}`,
       scope: projectName,
-      scopeHref: `${projectBase}/dashboard`,
+      scopeHref: `${projectBase}/overview`,
       title: route.title,
     }
   }

@@ -10,6 +10,7 @@ from sqlalchemy import (
     Index,
     String,
     Text,
+    UniqueConstraint,
     func,
 )
 from sqlalchemy.dialects.postgresql import UUID
@@ -49,6 +50,7 @@ class Attachment(Base):
         Index("ix_attachments_wp", "work_package_id"),
         Index("ix_attachments_document", "document_id"),
         Index("ix_attachments_project_created", "project_id", "created_at"),
+        UniqueConstraint("id", "project_id", name="uq_attachments_id_project_id"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)

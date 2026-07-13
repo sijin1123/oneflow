@@ -135,6 +135,23 @@ async def test_delete_removes_blob_and_url_rows_still_work(client, app):
     assert (await client.get(f"/api/v1/attachments/{body['id']}/download")).status_code == 404
 
 
+async def test_delete_blob_cleanup_is_best_effort(client, app, monkeypatch):
+    project = await create_project(client, key="DBE", name="삭제 정리")
+    att = (await upload(client, project["id"])).json()
+    root = pathlib.Path(app.state.settings.storage_dir).resolve()
+    blob = root / project["id"] / att["id"]
+
+    def fail_delete(_storage, _key):
+        raise OSError("simulated storage outage")
+
+    monkeypatch.setattr("app.api.v1.attachments.LocalStorage.delete", fail_delete)
+
+    response = await client.delete(f"/api/v1/attachments/{att['id']}")
+    assert response.status_code == 204
+    assert blob.is_file()
+    assert (await client.get(f"/api/v1/attachments/{att['id']}/download")).status_code == 404
+
+
 async def test_streaming_count_rejects_lying_content_length(client, app):
     """A body larger than its declared Content-Length cap is cut by the
     authoritative streaming counter (httpx sends the true length, so simulate

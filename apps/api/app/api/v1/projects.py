@@ -1,14 +1,18 @@
 import uuid
 
+from anyio import CapacityLimiter, to_thread
 from fastapi import APIRouter, Depends, HTTPException, Query
+from PIL import Image, ImageSequence, UnidentifiedImageError
 from sqlalchemy import func, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import get_current_user
 from app.core.authz import authorize, is_member, require_member, require_role
+from app.core.config import Settings, get_settings
 from app.core.dates import utc_today
 from app.db.session import get_session
+from app.models.attachment import Attachment
 from app.models.initiative import Initiative, InitiativeProject
 from app.models.member import ProjectMember
 from app.models.project import Project
@@ -28,12 +32,54 @@ from app.schemas.project import (
 )
 from app.services.health import apply_health_patch
 from app.services.project_templates import capture_project_settings, materialize_project_settings
+from app.services.storage import LocalStorage
 from app.services.workspace_features import INITIATIVES_FEATURE, feature_enabled
 
 router = APIRouter()
 
 # Top-N initiatives per project row (v51.1 R1-③); the rest is a count.
 INITIATIVE_ROLLUP_CAP = 5
+PROJECT_COVER_IMAGE_TYPES = {"image/png", "image/jpeg", "image/gif", "image/webp"}
+PROJECT_COVER_FORMATS = {
+    "image/png": "PNG",
+    "image/jpeg": "JPEG",
+    "image/gif": "GIF",
+    "image/webp": "WEBP",
+}
+PROJECT_COVER_MAX_EDGE = 10_000
+PROJECT_COVER_MAX_PIXELS = 24_000_000
+PROJECT_COVER_MAX_FRAMES = 120
+PROJECT_COVER_MAX_TOTAL_PIXELS = 40_000_000
+PROJECT_COVER_DECODE_LIMITER = CapacityLimiter(1)
+
+
+def _valid_cover_blob(storage_key: str | None, content_type: str | None, storage_dir: str) -> bool:
+    if storage_key is None or content_type not in PROJECT_COVER_IMAGE_TYPES:
+        return False
+    path = LocalStorage(storage_dir).path(storage_key)
+    if path is None:
+        return False
+    try:
+        with Image.open(path) as image:
+            width, height = image.size
+            frame_count = getattr(image, "n_frames", 1)
+            if (
+                image.format != PROJECT_COVER_FORMATS[content_type]
+                or width <= 0
+                or height <= 0
+                or width > PROJECT_COVER_MAX_EDGE
+                or height > PROJECT_COVER_MAX_EDGE
+                or width * height > PROJECT_COVER_MAX_PIXELS
+                or frame_count <= 0
+                or frame_count > PROJECT_COVER_MAX_FRAMES
+                or width * height * frame_count > PROJECT_COVER_MAX_TOTAL_PIXELS
+            ):
+                return False
+            for frame in ImageSequence.Iterator(image):
+                frame.load()
+    except (OSError, SyntaxError, ValueError, UnidentifiedImageError, Image.DecompressionBombError):
+        return False
+    return True
 
 
 def _member_project_ids(user: User):
@@ -66,6 +112,7 @@ async def list_projects(
     ids = [p.id for p in rows]
     wp_agg: dict = {}
     member_agg: dict = {}
+    role_agg: dict = {}
     if ids:
         # Rollups share the visible scope by construction (project_id IN the
         # returned ids). utc_today binds from the API layer — never the DB
@@ -95,6 +142,15 @@ async def list_projects(
             )
         ).all()
         member_agg = dict(member_rows)
+        role_rows = (
+            await session.execute(
+                select(ProjectMember.project_id, ProjectMember.role).where(
+                    ProjectMember.project_id.in_(ids),
+                    ProjectMember.user_id == user.id,
+                )
+            )
+        ).all()
+        role_agg = dict(role_rows)
 
     # Initiative rollup (Pass 51, v51.1): a SEPARATE aggregate query — the
     # many-to-many never joins into the row/count queries (no distortion).
@@ -114,7 +170,10 @@ async def list_projects(
 
     items = []
     for p in rows:
-        item = ProjectListItem.model_validate(p)
+        item = ProjectListItem(
+            **ProjectRead.model_validate(p).model_dump(),
+            current_user_role=role_agg[p.id],
+        )
         t, o, ov = wp_agg.get(p.id, (0, 0, 0))
         item.work_package_count = t
         item.open_work_package_count = o
@@ -225,15 +284,43 @@ async def update_project(
     body: ProjectUpdate,
     session: AsyncSession = Depends(get_session),
     user: User = Depends(get_current_user),
+    settings: Settings = Depends(get_settings),
 ) -> ProjectRead:
     # Project settings (name/description/budget) are owner-only (404 non-member).
     await require_role(session, project_id, user, {"owner"}, write=True)
-    project = (await session.execute(select(Project).where(Project.id == project_id))).scalar_one()
+    project = (
+        await session.execute(select(Project).where(Project.id == project_id).with_for_update())
+    ).scalar_one()
     fields = body.model_dump(exclude_unset=True)
     # `name` is NOT NULL: an explicit null is a client error (422), never an
     # unhandled IntegrityError → 500 (fable5 audit: PATCH null-semantics).
     if "name" in fields and fields["name"] is None:
         raise HTTPException(status_code=422, detail="name cannot be null")
+    if (cover_id := fields.get("cover_attachment_id")) is not None:
+        cover = (
+            await session.execute(
+                select(Attachment).where(
+                    Attachment.id == cover_id,
+                    Attachment.project_id == project_id,
+                    Attachment.storage_key.is_not(None),
+                    Attachment.content_type.in_(PROJECT_COVER_IMAGE_TYPES),
+                )
+            )
+        ).scalar_one_or_none()
+        valid_cover = False
+        if cover is not None:
+            valid_cover = await to_thread.run_sync(
+                _valid_cover_blob,
+                cover.storage_key,
+                cover.content_type,
+                settings.storage_dir,
+                limiter=PROJECT_COVER_DECODE_LIMITER,
+            )
+        if not valid_cover:
+            raise HTTPException(
+                status_code=422,
+                detail="cover must be an uploaded raster image from this project",
+            )
     # Health transition table (v37.1 R1-②; shared pure helper since Pass 44).
     apply_health_patch(project, fields, user.id)
     for key, value in fields.items():

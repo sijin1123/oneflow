@@ -31,6 +31,13 @@ async def test_rollups_counts(client):
     # done + past-due does NOT count as overdue (closed vocabulary excluded).
     assert row["overdue_count"] == 1
     assert row["member_count"] == 1  # the creating owner
+    assert row["current_user_role"] == "owner"
+
+
+async def test_list_exposes_current_member_role(client, member_project):
+    items = (await client.get("/api/v1/projects")).json()["items"]
+    row = next(p for p in items if p["id"] == str(member_project["project_id"]))
+    assert row["current_user_role"] == "member"
 
 
 async def test_rollups_empty_and_archived(client):

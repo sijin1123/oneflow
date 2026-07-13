@@ -45,6 +45,7 @@ PROJECT_HEALTH = ("on_track", "at_risk", "off_track")
 class ProjectUpdate(BaseModel):
     name: str | None = None
     description: str | None = None
+    cover_attachment_id: uuid.UUID | None = None
     budget: float | None = None
     # Health report (Pass 37, v37.1 transition table): omitted = untouched;
     # a VALUE sets it and ALWAYS replaces the note (omitted note → null —
@@ -97,6 +98,7 @@ class ProjectRead(BaseModel):
     key: str
     name: str
     description: str | None
+    cover_attachment_id: uuid.UUID | None
     budget: float | None
     archived_at: datetime | None
     health: str | None
@@ -132,6 +134,7 @@ class ProjectListItem(ProjectRead):
     open_work_package_count: int = 0
     overdue_count: int = 0
     member_count: int = 0
+    current_user_role: str
     # Initiative rollup (Pass 51, v51.1): top 5 by name (connection implies
     # visibility — every listed project is the caller's), plus the overflow
     # count beyond the cap. Empty list when unconnected.

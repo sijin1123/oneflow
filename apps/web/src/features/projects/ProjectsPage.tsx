@@ -39,6 +39,7 @@ import {
   type ProjectHealth,
   type ProjectListItem,
 } from './types'
+import { ProjectCover } from './ProjectCover'
 
 const KEY_RE = /^[A-Z][A-Z0-9]{1,9}$/
 
@@ -143,7 +144,7 @@ function NewProjectForm({ onClose }: { onClose: () => void }) {
         description: description.trim() || null,
         template_project_id: templateId || null,
       },
-      { onSuccess: (p) => navigate(`/projects/${p.id}/work-packages`) },
+      { onSuccess: (p) => navigate(`/projects/${p.id}/overview`) },
     )
   }
 
@@ -354,7 +355,7 @@ function ProjectRow({
           </span>
           <div className="min-w-0">
             <Link
-              to={`/projects/${project.id}/work-packages`}
+              to={`/projects/${project.id}/overview`}
               className="block truncate rounded-of text-sm font-semibold transition-colors hover:text-of-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus"
             >
               <span className="mr-2 font-mono text-xs text-of-muted">{project.key}</span>
@@ -389,12 +390,14 @@ function ProjectRow({
           >
             대시보드
           </Link>
-          <Link
-            to={`/projects/${project.id}/settings`}
-            className="inline-flex h-7 items-center gap-1.5 rounded-of border border-of-border bg-of-surface px-2 font-medium text-of-text transition-colors hover:bg-of-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus"
-          >
-            설정
-          </Link>
+          {project.current_user_role === 'owner' ? (
+            <Link
+              to={`/projects/${project.id}/settings`}
+              className="inline-flex h-7 items-center gap-1.5 rounded-of border border-of-border bg-of-surface px-2 font-medium text-of-text transition-colors hover:bg-of-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus"
+            >
+              설정
+            </Link>
+          ) : null}
         </div>
 
         <ArrowUpRight
@@ -426,24 +429,36 @@ function ProjectCard({
     : 0
 
   return (
-    <li className="group flex min-h-52 min-w-0 flex-col overflow-hidden rounded-of border border-of-border bg-of-surface transition-colors hover:border-of-border-strong hover:bg-of-surface-hover">
-      <div className="flex min-h-14 items-center gap-3 border-b border-of-border bg-of-surface-2 px-3 py-2.5">
-        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-of bg-of-accent-soft font-mono text-[11px] font-semibold text-of-accent">
+    <li className="group flex min-h-64 min-w-0 flex-col overflow-hidden rounded-of border border-of-border bg-of-surface transition-[border-color,box-shadow] hover:border-of-border-strong hover:shadow-[var(--of-shadow-sm)]">
+      <ProjectCover
+        projectKey={project.key}
+        projectName={project.name}
+        attachmentId={project.cover_attachment_id}
+        className="h-24 shrink-0 border-b border-of-border"
+      >
+        <Link
+          to={`/projects/${project.id}/overview`}
+          aria-label={`${project.name} Overview 열기`}
+          className="absolute inset-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-white"
+        />
+        <span className="pointer-events-none absolute bottom-2 left-3 flex h-8 w-8 items-center justify-center rounded-of border border-white/50 bg-white/90 font-mono text-[11px] font-semibold text-of-accent shadow-sm">
           {project.key.slice(0, 2)}
         </span>
-        <div className="min-w-0 flex-1">
-          <Link
-            to={`/projects/${project.id}/work-packages`}
-            className="block truncate text-sm font-semibold hover:text-of-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus"
-          >
-            {project.name}
-          </Link>
-          <p className="truncate font-mono text-[11px] text-of-muted">{project.key}</p>
-        </div>
-        <ProjectHealthBadge health={project.health} note={project.health_note} />
-      </div>
+      </ProjectCover>
 
       <div className="flex min-h-0 flex-1 flex-col p-3">
+        <div className="flex min-w-0 items-start justify-between gap-2">
+          <div className="min-w-0">
+            <Link
+              to={`/projects/${project.id}/overview`}
+              className="block truncate text-sm font-semibold hover:text-of-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus"
+            >
+              {project.name}
+            </Link>
+            <p className="truncate font-mono text-[11px] text-of-muted">{project.key}</p>
+          </div>
+          <ProjectHealthBadge health={project.health} note={project.health_note} />
+        </div>
         <p className="min-h-10 line-clamp-2 text-xs leading-5 text-of-muted">
           {project.description || '프로젝트 설명이 없습니다.'}
         </p>
@@ -475,14 +490,16 @@ function ProjectCard({
           >
             대시보드
           </Link>
+          {project.current_user_role === 'owner' ? (
+            <Link
+              to={`/projects/${project.id}/settings`}
+              className="inline-flex h-7 items-center rounded-of px-2 text-xs font-medium text-of-secondary hover:bg-of-surface-2 hover:text-of-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus"
+            >
+              설정
+            </Link>
+          ) : null}
           <Link
-            to={`/projects/${project.id}/settings`}
-            className="inline-flex h-7 items-center rounded-of px-2 text-xs font-medium text-of-secondary hover:bg-of-surface-2 hover:text-of-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus"
-          >
-            설정
-          </Link>
-          <Link
-            to={`/projects/${project.id}/work-packages`}
+            to={`/projects/${project.id}/overview`}
             aria-label={`${project.name} 열기`}
             className="flex h-7 w-7 items-center justify-center rounded-of text-of-muted hover:bg-of-surface-2 hover:text-of-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus"
           >
@@ -572,35 +589,26 @@ export function ProjectsPage() {
     : `${summary.total}개 프로젝트`
 
   return (
-    <div className="mx-auto flex w-full max-w-7xl flex-col px-4 py-3 sm:px-6">
-      <header className="flex min-h-12 min-w-0 flex-col gap-3 border-b border-of-border py-2 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex min-w-0 items-center gap-3">
-          <div className="min-w-0">
-            <h1 className="text-sm font-semibold">프로젝트</h1>
-            <p className="text-[11px] text-of-muted">워크스페이스 디렉터리 · {resultText}</p>
-          </div>
-        </div>
-        <Button size="sm" onClick={() => setCreating(true)} disabled={creating}>
-          <Plus size={14} /> 새 프로젝트
-        </Button>
-      </header>
+    <div className="flex min-h-full w-full flex-col bg-of-surface">
+      <div className="sticky top-0 z-20 border-b border-of-border bg-of-surface/95 shadow-[var(--of-shadow-sm)] backdrop-blur">
+        <section aria-label="프로젝트 요약" className="flex min-w-0 flex-wrap items-center gap-x-5 gap-y-2 border-b border-of-border-subtle px-4 py-2 text-xs sm:px-6">
+          <span><span className="text-of-muted">활성</span> <strong className="ml-1 font-semibold tabular-nums text-of-accent">{summary.active}</strong></span>
+          <span><span className="text-of-muted">보관</span> <strong className="ml-1 font-semibold tabular-nums">{summary.archived}</strong></span>
+          <span><span className="text-of-muted">열린 작업</span> <strong className="ml-1 font-semibold tabular-nums">{summary.open}</strong></span>
+          <span><span className="text-of-muted">기한 초과</span> <strong className={cn('ml-1 font-semibold tabular-nums', summary.overdue > 0 && 'text-of-danger')}>{summary.overdue}</strong></span>
+          {initiativesEnabled ? (
+            <span><span className="text-of-muted">이니셔티브</span> <strong className="ml-1 font-semibold tabular-nums">{summary.initiatives}</strong></span>
+          ) : null}
+          <span className="ml-auto text-[11px] text-of-muted" aria-live="polite">{resultText}</span>
+          <Button size="sm" onClick={() => setCreating(true)} disabled={creating}>
+            <Plus size={14} /> 새 프로젝트
+          </Button>
+        </section>
 
-      <section aria-label="프로젝트 요약" className="flex min-w-0 flex-wrap items-center gap-x-5 gap-y-2 border-b border-of-border py-2.5 text-xs">
-        <span><span className="text-of-muted">활성</span> <strong className="ml-1 font-semibold tabular-nums text-of-accent">{summary.active}</strong></span>
-        <span><span className="text-of-muted">보관</span> <strong className="ml-1 font-semibold tabular-nums">{summary.archived}</strong></span>
-        <span><span className="text-of-muted">열린 작업</span> <strong className="ml-1 font-semibold tabular-nums">{summary.open}</strong></span>
-        <span><span className="text-of-muted">기한 초과</span> <strong className={cn('ml-1 font-semibold tabular-nums', summary.overdue > 0 && 'text-of-danger')}>{summary.overdue}</strong></span>
-        {initiativesEnabled ? (
-          <span><span className="text-of-muted">이니셔티브</span> <strong className="ml-1 font-semibold tabular-nums">{summary.initiatives}</strong></span>
-        ) : null}
-      </section>
-
-      {creating ? <div className="py-3"><NewProjectForm onClose={() => setCreating(false)} /></div> : null}
-
-      <section
-        aria-label="프로젝트 보기 제어"
-        className="flex flex-col gap-2 border-b border-of-border py-2.5 md:flex-row md:items-center md:justify-between"
-      >
+        <section
+          aria-label="프로젝트 보기 제어"
+          className="flex flex-col gap-2 px-4 py-2 md:flex-row md:items-center md:justify-between sm:px-6"
+        >
         <div className="flex min-w-0 flex-1 flex-col gap-2 sm:flex-row sm:items-center">
           <div className="relative min-w-0 flex-1 sm:max-w-sm">
             <Search
@@ -716,24 +724,27 @@ export function ProjectsPage() {
             <RefreshCw size={13} className={isFetching ? 'animate-spin' : undefined} />
           </Button>
         </div>
-      </section>
+        </section>
+      </div>
+
+      {creating ? <div className="mx-auto w-full max-w-7xl px-4 py-3 sm:px-6"><NewProjectForm onClose={() => setCreating(false)} /></div> : null}
 
       {data.total === 0 && !creating ? (
-        <EmptyState title="아직 프로젝트가 없습니다" hint="첫 프로젝트를 만들어 시작하세요.">
+        <div className="px-4 sm:px-6"><EmptyState title="아직 프로젝트가 없습니다" hint="첫 프로젝트를 만들어 시작하세요.">
           <Button size="sm" onClick={() => setCreating(true)}>
             <Plus size={14} /> 새 프로젝트
           </Button>
-        </EmptyState>
+        </EmptyState></div>
       ) : visibleProjects.length === 0 ? (
-        <EmptyState title="조건에 맞는 프로젝트가 없습니다" hint="검색어를 지우거나 보관 포함을 켜 보세요.">
+        <div className="px-4 sm:px-6"><EmptyState title="조건에 맞는 프로젝트가 없습니다" hint="검색어를 지우거나 보관 포함을 켜 보세요.">
           {query ? (
             <Button size="sm" variant="outline" onClick={() => setQuery('')}>
               검색 지우기
             </Button>
           ) : null}
-        </EmptyState>
+        </EmptyState></div>
       ) : (
-        <section className={cn('min-w-0 py-3', layout === 'list' && 'overflow-hidden rounded-of border border-of-border bg-of-surface')}>
+        <section className={cn('mx-auto w-full max-w-7xl min-w-0 px-4 py-3 sm:px-6', layout === 'list' && 'overflow-hidden rounded-of')}>
           {layout === 'list' ? (
             <div className="hidden grid-cols-[minmax(0,1.5fr)_9rem_minmax(12rem,0.8fr)_14rem_2rem] border-b border-of-border bg-of-surface-2 px-4 py-2 text-[11px] font-medium text-of-muted md:grid">
               <span>프로젝트</span>
@@ -743,7 +754,8 @@ export function ProjectsPage() {
               <span className="sr-only">열기</span>
             </div>
           ) : null}
-          <ul aria-label="프로젝트 디렉터리" className={cn(layout === 'grid' ? 'grid gap-3 md:grid-cols-2 xl:grid-cols-3' : 'divide-y divide-of-border')}>
+          <div className={cn(layout === 'list' && 'overflow-hidden rounded-of border border-of-border bg-of-surface')}>
+          <ul aria-label="프로젝트 디렉터리" className={cn(layout === 'grid' ? 'grid gap-3 md:grid-cols-2 2xl:grid-cols-3' : 'divide-y divide-of-border')}>
             {visibleProjects.map((project) => (
               layout === 'grid' ? (
                 <ProjectCard key={project.id} project={project} columns={visibleColumns} onOpenInitiative={(id) => navigate(`/initiatives?highlight=${id}`)} />
@@ -752,6 +764,7 @@ export function ProjectsPage() {
               )
             ))}
           </ul>
+          </div>
         </section>
       )}
     </div>
