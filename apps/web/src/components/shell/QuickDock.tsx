@@ -50,10 +50,9 @@ export function QuickDock({
   onOpenChange: (open: boolean) => void
 }) {
   const location = useLocation()
-  const triggerRef = useRef<HTMLButtonElement>(null)
   const restoreTriggerFocusRef = useRef(false)
   const dockRootRef = useRef<HTMLDivElement>(null)
-  const dockNavRef = useRef<HTMLElement>(null)
+  const dockNavRef = useRef<HTMLDivElement>(null)
   const dockActionsRef = useRef<HTMLDivElement>(null)
   const toggleRef = useRef<HTMLButtonElement>(null)
   const firstActionRef = useRef<HTMLButtonElement>(null)
@@ -205,7 +204,7 @@ export function QuickDock({
     if (dockPhase === 'open') firstActionRef.current?.focus()
     if (dockPhase === 'closed' && restoreTriggerFocusRef.current) {
       restoreTriggerFocusRef.current = false
-      triggerRef.current?.focus()
+      toggleRef.current?.focus()
     }
   }, [dockPhase])
 
@@ -228,8 +227,21 @@ export function QuickDock({
   }, [onOpenChange, open, panel])
 
   const close = () => {
+    if (dockOpening || dockClosing) return
     setPanel('none')
+    restoreTriggerFocusRef.current = true
+    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    setMotionSnapshot(snapshotMotion())
+    setDockPhase(reducedMotion ? 'closed' : 'closing')
     onOpenChange(false)
+  }
+
+  const openDock = () => {
+    if (open || dockOpening || dockClosing) return
+    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    setMotionSnapshot(undefined)
+    setDockPhase(reducedMotion ? 'open' : 'opening')
+    onOpenChange(true)
   }
 
   const patchNote = (
@@ -299,111 +311,105 @@ export function QuickDock({
         className="fixed bottom-3 right-3 z-40 transition-transform duration-[var(--of-duration-default)] motion-reduce:transition-none md:bottom-5 md:right-5"
         style={{ transform: `translateY(-${collisionOffset}px)` }}
       >
-        {dockMounted ? (
-          <>
-            {activeNote && (panel === 'compact' || panel === 'expanded') ? (
-              <div className="of-panel-enter absolute bottom-0 right-14">
-                <StickyNoteCard
-                  note={activeNote}
-                  variant={panel === 'compact' ? 'compact' : 'expanded'}
-                  autoFocus={panel === 'expanded'}
-                  pending={update.isPending || remove.isPending}
-                  onExpand={() => setPanel('expanded')}
-                  onUpdate={patchNote}
-                  onDelete={deleteNote}
-                />
-              </div>
-            ) : null}
-            <nav
-              ref={dockNavRef}
-              aria-label="빠른 도구"
-              data-testid="quick-dock-expanded"
-              data-phase={renderedDockPhase}
-              onAnimationEnd={finishDockMotion}
-              style={motionSnapshot}
+        {activeNote && dockMounted && (panel === 'compact' || panel === 'expanded') ? (
+          <div className="of-panel-enter absolute bottom-0 right-14">
+            <StickyNoteCard
+              note={activeNote}
+              variant={panel === 'compact' ? 'compact' : 'expanded'}
+              autoFocus={panel === 'expanded'}
+              pending={update.isPending || remove.isPending}
+              onExpand={() => setPanel('expanded')}
+              onUpdate={patchNote}
+              onDelete={deleteNote}
+            />
+          </div>
+        ) : null}
+        <div
+          ref={dockNavRef}
+          role={dockMounted ? 'navigation' : undefined}
+          aria-label={dockMounted ? '빠른 도구' : undefined}
+          data-quick-dock-surface
+          data-testid={dockMounted ? 'quick-dock-expanded' : undefined}
+          data-phase={renderedDockPhase}
+          onAnimationEnd={finishDockMotion}
+          style={motionSnapshot}
+          className={cn(
+            'flex w-12 flex-col items-center gap-1 rounded-full border border-of-border bg-of-surface p-1 shadow-[var(--of-shadow-popover)]',
+            dockOpening && 'of-dock-enter of-dock-opening',
+            dockClosing && 'of-dock-exit',
+          )}
+        >
+          {dockMounted ? (
+            <div
+              key="actions"
+              ref={dockActionsRef}
+              data-testid="quick-dock-actions"
               className={cn(
-                'flex w-12 flex-col items-center gap-1 rounded-full border border-of-border bg-of-surface p-1 shadow-[var(--of-shadow-popover)]',
-                dockOpening && 'of-dock-enter of-dock-opening',
-                dockClosing && 'of-dock-exit',
+                'of-dock-actions flex flex-col items-center gap-1',
+                dockOpening && 'of-dock-actions-enter',
+                dockClosing && 'of-dock-actions-exit',
               )}
             >
-              <div
-                ref={dockActionsRef}
-                data-testid="quick-dock-actions"
-                className={cn(
-                  'of-dock-actions flex flex-col items-center gap-1',
-                  dockOpening && 'of-dock-actions-enter',
-                  dockClosing && 'of-dock-actions-exit',
-                )}
-              >
-                <button
-                  ref={firstActionRef}
-                  type="button"
-                  aria-label="모든 메모 열기"
-                  title="모든 메모"
-                  disabled={dockOpening}
-                  className={dockButton}
-                  onClick={() => setPanel('all')}
-                >
-                  <Layers3 size={17} />
-                </button>
-                {activeNote ? (
-                  <button
-                    type="button"
-                    aria-label="현재 메모 열기"
-                    title="현재 메모"
-                    aria-pressed={panel === 'compact' || panel === 'expanded'}
-                    disabled={dockOpening}
-                    className={cn(dockButton, DOCK_COLORS[activeNote.color])}
-                    onClick={() => setPanel((value) => value === 'compact' || value === 'expanded' ? 'none' : 'compact')}
-                  >
-                    <StickyNote size={17} />
-                  </button>
-                ) : null}
-                <button
-                  type="button"
-                  aria-label="새 메모 만들기"
-                  title="새 메모"
-                  disabled={dockOpening || create.isPending}
-                  className={dockButton}
-                  onClick={() => void createBlank()}
-                >
-                  <Plus size={18} />
-                </button>
-              </div>
               <button
-                ref={toggleRef}
+                ref={firstActionRef}
                 type="button"
-                aria-label="빠른 도구 닫기"
-                title="닫기"
-                aria-busy={dockOpening || dockClosing}
-                aria-disabled={dockOpening || dockClosing}
+                aria-label="모든 메모 열기"
+                title="모든 메모"
+                disabled={dockOpening}
                 className={dockButton}
-                onClick={() => { if (!dockOpening && !dockClosing) close() }}
+                onClick={() => setPanel('all')}
               >
-                <DockToggleIcon phase={renderedDockPhase} />
+                <Layers3 size={17} />
               </button>
-            </nav>
-          </>
-        ) : (
+              {activeNote ? (
+                <button
+                  type="button"
+                  aria-label="현재 메모 열기"
+                  title="현재 메모"
+                  aria-pressed={panel === 'compact' || panel === 'expanded'}
+                  disabled={dockOpening}
+                  className={cn(dockButton, DOCK_COLORS[activeNote.color])}
+                  onClick={() => setPanel((value) => value === 'compact' || value === 'expanded' ? 'none' : 'compact')}
+                >
+                  <StickyNote size={17} />
+                </button>
+              ) : null}
+              <button
+                type="button"
+                aria-label="새 메모 만들기"
+                title="새 메모"
+                disabled={dockOpening || create.isPending}
+                className={dockButton}
+                onClick={() => void createBlank()}
+              >
+                <Plus size={18} />
+              </button>
+            </div>
+          ) : null}
           <button
-            ref={triggerRef}
+            key="toggle"
+            ref={toggleRef}
             type="button"
-            aria-label="빠른 도구 열기"
-            title="빠른 메모"
+            data-testid="quick-dock-toggle"
+            aria-label={dockMounted ? '빠른 도구 닫기' : '빠른 도구 열기'}
+            title={dockMounted ? '닫기' : '빠른 메모'}
             aria-expanded={open}
-            aria-busy={dockOpening}
-            aria-disabled={dockOpening}
+            aria-busy={dockOpening || dockClosing}
+            aria-disabled={dockOpening || dockClosing}
             className={cn(
-              'flex h-12 w-12 items-center justify-center rounded-full border border-of-border bg-of-surface text-of-accent shadow-[var(--of-shadow-popover)]',
-              'transition-[transform,background-color,box-shadow] duration-200 hover:scale-[1.04] hover:bg-of-surface-hover hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus motion-reduce:transform-none motion-reduce:transition-none',
-              dockOpening && 'pointer-events-none',
+              dockButton,
+              'h-[38px] w-[38px]',
+              !dockMounted && 'text-of-accent',
             )}
-            onClick={() => { if (!dockOpening) onOpenChange(true) }}
+            onClick={() => {
+              if (dockOpening || dockClosing) return
+              if (open) close()
+              else openDock()
+            }}
           >
-            <DockToggleIcon phase={dockOpening ? 'opening' : 'closed'} />
+            <DockToggleIcon phase={renderedDockPhase} />
           </button>
-        )}
+        </div>
       </div>
 
       <Dialog.Root open={open && panel === 'all'} onOpenChange={(next) => { if (!next) setPanel('none') }}>
