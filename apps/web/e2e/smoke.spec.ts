@@ -2461,15 +2461,16 @@ test('Workspace Table 담당자 셀은 menu open 시 roster를 조회하고 assi
   await page.route(`**/api/v1/projects/${project.id}/members`, (route) => route.fulfill(roster))
   await page.route(`**/api/v1/projects/${opsProjectId}/members`, (route) => route.fulfill(roster))
   await page.goto('/work-items?layout=table&columns=assignee')
+  const targetRow = page.getByRole('row', { name: /워크패키지 API 구현/ })
 
-  await expect(page.getByRole('button', { name: '담당자 변경: Dev User' })).toBeVisible()
+  await expect(targetRow.getByRole('button', { name: '담당자 변경: Dev User' })).toBeVisible()
   expect(opsMemberRequests).toBe(0)
   await page.getByRole('button', { name: '담당자 변경: Ops Lead' }).click()
   await expect.poll(() => opsMemberRequests).toBe(1)
   await expect(page.getByRole('menuitemradio', { name: 'Read Only' })).toHaveCount(0)
   await page.keyboard.press('Escape')
 
-  await page.getByRole('button', { name: '담당자 변경: Dev User' }).click()
+  await targetRow.getByRole('button', { name: '담당자 변경: Dev User' }).click()
   await expect(page.getByRole('menuitemradio', { name: 'Read Only' })).toHaveCount(0)
   await page.screenshot({
     path: '../../docs/screenshots/redevelopment/workspace-assignee-inline-ui/desktop-editor.png',
@@ -2480,15 +2481,15 @@ test('Workspace Table 담당자 셀은 menu open 시 roster를 조회하고 assi
   )
   await page.getByRole('menuitemradio', { name: 'Alex Kim' }).click()
   expect((await assignPatch).postDataJSON()).toEqual({ expected_version: 0, assignee_id: 'u-alex' })
-  await expect(page.getByRole('button', { name: '담당자 변경: Alex Kim' })).toBeVisible()
+  await expect(targetRow.getByRole('button', { name: '담당자 변경: Alex Kim' })).toBeVisible()
 
   const clearPatch = page.waitForRequest((request) =>
     request.method() === 'PATCH' && request.url().endsWith(`/work-packages/${wpA.id}`),
   )
-  await page.getByRole('button', { name: '담당자 변경: Alex Kim' }).click()
+  await targetRow.getByRole('button', { name: '담당자 변경: Alex Kim' }).click()
   await page.getByRole('menuitemradio', { name: '미배정' }).click()
   expect((await clearPatch).postDataJSON()).toEqual({ expected_version: 1, assignee_id: null })
-  await expect(page.getByRole('button', { name: '담당자 변경: 미배정' })).toBeVisible()
+  await expect(targetRow.getByRole('button', { name: '담당자 변경: 미배정' })).toBeVisible()
 })
 
 test('Workspace Table 담당자 roster 오류는 menu 안에서 재시도하고 모바일 폭을 유지한다', async ({ page }) => {
