@@ -29,6 +29,11 @@ export type SidebarPreferences = {
   projectNavigation: 'accordion' | 'tabs'
   limitProjects: boolean
   projectLimit: number
+  workspaceExpanded: boolean
+  projectsExpanded: boolean
+  expandedProjectIds: string[]
+  projectDisclosureInitialized: boolean
+  pinned: SidebarNavKey[]
 }
 
 export const DEFAULT_SIDEBAR_WIDTH = 248
@@ -52,6 +57,11 @@ export const DEFAULT_SIDEBAR_PREFERENCES: SidebarPreferences = {
   projectNavigation: 'accordion',
   limitProjects: false,
   projectLimit: DEFAULT_PROJECT_LIMIT,
+  workspaceExpanded: true,
+  projectsExpanded: true,
+  expandedProjectIds: [],
+  projectDisclosureInitialized: false,
+  pinned: ['/work-items'],
 }
 
 const validKeys = new Set<string>(SIDEBAR_NAV_KEYS)
@@ -84,6 +94,19 @@ export function parseSidebarPreferences(raw: string | null): SidebarPreferences 
       projectLimit: typeof value.projectLimit === 'number' && Number.isFinite(value.projectLimit)
         ? clampProjectLimit(value.projectLimit)
         : DEFAULT_PROJECT_LIMIT,
+      workspaceExpanded: typeof value.workspaceExpanded === 'boolean' ? value.workspaceExpanded : true,
+      projectsExpanded: typeof value.projectsExpanded === 'boolean' ? value.projectsExpanded : true,
+      expandedProjectIds: Array.isArray(value.expandedProjectIds)
+        ? value.expandedProjectIds.filter((id, index): id is string =>
+          typeof id === 'string' && id.length > 0 && value.expandedProjectIds?.indexOf(id) === index,
+        )
+        : [],
+      projectDisclosureInitialized: typeof value.projectDisclosureInitialized === 'boolean'
+        ? value.projectDisclosureInitialized
+        : false,
+      pinned: Array.isArray(value.pinned)
+        ? validStoredKeys(value.pinned).filter((key) => key !== '/projects')
+        : [...DEFAULT_SIDEBAR_PREFERENCES.pinned],
     }
   } catch {
     return DEFAULT_SIDEBAR_PREFERENCES
@@ -106,8 +129,13 @@ function samePreferences(left: SidebarPreferences, right: SidebarPreferences) {
     left.projectNavigation === right.projectNavigation &&
     left.limitProjects === right.limitProjects &&
     left.projectLimit === right.projectLimit &&
+    left.workspaceExpanded === right.workspaceExpanded &&
+    left.projectsExpanded === right.projectsExpanded &&
+    left.projectDisclosureInitialized === right.projectDisclosureInitialized &&
     left.hidden.join('|') === right.hidden.join('|') &&
-    left.order.join('|') === right.order.join('|')
+    left.order.join('|') === right.order.join('|') &&
+    left.expandedProjectIds.join('|') === right.expandedProjectIds.join('|') &&
+    left.pinned.join('|') === right.pinned.join('|')
   )
 }
 
@@ -150,6 +178,42 @@ export function useSidebarPreferences() {
 
   const setProjectLimit = useCallback((projectLimit: number) => {
     setPreferences((current) => ({ ...current, projectLimit: clampProjectLimit(projectLimit) }))
+  }, [])
+
+  const setWorkspaceExpanded = useCallback((workspaceExpanded: boolean) => {
+    setPreferences((current) => ({ ...current, workspaceExpanded }))
+  }, [])
+
+  const setProjectsExpanded = useCallback((projectsExpanded: boolean) => {
+    setPreferences((current) => ({ ...current, projectsExpanded }))
+  }, [])
+
+  const setProjectExpanded = useCallback((
+    projectId: string,
+    expanded: boolean,
+    preserveProjectId?: string,
+  ) => {
+    setPreferences((current) => {
+      const next = new Set(current.expandedProjectIds)
+      if (!current.projectDisclosureInitialized && preserveProjectId) next.add(preserveProjectId)
+      if (expanded) next.add(projectId)
+      else next.delete(projectId)
+      return {
+        ...current,
+        projectDisclosureInitialized: true,
+        expandedProjectIds: [...next],
+      }
+    })
+  }, [])
+
+  const setPinned = useCallback((key: SidebarNavKey, pinned: boolean) => {
+    if (key === '/projects') return
+    setPreferences((current) => ({
+      ...current,
+      pinned: pinned
+        ? [...current.pinned.filter((item) => item !== key), key]
+        : current.pinned.filter((item) => item !== key),
+    }))
   }, [])
 
   const setNavVisible = useCallback((key: SidebarNavKey, visible: boolean) => {
@@ -213,6 +277,10 @@ export function useSidebarPreferences() {
     setProjectNavigation,
     setLimitProjects,
     setProjectLimit,
+    setWorkspaceExpanded,
+    setProjectsExpanded,
+    setProjectExpanded,
+    setPinned,
     setNavVisible,
     moveNav,
     moveNavTo,

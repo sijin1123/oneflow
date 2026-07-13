@@ -41,6 +41,10 @@ export function AppShell() {
           onLimitProjectsChange={sidebar.setLimitProjects}
           onProjectLimitChange={sidebar.setProjectLimit}
           onResetNavigation={sidebar.resetNavigation}
+          onWorkspaceExpandedChange={sidebar.setWorkspaceExpanded}
+          onProjectsExpandedChange={sidebar.setProjectsExpanded}
+          onProjectExpandedChange={sidebar.setProjectExpanded}
+          onPinnedChange={sidebar.setPinned}
         />
         <main
           className={cn(
