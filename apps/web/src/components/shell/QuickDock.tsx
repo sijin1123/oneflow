@@ -16,6 +16,7 @@ import { ApiError } from '@/lib/api'
 import { cn } from '@/lib/utils'
 
 type NotePanel = 'none' | 'compact' | 'expanded' | 'all'
+type DockIconPhase = 'closed' | 'opening' | 'open' | 'closing'
 
 const DOCK_COLORS: Record<PersonalNote['color'], string> = {
   lavender: 'bg-[#e8e0ff] text-[#67558f]',
@@ -24,6 +25,20 @@ const DOCK_COLORS: Record<PersonalNote['color'], string> = {
   rose: 'bg-[#ffd9df] text-[#8d4b58]',
   blue: 'bg-[#d8ecff] text-[#3f6f98]',
   gray: 'bg-[#e7e8ea] text-[#5e6268]',
+}
+
+function DockToggleIcon({ phase }: { phase: DockIconPhase }) {
+  return (
+    <span
+      aria-hidden="true"
+      data-testid="quick-dock-toggle-icon"
+      data-phase={phase}
+      className={cn('of-dock-toggle-icon', `of-dock-toggle-icon-${phase}`)}
+    >
+      <StickyNote data-icon="note" size={20} />
+      <X data-icon="close" size={20} />
+    </span>
+  )
 }
 
 export function QuickDock({
@@ -35,13 +50,14 @@ export function QuickDock({
 }) {
   const location = useLocation()
   const triggerRef = useRef<HTMLButtonElement>(null)
+  const restoreTriggerFocusRef = useRef(false)
   const dockRootRef = useRef<HTMLDivElement>(null)
   const firstActionRef = useRef<HTMLButtonElement>(null)
   const searchRef = useRef<HTMLInputElement>(null)
   const [collisionOffset, setCollisionOffset] = useState(0)
   const [dockMounted, setDockMounted] = useState(open)
-  const [dockOpening, setDockOpening] = useState(false)
-  const [dockClosing, setDockClosing] = useState(false)
+  const dockOpening = open && !dockMounted
+  const dockClosing = !open && dockMounted
   const [panel, setPanel] = useState<NotePanel>('none')
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [search, setSearch] = useState('')
@@ -118,25 +134,19 @@ export function QuickDock({
   }, [dockMounted, location.pathname, location.search, open])
 
   useEffect(() => {
-    if (open) {
-      setDockClosing(false)
-      if (dockMounted) return
-      setDockOpening(true)
-      const timer = window.setTimeout(() => {
-        setDockOpening(false)
-        setDockMounted(true)
-      }, window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 160)
-      return () => window.clearTimeout(timer)
-    }
-    setDockOpening(false)
-    if (!dockMounted) return
-    setDockClosing(true)
+    if (open === dockMounted) return
+    restoreTriggerFocusRef.current = true
+    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
     const timer = window.setTimeout(() => {
-      setDockMounted(false)
-      setDockClosing(false)
-      requestAnimationFrame(() => triggerRef.current?.focus())
-    }, window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 160)
+      setDockMounted(open)
+    }, reducedMotion ? 0 : 180)
     return () => window.clearTimeout(timer)
+  }, [dockMounted, open])
+
+  useEffect(() => {
+    if (open || dockMounted || !restoreTriggerFocusRef.current) return
+    restoreTriggerFocusRef.current = false
+    triggerRef.current?.focus()
   }, [dockMounted, open])
 
   useEffect(() => {
@@ -276,8 +286,16 @@ export function QuickDock({
               >
                 <Plus size={18} />
               </button>
-              <button type="button" aria-label="빠른 도구 닫기" title="닫기" className={dockButton} onClick={close}>
-                <X size={17} />
+              <button
+                type="button"
+                aria-label="빠른 도구 닫기"
+                title="닫기"
+                aria-busy={dockClosing}
+                aria-disabled={dockClosing}
+                className={dockButton}
+                onClick={() => { if (!dockClosing) close() }}
+              >
+                <DockToggleIcon phase={dockClosing ? 'closing' : 'open'} />
               </button>
             </nav>
           </>
@@ -297,12 +315,7 @@ export function QuickDock({
             )}
             onClick={() => { if (!dockOpening) onOpenChange(true) }}
           >
-            <StickyNote
-              size={20}
-              aria-hidden="true"
-              data-testid="quick-dock-trigger-icon"
-              className={cn(dockOpening && 'of-dock-trigger-open')}
-            />
+            <DockToggleIcon phase={dockOpening ? 'opening' : 'closed'} />
           </button>
         )}
       </div>

@@ -258,10 +258,27 @@ textarea {
   to { opacity: 1; transform: translateY(0) scale(1); }
 }
 
-@keyframes of-dock-trigger-open {
-  from { opacity: 1; transform: rotate(0deg) scale(1); }
-  70% { opacity: 0.9; transform: rotate(250deg) scale(0.84); }
-  to { opacity: 0.45; transform: rotate(360deg) scale(0.72); }
+@keyframes of-dock-toggle-open { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+@keyframes of-dock-toggle-close { from { transform: rotate(0deg); } to { transform: rotate(-360deg); } }
+@keyframes of-dock-note-out {
+  from { opacity: 1; transform: scale(1); }
+  48% { opacity: 0.42; transform: scale(0.76); }
+  to { opacity: 0; transform: scale(0.58); }
+}
+@keyframes of-dock-close-in {
+  from { opacity: 0; transform: scale(0.58); }
+  52% { opacity: 0.42; transform: scale(0.76); }
+  to { opacity: 1; transform: scale(1); }
+}
+@keyframes of-dock-close-out {
+  from { opacity: 1; transform: scale(1); }
+  48% { opacity: 0.42; transform: scale(0.76); }
+  to { opacity: 0; transform: scale(0.58); }
+}
+@keyframes of-dock-note-in {
+  from { opacity: 0; transform: scale(0.58); }
+  52% { opacity: 0.42; transform: scale(0.76); }
+  to { opacity: 1; transform: scale(1); }
 }
 
 @keyframes of-dock-exit {
@@ -277,9 +294,31 @@ textarea {
 .of-overlay-enter { animation: of-overlay-enter var(--of-duration-overlay) var(--of-ease-standard) both; }
 .of-menu-enter { animation: of-menu-enter 150ms var(--of-ease-standard) both; transform-origin: top left; }
 .of-search-enter { animation: of-search-enter var(--of-duration-overlay) var(--of-ease-emphasized) both; transform-origin: top center; }
-.of-dock-trigger-open { animation: of-dock-trigger-open 160ms var(--of-ease-emphasized) both; transform-origin: center; }
+.of-dock-toggle-icon {
+  position: relative;
+  display: inline-block;
+  width: 20px;
+  height: 20px;
+  flex: none;
+  transform-origin: center;
+}
+.of-dock-toggle-icon > svg { position: absolute; inset: 0; transform-origin: center; }
+.of-dock-toggle-icon-closed [data-icon="note"],
+.of-dock-toggle-icon-closing [data-icon="note"],
+.of-dock-toggle-icon-open [data-icon="close"],
+.of-dock-toggle-icon-opening [data-icon="close"] { opacity: 1; transform: scale(1); }
+.of-dock-toggle-icon-closed [data-icon="close"],
+.of-dock-toggle-icon-closing [data-icon="close"],
+.of-dock-toggle-icon-open [data-icon="note"],
+.of-dock-toggle-icon-opening [data-icon="note"] { opacity: 0; transform: scale(0.58); }
+.of-dock-toggle-icon-opening { animation: of-dock-toggle-open 180ms var(--of-ease-emphasized) both; }
+.of-dock-toggle-icon-opening [data-icon="note"] { animation: of-dock-note-out 180ms var(--of-ease-emphasized) both; }
+.of-dock-toggle-icon-opening [data-icon="close"] { animation: of-dock-close-in 180ms var(--of-ease-emphasized) both; }
+.of-dock-toggle-icon-closing { animation: of-dock-toggle-close 180ms var(--of-ease-emphasized) both; }
+.of-dock-toggle-icon-closing [data-icon="close"] { animation: of-dock-close-out 180ms var(--of-ease-emphasized) both; }
+.of-dock-toggle-icon-closing [data-icon="note"] { animation: of-dock-note-in 180ms var(--of-ease-emphasized) both; }
 .of-dock-enter { animation: of-dock-enter 200ms var(--of-ease-emphasized) both; transform-origin: bottom center; }
-.of-dock-exit { animation: of-dock-exit 160ms var(--of-ease-standard) both; transform-origin: bottom center; pointer-events: none; }
+.of-dock-exit { animation: of-dock-exit 180ms var(--of-ease-standard) both; transform-origin: bottom center; pointer-events: none; }
 .of-panel-enter { animation: of-panel-enter 200ms var(--of-ease-emphasized) both; transform-origin: right center; }
 
 @media (pointer: coarse) {
@@ -293,7 +332,10 @@ textarea {
   .of-overlay-enter,
   .of-menu-enter,
   .of-search-enter,
-  .of-dock-trigger-open,
+  .of-dock-toggle-icon-opening,
+  .of-dock-toggle-icon-opening [data-icon],
+  .of-dock-toggle-icon-closing,
+  .of-dock-toggle-icon-closing [data-icon],
   .of-dock-enter,
   .of-dock-exit,
   .of-panel-enter {
