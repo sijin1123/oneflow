@@ -1,7 +1,6 @@
-import { AlertCircle, ChevronDown, RefreshCw, UserRoundX } from 'lucide-react'
+import { AlertCircle, ChevronDown, RefreshCw } from 'lucide-react'
 import { useState } from 'react'
 
-import { Avatar } from '@/components/ui/avatar'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -10,33 +9,20 @@ import {
   DropdownMenuRadioItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import { isAssignableMember } from '@/features/members/assignment'
 import { useMembers } from '@/features/members/api'
 import type { SearchResultItem } from '@/features/search/api'
+import { AssigneeChip } from '@/features/work-packages/AssigneeChip'
 import { usePatchWorkPackage } from '@/features/work-packages/api'
 
 const UNASSIGNED = '__unassigned__'
-
-function AssigneeChip({ name }: { name?: string | null }) {
-  return (
-    <span className="flex min-w-0 items-center gap-1.5">
-      {name ? (
-        <Avatar name={name} size="sm" className="h-5 w-5 text-[8px]" />
-      ) : (
-        <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-dashed border-of-border text-of-faint">
-          <UserRoundX size={11} aria-hidden />
-        </span>
-      )}
-      <span className="truncate text-xs text-of-muted">{name ?? '미배정'}</span>
-    </span>
-  )
-}
 
 export function WorkspaceInlineAssigneeMenu({ item }: { item: SearchResultItem }) {
   const [open, setOpen] = useState(false)
   const patch = usePatchWorkPackage(item.project_id)
   const canWrite = item.current_user_can_write === true && typeof item.version === 'number'
   const members = useMembers(item.project_id, open && canWrite)
-  const assignableMembers = (members.data?.items ?? []).filter((member) => member.role !== 'viewer')
+  const assignableMembers = (members.data?.items ?? []).filter(isAssignableMember)
   const currentLabel = item.assignee_name ?? '미배정'
   const patchError = patch.isError
     ? patch.error instanceof Error ? patch.error.message : '담당자를 저장하지 못했습니다.'
