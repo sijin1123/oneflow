@@ -10,7 +10,8 @@ probe (v14.1 — never a silent cut). Documents/meetings match on TITLE only
 
 from typing import Literal
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel, Field
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
@@ -44,8 +45,27 @@ from app.schemas.search import (
 from app.services.document_access import document_visible_clause
 from app.services.snippet import extract_snippet
 from app.services.workspace_features import INITIATIVES_FEATURE, feature_enabled
+from app.services.workspace_pql import (
+    PqlError,
+    compile_pql,
+    parse_pql,
+    pql_ordering,
+    validate_pql_values,
+)
 
 router = APIRouter()
+
+
+class PqlValidationRequest(BaseModel):
+    query: str = Field(max_length=1000)
+
+
+class PqlValidationResponse(BaseModel):
+    normalized: str
+    fields: list[str]
+    order_by: str | None
+    direction: str | None
+    limit: int | None
 
 
 def _member_project_ids(user: User):
@@ -68,6 +88,7 @@ async def search_work_packages(
     state: Literal["all", "open"] = "all",
     sort: Literal["updated", "due"] = "updated",
     priority: Literal["none", "low", "medium", "high", "urgent"] | None = None,
+    pql: str | None = Query(default=None, max_length=1000),
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     session: AsyncSession = Depends(get_session),
@@ -99,6 +120,15 @@ async def search_work_packages(
     if priority is not None:
         stmt = stmt.where(WorkPackage.priority == priority)
 
+    parsed_pql = None
+    if pql is not None:
+        try:
+            parsed_pql = parse_pql(pql)
+            await validate_pql_values(session, user, parsed_pql)
+        except PqlError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        stmt = stmt.where(compile_pql(parsed_pql, user, Assignee))
+
     total = (
         await session.execute(select(func.count()).select_from(stmt.order_by(None).subquery()))
     ).scalar_one()
@@ -111,7 +141,15 @@ async def search_work_packages(
         if sort == "due"
         else (WorkPackage.updated_at.desc(), WorkPackage.id.asc())
     )
-    rows = (await session.execute(stmt.order_by(*order_by).limit(limit).offset(offset))).all()
+    result_limit = limit
+    if parsed_pql is not None:
+        order_by = pql_ordering(parsed_pql) or order_by
+        if parsed_pql.limit is not None:
+            total = min(total, parsed_pql.limit)
+            result_limit = min(result_limit, max(0, parsed_pql.limit - offset))
+    rows = (
+        await session.execute(stmt.order_by(*order_by).limit(result_limit).offset(offset))
+    ).all()
     items = [
         SearchResultItem(
             id=wp.id,
@@ -132,6 +170,26 @@ async def search_work_packages(
         for wp, key, name, assignee_name in rows
     ]
     return SearchResults(items=items, total=total, query=q or "")
+
+
+@router.post("/search/work-packages/pql/validate", response_model=PqlValidationResponse)
+async def validate_workspace_pql(
+    body: PqlValidationRequest,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+) -> PqlValidationResponse:
+    try:
+        parsed = parse_pql(body.query)
+        await validate_pql_values(session, user, parsed)
+    except PqlError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return PqlValidationResponse(
+        normalized=parsed.normalized,
+        fields=parsed.fields,
+        order_by=parsed.order_by,
+        direction=parsed.direction,
+        limit=parsed.limit,
+    )
 
 
 @router.get("/search", response_model=UnifiedSearchResults)

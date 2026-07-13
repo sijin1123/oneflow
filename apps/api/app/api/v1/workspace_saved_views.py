@@ -23,6 +23,7 @@ from app.schemas.workspace_saved_view import (
     WorkspaceSavedViewRead,
     WorkspaceSavedViewUpdate,
 )
+from app.services.workspace_pql import PqlError, parse_pql, validate_pql_values
 
 router = APIRouter()
 
@@ -92,6 +93,19 @@ def _duplicate_name() -> HTTPException:
     return HTTPException(status_code=409, detail="a workspace view with this name already exists")
 
 
+async def _validate_pql_params(
+    session: AsyncSession,
+    user: User,
+    params: WorkspaceSavedViewParams | None,
+) -> None:
+    if params is None or params.filter_mode != "pql":
+        return
+    try:
+        await validate_pql_values(session, user, parse_pql(params.pql))
+    except PqlError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
 @router.get("/me/workspace-views", response_model=WorkspaceSavedViewList)
 async def list_workspace_saved_views(
     session: AsyncSession = Depends(get_session),
@@ -122,6 +136,7 @@ async def create_workspace_saved_view(
     session: AsyncSession = Depends(get_session),
     user: User = Depends(get_current_user),
 ) -> WorkspaceSavedViewRead:
+    await _validate_pql_params(session, user, body.params)
     await _lock_user_views(session, user.id)
     count = (
         await session.execute(select(func.count()).where(WorkspaceSavedView.user_id == user.id))
@@ -158,6 +173,7 @@ async def update_workspace_saved_view(
     session: AsyncSession = Depends(get_session),
     user: User = Depends(get_current_user),
 ) -> WorkspaceSavedViewRead | JSONResponse:
+    await _validate_pql_params(session, user, body.params)
     await _lock_user_views(session, user.id)
     current = await _own_or_404(session, view_id, user.id)
     if current.version >= MAX_INT4 and body.expected_version == current.version:

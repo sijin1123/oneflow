@@ -7,6 +7,7 @@ from sqlalchemy import select
 
 from app.core.auth import DEV_USER_EMAIL
 from app.models import User, WorkPackage, WpWatcher
+from app.services.workspace_pql import BooleanExpression, PqlError, parse_pql
 from tests.conftest import create_project, create_wp
 
 
@@ -88,6 +89,101 @@ async def test_search_wildcards_are_escaped(client, two_projects):
     # '%' is a literal, not a LIKE wildcard → no accidental match-all (§6.1)
     res = await client.get("/api/v1/search/work-packages?q=%25")
     assert res.json()["total"] == 0
+
+
+def test_workspace_pql_grammar_precedence_operators_order_and_limit():
+    parsed = parse_pql(
+        "state = open OR priority NOT IN (low, none) AND assignee = me "
+        "ORDER BY updated DESC LIMIT 20"
+    )
+    assert isinstance(parsed.expression, BooleanExpression)
+    assert parsed.expression.operator == "OR"
+    assert parsed.order_by == "updated"
+    assert parsed.direction == "DESC"
+    assert parsed.limit == 20
+    assert parsed.normalized.endswith("ORDER BY updated DESC LIMIT 20")
+
+
+@pytest.mark.parametrize(
+    "query",
+    ["state = unknown", "priority IN ()", "state = open LIMIT 0", "title ="],
+)
+def test_workspace_pql_rejects_invalid_syntax_and_values(query):
+    with pytest.raises(PqlError):
+        parse_pql(query)
+
+
+def test_workspace_pql_bounds_list_and_predicate_complexity():
+    with pytest.raises(PqlError, match="at most 25 values"):
+        parse_pql(f"title IN ({', '.join(f'item-{index}' for index in range(26))})")
+    with pytest.raises(PqlError, match="at most 20 predicates"):
+        parse_pql(" AND ".join(f"title = item-{index}" for index in range(21)))
+
+
+async def test_workspace_pql_execution_validation_and_member_boundary(
+    client, two_projects, foreign_project
+):
+    me = (await client.get("/api/v1/me")).json()
+    await create_wp(client, two_projects["a"]["id"], subject="PQL mine", assignee_id=me["id"])
+    await create_wp(client, two_projects["b"]["id"], subject="PQL done", status="done")
+
+    query = "state = open AND assignee = me ORDER BY title ASC LIMIT 1"
+    validated = await client.post(
+        "/api/v1/search/work-packages/pql/validate", json={"query": query}
+    )
+    assert validated.status_code == 200, validated.text
+    assert validated.json() == {
+        "normalized": query,
+        "fields": ["state", "assignee"],
+        "order_by": "title",
+        "direction": "ASC",
+        "limit": 1,
+    }
+    result = await client.get("/api/v1/search/work-packages", params={"pql": query, "limit": 99})
+    assert result.status_code == 200, result.text
+    assert result.json()["total"] == 1
+    assert [item["subject"] for item in result.json()["items"]] == ["PQL mine"]
+    outside_limit = await client.get(
+        "/api/v1/search/work-packages",
+        params={"pql": "state = open LIMIT 1", "limit": 50, "offset": 1},
+    )
+    assert outside_limit.json()["total"] == 1
+    assert outside_limit.json()["items"] == []
+
+    ordered = []
+    for priority in ("none", "high", "urgent", "low", "medium"):
+        ordered.append(
+            await create_wp(
+                client,
+                two_projects["a"]["id"],
+                subject=f"PQL priority {priority}",
+                priority=priority,
+            )
+        )
+    titles = ", ".join(f"'PQL priority {item['priority']}'" for item in ordered)
+    ranked = await client.get(
+        "/api/v1/search/work-packages",
+        params={"pql": f"title IN ({titles}) ORDER BY priority ASC"},
+    )
+    assert [item["priority"] for item in ranked.json()["items"]] == [
+        "urgent",
+        "high",
+        "medium",
+        "low",
+        "none",
+    ]
+
+    hidden = await client.get(
+        "/api/v1/search/work-packages",
+        params={"pql": "title = '남의 작업'"},
+    )
+    assert hidden.status_code == 200
+    assert hidden.json()["total"] == 0
+    assert (
+        await client.post(
+            "/api/v1/search/work-packages/pql/validate", json={"query": "project = SECRET"}
+        )
+    ).status_code == 422
 
 
 async def test_workspace_view_scope_filters_sort_and_pagination(client, app, two_projects):

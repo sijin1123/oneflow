@@ -2451,6 +2451,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/search/work-packages/pql/validate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Validate Workspace Pql */
+        post: operations["validate_workspace_pql_api_v1_search_work_packages_pql_validate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/users": {
         parameters: {
             query?: never;
@@ -5664,6 +5681,24 @@ export interface components {
             /** Work Packages */
             work_packages: number;
         };
+        /** PqlValidationRequest */
+        PqlValidationRequest: {
+            /** Query */
+            query: string;
+        };
+        /** PqlValidationResponse */
+        PqlValidationResponse: {
+            /** Direction */
+            direction: string | null;
+            /** Fields */
+            fields: string[];
+            /** Limit */
+            limit: number | null;
+            /** Normalized */
+            normalized: string;
+            /** Order By */
+            order_by: string | null;
+        };
         /**
          * ProjectActivityList
          * @description `total` is the RETURNED count (legacy contract — documented, v19.1);
@@ -7248,7 +7283,9 @@ export interface components {
             /**
              * @default {
              *       "density": "comfortable",
+             *       "filter_mode": "basic",
              *       "layout": "board",
+             *       "pql": "",
              *       "priority": "all",
              *       "q": "",
              *       "scope": "all",
@@ -7279,11 +7316,22 @@ export interface components {
              */
             density: "comfortable" | "compact";
             /**
+             * Filter Mode
+             * @default basic
+             * @enum {string}
+             */
+            filter_mode: "basic" | "pql";
+            /**
              * Layout
              * @default board
              * @enum {string}
              */
             layout: "board" | "calendar" | "table" | "timeline";
+            /**
+             * Pql
+             * @default
+             */
+            pql: string;
             /**
              * Priority
              * @default all
@@ -13857,6 +13905,7 @@ export interface operations {
                 state?: "all" | "open";
                 sort?: "updated" | "due";
                 priority?: ("none" | "low" | "medium" | "high" | "urgent") | null;
+                pql?: string | null;
                 limit?: number;
                 offset?: number;
             };
@@ -13877,6 +13926,43 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SearchResults"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    validate_workspace_pql_api_v1_search_work_packages_pql_validate_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PqlValidationRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PqlValidationResponse"];
                 };
             };
             /** @description Validation Error */

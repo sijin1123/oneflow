@@ -275,27 +275,36 @@ textarea {
   to { opacity: 1; transform: none; clip-path: inset(0 round 999px); }
 }
 
-@keyframes of-dock-toggle-open { from { transform: var(--of-dock-toggle-current-transform, rotate(0deg)); } to { transform: rotate(360deg); } }
-@keyframes of-dock-toggle-close { from { transform: var(--of-dock-toggle-current-transform, rotate(0deg)); } to { transform: rotate(-360deg); } }
+@keyframes of-dock-toggle-open { from { transform: var(--of-dock-toggle-current-transform, rotate(0deg)); } to { transform: rotate(180deg); } }
+@keyframes of-dock-toggle-close { from { transform: var(--of-dock-toggle-current-transform, rotate(180deg)); } to { transform: rotate(0deg); } }
 @keyframes of-dock-note-out {
   from { opacity: var(--of-dock-note-current-opacity, 1); transform: var(--of-dock-note-current-transform, scale(1)); }
-  48% { opacity: 0.42; transform: scale(0.76); }
+  36% { opacity: 0.18; transform: scale(0.68); }
   to { opacity: 0; transform: scale(0.58); }
 }
 @keyframes of-dock-close-in {
   from { opacity: var(--of-dock-close-current-opacity, 0); transform: var(--of-dock-close-current-transform, scale(0.58)); }
-  52% { opacity: 0.42; transform: scale(0.76); }
+  36% { opacity: 0.78; transform: scale(0.9); }
   to { opacity: 1; transform: scale(1); }
 }
 @keyframes of-dock-close-out {
   from { opacity: var(--of-dock-close-current-opacity, 1); transform: var(--of-dock-close-current-transform, scale(1)); }
-  48% { opacity: 0.42; transform: scale(0.76); }
+  36% { opacity: 0.18; transform: scale(0.68); }
   to { opacity: 0; transform: scale(0.58); }
 }
 @keyframes of-dock-note-in {
   from { opacity: var(--of-dock-note-current-opacity, 0); transform: var(--of-dock-note-current-transform, scale(0.58)); }
-  52% { opacity: 0.42; transform: scale(0.76); }
+  36% { opacity: 0.78; transform: scale(0.9); }
   to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes of-dock-actions-enter {
+  from { opacity: var(--of-dock-actions-current-opacity, 0); transform: var(--of-dock-actions-current-transform, scaleY(0)); }
+  to { opacity: 1; transform: scaleY(1); }
+}
+@keyframes of-dock-actions-exit {
+  from { opacity: var(--of-dock-actions-current-opacity, 1); transform: var(--of-dock-actions-current-transform, scaleY(1)); }
+  to { opacity: 0; transform: scaleY(0); }
 }
 
 @keyframes of-dock-exit {
@@ -334,6 +343,8 @@ textarea {
   transform-origin: center;
 }
 .of-dock-toggle-icon > svg { position: absolute; inset: 0; transform-origin: center; }
+.of-dock-toggle-icon-closed { transform: rotate(0deg); }
+.of-dock-toggle-icon-open { transform: rotate(180deg); }
 .of-dock-toggle-icon-closed [data-icon="note"],
 .of-dock-toggle-icon-closing [data-icon="note"],
 .of-dock-toggle-icon-open [data-icon="close"],
@@ -342,15 +353,18 @@ textarea {
 .of-dock-toggle-icon-closing [data-icon="close"],
 .of-dock-toggle-icon-open [data-icon="note"],
 .of-dock-toggle-icon-opening [data-icon="note"] { opacity: 0; transform: scale(0.58); }
-.of-dock-toggle-icon-opening { animation: of-dock-toggle-open var(--of-dock-motion-duration, 180ms) var(--of-ease-emphasized) both; }
-.of-dock-toggle-icon-opening [data-icon="note"] { animation: of-dock-note-out var(--of-dock-motion-duration, 180ms) var(--of-ease-emphasized) both; }
-.of-dock-toggle-icon-opening [data-icon="close"] { animation: of-dock-close-in var(--of-dock-motion-duration, 180ms) var(--of-ease-emphasized) both; }
-.of-dock-toggle-icon-closing { animation: of-dock-toggle-close var(--of-dock-motion-duration, 180ms) var(--of-ease-emphasized) both; }
-.of-dock-toggle-icon-closing [data-icon="close"] { animation: of-dock-close-out var(--of-dock-motion-duration, 180ms) var(--of-ease-emphasized) both; }
-.of-dock-toggle-icon-closing [data-icon="note"] { animation: of-dock-note-in var(--of-dock-motion-duration, 180ms) var(--of-ease-emphasized) both; }
-.of-dock-enter { animation: of-dock-enter var(--of-dock-motion-duration, 180ms) var(--of-ease-emphasized) both; transform-origin: bottom center; }
+.of-dock-toggle-icon-opening { animation: of-dock-toggle-open var(--of-dock-motion-duration, 300ms) var(--of-ease-emphasized) both; }
+.of-dock-toggle-icon-opening [data-icon="note"] { animation: of-dock-note-out var(--of-dock-motion-duration, 300ms) var(--of-ease-emphasized) both; }
+.of-dock-toggle-icon-opening [data-icon="close"] { animation: of-dock-close-in var(--of-dock-motion-duration, 300ms) var(--of-ease-emphasized) both; }
+.of-dock-toggle-icon-closing { animation: of-dock-toggle-close var(--of-dock-motion-duration, 300ms) var(--of-ease-emphasized) both; }
+.of-dock-toggle-icon-closing [data-icon="close"] { animation: of-dock-close-out var(--of-dock-motion-duration, 300ms) var(--of-ease-emphasized) both; }
+.of-dock-toggle-icon-closing [data-icon="note"] { animation: of-dock-note-in var(--of-dock-motion-duration, 300ms) var(--of-ease-emphasized) both; }
+.of-dock-actions { transform-origin: bottom center; }
+.of-dock-actions-enter { animation: of-dock-actions-enter var(--of-dock-motion-duration, 300ms) var(--of-ease-emphasized) both; }
+.of-dock-actions-exit { animation: of-dock-actions-exit var(--of-dock-motion-duration, 300ms) var(--of-ease-standard) both; }
+.of-dock-enter { animation: of-dock-enter var(--of-dock-motion-duration, 300ms) var(--of-ease-emphasized) both; transform-origin: bottom center; }
 .of-dock-opening { pointer-events: none; }
-.of-dock-exit { animation: of-dock-exit var(--of-dock-motion-duration, 180ms) var(--of-ease-standard) both; transform-origin: bottom center; pointer-events: none; }
+.of-dock-exit { animation: of-dock-exit var(--of-dock-motion-duration, 300ms) var(--of-ease-standard) both; transform-origin: bottom center; pointer-events: none; }
 .of-panel-enter { animation: of-panel-enter 200ms var(--of-ease-emphasized) both; transform-origin: right center; }
 
 @media (pointer: coarse) {
@@ -375,6 +389,8 @@ textarea {
   .of-dock-toggle-icon-closing [data-icon],
   .of-dock-enter,
   .of-dock-exit,
+  .of-dock-actions-enter,
+  .of-dock-actions-exit,
   .of-panel-enter {
     animation: none !important;
   }

@@ -39,6 +39,7 @@ import type { WpPriority } from '@/features/work-packages/types'
 import { cn } from '@/lib/utils'
 
 import { WorkspaceCalendarView } from './WorkspaceCalendarView'
+import { WorkspacePqlEditor, type WorkspaceFilterMode } from './WorkspacePqlEditor'
 import { WorkspaceSavedViewsControls } from './WorkspaceSavedViewsControls'
 import { WorkspaceTimelineView } from './WorkspaceTimelineView'
 import {
@@ -70,26 +71,38 @@ export function AllWorkPage() {
   const state = validChoice(searchParams.get('state'), ['all', 'open'], 'all')
   const sort = validChoice(searchParams.get('sort'), ['updated', 'due'], 'updated')
   const priority = validChoice(searchParams.get('priority'), ['all', 'none', 'low', 'medium', 'high', 'urgent'], 'all')
+  const pql = searchParams.get('pql') ?? ''
+  const filterMode = validChoice<WorkspaceFilterMode>(
+    searchParams.get('filter_mode'),
+    ['basic', 'pql'],
+    pql ? 'pql' : 'basic',
+  )
   const layout = validChoice(searchParams.get('layout'), ['board', 'calendar', 'table', 'timeline'], 'board')
   const density = validChoice(searchParams.get('density'), ['compact', 'comfortable'], 'comfortable')
   const page = positiveInt(searchParams.get('page'))
   const activeViewId = searchParams.get('view')
   const [input, setInput] = useState(q)
+  const [pqlDraft, setPqlDraft] = useState(pql)
   const [filtersOpen, setFiltersOpen] = useState(
-    state !== 'all' || priority !== 'all' || sort !== 'updated',
+    state !== 'all' || priority !== 'all' || sort !== 'updated' || filterMode === 'pql',
   )
   const offset = (page - 1) * PAGE_SIZE
   const query = useWorkspaceWorkItems({
     q,
     scope,
-    state,
-    sort,
-    priority: priority === 'all' ? null : priority,
+    state: filterMode === 'pql' ? 'all' : state,
+    sort: filterMode === 'pql' ? 'updated' : sort,
+    priority: filterMode === 'basic' && priority !== 'all' ? priority : null,
+    pql: filterMode === 'pql' && pql ? pql : null,
     limit: PAGE_SIZE,
     offset,
   })
 
   useEffect(() => setInput(q), [q])
+
+  useEffect(() => {
+    if (pql) setPqlDraft(pql)
+  }, [pql])
 
   useEffect(() => {
     if (!query.data) return
@@ -130,7 +143,8 @@ export function AllWorkPage() {
   const returnedFrom = data && data.items.length > 0 ? offset + 1 : 0
   const returnedTo = data ? offset + data.items.length : 0
   const scopeLabel = SCOPES.find((item) => item.value === scope)?.label ?? SCOPES[0].label
-  const activeFilterCount = Number(state !== 'all') + Number(priority !== 'all') + Number(sort !== 'updated')
+  const basicFilterCount = Number(state !== 'all') + Number(priority !== 'all') + Number(sort !== 'updated')
+  const activeFilterCount = filterMode === 'pql' ? Number(Boolean(pql)) : basicFilterCount
   const countText = data
     ? `${data.total}건${data.total > data.items.length ? ` · ${returnedFrom}-${returnedTo}` : ''}`
     : ' '
@@ -138,9 +152,11 @@ export function AllWorkPage() {
   const currentViewParams: WorkspaceSavedViewParams = {
     q,
     scope,
-    state,
-    sort,
-    priority,
+    state: filterMode === 'pql' ? 'all' : state,
+    sort: filterMode === 'pql' ? 'updated' : sort,
+    priority: filterMode === 'pql' ? 'all' : priority,
+    filter_mode: filterMode,
+    pql: filterMode === 'pql' ? pql : '',
     layout,
     density,
   }
@@ -150,7 +166,7 @@ export function AllWorkPage() {
   const applySavedView = (view: WorkspaceSavedView) => {
     setSearchParams((previous) => {
       const next = new URLSearchParams(previous)
-      for (const key of ['q', 'scope', 'state', 'sort', 'priority', 'layout', 'density', 'page', 'month', 'view']) {
+      for (const key of ['q', 'scope', 'state', 'sort', 'priority', 'filter_mode', 'pql', 'layout', 'density', 'page', 'month', 'view']) {
         next.delete(key)
       }
       for (const [key, value] of Object.entries(view.params)) {
@@ -167,6 +183,23 @@ export function AllWorkPage() {
       return next
     }, { replace: true })
   }
+  const switchFilterMode = (nextMode: WorkspaceFilterMode) => {
+    if (nextMode === 'pql') {
+      updateParams({ filter_mode: 'pql', state: null, priority: null, sort: null })
+      return
+    }
+    updateParams({ filter_mode: null, pql: null })
+  }
+  const applyPql = (value: string) => {
+    updateParams({
+      filter_mode: 'pql',
+      pql: value,
+      state: null,
+      priority: null,
+      sort: null,
+    })
+  }
+  const clearPql = () => updateParams({ filter_mode: 'pql', pql: null })
 
   return (
     <div className="flex h-full min-w-0 flex-col bg-of-surface">
@@ -281,44 +314,56 @@ export function AllWorkPage() {
       </Toolbar>
 
       {filtersOpen ? (
-        <Toolbar aria-label="작업 필터" className="flex-wrap gap-2 py-2">
-          <span className="text-[11px] font-medium text-of-muted">Basic</span>
-          <select
-            aria-label="완료 상태"
-            value={state}
-            className="h-8 rounded-of border border-of-border bg-of-surface px-2 text-xs"
-            onChange={(event) => updateParams({ state: event.target.value })}
-          >
-            <option value="all">열림 + 완료</option>
-            <option value="open">열린 작업만</option>
-          </select>
-          <select
-            aria-label="우선순위 필터"
-            value={priority}
-            className="h-8 rounded-of border border-of-border bg-of-surface px-2 text-xs"
-            onChange={(event) => updateParams({ priority: event.target.value })}
-          >
-            {PRIORITIES.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
-          </select>
-          <select
-            aria-label="정렬 방식"
-            value={sort}
-            className="h-8 rounded-of border border-of-border bg-of-surface px-2 text-xs"
-            onChange={(event) => updateParams({ sort: event.target.value })}
-          >
-            <option value="updated">최근 수정순</option>
-            <option value="due">기한 빠른순</option>
-          </select>
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="ml-auto"
-            disabled={activeFilterCount === 0}
-            onClick={() => updateParams({ state: null, priority: null, sort: null })}
-          >
-            Clear all
-          </Button>
+        <Toolbar aria-label="작업 필터" className="block py-2">
+          <WorkspacePqlEditor
+            mode={filterMode}
+            draft={pqlDraft}
+            applied={pql}
+            onModeChange={switchFilterMode}
+            onDraftChange={setPqlDraft}
+            onApply={applyPql}
+            onClear={clearPql}
+            basicControls={(
+              <div role="tabpanel" aria-label="Basic" className="flex min-w-0 flex-wrap items-center gap-2">
+                <select
+                  aria-label="완료 상태"
+                  value={state}
+                  className="h-8 rounded-of border border-of-border bg-of-surface px-2 text-xs"
+                  onChange={(event) => updateParams({ state: event.target.value })}
+                >
+                  <option value="all">열림 + 완료</option>
+                  <option value="open">열린 작업만</option>
+                </select>
+                <select
+                  aria-label="우선순위 필터"
+                  value={priority}
+                  className="h-8 rounded-of border border-of-border bg-of-surface px-2 text-xs"
+                  onChange={(event) => updateParams({ priority: event.target.value })}
+                >
+                  {PRIORITIES.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
+                </select>
+                <select
+                  aria-label="정렬 방식"
+                  value={sort}
+                  className="h-8 rounded-of border border-of-border bg-of-surface px-2 text-xs"
+                  onChange={(event) => updateParams({ sort: event.target.value })}
+                >
+                  <option value="updated">최근 수정순</option>
+                  <option value="due">기한 빠른순</option>
+                </select>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="ml-auto"
+                  disabled={basicFilterCount === 0}
+                  onClick={() => updateParams({ state: null, priority: null, sort: null })}
+                >
+                  Clear all
+                </Button>
+              </div>
+            )}
+          />
         </Toolbar>
       ) : null}
 
@@ -329,7 +374,7 @@ export function AllWorkPage() {
           <ErrorState error={query.error} onRetry={() => query.refetch()} />
         ) : !data || data.items.length === 0 ? (
           <EmptyState
-            title={q || activeFilterCount > 0 || scope !== 'all' ? '조건에 맞는 작업이 없습니다' : '작업이 없습니다'}
+            title={q || activeFilterCount > 0 || scope !== 'all' || pql ? '조건에 맞는 작업이 없습니다' : '작업이 없습니다'}
             hint="범위나 필터를 바꾸어 다시 확인해 보세요."
             visual="illustration"
           />
@@ -539,6 +584,7 @@ function isDefaultParam(key: string, value: string) {
     (key === 'state' && value === 'all') ||
     (key === 'sort' && value === 'updated') ||
     (key === 'priority' && value === 'all') ||
+    (key === 'filter_mode' && value === 'basic') ||
     (key === 'layout' && value === 'board') ||
     (key === 'density' && value === 'comfortable') ||
     (key === 'page' && value === '1')
