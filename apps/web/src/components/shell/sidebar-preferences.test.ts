@@ -21,6 +21,11 @@ test('sidebar preferences keep legacy payloads compatible', () => {
   assert.equal(parsed.projectNavigation, 'accordion')
   assert.equal(parsed.limitProjects, false)
   assert.equal(parsed.projectLimit, DEFAULT_PROJECT_LIMIT)
+  assert.equal(parsed.workspaceExpanded, true)
+  assert.equal(parsed.projectsExpanded, true)
+  assert.deepEqual(parsed.expandedProjectIds, [])
+  assert.equal(parsed.projectDisclosureInitialized, false)
+  assert.deepEqual(parsed.pinned, ['/work-items'])
   assert.deepEqual(parsed.order.slice(0, 2), ['/notes', '/my'])
 })
 
@@ -45,4 +50,20 @@ test('sidebar preferences recover from corrupt payloads', () => {
   const parsed = parseSidebarPreferences('{broken')
   assert.equal(parsed.width, DEFAULT_SIDEBAR_WIDTH)
   assert.equal(parsed.projectNavigation, 'accordion')
+})
+
+test('sidebar preferences retain valid hierarchy and pinned navigation state', () => {
+  const parsed = parseSidebarPreferences(JSON.stringify({
+    workspaceExpanded: false,
+    projectsExpanded: false,
+    expandedProjectIds: ['project-1', 'project-1', 5, 'project-2'],
+    projectDisclosureInitialized: true,
+    pinned: ['/work-items', '/reports', '/projects', '/reports', '/missing'],
+  }))
+
+  assert.equal(parsed.workspaceExpanded, false)
+  assert.equal(parsed.projectsExpanded, false)
+  assert.deepEqual(parsed.expandedProjectIds, ['project-1', 'project-2'])
+  assert.equal(parsed.projectDisclosureInitialized, true)
+  assert.deepEqual(parsed.pinned, ['/work-items', '/reports'])
 })

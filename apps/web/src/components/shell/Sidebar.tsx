@@ -13,6 +13,7 @@ import {
   CalendarDays,
   CalendarRange,
   ChevronsLeftRight,
+  ChevronDown,
   ChevronRight,
   ClipboardList,
   Clock3,
@@ -86,7 +87,6 @@ const primaryNav: WorkspaceNavItem[] = [
 
 const workspaceNav: WorkspaceNavItem[] = [
   { to: '/projects', label: '프로젝트', icon: FolderKanban, end: true },
-  { to: '/work-items', label: '전체 작업', icon: ListChecks },
 ]
 
 const moreNav: WorkspaceNavItem[] = [
@@ -98,6 +98,11 @@ const moreNav: WorkspaceNavItem[] = [
   { to: '/reports', label: '리포트', icon: BarChart3 },
   { to: '/operations', label: '운영 허브', icon: SquareActivity },
   { to: '/status', label: '시스템 상태', icon: Activity },
+]
+
+const workspacePanelNav: WorkspaceNavItem[] = [
+  { to: '/work-items', label: 'Views', icon: ListChecks },
+  ...moreNav,
 ]
 
 function orderedNav(items: WorkspaceNavItem[], preferences: SidebarPreferences) {
@@ -513,6 +518,10 @@ function SidebarContent({
   onLimitProjectsChange,
   onProjectLimitChange,
   onResetNavigation,
+  onWorkspaceExpandedChange,
+  onProjectsExpandedChange,
+  onProjectExpandedChange,
+  onPinnedChange,
 }: {
   onNavigate?: () => void
   onClose?: () => void
@@ -527,6 +536,10 @@ function SidebarContent({
   onLimitProjectsChange: (value: boolean) => void
   onProjectLimitChange: (value: number) => void
   onResetNavigation: () => void
+  onWorkspaceExpandedChange: (value: boolean) => void
+  onProjectsExpandedChange: (value: boolean) => void
+  onProjectExpandedChange: (projectId: string, expanded: boolean, preserveProjectId?: string) => void
+  onPinnedChange: (key: SidebarNavKey, pinned: boolean) => void
 }) {
   const { projectId } = useParams()
   const { data } = useProjects()
@@ -542,8 +555,9 @@ function SidebarContent({
       (item.to !== '/customers' || customersEnabled),
   )
   const visiblePrimaryNav = visibleNav(primaryNav, preferences)
-  const visibleWorkspaceNav = visibleNav(workspaceNav, preferences)
-  const visibleMoreItems = visibleNav(moreItems, preferences)
+  const availableWorkspaceItems = [workspacePanelNav[0], ...moreItems]
+  const visibleWorkspacePanelItems = visibleNav(availableWorkspaceItems, preferences)
+  const visibleWorkspaceNav = [workspaceNav[0], ...visibleWorkspacePanelItems.filter((item) => preferences.pinned.includes(item.to))]
   const selectedProject = data?.items.find((project) => project.id === projectId) ?? data?.items[0]
   const limitedProjects = preferences.limitProjects
     ? (data?.items ?? []).slice(0, preferences.projectLimit)
@@ -565,17 +579,55 @@ function SidebarContent({
   const myWorkTab = new URLSearchParams(location.search).get('tab')
   const profileWorkMode =
     location.pathname === '/my' && myWorkTab !== null && myWorkTab !== 'overview'
-  const moreRoute = visibleMoreItems.some(
-    (item) => location.pathname === item.to || location.pathname.startsWith(`${item.to}/`),
-  )
-  const [moreOpen, setMoreOpen] = useState(moreRoute)
+  const [moreOpen, setMoreOpen] = useState(false)
+  const moreTriggerRef = useRef<HTMLButtonElement>(null)
+  const morePanelRef = useRef<HTMLDivElement>(null)
+  const wasMoreOpen = useRef(false)
 
   useEffect(() => {
-    if (moreRoute) setMoreOpen(true)
-  }, [moreRoute])
+    if (!moreOpen) {
+      if (wasMoreOpen.current) moreTriggerRef.current?.focus()
+      wasMoreOpen.current = false
+      return
+    }
+    wasMoreOpen.current = true
+    morePanelRef.current?.querySelector<HTMLElement>('a, button')?.focus()
+    const closePanel = (event: KeyboardEvent | PointerEvent) => {
+      if (event instanceof KeyboardEvent) {
+        if (event.key === 'Tab') {
+          const focusable = morePanelRef.current?.querySelectorAll<HTMLElement>(
+            'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])',
+          )
+          if (!focusable?.length) return
+          const first = focusable[0]
+          const last = focusable[focusable.length - 1]
+          if (event.shiftKey && document.activeElement === first) {
+            event.preventDefault()
+            last.focus()
+          } else if (!event.shiftKey && document.activeElement === last) {
+            event.preventDefault()
+            first.focus()
+          }
+          return
+        }
+        if (event.key !== 'Escape') return
+        event.preventDefault()
+      } else if (
+        morePanelRef.current?.contains(event.target as Node) ||
+        moreTriggerRef.current?.contains(event.target as Node)
+      ) return
+      setMoreOpen(false)
+    }
+    window.addEventListener('keydown', closePanel)
+    window.addEventListener('pointerdown', closePanel)
+    return () => {
+      window.removeEventListener('keydown', closePanel)
+      window.removeEventListener('pointerdown', closePanel)
+    }
+  }, [moreOpen])
 
   return (
-    <div className="flex min-h-0 flex-1">
+    <div className="relative flex min-h-0 flex-1">
       <GlobalRail
         settingsHref={settingsHref}
         onNavigate={onNavigate}
@@ -595,8 +647,7 @@ function SidebarContent({
             <NavigationCustomizer
               groups={[
                 { label: '개인', items: primaryNav },
-                { label: '워크스페이스', items: workspaceNav },
-                { label: '더 보기', items: moreItems },
+                { label: '워크스페이스', items: availableWorkspaceItems },
               ]}
               preferences={preferences}
               onNavVisibleChange={onNavVisibleChange}
@@ -775,65 +826,90 @@ function SidebarContent({
               })}
             </div>
 
-            {visibleWorkspaceNav.length > 0 ? (
             <div>
-              <SectionLabel>워크스페이스</SectionLabel>
-              <div className="space-y-0.5">
-                {visibleWorkspaceNav.map((item) => {
-                  const Icon = item.icon
-                  return (
-                    <NavLink key={item.to} to={item.to} end={item.end} className={navLinkClass} onClick={onNavigate}>
-                      <Icon />
-                      <span className="truncate">{item.label}</span>
-                    </NavLink>
-                  )
-                })}
-              </div>
+              <button
+                type="button"
+                aria-expanded={preferences.workspaceExpanded}
+                className="flex min-h-8 w-full items-center gap-2 rounded-of px-2 text-left text-[13px] font-medium text-of-secondary transition-colors hover:bg-of-surface-hover hover:text-of-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus"
+                onClick={() => {
+                  if (preferences.workspaceExpanded) setMoreOpen(false)
+                  onWorkspaceExpandedChange(!preferences.workspaceExpanded)
+                }}
+              >
+                <ChevronRight size={14} className={cn('shrink-0 transition-transform duration-[var(--of-duration-fast)] motion-reduce:transition-none', preferences.workspaceExpanded && 'rotate-90')} aria-hidden="true" />
+                워크스페이스
+              </button>
+              {preferences.workspaceExpanded ? (
+                <div className="mt-0.5 space-y-0.5">
+                  {visibleWorkspaceNav.map((item) => {
+                    const Icon = item.icon
+                    return (
+                      <NavLink key={item.to} to={item.to} end={item.end} className={navLinkClass} onClick={onNavigate}>
+                        <Icon />
+                        <span className="truncate">{item.label}</span>
+                      </NavLink>
+                    )
+                  })}
+                  {visibleWorkspacePanelItems.length > 0 ? (
+                    <button
+                      ref={moreTriggerRef}
+                      type="button"
+                      aria-expanded={moreOpen}
+                      aria-controls="workspace-more-panel"
+                      className="flex min-h-8 w-full items-center gap-2 rounded-of px-2 text-left text-[13px] text-of-secondary transition-colors hover:bg-of-surface-hover hover:text-of-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus"
+                      onClick={() => setMoreOpen((current) => !current)}
+                    >
+                      <ChevronRight size={14} className={cn('shrink-0 transition-transform duration-[var(--of-duration-fast)] motion-reduce:transition-none', moreOpen && 'rotate-90')} aria-hidden="true" />
+                      {moreOpen ? 'Hide' : 'More'}
+                    </button>
+                  ) : null}
+                </div>
+              ) : null}
             </div>
-            ) : null}
-
-            {visibleMoreItems.length > 0 ? (
-            <details
-              open={moreOpen}
-              className="group"
-              onToggle={(event) => setMoreOpen(event.currentTarget.open)}
-            >
-              <summary className="flex min-h-8 cursor-pointer list-none items-center rounded-of px-2 text-[13px] text-of-secondary transition-colors hover:bg-of-surface-hover hover:text-of-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus [&::-webkit-details-marker]:hidden">
-                <ChevronRight size={14} className="mr-2 shrink-0 transition-transform group-open:rotate-90" aria-hidden="true" />
-                더 보기
-              </summary>
-              <div className="mt-0.5 space-y-0.5">
-                {visibleMoreItems.map((item) => {
-                  const Icon = item.icon
-                  return (
-                    <NavLink key={item.to} to={item.to} end={item.end} className={navLinkClass} onClick={onNavigate}>
-                      <Icon />
-                      <span className="truncate">{item.label}</span>
-                    </NavLink>
-                  )
-                })}
-              </div>
-            </details>
-            ) : null}
 
             <div>
-              <SectionLabel>프로젝트</SectionLabel>
-              <div className="space-y-2">
+              <button
+                type="button"
+                aria-expanded={preferences.projectsExpanded}
+                className="flex min-h-8 w-full items-center gap-2 rounded-of px-2 text-left text-[13px] font-medium text-of-secondary transition-colors hover:bg-of-surface-hover hover:text-of-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus"
+                onClick={() => onProjectsExpandedChange(!preferences.projectsExpanded)}
+              >
+                <ChevronRight size={14} className={cn('shrink-0 transition-transform duration-[var(--of-duration-fast)] motion-reduce:transition-none', preferences.projectsExpanded && 'rotate-90')} aria-hidden="true" />
+                프로젝트
+              </button>
+              {preferences.projectsExpanded ? <div className="mt-1 space-y-2">
                 {sidebarProjects.map((project) => {
                   const activeProject = project.id === projectId
-                  const expanded = activeProject
+                  const expanded = preferences.expandedProjectIds.includes(project.id) || (
+                    activeProject && !preferences.projectDisclosureInitialized
+                  )
                   return (
                     <div key={project.id}>
-                      <NavLink
-                        to={`/projects/${project.id}/work-packages`}
-                        className={() => projectLinkClass(expanded)}
-                        onClick={onNavigate}
-                      >
-                        <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-[4px] border border-of-border-subtle bg-of-surface text-[10px] font-semibold text-of-muted">
-                          {project.key.slice(0, 2)}
-                        </span>
-                        <span className="min-w-0 flex-1 truncate">{project.name}</span>
-                      </NavLink>
+                      <div className="flex items-center gap-0.5">
+                        <NavLink
+                          to={`/projects/${project.id}/work-packages`}
+                          className={() => cn(projectLinkClass(activeProject), 'min-w-0 flex-1')}
+                          onClick={onNavigate}
+                        >
+                          <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-[4px] border border-of-border-subtle bg-of-surface text-[10px] font-semibold text-of-muted">
+                            {project.key.slice(0, 2)}
+                          </span>
+                          <span className="min-w-0 flex-1 truncate">{project.name}</span>
+                        </NavLink>
+                        <button
+                          type="button"
+                          aria-label={`${project.name} 하위 내비게이션`}
+                          aria-expanded={expanded}
+                          className="flex h-8 w-7 shrink-0 items-center justify-center rounded-of text-of-muted hover:bg-of-surface-hover hover:text-of-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus"
+                          onClick={() => onProjectExpandedChange(
+                            project.id,
+                            !expanded,
+                            activeProject ? undefined : projectId,
+                          )}
+                        >
+                          <ChevronDown size={14} className={cn('transition-transform duration-[var(--of-duration-fast)] motion-reduce:transition-none', !expanded && '-rotate-90')} aria-hidden="true" />
+                        </button>
+                      </div>
                       {expanded && preferences.projectNavigation === 'accordion' ? (
                         <div className="mt-1 space-y-2 border-l border-of-border-subtle pl-2">
                           {projectNavSections.map((section) => (
@@ -865,7 +941,7 @@ function SidebarContent({
                   )
                 })}
                 {projectId && !data ? <div className="px-2 text-xs text-of-muted">…</div> : null}
-              </div>
+              </div> : null}
             </div>
           </div>
         </nav>
@@ -877,6 +953,57 @@ function SidebarContent({
             : 'dev 모드 · 로컬 전용'}
         </div>
       </div>
+      ) : null}
+      {moreOpen && !wikiMode && !aiMode && !settingsMode ? (
+        <div
+          ref={morePanelRef}
+          id="workspace-more-panel"
+          role="dialog"
+          aria-label="워크스페이스 더 보기"
+          className="of-panel-enter fixed inset-x-2 top-2 bottom-2 z-50 flex min-w-0 flex-col overflow-hidden rounded-of-lg border border-of-border bg-of-surface-raised shadow-[var(--of-shadow-popover)] motion-reduce:animate-none md:absolute md:inset-x-auto md:left-full md:top-2 md:bottom-2 md:w-72"
+        >
+          <div className="flex items-center justify-between border-b border-of-border-subtle px-3 py-2">
+            <h3 className="text-sm font-semibold">Workspace</h3>
+            <button
+              type="button"
+              aria-label="More 닫기"
+              className="flex h-7 w-7 items-center justify-center rounded-of text-of-muted hover:bg-of-surface-hover hover:text-of-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus"
+              onClick={() => setMoreOpen(false)}
+            >
+              <X size={15} aria-hidden="true" />
+            </button>
+          </div>
+          <div className="of-scrollbar min-h-0 flex-1 space-y-0.5 overflow-y-auto p-2">
+            {visibleWorkspacePanelItems.map((item) => {
+              const Icon = item.icon
+              const pinned = preferences.pinned.includes(item.to)
+              return (
+                <div key={item.to} className="flex items-center gap-1">
+                  <NavLink
+                    to={item.to}
+                    end={item.end}
+                    className={({ isActive }) => cn(navLinkClass({ isActive }), 'min-w-0 flex-1')}
+                    onClick={() => {
+                      setMoreOpen(false)
+                      onNavigate?.()
+                    }}
+                  >
+                    <Icon />
+                    <span className="truncate">{item.label}</span>
+                  </NavLink>
+                  <button
+                    type="button"
+                    aria-label={`${item.label} ${pinned ? '고정 해제' : '고정'}`}
+                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-of text-of-muted hover:bg-of-surface-hover hover:text-of-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus"
+                    onClick={() => onPinnedChange(item.to, !pinned)}
+                  >
+                    <Bookmark size={14} fill={pinned ? 'currentColor' : 'none'} aria-hidden="true" />
+                  </button>
+                </div>
+              )
+            })}
+          </div>
+        </div>
       ) : null}
     </div>
   )
@@ -895,6 +1022,10 @@ export function Sidebar({
   onLimitProjectsChange,
   onProjectLimitChange,
   onResetNavigation,
+  onWorkspaceExpandedChange,
+  onProjectsExpandedChange,
+  onProjectExpandedChange,
+  onPinnedChange,
 }: {
   mobileOpen?: boolean
   onMobileClose?: () => void
@@ -908,6 +1039,10 @@ export function Sidebar({
   onLimitProjectsChange: (value: boolean) => void
   onProjectLimitChange: (value: number) => void
   onResetNavigation: () => void
+  onWorkspaceExpandedChange: (value: boolean) => void
+  onProjectsExpandedChange: (value: boolean) => void
+  onProjectExpandedChange: (projectId: string, expanded: boolean, preserveProjectId?: string) => void
+  onPinnedChange: (key: SidebarNavKey, pinned: boolean) => void
 }) {
   const [resizing, setResizing] = useState(false)
   const resizeStart = useRef<{ x: number; width: number } | null>(null)
@@ -973,6 +1108,10 @@ export function Sidebar({
           onLimitProjectsChange={onLimitProjectsChange}
           onProjectLimitChange={onProjectLimitChange}
           onResetNavigation={onResetNavigation}
+          onWorkspaceExpandedChange={onWorkspaceExpandedChange}
+          onProjectsExpandedChange={onProjectsExpandedChange}
+          onProjectExpandedChange={onProjectExpandedChange}
+          onPinnedChange={onPinnedChange}
         />
         {!preferences.collapsed ? (
           <div
@@ -1036,6 +1175,10 @@ export function Sidebar({
               onLimitProjectsChange={onLimitProjectsChange}
               onProjectLimitChange={onProjectLimitChange}
               onResetNavigation={onResetNavigation}
+              onWorkspaceExpandedChange={onWorkspaceExpandedChange}
+              onProjectsExpandedChange={onProjectsExpandedChange}
+              onProjectExpandedChange={onProjectExpandedChange}
+              onPinnedChange={onPinnedChange}
             />
           </aside>
         </div>
