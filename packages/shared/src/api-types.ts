@@ -13496,6 +13496,10 @@ export interface operations {
         parameters: {
             query?: {
                 q?: string | null;
+                scope?: "all" | "assigned" | "created" | "subscribed";
+                state?: "all" | "open";
+                sort?: "updated" | "due";
+                priority?: ("none" | "low" | "medium" | "high" | "urgent") | null;
                 limit?: number;
                 offset?: number;
             };
