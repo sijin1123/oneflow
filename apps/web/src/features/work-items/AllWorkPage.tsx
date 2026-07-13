@@ -39,7 +39,12 @@ import type { WpPriority } from '@/features/work-packages/types'
 import { cn } from '@/lib/utils'
 
 import { WorkspaceCalendarView } from './WorkspaceCalendarView'
+import { WorkspaceSavedViewsControls } from './WorkspaceSavedViewsControls'
 import { WorkspaceTimelineView } from './WorkspaceTimelineView'
+import {
+  type WorkspaceSavedView,
+  type WorkspaceSavedViewParams,
+} from './workspaceSavedViewsApi'
 
 const PAGE_SIZE = 50
 const SCOPES: Array<{ value: WorkspaceWorkItemScope; label: string }> = [
@@ -68,6 +73,7 @@ export function AllWorkPage() {
   const layout = validChoice(searchParams.get('layout'), ['board', 'calendar', 'table', 'timeline'], 'board')
   const density = validChoice(searchParams.get('density'), ['compact', 'comfortable'], 'comfortable')
   const page = positiveInt(searchParams.get('page'))
+  const activeViewId = searchParams.get('view')
   const [input, setInput] = useState(q)
   const [filtersOpen, setFiltersOpen] = useState(
     state !== 'all' || priority !== 'all' || sort !== 'updated',
@@ -106,7 +112,7 @@ export function AllWorkPage() {
       }
       if (!Object.hasOwn(updates, 'page')) next.delete('page')
       return next
-    }, { replace })
+    }, { replace, flushSync: true })
   }
 
   const submit = (event: FormEvent) => {
@@ -129,8 +135,37 @@ export function AllWorkPage() {
     ? `${data.total}건${data.total > data.items.length ? ` · ${returnedFrom}-${returnedTo}` : ''}`
     : ' '
   const currentRangeLabel = `${returnedFrom}-${returnedTo} / ${data?.total ?? 0}`
+  const currentViewParams: WorkspaceSavedViewParams = {
+    q,
+    scope,
+    state,
+    sort,
+    priority,
+    layout,
+    density,
+  }
   const switchLayout = (nextLayout: 'board' | 'calendar' | 'table' | 'timeline') => {
     updateParams({ layout: nextLayout, page: String(page) })
+  }
+  const applySavedView = (view: WorkspaceSavedView) => {
+    setSearchParams((previous) => {
+      const next = new URLSearchParams(previous)
+      for (const key of ['q', 'scope', 'state', 'sort', 'priority', 'layout', 'density', 'page', 'month', 'view']) {
+        next.delete(key)
+      }
+      for (const [key, value] of Object.entries(view.params)) {
+        if (value && !isDefaultParam(key, value)) next.set(key, value)
+      }
+      next.set('view', view.id)
+      return next
+    }, { replace: true })
+  }
+  const clearSavedView = () => {
+    setSearchParams((previous) => {
+      const next = new URLSearchParams(previous)
+      next.delete('view')
+      return next
+    }, { replace: true })
   }
 
   return (
@@ -187,7 +222,7 @@ export function AllWorkPage() {
           <Button type="submit" size="sm"><Search size={13} /> 검색</Button>
         </form>
 
-        <div className="flex items-center gap-1">
+        <div className="flex w-full min-w-0 flex-wrap items-center gap-1 lg:w-auto lg:justify-end">
           <div className="flex h-8 items-center rounded-of border border-of-border bg-of-surface-2 p-0.5" aria-label="레이아웃" role="group">
             <LayoutButton active={layout === 'board'} label="Board" onClick={() => switchLayout('board')}>
               <Columns3 size={14} />
@@ -226,6 +261,12 @@ export function AllWorkPage() {
               </DropdownMenuRadioGroup>
             </DropdownMenuContent>
           </DropdownMenu>
+          <WorkspaceSavedViewsControls
+            activeViewId={activeViewId}
+            currentParams={currentViewParams}
+            onApply={applySavedView}
+            onDelete={clearSavedView}
+          />
           <Button
             type="button"
             variant="outline"

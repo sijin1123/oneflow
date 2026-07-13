@@ -40,6 +40,7 @@ from app.models.work_item_draft import WorkItemDraft
 from app.models.work_package import WorkPackage
 from app.models.workspace_feature_policy import WorkspaceFeaturePolicy
 from app.models.workspace_profile import WorkspaceProfile
+from app.models.workspace_saved_view import WorkspaceSavedView
 
 __all__ = [
     "User",
@@ -50,6 +51,7 @@ __all__ = [
     "WorkPackage",
     "WorkspaceFeaturePolicy",
     "WorkspaceProfile",
+    "WorkspaceSavedView",
     "WorkItemDraft",
     "WorkPackageRelation",
     "WorkPackageComment",

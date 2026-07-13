@@ -357,6 +357,9 @@ ENDPOINT_ALLOWLIST: dict[str, str] = {
     "PATCH /api/v1/me/personal-notes/{note_id}": "개인 메모 — 사용자 스코프",
     "PUT /api/v1/me/personal-notes/order": "개인 메모 순서 — 사용자 스코프",
     "DELETE /api/v1/me/personal-notes/{note_id}": "개인 메모 — 사용자 스코프",
+    "POST /api/v1/me/workspace-views": "개인 워크스페이스 저장 뷰 — 사용자 스코프",
+    "PATCH /api/v1/me/workspace-views/{view_id}": ("개인 워크스페이스 저장 뷰 — 사용자 스코프"),
+    "DELETE /api/v1/me/workspace-views/{view_id}": ("개인 워크스페이스 저장 뷰 — 사용자 스코프"),
     "DELETE /api/v1/work-item-drafts/{draft_id}": (
         "개인 초안 정리 — 프로젝트 멤버십 상실 뒤에도 소유자만 삭제 가능"
     ),

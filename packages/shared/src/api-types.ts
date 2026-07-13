@@ -1038,6 +1038,42 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/me/workspace-views": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Workspace Saved Views */
+        get: operations["list_workspace_saved_views_api_v1_me_workspace_views_get"];
+        put?: never;
+        /** Create Workspace Saved View */
+        post: operations["create_workspace_saved_view_api_v1_me_workspace_views_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/me/workspace-views/{view_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Workspace Saved View */
+        delete: operations["delete_workspace_saved_view_api_v1_me_workspace_views__view_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Workspace Saved View */
+        patch: operations["update_workspace_saved_view_api_v1_me_workspace_views__view_id__patch"];
+        trace?: never;
+    };
     "/api/v1/meeting-templates/{template_id}": {
         parameters: {
             query?: never;
@@ -7196,6 +7232,119 @@ export interface components {
             /** Name */
             name: string;
         };
+        /** WorkspaceSavedViewConflict */
+        WorkspaceSavedViewConflict: {
+            current: components["schemas"]["WorkspaceSavedViewRead"];
+            /**
+             * Detail
+             * @default workspace view was changed elsewhere
+             */
+            detail: string;
+        };
+        /** WorkspaceSavedViewCreate */
+        WorkspaceSavedViewCreate: {
+            /** Name */
+            name: string;
+            /**
+             * @default {
+             *       "density": "comfortable",
+             *       "layout": "board",
+             *       "priority": "all",
+             *       "q": "",
+             *       "scope": "all",
+             *       "sort": "updated",
+             *       "state": "all"
+             *     }
+             */
+            params: components["schemas"]["WorkspaceSavedViewParams"];
+        };
+        /** WorkspaceSavedViewError */
+        WorkspaceSavedViewError: {
+            /** Detail */
+            detail: string;
+        };
+        /** WorkspaceSavedViewList */
+        WorkspaceSavedViewList: {
+            /** Items */
+            items: components["schemas"]["WorkspaceSavedViewRead"][];
+            /** Total */
+            total: number;
+        };
+        /** WorkspaceSavedViewParams */
+        WorkspaceSavedViewParams: {
+            /**
+             * Density
+             * @default comfortable
+             * @enum {string}
+             */
+            density: "comfortable" | "compact";
+            /**
+             * Layout
+             * @default board
+             * @enum {string}
+             */
+            layout: "board" | "calendar" | "table" | "timeline";
+            /**
+             * Priority
+             * @default all
+             * @enum {string}
+             */
+            priority: "all" | "none" | "low" | "medium" | "high" | "urgent";
+            /**
+             * Q
+             * @default
+             */
+            q: string;
+            /**
+             * Scope
+             * @default all
+             * @enum {string}
+             */
+            scope: "all" | "assigned" | "created" | "subscribed";
+            /**
+             * Sort
+             * @default updated
+             * @enum {string}
+             */
+            sort: "updated" | "due";
+            /**
+             * State
+             * @default all
+             * @enum {string}
+             */
+            state: "all" | "open";
+        };
+        /** WorkspaceSavedViewRead */
+        WorkspaceSavedViewRead: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            params: components["schemas"]["WorkspaceSavedViewParams"];
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Version */
+            version: number;
+        };
+        /** WorkspaceSavedViewUpdate */
+        WorkspaceSavedViewUpdate: {
+            /** Expected Version */
+            expected_version: number;
+            /** Name */
+            name?: string | null;
+            params?: components["schemas"]["WorkspaceSavedViewParams"] | null;
+        };
         /** WpGroup */
         WpGroup: {
             /** Items */
@@ -9931,6 +10080,204 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_workspace_saved_views_api_v1_me_workspace_views_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceSavedViewList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_workspace_saved_view_api_v1_me_workspace_views_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkspaceSavedViewCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceSavedViewRead"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceSavedViewError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceSavedViewError"];
+                };
+            };
+        };
+    };
+    delete_workspace_saved_view_api_v1_me_workspace_views__view_id__delete: {
+        parameters: {
+            query: {
+                expected_version: number;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                view_id: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceSavedViewConflict"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceSavedViewError"];
+                };
+            };
+        };
+    };
+    update_workspace_saved_view_api_v1_me_workspace_views__view_id__patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                view_id: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkspaceSavedViewUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceSavedViewRead"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceSavedViewConflict"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceSavedViewError"];
                 };
             };
         };
