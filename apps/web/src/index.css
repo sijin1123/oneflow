@@ -248,6 +248,11 @@ textarea {
   to { opacity: 1; transform: translateY(0) scale(1); }
 }
 
+@keyframes of-popover-exit {
+  from { opacity: 1; transform: translateY(0) scale(1); }
+  to { opacity: 0; transform: translateY(-3px) scale(0.97); }
+}
+
 @keyframes of-search-overlay-opening { from { opacity: 0; } to { opacity: 1; } }
 @keyframes of-search-overlay-closing { from { opacity: var(--of-search-current-overlay-opacity); } to { opacity: 0; } }
 @keyframes of-search-surface-opening {
@@ -323,6 +328,9 @@ textarea {
 
 .of-overlay-enter { animation: of-overlay-enter var(--of-duration-overlay) var(--of-ease-standard) both; }
 .of-menu-enter { animation: of-menu-enter 150ms var(--of-ease-standard) both; transform-origin: top left; }
+.of-popover-motion { transform-origin: var(--radix-popover-content-transform-origin); }
+.of-popover-motion[data-state='open'] { animation: of-menu-enter var(--of-duration-default) var(--of-ease-emphasized) both; }
+.of-popover-motion[data-state='closed'] { animation: of-popover-exit var(--of-duration-fast) var(--of-ease-standard) both; }
 .of-search-overlay-opening { animation: of-search-overlay-opening var(--of-duration-overlay) var(--of-ease-standard) both; }
 .of-search-overlay-closing { animation: of-search-overlay-closing var(--of-duration-overlay) var(--of-ease-standard) both; pointer-events: none; }
 .of-search-surface { position: fixed; left: var(--of-search-final-left); top: var(--of-search-anchor-top); width: var(--of-search-final-width); max-height: var(--of-search-final-height); }
@@ -377,6 +385,7 @@ textarea {
 @media (prefers-reduced-motion: reduce) {
   .of-overlay-enter,
   .of-menu-enter,
+  .of-popover-motion,
   .of-search-overlay-opening,
   .of-search-overlay-closing,
   .of-search-surface-opening,
