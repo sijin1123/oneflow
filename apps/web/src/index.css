@@ -270,7 +270,7 @@ textarea {
   from {
     opacity: var(--of-dock-current-opacity, 1);
     transform: var(--of-dock-current-transform, none);
-    clip-path: var(--of-dock-current-clip-path, inset(calc(100% - 2.75rem) 0 0 round 999px));
+    clip-path: var(--of-dock-current-clip-path, inset(calc(100% - 3rem) 0 0 round 999px));
   }
   to { opacity: 1; transform: none; clip-path: inset(0 round 999px); }
 }
@@ -299,12 +299,12 @@ textarea {
 }
 
 @keyframes of-dock-actions-enter {
-  from { opacity: var(--of-dock-actions-current-opacity, 0); transform: var(--of-dock-actions-current-transform, scaleY(0)); }
-  to { opacity: 1; transform: scaleY(1); }
+  from { opacity: var(--of-dock-actions-current-opacity, 0); transform: var(--of-dock-actions-current-transform, translateY(10px) scale(0.88)); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
 }
 @keyframes of-dock-actions-exit {
-  from { opacity: var(--of-dock-actions-current-opacity, 1); transform: var(--of-dock-actions-current-transform, scaleY(1)); }
-  to { opacity: 0; transform: scaleY(0); }
+  from { opacity: var(--of-dock-actions-current-opacity, 1); transform: var(--of-dock-actions-current-transform, translateY(0) scale(1)); }
+  to { opacity: 0; transform: translateY(10px) scale(0.88); }
 }
 
 @keyframes of-dock-exit {
@@ -313,7 +313,7 @@ textarea {
     transform: var(--of-dock-current-transform, none);
     clip-path: var(--of-dock-current-clip-path, inset(0 round 999px));
   }
-  to { opacity: 1; transform: none; clip-path: inset(calc(100% - 2.75rem) 0 0 round 999px); }
+  to { opacity: 1; transform: none; clip-path: inset(calc(100% - 3rem) 0 0 round 999px); }
 }
 
 @keyframes of-panel-enter {
