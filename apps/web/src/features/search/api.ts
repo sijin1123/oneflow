@@ -40,7 +40,13 @@ export function useSearch(q: string) {
 
 export type WorkspaceWorkItemScope = 'all' | 'assigned' | 'created' | 'subscribed'
 export type WorkspaceWorkItemState = 'all' | 'open'
-export type WorkspaceWorkItemSort = 'updated' | 'due'
+export type WorkspaceWorkItemSort =
+  | 'updated'
+  | 'due'
+  | 'status_asc'
+  | 'status_desc'
+  | 'priority_asc'
+  | 'priority_desc'
 
 export type WorkspacePqlValidation = {
   normalized: string

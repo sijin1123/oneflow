@@ -12,7 +12,7 @@ from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
-from sqlalchemy import func, or_, select
+from sqlalchemy import case, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
@@ -86,7 +86,9 @@ async def search_work_packages(
     q: str | None = Query(default=None, min_length=1, max_length=255),
     scope: Literal["all", "assigned", "created", "subscribed"] = "all",
     state: Literal["all", "open"] = "all",
-    sort: Literal["updated", "due"] = "updated",
+    sort: Literal[
+        "updated", "due", "status_asc", "status_desc", "priority_asc", "priority_desc"
+    ] = "updated",
     priority: Literal["none", "low", "medium", "high", "urgent"] | None = None,
     pql: str | None = Query(default=None, max_length=1000),
     limit: int = Query(default=50, ge=1, le=200),
@@ -132,15 +134,30 @@ async def search_work_packages(
     total = (
         await session.execute(select(func.count()).select_from(stmt.order_by(None).subquery()))
     ).scalar_one()
-    order_by = (
-        (
+    if sort == "due":
+        order_by = (
             WorkPackage.due_date.asc().nulls_last(),
             WorkPackage.updated_at.desc(),
             WorkPackage.id.asc(),
         )
-        if sort == "due"
-        else (WorkPackage.updated_at.desc(), WorkPackage.id.asc())
-    )
+    elif sort in {"status_asc", "status_desc"}:
+        status_order = (
+            WorkPackage.status.asc() if sort == "status_asc" else WorkPackage.status.desc()
+        )
+        order_by = (status_order, WorkPackage.updated_at.desc(), WorkPackage.id.asc())
+    elif sort in {"priority_asc", "priority_desc"}:
+        priority_order = case(
+            (WorkPackage.priority == "none", 0),
+            (WorkPackage.priority == "low", 1),
+            (WorkPackage.priority == "medium", 2),
+            (WorkPackage.priority == "high", 3),
+            (WorkPackage.priority == "urgent", 4),
+            else_=5,
+        )
+        priority_order = priority_order.desc() if sort == "priority_desc" else priority_order.asc()
+        order_by = (priority_order, WorkPackage.updated_at.desc(), WorkPackage.id.asc())
+    else:
+        order_by = (WorkPackage.updated_at.desc(), WorkPackage.id.asc())
     result_limit = limit
     if parsed_pql is not None:
         order_by = pql_ordering(parsed_pql) or order_by

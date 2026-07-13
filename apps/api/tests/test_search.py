@@ -1,9 +1,10 @@
 """Cross-project work-package search (PLAN §3 Phase 2)."""
 
 import uuid
+from datetime import UTC, datetime
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import select, update
 
 from app.core.auth import DEV_USER_EMAIL
 from app.models import User, WorkPackage, WpWatcher
@@ -278,6 +279,86 @@ async def test_workspace_view_scope_filters_sort_and_pagination(client, app, two
     )
     assert page.json()["total"] == 3
     assert len(page.json()["items"]) == 1
+
+
+async def test_workspace_view_column_sorts_full_authorized_result(client, app, two_projects):
+    project_id = two_projects["a"]["id"]
+    status_items = {
+        status: await create_wp(
+            client,
+            project_id,
+            subject=f"상태 열 정렬 {status}",
+            status=status,
+        )
+        for status in ("backlog", "cancelled", "done", "in_progress", "in_review", "todo")
+    }
+    for sort, expected in (
+        ("status_asc", sorted(status_items)),
+        ("status_desc", sorted(status_items, reverse=True)),
+    ):
+        response = await client.get(
+            "/api/v1/search/work-packages",
+            params={"q": "상태 열 정렬", "sort": sort},
+        )
+        assert response.status_code == 200, response.text
+        assert [item["id"] for item in response.json()["items"]] == [
+            status_items[status]["id"] for status in expected
+        ]
+
+    priority_items = {
+        priority: await create_wp(
+            client,
+            project_id,
+            subject=f"우선 열 정렬 {priority}",
+            priority=priority,
+        )
+        for priority in ("none", "low", "medium", "high", "urgent")
+    }
+    semantic_order = ["none", "low", "medium", "high", "urgent"]
+    for sort, expected in (
+        ("priority_asc", semantic_order),
+        ("priority_desc", list(reversed(semantic_order))),
+    ):
+        response = await client.get(
+            "/api/v1/search/work-packages",
+            params={"q": "우선 열 정렬", "sort": sort},
+        )
+        assert response.status_code == 200, response.text
+        assert [item["id"] for item in response.json()["items"]] == [
+            priority_items[priority]["id"] for priority in expected
+        ]
+
+    tied_items = [
+        await create_wp(
+            client,
+            project_id,
+            subject=f"우선 열 동률 {index}",
+            priority="low",
+        )
+        for index in range(3)
+    ]
+    tied_ids = [uuid.UUID(item["id"]) for item in tied_items]
+    async with app.state.sessionmaker() as session, session.begin():
+        await session.execute(
+            update(WorkPackage)
+            .where(WorkPackage.id.in_(tied_ids))
+            .values(updated_at=datetime(2026, 7, 13, 0, 0, tzinfo=UTC))
+        )
+    paged_ids = []
+    for offset in range(3):
+        response = await client.get(
+            "/api/v1/search/work-packages",
+            params={
+                "q": "우선 열 동률",
+                "sort": "priority_asc",
+                "limit": 1,
+                "offset": offset,
+            },
+        )
+        assert response.status_code == 200, response.text
+        assert response.json()["total"] == 3
+        paged_ids.append(response.json()["items"][0]["id"])
+    assert paged_ids == sorted(item["id"] for item in tied_items)
 
 
 @pytest.mark.parametrize(

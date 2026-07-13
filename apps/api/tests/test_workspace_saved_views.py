@@ -73,6 +73,12 @@ async def test_workspace_saved_view_crud_and_canonical_params(client):
     ).status_code == 204
 
 
+async def test_workspace_saved_view_accepts_column_sort_modes(client):
+    for sort in ("status_asc", "status_desc", "priority_asc", "priority_desc"):
+        view = await _create(client, f"sort {sort}", sort=sort, layout="table")
+        assert view["params"]["sort"] == sort
+
+
 async def test_workspace_saved_view_pql_mode_canonicalizes_and_rejects_invalid_values(client):
     view = await _create(
         client,
@@ -117,6 +123,7 @@ async def test_workspace_saved_view_rejects_invalid_display_params(client):
         {"columns": ["project", "project"]},
         {"columns": ["project", "unknown"]},
         {"group_by": "unknown"},
+        {"sort": "unknown"},
     ):
         response = await client.post(
             "/api/v1/me/workspace-views", json={"name": "invalid display", "params": params}
