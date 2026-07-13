@@ -1,6 +1,6 @@
 import * as Dialog from '@radix-ui/react-dialog'
 import { Layers3, Plus, Search, StickyNote, X } from 'lucide-react'
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { type CSSProperties, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 
 import {
@@ -17,6 +17,7 @@ import { cn } from '@/lib/utils'
 
 type NotePanel = 'none' | 'compact' | 'expanded' | 'all'
 type DockIconPhase = 'closed' | 'opening' | 'open' | 'closing'
+type DockMotionSnapshot = CSSProperties
 
 const DOCK_COLORS: Record<PersonalNote['color'], string> = {
   lavender: 'bg-[#e8e0ff] text-[#67558f]',
@@ -52,12 +53,16 @@ export function QuickDock({
   const triggerRef = useRef<HTMLButtonElement>(null)
   const restoreTriggerFocusRef = useRef(false)
   const dockRootRef = useRef<HTMLDivElement>(null)
+  const dockNavRef = useRef<HTMLElement>(null)
+  const toggleRef = useRef<HTMLButtonElement>(null)
   const firstActionRef = useRef<HTMLButtonElement>(null)
   const searchRef = useRef<HTMLInputElement>(null)
   const [collisionOffset, setCollisionOffset] = useState(0)
-  const [dockMounted, setDockMounted] = useState(open)
-  const dockOpening = open && !dockMounted
-  const dockClosing = !open && dockMounted
+  const [dockPhase, setDockPhase] = useState<DockIconPhase>(open ? 'open' : 'closed')
+  const [motionSnapshot, setMotionSnapshot] = useState<DockMotionSnapshot>()
+  const dockMounted = dockPhase !== 'closed'
+  const dockOpening = dockPhase === 'opening'
+  const dockClosing = dockPhase === 'closing'
   const [panel, setPanel] = useState<NotePanel>('none')
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [search, setSearch] = useState('')
@@ -133,25 +138,69 @@ export function QuickDock({
     }
   }, [dockMounted, location.pathname, location.search, open])
 
-  useEffect(() => {
-    if (open === dockMounted) return
-    restoreTriggerFocusRef.current = true
+  const snapshotMotion = (): DockMotionSnapshot => {
+    const nav = dockNavRef.current
+    const icon = nav?.querySelector<HTMLElement>('[data-testid="quick-dock-toggle-icon"]')
+    const note = icon?.querySelector<HTMLElement>('[data-icon="note"]')
+    const closeIcon = icon?.querySelector<HTMLElement>('[data-icon="close"]')
+    if (!nav || !icon || !note || !closeIcon) return {}
+    const navStyle = window.getComputedStyle(nav)
+    const iconStyle = window.getComputedStyle(icon)
+    const noteStyle = window.getComputedStyle(note)
+    const closeStyle = window.getComputedStyle(closeIcon)
+    return {
+      '--of-dock-current-opacity': navStyle.opacity,
+      '--of-dock-current-transform': navStyle.transform,
+      '--of-dock-current-clip-path': navStyle.clipPath,
+      '--of-dock-toggle-current-transform': iconStyle.transform,
+      '--of-dock-note-current-opacity': noteStyle.opacity,
+      '--of-dock-note-current-transform': noteStyle.transform,
+      '--of-dock-close-current-opacity': closeStyle.opacity,
+      '--of-dock-close-current-transform': closeStyle.transform,
+    } as DockMotionSnapshot
+  }
+
+  useLayoutEffect(() => {
     const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
-    const timer = window.setTimeout(() => {
-      setDockMounted(open)
-    }, reducedMotion ? 0 : 180)
-    return () => window.clearTimeout(timer)
-  }, [dockMounted, open])
+    if (open) {
+      if (dockPhase === 'closed') {
+        setMotionSnapshot(undefined)
+        setDockPhase(reducedMotion ? 'open' : 'opening')
+      } else if (dockPhase === 'closing') {
+        setMotionSnapshot(snapshotMotion())
+        setDockPhase(reducedMotion ? 'open' : 'opening')
+      }
+      return
+    }
+    if (dockPhase === 'open' || dockPhase === 'opening') {
+      restoreTriggerFocusRef.current = true
+      setMotionSnapshot(snapshotMotion())
+      setDockPhase(reducedMotion ? 'closed' : 'closing')
+    }
+  }, [dockPhase, open])
 
   useEffect(() => {
-    if (open || dockMounted || !restoreTriggerFocusRef.current) return
-    restoreTriggerFocusRef.current = false
-    triggerRef.current?.focus()
-  }, [dockMounted, open])
+    const media = window.matchMedia('(prefers-reduced-motion: reduce)')
+    const settleMotion = (event: MediaQueryListEvent) => {
+      if (!event.matches) return
+      setDockPhase((current) => {
+        if (current === 'opening') return 'open'
+        if (current === 'closing') return 'closed'
+        return current
+      })
+    }
+    media.addEventListener('change', settleMotion)
+    return () => media.removeEventListener('change', settleMotion)
+  }, [])
 
-  useEffect(() => {
-    if (open && dockMounted) firstActionRef.current?.focus()
-  }, [dockMounted, open])
+  useLayoutEffect(() => {
+    if (dockPhase === 'opening') toggleRef.current?.focus()
+    if (dockPhase === 'open') firstActionRef.current?.focus()
+    if (dockPhase === 'closed' && restoreTriggerFocusRef.current) {
+      restoreTriggerFocusRef.current = false
+      triggerRef.current?.focus()
+    }
+  }, [dockPhase])
 
   useEffect(() => {
     if (!open) {
@@ -223,6 +272,12 @@ export function QuickDock({
   const dockButton =
     'flex h-9 w-9 items-center justify-center rounded-full text-of-muted transition-[transform,background-color,color] duration-150 hover:scale-[1.04] hover:bg-of-surface-hover hover:text-of-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus motion-reduce:transform-none motion-reduce:transition-none'
 
+  const finishDockMotion = (event: React.AnimationEvent<HTMLElement>) => {
+    if (event.target !== event.currentTarget) return
+    if (dockPhase === 'opening') setDockPhase('open')
+    if (dockPhase === 'closing') setDockPhase('closed')
+  }
+
   return (
     <>
       <div
@@ -247,11 +302,16 @@ export function QuickDock({
               </div>
             ) : null}
             <nav
+              ref={dockNavRef}
               aria-label="빠른 도구"
               data-testid="quick-dock-expanded"
+              data-phase={dockPhase}
+              onAnimationEnd={finishDockMotion}
+              style={motionSnapshot}
               className={cn(
                 'flex w-12 flex-col items-center gap-1 rounded-full border border-of-border bg-of-surface p-1 shadow-[var(--of-shadow-popover)]',
-                dockClosing ? 'of-dock-exit' : 'of-dock-enter',
+                dockOpening && 'of-dock-enter of-dock-opening',
+                dockClosing && 'of-dock-exit',
               )}
             >
               <button
@@ -259,6 +319,7 @@ export function QuickDock({
                 type="button"
                 aria-label="모든 메모 열기"
                 title="모든 메모"
+                disabled={dockOpening}
                 className={dockButton}
                 onClick={() => setPanel('all')}
               >
@@ -270,6 +331,7 @@ export function QuickDock({
                   aria-label="현재 메모 열기"
                   title="현재 메모"
                   aria-pressed={panel === 'compact' || panel === 'expanded'}
+                  disabled={dockOpening}
                   className={cn(dockButton, DOCK_COLORS[activeNote.color])}
                   onClick={() => setPanel((value) => value === 'compact' || value === 'expanded' ? 'none' : 'compact')}
                 >
@@ -280,22 +342,23 @@ export function QuickDock({
                 type="button"
                 aria-label="새 메모 만들기"
                 title="새 메모"
-                disabled={create.isPending}
+                disabled={dockOpening || create.isPending}
                 className={dockButton}
                 onClick={() => void createBlank()}
               >
                 <Plus size={18} />
               </button>
               <button
+                ref={toggleRef}
                 type="button"
                 aria-label="빠른 도구 닫기"
                 title="닫기"
-                aria-busy={dockClosing}
-                aria-disabled={dockClosing}
+                aria-busy={dockOpening || dockClosing}
+                aria-disabled={dockOpening || dockClosing}
                 className={dockButton}
-                onClick={() => { if (!dockClosing) close() }}
+                onClick={() => { if (!dockOpening && !dockClosing) close() }}
               >
-                <DockToggleIcon phase={dockClosing ? 'closing' : 'open'} />
+                <DockToggleIcon phase={dockPhase} />
               </button>
             </nav>
           </>
