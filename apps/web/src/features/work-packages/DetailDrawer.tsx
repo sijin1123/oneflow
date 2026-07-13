@@ -1,6 +1,7 @@
 import { Bell, BellOff, CheckCircle2, ChevronDown, ExternalLink, Eye, Users } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
 import { Suspense, lazy, useEffect, useRef, useState } from 'react'
+import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 
 import { ErrorState, ListSkeleton } from '@/components/shell/states'
@@ -45,6 +46,16 @@ import {
   useWorkPackage,
 } from './api'
 import { useStatusLabels } from './useStatusLabels'
+import {
+  DEFAULT_DETAIL_LAYOUT,
+  DETAIL_LAYOUT_MAX,
+  DETAIL_LAYOUT_MIN,
+  DETAIL_LAYOUT_STORAGE_KEY,
+  clampDetailLayoutValue,
+  parseDetailLayout,
+  serializeDetailLayout,
+  type DetailLayoutPreferences,
+} from './detailLayout'
 import {
   PRIORITY_LABELS,
   WP_PRIORITIES,
@@ -194,11 +205,13 @@ export function WorkPackageDetailPanel({
   projectId,
   showFullPageLink = true,
   initialMoveOpen = false,
+  resizableProperties = false,
 }: {
   wp: WorkPackage
   projectId: string
   showFullPageLink?: boolean
   initialMoveOpen?: boolean
+  resizableProperties?: boolean
 }) {
   const patch = usePatchWorkPackage(projectId)
   const queryClient = useQueryClient()
@@ -218,6 +231,111 @@ export function WorkPackageDetailPanel({
   const [activeTab, setActiveTab] = useState<'overview' | 'activity'>('overview')
   const [propertiesOpen, setPropertiesOpen] = useState(true)
   const propertiesRef = useRef<HTMLElement>(null)
+  const detailGridRef = useRef<HTMLDivElement>(null)
+  const propertiesFieldsRef = useRef<HTMLDivElement>(null)
+  const resizeRef = useRef<{
+    kind: 'panel' | 'label'
+    startX: number
+    startValue: number
+    containerWidth: number
+    userSelect: string
+  } | null>(null)
+  const [detailLayout, setDetailLayout] = useState<DetailLayoutPreferences>(() => {
+    if (typeof window === 'undefined') return DEFAULT_DETAIL_LAYOUT
+    return parseDetailLayout(window.localStorage.getItem(DETAIL_LAYOUT_STORAGE_KEY))
+  })
+
+  useEffect(() => {
+    if (!resizableProperties) return
+    window.localStorage.setItem(DETAIL_LAYOUT_STORAGE_KEY, serializeDetailLayout(detailLayout))
+  }, [detailLayout, resizableProperties])
+
+  useEffect(() => {
+    if (!resizableProperties) return
+    const sync = (event: StorageEvent) => {
+      if (event.key === DETAIL_LAYOUT_STORAGE_KEY) setDetailLayout(parseDetailLayout(event.newValue))
+    }
+    window.addEventListener('storage', sync)
+    return () => window.removeEventListener('storage', sync)
+  }, [resizableProperties])
+
+  useEffect(() => {
+    if (!resizableProperties) return
+    const move = (event: PointerEvent) => {
+      const current = resizeRef.current
+      if (!current) return
+      const delta = ((event.clientX - current.startX) / current.containerWidth) * 100
+      const value = current.kind === 'panel'
+        ? current.startValue - delta
+        : current.startValue + delta
+      setDetailLayout((previous) => ({
+        ...previous,
+        [current.kind === 'panel' ? 'panelWidth' : 'labelWidth']:
+          clampDetailLayoutValue(value, current.startValue),
+      }))
+    }
+    const stop = () => {
+      const current = resizeRef.current
+      if (!current) return
+      document.body.style.userSelect = current.userSelect
+      resizeRef.current = null
+    }
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', stop)
+    window.addEventListener('pointercancel', stop)
+    return () => {
+      stop()
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', stop)
+      window.removeEventListener('pointercancel', stop)
+    }
+  }, [resizableProperties])
+
+  const beginResize = (
+    kind: 'panel' | 'label',
+    event: ReactPointerEvent<HTMLButtonElement>,
+  ) => {
+    const container = kind === 'panel' ? detailGridRef.current : propertiesFieldsRef.current
+    if (!container) return
+    event.preventDefault()
+    event.currentTarget.focus()
+    resizeRef.current = {
+      kind,
+      startX: event.clientX,
+      startValue: kind === 'panel' ? detailLayout.panelWidth : detailLayout.labelWidth,
+      containerWidth: Math.max(container.getBoundingClientRect().width, 1),
+      userSelect: document.body.style.userSelect,
+    }
+    document.body.style.userSelect = 'none'
+  }
+
+  const resizeWithKeyboard = (
+    kind: 'panel' | 'label',
+    event: ReactKeyboardEvent<HTMLButtonElement>,
+  ) => {
+    const field = kind === 'panel' ? 'panelWidth' : 'labelWidth'
+    let value: number | null = null
+    if (event.key === 'ArrowLeft' || event.key === 'ArrowDown') value = detailLayout[field] - 1
+    if (event.key === 'ArrowRight' || event.key === 'ArrowUp') value = detailLayout[field] + 1
+    if (event.key === 'Home') value = DETAIL_LAYOUT_MIN
+    if (event.key === 'End') value = DETAIL_LAYOUT_MAX
+    if (value === null) return
+    event.preventDefault()
+    setDetailLayout((previous) => ({
+      ...previous,
+      [field]: clampDetailLayoutValue(value, previous[field]),
+    }))
+  }
+
+  const propertyRowClass = resizableProperties
+    ? 'space-y-1.5 lg:grid lg:grid-cols-[var(--detail-property-label-width)_minmax(0,1fr)] lg:items-center lg:gap-2 lg:space-y-0'
+    : 'space-y-1.5'
+  const detailGridStyle = resizableProperties
+    ? ({ '--detail-properties-width': `${detailLayout.panelWidth}%` } as CSSProperties)
+    : undefined
+  const propertyFieldsStyle = resizableProperties
+    ? ({ '--detail-property-label-width': `${detailLayout.labelWidth}%` } as CSSProperties)
+    : undefined
 
   useEffect(() => {
     if (initialMoveOpen) setMoveOpen(true)
@@ -395,8 +513,14 @@ export function WorkPackageDetailPanel({
       </div>
 
       {activeTab === 'overview' ? (
-        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_18rem]">
-          <div className="space-y-4">
+        <div
+          ref={detailGridRef}
+          style={detailGridStyle}
+          className={resizableProperties
+            ? 'grid gap-4 lg:grid-cols-[minmax(0,1fr)_0.5rem_var(--detail-properties-width)] lg:gap-0'
+            : 'grid gap-4 lg:grid-cols-[minmax(0,1fr)_18rem]'}
+        >
+          <div className={`space-y-4 ${resizableProperties ? 'lg:pr-4' : ''}`}>
             <div className="space-y-1.5">
               <span className="text-xs font-medium text-of-muted">설명</span>
               <Suspense
@@ -436,6 +560,29 @@ export function WorkPackageDetailPanel({
             <AttachmentsSection wpId={wp.id} projectId={projectId} />
           </div>
 
+          {resizableProperties ? (
+            <button
+              type="button"
+              role="slider"
+              aria-label="속성 패널 너비 조절"
+              aria-orientation="horizontal"
+              aria-valuemin={DETAIL_LAYOUT_MIN}
+              aria-valuemax={DETAIL_LAYOUT_MAX}
+              aria-valuenow={detailLayout.panelWidth}
+              aria-valuetext={`${detailLayout.panelWidth}%`}
+              title="드래그하거나 화살표 키로 속성 패널 너비 조절 · 더블클릭으로 초기화"
+              className="group hidden min-h-full cursor-col-resize items-stretch justify-center rounded-of focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus lg:flex"
+              onPointerDown={(event) => beginResize('panel', event)}
+              onKeyDown={(event) => resizeWithKeyboard('panel', event)}
+              onDoubleClick={() => setDetailLayout((previous) => ({
+                ...previous,
+                panelWidth: DEFAULT_DETAIL_LAYOUT.panelWidth,
+              }))}
+            >
+              <span className="w-px bg-of-border transition-colors group-hover:bg-of-accent group-focus-visible:bg-of-accent" />
+            </button>
+          ) : null}
+
           <aside
             ref={propertiesRef}
             aria-label="작업 속성"
@@ -454,8 +601,35 @@ export function WorkPackageDetailPanel({
                 className={`transition-transform ${propertiesOpen ? 'rotate-180' : ''}`}
               />
             </button>
-            {propertiesOpen ? <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-1 [&>*]:min-w-0">
-              <div className="space-y-1.5">
+            {propertiesOpen ? <div
+              ref={propertiesFieldsRef}
+              style={propertyFieldsStyle}
+              className="relative grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-1 [&>*]:min-w-0"
+            >
+              {resizableProperties ? (
+                <button
+                  type="button"
+                  role="slider"
+                  aria-label="속성 라벨 열 너비 조절"
+                  aria-orientation="horizontal"
+                  aria-valuemin={DETAIL_LAYOUT_MIN}
+                  aria-valuemax={DETAIL_LAYOUT_MAX}
+                  aria-valuenow={detailLayout.labelWidth}
+                  aria-valuetext={`${detailLayout.labelWidth}%`}
+                  title="드래그하거나 화살표 키로 속성 라벨 너비 조절 · 더블클릭으로 초기화"
+                  style={{ left: `${detailLayout.labelWidth}%` }}
+                  className="group absolute inset-y-0 z-10 hidden w-2 -translate-x-1/2 cursor-col-resize items-stretch justify-center rounded-of focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus lg:flex"
+                  onPointerDown={(event) => beginResize('label', event)}
+                  onKeyDown={(event) => resizeWithKeyboard('label', event)}
+                  onDoubleClick={() => setDetailLayout((previous) => ({
+                    ...previous,
+                    labelWidth: DEFAULT_DETAIL_LAYOUT.labelWidth,
+                  }))}
+                >
+                  <span className="w-px bg-transparent transition-colors group-hover:bg-of-accent group-focus-visible:bg-of-accent" />
+                </button>
+              ) : null}
+              <div className={propertyRowClass}>
                 <label htmlFor="wp-status" className="text-xs font-medium text-of-muted">
                   상태
                 </label>
@@ -472,7 +646,7 @@ export function WorkPackageDetailPanel({
                   ))}
                 </Select>
               </div>
-              <div className="space-y-1.5">
+              <div className={propertyRowClass}>
                 <label htmlFor="wp-priority" className="text-xs font-medium text-of-muted">
                   우선순위
                 </label>
@@ -489,7 +663,7 @@ export function WorkPackageDetailPanel({
                   ))}
                 </Select>
               </div>
-              <div className="space-y-1.5">
+              <div className={propertyRowClass}>
                 <label htmlFor="wp-start" className="text-xs font-medium text-of-muted">
                   시작일
                 </label>
@@ -507,7 +681,7 @@ export function WorkPackageDetailPanel({
                   }}
                 />
               </div>
-              <div className="space-y-1.5">
+              <div className={propertyRowClass}>
                 <label htmlFor="wp-due" className="text-xs font-medium text-of-muted">
                   기한
                 </label>
@@ -524,7 +698,7 @@ export function WorkPackageDetailPanel({
                   }}
                 />
               </div>
-              <div className="space-y-1.5">
+              <div className={propertyRowClass}>
                 <label htmlFor="wp-estimate" className="text-xs font-medium text-of-muted">
                   예상 시간(h)
                 </label>
@@ -543,7 +717,7 @@ export function WorkPackageDetailPanel({
                   }}
                 />
               </div>
-              <div className="space-y-1.5">
+              <div className={propertyRowClass}>
                 <label htmlFor="wp-type" className="text-xs font-medium text-of-muted">
                   타입
                 </label>
@@ -567,7 +741,7 @@ export function WorkPackageDetailPanel({
                   )}
                 </Select>
               </div>
-              {releasesEnabled ? <div className="space-y-1.5">
+              {releasesEnabled ? <div className={propertyRowClass}>
                 <label htmlFor="wp-milestone" className="text-xs font-medium text-of-muted">
                   마일스톤
                 </label>
@@ -586,7 +760,7 @@ export function WorkPackageDetailPanel({
                 </Select>
               </div> : null}
               {customersEnabled ? (
-                <div className="space-y-1.5">
+                <div className={propertyRowClass}>
                   <label htmlFor="wp-customer" className="text-xs font-medium text-of-muted">
                     고객
                   </label>
@@ -609,7 +783,7 @@ export function WorkPackageDetailPanel({
                   </Select>
                 </div>
               ) : null}
-              <div className="space-y-1.5">
+              <div className={propertyRowClass}>
                 <label htmlFor="wp-cycle" className="text-xs font-medium text-of-muted">
                   사이클
                 </label>
@@ -627,7 +801,7 @@ export function WorkPackageDetailPanel({
                   ))}
                 </Select>
               </div>
-              <div className="space-y-1.5">
+              <div className={propertyRowClass}>
                 <label htmlFor="wp-module" className="text-xs font-medium text-of-muted">
                   모듈
                 </label>
@@ -645,7 +819,7 @@ export function WorkPackageDetailPanel({
                   ))}
                 </Select>
               </div>
-              <div className="space-y-1.5">
+              <div className={propertyRowClass}>
                 <label htmlFor="wp-assignee" className="text-xs font-medium text-of-muted">
                   담당자
                 </label>

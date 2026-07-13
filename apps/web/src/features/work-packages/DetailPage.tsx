@@ -33,7 +33,12 @@ export function WorkPackageDetailPage() {
           ) : isError ? (
             <ErrorState error={error} onRetry={() => refetch()} />
           ) : (
-            <WorkPackageDetailPanel wp={wp} projectId={projectId} showFullPageLink={false} />
+            <WorkPackageDetailPanel
+              wp={wp}
+              projectId={projectId}
+              showFullPageLink={false}
+              resizableProperties
+            />
           )}
         </div>
       </main>
