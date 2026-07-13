@@ -22,6 +22,7 @@ import { Input } from '@/components/ui/input'
 import { PageHeader, Toolbar } from '@/components/ui/surface'
 import {
   type SearchResultItem,
+  type WorkspaceWorkItemSort,
   type WorkspaceWorkItemScope,
   useWorkspaceWorkItems,
 } from '@/features/search/api'
@@ -30,6 +31,7 @@ import type { WpPriority } from '@/features/work-packages/types'
 import { cn } from '@/lib/utils'
 
 import { WorkspaceCalendarView } from './WorkspaceCalendarView'
+import { WorkspaceColumnSortMenu } from './WorkspaceColumnSortMenu'
 import { WorkspaceDisplayMenu } from './WorkspaceDisplayMenu'
 import { WorkspacePqlEditor, type WorkspaceFilterMode } from './WorkspacePqlEditor'
 import { WorkspaceSavedViewsControls } from './WorkspaceSavedViewsControls'
@@ -69,7 +71,11 @@ export function AllWorkPage() {
   const q = searchParams.get('q') ?? ''
   const scope = validChoice(searchParams.get('scope'), ['all', 'assigned', 'created', 'subscribed'], 'all')
   const state = validChoice(searchParams.get('state'), ['all', 'open'], 'all')
-  const sort = validChoice(searchParams.get('sort'), ['updated', 'due'], 'updated')
+  const sort = validChoice(
+    searchParams.get('sort'),
+    ['updated', 'due', 'status_asc', 'status_desc', 'priority_asc', 'priority_desc'],
+    'updated',
+  )
   const priority = validChoice(searchParams.get('priority'), ['all', 'none', 'low', 'medium', 'high', 'urgent'], 'all')
   const pql = searchParams.get('pql') ?? ''
   const filterMode = validChoice<WorkspaceFilterMode>(
@@ -118,11 +124,13 @@ export function AllWorkPage() {
     const rawColumns = searchParams.get('columns')
     const rawEmptyGroups = searchParams.get('show_empty_groups')
     const rawIds = searchParams.get('show_ids')
+    const rawSort = searchParams.get('sort')
     const groupInvalid = rawGroup !== null && rawGroup !== groupBy
     const columnsInvalid = rawColumns !== null && rawColumns !== columnsKey
     const emptyGroupsInvalid = rawEmptyGroups !== null && rawEmptyGroups !== 'false'
     const idsInvalid = rawIds !== null && rawIds !== 'true'
-    if (!groupInvalid && !columnsInvalid && !emptyGroupsInvalid && !idsInvalid) return
+    const sortInvalid = rawSort !== null && rawSort !== sort
+    if (!groupInvalid && !columnsInvalid && !emptyGroupsInvalid && !idsInvalid && !sortInvalid) return
     setSearchParams((previous) => {
       const next = new URLSearchParams(previous)
       if (groupInvalid) next.delete('group_by')
@@ -132,9 +140,10 @@ export function AllWorkPage() {
       }
       if (emptyGroupsInvalid) next.delete('show_empty_groups')
       if (idsInvalid) next.delete('show_ids')
+      if (sortInvalid) next.delete('sort')
       return next
     }, { replace: true })
-  }, [columnsKey, groupBy, searchParams, setSearchParams])
+  }, [columnsKey, groupBy, searchParams, setSearchParams, sort])
 
   useEffect(() => {
     if (!query.data) return
@@ -439,6 +448,9 @@ export function AllWorkPage() {
             density={density}
             columns={columns}
             showIds={showIds}
+            sort={sort}
+            pqlSorting={filterMode === 'pql'}
+            onSortChange={(value) => updateParams({ sort: value })}
             onOpen={(item) => navigate(workItemPath(item))}
           />
         ) : (
@@ -574,12 +586,18 @@ function WorkspaceTable({
   density,
   columns,
   showIds,
+  sort,
+  pqlSorting,
+  onSortChange,
   onOpen,
 }: {
   items: SearchResultItem[]
   density: GridDensity
   columns: WorkspaceColumn[]
   showIds: boolean
+  sort: WorkspaceWorkItemSort
+  pqlSorting: boolean
+  onSortChange: (value: WorkspaceWorkItemSort) => void
   onOpen: (item: SearchResultItem) => void
 }) {
   const has = (column: WorkspaceColumn) => columns.includes(column)
@@ -590,8 +608,32 @@ function WorkspaceTable({
           <tr className="border-b border-of-border text-[11px] font-medium text-of-muted">
             <th className="h-9 w-72 px-4">작업</th>
             {has('project') ? <th className="h-9 w-44 px-3">프로젝트</th> : null}
-            {has('status') ? <th className="h-9 w-28 px-3">상태</th> : null}
-            {has('priority') ? <th className="h-9 w-28 px-3">우선순위</th> : null}
+            {has('status') ? (
+              <th
+                className="h-9 w-28 p-0"
+                aria-sort={sort === 'status_asc' ? 'ascending' : sort === 'status_desc' ? 'descending' : undefined}
+              >
+                <WorkspaceColumnSortMenu
+                  column="status"
+                  sort={sort}
+                  disabled={pqlSorting}
+                  onSortChange={onSortChange}
+                />
+              </th>
+            ) : null}
+            {has('priority') ? (
+              <th
+                className="h-9 w-28 p-0"
+                aria-sort={sort === 'priority_asc' ? 'ascending' : sort === 'priority_desc' ? 'descending' : undefined}
+              >
+                <WorkspaceColumnSortMenu
+                  column="priority"
+                  sort={sort}
+                  disabled={pqlSorting}
+                  onSortChange={onSortChange}
+                />
+              </th>
+            ) : null}
             {has('type') ? <th className="h-9 w-24 px-3">타입</th> : null}
             {has('assignee') ? <th className="h-9 w-28 px-3">담당자</th> : null}
             {has('start') ? <th className="h-9 w-28 whitespace-nowrap px-2">시작일</th> : null}

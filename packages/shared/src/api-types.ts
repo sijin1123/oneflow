@@ -7385,7 +7385,7 @@ export interface components {
              * @default updated
              * @enum {string}
              */
-            sort: "updated" | "due";
+            sort: "updated" | "due" | "status_asc" | "status_desc" | "priority_asc" | "priority_desc";
             /**
              * State
              * @default all
@@ -13934,7 +13934,7 @@ export interface operations {
                 q?: string | null;
                 scope?: "all" | "assigned" | "created" | "subscribed";
                 state?: "all" | "open";
-                sort?: "updated" | "due";
+                sort?: "updated" | "due" | "status_asc" | "status_desc" | "priority_asc" | "priority_desc";
                 priority?: ("none" | "low" | "medium" | "high" | "urgent") | null;
                 pql?: string | null;
                 limit?: number;

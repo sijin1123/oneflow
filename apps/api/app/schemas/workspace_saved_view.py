@@ -13,7 +13,9 @@ class WorkspaceSavedViewParams(BaseModel):
     q: str = Field(default="", max_length=120)
     scope: Literal["all", "assigned", "created", "subscribed"] = "all"
     state: Literal["all", "open"] = "all"
-    sort: Literal["updated", "due"] = "updated"
+    sort: Literal[
+        "updated", "due", "status_asc", "status_desc", "priority_asc", "priority_desc"
+    ] = "updated"
     priority: Literal["all", "none", "low", "medium", "high", "urgent"] = "all"
     layout: Literal["board", "calendar", "table", "timeline"] = "board"
     density: Literal["comfortable", "compact"] = "comfortable"

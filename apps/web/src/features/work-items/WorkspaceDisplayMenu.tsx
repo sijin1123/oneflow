@@ -39,6 +39,13 @@ const GROUPS: Array<{ value: WorkspaceGroupBy; label: string }> = [
   { value: 'none', label: '그룹 없음' },
 ]
 
+const COLUMN_SORT_LABELS: Partial<Record<WorkspaceWorkItemSort, string>> = {
+  status_asc: '상태 A → Z',
+  status_desc: '상태 Z → A',
+  priority_asc: '우선순위 없음 → 긴급',
+  priority_desc: '우선순위 긴급 → 없음',
+}
+
 export function WorkspaceDisplayMenu({
   layout,
   groupBy,
@@ -93,7 +100,9 @@ export function WorkspaceDisplayMenu({
           </>
         ) : null}
 
-        <DropdownMenuLabel className="flex items-center gap-1.5"><ArrowDownAZ size={12} />정렬</DropdownMenuLabel>
+        <DropdownMenuLabel className="flex items-center gap-1.5">
+          <ArrowDownAZ size={12} />정렬{COLUMN_SORT_LABELS[sort] ? ` · ${COLUMN_SORT_LABELS[sort]}` : ''}
+        </DropdownMenuLabel>
         {pqlSorting ? (
           <DropdownMenuLabel className="pb-2 normal-case text-[11px]">PQL의 ORDER BY가 정렬을 제어합니다.</DropdownMenuLabel>
         ) : (
