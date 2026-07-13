@@ -361,18 +361,18 @@ textarea {
 .of-dock-toggle-icon-closing [data-icon="close"],
 .of-dock-toggle-icon-open [data-icon="note"],
 .of-dock-toggle-icon-opening [data-icon="note"] { opacity: 0; transform: scale(0.58); }
-.of-dock-toggle-icon-opening { animation: of-dock-toggle-open var(--of-dock-motion-duration, 300ms) var(--of-ease-emphasized) both; }
-.of-dock-toggle-icon-opening [data-icon="note"] { animation: of-dock-note-out var(--of-dock-motion-duration, 300ms) var(--of-ease-emphasized) both; }
-.of-dock-toggle-icon-opening [data-icon="close"] { animation: of-dock-close-in var(--of-dock-motion-duration, 300ms) var(--of-ease-emphasized) both; }
-.of-dock-toggle-icon-closing { animation: of-dock-toggle-close var(--of-dock-motion-duration, 300ms) var(--of-ease-emphasized) both; }
-.of-dock-toggle-icon-closing [data-icon="close"] { animation: of-dock-close-out var(--of-dock-motion-duration, 300ms) var(--of-ease-emphasized) both; }
-.of-dock-toggle-icon-closing [data-icon="note"] { animation: of-dock-note-in var(--of-dock-motion-duration, 300ms) var(--of-ease-emphasized) both; }
+.of-dock-toggle-icon-opening { animation: of-dock-toggle-open var(--of-dock-motion-duration, 300ms) var(--of-ease-emphasized) both; animation-play-state: var(--of-dock-css-animation-play-state, running); }
+.of-dock-toggle-icon-opening [data-icon="note"] { animation: of-dock-note-out var(--of-dock-motion-duration, 300ms) var(--of-ease-emphasized) both; animation-play-state: var(--of-dock-css-animation-play-state, running); }
+.of-dock-toggle-icon-opening [data-icon="close"] { animation: of-dock-close-in var(--of-dock-motion-duration, 300ms) var(--of-ease-emphasized) both; animation-play-state: var(--of-dock-css-animation-play-state, running); }
+.of-dock-toggle-icon-closing { animation: of-dock-toggle-close var(--of-dock-motion-duration, 300ms) var(--of-ease-standard) both; animation-play-state: var(--of-dock-css-animation-play-state, running); }
+.of-dock-toggle-icon-closing [data-icon="close"] { animation: of-dock-close-out var(--of-dock-motion-duration, 300ms) var(--of-ease-standard) both; animation-play-state: var(--of-dock-css-animation-play-state, running); }
+.of-dock-toggle-icon-closing [data-icon="note"] { animation: of-dock-note-in var(--of-dock-motion-duration, 300ms) var(--of-ease-standard) both; animation-play-state: var(--of-dock-css-animation-play-state, running); }
 .of-dock-actions { transform-origin: bottom center; }
-.of-dock-actions-enter { animation: of-dock-actions-enter var(--of-dock-motion-duration, 300ms) var(--of-ease-emphasized) both; }
-.of-dock-actions-exit { animation: of-dock-actions-exit var(--of-dock-motion-duration, 300ms) var(--of-ease-standard) both; }
-.of-dock-enter { animation: of-dock-enter var(--of-dock-motion-duration, 300ms) var(--of-ease-emphasized) both; transform-origin: bottom center; }
+.of-dock-actions-enter { animation: of-dock-actions-enter var(--of-dock-motion-duration, 300ms) var(--of-ease-emphasized) both; animation-play-state: var(--of-dock-css-animation-play-state, running); }
+.of-dock-actions-exit { animation: of-dock-actions-exit var(--of-dock-motion-duration, 300ms) var(--of-ease-standard) both; animation-play-state: var(--of-dock-css-animation-play-state, running); }
+.of-dock-enter { animation: of-dock-enter var(--of-dock-motion-duration, 300ms) var(--of-ease-emphasized) both; animation-play-state: var(--of-dock-css-animation-play-state, running); transform-origin: bottom center; }
 .of-dock-opening { pointer-events: none; }
-.of-dock-exit { animation: of-dock-exit var(--of-dock-motion-duration, 300ms) var(--of-ease-standard) both; transform-origin: bottom center; pointer-events: none; }
+.of-dock-exit { animation: of-dock-exit var(--of-dock-motion-duration, 300ms) var(--of-ease-standard) both; animation-play-state: var(--of-dock-css-animation-play-state, running); transform-origin: bottom center; pointer-events: none; }
 .of-panel-enter { animation: of-panel-enter 200ms var(--of-ease-emphasized) both; transform-origin: right center; }
 
 @media (pointer: coarse) {
