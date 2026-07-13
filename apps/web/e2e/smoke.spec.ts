@@ -892,6 +892,102 @@ test('Projects context sidebar는 disclosure·More panel·pin navigation을 유�
   await page.screenshot({ path: '../../docs/screenshots/redevelopment/projects-sidebar-hierarchy-ui/mobile.png' })
 })
 
+test('프로젝트 행 메뉴는 즐겨찾기·링크·설정·소유자 보관을 실제 상태와 연결한다', async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: {
+        writeText: async (text: string) => window.localStorage.setItem('__copied_project_link', text),
+      },
+    })
+  })
+  await mockApi(page)
+  const viewerProject = {
+    ...project,
+    ...projectRollups,
+    id: '99999999-9999-4999-8999-999999999998',
+    key: 'OPS',
+    name: '운영 개선',
+  }
+  let ownerProjectArchived = false
+  await page.route('**/api/v1/projects', (route) => route.fulfill({
+    json: {
+      items: ownerProjectArchived ? [viewerProject] : [{ ...project, ...projectRollups }, viewerProject],
+      total: ownerProjectArchived ? 1 : 2,
+    },
+  }))
+  await page.route(`**/api/v1/projects/${viewerProject.id}/members`, (route) => route.fulfill({
+    json: {
+      items: [{ user_id: 'me-1', email: 'dev@oneflow.local', display_name: 'Dev User', role: 'viewer' }],
+      total: 1,
+    },
+  }))
+  await page.route(`**/api/v1/projects/${project.id}/archive`, (route) => {
+    ownerProjectArchived = true
+    return route.fulfill({ json: { ...project, archived_at: '2026-07-13T00:00:00Z' } })
+  })
+
+  await page.goto('/projects')
+  const nav = page.getByRole('navigation', { name: 'Projects 컨텍스트 내비게이션' })
+  const projectRows = nav.locator('[data-project-row]')
+  await expect(projectRows).toHaveCount(2)
+  await expect(projectRows.nth(0)).toContainText('OneFlow 도입')
+
+  await nav.getByRole('button', { name: '운영 개선 프로젝트 작업' }).click()
+  await page.getByRole('menuitem', { name: '즐겨찾기에 추가' }).click()
+  await expect(projectRows.nth(0)).toContainText('운영 개선')
+  await expect(projectRows.nth(0).getByLabel('즐겨찾기')).toBeVisible()
+  await page.evaluate(() => {
+    const key = 'oneflow.sidebar.preferences.v1'
+    const preferences = JSON.parse(window.localStorage.getItem(key) ?? '{}') as Record<string, unknown>
+    window.localStorage.setItem(key, JSON.stringify({ ...preferences, limitProjects: true, projectLimit: 1 }))
+  })
+  await page.reload()
+  await expect(projectRows).toHaveCount(1)
+  await expect(projectRows.nth(0)).toContainText('운영 개선')
+
+  await nav.getByRole('button', { name: '운영 개선 프로젝트 작업' }).click()
+  await expect(page.getByRole('menuitem', { name: '프로젝트 보관' })).toHaveCount(0)
+  await page.getByRole('menuitem', { name: '링크 복사' }).click()
+  await expect(page.getByRole('status')).toContainText('링크를 복사했습니다')
+  await expect.poll(() => page.evaluate(() => window.localStorage.getItem('__copied_project_link')))
+    .toBe(`${new URL(page.url()).origin}/projects/${viewerProject.id}/work-packages`)
+
+  await nav.getByRole('button', { name: '운영 개선 프로젝트 작업' }).click()
+  await page.getByRole('menuitem', { name: '설정' }).click()
+  await expect(page).toHaveURL(`/projects/${viewerProject.id}/settings`)
+
+  await page.evaluate(() => {
+    const key = 'oneflow.sidebar.preferences.v1'
+    const preferences = JSON.parse(window.localStorage.getItem(key) ?? '{}') as Record<string, unknown>
+    window.localStorage.setItem(key, JSON.stringify({ ...preferences, limitProjects: false }))
+  })
+  await page.goto('/projects')
+  await nav.getByRole('button', { name: 'OneFlow 도입 프로젝트 작업' }).click()
+  await expect(page.getByRole('menuitem', { name: '프로젝트 보관' })).toBeVisible()
+  await expect(page.getByRole('menuitem', { name: /Publish|공개/ })).toHaveCount(0)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/projects-sidebar-actions-ui/project-menu.png',
+  })
+  const archiveRequest = page.waitForRequest(
+    (request) => request.method() === 'POST' && request.url().endsWith(`/projects/${project.id}/archive`),
+  )
+  page.once('dialog', (dialog) => void dialog.accept())
+  await page.getByRole('menuitem', { name: '프로젝트 보관' }).click()
+  await archiveRequest
+  await expect(page.getByRole('status')).toContainText('프로젝트를 보관했습니다')
+  await expect(projectRows).toHaveCount(1)
+
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.getByRole('button', { name: '사이드바 열기' }).click()
+  const drawer = page.getByRole('dialog', { name: '모바일 내비게이션' })
+  await drawer.getByRole('button', { name: '운영 개선 프로젝트 작업' }).click()
+  await expect(page.getByRole('menuitem', { name: '설정' })).toBeVisible()
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/projects-sidebar-actions-ui/mobile-project-menu.png',
+  })
+})
+
 test('사이드바 접기와 내비게이션 개인화는 reload와 cross-tab에서 유지된다', async ({ page }) => {
   test.setTimeout(90_000)
   await mockApi(page)

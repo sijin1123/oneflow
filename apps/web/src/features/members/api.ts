@@ -13,10 +13,11 @@ export function useMe() {
   })
 }
 
-export function useMembers(projectId: string) {
+export function useMembers(projectId: string, enabled = true) {
   return useQuery({
     queryKey: ['members', projectId],
     queryFn: () => api<MemberList>(`/api/v1/projects/${projectId}/members`),
+    enabled,
   })
 }
 
