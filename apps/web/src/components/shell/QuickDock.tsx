@@ -40,6 +40,7 @@ export function QuickDock({
   const searchRef = useRef<HTMLInputElement>(null)
   const [collisionOffset, setCollisionOffset] = useState(0)
   const [dockMounted, setDockMounted] = useState(open)
+  const [dockOpening, setDockOpening] = useState(false)
   const [dockClosing, setDockClosing] = useState(false)
   const [panel, setPanel] = useState<NotePanel>('none')
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -54,10 +55,6 @@ export function QuickDock({
   const activeNote = notes.data?.items.find((note) => note.id === selectedId) ?? notes.data?.items[0]
 
   useLayoutEffect(() => {
-    if (open) {
-      setCollisionOffset(0)
-      return
-    }
     const main = document.querySelector('main')
     const scrollRegion = main?.querySelector<HTMLElement>('[data-shell-scroll-region]')
     if (!main || !scrollRegion) return
@@ -108,6 +105,7 @@ export function QuickDock({
     observer.observe(main, { childList: true, subtree: true })
     const resizeObserver = new ResizeObserver(measure)
     resizeObserver.observe(main)
+    if (dockRootRef.current) resizeObserver.observe(dockRootRef.current)
     scrollRegion.addEventListener('scroll', measure, { passive: true })
     window.addEventListener('resize', measure)
     return () => {
@@ -117,14 +115,20 @@ export function QuickDock({
       scrollRegion.removeEventListener('scroll', measure)
       window.removeEventListener('resize', measure)
     }
-  }, [location.pathname, location.search, open])
+  }, [dockMounted, location.pathname, location.search, open])
 
   useEffect(() => {
     if (open) {
       setDockClosing(false)
-      setDockMounted(true)
-      return
+      if (dockMounted) return
+      setDockOpening(true)
+      const timer = window.setTimeout(() => {
+        setDockOpening(false)
+        setDockMounted(true)
+      }, window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 160)
+      return () => window.clearTimeout(timer)
     }
+    setDockOpening(false)
     if (!dockMounted) return
     setDockClosing(true)
     const timer = window.setTimeout(() => {
@@ -283,14 +287,22 @@ export function QuickDock({
             type="button"
             aria-label="빠른 도구 열기"
             title="빠른 메모"
-            aria-expanded="false"
+            aria-expanded={open}
+            aria-busy={dockOpening}
+            aria-disabled={dockOpening}
             className={cn(
               'flex h-12 w-12 items-center justify-center rounded-full border border-of-border bg-of-surface text-of-accent shadow-[var(--of-shadow-popover)]',
               'transition-[transform,background-color,box-shadow] duration-200 hover:scale-[1.04] hover:bg-of-surface-hover hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus motion-reduce:transform-none motion-reduce:transition-none',
+              dockOpening && 'pointer-events-none',
             )}
-            onClick={() => onOpenChange(true)}
+            onClick={() => { if (!dockOpening) onOpenChange(true) }}
           >
-            <StickyNote size={20} aria-hidden="true" />
+            <StickyNote
+              size={20}
+              aria-hidden="true"
+              data-testid="quick-dock-trigger-icon"
+              className={cn(dockOpening && 'of-dock-trigger-open')}
+            />
           </button>
         )}
       </div>

@@ -1089,7 +1089,19 @@ test('빠른 도구는 shell scroll region 이동 후에도 하단 작업과 충
   }
   await expect.poll(dockAvoidsAction).toBe(true)
   await dock.click()
-  await page.getByRole('navigation', { name: '빠른 도구' }).getByRole('button', { name: '빠른 도구 닫기' }).click()
+  const expandedDock = page.getByRole('navigation', { name: '빠른 도구' })
+  const expandedDockAvoidsAction = async () => {
+    const [actionBox, dockBox] = await Promise.all([action.boundingBox(), expandedDock.boundingBox()])
+    if (!actionBox || !dockBox) return false
+    return !(
+      actionBox.x < dockBox.x + dockBox.width &&
+      actionBox.x + actionBox.width > dockBox.x &&
+      actionBox.y < dockBox.y + dockBox.height &&
+      actionBox.y + actionBox.height > dockBox.y
+    )
+  }
+  await expect.poll(expandedDockAvoidsAction).toBe(true)
+  await expandedDock.getByRole('button', { name: '빠른 도구 닫기' }).click()
   await expect(dock).toBeFocused()
   await expect.poll(dockAvoidsAction).toBe(true)
 })
@@ -1099,10 +1111,22 @@ test('빠른 도구 dock은 개인 메모를 compact·expanded·modal 상태로 
   await page.goto('/projects')
 
   const trigger = page.getByRole('button', { name: '빠른 도구 열기' })
+  const scrollRegion = page.locator('[data-shell-scroll-region]')
+  const scrollGeometryBeforeOpen = await scrollRegion.evaluate((element) => ({
+    clientHeight: element.clientHeight,
+    scrollHeight: element.scrollHeight,
+  }))
   await trigger.click()
+  await expect(trigger).toBeFocused()
+  await expect(page.getByTestId('quick-dock-trigger-icon')).toHaveCSS('animation-name', 'of-dock-trigger-open')
+  await expect(page.getByTestId('quick-dock-trigger-icon')).toHaveCSS('animation-duration', '0.16s')
   const dock = page.getByRole('navigation', { name: '빠른 도구' })
   await expect(dock).not.toHaveCSS('animation-name', 'none')
   await expect(dock).toHaveCSS('animation-duration', '0.2s')
+  expect(await scrollRegion.evaluate((element) => ({
+    clientHeight: element.clientHeight,
+    scrollHeight: element.scrollHeight,
+  }))).toEqual(scrollGeometryBeforeOpen)
   await page.screenshot({
     path: '../../docs/screenshots/redevelopment/shell-motion-fidelity-ui/quick-dock.png',
   })
@@ -1152,8 +1176,7 @@ test('빠른 도구 dock은 개인 메모를 compact·expanded·modal 상태로 
   await expect(page.getByRole('article', { name: '제목 없는 메모' })).toBeVisible()
   await dock.getByRole('button', { name: '새 메모 만들기' }).click()
   await expect(page.getByRole('alert')).toContainText('내용이 없는 개인 메모가 이미 있습니다')
-  const safeArea = page.getByTestId('quick-dock-safe-area')
-  await expect(safeArea).toHaveCSS('height', '256px')
+  await expect(page.getByTestId('quick-dock-safe-area')).toHaveCount(0)
   await page.screenshot({
     path: '../../docs/screenshots/redevelopment/quick-notes-dock-ui/desktop.png',
   })

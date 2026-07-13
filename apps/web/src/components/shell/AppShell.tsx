@@ -53,14 +53,6 @@ export function AppShell() {
           <ProjectNavigationTabs enabled={sidebar.preferences.projectNavigation === 'tabs'} />
           <div data-shell-scroll-region className="of-scrollbar min-h-0 flex-1 overflow-y-auto">
             <Outlet />
-            <div
-              aria-hidden="true"
-              data-testid="quick-dock-safe-area"
-              className={cn(
-                'pointer-events-none w-full transition-[height] duration-[var(--of-duration-default)] motion-reduce:transition-none',
-                quickDockOpen ? 'h-64' : 'h-16',
-              )}
-            />
           </div>
         </main>
         {!mobileSidebarOpen ? (
