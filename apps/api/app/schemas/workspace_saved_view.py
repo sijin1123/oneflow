@@ -17,11 +17,36 @@ class WorkspaceSavedViewParams(BaseModel):
     priority: Literal["all", "none", "low", "medium", "high", "urgent"] = "all"
     layout: Literal["board", "calendar", "table", "timeline"] = "board"
     density: Literal["comfortable", "compact"] = "comfortable"
+    filter_mode: Literal["basic", "pql"] = "basic"
+    pql: str = Field(default="", max_length=1000)
 
     @field_validator("q")
     @classmethod
     def _clean_query(cls, value: str) -> str:
         return value.strip()
+
+    @field_validator("pql")
+    @classmethod
+    def _clean_pql(cls, value: str) -> str:
+        return value.strip()
+
+    @model_validator(mode="after")
+    def _validate_filter_mode(self) -> "WorkspaceSavedViewParams":
+        if self.filter_mode == "pql":
+            from app.services.workspace_pql import PqlError, parse_pql
+
+            if not self.pql:
+                raise ValueError("pql is required when filter_mode is pql")
+            try:
+                self.pql = parse_pql(self.pql).normalized
+            except PqlError as exc:
+                raise ValueError(str(exc)) from exc
+            self.state = "all"
+            self.sort = "updated"
+            self.priority = "all"
+        else:
+            self.pql = ""
+        return self
 
 
 def _clean_name(value: str) -> str:

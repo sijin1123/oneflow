@@ -42,12 +42,28 @@ export type WorkspaceWorkItemScope = 'all' | 'assigned' | 'created' | 'subscribe
 export type WorkspaceWorkItemState = 'all' | 'open'
 export type WorkspaceWorkItemSort = 'updated' | 'due'
 
+export type WorkspacePqlValidation = {
+  normalized: string
+  fields: string[]
+  order_by: string | null
+  direction: string | null
+  limit: number | null
+}
+
+export function validateWorkspacePql(query: string) {
+  return api<WorkspacePqlValidation>('/api/v1/search/work-packages/pql/validate', {
+    method: 'POST',
+    body: JSON.stringify({ query }),
+  })
+}
+
 export function useWorkspaceWorkItems({
   q,
   scope,
   state,
   sort,
   priority,
+  pql,
   limit = 50,
   offset = 0,
 }: {
@@ -56,12 +72,13 @@ export function useWorkspaceWorkItems({
   state: WorkspaceWorkItemState
   sort: WorkspaceWorkItemSort
   priority: WpPriority | null
+  pql: string | null
   limit?: number
   offset?: number
 }) {
   const query = q.trim()
   return useQuery({
-    queryKey: ['workspace-work-items', query, scope, state, sort, priority, limit, offset],
+    queryKey: ['workspace-work-items', query, scope, state, sort, priority, pql, limit, offset],
     queryFn: () => {
       const params = new URLSearchParams({
         scope,
@@ -72,6 +89,7 @@ export function useWorkspaceWorkItems({
       })
       if (query) params.set('q', query)
       if (priority) params.set('priority', priority)
+      if (pql) params.set('pql', pql)
       return api<SearchResults>(`/api/v1/search/work-packages?${params.toString()}`)
     },
   })

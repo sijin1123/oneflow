@@ -1,7 +1,10 @@
 import asyncio
 import uuid
 
-from app.models import User, WorkspaceSavedView
+from sqlalchemy import select
+
+from app.models import ProjectMember, User, WorkspaceSavedView
+from tests.conftest import create_project
 
 
 async def _create(client, name: str = "My view", **params):
@@ -34,6 +37,8 @@ async def test_workspace_saved_view_crud_and_canonical_params(client):
         "priority": "high",
         "layout": "timeline",
         "density": "compact",
+        "filter_mode": "basic",
+        "pql": "",
     }
     assert view["version"] == 0
     listed = await client.get("/api/v1/me/workspace-views")
@@ -58,6 +63,97 @@ async def test_workspace_saved_view_crud_and_canonical_params(client):
     assert (
         await client.delete(f"/api/v1/me/workspace-views/{view['id']}?expected_version=1")
     ).status_code == 204
+
+
+async def test_workspace_saved_view_pql_mode_canonicalizes_and_rejects_invalid_values(client):
+    view = await _create(
+        client,
+        "PQL",
+        filter_mode="pql",
+        pql="state = OPEN order by updated desc limit 4",
+        state="open",
+        sort="due",
+        priority="urgent",
+    )
+    assert view["params"]["filter_mode"] == "pql"
+    assert view["params"]["pql"] == "state = open ORDER BY updated DESC LIMIT 4"
+    assert view["params"]["state"] == "all"
+    assert view["params"]["sort"] == "updated"
+    assert view["params"]["priority"] == "all"
+    for params in (
+        {"filter_mode": "pql", "pql": " "},
+        {"filter_mode": "pql", "pql": "priority = impossible"},
+        {"filter_mode": "basic", "pql": "state = open"},
+    ):
+        response = await client.post(
+            "/api/v1/me/workspace-views", json={"name": "invalid", "params": params}
+        )
+        if params["filter_mode"] == "basic":
+            assert response.status_code == 201
+            assert response.json()["params"]["pql"] == ""
+        else:
+            assert response.status_code == 422
+
+
+async def test_workspace_saved_view_pql_values_stay_inside_visible_membership(client, app):
+    visible = await create_project(client, key="VISIBLE", name="Visible")
+    stored = await _create(
+        client,
+        "Visible PQL",
+        filter_mode="pql",
+        pql="project = visible",
+    )
+    assert stored["params"]["pql"] == "project = visible"
+
+    async with app.state.sessionmaker() as session, session.begin():
+        other = User(email="pql-hidden@example.com", display_name="Hidden Assignee")
+        session.add(other)
+        await session.flush()
+        session.add(ProjectMember(project_id=uuid.UUID(visible["id"]), user_id=other.id))
+
+    assert (
+        await client.post(
+            "/api/v1/me/workspace-views",
+            json={
+                "name": "Visible assignee",
+                "params": {"filter_mode": "pql", "pql": "assignee = 'Hidden Assignee'"},
+            },
+        )
+    ).status_code == 201
+    async with app.state.sessionmaker() as session, session.begin():
+        session.add(User(email="pql-private@example.com", display_name="Private Assignee"))
+    private_assignee = await client.post(
+        "/api/v1/me/workspace-views",
+        json={
+            "name": "Private assignee",
+            "params": {"filter_mode": "pql", "pql": "assignee = 'Private Assignee'"},
+        },
+    )
+    assert private_assignee.status_code == 422
+    hidden_project = await create_project(
+        client,
+        key="HIDDEN",
+        name="Hidden",
+    )
+    me_id = uuid.UUID((await client.get("/api/v1/me")).json()["id"])
+    async with app.state.sessionmaker() as session, session.begin():
+        membership = (
+            await session.execute(
+                select(ProjectMember).where(
+                    ProjectMember.project_id == uuid.UUID(hidden_project["id"]),
+                    ProjectMember.user_id == me_id,
+                )
+            )
+        ).scalar_one()
+        await session.delete(membership)
+    rejected = await client.post(
+        "/api/v1/me/workspace-views",
+        json={
+            "name": "Hidden PQL",
+            "params": {"filter_mode": "pql", "pql": "project = hidden"},
+        },
+    )
+    assert rejected.status_code == 422
 
 
 async def test_workspace_saved_view_validation_duplicate_and_cap(client, app, dev_user):

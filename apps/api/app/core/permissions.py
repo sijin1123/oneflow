@@ -306,6 +306,9 @@ ENDPOINT_VERBS: dict[str, str] = {
 # Mutating routes that are deliberately OUTSIDE the project role matrix.
 # route → reason (kept human-readable; the coverage test only checks presence).
 ENDPOINT_ALLOWLIST: dict[str, str] = {
+    "POST /api/v1/search/work-packages/pql/validate": (
+        "읽기 전용 PQL parse/value validation — 인증 사용자 member scope 조회만 수행"
+    ),
     "POST /api/v1/projects": "워크스페이스 — 모든 활성 사용자가 프로젝트를 만들 수 있음",
     "POST /api/v1/projects/{project_id}/data-transfer-jobs/export": (
         "읽기 가능한 프로젝트 export artifact/audit 생성 — viewer 포함 current member"

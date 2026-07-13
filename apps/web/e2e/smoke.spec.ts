@@ -364,12 +364,31 @@ async function mockApi(page: Page, opts: { conflictOnPatch?: boolean } = {}) {
   await page.route('**/api/v1/data-transfer-jobs**', (route) =>
     route.fulfill({ json: { items: [], total: 0, limit: 50, offset: 0 } }),
   )
-  await page.route('**/api/v1/search/work-packages**', (route) => {
+  await page.route('**/api/v1/search/work-packages**', async (route) => {
+    if (route.request().method() === 'POST' && route.request().url().endsWith('/pql/validate')) {
+      const body = route.request().postDataJSON() as { query: string }
+      const normalized = body.query.trim().replace(/\s+/g, ' ')
+      if (/Impossible/i.test(normalized)) {
+        await route.fulfill({ status: 422, json: { detail: 'priority value is not supported' } })
+        return
+      }
+      await route.fulfill({
+        json: {
+          normalized,
+          fields: ['priority'],
+          order_by: null,
+          direction: null,
+          limit: null,
+        },
+      })
+      return
+    }
     const url = new URL(route.request().url())
     const query = url.searchParams.get('q')?.trim() ?? ''
     const scope = url.searchParams.get('scope') ?? 'all'
     const state = url.searchParams.get('state') ?? 'all'
     const priority = url.searchParams.get('priority')
+    const pql = url.searchParams.get('pql')
     const sort = url.searchParams.get('sort') ?? 'updated'
     const limit = Number(url.searchParams.get('limit') ?? 50)
     const offset = Number(url.searchParams.get('offset') ?? 0)
@@ -381,6 +400,7 @@ async function mockApi(page: Page, opts: { conflictOnPatch?: boolean } = {}) {
     else if (scope === 'subscribed') items = items.filter((item) => item.id === wpB.id)
     if (state === 'open') items = items.filter((item) => !['done', 'cancelled'].includes(item.status))
     if (priority) items = items.filter((item) => item.priority === priority)
+    if (/priority\s*=\s*high/i.test(pql ?? '')) items = items.filter((item) => item.priority === 'high')
     if (sort === 'due') {
       items.sort((left, right) => (left.due_date ?? '9999-12-31').localeCompare(right.due_date ?? '9999-12-31'))
     }
@@ -1364,6 +1384,7 @@ test('Quick Dock trigger는 note와 X를 양방향 회전 morph한다', async ({
   await trigger.click()
   const dock = page.getByRole('navigation', { name: '빠른 도구' })
   const openingIcon = dock.getByTestId('quick-dock-toggle-icon')
+  const openingActions = dock.getByTestId('quick-dock-actions')
   const openingToggle = dock.getByRole('button', { name: '빠른 도구 닫기' })
   const firstAction = dock.getByRole('button', { name: '모든 메모 열기' })
   await expect(dock).toHaveAttribute('data-phase', 'opening')
@@ -1372,6 +1393,8 @@ test('Quick Dock trigger는 note와 X를 양방향 회전 morph한다', async ({
   await expect(openingIcon).toHaveAttribute('data-phase', 'opening')
   await expect(openingIcon).toHaveCSS('animation-name', 'of-dock-toggle-open')
   await expect(openingIcon).toHaveCSS('animation-duration', '1s')
+  await expect(openingActions).toHaveCSS('animation-name', 'of-dock-actions-enter')
+  await expect(openingActions).toHaveCSS('animation-duration', '1s')
   await expect(dock).toHaveCSS('pointer-events', 'none')
   await expect(openingToggle).toBeFocused()
   await expect(firstAction).toBeDisabled()
@@ -1389,10 +1412,15 @@ test('Quick Dock trigger는 note와 X를 양방향 회전 morph한다', async ({
     clipPath: getComputedStyle(element.closest('nav')!).clipPath,
     navTransform: getComputedStyle(element.closest('nav')!).transform,
     iconTransform: getComputedStyle(element).transform,
+    actionsOpacity: Number.parseFloat(getComputedStyle(element.closest('nav')!.querySelector('[data-testid="quick-dock-actions"]')!).opacity),
+    actionsTransform: getComputedStyle(element.closest('nav')!.querySelector('[data-testid="quick-dock-actions"]')!).transform,
   }))
   expect(openingBlend.note).toBeLessThan(1)
   expect(openingBlend.close).toBeGreaterThan(0)
   expect(openingBlend.clipPath).not.toBe('none')
+  expect(openingBlend.actionsOpacity).toBeGreaterThan(0)
+  expect(openingBlend.actionsOpacity).toBeLessThan(1)
+  expect(openingBlend.actionsTransform).not.toBe('none')
   await dock.screenshot({
     path: '../../docs/screenshots/redevelopment/quick-dock-synchronized-motion-ui/opening-dock.png',
   })
@@ -1406,6 +1434,8 @@ test('Quick Dock trigger는 note와 X를 양방향 회전 morph한다', async ({
       clipPath: style.getPropertyValue('--of-dock-current-clip-path').trim(),
       navTransform: style.getPropertyValue('--of-dock-current-transform').trim(),
       iconTransform: style.getPropertyValue('--of-dock-toggle-current-transform').trim(),
+      actionsOpacity: Number.parseFloat(style.getPropertyValue('--of-dock-actions-current-opacity')),
+      actionsTransform: style.getPropertyValue('--of-dock-actions-current-transform').trim(),
       note: Number.parseFloat(style.getPropertyValue('--of-dock-note-current-opacity')),
       close: Number.parseFloat(style.getPropertyValue('--of-dock-close-current-opacity')),
     }
@@ -1413,6 +1443,8 @@ test('Quick Dock trigger는 note와 X를 양방향 회전 morph한다', async ({
   expect(reversalStart.clipPath).toBe(openingBlend.clipPath)
   expect(reversalStart.navTransform).toBe(openingBlend.navTransform)
   expect(reversalStart.iconTransform).toBe(openingBlend.iconTransform)
+  expect(reversalStart.actionsOpacity).toBeCloseTo(openingBlend.actionsOpacity, 2)
+  expect(reversalStart.actionsTransform).toBe(openingBlend.actionsTransform)
   expect(reversalStart.note).toBeCloseTo(openingBlend.note, 2)
   expect(reversalStart.close).toBeCloseTo(openingBlend.close, 2)
   await expect(dock).toHaveCSS('animation-name', 'of-dock-exit')
@@ -1420,6 +1452,8 @@ test('Quick Dock trigger는 note와 X를 양방향 회전 morph한다', async ({
   await expect(closingIcon).toHaveAttribute('data-phase', 'closing')
   await expect(closingIcon).toHaveCSS('animation-name', 'of-dock-toggle-close')
   await expect(closingIcon).toHaveCSS('animation-duration', '1s')
+  await expect(openingActions).toHaveCSS('animation-name', 'of-dock-actions-exit')
+  await expect(openingActions).toHaveCSS('animation-duration', '1s')
   await expect(closeButton).toHaveAttribute('aria-disabled', 'true')
   await expect(closeButton).toBeFocused()
   await closeButton.evaluate((button) => (button as HTMLButtonElement).click())
@@ -1475,6 +1509,18 @@ test('Quick Dock trigger는 note와 X를 양방향 회전 morph한다', async ({
     clientHeight: element.clientHeight,
     scrollHeight: element.scrollHeight,
   }))).toEqual(geometry)
+
+  // The default motion uses the observed 300ms interval for icon, actions and pill reveal.
+  await page.emulateMedia({ reducedMotion: 'no-preference' })
+  await page.evaluate(() => document.documentElement.style.removeProperty('--of-dock-motion-duration'))
+  await trigger.click()
+  await expect(dock).toHaveCSS('animation-duration', '0.3s')
+  await expect(dock.getByTestId('quick-dock-toggle-icon')).toHaveCSS('animation-duration', '0.3s')
+  await expect(dock.getByTestId('quick-dock-actions')).toHaveCSS('animation-duration', '0.3s')
+  await expect(dock).toHaveAttribute('data-phase', 'open')
+  await dock.getByRole('button', { name: '빠른 도구 닫기' }).click()
+  await expect(dock.getByTestId('quick-dock-actions')).toHaveCSS('animation-name', 'of-dock-actions-exit')
+  await expect(dock).toHaveCount(0)
 })
 
 test('빠른 도구 dock은 개인 메모를 compact·expanded·modal 상태로 편집한다', async ({ page }) => {
@@ -2348,6 +2394,8 @@ test('Workspace Views Add view가 생성·되돌리기·갱신·삭제와 실패
       state: 'open',
       sort: 'due',
       priority: 'high',
+      filter_mode: 'basic',
+      pql: '',
       layout: 'timeline',
       density: 'compact',
     },
@@ -2400,6 +2448,96 @@ test('Workspace Views Add view가 생성·되돌리기·갱신·삭제와 실패
   await expect(dialog).toBeVisible()
   await page.screenshot({
     path: '../../docs/screenshots/redevelopment/workspace-saved-views-ui/mobile-create-error.png',
+  })
+})
+
+test('Workspace Views PQL은 추천·검증·실행·저장·초기화를 실제 query에 연결한다', async ({ page }) => {
+  await mockApi(page)
+  await page.goto('/work-items')
+  await page.getByRole('button', { name: '필터' }).click()
+  await page.getByRole('tab', { name: 'PQL' }).click()
+
+  const editor = page.getByLabel('PQL query')
+  const run = page.getByRole('button', { name: 'Run' })
+  await expect(editor).toBeVisible()
+  await expect(run).toBeDisabled()
+  await editor.fill('priority')
+  await expect(page.getByRole('listbox', { name: 'PQL suggestions' })).toBeVisible()
+  await page.getByRole('option', { name: /= 값과 같음/ }).click()
+  await expect(editor).toHaveValue('priority = ')
+  await expect(run).toBeDisabled()
+  await page.getByRole('option', { name: /High 조건 값/ }).click()
+  await expect(editor).toHaveValue('priority = High')
+  await expect(run).toBeEnabled()
+
+  const validationRequest = page.waitForRequest((request) =>
+    request.method() === 'POST' && request.url().endsWith('/search/work-packages/pql/validate'),
+  )
+  const pqlSearchRequest = page.waitForRequest((request) =>
+    request.method() === 'GET' && new URL(request.url()).searchParams.get('pql') === 'priority = High',
+  )
+  await run.click()
+  expect((await validationRequest).postDataJSON()).toEqual({ query: 'priority = High' })
+  await pqlSearchRequest
+  await expect(page).toHaveURL(/filter_mode=pql/)
+  await expect(page).toHaveURL(/pql=priority(?:\+|%20)%3D(?:\+|%20)High/)
+  await expect(page.getByRole('button', { name: '워크패키지 API 구현' })).toBeVisible()
+  await expect(page.getByRole('button', { name: '보드 뷰 구현' })).toHaveCount(0)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/workspace-pql-ui/desktop-applied.png',
+  })
+
+  await page.getByRole('button', { name: 'Expand editor' }).click()
+  await expect(page.getByRole('button', { name: 'Collapse editor' })).toBeVisible()
+  await page.getByRole('tab', { name: 'Basic' }).click()
+  await expect(page).not.toHaveURL(/pql=/)
+  await page.getByRole('tab', { name: 'PQL' }).click()
+  await expect(editor).toHaveValue('priority = High')
+  await run.click()
+  await expect(page).toHaveURL(/pql=priority/)
+
+  await page.getByRole('button', { name: 'Add view' }).click()
+  const dialog = page.getByRole('dialog', { name: '작업영역 뷰 저장' })
+  await dialog.getByLabel('뷰 이름').fill('높은 우선순위')
+  const saveRequest = page.waitForRequest((request) =>
+    request.method() === 'POST' && request.url().endsWith('/api/v1/me/workspace-views'),
+  )
+  await dialog.getByRole('button', { name: '저장', exact: true }).click()
+  const saved = (await saveRequest).postDataJSON() as { params: WorkspaceSavedViewParams }
+  expect(saved.params.filter_mode).toBe('pql')
+  expect(saved.params.pql).toBe('priority = High')
+
+  await page.getByRole('button', { name: 'PQL Clear all' }).click()
+  await expect(editor).toHaveValue('')
+  await expect(page).not.toHaveURL(/pql=/)
+  await editor.fill('priority = Impossible')
+  await run.click()
+  await expect(page.getByRole('alert')).toContainText('priority value is not supported')
+  await expect(page).not.toHaveURL(/pql=priority.*Impossible/)
+
+  await page.route('**/api/v1/search/work-packages/pql/validate', async (route) => {
+    await page.waitForTimeout(180)
+    await route.fulfill({
+      json: {
+        normalized: 'priority = High',
+        fields: ['priority'],
+        order_by: null,
+        direction: null,
+        limit: null,
+      },
+    })
+  }, { times: 1 })
+  await editor.fill('priority = High')
+  await run.click()
+  await editor.fill('priority = Medium')
+  await page.waitForTimeout(250)
+  await expect(editor).toHaveValue('priority = Medium')
+  await expect(page).not.toHaveURL(/pql=priority.*High/)
+
+  await page.setViewportSize({ width: 390, height: 844 })
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/workspace-pql-ui/mobile-validation-error.png',
   })
 })
 
