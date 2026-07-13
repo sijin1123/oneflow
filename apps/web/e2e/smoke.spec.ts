@@ -1406,6 +1406,8 @@ test('Quick Dock trigger는 note와 X를 양방향 회전 morph한다', async ({
   }))
   const trigger = page.getByRole('button', { name: '빠른 도구 열기' })
   const persistentToggle = page.getByTestId('quick-dock-toggle')
+  const closedToggleBox = await persistentToggle.boundingBox()
+  expect(closedToggleBox).not.toBeNull()
   await persistentToggle.evaluate((element) => {
     ;(window as Window & { __oneflowQuickDockToggle?: Element }).__oneflowQuickDockToggle = element
   })
@@ -1430,6 +1432,12 @@ test('Quick Dock trigger는 note와 X를 양방향 회전 morph한다', async ({
   expect(await openingToggle.evaluate((element) => (
     window as Window & { __oneflowQuickDockToggle?: Element }
   ).__oneflowQuickDockToggle === element)).toBe(true)
+  const openingToggleBox = await openingToggle.boundingBox()
+  expect(openingToggleBox).not.toBeNull()
+  expect(Math.abs((openingToggleBox!.x + openingToggleBox!.width / 2) - (closedToggleBox!.x + closedToggleBox!.width / 2))).toBeLessThanOrEqual(1)
+  expect(Math.abs((openingToggleBox!.y + openingToggleBox!.height / 2) - (closedToggleBox!.y + closedToggleBox!.height / 2))).toBeLessThanOrEqual(1)
+  expect(openingToggleBox!.width).toBe(closedToggleBox!.width)
+  expect(openingToggleBox!.height).toBe(closedToggleBox!.height)
   await expect(firstAction).toBeDisabled()
   const openingStart = await dock.evaluate((element) => {
     for (const animation of element.getAnimations({ subtree: true })) {
@@ -1573,6 +1581,10 @@ test('Quick Dock trigger는 note와 X를 양방향 회전 morph한다', async ({
   expect(await trigger.evaluate((element) => (
     window as Window & { __oneflowQuickDockToggle?: Element }
   ).__oneflowQuickDockToggle === element)).toBe(true)
+  const closedAgainBox = await trigger.boundingBox()
+  expect(closedAgainBox).not.toBeNull()
+  expect(Math.abs((closedAgainBox!.x + closedAgainBox!.width / 2) - (closedToggleBox!.x + closedToggleBox!.width / 2))).toBeLessThanOrEqual(1)
+  expect(Math.abs((closedAgainBox!.y + closedAgainBox!.height / 2) - (closedToggleBox!.y + closedToggleBox!.height / 2))).toBeLessThanOrEqual(1)
 
   // Completed path: animationend commits open/closed and preserves focus handoff.
   await trigger.click()
