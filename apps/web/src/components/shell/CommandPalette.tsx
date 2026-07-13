@@ -1,6 +1,8 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { Loader2, Search, X } from 'lucide-react'
 import {
+  type AnimationEvent,
+  type CSSProperties,
   type KeyboardEvent,
   useCallback,
   useEffect,
@@ -45,20 +47,25 @@ export function CommandPalette({ prominent = false }: { prominent?: boolean }) {
   const capabilities = useWorkspaceCapabilities()
   const wikiEnabled = capabilities.data?.wiki.enabled === true
   const initiativesEnabled = capabilities.data?.initiatives.enabled === true
-  const [open, setOpen] = useState(false)
+  const [phase, setPhase] = useState<'closed' | 'opening' | 'open' | 'closing'>('closed')
+  const [anchorStyle, setAnchorStyle] = useState<CSSProperties>({})
   const [query, setQuery] = useState('')
   const [activeTab, setActiveTab] = useState<CommandPaletteTab>('all')
   const [activeIndex, setActiveIndex] = useState(0)
   const inputRef = useRef<HTMLInputElement | null>(null)
   const dialogRef = useRef<HTMLElement | null>(null)
   const previouslyFocused = useRef<HTMLElement | null>(null)
+  const desktopTriggerRef = useRef<HTMLButtonElement | null>(null)
+  const mobileTriggerRef = useRef<HTMLButtonElement | null>(null)
+  const activeTriggerRef = useRef<HTMLElement | null>(null)
   const navigate = useNavigate()
   const location = useLocation()
   const locationKey = `${location.pathname}?${location.search}`
   const lastLocationKey = useRef(locationKey)
   const queryClient = useQueryClient()
   const debounced = useDebouncedValue(query.trim(), 180)
-  const search = useCommandPaletteSearch(debounced, open)
+  const present = phase !== 'closed'
+  const search = useCommandPaletteSearch(debounced, present)
   const queryReady = query.trim().length >= 2 && debounced === query.trim()
   const data = queryReady ? search.data : undefined
   const allItems = useMemo(
@@ -73,18 +80,65 @@ export function CommandPalette({ prominent = false }: { prominent?: boolean }) {
   const advancedHref = advancedSearchHref(query)
   const commandCount = query.trim().length >= 2 ? items.length + 1 : items.length
 
+  const measureAnchor = useCallback((preferred?: HTMLElement | null) => {
+    const candidates = [preferred, activeTriggerRef.current, desktopTriggerRef.current, mobileTriggerRef.current]
+    const trigger = candidates.find((candidate) => {
+      if (!candidate) return false
+      const rect = candidate.getBoundingClientRect()
+      return rect.width > 0 && rect.height > 0
+    })
+    if (!trigger) return
+    const rect = trigger.getBoundingClientRect()
+    activeTriggerRef.current = trigger
+    const finalWidth = Math.min(576, Math.max(rect.width, window.innerWidth - 16))
+    const finalLeft = Math.max(8, (window.innerWidth - finalWidth) / 2)
+    setAnchorStyle((current) => ({
+      ...current,
+      '--of-search-anchor-left': `${rect.left}px`,
+      '--of-search-anchor-top': `${rect.top}px`,
+      '--of-search-anchor-width': `${rect.width}px`,
+      '--of-search-anchor-height': `${rect.height}px`,
+      '--of-search-final-left': `${Math.round(finalLeft)}px`,
+      '--of-search-final-width': `${Math.round(finalWidth)}px`,
+      '--of-search-final-height': `${Math.round(Math.min(680, window.innerHeight * 0.82))}px`,
+    } as CSSProperties))
+  }, [])
+
+  const captureCurrentGeometry = useCallback(() => {
+    if (!dialogRef.current) return
+    const style = window.getComputedStyle(dialogRef.current)
+    const overlayStyle = dialogRef.current.parentElement
+      ? window.getComputedStyle(dialogRef.current.parentElement)
+      : null
+    const content = dialogRef.current.querySelector<HTMLElement>('.of-search-content')
+    const contentStyle = content ? window.getComputedStyle(content) : null
+    setAnchorStyle((current) => ({
+      ...current,
+      '--of-search-current-left': style.left,
+      '--of-search-current-top': style.top,
+      '--of-search-current-width': style.width,
+      '--of-search-current-height': style.maxHeight,
+      '--of-search-current-overlay-opacity': overlayStyle?.opacity ?? '1',
+      '--of-search-current-content-opacity': contentStyle?.opacity ?? '1',
+      '--of-search-current-content-transform': contentStyle?.transform ?? 'none',
+    } as CSSProperties))
+  }, [])
+
   const close = useCallback(() => {
-    setOpen(false)
+    if (phase === 'closed' || phase === 'closing') return
+    captureCurrentGeometry()
+    setPhase('closing')
     setActiveIndex(0)
     void queryClient.removeQueries({ queryKey: commandPaletteSearchKey('') })
     void queryClient.removeQueries({ queryKey: ['command-palette-search'] })
-    window.setTimeout(() => previouslyFocused.current?.focus(), 0)
-  }, [queryClient])
+  }, [captureCurrentGeometry, phase, queryClient])
 
-  const openPalette = useCallback(() => {
+  const openPalette = useCallback((trigger?: HTMLElement | null) => {
+    if (phase !== 'closed') return
     previouslyFocused.current = document.activeElement as HTMLElement | null
-    setOpen(true)
-  }, [])
+    measureAnchor(trigger)
+    setPhase('opening')
+  }, [measureAnchor, phase])
 
   useEffect(() => {
     if (!shortcutEnabled) return
@@ -94,19 +148,55 @@ export function CommandPalette({ prominent = false }: { prominent?: boolean }) {
   }, [openPalette, shortcutEnabled])
 
   useEffect(() => {
-    if (!open) return
+    if (!present) return
     const originalOverflow = document.body.style.overflow
     document.body.style.overflow = 'hidden'
     const unregister = appOverlayRegistry.register('command-palette')
-    window.setTimeout(() => inputRef.current?.focus(), 0)
     return () => {
       document.body.style.overflow = originalOverflow
       unregister()
     }
-  }, [open])
+  }, [present])
+
+  useEffect(() => {
+    if (phase === 'opening') {
+      const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+      const focusTimer = window.setTimeout(() => inputRef.current?.focus(), 0)
+      const phaseTimer = reducedMotion ? window.setTimeout(() => setPhase('open'), 0) : null
+      return () => {
+        window.clearTimeout(focusTimer)
+        if (phaseTimer !== null) window.clearTimeout(phaseTimer)
+      }
+    }
+    if (phase === 'closing') {
+      const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+      if (!reducedMotion) return
+      const phaseTimer = window.setTimeout(() => setPhase('closed'), 0)
+      return () => window.clearTimeout(phaseTimer)
+    }
+    if (phase === 'closed') previouslyFocused.current?.focus()
+  }, [phase])
+
+  const onSurfaceAnimationEnd = (event: AnimationEvent<HTMLElement>) => {
+    if (event.target !== event.currentTarget) return
+    if (phase === 'opening' && event.animationName === 'of-search-surface-opening') {
+      setPhase('open')
+    }
+    if (phase === 'closing' && event.animationName === 'of-search-surface-closing') {
+      setPhase('closed')
+    }
+  }
 
   useLayoutEffect(() => {
-    if (!open) return
+    if (!present) return
+    const onResize = () => measureAnchor()
+    onResize()
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [measureAnchor, present])
+
+  useLayoutEffect(() => {
+    if (!present) return
     const onEscape = (event: globalThis.KeyboardEvent) => {
       if (event.key !== 'Escape') return
       event.preventDefault()
@@ -115,13 +205,13 @@ export function CommandPalette({ prominent = false }: { prominent?: boolean }) {
     }
     window.addEventListener('keydown', onEscape, { capture: true })
     return () => window.removeEventListener('keydown', onEscape, { capture: true })
-  }, [close, open])
+  }, [close, present])
 
   useEffect(() => {
     if (lastLocationKey.current === locationKey) return
     lastLocationKey.current = locationKey
-    if (open) close()
-  }, [close, locationKey, open])
+    if (present) close()
+  }, [close, locationKey, present])
 
   useEffect(() => {
     setActiveIndex(0)
@@ -189,9 +279,11 @@ export function CommandPalette({ prominent = false }: { prominent?: boolean }) {
       <Button
         variant="outline"
         size="sm"
+        ref={desktopTriggerRef}
+        data-testid="global-search-trigger"
         aria-label="전체 검색 열기"
         aria-keyshortcuts={shortcutEnabled ? '/ Meta+K Control+K' : undefined}
-        onClick={openPalette}
+        onClick={(event) => openPalette(event.currentTarget)}
         className={cn(
           'hidden justify-start text-of-muted sm:inline-flex',
           prominent ? 'w-full max-w-[30rem]' : 'w-36',
@@ -206,17 +298,21 @@ export function CommandPalette({ prominent = false }: { prominent?: boolean }) {
       <Button
         variant="ghost"
         size="icon"
+        ref={mobileTriggerRef}
+        data-testid="global-search-trigger-mobile"
         aria-label="전체 검색 열기"
         aria-keyshortcuts={shortcutEnabled ? '/ Meta+K Control+K' : undefined}
-        onClick={openPalette}
+        onClick={(event) => openPalette(event.currentTarget)}
         className="sm:hidden"
       >
         <Search />
       </Button>
-      {open ? (
+      {present ? (
         <div
           role="presentation"
-          className="of-overlay-enter fixed inset-0 z-[var(--of-z-modal)] bg-of-overlay"
+          data-phase={phase}
+          style={anchorStyle}
+          className={cn('of-search-overlay fixed inset-0 z-[var(--of-z-modal)] bg-of-overlay', `of-search-overlay-${phase}`)}
           onMouseDown={(event) => {
             if (event.target === event.currentTarget) close()
           }}
@@ -226,10 +322,14 @@ export function CommandPalette({ prominent = false }: { prominent?: boolean }) {
             role="dialog"
             aria-modal="true"
             aria-label="전체 검색"
-            className="of-search-enter fixed inset-x-2 top-1 mx-auto flex max-h-[min(82vh,680px)] max-w-[36rem] flex-col overflow-hidden rounded-of-lg border border-of-border bg-of-surface-raised shadow-[var(--of-shadow-popover)] sm:top-1"
+            data-testid="global-search-surface"
+            data-phase={phase}
+            style={anchorStyle}
+            className={cn('of-search-surface flex flex-col overflow-hidden rounded-of-lg border border-of-border bg-of-surface-raised shadow-[var(--of-shadow-popover)]', `of-search-surface-${phase}`)}
+            onAnimationEnd={onSurfaceAnimationEnd}
             onKeyDown={onKeyDown}
           >
-            <div className="flex items-center gap-2 border-b border-of-border px-3 py-2">
+            <div className="of-search-header flex shrink-0 items-center gap-2 border-b border-of-border px-3">
               <Search size={16} className="shrink-0 text-of-muted" />
               <Input
                 ref={inputRef}
@@ -243,7 +343,7 @@ export function CommandPalette({ prominent = false }: { prominent?: boolean }) {
                   activeIndex < items.length ? `command-palette-item-${activeIndex}` : undefined
                 }
                 placeholder="검색어를 입력하세요"
-                className="h-9 border-0 bg-transparent px-0 focus-visible:border-0"
+                className="of-search-input h-full rounded-none border-0 bg-transparent px-0 shadow-none"
               />
               <button
                 type="button"
@@ -255,6 +355,7 @@ export function CommandPalette({ prominent = false }: { prominent?: boolean }) {
               </button>
             </div>
 
+            <div className={cn('of-search-content flex min-h-0 flex-1 flex-col', `of-search-content-${phase}`)}>
             {query.trim().length >= 2 ? (
             <div role="tablist" aria-label="검색 범위" className="flex gap-1 overflow-x-auto border-b border-of-border px-3 py-2">
               {visibleTabs.map((tab, index) => (
@@ -379,6 +480,7 @@ export function CommandPalette({ prominent = false }: { prominent?: boolean }) {
                 </button>
               </div>
             ) : null}
+            </div>
           </section>
         </div>
       ) : null}

@@ -248,9 +248,22 @@ textarea {
   to { opacity: 1; transform: translateY(0) scale(1); }
 }
 
-@keyframes of-search-enter {
-  from { opacity: 0; transform: translateY(-8px) scale(0.97); }
-  to { opacity: 1; transform: translateY(0) scale(1); }
+@keyframes of-search-overlay-opening { from { opacity: 0; } to { opacity: 1; } }
+@keyframes of-search-overlay-closing { from { opacity: var(--of-search-current-overlay-opacity); } to { opacity: 0; } }
+@keyframes of-search-surface-opening {
+  from { left: var(--of-search-anchor-left); top: var(--of-search-anchor-top); width: var(--of-search-anchor-width); max-height: var(--of-search-anchor-height); border-radius: var(--of-radius); }
+  62% { left: var(--of-search-final-left); top: var(--of-search-anchor-top); width: var(--of-search-final-width); max-height: var(--of-search-anchor-height); }
+  to { left: var(--of-search-final-left); top: var(--of-search-anchor-top); width: var(--of-search-final-width); max-height: var(--of-search-final-height); border-radius: var(--of-radius-lg); }
+}
+@keyframes of-search-surface-closing {
+  from { left: var(--of-search-current-left); top: var(--of-search-current-top); width: var(--of-search-current-width); max-height: var(--of-search-current-height); border-radius: var(--of-radius-lg); }
+  38% { left: var(--of-search-current-left); top: var(--of-search-current-top); width: var(--of-search-current-width); max-height: var(--of-search-anchor-height); }
+  to { left: var(--of-search-anchor-left); top: var(--of-search-anchor-top); width: var(--of-search-anchor-width); max-height: var(--of-search-anchor-height); border-radius: var(--of-radius); }
+}
+@keyframes of-search-content-opening { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes of-search-content-closing {
+  from { opacity: var(--of-search-current-content-opacity); transform: var(--of-search-current-content-transform); }
+  to { opacity: 0; transform: translateY(-4px); }
 }
 
 @keyframes of-dock-enter {
@@ -293,7 +306,17 @@ textarea {
 
 .of-overlay-enter { animation: of-overlay-enter var(--of-duration-overlay) var(--of-ease-standard) both; }
 .of-menu-enter { animation: of-menu-enter 150ms var(--of-ease-standard) both; transform-origin: top left; }
-.of-search-enter { animation: of-search-enter var(--of-duration-overlay) var(--of-ease-emphasized) both; transform-origin: top center; }
+.of-search-overlay-opening { animation: of-search-overlay-opening var(--of-duration-overlay) var(--of-ease-standard) both; }
+.of-search-overlay-closing { animation: of-search-overlay-closing var(--of-duration-overlay) var(--of-ease-standard) both; pointer-events: none; }
+.of-search-surface { position: fixed; left: var(--of-search-final-left); top: var(--of-search-anchor-top); width: var(--of-search-final-width); max-height: var(--of-search-final-height); }
+.of-search-surface-opening { animation: of-search-surface-opening var(--of-duration-overlay) var(--of-ease-emphasized) both; }
+.of-search-surface-open { left: var(--of-search-final-left); top: var(--of-search-anchor-top); width: var(--of-search-final-width); max-height: var(--of-search-final-height); }
+.of-search-surface-closing { animation: of-search-surface-closing var(--of-duration-overlay) var(--of-ease-emphasized) both; pointer-events: none; }
+.of-search-header { height: var(--of-search-anchor-height); }
+.of-search-input,
+.of-search-input:focus-visible { border: 0; outline: 0; box-shadow: none; }
+.of-search-content-opening { animation: of-search-content-opening 120ms 100ms var(--of-ease-standard) both; }
+.of-search-content-closing { animation: of-search-content-closing 100ms var(--of-ease-standard) both; }
 .of-dock-toggle-icon {
   position: relative;
   display: inline-block;
@@ -331,7 +354,12 @@ textarea {
 @media (prefers-reduced-motion: reduce) {
   .of-overlay-enter,
   .of-menu-enter,
-  .of-search-enter,
+  .of-search-overlay-opening,
+  .of-search-overlay-closing,
+  .of-search-surface-opening,
+  .of-search-surface-closing,
+  .of-search-content-opening,
+  .of-search-content-closing,
   .of-dock-toggle-icon-opening,
   .of-dock-toggle-icon-opening [data-icon],
   .of-dock-toggle-icon-closing,
