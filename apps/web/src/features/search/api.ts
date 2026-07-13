@@ -38,13 +38,40 @@ export function useSearch(q: string) {
   })
 }
 
-export function useWorkspaceWorkItems(q: string) {
+export type WorkspaceWorkItemScope = 'all' | 'assigned' | 'created' | 'subscribed'
+export type WorkspaceWorkItemState = 'all' | 'open'
+export type WorkspaceWorkItemSort = 'updated' | 'due'
+
+export function useWorkspaceWorkItems({
+  q,
+  scope,
+  state,
+  sort,
+  priority,
+  limit = 50,
+  offset = 0,
+}: {
+  q: string
+  scope: WorkspaceWorkItemScope
+  state: WorkspaceWorkItemState
+  sort: WorkspaceWorkItemSort
+  priority: WpPriority | null
+  limit?: number
+  offset?: number
+}) {
   const query = q.trim()
   return useQuery({
-    queryKey: ['workspace-work-items', query],
+    queryKey: ['workspace-work-items', query, scope, state, sort, priority, limit, offset],
     queryFn: () => {
-      const params = new URLSearchParams({ limit: '200' })
+      const params = new URLSearchParams({
+        scope,
+        state,
+        sort,
+        limit: String(limit),
+        offset: String(offset),
+      })
       if (query) params.set('q', query)
+      if (priority) params.set('priority', priority)
       return api<SearchResults>(`/api/v1/search/work-packages?${params.toString()}`)
     },
   })

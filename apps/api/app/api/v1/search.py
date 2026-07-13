@@ -8,6 +8,8 @@ probe (v14.1 — never a silent cut). Documents/meetings match on TITLE only
 (full-text body search is a follow-up).
 """
 
+from typing import Literal
+
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -23,7 +25,8 @@ from app.models.member import ProjectMember
 from app.models.module import Module
 from app.models.project import Project
 from app.models.user import User
-from app.models.work_package import WorkPackage
+from app.models.watcher import WpWatcher
+from app.models.work_package import WP_CLOSED_STATUSES, WorkPackage
 from app.schemas.search import (
     DocumentGroup,
     InitiativeGroup,
@@ -61,6 +64,10 @@ def _visible_member_project_ids(user: User):
 @router.get("/search/work-packages", response_model=SearchResults)
 async def search_work_packages(
     q: str | None = Query(default=None, min_length=1, max_length=255),
+    scope: Literal["all", "assigned", "created", "subscribed"] = "all",
+    state: Literal["all", "open"] = "all",
+    sort: Literal["updated", "due"] = "updated",
+    priority: Literal["none", "low", "medium", "high", "urgent"] | None = None,
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     session: AsyncSession = Depends(get_session),
@@ -78,17 +85,33 @@ async def search_work_packages(
     if q is not None:
         # Case-insensitive substring; %/_ wildcards autoescaped (§6.1).
         stmt = stmt.where(WorkPackage.subject.icontains(q, autoescape=True))
+    if scope == "assigned":
+        stmt = stmt.where(WorkPackage.assignee_id == user.id)
+    elif scope == "created":
+        stmt = stmt.where(WorkPackage.created_by == user.id)
+    elif scope == "subscribed":
+        stmt = stmt.join(
+            WpWatcher,
+            (WpWatcher.work_package_id == WorkPackage.id) & (WpWatcher.user_id == user.id),
+        )
+    if state == "open":
+        stmt = stmt.where(WorkPackage.status.not_in(WP_CLOSED_STATUSES))
+    if priority is not None:
+        stmt = stmt.where(WorkPackage.priority == priority)
 
     total = (
         await session.execute(select(func.count()).select_from(stmt.order_by(None).subquery()))
     ).scalar_one()
-    rows = (
-        await session.execute(
-            stmt.order_by(WorkPackage.updated_at.desc(), WorkPackage.id.asc())
-            .limit(limit)
-            .offset(offset)
+    order_by = (
+        (
+            WorkPackage.due_date.asc().nulls_last(),
+            WorkPackage.updated_at.desc(),
+            WorkPackage.id.asc(),
         )
-    ).all()
+        if sort == "due"
+        else (WorkPackage.updated_at.desc(), WorkPackage.id.asc())
+    )
+    rows = (await session.execute(stmt.order_by(*order_by).limit(limit).offset(offset))).all()
     items = [
         SearchResultItem(
             id=wp.id,

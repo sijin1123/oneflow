@@ -6,6 +6,7 @@ import { cn } from '@/lib/utils'
 
 export const DropdownMenu = DropdownPrimitive.Root
 export const DropdownMenuTrigger = DropdownPrimitive.Trigger
+export const DropdownMenuRadioGroup = DropdownPrimitive.RadioGroup
 
 export function DropdownMenuContent({
   className,
@@ -77,6 +78,29 @@ export function DropdownMenuItem({
       )}
       {...props}
     />
+  )
+}
+
+export function DropdownMenuRadioItem({
+  className,
+  children,
+  ...props
+}: React.ComponentPropsWithoutRef<typeof DropdownPrimitive.RadioItem>) {
+  return (
+    <DropdownPrimitive.RadioItem
+      className={cn(
+        'flex min-h-7 cursor-default select-none items-center gap-2 rounded-[4px] px-2 py-1.5 text-xs outline-none transition-colors data-[disabled]:opacity-50 data-[highlighted]:bg-of-surface-hover data-[highlighted]:text-of-text',
+        className,
+      )}
+      {...props}
+    >
+      <span className="flex h-3.5 w-3.5 items-center justify-center rounded-full border border-of-border">
+        <DropdownPrimitive.ItemIndicator>
+          <span className="h-1.5 w-1.5 rounded-full bg-current" />
+        </DropdownPrimitive.ItemIndicator>
+      </span>
+      {children}
+    </DropdownPrimitive.RadioItem>
   )
 }
 
