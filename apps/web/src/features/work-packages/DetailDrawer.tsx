@@ -20,6 +20,7 @@ import { useProjectTypes } from '@/features/project-types/api'
 import { useWorkspaceCapabilities } from '@/features/workspace-features/api'
 
 import { CustomFieldsSection } from './CustomFieldsSection'
+import { DetailInlinePropertyMenu } from './DetailInlinePropertyMenu'
 import { Select } from '@/components/ui/select'
 import { Sheet, SheetContent } from '@/components/ui/sheet'
 import { ApiError } from '@/lib/api'
@@ -36,7 +37,6 @@ import { AttachmentsSection } from './AttachmentsSection'
 import { PagesSection } from './PagesSection'
 import { RelationsSection } from './RelationsSection'
 import { TimeTrackingSection } from './TimeTrackingSection'
-import { PriorityChip, StatusChip } from './chips'
 import {
   useDuplicateWorkPackage,
   useMoveWorkPackage,
@@ -230,7 +230,6 @@ export function WorkPackageDetailPanel({
   const [moveOpen, setMoveOpen] = useState(false)
   const [activeTab, setActiveTab] = useState<'overview' | 'activity'>('overview')
   const [propertiesOpen, setPropertiesOpen] = useState(true)
-  const propertiesRef = useRef<HTMLElement>(null)
   const detailGridRef = useRef<HTMLDivElement>(null)
   const propertiesFieldsRef = useRef<HTMLDivElement>(null)
   const resizeRef = useRef<{
@@ -377,13 +376,6 @@ export function WorkPackageDetailPanel({
   const createdByName = wp.created_by
     ? members.data?.items.find((m) => m.user_id === wp.created_by)?.display_name ?? '알 수 없음'
     : null
-  const focusProperty = (id: string) => {
-    setActiveTab('overview')
-    setPropertiesOpen(true)
-    window.requestAnimationFrame(() => {
-      propertiesRef.current?.querySelector<HTMLElement>(`#${id}`)?.focus()
-    })
-  }
   const fullPageLink = showFullPageLink ? (
     <Link
       to={`/projects/${projectId}/work-packages/${wp.id}`}
@@ -420,30 +412,22 @@ export function WorkPackageDetailPanel({
         </div>
 
         <div className="flex flex-wrap items-center gap-2 text-xs text-of-muted">
-          {canWrite ? (
-            <button
-              type="button"
-              aria-label="상태 속성 편집"
-              className="rounded-of focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus"
-              onClick={() => focusProperty('wp-status')}
-            >
-              <StatusChip status={wp.status} label={statusLabel(wp.status)} />
-            </button>
-          ) : (
-            <StatusChip status={wp.status} label={statusLabel(wp.status)} />
-          )}
-          {canWrite ? (
-            <button
-              type="button"
-              aria-label="우선순위 속성 편집"
-              className="rounded-of focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus"
-              onClick={() => focusProperty('wp-priority')}
-            >
-              <PriorityChip priority={wp.priority} />
-            </button>
-          ) : (
-            <PriorityChip priority={wp.priority} />
-          )}
+          <DetailInlinePropertyMenu
+            property="status"
+            value={wp.status}
+            canWrite={canWrite}
+            pending={patch.isPending}
+            statusLabel={statusLabel}
+            onValueChange={(value) => send({ status: value as WpStatus })}
+          />
+          <DetailInlinePropertyMenu
+            property="priority"
+            value={wp.priority}
+            canWrite={canWrite}
+            pending={patch.isPending}
+            statusLabel={statusLabel}
+            onValueChange={(value) => send({ priority: value as WpPriority })}
+          />
           {createdByName ? <span>만든 사람: {createdByName}</span> : null}
           <span>v{wp.version}</span>
         </div>
@@ -584,7 +568,6 @@ export function WorkPackageDetailPanel({
           ) : null}
 
           <aside
-            ref={propertiesRef}
             aria-label="작업 속성"
             className="of-surface order-first space-y-3 bg-of-surface-raised p-3 lg:order-none lg:sticky lg:top-0 lg:self-start"
           >
