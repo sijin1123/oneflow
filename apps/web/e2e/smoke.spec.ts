@@ -20,6 +20,10 @@ import type {
   WorkItemDraftContent,
 } from '../src/features/work-item-drafts/api'
 import type {
+  WorkspaceSavedView,
+  WorkspaceSavedViewParams,
+} from '../src/features/work-items/workspaceSavedViewsApi'
+import type {
   ActivityList,
   Comment,
   CommentList,
@@ -222,6 +226,7 @@ async function mockApi(page: Page, opts: { conflictOnPatch?: boolean } = {}) {
   // Default mutable personal-note store lets all notes routes exercise real
   // request wiring without relying on a backend fixture.
   let personalNotes: PersonalNoteFixture[] = []
+  let workspaceViews: WorkspaceSavedView[] = []
   await page.route('**/api/v1/workspace/capabilities', (route) =>
     route.fulfill({ json: defaultWorkspaceCapabilities }),
   )
@@ -290,6 +295,68 @@ async function mockApi(page: Page, opts: { conflictOnPatch?: boolean } = {}) {
         offset: Number(url.searchParams.get('offset') ?? 0),
       },
     })
+  })
+  await page.route('**/api/v1/me/workspace-views**', async (route) => {
+    const request = route.request()
+    const url = new URL(request.url())
+    if (request.method() === 'POST') {
+      const body = request.postDataJSON() as { name: string; params: WorkspaceSavedViewParams }
+      const view: WorkspaceSavedView = {
+        id: `00000000-0000-4000-8000-${String(workspaceViews.length + 1).padStart(12, '0')}`,
+        name: body.name,
+        params: body.params,
+        version: 0,
+        created_at: '2026-07-13T00:00:00Z',
+        updated_at: '2026-07-13T00:00:00Z',
+      }
+      workspaceViews = [view, ...workspaceViews]
+      await route.fulfill({ status: 201, json: view })
+      return
+    }
+    const id = url.pathname.split('/').at(-1)!
+    const current = workspaceViews.find((view) => view.id === id)
+    if (request.method() === 'PATCH') {
+      const body = request.postDataJSON() as {
+        expected_version: number
+        name?: string
+        params?: WorkspaceSavedViewParams
+      }
+      if (!current || current.version !== body.expected_version) {
+        await route.fulfill({
+          status: current ? 409 : 404,
+          json: current
+            ? { detail: 'workspace view was changed elsewhere', current }
+            : { detail: 'not found' },
+        })
+        return
+      }
+      const updated: WorkspaceSavedView = {
+        ...current,
+        ...(body.name !== undefined ? { name: body.name } : {}),
+        ...(body.params !== undefined ? { params: body.params } : {}),
+        version: current.version + 1,
+        updated_at: '2026-07-13T00:01:00Z',
+      }
+      workspaceViews = workspaceViews.map((view) => view.id === id ? updated : view)
+      await route.fulfill({ json: updated })
+      return
+    }
+    if (request.method() === 'DELETE') {
+      const expected = Number(url.searchParams.get('expected_version'))
+      if (!current || current.version !== expected) {
+        await route.fulfill({
+          status: current ? 409 : 404,
+          json: current
+            ? { detail: 'workspace view was changed elsewhere', current }
+            : { detail: 'not found' },
+        })
+        return
+      }
+      workspaceViews = workspaceViews.filter((view) => view.id !== id)
+      await route.fulfill({ status: 204, body: '' })
+      return
+    }
+    await route.fulfill({ json: { items: workspaceViews, total: workspaceViews.length } })
   })
   await page.route('**/api/v1/projects', (route) =>
     route.fulfill({ json: projects }),
@@ -2254,6 +2321,88 @@ test('Workspace Views Calendar·Timeline이 동일 페이지·필터 상태와 �
   await expect(page).toHaveURL(new RegExp(`/projects/${project.id}/work-packages/${wpA.id}`))
 })
 
+test('Workspace Views Add view가 생성·되돌리기·갱신·삭제와 실패 보존을 연결한다', async ({ page }) => {
+  await mockApi(page)
+  await page.goto('/work-items?view=missing-workspace-view')
+  await expect(page).not.toHaveURL(/view=/)
+  await page.goto('/work-items?scope=assigned&state=open&priority=high&sort=due&layout=timeline&density=compact')
+
+  await expect(page.getByLabel('저장 뷰', { exact: true })).toBeDisabled()
+  await expect(page.getByRole('button', { name: 'Add view' })).toBeVisible()
+  await page.getByRole('button', { name: 'Add view' }).click()
+  const dialog = page.getByRole('dialog', { name: '작업영역 뷰 저장' })
+  await dialog.getByLabel('뷰 이름').fill('내 긴급 작업')
+  const createRequest = page.waitForRequest((request) =>
+    request.method() === 'POST' && request.url().endsWith('/api/v1/me/workspace-views'),
+  )
+  await dialog.getByRole('button', { name: '저장', exact: true }).click()
+  const createdBody = (await createRequest).postDataJSON() as {
+    name: string
+    params: WorkspaceSavedViewParams
+  }
+  expect(createdBody).toEqual({
+    name: '내 긴급 작업',
+    params: {
+      q: '',
+      scope: 'assigned',
+      state: 'open',
+      sort: 'due',
+      priority: 'high',
+      layout: 'timeline',
+      density: 'compact',
+    },
+  })
+  await expect(dialog).toBeHidden()
+  await expect(page).toHaveURL(/view=00000000-0000-4000-8000-000000000001/)
+  await expect(page.getByLabel('저장 뷰', { exact: true })).toHaveValue('00000000-0000-4000-8000-000000000001')
+
+  await page.getByLabel('작업 범위').selectOption('all')
+  await expect(page.getByRole('button', { name: '되돌리기' })).toBeVisible()
+  await page.getByRole('button', { name: '되돌리기' }).click()
+  await expect(page.getByLabel('작업 범위')).toHaveValue('assigned')
+
+  await page.getByLabel('작업 범위').selectOption('all')
+  await page.getByRole('button', { name: 'Calendar 레이아웃' }).click()
+  await expect(page).toHaveURL(/layout=calendar/)
+  await expect(page.getByRole('button', { name: 'Calendar 레이아웃' })).toHaveAttribute('aria-pressed', 'true')
+  const updateRequest = page.waitForRequest((request) =>
+    request.method() === 'PATCH' && request.url().includes('/api/v1/me/workspace-views/'),
+  )
+  await page.getByRole('button', { name: '갱신' }).click()
+  const updatedBody = (await updateRequest).postDataJSON() as {
+    expected_version: number
+    params: WorkspaceSavedViewParams
+  }
+  expect(updatedBody.expected_version).toBe(0)
+  expect(updatedBody.params.scope).toBe('all')
+  expect(updatedBody.params.layout).toBe('calendar')
+  await expect(page.getByRole('button', { name: '저장됨' })).toBeDisabled()
+
+  page.once('dialog', (confirmation) => confirmation.accept())
+  const deleteRequest = page.waitForRequest((request) =>
+    request.method() === 'DELETE' && request.url().includes('expected_version=1'),
+  )
+  await page.getByRole('button', { name: '현재 저장 뷰 삭제' }).click()
+  await deleteRequest
+  await expect(page).not.toHaveURL(/view=/)
+  await expect(page.getByLabel('저장 뷰', { exact: true })).toBeDisabled()
+
+  await page.setViewportSize({ width: 390, height: 844 })
+  await expectNoHorizontalOverflow(page)
+  await page.route('**/api/v1/me/workspace-views**', (route) =>
+    route.fulfill({ status: 500, json: { detail: '임시 저장 오류' } }),
+  { times: 1 })
+  await page.getByRole('button', { name: 'Add view' }).click()
+  await dialog.getByLabel('뷰 이름').fill('실패해도 보존')
+  await dialog.getByRole('button', { name: '저장', exact: true }).click()
+  await expect(dialog.getByRole('alert')).toContainText('임시 저장 오류')
+  await expect(dialog.getByLabel('뷰 이름')).toHaveValue('실패해도 보존')
+  await expect(dialog).toBeVisible()
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/workspace-saved-views-ui/mobile-create-error.png',
+  })
+})
+
 test('보드 뷰가 상태 컬럼으로 그려진다', async ({ page }) => {
   await mockApi(page)
   await page.goto(`/projects/${project.id}/board`)
@@ -3453,7 +3602,12 @@ test('타임라인 드래그로 일정을 조정하면 PATCH를 보내고 실패
   await expect(bar).toBeVisible()
 
   const drag = async () => {
-    const box = (await bar.boundingBox())!
+    let box = await bar.boundingBox()
+    await expect.poll(async () => {
+      box = await bar.boundingBox()
+      return box
+    }, { message: '타임라인 막대의 안정된 좌표를 기다립니다.' }).not.toBeNull()
+    if (!box) throw new Error('타임라인 막대 좌표를 확인할 수 없습니다.')
     await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
     await page.mouse.down()
     await page.mouse.move(box.x + box.width / 2 + 60, box.y + box.height / 2, { steps: 6 })
