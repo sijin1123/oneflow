@@ -1,4 +1,6 @@
 import {
+  CalendarDays,
+  ChartGantt,
   ChevronLeft,
   ChevronRight,
   Columns3,
@@ -36,6 +38,9 @@ import { PriorityChip, StatusChip, TypeChip } from '@/features/work-packages/chi
 import type { WpPriority } from '@/features/work-packages/types'
 import { cn } from '@/lib/utils'
 
+import { WorkspaceCalendarView } from './WorkspaceCalendarView'
+import { WorkspaceTimelineView } from './WorkspaceTimelineView'
+
 const PAGE_SIZE = 50
 const SCOPES: Array<{ value: WorkspaceWorkItemScope; label: string }> = [
   { value: 'all', label: 'All work items' },
@@ -60,7 +65,7 @@ export function AllWorkPage() {
   const state = validChoice(searchParams.get('state'), ['all', 'open'], 'all')
   const sort = validChoice(searchParams.get('sort'), ['updated', 'due'], 'updated')
   const priority = validChoice(searchParams.get('priority'), ['all', 'none', 'low', 'medium', 'high', 'urgent'], 'all')
-  const layout = validChoice(searchParams.get('layout'), ['board', 'table'], 'board')
+  const layout = validChoice(searchParams.get('layout'), ['board', 'calendar', 'table', 'timeline'], 'board')
   const density = validChoice(searchParams.get('density'), ['compact', 'comfortable'], 'comfortable')
   const page = positiveInt(searchParams.get('page'))
   const [input, setInput] = useState(q)
@@ -123,6 +128,10 @@ export function AllWorkPage() {
   const countText = data
     ? `${data.total}건${data.total > data.items.length ? ` · ${returnedFrom}-${returnedTo}` : ''}`
     : ' '
+  const currentRangeLabel = `${returnedFrom}-${returnedTo} / ${data?.total ?? 0}`
+  const switchLayout = (nextLayout: 'board' | 'calendar' | 'table' | 'timeline') => {
+    updateParams({ layout: nextLayout, page: String(page) })
+  }
 
   return (
     <div className="flex h-full min-w-0 flex-col bg-of-surface">
@@ -180,11 +189,17 @@ export function AllWorkPage() {
 
         <div className="flex items-center gap-1">
           <div className="flex h-8 items-center rounded-of border border-of-border bg-of-surface-2 p-0.5" aria-label="레이아웃" role="group">
-            <LayoutButton active={layout === 'board'} label="Board" onClick={() => updateParams({ layout: 'board' })}>
+            <LayoutButton active={layout === 'board'} label="Board" onClick={() => switchLayout('board')}>
               <Columns3 size={14} />
             </LayoutButton>
-            <LayoutButton active={layout === 'table'} label="Table" onClick={() => updateParams({ layout: 'table' })}>
+            <LayoutButton active={layout === 'calendar'} label="Calendar" onClick={() => switchLayout('calendar')}>
+              <CalendarDays size={14} />
+            </LayoutButton>
+            <LayoutButton active={layout === 'table'} label="Table" onClick={() => switchLayout('table')}>
               <Table2 size={14} />
+            </LayoutButton>
+            <LayoutButton active={layout === 'timeline'} label="Timeline" onClick={() => switchLayout('timeline')}>
+              <ChartGantt size={14} />
             </LayoutButton>
           </div>
           <Button
@@ -202,7 +217,7 @@ export function AllWorkPage() {
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-44">
               <DropdownMenuLabel>표 밀도</DropdownMenuLabel>
-              <DropdownMenuRadioGroup value={density} onValueChange={(value) => updateParams({ density: value })}>
+              <DropdownMenuRadioGroup value={density} onValueChange={(value) => updateParams({ density: value, page: String(page) })}>
                 {(['comfortable', 'compact'] as GridDensity[]).map((option) => (
                   <DropdownMenuRadioItem key={option} value={option}>
                     {option === 'comfortable' ? '편안하게' : '조밀하게'}
@@ -279,10 +294,28 @@ export function AllWorkPage() {
           />
         ) : layout === 'board' ? (
           <WorkspaceBoard items={data.items} density={density} onOpen={(item) => navigate(workItemPath(item))} />
-        ) : (
+        ) : layout === 'calendar' ? (
+          <WorkspaceCalendarView
+            items={data.items}
+            density={density}
+            total={data.total}
+            rangeLabel={currentRangeLabel}
+            month={searchParams.get('month')}
+            onMonthChange={(month) => updateParams({ month, page: String(page) })}
+            onOpen={(item) => navigate(workItemPath(item))}
+          />
+        ) : layout === 'table' ? (
           <WorkspaceTable
             items={data.items}
             density={density}
+            onOpen={(item) => navigate(workItemPath(item))}
+          />
+        ) : (
+          <WorkspaceTimelineView
+            items={data.items}
+            density={density}
+            total={data.total}
+            rangeLabel={currentRangeLabel}
             onOpen={(item) => navigate(workItemPath(item))}
           />
         )}
@@ -313,7 +346,7 @@ function LayoutButton({
   children,
 }: {
   active: boolean
-  label: 'Board' | 'Table'
+  label: 'Board' | 'Calendar' | 'Table' | 'Timeline'
   onClick: () => void
   children: ReactNode
 }) {
