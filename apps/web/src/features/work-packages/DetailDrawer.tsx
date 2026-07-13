@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input'
 import { AiSummarySection } from '@/features/ai/AiSummarySection'
 import { Button } from '@/components/ui/button'
 import { ReadOnlyNotice } from '@/components/shell/ReadOnlyNotice'
+import { isAssignableMember } from '@/features/members/assignment'
 import { useMembers } from '@/features/members/api'
 import { useCanWrite } from '@/features/members/useCanWrite'
 import { useProjects } from '@/features/projects/api'
@@ -20,6 +21,7 @@ import { useProjectTypes } from '@/features/project-types/api'
 import { useWorkspaceCapabilities } from '@/features/workspace-features/api'
 
 import { CustomFieldsSection } from './CustomFieldsSection'
+import { DetailInlineAssigneeMenu } from './DetailInlineAssigneeMenu'
 import { DetailInlinePropertyMenu } from './DetailInlinePropertyMenu'
 import { Select } from '@/components/ui/select'
 import { Sheet, SheetContent } from '@/components/ui/sheet'
@@ -376,6 +378,13 @@ export function WorkPackageDetailPanel({
   const createdByName = wp.created_by
     ? members.data?.items.find((m) => m.user_id === wp.created_by)?.display_name ?? '알 수 없음'
     : null
+  const memberItems = members.data?.items ?? []
+  const assignableMembers = memberItems.filter(isAssignableMember)
+  const currentAssignee = wp.assignee_id
+    ? memberItems.find((member) => member.user_id === wp.assignee_id)
+    : null
+  const legacyCurrentAssignee = wp.assignee_id
+    && !assignableMembers.some((member) => member.user_id === wp.assignee_id)
   const fullPageLink = showFullPageLink ? (
     <Link
       to={`/projects/${projectId}/work-packages/${wp.id}`}
@@ -427,6 +436,16 @@ export function WorkPackageDetailPanel({
             pending={patch.isPending}
             statusLabel={statusLabel}
             onValueChange={(value) => send({ priority: value as WpPriority })}
+          />
+          <DetailInlineAssigneeMenu
+            assigneeId={wp.assignee_id}
+            members={memberItems}
+            canWrite={canWrite}
+            pending={patch.isPending}
+            rosterPending={members.isPending}
+            rosterError={members.isError}
+            onRetryRoster={() => { void members.refetch() }}
+            onValueChange={(assigneeId) => send({ assignee_id: assigneeId })}
           />
           {createdByName ? <span>만든 사람: {createdByName}</span> : null}
           <span>v{wp.version}</span>
@@ -809,11 +828,16 @@ export function WorkPackageDetailPanel({
                 <Select
                   id="wp-assignee"
                   value={wp.assignee_id ?? ''}
-                  disabled={!canWrite || patch.isPending}
+                  disabled={!canWrite || patch.isPending || members.isPending || members.isError}
                   onChange={(e) => send({ assignee_id: e.target.value || null })}
                 >
                   <option value="">미배정</option>
-                  {members.data?.items.map((m) => (
+                  {legacyCurrentAssignee ? (
+                    <option value={wp.assignee_id ?? ''} disabled>
+                      {currentAssignee?.display_name ?? '알 수 없는 담당자'}
+                    </option>
+                  ) : null}
+                  {assignableMembers.map((m) => (
                     <option key={m.user_id} value={m.user_id}>
                       {m.display_name}
                     </option>
