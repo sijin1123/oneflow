@@ -18,6 +18,8 @@ import { cn } from '@/lib/utils'
 type NotePanel = 'none' | 'compact' | 'expanded' | 'all'
 type DockIconPhase = 'closed' | 'opening' | 'open' | 'closing'
 type DockMotionSnapshot = CSSProperties
+const DOCK_COLLAPSED_HEIGHT_PX = 48
+const DOCK_COLLAPSED_HEIGHT = '48px'
 
 const getDockMotionDuration = (value: string) => {
   const duration = value.trim()
@@ -26,6 +28,12 @@ const getDockMotionDuration = (value: string) => {
     : duration.endsWith('s') ? Number.parseFloat(duration) * 1000 : Number.NaN
   if (Number.isFinite(milliseconds) && milliseconds >= 0) return milliseconds
   return 300
+}
+
+const measureDockExpandedHeight = (nav: HTMLElement, actions: HTMLElement) => {
+  const height = `${DOCK_COLLAPSED_HEIGHT_PX + actions.scrollHeight + 4}px`
+  nav.style.setProperty('--of-dock-expanded-height', height)
+  return height
 }
 
 const DOCK_COLORS: Record<PersonalNote['color'], string> = {
@@ -38,6 +46,7 @@ const DOCK_COLORS: Record<PersonalNote['color'], string> = {
 }
 
 function DockToggleIcon({ phase }: { phase: DockIconPhase }) {
+  const showCloseIcon = phase === 'opening' || phase === 'open'
   return (
     <span
       aria-hidden="true"
@@ -45,8 +54,7 @@ function DockToggleIcon({ phase }: { phase: DockIconPhase }) {
       data-phase={phase}
       className={cn('of-dock-toggle-icon', `of-dock-toggle-icon-${phase}`)}
     >
-      <StickyNote data-icon="note" size={20} />
-      <X data-icon="close" size={20} />
+      {showCloseIcon ? <X data-icon="close" size={20} /> : <StickyNote data-icon="note" size={20} />}
     </span>
   )
 }
@@ -67,9 +75,11 @@ export function QuickDock({
   const firstActionRef = useRef<HTMLButtonElement>(null)
   const searchRef = useRef<HTMLInputElement>(null)
   const motionRunRef = useRef(0)
+  const motionTimingRef = useRef<{ phase: 'opening' | 'closing'; deadline: number } | undefined>(undefined)
   const [collisionOffset, setCollisionOffset] = useState(0)
   const [dockPhase, setDockPhase] = useState<DockIconPhase>(open ? 'open' : 'closed')
   const [motionSnapshot, setMotionSnapshot] = useState<DockMotionSnapshot>()
+  const [motionRevision, setMotionRevision] = useState(0)
   const renderedDockPhase = open && dockPhase === 'closed' ? 'opening' : dockPhase
   const dockMounted = open || dockPhase !== 'closed'
   const dockOpening = renderedDockPhase === 'opening'
@@ -85,6 +95,28 @@ export function QuickDock({
   const update = useUpdatePersonalNote()
   const remove = useDeletePersonalNote()
   const activeNote = notes.data?.items.find((note) => note.id === selectedId) ?? notes.data?.items[0]
+
+  useLayoutEffect(() => {
+    const nav = dockNavRef.current
+    const actions = dockActionsRef.current
+    if (!dockMounted || !nav || !actions) return
+    const measure = () => {
+      const previousHeight = nav.style.getPropertyValue('--of-dock-expanded-height')
+      const nextHeight = measureDockExpandedHeight(nav, actions)
+      if (
+        previousHeight &&
+        previousHeight !== nextHeight &&
+        (dockPhase === 'opening' || dockPhase === 'closing')
+      ) {
+        setMotionSnapshot(snapshotMotion())
+        setMotionRevision((revision) => revision + 1)
+      }
+    }
+    measure()
+    const observer = new ResizeObserver(measure)
+    observer.observe(actions)
+    return () => observer.disconnect()
+  }, [dockMounted, dockPhase, activeNote?.id])
 
   useLayoutEffect(() => {
     const main = document.querySelector('main')
@@ -153,25 +185,15 @@ export function QuickDock({
     const nav = dockNavRef.current
     const actions = dockActionsRef.current
     const icon = nav?.querySelector<HTMLElement>('[data-testid="quick-dock-toggle-icon"]')
-    const note = icon?.querySelector<HTMLElement>('[data-icon="note"]')
-    const closeIcon = icon?.querySelector<HTMLElement>('[data-icon="close"]')
-    if (!nav || !actions || !icon || !note || !closeIcon) return {}
+    if (!nav || !actions || !icon) return {}
     const navStyle = window.getComputedStyle(nav)
     const actionsStyle = window.getComputedStyle(actions)
     const iconStyle = window.getComputedStyle(icon)
-    const noteStyle = window.getComputedStyle(note)
-    const closeStyle = window.getComputedStyle(closeIcon)
     return {
-      '--of-dock-current-opacity': navStyle.opacity,
-      '--of-dock-current-transform': navStyle.transform,
-      '--of-dock-current-clip-path': navStyle.clipPath,
+      '--of-dock-current-height': navStyle.height,
       '--of-dock-actions-current-opacity': actionsStyle.opacity,
       '--of-dock-actions-current-transform': actionsStyle.transform,
       '--of-dock-toggle-current-transform': iconStyle.transform,
-      '--of-dock-note-current-opacity': noteStyle.opacity,
-      '--of-dock-note-current-transform': noteStyle.transform,
-      '--of-dock-close-current-opacity': closeStyle.opacity,
-      '--of-dock-close-current-transform': closeStyle.transform,
     } as DockMotionSnapshot
   }
 
@@ -202,21 +224,28 @@ export function QuickDock({
     const nav = dockNavRef.current
     const actions = dockActionsRef.current
     const icon = nav?.querySelector<HTMLElement>('[data-testid="quick-dock-toggle-icon"]')
-    const note = icon?.querySelector<HTMLElement>('[data-icon="note"]')
-    const closeIcon = icon?.querySelector<HTMLElement>('[data-icon="close"]')
-    if (!nav || !actions || !icon || !note || !closeIcon) return
+    if (!nav || !actions || !icon) return
 
     const opening = dockPhase === 'opening'
     const navStyle = window.getComputedStyle(nav)
     const actionsStyle = window.getComputedStyle(actions)
     const iconStyle = window.getComputedStyle(icon)
-    const noteStyle = window.getComputedStyle(note)
-    const closeStyle = window.getComputedStyle(closeIcon)
-    const duration = getDockMotionDuration(navStyle.getPropertyValue('--of-dock-motion-duration'))
+    const baseDuration = getDockMotionDuration(navStyle.getPropertyValue('--of-dock-motion-duration'))
     const easing = navStyle.getPropertyValue(opening ? '--of-ease-emphasized' : '--of-ease-standard').trim()
-    const closedClipPath = 'inset(calc(100% - 3rem) 0 0 round 999px)'
+    const collapsedHeight = navStyle.getPropertyValue('--of-dock-collapsed-height').trim() || DOCK_COLLAPSED_HEIGHT
+    const expandedHeight = measureDockExpandedHeight(nav, actions)
     const run = ++motionRunRef.current
-    const epoch = document.timeline.currentTime ?? performance.now()
+    const epoch = Number(document.timeline.currentTime ?? performance.now())
+    const previousTiming = motionTimingRef.current
+    const deadline = previousTiming?.phase === dockPhase ? previousTiming.deadline : epoch + baseDuration
+    const duration = Math.max(0, deadline - epoch)
+    motionTimingRef.current = { phase: dockPhase, deadline }
+    if (duration === 0) {
+      motionTimingRef.current = undefined
+      setMotionSnapshot(undefined)
+      setDockPhase(opening ? 'open' : 'closed')
+      return
+    }
     const animate = (element: HTMLElement, id: string, keyframes: Keyframe[]) => {
       const animation = element.animate(keyframes, { duration, easing, fill: 'both' })
       animation.id = `of-dock-phase-${dockPhase}-${id}`
@@ -225,9 +254,9 @@ export function QuickDock({
     }
 
     const animations = [
-      animate(nav, 'surface', [
-        { opacity: navStyle.opacity, transform: navStyle.transform, clipPath: navStyle.clipPath },
-        { opacity: '1', transform: 'none', clipPath: opening ? 'inset(0 round 999px)' : closedClipPath },
+      animate(nav, 'height', [
+        { height: navStyle.height },
+        { height: opening ? expandedHeight : collapsedHeight },
       ]),
       animate(actions, 'actions', [
         { opacity: actionsStyle.opacity, transform: actionsStyle.transform },
@@ -237,18 +266,11 @@ export function QuickDock({
         { transform: iconStyle.transform },
         { transform: opening ? 'rotate(180deg)' : 'rotate(0deg)' },
       ]),
-      animate(note, 'note', [
-        { opacity: noteStyle.opacity, transform: noteStyle.transform },
-        { opacity: opening ? '0' : '1', transform: opening ? 'scale(0.58)' : 'scale(1)' },
-      ]),
-      animate(closeIcon, 'close', [
-        { opacity: closeStyle.opacity, transform: closeStyle.transform },
-        { opacity: opening ? '1' : '0', transform: opening ? 'scale(1)' : 'scale(0.58)' },
-      ]),
     ]
 
     void animations[0].finished.then(() => {
       if (motionRunRef.current !== run) return
+      motionTimingRef.current = undefined
       setMotionSnapshot(undefined)
       setDockPhase(opening ? 'open' : 'closed')
     }).catch(() => undefined)
@@ -257,12 +279,13 @@ export function QuickDock({
       motionRunRef.current += 1
       for (const animation of animations) animation.cancel()
     }
-  }, [dockPhase])
+  }, [dockPhase, motionRevision])
 
   useEffect(() => {
     const media = window.matchMedia('(prefers-reduced-motion: reduce)')
     const settleMotion = (event: MediaQueryListEvent) => {
       if (!event.matches) return
+      motionTimingRef.current = undefined
       setMotionSnapshot(undefined)
       setDockPhase((current) => {
         if (current === 'opening') return 'open'
@@ -398,7 +421,9 @@ export function QuickDock({
             ? { ...motionSnapshot, '--of-dock-css-animation-play-state': 'paused' } as DockMotionSnapshot
             : motionSnapshot}
           className={cn(
-            'flex w-12 flex-col items-center gap-1 rounded-full border border-of-border bg-of-surface p-1 shadow-[var(--of-shadow-popover)]',
+            'flex w-12 flex-col-reverse items-center gap-1 overflow-hidden rounded-full border border-of-border bg-of-surface p-1 shadow-[var(--of-shadow-popover)]',
+            renderedDockPhase === 'closed' && 'h-12',
+            renderedDockPhase === 'open' && 'h-[var(--of-dock-expanded-height,10.5rem)]',
             dockOpening && 'of-dock-enter of-dock-opening',
             dockClosing && 'of-dock-exit',
           )}
@@ -409,7 +434,7 @@ export function QuickDock({
               ref={dockActionsRef}
               data-testid="quick-dock-actions"
               className={cn(
-                'of-dock-actions flex flex-col items-center gap-1',
+                'of-dock-actions order-1 flex shrink-0 flex-col items-center gap-1',
                 dockOpening && 'of-dock-actions-enter',
                 dockClosing && 'of-dock-actions-exit',
               )}
@@ -462,7 +487,7 @@ export function QuickDock({
             aria-disabled={dockOpening || dockClosing}
             className={cn(
               dockButton,
-              'h-[38px] w-[38px]',
+              'h-[38px] w-[38px] shrink-0',
               !dockMounted && 'text-of-accent',
             )}
             onClick={() => {

@@ -2393,3 +2393,16 @@ Chromium typed mock fixture에서 1440x960과 390x844 viewport를 사용했다. 
 - 검증: typecheck PASS, lint PASS(기존 Fast Refresh 경고 4건), production build PASS(기존 chunk 경고), unit 87, component 8, focused E2E 2, full E2E 256 PASS + opt-in visual QA 1 skip, clean-room frontend 161/backend 44, npm audit high 0 vulnerabilities, diff check PASS.
 - Chromium 증적은 `docs/screenshots/redevelopment/topbar-help-ui/{desktop-menu,mobile-menu}.png`에 보존한다.
 - API, DB, migration, permission contract, environment variable, settings UI, dependency 변경과 이연 항목은 없다.
+
+---
+
+# UI-102 Quick Dock Height-fold 보정 검증 (2026-07-14)
+
+- 기존 five-track clip/crossfade 구성을 실제 높이, action group, persistent trigger rotation의 three-track WAAPI로 단순화했다. 세 track은 opening/closing별 하나의 `Animation.startTime`을 공유하며 declarative CSS는 첫 frame에서 paused 상태로 유지된다.
+- Opening phase 첫 렌더에서 X 한 개가 표시되고 48px collapsed pill이 측정된 action stack 높이까지 위로 펼쳐진다. Closing phase 첫 렌더에서는 note 한 개가 표시되고 같은 trigger가 역회전하는 동안 실제 pill 높이가 48px로 접힌다. `column-reverse`와 shrink 방지로 trigger DOM, 크기, 하단 중심은 1px 이내에서 유지된다.
+- Current-frame reverse, duplicate input, Escape, focus handoff, collision avoidance, central-frame scroll geometry, runtime reduced-motion settlement와 Personal Notes CRUD 계약은 유지한다.
+- 검증: typecheck PASS, lint PASS(기존 Fast Refresh 경고 4건), production build PASS(기존 chunk 경고), unit 87, component 8, focused E2E 2 및 병렬 repeat 6, full E2E 257 PASS + opt-in visual QA 1 skip, clean-room frontend 161/backend 44, npm audit high 0, diff check PASS. CI 결과는 PR 게이트 후 이어서 기록한다.
+- 초기 구현에서 actual-height flex shrink가 trigger 중심을 32px 이동시키는 실패를 focused E2E가 검출했다. Bottom-first fixed-size flex ordering으로 수정한 뒤 동일 geometry/phase test가 PASS했다.
+- 독립 reviewer는 opening 중 비동기 메모 도착으로 action 수가 바뀌면 height 종점이 낡을 수 있음을 지적했다. 현재 computed frame을 스냅샷으로 잡고 원래 deadline까지 남은 시간 동안 height/actions/rotation 세 track을 새 공통 epoch로 재시작하도록 수정했으며, 2→3 action retarget의 연속 높이·최종 측정 높이·1ms 이하 start-time skew를 E2E로 고정했다.
+- Chromium early-frame 증적은 `docs/screenshots/redevelopment/quick-dock-height-fold-ui/{early-opening,early-closing}.png`에 보존한다.
+- API, DB, migration, permission contract, environment variable, settings UI, dependency 변경과 이연 항목은 없다.

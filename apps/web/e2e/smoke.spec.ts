@@ -1404,7 +1404,7 @@ test('빠른 도구는 shell scroll region 이동 후에도 하단 작업과 충
   await expect.poll(dockAvoidsAction).toBe(true)
 })
 
-test('Quick Dock trigger는 note와 X를 양방향 회전 morph한다', async ({ page }) => {
+test('Quick Dock은 phase 시작 icon 전환과 실제 높이 fold를 같은 timeline에서 실행한다', async ({ page }) => {
   await mockApi(page)
   await page.goto('/projects')
   await page.evaluate(() => document.documentElement.style.setProperty('--of-dock-motion-duration', '1s'))
@@ -1421,7 +1421,7 @@ test('Quick Dock trigger는 note와 X를 양방향 회전 morph한다', async ({
     ;(window as Window & { __oneflowQuickDockToggle?: Element }).__oneflowQuickDockToggle = element
   })
 
-  // Interrupted path: dock enter and note -> X morph are visible in the same opening frame.
+  // Interrupted path: dock height, actions and the phase-start X rotate in the same opening frame.
   await trigger.click()
   const dock = page.getByRole('navigation', { name: '빠른 도구' })
   const openingIcon = dock.getByTestId('quick-dock-toggle-icon')
@@ -1432,6 +1432,8 @@ test('Quick Dock trigger는 note와 X를 양방향 회전 morph한다', async ({
   await expect(dock).toHaveCSS('animation-name', 'of-dock-enter')
   await expect(dock).toHaveCSS('animation-duration', '1s')
   await expect(openingIcon).toHaveAttribute('data-phase', 'opening')
+  await expect(openingIcon.locator('[data-icon="close"]')).toHaveCount(1)
+  await expect(openingIcon.locator('[data-icon="note"]')).toHaveCount(0)
   await expect(openingIcon).toHaveCSS('animation-name', 'of-dock-toggle-open')
   await expect(openingIcon).toHaveCSS('animation-duration', '1s')
   await expect(openingActions).toHaveCSS('animation-name', 'of-dock-actions-enter')
@@ -1455,8 +1457,8 @@ test('Quick Dock trigger는 note와 X를 양방향 회전 morph한다', async ({
       progress,
     }
   })
-  expect(openingTimeline.count).toBe(5)
-  expect(openingTimeline.cssCount).toBe(5)
+  expect(openingTimeline.count).toBe(3)
+  expect(openingTimeline.cssCount).toBe(3)
   expect(openingTimeline.cssPaused).toBe(true)
   expect(openingTimeline.skew).toBeLessThanOrEqual(1)
   expect(openingTimeline.progress.every((value) => value > 0 && value < 1)).toBe(true)
@@ -1484,10 +1486,10 @@ test('Quick Dock trigger는 note와 X를 양방향 회전 morph한다', async ({
     const actions = element.querySelector<HTMLElement>('[data-testid="quick-dock-actions"]')!
     return {
       iconTransform: getComputedStyle(icon).transform,
-      note: Number.parseFloat(getComputedStyle(icon.querySelector('[data-icon="note"]')!).opacity),
-      close: Number.parseFloat(getComputedStyle(icon.querySelector('[data-icon="close"]')!).opacity),
+      icon: icon.querySelector('[data-icon="close"]')?.getAttribute('data-icon'),
       actions: Number.parseFloat(getComputedStyle(actions).opacity),
-      clipPath: getComputedStyle(element).clipPath,
+      height: Number.parseFloat(getComputedStyle(element).height),
+      expandedHeight: element.scrollHeight,
     }
   })
   const openingEarly = await dock.evaluate((element) => {
@@ -1498,22 +1500,19 @@ test('Quick Dock trigger는 note와 X를 양방향 회전 morph한다', async ({
     const actions = element.querySelector<HTMLElement>('[data-testid="quick-dock-actions"]')!
     return {
       iconTransform: getComputedStyle(icon).transform,
-      note: Number.parseFloat(getComputedStyle(icon.querySelector('[data-icon="note"]')!).opacity),
-      close: Number.parseFloat(getComputedStyle(icon.querySelector('[data-icon="close"]')!).opacity),
+      icon: icon.querySelector('[data-icon="close"]')?.getAttribute('data-icon'),
       actions: Number.parseFloat(getComputedStyle(actions).opacity),
-      clipPath: getComputedStyle(element).clipPath,
+      height: Number.parseFloat(getComputedStyle(element).height),
     }
   })
   expect(openingEarly.iconTransform).not.toBe(openingStart.iconTransform)
-  expect(openingEarly.note).toBeLessThan(openingStart.note)
-  expect(openingEarly.close).toBeGreaterThan(openingStart.close)
+  expect(openingStart.icon).toBe('close')
+  expect(openingEarly.icon).toBe('close')
   expect(openingEarly.actions).toBeGreaterThan(openingStart.actions)
-  expect(openingEarly.clipPath).not.toBe(openingStart.clipPath)
+  expect(openingEarly.height).toBeGreaterThan(openingStart.height)
+  expect(openingEarly.height).toBeLessThan(openingStart.expandedHeight)
   await dock.screenshot({
-    path: '../../docs/screenshots/redevelopment/quick-dock-simultaneous-motion-ui/early-opening.png',
-  })
-  await dock.screenshot({
-    path: '../../docs/screenshots/redevelopment/quick-dock-phase-lock-ui/opening-early.png',
+    path: '../../docs/screenshots/redevelopment/quick-dock-height-fold-ui/early-opening.png',
   })
   await openingToggle.evaluate((button) => (button as HTMLButtonElement).click())
   await expect(dock).toHaveAttribute('data-phase', 'opening')
@@ -1526,27 +1525,24 @@ test('Quick Dock trigger는 note와 X를 양방향 회전 morph한다', async ({
     }
   })
   const openingBlend = await openingIcon.evaluate((element) => ({
-    note: Number.parseFloat(getComputedStyle(element.querySelector('[data-icon="note"]')!).opacity),
-    close: Number.parseFloat(getComputedStyle(element.querySelector('[data-icon="close"]')!).opacity),
-    clipPath: getComputedStyle(element.closest('[data-quick-dock-surface]')!).clipPath,
-    navTransform: getComputedStyle(element.closest('[data-quick-dock-surface]')!).transform,
+    icon: element.querySelector('[data-icon="close"]')?.getAttribute('data-icon'),
+    height: Number.parseFloat(getComputedStyle(element.closest('[data-quick-dock-surface]')!).height),
     iconTransform: getComputedStyle(element).transform,
     actionsOpacity: Number.parseFloat(getComputedStyle(element.closest('[data-quick-dock-surface]')!.querySelector('[data-testid="quick-dock-actions"]')!).opacity),
     actionsTransform: getComputedStyle(element.closest('[data-quick-dock-surface]')!.querySelector('[data-testid="quick-dock-actions"]')!).transform,
   }))
-  expect(openingBlend.note).toBeLessThan(1)
-  expect(openingBlend.close).toBeGreaterThan(0)
-  expect(openingBlend.clipPath).not.toBe('none')
+  expect(openingBlend.icon).toBe('close')
+  expect(openingBlend.height).toBeGreaterThan(openingStart.height)
+  expect(openingBlend.height).toBeLessThan(openingStart.expandedHeight)
   expect(openingBlend.actionsOpacity).toBeGreaterThan(0)
   expect(openingBlend.actionsOpacity).toBeLessThan(1)
   expect(openingBlend.actionsTransform).not.toBe('none')
-  await dock.screenshot({
-    path: '../../docs/screenshots/redevelopment/quick-dock-synchronized-motion-ui/opening-dock.png',
-  })
   await page.keyboard.press('Escape')
   const closeButton = dock.getByRole('button', { name: '빠른 도구 닫기' })
   const closingIcon = dock.getByTestId('quick-dock-toggle-icon')
   await expect(dock).toHaveAttribute('data-phase', 'closing')
+  await expect(closingIcon.locator('[data-icon="note"]')).toHaveCount(1)
+  await expect(closingIcon.locator('[data-icon="close"]')).toHaveCount(0)
   const closingTimeline = await dock.evaluate(async (element) => {
     const allAnimations = element.getAnimations({ subtree: true })
     const animations = allAnimations
@@ -1566,8 +1562,8 @@ test('Quick Dock trigger는 note와 X를 양방향 회전 morph한다', async ({
       progress,
     }
   })
-  expect(closingTimeline.count).toBe(5)
-  expect(closingTimeline.cssCount).toBe(5)
+  expect(closingTimeline.count).toBe(3)
+  expect(closingTimeline.cssCount).toBe(3)
   expect(closingTimeline.cssPaused).toBe(true)
   expect(closingTimeline.skew).toBeLessThanOrEqual(1)
   expect(closingTimeline.progress.every((value) => value > 0 && value < 1)).toBe(true)
@@ -1575,22 +1571,16 @@ test('Quick Dock trigger는 note와 X를 양방향 회전 morph한다', async ({
   const reversalStart = await dock.evaluate((element) => {
     const style = getComputedStyle(element)
     return {
-      clipPath: style.getPropertyValue('--of-dock-current-clip-path').trim(),
-      navTransform: style.getPropertyValue('--of-dock-current-transform').trim(),
+      height: Number.parseFloat(style.getPropertyValue('--of-dock-current-height')),
       iconTransform: style.getPropertyValue('--of-dock-toggle-current-transform').trim(),
       actionsOpacity: Number.parseFloat(style.getPropertyValue('--of-dock-actions-current-opacity')),
       actionsTransform: style.getPropertyValue('--of-dock-actions-current-transform').trim(),
-      note: Number.parseFloat(style.getPropertyValue('--of-dock-note-current-opacity')),
-      close: Number.parseFloat(style.getPropertyValue('--of-dock-close-current-opacity')),
     }
   })
-  expect(reversalStart.clipPath).toBe(openingBlend.clipPath)
-  expect(reversalStart.navTransform).toBe(openingBlend.navTransform)
+  expect(reversalStart.height).toBeCloseTo(openingBlend.height, 1)
   expect(reversalStart.iconTransform).toBe(openingBlend.iconTransform)
   expect(reversalStart.actionsOpacity).toBeCloseTo(openingBlend.actionsOpacity, 2)
   expect(reversalStart.actionsTransform).toBe(openingBlend.actionsTransform)
-  expect(reversalStart.note).toBeCloseTo(openingBlend.note, 2)
-  expect(reversalStart.close).toBeCloseTo(openingBlend.close, 2)
   await expect(dock).toHaveCSS('animation-name', 'of-dock-exit')
   await expect(dock).toHaveCSS('animation-duration', '1s')
   await expect(closingIcon).toHaveAttribute('data-phase', 'closing')
@@ -1612,21 +1602,19 @@ test('Quick Dock trigger는 note와 X를 양방향 회전 morph한다', async ({
     const icon = element.querySelector<HTMLElement>('[data-testid="quick-dock-toggle-icon"]')!
     const actions = element.querySelector<HTMLElement>('[data-testid="quick-dock-actions"]')!
     return {
-      note: Number.parseFloat(getComputedStyle(icon.querySelector('[data-icon="note"]')!).opacity),
-      close: Number.parseFloat(getComputedStyle(icon.querySelector('[data-icon="close"]')!).opacity),
+      icon: icon.querySelector('[data-icon="note"]')?.getAttribute('data-icon'),
+      iconTransform: getComputedStyle(icon).transform,
       actions: Number.parseFloat(getComputedStyle(actions).opacity),
-      clipPath: getComputedStyle(element).clipPath,
+      height: Number.parseFloat(getComputedStyle(element).height),
     }
   })
-  expect(closingEarly.note).toBeGreaterThan(reversalStart.note)
-  expect(closingEarly.close).toBeLessThan(reversalStart.close)
+  expect(closingEarly.icon).toBe('note')
+  expect(closingEarly.iconTransform).not.toBe(reversalStart.iconTransform)
   expect(closingEarly.actions).toBeLessThan(reversalStart.actionsOpacity)
-  expect(closingEarly.clipPath).not.toBe(reversalStart.clipPath)
+  expect(closingEarly.height).toBeLessThan(reversalStart.height)
+  expect(closingEarly.height).toBeGreaterThanOrEqual(openingStart.height)
   await dock.screenshot({
-    path: '../../docs/screenshots/redevelopment/quick-dock-simultaneous-motion-ui/early-closing.png',
-  })
-  await dock.screenshot({
-    path: '../../docs/screenshots/redevelopment/quick-dock-phase-lock-ui/closing-early.png',
+    path: '../../docs/screenshots/redevelopment/quick-dock-height-fold-ui/early-closing.png',
   })
   await dock.evaluate((element) => {
     const animations = element.getAnimations({ subtree: true })
@@ -1637,16 +1625,12 @@ test('Quick Dock trigger는 note와 X를 양방향 회전 morph한다', async ({
     }
   })
   const closingBlend = await closingIcon.evaluate((element) => ({
-    note: Number.parseFloat(getComputedStyle(element.querySelector('[data-icon="note"]')!).opacity),
-    close: Number.parseFloat(getComputedStyle(element.querySelector('[data-icon="close"]')!).opacity),
-    clipPath: getComputedStyle(element.closest('[data-quick-dock-surface]')!).clipPath,
+    icon: element.querySelector('[data-icon="note"]')?.getAttribute('data-icon'),
+    height: Number.parseFloat(getComputedStyle(element.closest('[data-quick-dock-surface]')!).height),
   }))
-  expect(closingBlend.note).toBeGreaterThan(0)
-  expect(closingBlend.close).toBeLessThan(1)
-  expect(closingBlend.clipPath).not.toBe('none')
-  await dock.screenshot({
-    path: '../../docs/screenshots/redevelopment/quick-dock-synchronized-motion-ui/closing-dock.png',
-  })
+  expect(closingBlend.icon).toBe('note')
+  expect(closingBlend.height).toBeLessThan(reversalStart.height)
+  expect(closingBlend.height).toBeGreaterThanOrEqual(openingStart.height)
   await dock.evaluate((element) => {
     const animations = element.getAnimations({ subtree: true })
       .filter((animation) => animation.id.startsWith('of-dock-phase-closing-'))
@@ -1702,6 +1686,86 @@ test('Quick Dock trigger는 note와 X를 양방향 회전 morph한다', async ({
   await dock.getByRole('button', { name: '빠른 도구 닫기' }).click()
   await expect(dock.getByTestId('quick-dock-actions')).toHaveCSS('animation-name', 'of-dock-actions-exit')
   await expect(dock).toHaveCount(0)
+})
+
+test('Quick Dock은 opening 중 action 수가 바뀌어도 현재 높이에서 연속 retarget한다', async ({ page }) => {
+  await mockApi(page)
+  await page.unroute('**/api/v1/me/personal-notes**')
+  let releaseNotes!: () => void
+  const notesReady = new Promise<void>((resolve) => { releaseNotes = resolve })
+  const note: PersonalNoteFixture = {
+    id: 'late-note',
+    title: '늦게 도착한 메모',
+    body: '',
+    color: 'mint',
+    is_pinned: false,
+    position: 0,
+    version: 0,
+    created_at: '2026-07-10T00:00:00Z',
+    updated_at: '2026-07-10T00:00:00Z',
+  }
+  await page.route('**/api/v1/me/personal-notes**', async (route) => {
+    await notesReady
+    await route.fulfill({ json: { items: [note], total: 1, limit: 200, offset: 0 } })
+  })
+  await page.goto('/projects')
+  await page.evaluate(() => document.documentElement.style.setProperty('--of-dock-motion-duration', '1s'))
+  const scrollRegion = page.locator('[data-shell-scroll-region]')
+  const geometry = await scrollRegion.evaluate((element) => ({
+    clientHeight: element.clientHeight,
+    scrollHeight: element.scrollHeight,
+  }))
+
+  await page.getByRole('button', { name: '빠른 도구 열기' }).click()
+  const dock = page.getByRole('navigation', { name: '빠른 도구' })
+  await expect(dock).toHaveAttribute('data-phase', 'opening')
+  await dock.evaluate((element) => {
+    const animations = element.getAnimations({ subtree: true })
+      .filter((animation) => animation.id.startsWith('of-dock-phase-opening-'))
+    for (const animation of animations) {
+      animation.pause()
+      animation.currentTime = 200
+    }
+  })
+  const heightBefore = await dock.evaluate((element) => Number.parseFloat(getComputedStyle(element).height))
+  releaseNotes()
+  await expect(dock.getByRole('button', { name: '현재 메모 열기' })).toBeVisible()
+
+  const retarget = await dock.evaluate(async (element) => {
+    const animations = element.getAnimations({ subtree: true })
+      .filter((animation) => animation.id.startsWith('of-dock-phase-opening-'))
+    await Promise.all(animations.map((animation) => animation.ready))
+    for (const animation of animations) {
+      animation.pause()
+      animation.currentTime = 0
+    }
+    const startTimes = animations.map((animation) => Number(animation.startTime ?? 0))
+    const actions = element.querySelector<HTMLElement>('[data-testid="quick-dock-actions"]')!
+    return {
+      count: animations.length,
+      skew: Math.max(...startTimes) - Math.min(...startTimes),
+      height: Number.parseFloat(getComputedStyle(element).height),
+      expectedHeight: 48 + actions.scrollHeight + 4,
+      icon: element.querySelector('[data-icon="close"]')?.getAttribute('data-icon'),
+    }
+  })
+  expect(retarget.count).toBe(3)
+  expect(retarget.skew).toBeLessThanOrEqual(1)
+  expect(retarget.height).toBeCloseTo(heightBefore, 1)
+  expect(retarget.icon).toBe('close')
+
+  await dock.evaluate((element) => {
+    const animations = element.getAnimations({ subtree: true })
+      .filter((animation) => animation.id.startsWith('of-dock-phase-opening-'))
+    for (const animation of animations) animation.play()
+  })
+  await expect(dock).toHaveAttribute('data-phase', 'open')
+  await expect.poll(() => dock.evaluate((element) => Number.parseFloat(getComputedStyle(element).height)))
+    .toBeCloseTo(retarget.expectedHeight, 1)
+  expect(await scrollRegion.evaluate((element) => ({
+    clientHeight: element.clientHeight,
+    scrollHeight: element.scrollHeight,
+  }))).toEqual(geometry)
 })
 
 test('빠른 도구 dock은 개인 메모를 compact·expanded·modal 상태로 편집한다', async ({ page }) => {

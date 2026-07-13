@@ -260,3 +260,9 @@ Plane source, package, asset, CSS, DOM hierarchy, exact dimensions/colors, wordi
 `docs/plane-poc-reverse-spec/` S007에서 사용한 입력은 topbar Help icon이 현재 route 위에 transient menu를 연다는 행동과 documentation/support/shortcut 범주의 정보구조뿐이다. OneFlow 구현은 기존 자체 Wiki capability, `/wiki`, `/status`, command-palette config/shortcut guard, overlay registry와 설치된 Radix primitives를 사용해 독립 작성했다.
 
 Plane source, package, asset, CSS, DOM hierarchy, exact dimensions/colors, wording, support/sales/forum/changelog/version destination, icons 또는 branding은 복사하지 않았다. OneFlow에 실제 계약이 없는 외부 action은 노출하지 않았고 신규 dependency/API/DB/schema/environment/settings UI 변경은 없다. — attested-independent-derivation
+
+## UI-102 Quick Dock Height-fold Correction
+
+Authenticated live inspection에서 사용한 입력은 bottom-anchored dock이 contained actual height로 펼쳐지고 접히며, persistent trigger의 현재 note/X 상태와 300ms half-turn이 layout transition 시작과 함께 바뀐다는 visible behavior뿐이다. OneFlow 구현은 기존 자체 four-phase state, WAAPI interruption snapshot, Personal Notes API, collision observer, focus lifecycle, Lucide icons와 shell tokens로 독립 작성했다.
+
+Plane source, package, asset, SVG path, CSS, DOM hierarchy, exact color, wording, animation implementation 또는 branding은 복사하지 않았다. UI-only correction이며 신규 dependency/API/DB/schema/environment/settings UI 변경은 없다. — attested-independent-derivation

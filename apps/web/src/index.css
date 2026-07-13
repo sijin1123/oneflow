@@ -273,35 +273,13 @@ textarea {
 
 @keyframes of-dock-enter {
   from {
-    opacity: var(--of-dock-current-opacity, 1);
-    transform: var(--of-dock-current-transform, none);
-    clip-path: var(--of-dock-current-clip-path, inset(calc(100% - 3rem) 0 0 round 999px));
+    height: var(--of-dock-current-height, var(--of-dock-collapsed-height, 48px));
   }
-  to { opacity: 1; transform: none; clip-path: inset(0 round 999px); }
+  to { height: var(--of-dock-expanded-height, 10.5rem); }
 }
 
 @keyframes of-dock-toggle-open { from { transform: var(--of-dock-toggle-current-transform, rotate(0deg)); } to { transform: rotate(180deg); } }
 @keyframes of-dock-toggle-close { from { transform: var(--of-dock-toggle-current-transform, rotate(180deg)); } to { transform: rotate(0deg); } }
-@keyframes of-dock-note-out {
-  from { opacity: var(--of-dock-note-current-opacity, 1); transform: var(--of-dock-note-current-transform, scale(1)); }
-  36% { opacity: 0.18; transform: scale(0.68); }
-  to { opacity: 0; transform: scale(0.58); }
-}
-@keyframes of-dock-close-in {
-  from { opacity: var(--of-dock-close-current-opacity, 0); transform: var(--of-dock-close-current-transform, scale(0.58)); }
-  36% { opacity: 0.78; transform: scale(0.9); }
-  to { opacity: 1; transform: scale(1); }
-}
-@keyframes of-dock-close-out {
-  from { opacity: var(--of-dock-close-current-opacity, 1); transform: var(--of-dock-close-current-transform, scale(1)); }
-  36% { opacity: 0.18; transform: scale(0.68); }
-  to { opacity: 0; transform: scale(0.58); }
-}
-@keyframes of-dock-note-in {
-  from { opacity: var(--of-dock-note-current-opacity, 0); transform: var(--of-dock-note-current-transform, scale(0.58)); }
-  36% { opacity: 0.78; transform: scale(0.9); }
-  to { opacity: 1; transform: scale(1); }
-}
 
 @keyframes of-dock-actions-enter {
   from { opacity: var(--of-dock-actions-current-opacity, 0); transform: var(--of-dock-actions-current-transform, translateY(10px) scale(0.88)); }
@@ -313,12 +291,8 @@ textarea {
 }
 
 @keyframes of-dock-exit {
-  from {
-    opacity: var(--of-dock-current-opacity, 1);
-    transform: var(--of-dock-current-transform, none);
-    clip-path: var(--of-dock-current-clip-path, inset(0 round 999px));
-  }
-  to { opacity: 1; transform: none; clip-path: inset(calc(100% - 3rem) 0 0 round 999px); }
+  from { height: var(--of-dock-current-height, var(--of-dock-expanded-height, 10.5rem)); }
+  to { height: var(--of-dock-collapsed-height, 48px); }
 }
 
 @keyframes of-panel-enter {
@@ -351,22 +325,11 @@ textarea {
   transform-origin: center;
 }
 .of-dock-toggle-icon > svg { position: absolute; inset: 0; transform-origin: center; }
+.of-dock-toggle-icon [data-icon="note"] { transform: rotate(90deg); }
 .of-dock-toggle-icon-closed { transform: rotate(0deg); }
 .of-dock-toggle-icon-open { transform: rotate(180deg); }
-.of-dock-toggle-icon-closed [data-icon="note"],
-.of-dock-toggle-icon-closing [data-icon="note"],
-.of-dock-toggle-icon-open [data-icon="close"],
-.of-dock-toggle-icon-opening [data-icon="close"] { opacity: 1; transform: scale(1); }
-.of-dock-toggle-icon-closed [data-icon="close"],
-.of-dock-toggle-icon-closing [data-icon="close"],
-.of-dock-toggle-icon-open [data-icon="note"],
-.of-dock-toggle-icon-opening [data-icon="note"] { opacity: 0; transform: scale(0.58); }
 .of-dock-toggle-icon-opening { animation: of-dock-toggle-open var(--of-dock-motion-duration, 300ms) var(--of-ease-emphasized) both; animation-play-state: var(--of-dock-css-animation-play-state, running); }
-.of-dock-toggle-icon-opening [data-icon="note"] { animation: of-dock-note-out var(--of-dock-motion-duration, 300ms) var(--of-ease-emphasized) both; animation-play-state: var(--of-dock-css-animation-play-state, running); }
-.of-dock-toggle-icon-opening [data-icon="close"] { animation: of-dock-close-in var(--of-dock-motion-duration, 300ms) var(--of-ease-emphasized) both; animation-play-state: var(--of-dock-css-animation-play-state, running); }
 .of-dock-toggle-icon-closing { animation: of-dock-toggle-close var(--of-dock-motion-duration, 300ms) var(--of-ease-standard) both; animation-play-state: var(--of-dock-css-animation-play-state, running); }
-.of-dock-toggle-icon-closing [data-icon="close"] { animation: of-dock-close-out var(--of-dock-motion-duration, 300ms) var(--of-ease-standard) both; animation-play-state: var(--of-dock-css-animation-play-state, running); }
-.of-dock-toggle-icon-closing [data-icon="note"] { animation: of-dock-note-in var(--of-dock-motion-duration, 300ms) var(--of-ease-standard) both; animation-play-state: var(--of-dock-css-animation-play-state, running); }
 .of-dock-actions { transform-origin: bottom center; }
 .of-dock-actions-enter { animation: of-dock-actions-enter var(--of-dock-motion-duration, 300ms) var(--of-ease-emphasized) both; animation-play-state: var(--of-dock-css-animation-play-state, running); }
 .of-dock-actions-exit { animation: of-dock-actions-exit var(--of-dock-motion-duration, 300ms) var(--of-ease-standard) both; animation-play-state: var(--of-dock-css-animation-play-state, running); }
@@ -393,9 +356,7 @@ textarea {
   .of-search-content-opening,
   .of-search-content-closing,
   .of-dock-toggle-icon-opening,
-  .of-dock-toggle-icon-opening [data-icon],
   .of-dock-toggle-icon-closing,
-  .of-dock-toggle-icon-closing [data-icon],
   .of-dock-enter,
   .of-dock-exit,
   .of-dock-actions-enter,
