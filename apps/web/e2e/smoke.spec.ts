@@ -1284,8 +1284,8 @@ test('빠른 도구는 shell scroll region 이동 후에도 하단 작업과 충
 
 test('Quick Dock trigger는 note와 X를 양방향 회전 morph한다', async ({ page }) => {
   await mockApi(page)
-  await page.clock.install()
   await page.goto('/projects')
+  await page.evaluate(() => document.documentElement.style.setProperty('--of-dock-motion-duration', '1s'))
   const scrollRegion = page.locator('[data-shell-scroll-region]')
   const geometry = await scrollRegion.evaluate((element) => ({
     clientHeight: element.clientHeight,
@@ -1293,48 +1293,66 @@ test('Quick Dock trigger는 note와 X를 양방향 회전 morph한다', async ({
   }))
   const trigger = page.getByRole('button', { name: '빠른 도구 열기' })
 
-  await trigger.evaluate((button) => (button as HTMLButtonElement).click())
-  await expect(trigger.getByTestId('quick-dock-toggle-icon')).toHaveAttribute('data-phase', 'opening')
-  await page.keyboard.press('Escape')
-  await expect(trigger).toBeFocused()
-  await expect(trigger).toHaveAttribute('aria-disabled', 'false')
-  await expect(trigger.getByTestId('quick-dock-toggle-icon')).toHaveAttribute('data-phase', 'closed')
-
+  // Interrupted path: dock enter and note -> X morph are visible in the same opening frame.
   await trigger.click()
-  const openingIcon = page.getByTestId('quick-dock-toggle-icon')
+  const dock = page.getByRole('navigation', { name: '빠른 도구' })
+  const openingIcon = dock.getByTestId('quick-dock-toggle-icon')
+  const openingToggle = dock.getByRole('button', { name: '빠른 도구 닫기' })
+  const firstAction = dock.getByRole('button', { name: '모든 메모 열기' })
+  await expect(dock).toHaveAttribute('data-phase', 'opening')
+  await expect(dock).toHaveCSS('animation-name', 'of-dock-enter')
+  await expect(dock).toHaveCSS('animation-duration', '1s')
   await expect(openingIcon).toHaveAttribute('data-phase', 'opening')
   await expect(openingIcon).toHaveCSS('animation-name', 'of-dock-toggle-open')
-  await expect(openingIcon).toHaveCSS('animation-duration', '0.18s')
-  await expect(trigger).toHaveAttribute('aria-disabled', 'true')
-  await expect(trigger).toBeFocused()
-  await trigger.evaluate((button) => (button as HTMLButtonElement).click())
-  await expect.poll(() => openingIcon.getAttribute('data-phase')).toMatch(/^(opening|open)$/)
-  await openingIcon.evaluate((element) => {
+  await expect(openingIcon).toHaveCSS('animation-duration', '1s')
+  await expect(dock).toHaveCSS('pointer-events', 'none')
+  await expect(openingToggle).toBeFocused()
+  await expect(firstAction).toBeDisabled()
+  await openingToggle.evaluate((button) => (button as HTMLButtonElement).click())
+  await expect(dock).toHaveAttribute('data-phase', 'opening')
+  await dock.evaluate((element) => {
     for (const animation of element.getAnimations({ subtree: true })) {
       animation.pause()
-      animation.currentTime = 90
+      animation.currentTime = 500
     }
   })
   const openingBlend = await openingIcon.evaluate((element) => ({
     note: Number.parseFloat(getComputedStyle(element.querySelector('[data-icon="note"]')!).opacity),
     close: Number.parseFloat(getComputedStyle(element.querySelector('[data-icon="close"]')!).opacity),
+    clipPath: getComputedStyle(element.closest('nav')!).clipPath,
+    navTransform: getComputedStyle(element.closest('nav')!).transform,
+    iconTransform: getComputedStyle(element).transform,
   }))
   expect(openingBlend.note).toBeLessThan(1)
   expect(openingBlend.close).toBeGreaterThan(0)
-  await trigger.screenshot({
-    path: '../../docs/screenshots/redevelopment/quick-dock-icon-morph-ui/opening-button.png',
+  expect(openingBlend.clipPath).not.toBe('none')
+  await dock.screenshot({
+    path: '../../docs/screenshots/redevelopment/quick-dock-synchronized-motion-ui/opening-dock.png',
   })
-  await page.clock.runFor(180)
-
-  const dock = page.getByRole('navigation', { name: '빠른 도구' })
-  await expect(dock.getByTestId('quick-dock-toggle-icon')).toHaveAttribute('data-phase', 'open')
-  await expect(dock.getByRole('button', { name: '모든 메모 열기' })).toBeFocused()
+  await page.keyboard.press('Escape')
   const closeButton = dock.getByRole('button', { name: '빠른 도구 닫기' })
-  await closeButton.click()
   const closingIcon = dock.getByTestId('quick-dock-toggle-icon')
+  await expect(dock).toHaveAttribute('data-phase', 'closing')
+  const reversalStart = await dock.evaluate((element) => {
+    const style = getComputedStyle(element)
+    return {
+      clipPath: style.getPropertyValue('--of-dock-current-clip-path').trim(),
+      navTransform: style.getPropertyValue('--of-dock-current-transform').trim(),
+      iconTransform: style.getPropertyValue('--of-dock-toggle-current-transform').trim(),
+      note: Number.parseFloat(style.getPropertyValue('--of-dock-note-current-opacity')),
+      close: Number.parseFloat(style.getPropertyValue('--of-dock-close-current-opacity')),
+    }
+  })
+  expect(reversalStart.clipPath).toBe(openingBlend.clipPath)
+  expect(reversalStart.navTransform).toBe(openingBlend.navTransform)
+  expect(reversalStart.iconTransform).toBe(openingBlend.iconTransform)
+  expect(reversalStart.note).toBeCloseTo(openingBlend.note, 2)
+  expect(reversalStart.close).toBeCloseTo(openingBlend.close, 2)
+  await expect(dock).toHaveCSS('animation-name', 'of-dock-exit')
+  await expect(dock).toHaveCSS('animation-duration', '1s')
   await expect(closingIcon).toHaveAttribute('data-phase', 'closing')
   await expect(closingIcon).toHaveCSS('animation-name', 'of-dock-toggle-close')
-  await expect(closingIcon).toHaveCSS('animation-duration', '0.18s')
+  await expect(closingIcon).toHaveCSS('animation-duration', '1s')
   await expect(closeButton).toHaveAttribute('aria-disabled', 'true')
   await expect(closeButton).toBeFocused()
   await closeButton.evaluate((button) => (button as HTMLButtonElement).click())
@@ -1342,22 +1360,50 @@ test('Quick Dock trigger는 note와 X를 양방향 회전 morph한다', async ({
   await dock.evaluate((element) => {
     for (const animation of element.getAnimations({ subtree: true })) {
       animation.pause()
-      const target = (animation.effect as KeyframeEffect | null)?.target
-      animation.currentTime = target === element ? 0 : 120
+      animation.currentTime = 500
     }
   })
   const closingBlend = await closingIcon.evaluate((element) => ({
     note: Number.parseFloat(getComputedStyle(element.querySelector('[data-icon="note"]')!).opacity),
     close: Number.parseFloat(getComputedStyle(element.querySelector('[data-icon="close"]')!).opacity),
+    clipPath: getComputedStyle(element.closest('nav')!).clipPath,
   }))
   expect(closingBlend.note).toBeGreaterThan(0)
   expect(closingBlend.close).toBeLessThan(1)
-  await closeButton.screenshot({
-    path: '../../docs/screenshots/redevelopment/quick-dock-icon-morph-ui/closing-button.png',
+  expect(closingBlend.clipPath).not.toBe('none')
+  await dock.screenshot({
+    path: '../../docs/screenshots/redevelopment/quick-dock-synchronized-motion-ui/closing-dock.png',
   })
-  await page.clock.runFor(180)
+  await dock.evaluate((element) => {
+    for (const animation of element.getAnimations({ subtree: true })) animation.play()
+  })
+  await expect(dock).toHaveCount(0)
   await expect(trigger).toBeFocused()
   await expect(trigger.getByTestId('quick-dock-toggle-icon')).toHaveAttribute('data-phase', 'closed')
+
+  // Completed path: animationend commits open/closed and preserves focus handoff.
+  await trigger.click()
+  await expect(dock).toHaveAttribute('data-phase', 'opening')
+  await expect(dock).toHaveAttribute('data-phase', 'open')
+  await expect(dock.getByTestId('quick-dock-toggle-icon')).toHaveAttribute('data-phase', 'open')
+  await expect(dock.getByRole('button', { name: '모든 메모 열기' })).toBeFocused()
+  await dock.getByRole('button', { name: '빠른 도구 닫기' }).click()
+  await expect(dock).toHaveAttribute('data-phase', 'closing')
+  await expect(dock).toHaveCount(0)
+  await expect(trigger).toBeFocused()
+
+  // A motion-preference change settles an in-flight phase instead of stranding the dock.
+  await trigger.click()
+  await expect(dock).toHaveAttribute('data-phase', 'opening')
+  await page.emulateMedia({ reducedMotion: 'reduce' })
+  await expect(dock).toHaveAttribute('data-phase', 'open')
+  await expect(dock.getByRole('button', { name: '모든 메모 열기' })).toBeFocused()
+  await page.emulateMedia({ reducedMotion: 'no-preference' })
+  await dock.getByRole('button', { name: '빠른 도구 닫기' }).click()
+  await expect(dock).toHaveAttribute('data-phase', 'closing')
+  await page.emulateMedia({ reducedMotion: 'reduce' })
+  await expect(dock).toHaveCount(0)
+  await expect(trigger).toBeFocused()
   expect(await scrollRegion.evaluate((element) => ({
     clientHeight: element.clientHeight,
     scrollHeight: element.scrollHeight,
@@ -1376,8 +1422,7 @@ test('빠른 도구 dock은 개인 메모를 compact·expanded·modal 상태로 
   }))
   await trigger.click()
   const dock = page.getByRole('navigation', { name: '빠른 도구' })
-  await expect(dock).not.toHaveCSS('animation-name', 'none')
-  await expect(dock).toHaveCSS('animation-duration', '0.2s')
+  await expect(dock).toHaveAttribute('data-phase', 'open')
   expect(await scrollRegion.evaluate((element) => ({
     clientHeight: element.clientHeight,
     scrollHeight: element.scrollHeight,
