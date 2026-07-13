@@ -106,7 +106,7 @@ const allWorkItems: SearchResults = {
       status: wpA.status,
       priority: wpA.priority,
       type: wpA.type,
-      assignee_id: null,
+      assignee_id: 'me-1',
       assignee_name: 'Dev User',
       start_date: wpA.start_date,
       due_date: wpA.due_date,
@@ -651,6 +651,10 @@ async function mockApi(page: Page, opts: { conflictOnPatch?: boolean } = {}) {
             ...item,
             status: updated.status,
             priority: updated.priority,
+            assignee_id: updated.assignee_id,
+            assignee_name: updated.assignee_id === 'u-alex'
+              ? 'Alex Kim'
+              : updated.assignee_id === 'me-1' ? 'Dev User' : null,
             version: updated.version,
           }
           : item,
@@ -2433,6 +2437,138 @@ test('Workspace Table property permission failure keeps the server value and exp
   await page.getByRole('menuitemradio', { name: '완료' }).click()
   await expect(page.getByRole('button', { name: '상태 변경: 할 일' })).toBeVisible()
   await expect(page.getByLabel(/상태 저장 실패:.*편집 권한이 없습니다/)).toBeVisible()
+})
+
+test('Workspace Table 담당자 셀은 menu open 시 roster를 조회하고 assignable role만 CAS PATCH한다', async ({ page }) => {
+  const opsProjectId = allWorkItems.items[2].project_id
+  let opsMemberRequests = 0
+  page.on('request', (request) => {
+    if (request.method() === 'GET' && request.url().endsWith(`/projects/${opsProjectId}/members`)) {
+      opsMemberRequests += 1
+    }
+  })
+  await mockApi(page)
+  const roster = {
+    json: {
+      items: [
+        { user_id: 'me-1', email: 'dev@oneflow.local', display_name: 'Dev User', role: 'owner' },
+        { user_id: 'u-alex', email: 'alex@oneflow.local', display_name: 'Alex Kim', role: 'member' },
+        { user_id: 'u-view', email: 'view@oneflow.local', display_name: 'Read Only', role: 'viewer' },
+      ],
+      total: 3,
+    },
+  }
+  await page.route(`**/api/v1/projects/${project.id}/members`, (route) => route.fulfill(roster))
+  await page.route(`**/api/v1/projects/${opsProjectId}/members`, (route) => route.fulfill(roster))
+  await page.goto('/work-items?layout=table&columns=assignee')
+
+  await expect(page.getByRole('button', { name: '담당자 변경: Dev User' })).toBeVisible()
+  expect(opsMemberRequests).toBe(0)
+  await page.getByRole('button', { name: '담당자 변경: Ops Lead' }).click()
+  await expect.poll(() => opsMemberRequests).toBe(1)
+  await expect(page.getByRole('menuitemradio', { name: 'Read Only' })).toHaveCount(0)
+  await page.keyboard.press('Escape')
+
+  await page.getByRole('button', { name: '담당자 변경: Dev User' }).click()
+  await expect(page.getByRole('menuitemradio', { name: 'Read Only' })).toHaveCount(0)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/workspace-assignee-inline-ui/desktop-editor.png',
+  })
+
+  const assignPatch = page.waitForRequest((request) =>
+    request.method() === 'PATCH' && request.url().endsWith(`/work-packages/${wpA.id}`),
+  )
+  await page.getByRole('menuitemradio', { name: 'Alex Kim' }).click()
+  expect((await assignPatch).postDataJSON()).toEqual({ expected_version: 0, assignee_id: 'u-alex' })
+  await expect(page.getByRole('button', { name: '담당자 변경: Alex Kim' })).toBeVisible()
+
+  const clearPatch = page.waitForRequest((request) =>
+    request.method() === 'PATCH' && request.url().endsWith(`/work-packages/${wpA.id}`),
+  )
+  await page.getByRole('button', { name: '담당자 변경: Alex Kim' }).click()
+  await page.getByRole('menuitemradio', { name: '미배정' }).click()
+  expect((await clearPatch).postDataJSON()).toEqual({ expected_version: 1, assignee_id: null })
+  await expect(page.getByRole('button', { name: '담당자 변경: 미배정' })).toBeVisible()
+})
+
+test('Workspace Table 담당자 roster 오류는 menu 안에서 재시도하고 모바일 폭을 유지한다', async ({ page }) => {
+  const opsProjectId = allWorkItems.items[2].project_id
+  let attempts = 0
+  await mockApi(page)
+  await page.route(`**/api/v1/projects/${opsProjectId}/members`, async (route) => {
+    attempts += 1
+    if (attempts <= 2) {
+      await route.fulfill({ status: 500, json: { detail: '멤버를 불러오지 못했습니다' } })
+      return
+    }
+    await route.fulfill({
+      json: {
+        items: [{ user_id: 'u-alex', email: 'alex@oneflow.local', display_name: 'Alex Kim', role: 'member' }],
+        total: 1,
+      },
+    })
+  })
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto('/work-items?layout=table&columns=assignee')
+
+  await page.getByRole('button', { name: '담당자 변경: Ops Lead' }).click()
+  await page.getByRole('menuitem', { name: '멤버 다시 불러오기' }).click()
+  await expect(page.getByRole('menuitemradio', { name: 'Alex Kim' })).toBeVisible()
+  expect(attempts).toBe(3)
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/workspace-assignee-inline-ui/mobile-roster.png',
+  })
+})
+
+test('Workspace Table viewer 담당자 셀은 roster 요청 없는 정적 chip이다', async ({ page }) => {
+  const opsProjectId = allWorkItems.items[2].project_id
+  let memberRequests = 0
+  page.on('request', (request) => {
+    if (request.method() === 'GET' && request.url().endsWith(`/projects/${opsProjectId}/members`)) {
+      memberRequests += 1
+    }
+  })
+  await mockApi(page)
+  await page.route('**/api/v1/search/work-packages**', (route) => route.fulfill({
+    json: {
+      query: '',
+      total: 1,
+      items: [{ ...allWorkItems.items[2], current_user_can_write: false }],
+    },
+  }))
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto('/work-items?layout=table&columns=assignee')
+
+  await expect(page.getByRole('button', { name: /담당자 변경/ })).toHaveCount(0)
+  await expect(page.getByText('Ops Lead')).toBeVisible()
+  expect(memberRequests).toBe(0)
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/workspace-assignee-inline-ui/mobile-viewer.png',
+  })
+})
+
+test('Workspace Table 담당자 409와 validation failure는 authoritative value와 feedback을 유지한다', async ({ page }) => {
+  await mockApi(page, { conflictOnPatch: true })
+  await page.goto('/work-items?layout=table&columns=assignee')
+
+  await page.getByRole('button', { name: '담당자 변경: Dev User' }).click()
+  await page.getByRole('menuitemradio', { name: 'Alex Kim' }).click()
+  await expect(page.getByRole('button', { name: '담당자 변경: Dev User' })).toBeVisible()
+  await expect(page.getByLabel(/담당자 저장 실패:.*version conflict/)).toBeVisible()
+
+  await page.route(`**/api/v1/work-packages/${wpA.id}`, async (route) => {
+    if (route.request().method() === 'PATCH') {
+      await route.fulfill({ status: 422, json: { detail: 'assignee must not have a read-only role' } })
+      return
+    }
+    await route.fulfill({ json: wpA })
+  })
+  await page.getByRole('button', { name: '담당자 변경: Dev User' }).click()
+  await page.getByRole('menuitemradio', { name: 'Alex Kim' }).click()
+  await expect(page.getByRole('button', { name: '담당자 변경: Dev User' })).toBeVisible()
+  await expect(page.getByLabel(/담당자 저장 실패:.*read-only role/)).toBeVisible()
 })
 
 test('Workspace Views는 결과 상한을 숨기지 않고 다음 페이지를 요청한다', async ({ page }) => {
