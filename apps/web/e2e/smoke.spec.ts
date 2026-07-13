@@ -1436,6 +1436,31 @@ test('Quick Dock trigger는 note와 X를 양방향 회전 morph한다', async ({
   await expect(openingIcon).toHaveCSS('animation-duration', '1s')
   await expect(openingActions).toHaveCSS('animation-name', 'of-dock-actions-enter')
   await expect(openingActions).toHaveCSS('animation-duration', '1s')
+  const openingTimeline = await dock.evaluate(async (element) => {
+    const allAnimations = element.getAnimations({ subtree: true })
+    const animations = allAnimations
+      .filter((animation) => animation.id.startsWith('of-dock-phase-opening-'))
+    const cssAnimations = allAnimations.filter((animation) => animation instanceof CSSAnimation)
+    await Promise.all(animations.map((animation) => animation.ready))
+    while (animations.some((animation) => Number(animation.currentTime) <= 0)) {
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+    }
+    const startTimes = animations.map((animation) => Number(animation.startTime ?? 0))
+    const progress = animations.map((animation) => Number(animation.currentTime) / Number(animation.effect?.getTiming().duration))
+    return {
+      count: animations.length,
+      cssCount: cssAnimations.length,
+      cssPaused: cssAnimations.every((animation) => animation.playState === 'paused'),
+      skew: Math.max(...startTimes) - Math.min(...startTimes),
+      progress,
+    }
+  })
+  expect(openingTimeline.count).toBe(5)
+  expect(openingTimeline.cssCount).toBe(5)
+  expect(openingTimeline.cssPaused).toBe(true)
+  expect(openingTimeline.skew).toBeLessThanOrEqual(1)
+  expect(openingTimeline.progress.every((value) => value > 0 && value < 1)).toBe(true)
+  expect(Math.max(...openingTimeline.progress) - Math.min(...openingTimeline.progress)).toBeLessThan(0.01)
   await expect(dock).toHaveCSS('pointer-events', 'none')
   await expect(openingToggle).toBeFocused()
   expect(await openingToggle.evaluate((element) => (
@@ -1449,7 +1474,9 @@ test('Quick Dock trigger는 note와 X를 양방향 회전 morph한다', async ({
   expect(openingToggleBox!.height).toBe(closedToggleBox!.height)
   await expect(firstAction).toBeDisabled()
   const openingStart = await dock.evaluate((element) => {
-    for (const animation of element.getAnimations({ subtree: true })) {
+    const animations = element.getAnimations({ subtree: true })
+      .filter((animation) => animation.id.startsWith('of-dock-phase-opening-'))
+    for (const animation of animations) {
       animation.pause()
       animation.currentTime = 0
     }
@@ -1464,7 +1491,9 @@ test('Quick Dock trigger는 note와 X를 양방향 회전 morph한다', async ({
     }
   })
   const openingEarly = await dock.evaluate((element) => {
-    for (const animation of element.getAnimations({ subtree: true })) animation.currentTime = 80
+    const animations = element.getAnimations({ subtree: true })
+      .filter((animation) => animation.id.startsWith('of-dock-phase-opening-'))
+    for (const animation of animations) animation.currentTime = 80
     const icon = element.querySelector<HTMLElement>('[data-testid="quick-dock-toggle-icon"]')!
     const actions = element.querySelector<HTMLElement>('[data-testid="quick-dock-actions"]')!
     return {
@@ -1483,10 +1512,15 @@ test('Quick Dock trigger는 note와 X를 양방향 회전 morph한다', async ({
   await dock.screenshot({
     path: '../../docs/screenshots/redevelopment/quick-dock-simultaneous-motion-ui/early-opening.png',
   })
+  await dock.screenshot({
+    path: '../../docs/screenshots/redevelopment/quick-dock-phase-lock-ui/opening-early.png',
+  })
   await openingToggle.evaluate((button) => (button as HTMLButtonElement).click())
   await expect(dock).toHaveAttribute('data-phase', 'opening')
   await dock.evaluate((element) => {
-    for (const animation of element.getAnimations({ subtree: true })) {
+    const animations = element.getAnimations({ subtree: true })
+      .filter((animation) => animation.id.startsWith('of-dock-phase-opening-'))
+    for (const animation of animations) {
       animation.pause()
       animation.currentTime = 500
     }
@@ -1513,6 +1547,31 @@ test('Quick Dock trigger는 note와 X를 양방향 회전 morph한다', async ({
   const closeButton = dock.getByRole('button', { name: '빠른 도구 닫기' })
   const closingIcon = dock.getByTestId('quick-dock-toggle-icon')
   await expect(dock).toHaveAttribute('data-phase', 'closing')
+  const closingTimeline = await dock.evaluate(async (element) => {
+    const allAnimations = element.getAnimations({ subtree: true })
+    const animations = allAnimations
+      .filter((animation) => animation.id.startsWith('of-dock-phase-closing-'))
+    const cssAnimations = allAnimations.filter((animation) => animation instanceof CSSAnimation)
+    await Promise.all(animations.map((animation) => animation.ready))
+    while (animations.some((animation) => Number(animation.currentTime) <= 0)) {
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+    }
+    const startTimes = animations.map((animation) => Number(animation.startTime ?? 0))
+    const progress = animations.map((animation) => Number(animation.currentTime) / Number(animation.effect?.getTiming().duration))
+    return {
+      count: animations.length,
+      cssCount: cssAnimations.length,
+      cssPaused: cssAnimations.every((animation) => animation.playState === 'paused'),
+      skew: Math.max(...startTimes) - Math.min(...startTimes),
+      progress,
+    }
+  })
+  expect(closingTimeline.count).toBe(5)
+  expect(closingTimeline.cssCount).toBe(5)
+  expect(closingTimeline.cssPaused).toBe(true)
+  expect(closingTimeline.skew).toBeLessThanOrEqual(1)
+  expect(closingTimeline.progress.every((value) => value > 0 && value < 1)).toBe(true)
+  expect(Math.max(...closingTimeline.progress) - Math.min(...closingTimeline.progress)).toBeLessThan(0.01)
   const reversalStart = await dock.evaluate((element) => {
     const style = getComputedStyle(element)
     return {
@@ -1544,7 +1603,9 @@ test('Quick Dock trigger는 note와 X를 양방향 회전 morph한다', async ({
   await closeButton.evaluate((button) => (button as HTMLButtonElement).click())
   await expect(closingIcon).toHaveAttribute('data-phase', 'closing')
   const closingEarly = await dock.evaluate((element) => {
-    for (const animation of element.getAnimations({ subtree: true })) {
+    const animations = element.getAnimations({ subtree: true })
+      .filter((animation) => animation.id.startsWith('of-dock-phase-closing-'))
+    for (const animation of animations) {
       animation.pause()
       animation.currentTime = 80
     }
@@ -1564,8 +1625,13 @@ test('Quick Dock trigger는 note와 X를 양방향 회전 morph한다', async ({
   await dock.screenshot({
     path: '../../docs/screenshots/redevelopment/quick-dock-simultaneous-motion-ui/early-closing.png',
   })
+  await dock.screenshot({
+    path: '../../docs/screenshots/redevelopment/quick-dock-phase-lock-ui/closing-early.png',
+  })
   await dock.evaluate((element) => {
-    for (const animation of element.getAnimations({ subtree: true })) {
+    const animations = element.getAnimations({ subtree: true })
+      .filter((animation) => animation.id.startsWith('of-dock-phase-closing-'))
+    for (const animation of animations) {
       animation.pause()
       animation.currentTime = 500
     }
@@ -1582,7 +1648,9 @@ test('Quick Dock trigger는 note와 X를 양방향 회전 morph한다', async ({
     path: '../../docs/screenshots/redevelopment/quick-dock-synchronized-motion-ui/closing-dock.png',
   })
   await dock.evaluate((element) => {
-    for (const animation of element.getAnimations({ subtree: true })) animation.play()
+    const animations = element.getAnimations({ subtree: true })
+      .filter((animation) => animation.id.startsWith('of-dock-phase-closing-'))
+    for (const animation of animations) animation.play()
   })
   await expect(dock).toHaveCount(0)
   await expect(trigger).toBeFocused()

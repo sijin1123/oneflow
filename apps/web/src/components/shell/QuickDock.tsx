@@ -19,6 +19,15 @@ type NotePanel = 'none' | 'compact' | 'expanded' | 'all'
 type DockIconPhase = 'closed' | 'opening' | 'open' | 'closing'
 type DockMotionSnapshot = CSSProperties
 
+const getDockMotionDuration = (value: string) => {
+  const duration = value.trim()
+  const milliseconds = duration.endsWith('ms')
+    ? Number.parseFloat(duration)
+    : duration.endsWith('s') ? Number.parseFloat(duration) * 1000 : Number.NaN
+  if (Number.isFinite(milliseconds) && milliseconds >= 0) return milliseconds
+  return 300
+}
+
 const DOCK_COLORS: Record<PersonalNote['color'], string> = {
   lavender: 'bg-[#e8e0ff] text-[#67558f]',
   mint: 'bg-[#c9f2e3] text-[#397562]',
@@ -57,6 +66,7 @@ export function QuickDock({
   const toggleRef = useRef<HTMLButtonElement>(null)
   const firstActionRef = useRef<HTMLButtonElement>(null)
   const searchRef = useRef<HTMLInputElement>(null)
+  const motionRunRef = useRef(0)
   const [collisionOffset, setCollisionOffset] = useState(0)
   const [dockPhase, setDockPhase] = useState<DockIconPhase>(open ? 'open' : 'closed')
   const [motionSnapshot, setMotionSnapshot] = useState<DockMotionSnapshot>()
@@ -184,6 +194,71 @@ export function QuickDock({
     }
   }, [dockPhase, open])
 
+  useLayoutEffect(() => {
+    if (dockPhase !== 'opening' && dockPhase !== 'closing') return
+
+    // Freeze the declarative keyframes at their first frame, then run every
+    // visible part from one timeline epoch so the pill can never lead the icon.
+    const nav = dockNavRef.current
+    const actions = dockActionsRef.current
+    const icon = nav?.querySelector<HTMLElement>('[data-testid="quick-dock-toggle-icon"]')
+    const note = icon?.querySelector<HTMLElement>('[data-icon="note"]')
+    const closeIcon = icon?.querySelector<HTMLElement>('[data-icon="close"]')
+    if (!nav || !actions || !icon || !note || !closeIcon) return
+
+    const opening = dockPhase === 'opening'
+    const navStyle = window.getComputedStyle(nav)
+    const actionsStyle = window.getComputedStyle(actions)
+    const iconStyle = window.getComputedStyle(icon)
+    const noteStyle = window.getComputedStyle(note)
+    const closeStyle = window.getComputedStyle(closeIcon)
+    const duration = getDockMotionDuration(navStyle.getPropertyValue('--of-dock-motion-duration'))
+    const easing = navStyle.getPropertyValue(opening ? '--of-ease-emphasized' : '--of-ease-standard').trim()
+    const closedClipPath = 'inset(calc(100% - 3rem) 0 0 round 999px)'
+    const run = ++motionRunRef.current
+    const epoch = document.timeline.currentTime ?? performance.now()
+    const animate = (element: HTMLElement, id: string, keyframes: Keyframe[]) => {
+      const animation = element.animate(keyframes, { duration, easing, fill: 'both' })
+      animation.id = `of-dock-phase-${dockPhase}-${id}`
+      animation.startTime = epoch
+      return animation
+    }
+
+    const animations = [
+      animate(nav, 'surface', [
+        { opacity: navStyle.opacity, transform: navStyle.transform, clipPath: navStyle.clipPath },
+        { opacity: '1', transform: 'none', clipPath: opening ? 'inset(0 round 999px)' : closedClipPath },
+      ]),
+      animate(actions, 'actions', [
+        { opacity: actionsStyle.opacity, transform: actionsStyle.transform },
+        { opacity: opening ? '1' : '0', transform: opening ? 'translateY(0) scale(1)' : 'translateY(10px) scale(0.88)' },
+      ]),
+      animate(icon, 'toggle', [
+        { transform: iconStyle.transform },
+        { transform: opening ? 'rotate(180deg)' : 'rotate(0deg)' },
+      ]),
+      animate(note, 'note', [
+        { opacity: noteStyle.opacity, transform: noteStyle.transform },
+        { opacity: opening ? '0' : '1', transform: opening ? 'scale(0.58)' : 'scale(1)' },
+      ]),
+      animate(closeIcon, 'close', [
+        { opacity: closeStyle.opacity, transform: closeStyle.transform },
+        { opacity: opening ? '1' : '0', transform: opening ? 'scale(1)' : 'scale(0.58)' },
+      ]),
+    ]
+
+    void animations[0].finished.then(() => {
+      if (motionRunRef.current !== run) return
+      setMotionSnapshot(undefined)
+      setDockPhase(opening ? 'open' : 'closed')
+    }).catch(() => undefined)
+
+    return () => {
+      motionRunRef.current += 1
+      for (const animation of animations) animation.cancel()
+    }
+  }, [dockPhase])
+
   useEffect(() => {
     const media = window.matchMedia('(prefers-reduced-motion: reduce)')
     const settleMotion = (event: MediaQueryListEvent) => {
@@ -291,18 +366,6 @@ export function QuickDock({
   const dockButton =
     'flex h-9 w-9 items-center justify-center rounded-full text-of-muted transition-[transform,background-color,color] duration-150 hover:scale-[1.04] hover:bg-of-surface-hover hover:text-of-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus motion-reduce:transform-none motion-reduce:transition-none'
 
-  const finishDockMotion = (event: React.AnimationEvent<HTMLElement>) => {
-    if (event.target !== event.currentTarget) return
-    if (dockPhase === 'opening') {
-      setMotionSnapshot(undefined)
-      setDockPhase('open')
-    }
-    if (dockPhase === 'closing') {
-      setMotionSnapshot(undefined)
-      setDockPhase('closed')
-    }
-  }
-
   return (
     <>
       <div
@@ -331,8 +394,9 @@ export function QuickDock({
           data-quick-dock-surface
           data-testid={dockMounted ? 'quick-dock-expanded' : undefined}
           data-phase={renderedDockPhase}
-          onAnimationEnd={finishDockMotion}
-          style={motionSnapshot}
+          style={dockOpening || dockClosing
+            ? { ...motionSnapshot, '--of-dock-css-animation-play-state': 'paused' } as DockMotionSnapshot
+            : motionSnapshot}
           className={cn(
             'flex w-12 flex-col items-center gap-1 rounded-full border border-of-border bg-of-surface p-1 shadow-[var(--of-shadow-popover)]',
             dockOpening && 'of-dock-enter of-dock-opening',
