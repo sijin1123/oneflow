@@ -298,10 +298,25 @@ async function mockApi(page: Page, opts: { conflictOnPatch?: boolean } = {}) {
   await page.route('**/api/v1/search/work-packages**', (route) => {
     const url = new URL(route.request().url())
     const query = url.searchParams.get('q')?.trim() ?? ''
-    const items = query
+    const scope = url.searchParams.get('scope') ?? 'all'
+    const state = url.searchParams.get('state') ?? 'all'
+    const priority = url.searchParams.get('priority')
+    const sort = url.searchParams.get('sort') ?? 'updated'
+    const limit = Number(url.searchParams.get('limit') ?? 50)
+    const offset = Number(url.searchParams.get('offset') ?? 0)
+    let items = query
       ? allWorkItems.items.filter((item) => item.subject.includes(query))
-      : allWorkItems.items
-    route.fulfill({ json: { query, items, total: items.length } })
+      : [...allWorkItems.items]
+    if (scope === 'assigned') items = items.filter((item) => item.id === wpA.id)
+    else if (scope === 'created') items = items.filter((item) => item.project_id === project.id)
+    else if (scope === 'subscribed') items = items.filter((item) => item.id === wpB.id)
+    if (state === 'open') items = items.filter((item) => !['done', 'cancelled'].includes(item.status))
+    if (priority) items = items.filter((item) => item.priority === priority)
+    if (sort === 'due') {
+      items.sort((left, right) => (left.due_date ?? '9999-12-31').localeCompare(right.due_date ?? '9999-12-31'))
+    }
+    const total = items.length
+    route.fulfill({ json: { query, items: items.slice(offset, offset + limit), total } })
   })
   // Single-project GET — the write-access gate (Pass 76) reads archived_at
   // from here; default to the unarchived fixture so owner flows stay editable.
@@ -1937,41 +1952,109 @@ test('새 작업 생성 composer는 모바일에서 핵심 속성과 payload를 
   await expect(composer).toBeHidden()
 })
 
-test('전체 작업 그리드가 프로젝트를 가로질러 보여주고 검색·딥링크가 동작한다', async ({ page }) => {
+test('Workspace Views가 Board·Table·scope·filter·sort를 같은 결과 계약으로 연결한다', async ({ page }) => {
   await mockApi(page)
   await page.goto('/work-items')
 
-  await expect(page.getByRole('heading', { name: '전체 작업' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'All work items' })).toBeVisible()
   await expect(page.getByRole('link', { name: 'Views' })).toHaveAttribute('href', '/work-items')
-  await expect(page.getByRole('columnheader', { name: '프로젝트' })).toBeVisible()
-  await expect(page.getByRole('columnheader', { name: '수정일' })).toBeVisible()
+  await expect(page.getByLabel('전체 작업 Board')).toBeVisible()
+  await expect(page.getByLabel('Backlog 컬럼')).toBeVisible()
+  await expect(page.getByLabel('Started 컬럼', { exact: true })).toBeVisible()
   await expect(page.getByRole('button', { name: '워크패키지 API 구현' })).toBeVisible()
   await expect(page.getByText('운영 개선')).toBeVisible()
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/all-work-views-ui/desktop-board.png',
+  })
+
+  await page.getByRole('button', { name: 'Table 레이아웃' }).click()
+  await expect(page).toHaveURL(/layout=table/)
+  await expect(page.getByRole('columnheader', { name: '프로젝트' })).toBeVisible()
+  await expect(page.getByRole('columnheader', { name: '수정일' })).toBeVisible()
   await expect(page.getByText('Dev User')).toBeVisible()
+  await page.getByRole('button', { name: 'Display' }).click()
+  await page.getByRole('menuitemradio', { name: '조밀하게' }).click()
+  await expect(page.getByLabel('전체 작업 표 스크롤 영역')).toHaveAttribute('data-density', 'compact')
   await page.screenshot({
-    path: '../../docs/screenshots/redevelopment/all-work-grid/desktop.png',
-    fullPage: true,
+    path: '../../docs/screenshots/redevelopment/all-work-views-ui/desktop-table.png',
   })
 
-  await page.setViewportSize({ width: 390, height: 844 })
-  await expect(page.getByLabel('전체 작업 검색어')).toBeVisible()
-  await page.screenshot({
-    path: '../../docs/screenshots/redevelopment/all-work-grid/mobile.png',
-    fullPage: true,
+  const assignedRequest = page.waitForRequest((request) => {
+    const url = new URL(request.url())
+    return url.pathname.endsWith('/search/work-packages') && url.searchParams.get('scope') === 'assigned'
   })
+  await page.getByLabel('작업 범위').selectOption('assigned')
+  await assignedRequest
+  await expect(page.getByRole('button', { name: '워크패키지 API 구현' })).toBeVisible()
+  await expect(page.getByRole('button', { name: '보드 뷰 구현' })).toHaveCount(0)
 
-  const req = page.waitForRequest(
-    (r) => r.url().includes('/search/work-packages') && r.url().includes('q='),
-  )
+  await page.getByRole('button', { name: '필터' }).click()
+  const priorityRequest = page.waitForRequest((request) => new URL(request.url()).searchParams.get('priority') === 'high')
+  await page.getByLabel('우선순위 필터').selectOption('high')
+  await priorityRequest
+  const dueRequest = page.waitForRequest((request) => new URL(request.url()).searchParams.get('sort') === 'due')
+  await page.getByLabel('정렬 방식').selectOption('due')
+  await dueRequest
+  await expect(page).toHaveURL(/priority=high/)
+  await expect(page).toHaveURL(/sort=due/)
+  await page.getByRole('button', { name: 'Clear all' }).click()
+  await expect(page.getByLabel('우선순위 필터')).toHaveValue('all')
+  await expect(page.getByLabel('정렬 방식')).toHaveValue('updated')
+  await page.goto('/work-items?layout=table&density=compact')
+  await expect(page.getByRole('button', { name: '보드 뷰 구현' })).toBeVisible()
+
+  const req = page.waitForRequest((request) => {
+    const url = new URL(request.url())
+    return url.pathname.endsWith('/search/work-packages') &&
+      url.searchParams.get('scope') === 'all' &&
+      url.searchParams.get('q') === '보드'
+  })
   await page.getByLabel('전체 작업 검색어').fill('보드')
   await page.getByRole('button', { name: '검색', exact: true }).click()
   await req
-  await expect(page).toHaveURL(/\/work-items\?q=%EB%B3%B4%EB%93%9C/)
+  await expect(page).toHaveURL(/q=%EB%B3%B4%EB%93%9C/)
   await expect(page.getByRole('button', { name: '보드 뷰 구현' })).toBeVisible()
   await expect(page.getByRole('button', { name: '워크패키지 API 구현' })).toHaveCount(0)
 
+  await page.getByRole('button', { name: 'Board 레이아웃' }).click()
+  await expect(page.getByLabel('Backlog 컬럼')).toHaveAttribute('data-density', 'compact')
+  await page.setViewportSize({ width: 390, height: 844 })
+  await expect(page.getByLabel('전체 작업 검색어')).toBeVisible()
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/all-work-views-ui/mobile-board.png',
+  })
   await page.getByRole('button', { name: '보드 뷰 구현' }).click()
   await expect(page).toHaveURL(new RegExp(`/projects/${project.id}/work-packages/${wpB.id}`))
+})
+
+test('Workspace Views는 결과 상한을 숨기지 않고 다음 페이지를 요청한다', async ({ page }) => {
+  await mockApi(page)
+  await page.route('**/api/v1/search/work-packages**', (route) => {
+    const url = new URL(route.request().url())
+    const offset = Number(url.searchParams.get('offset') ?? 0)
+    return route.fulfill({
+      json: {
+        query: '',
+        total: 51,
+        items: [offset >= 50 ? allWorkItems.items[1] : allWorkItems.items[0]],
+      },
+    })
+  })
+  await page.goto('/work-items?layout=table')
+
+  await expect(page.getByText('All work items · 1-1 / 51')).toBeVisible()
+  await expect(page.getByRole('button', { name: '워크패키지 API 구현' })).toBeVisible()
+  const nextPage = page.waitForRequest((request) => new URL(request.url()).searchParams.get('offset') === '50')
+  await page.getByRole('button', { name: '다음 페이지' }).click()
+  await nextPage
+  await expect(page).toHaveURL(/page=2/)
+  await expect(page.getByRole('button', { name: '보드 뷰 구현' })).toBeVisible()
+  await expect(page.getByText('All work items · 51-51 / 51')).toBeVisible()
+
+  await page.goto('/work-items?layout=table&page=99')
+  await expect(page).toHaveURL(/page=2/)
+  await expect(page.getByText('All work items · 51-51 / 51')).toBeVisible()
 })
 
 test('보드 뷰가 상태 컬럼으로 그려진다', async ({ page }) => {
