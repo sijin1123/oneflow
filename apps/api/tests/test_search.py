@@ -7,7 +7,7 @@ import pytest
 from sqlalchemy import select, update
 
 from app.core.auth import DEV_USER_EMAIL
-from app.models import User, WorkPackage, WpWatcher
+from app.models import ProjectMember, User, WorkPackage, WpWatcher
 from app.services.workspace_pql import BooleanExpression, PqlError, parse_pql
 from tests.conftest import create_project, create_wp
 
@@ -33,6 +33,36 @@ async def test_search_spans_member_projects(client, two_projects):
     # each result carries its project identity for display
     keys = {i["project_key"] for i in body["items"]}
     assert keys == {"ALPHA", "BETA"}
+
+
+async def test_workspace_search_exposes_version_and_role_write_capability(client, app):
+    project = await create_project(client, key="EDIT", name="편집 권한")
+    work_package = await create_wp(client, project["id"], subject="셀 편집 대상")
+
+    response = await client.get(
+        "/api/v1/search/work-packages",
+        params={"q": "셀 편집 대상"},
+    )
+    assert response.status_code == 200, response.text
+    item = response.json()["items"][0]
+    assert item["version"] == work_package["version"]
+    assert item["current_user_can_write"] is True
+
+    user_id = uuid.UUID((await client.get("/api/v1/me")).json()["id"])
+    async with app.state.sessionmaker() as session, session.begin():
+        await session.execute(
+            update(ProjectMember)
+            .where(ProjectMember.project_id == uuid.UUID(project["id"]))
+            .where(ProjectMember.user_id == user_id)
+            .values(role="viewer")
+        )
+
+    response = await client.get(
+        "/api/v1/search/work-packages",
+        params={"q": "셀 편집 대상"},
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["items"][0]["current_user_can_write"] is False
 
 
 async def test_search_is_case_insensitive_and_scoped(client, two_projects):

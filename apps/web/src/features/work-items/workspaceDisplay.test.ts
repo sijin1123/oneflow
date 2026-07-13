@@ -24,6 +24,8 @@ function item(overrides: Partial<SearchResultItem>): SearchResultItem {
     matched_in: 'primary',
     snippet: null,
     ...overrides,
+    version: overrides.version ?? 0,
+    current_user_can_write: overrides.current_user_can_write ?? false,
   }
 }
 

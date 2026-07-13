@@ -26,6 +26,8 @@ function item(
     type: 'task',
     start_date: dates.start ?? null,
     due_date: dates.due ?? null,
+    version: 0,
+    current_user_can_write: false,
     matched_in: 'primary',
     snippet: null,
   }

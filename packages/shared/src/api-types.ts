@@ -6477,6 +6477,11 @@ export interface components {
             assignee_name?: string | null;
             /** Created At */
             created_at?: string | null;
+            /**
+             * Current User Can Write
+             * @default false
+             */
+            current_user_can_write: boolean;
             /** Due Date */
             due_date: string | null;
             /**
@@ -6512,6 +6517,11 @@ export interface components {
             type: string;
             /** Updated At */
             updated_at?: string | null;
+            /**
+             * Version
+             * @default 0
+             */
+            version: number;
         };
         /** SearchResults */
         SearchResults: {

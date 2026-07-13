@@ -68,10 +68,6 @@ class PqlValidationResponse(BaseModel):
     limit: int | None
 
 
-def _member_project_ids(user: User):
-    return select(ProjectMember.project_id).where(ProjectMember.user_id == user.id)
-
-
 def _visible_member_project_ids(user: User):
     return (
         select(ProjectMember.project_id)
@@ -97,12 +93,22 @@ async def search_work_packages(
     user: User = Depends(get_current_user),
 ) -> SearchResults:
     Assignee = aliased(User)
-    member_projects = _member_project_ids(user)
+    CurrentMember = aliased(ProjectMember)
     stmt = (
-        select(WorkPackage, Project.key, Project.name, Assignee.display_name)
+        select(
+            WorkPackage,
+            Project.key,
+            Project.name,
+            Assignee.display_name,
+            CurrentMember.role,
+        )
         .join(Project, WorkPackage.project_id == Project.id)
+        .join(
+            CurrentMember,
+            (CurrentMember.project_id == WorkPackage.project_id)
+            & (CurrentMember.user_id == user.id),
+        )
         .outerjoin(Assignee, WorkPackage.assignee_id == Assignee.id)
-        .where(WorkPackage.project_id.in_(member_projects))
         .where(Project.archived_at.is_(None))
     )
     if q is not None:
@@ -183,8 +189,10 @@ async def search_work_packages(
             due_date=wp.due_date,
             created_at=wp.created_at,
             updated_at=wp.updated_at,
+            version=wp.version,
+            current_user_can_write=member_role != "viewer",
         )
-        for wp, key, name, assignee_name in rows
+        for wp, key, name, assignee_name, member_role in rows
     ]
     return SearchResults(items=items, total=total, query=q or "")
 

@@ -18,6 +18,8 @@ export type SearchResultItem = {
   due_date: string | null
   created_at?: string | null
   updated_at?: string | null
+  version: number
+  current_user_can_write: boolean
   matched_in: 'primary' | 'content'
   snippet: string | null
 }
