@@ -270,10 +270,7 @@ async def validate_pql_values(session: AsyncSession, user: User, parsed: ParsedP
             )
         ).all()
         found_projects = {
-            value
-            for key, name in rows
-            for value in (key, name)
-            if value in project_values
+            value for key, name in rows for value in (key, name) if value in project_values
         }
         missing_projects = project_values - found_projects
         if missing_projects:
