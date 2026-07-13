@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import DateTime, ForeignKey, Numeric, String, Text, func
+from sqlalchemy import DateTime, ForeignKey, ForeignKeyConstraint, Numeric, String, Text, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -11,12 +11,28 @@ from app.db.base import Base
 
 class Project(Base):
     __tablename__ = "projects"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["cover_attachment_id", "id"],
+            ["attachments.id", "attachments.project_id"],
+            name="fk_projects_cover_attachment",
+            ondelete="SET NULL (cover_attachment_id)",
+            use_alter=True,
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     # DB-level UNIQUE — duplicate keys surface as IntegrityError mapped to 409 (PLAN §7).
     key: Mapped[str] = mapped_column(String(10), unique=True, nullable=False)
     name: Mapped[str] = mapped_column(String(120), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Optional uploaded raster used by both the project directory and Overview.
+    # Deleting the attachment clears this pointer instead of leaving a broken cover.
+    cover_attachment_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        nullable=True,
+        index=True,
+    )
     # Optional project budget for cost roll-up comparison (Phase 3).
     budget: Mapped[Decimal | None] = mapped_column(Numeric(14, 2), nullable=True)
     # Archive lifecycle (Pass 2 PR-G): set → project is read-only (writes 409).

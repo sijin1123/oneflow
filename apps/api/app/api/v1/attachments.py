@@ -5,6 +5,7 @@ filename in the query string, so no framework parser can spool an oversized
 request before our own counting sees it.
 """
 
+import contextlib
 import re
 import unicodedata
 import uuid
@@ -16,11 +17,18 @@ from sqlalchemy import or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import get_current_user
-from app.core.authz import is_member, require_active_project, require_member, require_writer
+from app.core.authz import (
+    is_member,
+    require_active_project,
+    require_member,
+    require_role,
+    require_writer,
+)
 from app.core.config import Settings, get_settings
 from app.db.session import get_session
 from app.models.attachment import Attachment
 from app.models.document import ProjectDocument
+from app.models.project import Project
 from app.models.user import User
 from app.models.work_package import WorkPackage
 from app.schemas.attachment import AttachmentCreate, AttachmentList, AttachmentRead, StorageRead
@@ -184,8 +192,14 @@ async def delete_attachment(
             raise HTTPException(status_code=404, detail="not found")
         if document.archived_at is not None:
             raise HTTPException(status_code=409, detail="archived document is read-only")
-    await require_writer(session, att.project_id, user.id)
-    await require_active_project(session, att.project_id)
+    project = (
+        await session.execute(select(Project).where(Project.id == att.project_id).with_for_update())
+    ).scalar_one()
+    if project.cover_attachment_id == attachment_id:
+        await require_role(session, att.project_id, user, {"owner"}, write=True)
+    else:
+        await require_writer(session, att.project_id, user.id)
+        await require_active_project(session, att.project_id)
     key = att.storage_key
     await session.delete(att)
     await session.commit()
@@ -194,7 +208,8 @@ async def delete_attachment(
         # the cleanup follow-up); a deleted blob with a live row would not be.
         # Settings come via Depends: a direct get_settings() call would split-
         # brain against the app's explicit Settings (house review finding #5).
-        LocalStorage(settings.storage_dir).delete(key)
+        with contextlib.suppress(OSError, ValueError):
+            LocalStorage(settings.storage_dir).delete(key)
     return Response(status_code=204)
 
 
