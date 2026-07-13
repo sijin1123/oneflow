@@ -377,6 +377,7 @@ export function usePatchWorkPackage(projectId: string) {
       void queryClient.invalidateQueries({ queryKey: ['dashboard', projectId] })
       void queryClient.invalidateQueries({ queryKey: ['project-activities', projectId] })
       void queryClient.invalidateQueries({ queryKey: ['work-package-activities', updated.id] })
+      void queryClient.invalidateQueries({ queryKey: ['workspace-work-items'] })
       void queryClient.invalidateQueries({ queryKey: ['customers'] })
     },
     onError: (error, { wpId }) => {
@@ -392,6 +393,7 @@ export function usePatchWorkPackage(projectId: string) {
         }
         void queryClient.invalidateQueries({ queryKey: ['work-package', wpId] })
         void queryClient.invalidateQueries({ queryKey: ['work-packages', projectId] })
+        void queryClient.invalidateQueries({ queryKey: ['workspace-work-items'] })
       }
     },
   })

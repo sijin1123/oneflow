@@ -19,6 +19,8 @@ class SearchResultItem(BaseModel):
     due_date: date | None
     created_at: datetime | None = None
     updated_at: datetime | None = None
+    version: int = 0
+    current_user_can_write: bool = False
     # Content search (Pass 39): "primary" = the UI's main label (subject/
     # title/name); a primary match wins when both match (snippet stays null).
     matched_in: str = "primary"

@@ -100,7 +100,8 @@ async def test_customer_rollup_excludes_invisible_projects(customer_client, app,
         customer_client,
         project["id"],
         "Open",
-        due_date=(date.today() - timedelta(days=1)).isoformat(),
+        # Stay overdue across the local-date/PostgreSQL-UTC midnight boundary.
+        due_date=(date.today() - timedelta(days=2)).isoformat(),
     )
     done_wp = await create_wp(customer_client, project["id"], "Done", status="done")
     async with app.state.sessionmaker() as session, session.begin():

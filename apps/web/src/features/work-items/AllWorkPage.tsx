@@ -33,6 +33,7 @@ import { cn } from '@/lib/utils'
 import { WorkspaceCalendarView } from './WorkspaceCalendarView'
 import { WorkspaceColumnSortMenu } from './WorkspaceColumnSortMenu'
 import { WorkspaceDisplayMenu } from './WorkspaceDisplayMenu'
+import { WorkspaceInlinePropertyMenu } from './WorkspaceInlinePropertyMenu'
 import { WorkspacePqlEditor, type WorkspaceFilterMode } from './WorkspacePqlEditor'
 import { WorkspaceSavedViewsControls } from './WorkspaceSavedViewsControls'
 import { WorkspaceTimelineView } from './WorkspaceTimelineView'
@@ -649,8 +650,16 @@ function WorkspaceTable({
                 <button type="button" className="max-w-full truncate rounded-of text-left text-[13px] font-medium hover:text-of-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus" onClick={() => onOpen(item)}>{item.subject}</button>
               </td>
               {has('project') ? <td className="h-10 px-3"><span className="flex min-w-0 items-center gap-1.5"><Badge variant="neutral" className="shrink-0 font-mono">{item.project_key}</Badge><span className="truncate text-of-muted">{item.project_name}</span></span></td> : null}
-              {has('status') ? <td className="px-3 py-2"><StatusChip status={item.status} /></td> : null}
-              {has('priority') ? <td className="px-3 py-2"><PriorityChip priority={item.priority} /></td> : null}
+              {has('status') ? (
+                <td className="px-3 py-2">
+                  <WorkspaceInlinePropertyMenu item={item} property="status" />
+                </td>
+              ) : null}
+              {has('priority') ? (
+                <td className="px-3 py-2">
+                  <WorkspaceInlinePropertyMenu item={item} property="priority" />
+                </td>
+              ) : null}
               {has('type') ? <td className="px-3 py-2"><TypeChip type={item.type} /></td> : null}
               {has('assignee') ? <td className="h-10 truncate px-3 text-of-muted">{item.assignee_name ?? '—'}</td> : null}
               {has('start') ? <td className="h-10 whitespace-nowrap px-2 text-of-muted">{dateOnly(item.start_date)}</td> : null}

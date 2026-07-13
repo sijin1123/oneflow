@@ -112,6 +112,8 @@ const allWorkItems: SearchResults = {
       due_date: wpA.due_date,
       created_at: wpA.created_at,
       updated_at: wpA.updated_at,
+      version: wpA.version,
+      current_user_can_write: true,
       matched_in: 'primary',
       snippet: null,
     },
@@ -130,6 +132,8 @@ const allWorkItems: SearchResults = {
       due_date: wpB.due_date,
       created_at: wpB.created_at,
       updated_at: wpB.updated_at,
+      version: wpB.version,
+      current_user_can_write: true,
       matched_in: 'primary',
       snippet: null,
     },
@@ -148,6 +152,8 @@ const allWorkItems: SearchResults = {
       due_date: '2026-07-20',
       created_at: '2026-07-03T00:00:00Z',
       updated_at: '2026-07-04T00:00:00Z',
+      version: 0,
+      current_user_can_write: true,
       matched_in: 'primary',
       snippet: null,
     },
@@ -227,6 +233,7 @@ async function mockApi(page: Page, opts: { conflictOnPatch?: boolean } = {}) {
   // request wiring without relying on a backend fixture.
   let personalNotes: PersonalNoteFixture[] = []
   let workspaceViews: WorkspaceSavedView[] = []
+  let workspaceWorkItems = allWorkItems.items.map((item) => ({ ...item }))
   await page.route('**/api/v1/workspace/capabilities', (route) =>
     route.fulfill({ json: defaultWorkspaceCapabilities }),
   )
@@ -393,8 +400,8 @@ async function mockApi(page: Page, opts: { conflictOnPatch?: boolean } = {}) {
     const limit = Number(url.searchParams.get('limit') ?? 50)
     const offset = Number(url.searchParams.get('offset') ?? 0)
     let items = query
-      ? allWorkItems.items.filter((item) => item.subject.includes(query))
-      : [...allWorkItems.items]
+      ? workspaceWorkItems.filter((item) => item.subject.includes(query))
+      : [...workspaceWorkItems]
     if (scope === 'assigned') items = items.filter((item) => item.id === wpA.id)
     else if (scope === 'created') items = items.filter((item) => item.project_id === project.id)
     else if (scope === 'subscribed') items = items.filter((item) => item.id === wpB.id)
@@ -619,20 +626,35 @@ async function mockApi(page: Page, opts: { conflictOnPatch?: boolean } = {}) {
           detail: 'version conflict — resource was modified by someone else',
           current: { ...wpA, status: 'done', version: 3 },
         }
+        workspaceWorkItems = workspaceWorkItems.map((item) =>
+          item.id === wpA.id ? { ...item, status: 'done', version: 3 } : item,
+        )
         await route.fulfill({ status: 409, json: body })
         return
       }
       const sent = request.postDataJSON() as {
         expected_version: number
         status?: string
+        priority?: string
         assignee_id?: string | null
       }
       const updated: WorkPackage = {
         ...wpA,
         status: (sent.status as WorkPackage['status']) ?? wpA.status,
+        priority: (sent.priority as WorkPackage['priority']) ?? wpA.priority,
         assignee_id: 'assignee_id' in sent ? sent.assignee_id! : wpA.assignee_id,
         version: sent.expected_version + 1,
       }
+      workspaceWorkItems = workspaceWorkItems.map((item) =>
+        item.id === wpA.id
+          ? {
+            ...item,
+            status: updated.status,
+            priority: updated.priority,
+            version: updated.version,
+          }
+          : item,
+      )
       await route.fulfill({ json: updated })
       return
     }
@@ -2325,6 +2347,92 @@ test('Workspace Display URL은 손상된 그룹·열·표시 값을 canonical st
   await page.screenshot({
     path: '../../docs/screenshots/redevelopment/workspace-column-menus-ui/mobile-status.png',
   })
+})
+
+test('Workspace Table 상태·우선순위 셀은 CAS PATCH와 갱신된 version을 연결한다', async ({ page }) => {
+  await mockApi(page)
+  await page.goto('/work-items?layout=table&columns=status,priority')
+
+  const statusPatch = page.waitForRequest((request) =>
+    request.method() === 'PATCH' && request.url().endsWith(`/work-packages/${wpA.id}`),
+  )
+  await page.getByRole('button', { name: '상태 변경: 할 일' }).click()
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/workspace-inline-properties-ui/desktop-editor.png',
+  })
+  await page.getByRole('menuitemradio', { name: '완료' }).click()
+  const statusBody = (await statusPatch).postDataJSON() as {
+    expected_version: number
+    status: string
+  }
+  expect(statusBody).toEqual({ expected_version: 0, status: 'done' })
+  await expect(page.getByRole('button', { name: '상태 변경: 완료' })).toBeVisible()
+
+  const priorityPatch = page.waitForRequest((request) =>
+    request.method() === 'PATCH' && request.url().endsWith(`/work-packages/${wpA.id}`),
+  )
+  await page.getByRole('button', { name: '우선순위 변경: 높음' }).click()
+  await page.getByRole('menuitemradio', { name: '낮음' }).click()
+  const priorityBody = (await priorityPatch).postDataJSON() as {
+    expected_version: number
+    priority: string
+  }
+  expect(priorityBody).toEqual({ expected_version: 1, priority: 'low' })
+  await expect(page.getByRole('button', { name: '우선순위 변경: 낮음' })).toBeVisible()
+})
+
+test('Workspace Table viewer property cells remain read only', async ({ page }) => {
+  await mockApi(page)
+  await page.route('**/api/v1/search/work-packages**', (route) =>
+    route.fulfill({
+      json: {
+        query: '',
+        total: 1,
+        items: [{ ...allWorkItems.items[0], current_user_can_write: false }],
+      },
+    }),
+  )
+  await page.goto('/work-items?layout=table&columns=status,priority')
+
+  await expect(page.getByRole('button', { name: /상태 변경/ })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: /우선순위 변경/ })).toHaveCount(0)
+  await expect(page.getByText('할 일')).toBeVisible()
+  await expect(page.getByText('높음')).toBeVisible()
+  await page.setViewportSize({ width: 390, height: 844 })
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/workspace-inline-properties-ui/mobile-viewer.png',
+  })
+})
+
+test('Workspace Table 409 conflict refreshes the property and keeps visible feedback', async ({ page }) => {
+  await mockApi(page, { conflictOnPatch: true })
+  await page.goto('/work-items?layout=table&columns=status')
+
+  await page.getByRole('button', { name: '상태 변경: 할 일' }).click()
+  await page.getByRole('menuitemradio', { name: '완료' }).click()
+  await expect(page.getByRole('button', { name: '상태 변경: 완료' })).toBeVisible()
+  await expect(page.getByLabel(/상태 저장 실패:/)).toBeVisible()
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/workspace-inline-properties-ui/desktop-conflict.png',
+  })
+})
+
+test('Workspace Table property permission failure keeps the server value and explains the error', async ({ page }) => {
+  await mockApi(page)
+  await page.route(`**/api/v1/work-packages/${wpA.id}`, async (route) => {
+    if (route.request().method() === 'PATCH') {
+      await route.fulfill({ status: 403, json: { detail: '편집 권한이 없습니다' } })
+      return
+    }
+    await route.fulfill({ json: wpA })
+  })
+  await page.goto('/work-items?layout=table&columns=status')
+
+  await page.getByRole('button', { name: '상태 변경: 할 일' }).click()
+  await page.getByRole('menuitemradio', { name: '완료' }).click()
+  await expect(page.getByRole('button', { name: '상태 변경: 할 일' })).toBeVisible()
+  await expect(page.getByLabel(/상태 저장 실패:.*편집 권한이 없습니다/)).toBeVisible()
 })
 
 test('Workspace Views는 결과 상한을 숨기지 않고 다음 페이지를 요청한다', async ({ page }) => {
