@@ -10,6 +10,7 @@ import { NotificationBell } from '@/features/notifications/NotificationBell'
 import { useWorkspaceProfile } from '@/features/workspace-profile/api'
 
 import { CommandPalette } from './CommandPalette'
+import { TopbarHelp } from './TopbarHelp'
 
 function WorkspaceMenu({
   workspaceName,
@@ -213,8 +214,9 @@ export function Topbar({
   onOpenMobileSidebar?: () => void
 }) {
   const workspaceProfile = useWorkspaceProfile()
-  const [openMenu, setOpenMenu] = useState<'workspace' | 'account' | null>(null)
+  const [openMenu, setOpenMenu] = useState<'workspace' | 'help' | 'account' | null>(null)
   const setWorkspaceOpen = useCallback((open: boolean) => setOpenMenu(open ? 'workspace' : null), [])
+  const setHelpOpen = useCallback((open: boolean) => setOpenMenu(open ? 'help' : null), [])
   const setAccountOpen = useCallback((open: boolean) => setOpenMenu(open ? 'account' : null), [])
   return (
     <header className="flex h-[var(--of-topbar-height)] shrink-0 items-center border-b border-of-border-subtle bg-of-surface-2 px-2 md:px-3">
@@ -234,6 +236,7 @@ export function Topbar({
         </div>
         <div className="flex min-w-0 items-center justify-end gap-1.5 md:gap-2">
           <NotificationBell />
+          <TopbarHelp open={openMenu === 'help'} onOpenChange={setHelpOpen} />
           <AccountMenu
             open={openMenu === 'account'}
             onOpenChange={setAccountOpen}

@@ -2382,3 +2382,14 @@ Chromium typed mock fixture에서 1440x960과 390x844 viewport를 사용했다. 
 - Production build, typecheck, lint, unit 67, clean-room, focused shell/menu/collision E2E 11건과 최종 full frontend E2E 224 PASS·opt-in visual QA 1 skip이 통과했다. lint는 기존 Fast Refresh 경고 3건만 유지한다.
 - Chromium 증적은 `docs/screenshots/redevelopment/shell-header-workspace-switcher-ui/`의 desktop, desktop-collapsed, desktop-popover, mobile 이미지에 보존한다.
 - API, DB, migration, environment variable, dependency 변경은 없다. OneFlow는 현재 단일 workspace이며 create-workspace와 workspace invitation lifecycle API가 없어 해당 control은 dead UI로 만들지 않고 후속 제품 범위로 이연한다.
+
+---
+
+# UI-101 Topbar Functional Help 검증 (2026-07-14)
+
+- Global Topbar에 Help 아이콘과 anchored menu를 추가하고, Wiki capability가 켜진 경우 `/wiki`, 항상 사용 가능한 `/status`, 현재 활성 단축키를 보여주는 modal에 연결했다. 지원되지 않는 외부 support/sales/forum/changelog/version control은 만들지 않았다.
+- Help menu는 workspace/account와 하나의 open state를 공유한다. Pointer/keyboard 진입, Escape/outside 종료, trigger focus 복원, modal focus trap, overlay registry, mobile collision과 reduced-motion을 검증했다.
+- Command palette flag OFF에서는 `Meta/Ctrl+K`와 `/`를 표시하지 않고, ON에서는 두 단축키를 표시한다. Help menu/modal이 열린 동안 global shortcut은 command palette를 중첩해 열지 않는다.
+- 검증: typecheck PASS, lint PASS(기존 Fast Refresh 경고 4건), production build PASS(기존 chunk 경고), unit 87, component 8, focused E2E 2, full E2E 256 PASS + opt-in visual QA 1 skip, clean-room frontend 161/backend 44, npm audit high 0 vulnerabilities, diff check PASS.
+- Chromium 증적은 `docs/screenshots/redevelopment/topbar-help-ui/{desktop-menu,mobile-menu}.png`에 보존한다.
+- API, DB, migration, permission contract, environment variable, settings UI, dependency 변경과 이연 항목은 없다.

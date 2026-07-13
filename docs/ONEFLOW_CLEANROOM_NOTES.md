@@ -254,3 +254,9 @@ Plane source, package, asset, CSS, DOM hierarchy, exact dimensions/colors, wordi
 사용자 참조 화면과 `docs/plane-poc-reverse-spec/` D001에서 사용한 입력은 global brand chevron, floating frame 내부 context bar, collapsed-sidebar toggle slot, workspace/account popover의 행동·정보구조뿐이다. OneFlow 구현은 자체 React Router context, persisted sidebar preference, workspace profile/me/logout API, admin user directory route와 shell tokens를 사용해 독립 작성했다.
 
 Plane source, package, asset, CSS, DOM hierarchy, exact dimensions/colors, wording, workspace menu schema, icons, branding은 복사하지 않았다. 현재 제품/API에 없는 create-workspace와 workspace invitation lifecycle은 구현하지 않았고 신규 API/DB/schema/environment/dependency 변경은 없다. — attested-independent-derivation
+
+## UI-101 Topbar Functional Help
+
+`docs/plane-poc-reverse-spec/` S007에서 사용한 입력은 topbar Help icon이 현재 route 위에 transient menu를 연다는 행동과 documentation/support/shortcut 범주의 정보구조뿐이다. OneFlow 구현은 기존 자체 Wiki capability, `/wiki`, `/status`, command-palette config/shortcut guard, overlay registry와 설치된 Radix primitives를 사용해 독립 작성했다.
+
+Plane source, package, asset, CSS, DOM hierarchy, exact dimensions/colors, wording, support/sales/forum/changelog/version destination, icons 또는 branding은 복사하지 않았다. OneFlow에 실제 계약이 없는 외부 action은 노출하지 않았고 신규 dependency/API/DB/schema/environment/settings UI 변경은 없다. — attested-independent-derivation
