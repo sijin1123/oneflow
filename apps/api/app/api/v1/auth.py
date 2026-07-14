@@ -21,7 +21,7 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response
 from fastapi.responses import RedirectResponse
-from pydantic import BaseModel, SecretStr
+from pydantic import BaseModel, Field, SecretStr
 from sqlalchemy import delete as sa_delete
 from sqlalchemy import select
 from sqlalchemy import update as sa_update
@@ -47,13 +47,15 @@ logger = logging.getLogger(__name__)
 OIDC_ATTEMPT_TTL_MINUTES = 10
 OIDC_TRANSACTION_COOKIE = "oneflow_oidc_transaction"
 OIDC_CALLBACK_PATH = "/api/v1/auth/oidc/callback"
+OidcProviderAlias = Literal["google", "microsoft", "sso"]
 
 
 class AuthConfigRead(BaseModel):
     auth_mode: str
     oidc_issuer: str | None = None
     oidc_client_id: str | None = None
-    oidc_provider: Literal["google", "microsoft", "sso"] | None = None
+    oidc_provider: OidcProviderAlias | None = None
+    oidc_providers: list[OidcProviderAlias] = Field(default_factory=list)
     has_client_secret: bool = False
     command_palette_enabled: bool = False
     session_management_enabled: bool = False
@@ -71,16 +73,22 @@ async def auth_config(settings: Settings = Depends(get_settings)) -> AuthConfigR
             password_required=settings.dev_login_required_enabled,
             oidc_login_enabled=False,
         )
+    provider_configs = settings.oidc_provider_configs
+    provider_aliases = list(provider_configs)
+    only_provider = provider_configs[provider_aliases[0]] if len(provider_aliases) == 1 else None
     return AuthConfigRead(
         auth_mode="oidc",
-        oidc_issuer=settings.oidc_issuer,
-        oidc_client_id=settings.oidc_client_id,
-        oidc_provider=settings.oidc_provider,
-        has_client_secret=bool(settings.oidc_client_secret),
+        # Keep the single-provider fields for rolling web compatibility. A
+        # multi-provider deployment must use the explicit aliases below.
+        oidc_issuer=only_provider.issuer if only_provider else None,
+        oidc_client_id=only_provider.client_id if only_provider else None,
+        oidc_provider=only_provider.alias if only_provider else None,
+        oidc_providers=provider_aliases,
+        has_client_secret=bool(provider_configs),
         command_palette_enabled=settings.command_palette_is_enabled,
         session_management_enabled=True,
         password_required=False,
-        oidc_login_enabled=True,
+        oidc_login_enabled=bool(provider_configs),
     )
 
 
@@ -151,7 +159,7 @@ def _clear_oidc_transaction_cookie(response: Response) -> None:
 @router.get("/auth/oidc/start")
 async def oidc_start(
     request: Request,
-    provider: Literal["google", "microsoft", "sso"],
+    provider: OidcProviderAlias,
     next: str | None = None,
     session: AsyncSession = Depends(get_session),
     settings: Settings = Depends(get_settings),
@@ -159,12 +167,13 @@ async def oidc_start(
     """Start a server-side Authorization Code + PKCE transaction."""
     if settings.auth_mode != "oidc":
         raise HTTPException(status_code=404, detail="oidc login is unavailable")
-    if provider != settings.oidc_provider:
+    provider_config = settings.oidc_provider_config(provider)
+    if provider_config is None:
         raise HTTPException(status_code=404, detail="oidc provider is unavailable")
     existing_client = getattr(request.app.state, "oidc_http_client", None)
     try:
         async with provider_client(existing_client) as client:
-            metadata = await discover(client, settings)
+            metadata = await discover(client, provider_config)
     except OidcProviderError:
         logger.warning("OIDC discovery rejected during login start", exc_info=True)
         raise HTTPException(status_code=503, detail="identity provider is unavailable") from None
@@ -181,6 +190,8 @@ async def oidc_start(
             browser_token_hash=_hash_secret(browser_token),
             nonce_hash=_hash_secret(nonce),
             code_verifier=code_verifier,
+            provider=provider,
+            config_fingerprint=provider_config.config_fingerprint,
             next_path=_safe_next_path(next),
             expires_at=now + timedelta(minutes=OIDC_ATTEMPT_TTL_MINUTES),
         )
@@ -191,8 +202,8 @@ async def oidc_start(
         {
             "response_type": "code",
             "scope": "openid profile email",
-            "client_id": settings.oidc_client_id or "",
-            "redirect_uri": settings.oidc_redirect_uri or "",
+            "client_id": provider_config.client_id,
+            "redirect_uri": provider_config.redirect_uri,
             "state": state,
             "nonce": nonce,
             "code_challenge": _pkce_challenge(code_verifier),
@@ -247,6 +258,8 @@ async def oidc_callback(
             .returning(
                 OidcLoginAttempt.nonce_hash,
                 OidcLoginAttempt.code_verifier,
+                OidcLoginAttempt.provider,
+                OidcLoginAttempt.config_fingerprint,
                 OidcLoginAttempt.next_path,
             )
         )
@@ -254,6 +267,15 @@ async def oidc_callback(
     await session.commit()
     if consumed is None:
         return _auth_error_redirect(settings, "invalid_state", clear_transaction=False)
+    provider_config = (
+        settings.oidc_provider_config(consumed.provider) if consumed.provider is not None else None
+    )
+    if (
+        provider_config is None
+        or consumed.config_fingerprint is None
+        or not hmac.compare_digest(consumed.config_fingerprint, provider_config.config_fingerprint)
+    ):
+        return _auth_error_redirect(settings, "provider_error")
     if error:
         return _auth_error_redirect(
             settings, "access_denied" if error == "access_denied" else "provider_error"
@@ -264,17 +286,17 @@ async def oidc_callback(
     existing_client = getattr(request.app.state, "oidc_http_client", None)
     try:
         async with provider_client(existing_client) as client:
-            metadata = await discover(client, settings)
+            metadata = await discover(client, provider_config)
             id_token = await exchange_code(
                 client,
-                settings,
+                provider_config,
                 metadata,
                 code=code,
                 code_verifier=consumed.code_verifier,
             )
             claims = await verify_id_token(
                 client,
-                settings,
+                provider_config,
                 metadata,
                 id_token=id_token,
                 nonce_hash=consumed.nonce_hash,
@@ -294,9 +316,11 @@ async def oidc_callback(
         )
     ).scalar_one_or_none()
     if user is None:
-        provisioned = (
-            await session.execute(select(User).where(User.email == claims.email))
-        ).scalar_one_or_none()
+        provisioned = None
+        if claims.binding_email is not None:
+            provisioned = (
+                await session.execute(select(User).where(User.email == claims.binding_email))
+            ).scalar_one_or_none()
         if provisioned is None or not provisioned.is_active:
             await session.rollback()
             return _auth_error_redirect(settings, "account_unavailable")

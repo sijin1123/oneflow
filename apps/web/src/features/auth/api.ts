@@ -12,6 +12,7 @@ export type AuthConfig = {
   oidc_issuer: string | null
   oidc_client_id: string | null
   oidc_provider: OidcProvider | null
+  oidc_providers: OidcProvider[]
   has_client_secret: boolean
   command_palette_enabled: boolean
   session_management_enabled: boolean

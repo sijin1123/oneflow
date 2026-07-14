@@ -368,7 +368,10 @@ export function LoginPage() {
 
   const authMode = config.data?.auth_mode
   const oidcProvider = config.data?.oidc_provider
-  const oidcReady = authMode === 'oidc' && config.data?.oidc_login_enabled === true && Boolean(oidcProvider)
+  const oidcProviders = config.data?.oidc_providers ?? (oidcProvider ? [oidcProvider] : [])
+  const oidcReady = authMode === 'oidc' && config.data?.oidc_login_enabled === true && oidcProviders.length > 0
+  const isOidcProviderConfigured = (provider: OidcProvider) =>
+    authMode === 'oidc' && config.data?.oidc_login_enabled === true && oidcProviders.includes(provider)
   const devEnabled = authMode === 'dev'
   const passwordRequired = devEnabled && Boolean(config.data?.password_required)
   const formEnabled = devEnabled && !config.isPending && !config.isError
@@ -400,7 +403,7 @@ export function LoginPage() {
   const oauthError = oauthErrorCode ? text[oauthErrorCode] : null
 
   const startProvider = (provider: OidcProvider) => {
-    if (!oidcReady || provider !== oidcProvider) {
+    if (!isOidcProviderConfigured(provider)) {
       setNotice(provider)
       return
     }
@@ -501,7 +504,7 @@ export function LoginPage() {
             <div className="of-login-divider"><span />{text.or}<span /></div>
             <div className="of-login-providers">
               {(['google', 'microsoft', 'sso'] as const).map((provider) => {
-                const available = oidcReady && provider === oidcProvider
+                const available = isOidcProviderConfigured(provider)
                 const redirecting = redirectingProvider === provider
                 return (
                   <button

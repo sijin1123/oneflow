@@ -3456,6 +3456,8 @@ export interface components {
             oidc_login_enabled: boolean;
             /** Oidc Provider */
             oidc_provider?: ("google" | "microsoft" | "sso") | null;
+            /** Oidc Providers */
+            oidc_providers?: ("google" | "microsoft" | "sso")[];
             /**
              * Password Required
              * @default false

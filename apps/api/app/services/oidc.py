@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import ipaddress
 import json
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -14,7 +15,7 @@ from urllib.parse import urlsplit
 import httpx
 import jwt
 
-from app.core.config import Settings
+from app.core.config import OidcProviderConfig
 
 OIDC_HTTP_TIMEOUT_SECONDS = 5.0
 OIDC_MAX_RESPONSE_BYTES = 1_048_576
@@ -36,22 +37,31 @@ class OidcMetadata:
 class OidcClaims:
     issuer: str
     subject: str
-    email: str
+    binding_email: str | None
 
 
-def configured_issuer(settings: Settings) -> str:
-    return settings.oidc_issuer or ""
-
-
-def validate_provider_endpoint(url: str, settings: Settings) -> str:
-    parts = urlsplit(url)
+def validate_provider_endpoint(url: str, provider: OidcProviderConfig) -> str:
+    try:
+        parts = urlsplit(url)
+        endpoint_host = parts.hostname.lower() if parts.hostname else ""
+        endpoint_port = parts.port
+    except ValueError as exc:
+        raise OidcProviderError("provider endpoint is not allowed") from exc
+    try:
+        is_ipv6 = ipaddress.ip_address(endpoint_host).version == 6
+    except ValueError:
+        is_ipv6 = False
+    rendered_host = f"[{endpoint_host}]" if is_ipv6 else endpoint_host
+    endpoint_host = (
+        f"{rendered_host}:{endpoint_port}" if endpoint_port not in {None, 443} else rendered_host
+    )
     if (
         parts.scheme != "https"
         or not parts.netloc
         or parts.username
         or parts.password
         or parts.fragment
-        or parts.netloc.lower() not in settings.oidc_allowed_host_list
+        or endpoint_host not in provider.allowed_hosts
     ):
         raise OidcProviderError("provider endpoint is not allowed")
     return url
@@ -99,11 +109,11 @@ async def _request_json(
 
 async def discover(
     client: httpx.AsyncClient,
-    settings: Settings,
+    provider: OidcProviderConfig,
 ) -> OidcMetadata:
     discovery_url = validate_provider_endpoint(
-        configured_issuer(settings).rstrip("/") + "/.well-known/openid-configuration",
-        settings,
+        provider.issuer.rstrip("/") + "/.well-known/openid-configuration",
+        provider,
     )
     payload = await _request_json(
         client,
@@ -111,14 +121,14 @@ async def discover(
         discovery_url,
         headers={"Accept": "application/json"},
     )
-    if payload.get("issuer") != configured_issuer(settings):
+    if payload.get("issuer") != provider.issuer:
         raise OidcProviderError("provider issuer does not match configuration")
     try:
         authorization_endpoint = validate_provider_endpoint(
-            str(payload["authorization_endpoint"]), settings
+            str(payload["authorization_endpoint"]), provider
         )
-        token_endpoint = validate_provider_endpoint(str(payload["token_endpoint"]), settings)
-        jwks_uri = validate_provider_endpoint(str(payload["jwks_uri"]), settings)
+        token_endpoint = validate_provider_endpoint(str(payload["token_endpoint"]), provider)
+        jwks_uri = validate_provider_endpoint(str(payload["jwks_uri"]), provider)
     except (KeyError, TypeError) as exc:
         raise OidcProviderError("provider metadata is incomplete") from exc
     return OidcMetadata(
@@ -130,13 +140,12 @@ async def discover(
 
 async def exchange_code(
     client: httpx.AsyncClient,
-    settings: Settings,
+    provider: OidcProviderConfig,
     metadata: OidcMetadata,
     *,
     code: str,
     code_verifier: str,
 ) -> str:
-    secret = settings.oidc_client_secret
     payload = await _request_json(
         client,
         "POST",
@@ -144,9 +153,9 @@ async def exchange_code(
         data={
             "grant_type": "authorization_code",
             "code": code,
-            "redirect_uri": settings.oidc_redirect_uri or "",
-            "client_id": settings.oidc_client_id or "",
-            "client_secret": secret.get_secret_value() if secret else "",
+            "redirect_uri": provider.redirect_uri,
+            "client_id": provider.client_id,
+            "client_secret": provider.client_secret.get_secret_value(),
             "code_verifier": code_verifier,
         },
         headers={"Accept": "application/json"},
@@ -159,7 +168,7 @@ async def exchange_code(
 
 async def verify_id_token(
     client: httpx.AsyncClient,
-    settings: Settings,
+    provider: OidcProviderConfig,
     metadata: OidcMetadata,
     *,
     id_token: str,
@@ -171,7 +180,13 @@ async def verify_id_token(
         raise OidcProviderError("ID token header is invalid") from exc
     algorithm = header.get("alg")
     key_id = header.get("kid")
-    if algorithm not in OIDC_SIGNING_ALGORITHMS or not isinstance(key_id, str) or not key_id:
+    if (
+        algorithm not in OIDC_SIGNING_ALGORITHMS
+        or not isinstance(key_id, str)
+        or not key_id
+        or "jku" in header
+        or "x5u" in header
+    ):
         raise OidcProviderError("ID token uses an unsupported signing key")
     jwks = await _request_json(
         client,
@@ -196,10 +211,10 @@ async def verify_id_token(
             id_token,
             signing_key,
             algorithms=[algorithm],
-            audience=settings.oidc_client_id,
-            issuer=configured_issuer(settings),
+            audience=provider.client_id,
+            issuer=provider.issuer,
             leeway=60,
-            options={"require": ["iss", "sub", "aud", "exp", "iat", "nonce", "email"]},
+            options={"require": ["iss", "sub", "aud", "exp", "iat", "nonce"]},
         )
     except (jwt.PyJWTError, ValueError) as exc:
         raise OidcProviderError("ID token validation failed") from exc
@@ -210,27 +225,32 @@ async def verify_id_token(
         raise OidcProviderError("ID token nonce does not match")
     audience = claims.get("aud")
     authorized_party = claims.get("azp")
-    if authorized_party is not None and authorized_party != settings.oidc_client_id:
+    if authorized_party is not None and authorized_party != provider.client_id:
         raise OidcProviderError("ID token authorized party does not match")
-    if (
-        isinstance(audience, list)
-        and len(audience) > 1
-        and authorized_party != settings.oidc_client_id
-    ):
+    if isinstance(audience, list) and len(audience) > 1 and authorized_party != provider.client_id:
         raise OidcProviderError("ID token authorized party is required")
-    if claims.get("email_verified") is not True:
-        raise OidcProviderError("provider email is not verified")
     subject = claims.get("sub")
-    email = claims.get("email")
     if not isinstance(subject, str) or not subject or len(subject) > 255:
         raise OidcProviderError("ID token subject is invalid")
-    if not isinstance(email, str):
-        raise OidcProviderError("ID token email is invalid")
-    normalized_email = email.strip().lower()
-    if not normalized_email or len(normalized_email) > 320 or "@" not in normalized_email:
-        raise OidcProviderError("ID token email is invalid")
+    binding_email: str | None = None
+    email = claims.get("email")
+    if (
+        provider.alias != "microsoft"
+        and claims.get("email_verified") is True
+        and isinstance(email, str)
+    ):
+        normalized_email = email.strip().lower()
+        local, separator, domain = normalized_email.rpartition("@")
+        if (
+            separator
+            and local
+            and len(normalized_email) <= 320
+            and domain in provider.allowed_email_domains
+            and (provider.alias != "google" or domain == "gmail.com" or claims.get("hd") == domain)
+        ):
+            binding_email = normalized_email
     return OidcClaims(
-        issuer=configured_issuer(settings),
+        issuer=provider.issuer,
         subject=subject,
-        email=normalized_email,
+        binding_email=binding_email,
     )

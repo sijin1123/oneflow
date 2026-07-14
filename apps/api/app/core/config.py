@@ -4,7 +4,11 @@ Startup guards (PLAN §9) live here as validators: a misconfigured process must
 fail to boot with an explicit error, never degrade silently.
 """
 
+import hashlib
+import ipaddress
+import json
 import re
+from dataclasses import dataclass
 from functools import lru_cache
 from urllib.parse import urlsplit
 
@@ -20,6 +24,134 @@ WEBHOOK_LEGACY_KEY_ID = "legacy-v1"
 WEBHOOK_KEY_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
 # ONEFLOW_ALLOW_DESTRUCTIVE_RESET must be EXACTLY this value to unlock dev-DB reset.
 DESTRUCTIVE_RESET_TOKEN = "local-dev-only"
+OIDC_PROVIDER_ALIASES = ("google", "microsoft", "sso")
+
+
+@dataclass(frozen=True)
+class OidcProviderConfig:
+    """Immutable, secret-safe trust anchors for one OIDC provider."""
+
+    alias: str
+    issuer: str
+    client_id: str
+    client_secret: SecretStr
+    redirect_uri: str
+    allowed_hosts: tuple[str, ...]
+    allowed_email_domains: tuple[str, ...]
+
+    @property
+    def config_fingerprint(self) -> str:
+        material = {
+            "alias": self.alias,
+            "issuer": self.issuer,
+            "client_id": self.client_id,
+            # A one-way digest makes secret rotation invalidate in-flight login
+            # attempts without ever persisting or rendering the secret itself.
+            "client_secret_sha256": hashlib.sha256(
+                self.client_secret.get_secret_value().encode()
+            ).hexdigest(),
+            "redirect_uri": self.redirect_uri,
+            "allowed_hosts": self.allowed_hosts,
+            "allowed_email_domains": self.allowed_email_domains,
+        }
+        return hashlib.sha256(
+            json.dumps(material, sort_keys=True, separators=(",", ":")).encode()
+        ).hexdigest()
+
+
+def _format_host_port(hostname: str, port: int | None) -> str:
+    try:
+        ip = ipaddress.ip_address(hostname)
+    except ValueError:
+        if not re.fullmatch(r"[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?", hostname):
+            raise ValueError("OIDC host is malformed") from None
+        rendered = hostname
+    else:
+        if (
+            ip.is_private
+            or ip.is_loopback
+            or ip.is_link_local
+            or ip.is_multicast
+            or ip.is_reserved
+            or ip.is_unspecified
+        ):
+            raise ValueError("OIDC host must not be a private IP literal")
+        rendered = f"[{hostname}]" if ip.version == 6 else hostname
+    return rendered if port in {None, 443} else f"{rendered}:{port}"
+
+
+def _parse_exact_host_list(value: str | None, *, name: str) -> tuple[str, ...]:
+    if value is None:
+        raise ValueError(f"{name} is required when its provider is configured")
+    hosts: set[str] = set()
+    for raw in value.split(","):
+        entry = raw.strip().lower()
+        if not entry:
+            continue
+        if any(marker in entry for marker in ("://", "/", "\\", "@", "?", "#")) or any(
+            char.isspace() for char in entry
+        ):
+            raise ValueError(f"{name} entries must be exact host or host:port values")
+        try:
+            parsed = urlsplit(f"//{entry}")
+            hostname, host = parsed.hostname, _format_host_port(parsed.hostname or "", parsed.port)
+        except ValueError as exc:
+            if "private IP literal" in str(exc):
+                raise
+            raise ValueError(f"{name} entries must be exact host or host:port values") from exc
+        if not hostname or parsed.netloc.lower() != entry:
+            raise ValueError(f"{name} entries must be exact host or host:port values")
+        hosts.add(host)
+    return tuple(sorted(hosts))
+
+
+def _parse_email_domains(value: str | None, *, name: str) -> tuple[str, ...]:
+    if value is None:
+        raise ValueError(f"{name} is required when its provider is configured")
+    domains: set[str] = set()
+    for raw in value.split(","):
+        domain = raw.strip().lower()
+        if not domain:
+            continue
+        try:
+            ipaddress.ip_address(domain)
+            is_ip_literal = True
+        except ValueError:
+            is_ip_literal = False
+        if "@" in domain or is_ip_literal or _format_host_port(domain, None) != domain:
+            raise ValueError(f"{name} entries must be exact domain names")
+        domains.add(domain)
+    return tuple(sorted(domains))
+
+
+def _validate_https_url(value: str, *, name: str, origin: bool = False) -> str:
+    try:
+        parts = urlsplit(value)
+        hostname = parts.hostname
+        port = parts.port
+    except ValueError as exc:
+        raise ValueError(f"{name} contains an invalid host") from exc
+    if (
+        parts.scheme != "https"
+        or not parts.netloc
+        or not hostname
+        or parts.username
+        or parts.password
+        or parts.query
+        or parts.fragment
+        or (origin and parts.path not in {"", "/"})
+        or len(value) > 512
+    ):
+        raise ValueError(f"{name} must be an https:// {'origin' if origin else 'URL'}")
+    _format_host_port(hostname.lower(), port)
+    return value
+
+
+def _canonical_issuer(value: str) -> str:
+    parts = urlsplit(value)
+    host = _format_host_port(parts.hostname.lower(), parts.port)
+    path = parts.path.rstrip("/") or "/"
+    return f"https://{host}{path}"
 
 
 class Settings(BaseSettings):
@@ -77,6 +209,27 @@ class Settings(BaseSettings):
     oidc_redirect_uri: str | None = None
     oidc_web_origin: str | None = None
     oidc_allowed_hosts: str = ""
+    oidc_allowed_email_domains: str = ""
+    # New providers are independent trust groups.  All six values must be
+    # supplied for a configured group; web_origin remains shared.
+    oidc_google_issuer: str | None = None
+    oidc_google_client_id: str | None = None
+    oidc_google_client_secret: SecretStr | None = None
+    oidc_google_redirect_uri: str | None = None
+    oidc_google_allowed_hosts: str | None = None
+    oidc_google_allowed_email_domains: str | None = None
+    oidc_microsoft_issuer: str | None = None
+    oidc_microsoft_client_id: str | None = None
+    oidc_microsoft_client_secret: SecretStr | None = None
+    oidc_microsoft_redirect_uri: str | None = None
+    oidc_microsoft_allowed_hosts: str | None = None
+    oidc_microsoft_allowed_email_domains: str | None = None
+    oidc_sso_issuer: str | None = None
+    oidc_sso_client_id: str | None = None
+    oidc_sso_client_secret: SecretStr | None = None
+    oidc_sso_redirect_uri: str | None = None
+    oidc_sso_allowed_hosts: str | None = None
+    oidc_sso_allowed_email_domains: str | None = None
     # File uploads (Pass 4 PR-M). Not secrets; restart required to change.
     # Local-dev default — production should point at a dedicated volume.
     storage_dir: str = "var/uploads"
@@ -105,13 +258,127 @@ class Settings(BaseSettings):
 
     @property
     def oidc_allowed_host_list(self) -> list[str]:
-        hosts = {
-            host.strip().lower() for host in self.oidc_allowed_hosts.split(",") if host.strip()
-        }
-        issuer_host = urlsplit(self.oidc_issuer or "").netloc.lower()
-        if issuer_host:
-            hosts.add(issuer_host)
-        return sorted(hosts)
+        config = self.oidc_provider_config(self.oidc_provider)
+        return list(config.allowed_hosts) if config is not None else []
+
+    def _provider_config_from_values(
+        self,
+        alias: str,
+        issuer: str,
+        client_id: str,
+        client_secret: SecretStr,
+        redirect_uri: str,
+        allowed_hosts: str | None,
+        allowed_email_domains: str | None,
+    ) -> OidcProviderConfig:
+        issuer = _validate_https_url(issuer, name=f"ONEFLOW_OIDC_{alias.upper()}_ISSUER")
+        redirect_uri = _validate_https_url(
+            redirect_uri, name=f"ONEFLOW_OIDC_{alias.upper()}_REDIRECT_URI"
+        )
+        hosts = set(
+            _parse_exact_host_list(
+                allowed_hosts, name=f"ONEFLOW_OIDC_{alias.upper()}_ALLOWED_HOSTS"
+            )
+        )
+        issuer_parts = urlsplit(issuer)
+        hosts.add(_format_host_port(issuer_parts.hostname.lower(), issuer_parts.port))
+        return OidcProviderConfig(
+            alias=alias,
+            issuer=issuer,
+            client_id=client_id,
+            client_secret=client_secret,
+            redirect_uri=redirect_uri,
+            allowed_hosts=tuple(sorted(hosts)),
+            allowed_email_domains=_parse_email_domains(
+                allowed_email_domains,
+                name=f"ONEFLOW_OIDC_{alias.upper()}_ALLOWED_EMAIL_DOMAINS",
+            ),
+        )
+
+    def _new_provider_values(self, alias: str) -> tuple[object | None, ...]:
+        prefix = f"oidc_{alias}_"
+        return tuple(
+            getattr(self, prefix + suffix)
+            for suffix in (
+                "issuer",
+                "client_id",
+                "client_secret",
+                "redirect_uri",
+                "allowed_hosts",
+                "allowed_email_domains",
+            )
+        )
+
+    @property
+    def oidc_provider_configs(self) -> dict[str, OidcProviderConfig]:
+        new_aliases = [
+            alias
+            for alias in OIDC_PROVIDER_ALIASES
+            if any(value is not None for value in self._new_provider_values(alias))
+        ]
+        legacy_values_present = any(
+            value is not None and not (isinstance(value, str) and not value.strip())
+            for value in (
+                self.oidc_issuer,
+                self.oidc_client_id,
+                self.oidc_client_secret,
+                self.oidc_redirect_uri,
+                self.oidc_allowed_hosts,
+                self.oidc_allowed_email_domains,
+            )
+        )
+        if new_aliases and legacy_values_present:
+            raise ValueError("legacy ONEFLOW_OIDC_* values cannot be mixed with provider groups")
+        configs: dict[str, OidcProviderConfig] = {}
+        if new_aliases:
+            for alias in new_aliases:
+                values = self._new_provider_values(alias)
+                trust_values = values[:4]
+                policy_values = values[4:]
+                if any(
+                    value is None
+                    or (isinstance(value, str) and not value)
+                    or (isinstance(value, SecretStr) and not value.get_secret_value())
+                    for value in trust_values
+                ) or any(value is None for value in policy_values):
+                    raise ValueError(f"ONEFLOW_OIDC_{alias.upper()} provider group is incomplete")
+                configs[alias] = self._provider_config_from_values(alias, *values)  # type: ignore[arg-type]
+        elif legacy_values_present and all(
+            value is not None
+            and not (isinstance(value, str) and not value)
+            and not (isinstance(value, SecretStr) and not value.get_secret_value())
+            for value in (
+                self.oidc_issuer,
+                self.oidc_client_id,
+                self.oidc_client_secret,
+                self.oidc_redirect_uri,
+            )
+        ):
+            configs[self.oidc_provider] = self._provider_config_from_values(
+                self.oidc_provider,
+                self.oidc_issuer or "",
+                self.oidc_client_id or "",
+                self.oidc_client_secret or SecretStr(""),
+                self.oidc_redirect_uri or "",
+                self.oidc_allowed_hosts,
+                self.oidc_allowed_email_domains,
+            )
+        canonical_issuers: dict[str, str] = {}
+        for alias, config in configs.items():
+            canonical = _canonical_issuer(config.issuer)
+            if canonical in canonical_issuers:
+                raise ValueError(
+                    f"OIDC issuer is duplicated by {canonical_issuers[canonical]} and {alias}"
+                )
+            canonical_issuers[canonical] = alias
+        return configs
+
+    @property
+    def enabled_oidc_provider_aliases(self) -> tuple[str, ...]:
+        return tuple(self.oidc_provider_configs)
+
+    def oidc_provider_config(self, alias: str) -> OidcProviderConfig | None:
+        return self.oidc_provider_configs.get(alias)
 
     @property
     def webhook_allowed_host_list(self) -> list[str]:
@@ -167,60 +434,21 @@ class Settings(BaseSettings):
                 "ONEFLOW_AUTH_MODE=dev is forbidden when ONEFLOW_ENV is staging/production "
                 "(PLAN §9 startup guard)"
             )
-        # Guard (1b): oidc mode without a complete provider config must fail at
-        # boot, not with per-request 500s halfway through a deploy.
+        # Validate group composition even in dev so an eventual OIDC rollout
+        # cannot start from a silently partial or mixed trust configuration.
+        provider_configs = self.oidc_provider_configs
         if self.auth_mode == "oidc":
-            missing = [
-                name
-                for name, value in (
-                    ("ONEFLOW_OIDC_ISSUER", self.oidc_issuer),
-                    ("ONEFLOW_OIDC_CLIENT_ID", self.oidc_client_id),
-                    (
-                        "ONEFLOW_OIDC_CLIENT_SECRET",
-                        self.oidc_client_secret.get_secret_value()
-                        if self.oidc_client_secret is not None
-                        else None,
-                    ),
-                    ("ONEFLOW_OIDC_REDIRECT_URI", self.oidc_redirect_uri),
-                    ("ONEFLOW_OIDC_WEB_ORIGIN", self.oidc_web_origin),
-                )
-                if not value
-            ]
-            if missing:
-                raise ValueError("ONEFLOW_AUTH_MODE=oidc requires " + ", ".join(missing))
-            parts = urlsplit(self.oidc_issuer or "")
-            if parts.scheme != "https" or not parts.netloc or len(self.oidc_issuer or "") > 512:
-                raise ValueError("ONEFLOW_OIDC_ISSUER must be an https:// URL")
-            if parts.query or parts.fragment or parts.username or parts.password:
-                raise ValueError("ONEFLOW_OIDC_ISSUER must not contain credentials or query data")
-            redirect = urlsplit(self.oidc_redirect_uri or "")
-            if redirect.scheme != "https" or not redirect.netloc:
-                raise ValueError("ONEFLOW_OIDC_REDIRECT_URI must be an https:// URL")
-            if redirect.query or redirect.fragment or redirect.username or redirect.password:
+            if not provider_configs:
                 raise ValueError(
-                    "ONEFLOW_OIDC_REDIRECT_URI must not contain credentials or query data"
+                    "ONEFLOW_AUTH_MODE=oidc requires at least one complete OIDC provider"
                 )
-            web = urlsplit(self.oidc_web_origin or "")
-            if web.scheme != "https" or not web.netloc or web.path not in {"", "/"}:
-                raise ValueError("ONEFLOW_OIDC_WEB_ORIGIN must be an https:// origin")
-            if web.query or web.fragment or web.username or web.password:
-                raise ValueError("ONEFLOW_OIDC_WEB_ORIGIN must be an https:// origin")
-            normalized_web_origin = f"{web.scheme}://{web.netloc}"
-            if normalized_web_origin not in self.cors_origin_list:
+            if not self.oidc_web_origin:
+                raise ValueError("ONEFLOW_AUTH_MODE=oidc requires ONEFLOW_OIDC_WEB_ORIGIN")
+            web_origin = _validate_https_url(
+                self.oidc_web_origin, name="ONEFLOW_OIDC_WEB_ORIGIN", origin=True
+            )
+            if web_origin.rstrip("/") not in self.cors_origin_list:
                 raise ValueError("ONEFLOW_OIDC_WEB_ORIGIN must be listed in ONEFLOW_CORS_ORIGINS")
-            for host in self.oidc_allowed_host_list:
-                if (
-                    "://" in host
-                    or "/" in host
-                    or "\\" in host
-                    or "@" in host
-                    or "?" in host
-                    or "#" in host
-                    or any(char.isspace() for char in host)
-                ):
-                    raise ValueError(
-                        "ONEFLOW_OIDC_ALLOWED_HOSTS entries must be exact host or host:port values"
-                    )
         # Guard (2): asyncpg scheme only — ONEFLOW_DATABASE_URL is the single DB entrypoint.
         for name, url in (
             ("ONEFLOW_DATABASE_URL", self.database_url),
