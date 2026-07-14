@@ -33,6 +33,40 @@ class SearchResults(BaseModel):
     query: str
 
 
+class SearchAnalyticsBucket(BaseModel):
+    key: str
+    count: int
+
+
+class SearchAnalyticsProject(BaseModel):
+    id: uuid.UUID
+    key: str
+    name: str
+    count: int
+
+
+class SearchAnalyticsProjectOverflow(BaseModel):
+    project_count: int
+    item_count: int
+
+
+class SearchAnalyticsScheduleBuckets(BaseModel):
+    completed: int
+    open_overdue: int
+    open_due_next_7_days: int
+    open_later: int
+    open_unscheduled: int
+
+
+class SearchWorkPackageAnalytics(BaseModel):
+    total: int
+    status_buckets: list[SearchAnalyticsBucket]
+    priority_buckets: list[SearchAnalyticsBucket]
+    top_projects: list[SearchAnalyticsProject]
+    project_overflow: SearchAnalyticsProjectOverflow
+    schedule_buckets: SearchAnalyticsScheduleBuckets
+
+
 class SearchDocumentItem(BaseModel):
     id: uuid.UUID
     project_id: uuid.UUID
