@@ -1,12 +1,13 @@
 """Cross-project work-package search (PLAN §3 Phase 2)."""
 
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from sqlalchemy import select, update
 
 from app.core.auth import DEV_USER_EMAIL
+from app.core.dates import utc_today
 from app.models import ProjectMember, User, WorkPackage, WpWatcher
 from app.services.workspace_pql import BooleanExpression, PqlError, parse_pql
 from tests.conftest import create_project, create_wp
@@ -309,6 +310,174 @@ async def test_workspace_view_scope_filters_sort_and_pagination(client, app, two
     )
     assert page.json()["total"] == 3
     assert len(page.json()["items"]) == 1
+
+
+async def test_workspace_analytics_aggregates_full_filtered_result(client, two_projects):
+    today = utc_today()
+    project_a = two_projects["a"]
+    project_b = two_projects["b"]
+    cases = (
+        (project_a, "분석 대기", "backlog", "none", None),
+        (project_a, "분석 지연", "todo", "low", today - timedelta(days=1)),
+        (project_a, "분석 임박", "in_progress", "high", today),
+        (project_a, "분석 이후", "in_review", "urgent", today + timedelta(days=8)),
+        (project_b, "분석 완료", "done", "medium", today - timedelta(days=5)),
+        (project_b, "분석 취소", "cancelled", "medium", None),
+    )
+    for project, subject, status, priority, due_date in cases:
+        await create_wp(
+            client,
+            project["id"],
+            subject=subject,
+            status=status,
+            priority=priority,
+            due_date=due_date.isoformat() if due_date else None,
+        )
+
+    response = await client.get("/api/v1/search/work-packages/analytics", params={"q": "분석"})
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["total"] == 6
+    assert {item["key"]: item["count"] for item in body["status_buckets"]} == {
+        "backlog": 1,
+        "todo": 1,
+        "in_progress": 1,
+        "in_review": 1,
+        "done": 1,
+        "cancelled": 1,
+    }
+    assert {item["key"]: item["count"] for item in body["priority_buckets"]} == {
+        "none": 1,
+        "low": 1,
+        "medium": 2,
+        "high": 1,
+        "urgent": 1,
+    }
+    assert [(item["key"], item["count"]) for item in body["top_projects"]] == [
+        ("ALPHA", 4),
+        ("BETA", 2),
+    ]
+    assert body["project_overflow"] == {"project_count": 0, "item_count": 0}
+    assert body["schedule_buckets"] == {
+        "completed": 2,
+        "open_overdue": 1,
+        "open_due_next_7_days": 1,
+        "open_later": 1,
+        "open_unscheduled": 1,
+    }
+    assert sum(body["schedule_buckets"].values()) == body["total"]
+
+
+async def test_workspace_analytics_bounds_project_buckets_with_explicit_overflow(client):
+    expected_keys = []
+    for index in range(11):
+        key = f"AX{index:02d}"
+        expected_keys.append(key)
+        project = await create_project(client, key=key, name=f"분석 프로젝트 {index:02d}")
+        await create_wp(client, project["id"], subject="프로젝트 초과 분석")
+
+    response = await client.get(
+        "/api/v1/search/work-packages/analytics", params={"q": "프로젝트 초과 분석"}
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["total"] == 11
+    assert [project["key"] for project in body["top_projects"]] == expected_keys[:10]
+    assert body["project_overflow"] == {"project_count": 1, "item_count": 1}
+
+
+async def test_workspace_analytics_matches_scope_basic_and_pql_limit(client, app, two_projects):
+    me = (await client.get("/api/v1/me")).json()["id"]
+    await create_wp(
+        client,
+        two_projects["a"]["id"],
+        subject="분석 범위 A",
+        assignee_id=me,
+        priority="high",
+    )
+    await create_wp(
+        client,
+        two_projects["a"]["id"],
+        subject="분석 범위 B",
+        assignee_id=me,
+        priority="high",
+        status="done",
+    )
+    subscribed = await create_wp(
+        client,
+        two_projects["b"]["id"],
+        subject="분석 범위 C",
+        priority="medium",
+    )
+    async with app.state.sessionmaker() as session, session.begin():
+        session.add(WpWatcher(work_package_id=uuid.UUID(subscribed["id"]), user_id=uuid.UUID(me)))
+
+    scoped = await client.get(
+        "/api/v1/search/work-packages/analytics",
+        params={
+            "q": "분석 범위",
+            "scope": "assigned",
+            "state": "open",
+            "priority": "high",
+        },
+    )
+    assert scoped.status_code == 200, scoped.text
+    assert scoped.json()["total"] == 1
+    assert scoped.json()["top_projects"][0]["count"] == 1
+
+    watched = await client.get(
+        "/api/v1/search/work-packages/analytics",
+        params={"q": "분석 범위", "scope": "subscribed"},
+    )
+    assert watched.status_code == 200, watched.text
+    assert watched.json()["total"] == 1
+    assert watched.json()["priority_buckets"][2] == {"key": "medium", "count": 1}
+
+    pql = await client.get(
+        "/api/v1/search/work-packages/analytics",
+        params={
+            "q": "분석 범위",
+            "pql": "priority IN (high, medium) ORDER BY title ASC LIMIT 2",
+        },
+    )
+    assert pql.status_code == 200, pql.text
+    assert pql.json()["total"] == 2
+    assert sum(item["count"] for item in pql.json()["status_buckets"]) == 2
+    assert pql.json()["top_projects"] == [
+        {
+            "id": two_projects["a"]["id"],
+            "key": "ALPHA",
+            "name": "알파",
+            "count": 2,
+        }
+    ]
+    invalid = await client.get(
+        "/api/v1/search/work-packages/analytics",
+        params={"pql": "priority = impossible"},
+    )
+    assert invalid.status_code == 422
+
+
+async def test_workspace_analytics_hides_non_member_projects(client, app, foreign_project):
+    async with app.state.sessionmaker() as session, session.begin():
+        dev = (await session.execute(select(User).where(User.email == DEV_USER_EMAIL))).scalar_one()
+        work_package = (
+            await session.execute(
+                select(WorkPackage).where(WorkPackage.id == foreign_project["wp_id"])
+            )
+        ).scalar_one()
+        work_package.assignee_id = dev.id
+        work_package.created_by = dev.id
+        session.add(WpWatcher(work_package_id=work_package.id, user_id=dev.id))
+
+    for scope in ("all", "assigned", "created", "subscribed"):
+        response = await client.get(
+            "/api/v1/search/work-packages/analytics",
+            params={"q": "남의", "scope": scope},
+        )
+        assert response.status_code == 200, response.text
+        assert response.json()["total"] == 0
+        assert response.json()["top_projects"] == []
 
 
 async def test_workspace_view_column_sorts_full_authorized_result(client, app, two_projects):

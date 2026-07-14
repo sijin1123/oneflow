@@ -30,6 +30,36 @@ export type SearchResults = {
   query: string
 }
 
+export type SearchAnalyticsBucket = {
+  key: string
+  count: number
+}
+
+export type SearchAnalyticsProject = {
+  id: string
+  key: string
+  name: string
+  count: number
+}
+
+export type SearchWorkPackageAnalytics = {
+  total: number
+  status_buckets: SearchAnalyticsBucket[]
+  priority_buckets: SearchAnalyticsBucket[]
+  top_projects: SearchAnalyticsProject[]
+  project_overflow: {
+    project_count: number
+    item_count: number
+  }
+  schedule_buckets: {
+    completed: number
+    open_overdue: number
+    open_due_next_7_days: number
+    open_later: number
+    open_unscheduled: number
+  }
+}
+
 export function useSearch(q: string) {
   const query = q.trim()
   return useQuery({
@@ -100,6 +130,38 @@ export function useWorkspaceWorkItems({
       if (pql) params.set('pql', pql)
       return api<SearchResults>(`/api/v1/search/work-packages?${params.toString()}`)
     },
+  })
+}
+
+export function useWorkspaceWorkItemAnalytics({
+  q,
+  scope,
+  state,
+  priority,
+  pql,
+  enabled,
+}: {
+  q: string
+  scope: WorkspaceWorkItemScope
+  state: WorkspaceWorkItemState
+  priority: WpPriority | null
+  pql: string | null
+  enabled: boolean
+}) {
+  const query = q.trim()
+  return useQuery({
+    queryKey: ['workspace-work-item-analytics', query, scope, state, priority, pql],
+    queryFn: () => {
+      const params = new URLSearchParams({ scope, state })
+      if (query) params.set('q', query)
+      if (priority) params.set('priority', priority)
+      if (pql) params.set('pql', pql)
+      return api<SearchWorkPackageAnalytics>(
+        `/api/v1/search/work-packages/analytics?${params.toString()}`,
+      )
+    },
+    enabled,
+    staleTime: 0,
   })
 }
 

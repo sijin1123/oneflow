@@ -8,6 +8,7 @@ probe (v14.1 — never a silent cut). Documents/meetings match on TITLE only
 (full-text body search is a follow-up).
 """
 
+from datetime import timedelta
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -17,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
 from app.core.auth import get_current_user
+from app.core.dates import utc_today
 from app.db.session import get_session
 from app.models.cycle import Cycle
 from app.models.document import ProjectDocument
@@ -27,18 +29,23 @@ from app.models.module import Module
 from app.models.project import Project
 from app.models.user import User
 from app.models.watcher import WpWatcher
-from app.models.work_package import WP_CLOSED_STATUSES, WorkPackage
+from app.models.work_package import WP_CLOSED_STATUSES, WP_PRIORITIES, WP_STATUSES, WorkPackage
 from app.schemas.search import (
     DocumentGroup,
     InitiativeGroup,
     MeetingGroup,
     NamedGroup,
+    SearchAnalyticsBucket,
+    SearchAnalyticsProject,
+    SearchAnalyticsProjectOverflow,
+    SearchAnalyticsScheduleBuckets,
     SearchDocumentItem,
     SearchInitiativeItem,
     SearchMeetingItem,
     SearchNamedItem,
     SearchResultItem,
     SearchResults,
+    SearchWorkPackageAnalytics,
     UnifiedSearchResults,
     WpGroup,
 )
@@ -77,21 +84,16 @@ def _visible_member_project_ids(user: User):
     )
 
 
-@router.get("/search/work-packages", response_model=SearchResults)
-async def search_work_packages(
-    q: str | None = Query(default=None, min_length=1, max_length=255),
-    scope: Literal["all", "assigned", "created", "subscribed"] = "all",
-    state: Literal["all", "open"] = "all",
-    sort: Literal[
-        "updated", "due", "status_asc", "status_desc", "priority_asc", "priority_desc"
-    ] = "updated",
-    priority: Literal["none", "low", "medium", "high", "urgent"] | None = None,
-    pql: str | None = Query(default=None, max_length=1000),
-    limit: int = Query(default=50, ge=1, le=200),
-    offset: int = Query(default=0, ge=0),
-    session: AsyncSession = Depends(get_session),
-    user: User = Depends(get_current_user),
-) -> SearchResults:
+async def _workspace_work_package_statement(
+    session: AsyncSession,
+    user: User,
+    q: str | None,
+    scope: Literal["all", "assigned", "created", "subscribed"],
+    state: Literal["all", "open"],
+    priority: Literal["none", "low", "medium", "high", "urgent"] | None,
+    pql: str | None,
+):
+    """Build the shared authorized workspace set for list and analytics."""
     Assignee = aliased(User)
     CurrentMember = aliased(ProjectMember)
     stmt = (
@@ -136,22 +138,22 @@ async def search_work_packages(
         except PqlError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         stmt = stmt.where(compile_pql(parsed_pql, user, Assignee))
+    return stmt, parsed_pql
 
-    total = (
-        await session.execute(select(func.count()).select_from(stmt.order_by(None).subquery()))
-    ).scalar_one()
+
+def _workspace_work_package_ordering(sort: str):
     if sort == "due":
-        order_by = (
+        return (
             WorkPackage.due_date.asc().nulls_last(),
             WorkPackage.updated_at.desc(),
             WorkPackage.id.asc(),
         )
-    elif sort in {"status_asc", "status_desc"}:
+    if sort in {"status_asc", "status_desc"}:
         status_order = (
             WorkPackage.status.asc() if sort == "status_asc" else WorkPackage.status.desc()
         )
-        order_by = (status_order, WorkPackage.updated_at.desc(), WorkPackage.id.asc())
-    elif sort in {"priority_asc", "priority_desc"}:
+        return (status_order, WorkPackage.updated_at.desc(), WorkPackage.id.asc())
+    if sort in {"priority_asc", "priority_desc"}:
         priority_order = case(
             (WorkPackage.priority == "none", 0),
             (WorkPackage.priority == "low", 1),
@@ -161,9 +163,33 @@ async def search_work_packages(
             else_=5,
         )
         priority_order = priority_order.desc() if sort == "priority_desc" else priority_order.asc()
-        order_by = (priority_order, WorkPackage.updated_at.desc(), WorkPackage.id.asc())
-    else:
-        order_by = (WorkPackage.updated_at.desc(), WorkPackage.id.asc())
+        return (priority_order, WorkPackage.updated_at.desc(), WorkPackage.id.asc())
+    return (WorkPackage.updated_at.desc(), WorkPackage.id.asc())
+
+
+@router.get("/search/work-packages", response_model=SearchResults)
+async def search_work_packages(
+    q: str | None = Query(default=None, min_length=1, max_length=255),
+    scope: Literal["all", "assigned", "created", "subscribed"] = "all",
+    state: Literal["all", "open"] = "all",
+    sort: Literal[
+        "updated", "due", "status_asc", "status_desc", "priority_asc", "priority_desc"
+    ] = "updated",
+    priority: Literal["none", "low", "medium", "high", "urgent"] | None = None,
+    pql: str | None = Query(default=None, max_length=1000),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+) -> SearchResults:
+    stmt, parsed_pql = await _workspace_work_package_statement(
+        session, user, q, scope, state, priority, pql
+    )
+
+    total = (
+        await session.execute(select(func.count()).select_from(stmt.order_by(None).subquery()))
+    ).scalar_one()
+    order_by = _workspace_work_package_ordering(sort)
     result_limit = limit
     if parsed_pql is not None:
         order_by = pql_ordering(parsed_pql) or order_by
@@ -195,6 +221,123 @@ async def search_work_packages(
         for wp, key, name, assignee_name, member_role in rows
     ]
     return SearchResults(items=items, total=total, query=q or "")
+
+
+@router.get("/search/work-packages/analytics", response_model=SearchWorkPackageAnalytics)
+async def search_work_package_analytics(
+    q: str | None = Query(default=None, min_length=1, max_length=255),
+    scope: Literal["all", "assigned", "created", "subscribed"] = "all",
+    state: Literal["all", "open"] = "all",
+    priority: Literal["none", "low", "medium", "high", "urgent"] | None = None,
+    pql: str | None = Query(default=None, max_length=1000),
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+) -> SearchWorkPackageAnalytics:
+    stmt, parsed_pql = await _workspace_work_package_statement(
+        session, user, q, scope, state, priority, pql
+    )
+    analytics_stmt = stmt.with_only_columns(
+        WorkPackage.id.label("work_package_id"),
+        WorkPackage.project_id.label("project_id"),
+        Project.key.label("project_key"),
+        Project.name.label("project_name"),
+        WorkPackage.status.label("status"),
+        WorkPackage.priority.label("priority"),
+        WorkPackage.due_date.label("due_date"),
+        maintain_column_froms=True,
+    )
+    if parsed_pql is not None and parsed_pql.limit is not None:
+        order_by = pql_ordering(parsed_pql) or _workspace_work_package_ordering("updated")
+        analytics_stmt = analytics_stmt.order_by(*order_by).limit(parsed_pql.limit)
+    else:
+        analytics_stmt = analytics_stmt.order_by(None)
+    filtered = analytics_stmt.subquery()
+
+    today = utc_today()
+    next_week = today + timedelta(days=7)
+    is_closed = filtered.c.status.in_(WP_CLOSED_STATUSES)
+    is_open = filtered.c.status.not_in(WP_CLOSED_STATUSES)
+    summary_columns = [func.count().label("total")]
+    summary_columns.extend(
+        func.count().filter(filtered.c.status == status).label(f"status_{status}")
+        for status in WP_STATUSES
+    )
+    summary_columns.extend(
+        func.count().filter(filtered.c.priority == priority_key).label(f"priority_{priority_key}")
+        for priority_key in WP_PRIORITIES
+    )
+    summary_columns.extend(
+        (
+            func.count().filter(is_closed).label("completed"),
+            func.count().filter(is_open, filtered.c.due_date < today).label("open_overdue"),
+            func.count()
+            .filter(
+                is_open,
+                filtered.c.due_date >= today,
+                filtered.c.due_date <= next_week,
+            )
+            .label("open_due_next_7_days"),
+            func.count().filter(is_open, filtered.c.due_date > next_week).label("open_later"),
+            func.count().filter(is_open, filtered.c.due_date.is_(None)).label("open_unscheduled"),
+        )
+    )
+    aggregate_row = (await session.execute(select(*summary_columns).select_from(filtered))).one()
+
+    project_counts = (
+        select(
+            filtered.c.project_id.label("id"),
+            filtered.c.project_key.label("key"),
+            filtered.c.project_name.label("name"),
+            func.count().label("count"),
+        )
+        .group_by(filtered.c.project_id, filtered.c.project_key, filtered.c.project_name)
+        .subquery()
+    )
+    top_project_rows = (
+        await session.execute(
+            select(project_counts)
+            .order_by(
+                project_counts.c.count.desc(),
+                project_counts.c.key.asc(),
+                project_counts.c.id,
+            )
+            .limit(10)
+        )
+    ).all()
+    project_count = (
+        await session.execute(select(func.count()).select_from(project_counts))
+    ).scalar_one()
+    top_item_count = sum(count for _, _, _, count in top_project_rows)
+
+    return SearchWorkPackageAnalytics(
+        total=aggregate_row.total,
+        status_buckets=[
+            SearchAnalyticsBucket(key=status, count=getattr(aggregate_row, f"status_{status}"))
+            for status in WP_STATUSES
+        ],
+        priority_buckets=[
+            SearchAnalyticsBucket(
+                key=priority_key,
+                count=getattr(aggregate_row, f"priority_{priority_key}"),
+            )
+            for priority_key in WP_PRIORITIES
+        ],
+        top_projects=[
+            SearchAnalyticsProject(id=project_id, key=key, name=name, count=count)
+            for project_id, key, name, count in top_project_rows
+        ],
+        project_overflow=SearchAnalyticsProjectOverflow(
+            project_count=max(0, project_count - len(top_project_rows)),
+            item_count=aggregate_row.total - top_item_count,
+        ),
+        schedule_buckets=SearchAnalyticsScheduleBuckets(
+            completed=aggregate_row.completed,
+            open_overdue=aggregate_row.open_overdue,
+            open_due_next_7_days=aggregate_row.open_due_next_7_days,
+            open_later=aggregate_row.open_later,
+            open_unscheduled=aggregate_row.open_unscheduled,
+        ),
+    )
 
 
 @router.post("/search/work-packages/pql/validate", response_model=PqlValidationResponse)

@@ -2418,3 +2418,15 @@ Chromium typed mock fixture에서 1440x960과 390x844 viewport를 사용했다. 
 - 전체 E2E 첫 실행은 신규 3건 포함 258 PASS 중 기존 Quick Dock 수동 timeline 2건이 병렬 CPU stall로 1초 phase를 놓쳤다. 해당 test-only 구간을 10초 manual timeline과 명시적 `finish()`로 고정하고 production 기본 300ms assertion은 유지했으며 repeat 6과 재실행 full E2E 260 PASS + opt-in visual QA 1 skip을 확인했다. 활성 사용자 보정과 회귀 테스트 추가 후 focused 4, typecheck/lint/build 및 최종 full E2E 261 PASS + opt-in visual QA 1 skip을 다시 확인했다.
 - Production build PASS(기존 chunk 경고), unit 87, component 8, clean-room frontend 161/backend 44, npm audit high 0, diff check PASS. Chromium 증적은 `docs/screenshots/redevelopment/get-started-ui/{desktop-complete,mobile-complete}.png`에 보존한다.
 - 기존 API만 재사용했고 API, DB, migration, permission contract, environment variable, settings UI, dependency 변경과 이연 항목은 없다. PR/CI 결과는 게이트 후 이어서 기록한다.
+
+---
+
+# UI-104 Workspace Analytics 검증 (2026-07-14)
+
+- Workspace Views toolbar의 실제 `분석` 명령은 dialog가 열릴 때만 현재 Basic/PQL query와 같은 권한·scope·검색·상태·우선순위 조건으로 집계를 요청한다. 상태, 우선순위, 프로젝트 상위 10개와 초과 요약, 일정 분포를 compact한 정보 구조로 제공한다.
+- 신규 `GET /api/v1/search/work-packages/analytics`는 기존 workspace search의 membership/current-member, watcher, archive, PQL 검증·정렬·LIMIT 계약을 재사용한다. 정해진 bucket을 0건까지 안정적으로 반환하고 프로젝트 overflow를 숨기지 않는다.
+- Dialog는 loading, error/retry, true empty, populated, mobile viewport, Escape/outside, trigger focus restore와 reduced-motion 상태를 제공하며 mock/dead control은 없다.
+- 검증: API focused 25 및 full 675 PASS(기존 Alembic 경고 1건), API Ruff/format PASS, OpenAPI drift PASS, typecheck PASS, lint PASS(기존 Fast Refresh 경고 4건), production build PASS(기존 chunk 경고), unit 87, component 8, full E2E 263 PASS + opt-in visual QA 1 skip 후 최종 경계 보정 focused E2E 2 PASS, clean-room frontend 161/backend 44, npm audit 0 vulnerabilities, pip-audit 0 vulnerabilities, diff check PASS.
+- 독립 reviewer는 권한 집계와 bounded response를 확인하고, 캐시가 남은 재조회 실패에서 이전 차트가 오류와 함께 보일 수 있는 상태 및 0건 막대의 최소 폭을 지적했다. Analytics를 열 때 최신 조회하도록 하고 오류 시 stale data를 숨기며 0건을 0px로 수정한 뒤 집중 E2E로 고정했다. reduced-motion도 overlay animation과 chart transition 제거를 직접 검증한다.
+- Chromium 증적은 `docs/screenshots/redevelopment/workspace-analytics-ui/{desktop-basic,mobile-empty}.png`에 보존한다.
+- DB, migration, permission model, environment variable, settings UI, dependency 변경과 이연 항목은 없다. API 추가와 generated shared type 갱신이 필요 범위에 포함된다.

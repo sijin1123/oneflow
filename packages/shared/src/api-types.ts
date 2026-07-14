@@ -2451,6 +2451,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/search/work-packages/analytics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Search Work Package Analytics */
+        get: operations["search_work_package_analytics_api_v1_search_work_packages_analytics_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/search/work-packages/pql/validate": {
         parameters: {
             query?: never;
@@ -6381,6 +6398,47 @@ export interface components {
             /** Sort */
             sort?: string | null;
         };
+        /** SearchAnalyticsBucket */
+        SearchAnalyticsBucket: {
+            /** Count */
+            count: number;
+            /** Key */
+            key: string;
+        };
+        /** SearchAnalyticsProject */
+        SearchAnalyticsProject: {
+            /** Count */
+            count: number;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Key */
+            key: string;
+            /** Name */
+            name: string;
+        };
+        /** SearchAnalyticsProjectOverflow */
+        SearchAnalyticsProjectOverflow: {
+            /** Item Count */
+            item_count: number;
+            /** Project Count */
+            project_count: number;
+        };
+        /** SearchAnalyticsScheduleBuckets */
+        SearchAnalyticsScheduleBuckets: {
+            /** Completed */
+            completed: number;
+            /** Open Due Next 7 Days */
+            open_due_next_7_days: number;
+            /** Open Later */
+            open_later: number;
+            /** Open Overdue */
+            open_overdue: number;
+            /** Open Unscheduled */
+            open_unscheduled: number;
+        };
         /** SearchDocumentItem */
         SearchDocumentItem: {
             /**
@@ -6529,6 +6587,19 @@ export interface components {
             items: components["schemas"]["SearchResultItem"][];
             /** Query */
             query: string;
+            /** Total */
+            total: number;
+        };
+        /** SearchWorkPackageAnalytics */
+        SearchWorkPackageAnalytics: {
+            /** Priority Buckets */
+            priority_buckets: components["schemas"]["SearchAnalyticsBucket"][];
+            project_overflow: components["schemas"]["SearchAnalyticsProjectOverflow"];
+            schedule_buckets: components["schemas"]["SearchAnalyticsScheduleBuckets"];
+            /** Status Buckets */
+            status_buckets: components["schemas"]["SearchAnalyticsBucket"][];
+            /** Top Projects */
+            top_projects: components["schemas"]["SearchAnalyticsProject"][];
             /** Total */
             total: number;
         };
@@ -13967,6 +14038,45 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SearchResults"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    search_work_package_analytics_api_v1_search_work_packages_analytics_get: {
+        parameters: {
+            query?: {
+                q?: string | null;
+                scope?: "all" | "assigned" | "created" | "subscribed";
+                state?: "all" | "open";
+                priority?: ("none" | "low" | "medium" | "high" | "urgent") | null;
+                pql?: string | null;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SearchWorkPackageAnalytics"];
                 };
             };
             /** @description Validation Error */

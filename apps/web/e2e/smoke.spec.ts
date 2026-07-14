@@ -13,7 +13,7 @@ import type { DataTransferJob } from '../src/features/ops/dataTransfersApi'
 import type { DocumentList } from '../src/features/documents/api'
 import type { Project, ProjectList } from '../src/features/projects/types'
 import type { ProjectTemplate } from '../src/features/project-templates/api'
-import type { SearchResults } from '../src/features/search/api'
+import type { SearchResults, SearchWorkPackageAnalytics } from '../src/features/search/api'
 import type { MyActivityList, MyWorkItemList } from '../src/features/my-work/api'
 import type {
   WorkItemDraft,
@@ -409,6 +409,42 @@ async function mockApi(page: Page, opts: { conflictOnPatch?: boolean } = {}) {
     if (state === 'open') items = items.filter((item) => !['done', 'cancelled'].includes(item.status))
     if (priority) items = items.filter((item) => item.priority === priority)
     if (/priority\s*=\s*high/i.test(pql ?? '')) items = items.filter((item) => item.priority === 'high')
+    if (url.pathname.endsWith('/analytics')) {
+      const pqlLimit = pql?.match(/\bLIMIT\s+(\d+)\b/i)
+      if (pqlLimit) items = items.slice(0, Number(pqlLimit[1]))
+      const projectCounts = new Map<string, { id: string; key: string; name: string; count: number }>()
+      for (const item of items) {
+        const current = projectCounts.get(item.project_id)
+        projectCounts.set(item.project_id, {
+          id: item.project_id,
+          key: item.project_key,
+          name: item.project_name,
+          count: (current?.count ?? 0) + 1,
+        })
+      }
+      const response = {
+        total: items.length,
+        status_buckets: ['backlog', 'todo', 'in_progress', 'in_review', 'done', 'cancelled'].map((key) => ({
+          key,
+          count: items.filter((item) => item.status === key).length,
+        })),
+        priority_buckets: ['none', 'low', 'medium', 'high', 'urgent'].map((key) => ({
+          key,
+          count: items.filter((item) => item.priority === key).length,
+        })),
+        top_projects: [...projectCounts.values()].sort((left, right) => right.count - left.count || left.key.localeCompare(right.key)),
+        project_overflow: { project_count: 0, item_count: 0 },
+        schedule_buckets: {
+          completed: items.filter((item) => ['done', 'cancelled'].includes(item.status)).length,
+          open_overdue: 0,
+          open_due_next_7_days: items.filter((item) => item.due_date && !['done', 'cancelled'].includes(item.status)).length,
+          open_later: 0,
+          open_unscheduled: items.filter((item) => !item.due_date && !['done', 'cancelled'].includes(item.status)).length,
+        },
+      } satisfies SearchWorkPackageAnalytics
+      await route.fulfill({ json: response })
+      return
+    }
     if (sort === 'due') {
       items.sort((left, right) => (left.due_date ?? '9999-12-31').localeCompare(right.due_date ?? '9999-12-31'))
     }
@@ -2991,6 +3027,104 @@ test('Workspace Views Add view가 생성·되돌리기·갱신·삭제와 실패
   await page.screenshot({
     path: '../../docs/screenshots/redevelopment/workspace-saved-views-ui/mobile-create-error.png',
   })
+})
+
+test('Workspace Analytics는 현재 Basic/PQL 필터의 전체 집계를 지연 조회하고 키보드로 닫힌다', async ({ page }) => {
+  await mockApi(page)
+  let analyticsRequests = 0
+  page.on('request', (request) => {
+    if (new URL(request.url()).pathname.endsWith('/search/work-packages/analytics')) analyticsRequests += 1
+  })
+
+  await page.goto('/work-items?scope=assigned&state=open&priority=high')
+  await expect(page.getByRole('heading', { name: 'All work items' })).toBeVisible()
+  expect(analyticsRequests).toBe(0)
+  const trigger = page.getByRole('button', { name: '작업 분석 열기' })
+  const basicRequest = page.waitForRequest((request) => {
+    const url = new URL(request.url())
+    return url.pathname.endsWith('/search/work-packages/analytics')
+      && url.searchParams.get('scope') === 'assigned'
+      && url.searchParams.get('state') === 'open'
+      && url.searchParams.get('priority') === 'high'
+  })
+  await trigger.click()
+  await basicRequest
+  const dialog = page.getByRole('dialog', { name: '작업 분석' })
+  await expect(dialog).toBeVisible()
+  await expect(dialog.getByLabel('전체 작업 1건')).toBeVisible()
+  await expect(dialog.getByLabel('시작 전 1건')).toBeVisible()
+  await expect(dialog.getByLabel('높음 1건')).toBeVisible()
+  await expect(dialog.getByLabel(`ONE · ${project.name} 1건`)).toBeVisible()
+  await page.screenshot({ path: '../../docs/screenshots/redevelopment/workspace-analytics-ui/desktop-basic.png' })
+
+  await page.keyboard.press('Escape')
+  await expect(dialog).toBeHidden()
+  await expect(trigger).toBeFocused()
+
+  await page.emulateMedia({ reducedMotion: 'reduce' })
+  await page.goto('/work-items?filter_mode=pql&pql=priority%20%3D%20High%20LIMIT%201')
+  const pqlRequest = page.waitForRequest((request) => {
+    const url = new URL(request.url())
+    return url.pathname.endsWith('/search/work-packages/analytics')
+      && url.searchParams.get('state') === 'all'
+      && url.searchParams.get('pql') === 'priority = High LIMIT 1'
+      && !url.searchParams.has('priority')
+  })
+  await page.getByRole('button', { name: '작업 분석 열기' }).click()
+  await pqlRequest
+  await expect(dialog.getByLabel('전체 작업 1건')).toBeVisible()
+  await expect(dialog.getByLabel('대기열 0건').locator('[aria-hidden="true"] > div')).toHaveCSS('width', '0px')
+  await expect(page.getByTestId('workspace-analytics-overlay')).toHaveCSS('animation-name', 'none')
+  await expect(dialog.getByLabel('높음 1건').locator('[aria-hidden="true"] > div')).toHaveCSS(
+    'transition-property',
+    'none',
+  )
+
+  await page.keyboard.press('Escape')
+  await expect(dialog).toBeHidden()
+  await page.route(
+    '**/api/v1/search/work-packages/analytics**',
+    (route) => route.fulfill({ status: 503, json: { detail: 'cached analytics unavailable' } }),
+    { times: 2 },
+  )
+  await page.getByRole('button', { name: '작업 분석 열기' }).click()
+  await expect(dialog.getByRole('alert')).toContainText('cached analytics unavailable')
+  await expect(dialog.getByLabel('전체 작업 1건')).toBeHidden()
+})
+
+test('Workspace Analytics는 오류 재시도·빈 결과·모바일 크기를 완결한다', async ({ page }) => {
+  await mockApi(page)
+  let attempts = 0
+  let fail = true
+  await page.route('**/api/v1/search/work-packages/analytics**', async (route) => {
+    attempts += 1
+    if (fail) {
+      await route.fulfill({ status: 503, json: { detail: 'analytics temporarily unavailable' } })
+      return
+    }
+    await route.fulfill({
+      json: {
+        total: 0,
+        status_buckets: ['backlog', 'todo', 'in_progress', 'in_review', 'done', 'cancelled'].map((key) => ({ key, count: 0 })),
+        priority_buckets: ['none', 'low', 'medium', 'high', 'urgent'].map((key) => ({ key, count: 0 })),
+        top_projects: [],
+        project_overflow: { project_count: 0, item_count: 0 },
+        schedule_buckets: { completed: 0, open_overdue: 0, open_due_next_7_days: 0, open_later: 0, open_unscheduled: 0 },
+      } satisfies SearchWorkPackageAnalytics,
+    })
+  })
+
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto('/work-items?q=없는작업')
+  await page.getByRole('button', { name: '작업 분석 열기' }).click()
+  const dialog = page.getByRole('dialog', { name: '작업 분석' })
+  await expect(dialog.getByRole('alert')).toContainText('analytics temporarily unavailable')
+  fail = false
+  await dialog.getByRole('button', { name: '다시 시도' }).click()
+  await expect(dialog.getByText('분석할 작업이 없습니다')).toBeVisible()
+  expect(attempts).toBeGreaterThanOrEqual(2)
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({ path: '../../docs/screenshots/redevelopment/workspace-analytics-ui/mobile-empty.png' })
 })
 
 test('Workspace Views PQL은 추천·검증·실행·저장·초기화를 실제 query에 연결한다', async ({ page }) => {

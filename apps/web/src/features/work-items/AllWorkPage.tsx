@@ -31,6 +31,7 @@ import type { WpPriority } from '@/features/work-packages/types'
 import { cn } from '@/lib/utils'
 
 import { WorkspaceCalendarView } from './WorkspaceCalendarView'
+import { WorkspaceAnalyticsDialog } from './WorkspaceAnalyticsDialog'
 import { WorkspaceColumnSortMenu } from './WorkspaceColumnSortMenu'
 import { WorkspaceDisplayMenu } from './WorkspaceDisplayMenu'
 import { WorkspaceInlineAssigneeMenu } from './WorkspaceInlineAssigneeMenu'
@@ -334,6 +335,14 @@ export function AllWorkPage() {
           >
             <Filter size={13} /> 필터{activeFilterCount > 0 ? ` ${activeFilterCount}` : ''}
           </Button>
+          <WorkspaceAnalyticsDialog
+            q={q}
+            scope={scope}
+            state={filterMode === 'pql' ? 'all' : state}
+            priority={filterMode === 'basic' && priority !== 'all' ? priority : null}
+            pql={filterMode === 'pql' && pql ? pql : null}
+            scopeLabel={scopeLabel}
+          />
           <WorkspaceDisplayMenu
             layout={layout}
             groupBy={groupBy}
