@@ -39,6 +39,8 @@ class OidcLoginAttempt(Base):
     browser_token_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     nonce_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     code_verifier: Mapped[str] = mapped_column(String(128), nullable=False)
+    provider: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    config_fingerprint: Mapped[str | None] = mapped_column(String(64), nullable=True)
     next_path: Mapped[str] = mapped_column(String(2048), nullable=False, default="/")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()

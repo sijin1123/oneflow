@@ -8,7 +8,11 @@ from httpx import ASGITransport, AsyncClient
 
 from app.core.config import Settings
 from app.main import create_app
-from tests.conftest import make_oidc_test_settings, make_test_settings
+from tests.conftest import (
+    make_oidc_provider_test_settings,
+    make_oidc_test_settings,
+    make_test_settings,
+)
 
 
 async def test_dev_mode_config_is_minimal(client):
@@ -19,6 +23,7 @@ async def test_dev_mode_config_is_minimal(client):
         "oidc_issuer": None,
         "oidc_client_id": None,
         "oidc_provider": None,
+        "oidc_providers": [],
         "has_client_secret": False,
         "command_palette_enabled": False,
         "session_management_enabled": False,
@@ -63,6 +68,7 @@ async def test_oidc_mode_answers_config_and_requires_a_login_session():
         assert body["oidc_issuer"] == "https://idp.example.com/realms/test"
         assert body["oidc_client_id"] == "oneflow-web"
         assert body["oidc_provider"] == "sso"
+        assert body["oidc_providers"] == ["sso"]
         assert body["has_client_secret"] is True
         assert body["command_palette_enabled"] is False
         assert body["session_management_enabled"] is True
@@ -77,7 +83,7 @@ async def test_oidc_mode_answers_config_and_requires_a_login_session():
 
 
 def test_oidc_mode_without_config_fails_startup():
-    with pytest.raises(Exception, match="ONEFLOW_OIDC_ISSUER"):
+    with pytest.raises(Exception, match="at least one complete OIDC provider"):
         make_test_settings(auth_mode="oidc")
 
 
@@ -107,6 +113,58 @@ def test_dev_mode_ignores_partial_oidc_values():
     # Extra oidc values in dev mode are inert — no guard trips.
     s: Settings = make_test_settings(oidc_issuer="https://idp.example.com")
     assert s.auth_mode == "dev"
+
+
+def test_legacy_oidc_provider_remains_available_without_provider_groups():
+    settings = make_oidc_test_settings(oidc_allowed_email_domains="example.test")
+    assert settings.enabled_oidc_provider_aliases == ("sso",)
+    provider = settings.oidc_provider_config("sso")
+    assert provider is not None
+    assert provider.issuer == "https://idp.example.test"
+
+
+def test_multiple_provider_groups_expose_only_enabled_aliases():
+    settings = make_oidc_provider_test_settings(
+        oidc_sso_issuer="https://sso.example.test/realms/oneflow",
+        oidc_sso_client_id="oneflow-sso",
+        oidc_sso_client_secret="test-sso-secret",
+        oidc_sso_redirect_uri="https://api.oneflow.test/api/v1/auth/oidc/sso/callback",
+        oidc_sso_allowed_hosts="keys.example.test",
+        oidc_sso_allowed_email_domains="example.test",
+    )
+    assert settings.enabled_oidc_provider_aliases == ("google", "sso")
+    assert settings.oidc_provider_config("microsoft") is None
+
+
+def test_partial_provider_group_and_legacy_mix_fail_startup():
+    with pytest.raises(Exception, match="provider group is incomplete"):
+        make_test_settings(oidc_google_issuer="https://accounts.example.test")
+    with pytest.raises(Exception, match="cannot be mixed"):
+        make_oidc_provider_test_settings(oidc_issuer="https://legacy.example.test")
+
+
+def test_duplicate_canonical_issuers_and_private_allowlist_hosts_fail_startup():
+    duplicate = dict(
+        oidc_sso_issuer="https://accounts.example.test/",
+        oidc_sso_client_id="oneflow-sso",
+        oidc_sso_client_secret="test-sso-secret",
+        oidc_sso_redirect_uri="https://api.oneflow.test/api/v1/auth/oidc/sso/callback",
+        oidc_sso_allowed_hosts="",
+        oidc_sso_allowed_email_domains="example.test",
+    )
+    with pytest.raises(Exception, match="duplicated"):
+        make_oidc_provider_test_settings(**duplicate)
+    with pytest.raises(Exception, match="private IP literal"):
+        make_oidc_provider_test_settings(oidc_google_allowed_hosts="127.0.0.1")
+
+
+def test_provider_config_fingerprint_tracks_secret_rotation_without_exposing_it():
+    first = make_oidc_provider_test_settings()
+    second = make_oidc_provider_test_settings(oidc_google_client_secret="rotated-secret")
+    provider = first.oidc_provider_config("google")
+    assert provider is not None
+    assert provider.config_fingerprint != second.oidc_provider_config("google").config_fingerprint
+    assert "test-google-secret" not in repr(provider)
 
 
 @pytest.mark.parametrize(

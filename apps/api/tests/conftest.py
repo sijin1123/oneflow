@@ -68,6 +68,23 @@ def make_oidc_test_settings(**overrides) -> Settings:
         oidc_client_secret="test-client-secret",
         oidc_redirect_uri="https://api.oneflow.test/api/v1/auth/oidc/callback",
         oidc_web_origin="https://oneflow.test",
+        oidc_allowed_email_domains="example.test",
+    )
+    base.update(overrides)
+    return make_test_settings(**base)
+
+
+def make_oidc_provider_test_settings(**overrides) -> Settings:
+    base = dict(
+        auth_mode="oidc",
+        cors_origins="https://oneflow.test",
+        oidc_web_origin="https://oneflow.test",
+        oidc_google_issuer="https://accounts.example.test",
+        oidc_google_client_id="oneflow-google",
+        oidc_google_client_secret="test-google-secret",
+        oidc_google_redirect_uri="https://api.oneflow.test/api/v1/auth/oidc/google/callback",
+        oidc_google_allowed_hosts="",
+        oidc_google_allowed_email_domains="example.test",
     )
     base.update(overrides)
     return make_test_settings(**base)
@@ -222,6 +239,7 @@ __all__ = [
     "create_wp",
     "make_test_settings",
     "make_oidc_test_settings",
+    "make_oidc_provider_test_settings",
     "TEST_URL",
     "WorkPackageRelation",
     "uuid",
