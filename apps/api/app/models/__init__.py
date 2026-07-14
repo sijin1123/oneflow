@@ -22,6 +22,7 @@ from app.models.notification import Notification
 from app.models.notification_setting import UserNotificationSettings
 from app.models.personal_note import PersonalNote
 from app.models.project import Project
+from app.models.project_directory_preferences import UserProjectDirectoryPreferences
 from app.models.project_status import ProjectStatus
 from app.models.project_template import (
     ProjectTemplate,
@@ -46,6 +47,7 @@ __all__ = [
     "User",
     "PersonalAccessToken",
     "Project",
+    "UserProjectDirectoryPreferences",
     "Customer",
     "ProjectMember",
     "WorkPackage",

@@ -367,6 +367,9 @@ ENDPOINT_ALLOWLIST: dict[str, str] = {
         "개인 초안 정리 — 프로젝트 멤버십 상실 뒤에도 소유자만 삭제 가능"
     ),
     "PUT /api/v1/me/notification-settings": "개인 알림 설정 — 사용자 스코프",
+    "PUT /api/v1/me/project-directory-preferences": (
+        "개인 프로젝트 디렉터리 표시 설정 — 사용자 스코프"
+    ),
     "POST /api/v1/me/access-tokens": "개인 개발자 토큰 — 사용자 스코프",
     "DELETE /api/v1/me/access-tokens/{token_id}": "개인 개발자 토큰 폐기 — 사용자 스코프",
     "POST /api/v1/webhooks": "워크스페이스 admin webhook endpoint 생성",

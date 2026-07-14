@@ -920,6 +920,27 @@ export interface paths {
         patch: operations["update_personal_note_api_v1_me_personal_notes__note_id__patch"];
         trace?: never;
     };
+    "/api/v1/me/project-directory-preferences": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Project Directory Preferences */
+        get: operations["get_project_directory_preferences_api_v1_me_project_directory_preferences_get"];
+        /**
+         * Put Project Directory Preferences
+         * @description Last-write-wins storage for this caller's own directory presentation.
+         */
+        put: operations["put_project_directory_preferences_api_v1_me_project_directory_preferences_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/me/sessions": {
         parameters: {
             query?: never;
@@ -5822,6 +5843,50 @@ export interface components {
              */
             updated_at: string;
         };
+        /** ProjectDirectoryPreferencesPut */
+        ProjectDirectoryPreferencesPut: {
+            /** Columns */
+            columns: ("initiatives" | "work_package_count" | "open_work_package_count" | "overdue_count" | "member_count")[];
+            /**
+             * Layout
+             * @enum {string}
+             */
+            layout: "grid" | "list";
+            /**
+             * Sort Direction
+             * @enum {string}
+             */
+            sort_direction: "asc" | "desc";
+            /**
+             * Sort Key
+             * @enum {string}
+             */
+            sort_key: "default" | "name" | "work_package_count" | "open_work_package_count" | "overdue_count" | "member_count" | "health";
+        };
+        /** ProjectDirectoryPreferencesRead */
+        ProjectDirectoryPreferencesRead: {
+            /** Columns */
+            columns: ("initiatives" | "work_package_count" | "open_work_package_count" | "overdue_count" | "member_count")[];
+            /** Is Default */
+            is_default: boolean;
+            /**
+             * Layout
+             * @enum {string}
+             */
+            layout: "grid" | "list";
+            /**
+             * Sort Direction
+             * @enum {string}
+             */
+            sort_direction: "asc" | "desc";
+            /**
+             * Sort Key
+             * @enum {string}
+             */
+            sort_key: "default" | "name" | "work_package_count" | "open_work_package_count" | "overdue_count" | "member_count" | "health";
+            /** Updated At */
+            updated_at: string | null;
+        };
         /** ProjectInitiativeRef */
         ProjectInitiativeRef: {
             /**
@@ -10031,6 +10096,76 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PersonalNoteError"];
+                };
+            };
+        };
+    };
+    get_project_directory_preferences_api_v1_me_project_directory_preferences_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectDirectoryPreferencesRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_project_directory_preferences_api_v1_me_project_directory_preferences_put: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProjectDirectoryPreferencesPut"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectDirectoryPreferencesRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
