@@ -284,3 +284,9 @@ Plane wording, checklist taxonomy, source, package, asset, CSS, DOM hierarchy, e
 `docs/plane-poc-reverse-spec/` D004/S009/S010/S014에서 사용한 입력은 Workspace Views의 Display surface가 표시 열을 사용자별 view state로 관리한다는 행동·정보구조뿐이다. OneFlow 구현은 기존 자체 URL presentation state, private saved-view create/PATCH/reapply 계약, React Table rendering, Radix menu/dialog primitives와 Lucide icons로 독립 작성했다.
 
 Plane source, package, asset, CSS, DOM hierarchy, exact dimensions/colors, wording, ordering implementation, icons 또는 branding은 복사하지 않았다. 신규 dependency/API/DB/schema/environment/settings UI 변경과 이연 항목은 없다. — attested-independent-derivation
+
+## UI-107 Project Directory User Preferences
+
+`docs/plane-poc-reverse-spec/` D004/S009-S015에서 사용한 입력은 프로젝트 탐색 화면의 표시 선택이 개인 보기 상태로 유지된다는 행동 범주뿐이다. OneFlow 구현은 기존 자체 Project Directory control과 localStorage fallback, FastAPI authentication, PostgreSQL user identity, React Query cache를 사용해 계정별 hydration·안전한 legacy 승격·직렬 저장·실패 재시도를 독립 설계했다.
+
+Plane source, API, database schema, package, asset, CSS, DOM hierarchy, exact dimensions/colors, wording, preference key 또는 branding은 복사하지 않았다. OneFlow 고유 사용자 preference API와 migration `0081`을 추가했으며 신규 dependency/environment/settings UI 변경과 기능 이연 항목은 없다. — attested-independent-derivation

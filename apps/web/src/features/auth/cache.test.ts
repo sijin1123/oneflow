@@ -3,7 +3,7 @@ import test from 'node:test'
 
 import { QueryClient } from '@tanstack/react-query'
 
-import { clearIdentityBoundCache } from './cache.ts'
+import { clearIdentityBoundCache, registerIdentityReset } from './cache.ts'
 
 test('login identity switch removes the previous user private cache before navigation', () => {
   const queryClient = new QueryClient()
@@ -11,9 +11,15 @@ test('login identity switch removes the previous user private cache before navig
     items: [{ id: 'user-a-private-note', title: 'User A private' }],
   })
   queryClient.setQueryData(['me'], { id: 'user-a' })
+  let resetCount = 0
+  const unregister = registerIdentityReset(() => {
+    resetCount += 1
+  })
 
   clearIdentityBoundCache(queryClient)
 
+  assert.equal(resetCount, 1)
   assert.equal(queryClient.getQueryData(['personal-notes', '', 200, 0]), undefined)
   assert.equal(queryClient.getQueryData(['me']), undefined)
+  unregister()
 })

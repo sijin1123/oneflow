@@ -2456,3 +2456,15 @@ Chromium typed mock fixture에서 1440x960과 390x844 viewport를 사용했다. 
 - Chromium 증적은 `docs/screenshots/redevelopment/workspace-column-order-ui/{desktop,mobile}.png`에 보존한다.
 - 독립 reviewer는 실행 예산 종료 전 unit/TypeScript/diff check를 확인하고 boundary disabled, 실제 row cell order, page 보존 assertion 보강을 요청했다. root가 세 범주를 E2E에 추가한 뒤 focused E2E와 전체 회귀를 다시 통과시켰다.
 - API, DB, migration, permission contract, environment variable, settings UI, dependency 변경과 이연 항목은 없다.
+
+---
+
+# UI-107 Project Directory User Preferences 검증 (2026-07-14)
+
+- Project Directory의 표시 열, 정렬 기준·방향, 카드/목록 레이아웃을 인증 사용자별 `GET/PUT /api/v1/me/project-directory-preferences`에 저장한다. 서버 row가 없으면 built-in default와 `is_default=true`를 반환하고, 저장 row는 사용자 삭제 시 cascade된다.
+- 열·정렬·방향·레이아웃은 API와 DB CHECK 모두 닫힌 어휘로 제한한다. 열 중복은 첫 등장 순서로 제거하며 빈 열 배열도 사용자의 의도적인 최소 표시로 보존한다. 마지막 저장 요청이 승리하고 다른 사용자의 설정은 조회·변경할 수 없다.
+- 기존 `oneflow.projects.*.v1` localStorage는 즉시 UI와 네트워크 실패 fallback으로 유지한다. 서버가 아직 default일 때만 유효한 로컬 설정을 한 번 승격하고, 기존 서버 row는 덮어쓰지 않는다. 서버 응답 전 사용자 조작은 늦은 hydration이 덮어쓰지 않는다.
+- 변경은 화면과 로컬 fallback에 즉시 반영되고 서버 쓰기는 직렬화된다. 조회 실패와 저장 실패는 서로 구분된 compact 상태와 실제 재시도 명령을 제공하며, 재시도는 가장 최근 화면값을 보낸다. React Strict Mode의 mount cleanup에서도 writer를 재활성화해 저장이 누락되지 않도록 E2E로 고정했다.
+- 검증: API focused 4 및 full 679 PASS(기존 Alembic 경고 1건), Ruff/format PASS, migration `0081 -> 0080 -> 0081` PASS, OpenAPI generation/drift PASS, typecheck/lint/build PASS(기존 Fast Refresh 4·chunk 경고), unit 91, component 8, full E2E 268 PASS + opt-in visual QA 1 skip 후 lifecycle 보정 focused Project Directory 3·인증 3 PASS, clean-room frontend 161/backend 44, web npm audit 0 vulnerabilities, diff check PASS.
+- Chromium 증적은 `docs/screenshots/redevelopment/project-directory-preferences-ui/{desktop,mobile}.png`에 보존한다.
+- Migration `0081` 적용이 필요하다. 환경변수, 설정 UI, dependency 변경과 기능 이연 항목은 없다.

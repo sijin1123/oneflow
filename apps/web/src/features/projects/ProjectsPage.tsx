@@ -11,7 +11,8 @@ import {
   SlidersHorizontal,
   X,
 } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 
 import { EmptyState, ErrorState, ListSkeleton } from '@/components/shell/states'
@@ -31,7 +32,21 @@ import { ApiError } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { useWorkspaceCapabilities } from '@/features/workspace-features/api'
 
-import { useCreateProject, useProjects } from './api'
+import {
+  getProjectDirectoryPreferences,
+  projectDirectoryPreferenceWriter,
+  useCreateProject,
+  useProjects,
+} from './api'
+import {
+  loadLocalProjectDirectoryPreferences,
+  parseProjectDirectoryPreferences,
+  ROLLUP_COLUMNS,
+  saveLocalProjectDirectoryPreferences,
+  type ProjectDirectoryPreferences,
+  type ProjectLayout,
+  type RollupKey,
+} from './projectDirectoryPreferences'
 import { SORT_KEYS, SORT_LABELS, sortProjects, type ProjectSortKey, type SortDir } from './sort'
 import {
   HEALTH_LABELS,
@@ -42,86 +57,6 @@ import {
 import { ProjectCover } from './ProjectCover'
 
 const KEY_RE = /^[A-Z][A-Z0-9]{1,9}$/
-
-const ROLLUP_COLUMNS = [
-  { key: 'initiatives', label: '이니셔티브' },
-  { key: 'work_package_count', label: '작업' },
-  { key: 'open_work_package_count', label: '진행 중' },
-  { key: 'overdue_count', label: '기한 초과' },
-  { key: 'member_count', label: '멤버' },
-] as const
-
-type RollupKey = (typeof ROLLUP_COLUMNS)[number]['key']
-const COLUMNS_STORAGE_KEY = 'oneflow.projects.columns.v1'
-const DEFAULT_COLUMNS: RollupKey[] = ROLLUP_COLUMNS.filter((c) => c.key !== 'initiatives').map(
-  (c) => c.key,
-)
-
-/** Corrupted JSON / unknown keys / unavailable storage all fall back to the
-    defaults (v22.1 R1-④) — a broken preference must never break the list. */
-function loadColumns(): RollupKey[] {
-  try {
-    const raw = localStorage.getItem(COLUMNS_STORAGE_KEY)
-    if (!raw) return DEFAULT_COLUMNS
-    const parsed: unknown = JSON.parse(raw)
-    if (!Array.isArray(parsed)) return DEFAULT_COLUMNS
-    return parsed.filter((k): k is RollupKey => ROLLUP_COLUMNS.some((c) => c.key === k))
-  } catch {
-    return DEFAULT_COLUMNS
-  }
-}
-
-const SORT_STORAGE_KEY = 'oneflow.projects.sort.v1'
-const LAYOUT_STORAGE_KEY = 'oneflow.projects.layout.v1'
-type ProjectLayout = 'grid' | 'list'
-
-/** Broken values fall back to the server default (#97 contract). */
-function loadSort(): { key: ProjectSortKey; dir: SortDir } {
-  try {
-    const raw = localStorage.getItem(SORT_STORAGE_KEY)
-    if (!raw) return { key: 'default', dir: 'asc' }
-    const parsed = JSON.parse(raw) as { key?: unknown; dir?: unknown }
-    const key = SORT_KEYS.includes(parsed.key as ProjectSortKey)
-      ? (parsed.key as ProjectSortKey)
-      : 'default'
-    const dir = parsed.dir === 'desc' ? 'desc' : 'asc'
-    return { key, dir }
-  } catch {
-    return { key: 'default', dir: 'asc' }
-  }
-}
-
-function saveSort(sort: { key: ProjectSortKey; dir: SortDir }) {
-  try {
-    localStorage.setItem(SORT_STORAGE_KEY, JSON.stringify(sort))
-  } catch {
-    // private mode / quota — in-memory only
-  }
-}
-
-function loadLayout(): ProjectLayout {
-  try {
-    return localStorage.getItem(LAYOUT_STORAGE_KEY) === 'list' ? 'list' : 'grid'
-  } catch {
-    return 'grid'
-  }
-}
-
-function saveLayout(layout: ProjectLayout) {
-  try {
-    localStorage.setItem(LAYOUT_STORAGE_KEY, layout)
-  } catch {
-    // private mode / quota — in-memory only
-  }
-}
-
-function saveColumns(cols: RollupKey[]) {
-  try {
-    localStorage.setItem(COLUMNS_STORAGE_KEY, JSON.stringify(cols))
-  } catch {
-    // private mode / quota — keep the in-memory state only
-  }
-}
 
 function NewProjectForm({ onClose }: { onClose: () => void }) {
   const navigate = useNavigate()
@@ -524,11 +459,19 @@ function matchesProject(project: ProjectListItem, query: string) {
 
 export function ProjectsPage() {
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const [searchParams, setSearchParams] = useSearchParams()
   const [includeArchived, setIncludeArchived] = useState(false)
-  const [columns, setColumns] = useState<RollupKey[]>(loadColumns)
-  const [sort, setSort] = useState<{ key: ProjectSortKey; dir: SortDir }>(loadSort)
-  const [layout, setLayout] = useState<ProjectLayout>(loadLayout)
+  const [legacyPreferences] = useState(loadLocalProjectDirectoryPreferences)
+  const [preferences, setPreferences] = useState<ProjectDirectoryPreferences>(
+    legacyPreferences.preferences,
+  )
+  const [preferenceSyncStatus, setPreferenceSyncStatus] = useState(
+    projectDirectoryPreferenceWriter.getStatus(),
+  )
+  const migrationAttempted = useRef(false)
+  const userChangedPreferences = useRef(false)
+  const { columns, sort, layout } = preferences
   const [query, setQuery] = useState('')
   const createRequested = searchParams.get('new') === '1'
   const [creating, setCreating] = useState(createRequested)
@@ -542,10 +485,49 @@ export function ProjectsPage() {
   )
 
   const { data, isPending, isFetching, isError, error, refetch } = useProjects(includeArchived)
+  const preferenceQuery = useQuery({
+    queryKey: ['me', 'project-directory-preferences'],
+    queryFn: getProjectDirectoryPreferences,
+  })
 
   useEffect(() => {
     if (createRequested) setCreating(true)
   }, [createRequested])
+
+  useEffect(
+    () => projectDirectoryPreferenceWriter.subscribeStatus(setPreferenceSyncStatus),
+    [],
+  )
+
+  useEffect(
+    () =>
+      projectDirectoryPreferenceWriter.subscribeSaved((saved) => {
+        queryClient.setQueryData(['me', 'project-directory-preferences'], saved)
+      }),
+    [queryClient],
+  )
+
+  useEffect(() => {
+    if (!preferenceQuery.data) return
+    if (userChangedPreferences.current) return
+    if (preferenceSyncStatus !== 'idle') return
+    if (!preferenceQuery.data.is_default) {
+      const hydrated = parseProjectDirectoryPreferences(preferenceQuery.data)
+      if (!hydrated) return
+      setPreferences(hydrated)
+      saveLocalProjectDirectoryPreferences(hydrated)
+      return
+    }
+    if (
+      !migrationAttempted.current &&
+      !userChangedPreferences.current &&
+      legacyPreferences.hasLegacy &&
+      legacyPreferences.isValid
+    ) {
+      migrationAttempted.current = true
+      projectDirectoryPreferenceWriter.queue(legacyPreferences.preferences)
+    }
+  }, [legacyPreferences, preferenceQuery.data, preferenceSyncStatus])
 
   const closeCreate = () => {
     setCreating(false)
@@ -556,21 +538,28 @@ export function ProjectsPage() {
   }
 
   const changeSort = (next: { key: ProjectSortKey; dir: SortDir }) => {
-    setSort(next)
-    saveSort(next)
+    userChangedPreferences.current = true
+    const updated = { ...preferences, sort: next }
+    setPreferences(updated)
+    saveLocalProjectDirectoryPreferences(updated)
+    projectDirectoryPreferenceWriter.queue(updated)
   }
 
   const toggleColumn = (key: RollupKey) => {
-    setColumns((prev) => {
-      const next = prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]
-      saveColumns(next)
-      return next
-    })
+    userChangedPreferences.current = true
+    const next = columns.includes(key) ? columns.filter((column) => column !== key) : [...columns, key]
+    const updated = { ...preferences, columns: next }
+    setPreferences(updated)
+    saveLocalProjectDirectoryPreferences(updated)
+    projectDirectoryPreferenceWriter.queue(updated)
   }
 
   const changeLayout = (next: ProjectLayout) => {
-    setLayout(next)
-    saveLayout(next)
+    userChangedPreferences.current = true
+    const updated = { ...preferences, layout: next }
+    setPreferences(updated)
+    saveLocalProjectDirectoryPreferences(updated)
+    projectDirectoryPreferenceWriter.queue(updated)
   }
 
   const summary = useMemo(() => {
@@ -724,10 +713,41 @@ export function ProjectsPage() {
               ))}
               <DropdownMenuSeparator />
               <DropdownMenuLabel className="pb-1">
-                선택한 열은 이 브라우저에 저장됩니다.
+                선택한 열은 브라우저와 계정에 저장됩니다.
               </DropdownMenuLabel>
             </DropdownMenuContent>
           </DropdownMenu>
+          {preferenceQuery.isFetching ? (
+            <span className="text-[11px] text-of-muted" aria-live="polite">
+              보기 설정 불러오는 중
+            </span>
+          ) : preferenceQuery.isError ? (
+            <span className="flex items-center gap-1 text-[11px] text-of-danger" role="status">
+              브라우저 설정 사용 중
+              <button
+                type="button"
+                className="underline underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus"
+                onClick={() => void preferenceQuery.refetch()}
+              >
+                재시도
+              </button>
+            </span>
+          ) : preferenceSyncStatus === 'pending' ? (
+            <span className="text-[11px] text-of-muted" aria-live="polite">
+              보기 설정 저장 중
+            </span>
+          ) : preferenceSyncStatus === 'error' ? (
+            <span className="flex items-center gap-1 text-[11px] text-of-danger" role="status">
+              보기 설정 저장 실패
+              <button
+                type="button"
+                className="underline underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus"
+                onClick={() => projectDirectoryPreferenceWriter.retry()}
+              >
+                재시도
+              </button>
+            </span>
+          ) : null}
           <Button
             variant="outline"
             size="icon"

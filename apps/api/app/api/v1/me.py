@@ -5,6 +5,8 @@ from typing import Literal
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy import func, select
 from sqlalchemy import update as sa_update
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import get_current_user
@@ -15,6 +17,10 @@ from app.models.member import ProjectMember
 from app.models.notification import Notification
 from app.models.notification_setting import UserNotificationSettings
 from app.models.project import Project
+from app.models.project_directory_preferences import (
+    PROJECT_DIRECTORY_COLUMNS,
+    UserProjectDirectoryPreferences,
+)
 from app.models.time_entry import TimeEntry
 from app.models.user import User
 from app.models.watcher import WpWatcher
@@ -35,6 +41,10 @@ from app.schemas.notification_setting import (
     NotificationSettingsRead,
     NotificationSettingsUpdate,
 )
+from app.schemas.project_directory_preferences import (
+    ProjectDirectoryPreferencesPut,
+    ProjectDirectoryPreferencesRead,
+)
 from app.schemas.user import UserRead
 
 router = APIRouter()
@@ -42,6 +52,12 @@ router = APIRouter()
 MY_WORK_LIMIT = 50
 MY_ACTIVITY_LIMIT = 20
 DUE_SOON_DAYS = 7
+DEFAULT_PROJECT_DIRECTORY_COLUMNS = [
+    "work_package_count",
+    "open_work_package_count",
+    "overdue_count",
+    "member_count",
+]
 
 
 @router.get("/me", response_model=UserRead)
@@ -49,6 +65,90 @@ async def me(user: User = Depends(get_current_user)) -> UserRead:
     """The authenticated user (dev user in dev mode). Lets the UI decide which
     per-project controls to show based on the caller's membership role."""
     return UserRead.model_validate(user)
+
+
+@router.get(
+    "/me/project-directory-preferences",
+    response_model=ProjectDirectoryPreferencesRead,
+)
+async def get_project_directory_preferences(
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+) -> ProjectDirectoryPreferencesRead:
+    row = (
+        await session.execute(
+            select(UserProjectDirectoryPreferences).where(
+                UserProjectDirectoryPreferences.user_id == user.id
+            )
+        )
+    ).scalar_one_or_none()
+    if row is None:
+        return ProjectDirectoryPreferencesRead(
+            columns=DEFAULT_PROJECT_DIRECTORY_COLUMNS,
+            sort_key="default",
+            sort_direction="asc",
+            layout="grid",
+            updated_at=None,
+            is_default=True,
+        )
+    return ProjectDirectoryPreferencesRead(
+        columns=list(
+            dict.fromkeys(column for column in row.columns if column in PROJECT_DIRECTORY_COLUMNS)
+        ),
+        sort_key=row.sort_key,
+        sort_direction=row.sort_direction,
+        layout=row.layout,
+        updated_at=row.updated_at,
+        is_default=False,
+    )
+
+
+@router.put(
+    "/me/project-directory-preferences",
+    response_model=ProjectDirectoryPreferencesRead,
+)
+async def put_project_directory_preferences(
+    body: ProjectDirectoryPreferencesPut,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+) -> ProjectDirectoryPreferencesRead:
+    """Last-write-wins storage for this caller's own directory presentation."""
+    columns = list(dict.fromkeys(body.columns))
+    stmt = (
+        pg_insert(UserProjectDirectoryPreferences)
+        .values(
+            user_id=user.id,
+            columns=columns,
+            sort_key=body.sort_key,
+            sort_direction=body.sort_direction,
+            layout=body.layout,
+        )
+        .on_conflict_do_update(
+            index_elements=["user_id"],
+            set_={
+                "columns": columns,
+                "sort_key": body.sort_key,
+                "sort_direction": body.sort_direction,
+                "layout": body.layout,
+                "updated_at": func.now(),
+            },
+        )
+        .returning(UserProjectDirectoryPreferences.updated_at)
+    )
+    try:
+        updated_at = (await session.execute(stmt)).scalar_one()
+        await session.commit()
+    except IntegrityError as exc:
+        await session.rollback()
+        raise HTTPException(status_code=404, detail="user not found") from exc
+    return ProjectDirectoryPreferencesRead(
+        columns=columns,
+        sort_key=body.sort_key,
+        sort_direction=body.sort_direction,
+        layout=body.layout,
+        updated_at=updated_at,
+        is_default=False,
+    )
 
 
 @router.get("/me/work", response_model=MeWorkRead)

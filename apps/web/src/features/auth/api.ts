@@ -43,7 +43,7 @@ export function useLogout() {
   return useMutation({
     mutationFn: () => api<void>('/api/v1/auth/logout', { method: 'POST' }),
     onSuccess: () => {
-      queryClient.clear()
+      clearIdentityBoundCache(queryClient)
     },
   })
 }
@@ -72,7 +72,7 @@ export function useRevokeAuthSession() {
       api<void>(`/api/v1/me/sessions/${id}`, { method: 'DELETE' }),
     onSuccess: (_, variables) => {
       if (variables.isCurrent) {
-        queryClient.clear()
+        clearIdentityBoundCache(queryClient)
         window.location.assign('/login')
         return
       }

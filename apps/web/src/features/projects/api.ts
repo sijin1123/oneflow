@@ -1,8 +1,46 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { api } from '@/lib/api'
+import { registerIdentityReset } from '@/features/auth/cache'
 
 import type { Project, ProjectList } from './types'
+import {
+  LatestPreferenceWriter,
+  toProjectDirectoryPreferencesPayload,
+  type ProjectDirectoryPreferences,
+  type ProjectDirectoryPreferencesPayload,
+} from './projectDirectoryPreferences'
+
+export type ProjectDirectoryPreferencesResponse = {
+  columns: string[]
+  sort_key: string
+  sort_direction: string
+  layout: string
+  updated_at: string | null
+  is_default: boolean
+}
+
+export type ProjectDirectoryPreferencesInput = ProjectDirectoryPreferencesPayload
+
+export function getProjectDirectoryPreferences() {
+  return api<ProjectDirectoryPreferencesResponse>('/api/v1/me/project-directory-preferences')
+}
+
+export function putProjectDirectoryPreferences(input: ProjectDirectoryPreferencesInput) {
+  return api<ProjectDirectoryPreferencesResponse>('/api/v1/me/project-directory-preferences', {
+    method: 'PUT',
+    body: JSON.stringify(input),
+  })
+}
+
+export const projectDirectoryPreferenceWriter = new LatestPreferenceWriter<
+  ProjectDirectoryPreferences,
+  ProjectDirectoryPreferencesResponse
+>((preferences) =>
+  putProjectDirectoryPreferences(toProjectDirectoryPreferencesPayload(preferences)),
+)
+
+registerIdentityReset(() => projectDirectoryPreferenceWriter.reset())
 
 export function getProject(projectId: string) {
   return api<Project>(`/api/v1/projects/${projectId}`)

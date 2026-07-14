@@ -235,6 +235,19 @@ async function mockApi(page: Page, opts: { conflictOnPatch?: boolean } = {}) {
   let workspaceViews: WorkspaceSavedView[] = []
   let workspaceWorkItems = allWorkItems.items.map((item) => ({ ...item }))
   let currentWorkPackage = { ...wpA }
+  let projectDirectoryPreferences = {
+    columns: [
+      'work_package_count',
+      'open_work_package_count',
+      'overdue_count',
+      'member_count',
+    ],
+    sort_key: 'default',
+    sort_direction: 'asc',
+    layout: 'grid',
+    updated_at: null as string | null,
+    is_default: true,
+  }
   await page.route('**/api/v1/workspace/capabilities', (route) =>
     route.fulfill({ json: defaultWorkspaceCapabilities }),
   )
@@ -365,6 +378,20 @@ async function mockApi(page: Page, opts: { conflictOnPatch?: boolean } = {}) {
       return
     }
     await route.fulfill({ json: { items: workspaceViews, total: workspaceViews.length } })
+  })
+  await page.route('**/api/v1/me/project-directory-preferences', async (route) => {
+    if (route.request().method() === 'PUT') {
+      const body = route.request().postDataJSON() as Omit<
+        typeof projectDirectoryPreferences,
+        'updated_at' | 'is_default'
+      >
+      projectDirectoryPreferences = {
+        ...body,
+        updated_at: '2026-07-14T00:00:00Z',
+        is_default: false,
+      }
+    }
+    await route.fulfill({ json: projectDirectoryPreferences })
   })
   await page.route('**/api/v1/projects', (route) =>
     route.fulfill({ json: projects }),
@@ -12203,6 +12230,210 @@ test('프로젝트 목록 정렬이 순서를 바꾸고 방향 토글이 동작�
   await expect(rows.first()).toContainText('베타') // 5 overdue first
   await page.getByLabel(/정렬 방향/).click() // back to asc
   await expect(rows.first()).toContainText('알파')
+})
+
+test('프로젝트 디렉터리 계정 설정을 불러오고 변경값을 다시 저장한다', async ({ page }) => {
+  await mockApi(page)
+  let stored = {
+    columns: ['overdue_count'],
+    sort_key: 'name',
+    sort_direction: 'desc',
+    layout: 'list',
+    updated_at: '2026-07-14T00:00:00Z',
+    is_default: false,
+  }
+  const writes: Array<Record<string, unknown>> = []
+  await page.route('**/api/v1/me/project-directory-preferences', async (route) => {
+    if (route.request().method() === 'PUT') {
+      const body = route.request().postDataJSON() as typeof writes[number]
+      writes.push(body)
+      stored = {
+        columns: body.columns as string[],
+        sort_key: body.sort_key as string,
+        sort_direction: body.sort_direction as string,
+        layout: body.layout as string,
+        updated_at: '2026-07-14T00:01:00Z',
+        is_default: false,
+      }
+    }
+    await route.fulfill({ json: stored })
+  })
+
+  await page.goto('/projects')
+  await expect(page.getByRole('button', { name: '목록 보기' })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  )
+  await expect(page.getByLabel('프로젝트 정렬')).toHaveValue('name')
+  await page.getByRole('button', { name: '표시' }).click()
+  await expect(page.getByRole('menuitemcheckbox', { name: '기한 초과 열 표시' })).toHaveAttribute(
+    'aria-checked',
+    'true',
+  )
+  await expect(page.getByRole('menuitemcheckbox', { name: '멤버 열 표시' })).toHaveAttribute(
+    'aria-checked',
+    'false',
+  )
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/project-directory-preferences-ui/desktop.png',
+  })
+  await page.keyboard.press('Escape')
+
+  await page.getByRole('button', { name: '카드 보기' }).click()
+  await expect.poll(() => writes.at(-1)?.layout).toBe('grid')
+  expect(writes.at(-1)).toEqual({
+    columns: ['overdue_count'],
+    sort_key: 'name',
+    sort_direction: 'desc',
+    layout: 'grid',
+  })
+
+  await page.reload()
+  await expect(page.getByRole('button', { name: '카드 보기' })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  )
+  await expect(page.getByLabel('프로젝트 정렬')).toHaveValue('name')
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.getByRole('button', { name: '표시' }).click()
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/project-directory-preferences-ui/mobile.png',
+    fullPage: true,
+  })
+})
+
+test('프로젝트 디렉터리 저장은 화면 재진입 중에도 직렬화되어 마지막 조작을 보존한다', async ({
+  page,
+}) => {
+  await mockApi(page)
+  let stored = {
+    columns: ['overdue_count'],
+    sort_key: 'name',
+    sort_direction: 'desc',
+    layout: 'list',
+    updated_at: '2026-07-14T00:00:00Z',
+    is_default: false,
+  }
+  const writes: Array<Record<string, unknown>> = []
+  let releaseFirst: (() => void) | undefined
+  const firstGate = new Promise<void>((resolve) => {
+    releaseFirst = resolve
+  })
+  await page.route('**/api/v1/me/project-directory-preferences', async (route) => {
+    if (route.request().method() === 'PUT') {
+      const body = route.request().postDataJSON() as Record<string, unknown>
+      writes.push(body)
+      if (writes.length === 1) await firstGate
+      stored = {
+        columns: body.columns as string[],
+        sort_key: body.sort_key as string,
+        sort_direction: body.sort_direction as string,
+        layout: body.layout as string,
+        updated_at: '2026-07-14T00:03:00Z',
+        is_default: false,
+      }
+    }
+    await route.fulfill({ json: stored })
+  })
+
+  await page.goto('/projects')
+  await expect(page.getByRole('button', { name: '목록 보기' })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  )
+  await page.getByRole('button', { name: '카드 보기' }).click()
+  await expect.poll(() => writes.length).toBe(1)
+
+  const contextNav = page.getByRole('navigation', { name: 'Projects 컨텍스트 내비게이션' })
+  await contextNav.getByRole('link', { name: '홈' }).click()
+  await expect(page).toHaveURL('/my')
+  await contextNav.getByRole('link', { name: '프로젝트', exact: true }).click()
+  await expect(page).toHaveURL('/projects')
+  await expect(page.getByRole('button', { name: '카드 보기' })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  )
+  await page.getByRole('button', { name: '목록 보기' }).click()
+  await page.waitForTimeout(200)
+  expect(writes).toHaveLength(1)
+
+  releaseFirst?.()
+  await expect.poll(() => writes.length).toBe(2)
+  expect(writes[1]?.layout).toBe('list')
+  await expect(page.getByRole('button', { name: '목록 보기' })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  )
+})
+
+test('프로젝트 디렉터리는 기존 로컬 설정을 한 번 승격하고 저장 실패를 최신 값으로 재시도한다', async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    localStorage.setItem('oneflow.projects.columns.v1', JSON.stringify(['member_count']))
+    localStorage.setItem(
+      'oneflow.projects.sort.v1',
+      JSON.stringify({ key: 'member_count', dir: 'desc' }),
+    )
+    localStorage.setItem('oneflow.projects.layout.v1', 'list')
+  })
+  await mockApi(page)
+  const writes: Array<Record<string, unknown>> = []
+  let putCount = 0
+  await page.route('**/api/v1/me/project-directory-preferences', async (route) => {
+    if (route.request().method() === 'GET') {
+      await route.fulfill({
+        json: {
+          columns: ['work_package_count', 'open_work_package_count', 'overdue_count', 'member_count'],
+          sort_key: 'default',
+          sort_direction: 'asc',
+          layout: 'grid',
+          updated_at: null,
+          is_default: true,
+        },
+      })
+      return
+    }
+    putCount += 1
+    writes.push(route.request().postDataJSON() as Record<string, unknown>)
+    if (putCount === 2) {
+      await route.fulfill({ status: 503, json: { detail: 'temporarily unavailable' } })
+      return
+    }
+    await route.fulfill({
+      json: {
+        ...writes.at(-1),
+        updated_at: '2026-07-14T00:02:00Z',
+        is_default: false,
+      },
+    })
+  })
+
+  await page.goto('/projects')
+  await expect.poll(() => writes.length).toBe(1)
+  expect(writes[0]).toEqual({
+    columns: ['member_count'],
+    sort_key: 'member_count',
+    sort_direction: 'desc',
+    layout: 'list',
+  })
+
+  await page.getByRole('button', { name: '카드 보기' }).click()
+  await expect(page.getByText('보기 설정 저장 실패')).toBeVisible()
+  await expect(page.getByRole('button', { name: '카드 보기' })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  )
+  await page.getByRole('status').getByRole('button', { name: '재시도' }).click()
+  await expect.poll(() => writes.length).toBe(3)
+  expect(writes[2]).toEqual({
+    columns: ['member_count'],
+    sort_key: 'member_count',
+    sort_direction: 'desc',
+    layout: 'grid',
+  })
+  await expect(page.getByText('보기 설정 저장 실패')).toHaveCount(0)
 })
 
 
