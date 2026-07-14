@@ -39,11 +39,16 @@ const PRIORITY_GROUPS: Array<{ key: SearchResultItem['priority']; label: string 
 
 export function parseWorkspaceColumns(value: string | null): WorkspaceColumn[] {
   if (!value) return [...DEFAULT_WORKSPACE_COLUMNS]
-  const selected = new Set(value.split(',').filter((item): item is WorkspaceColumn => (
-    WORKSPACE_COLUMNS.includes(item as WorkspaceColumn)
-  )))
-  const canonical = WORKSPACE_COLUMNS.filter((item) => selected.has(item))
-  return canonical.length > 0 ? canonical : [...DEFAULT_WORKSPACE_COLUMNS]
+  const selected: WorkspaceColumn[] = []
+  for (const item of value.split(',')) {
+    if (
+      WORKSPACE_COLUMNS.includes(item as WorkspaceColumn)
+      && !selected.includes(item as WorkspaceColumn)
+    ) {
+      selected.push(item as WorkspaceColumn)
+    }
+  }
+  return selected.length > 0 ? selected : [...DEFAULT_WORKSPACE_COLUMNS]
 }
 
 export function serializeWorkspaceColumns(columns: WorkspaceColumn[]): string {

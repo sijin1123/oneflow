@@ -256,6 +256,9 @@ export function AllWorkPage() {
     if (next.length === 0) return
     updateParams({ columns: serializeWorkspaceColumns(next), page: String(page) })
   }
+  const reorderColumns = (next: WorkspaceColumn[]) => {
+    updateParams({ columns: serializeWorkspaceColumns(next), page: String(page) })
+  }
 
   return (
     <div className="flex h-full min-w-0 flex-col bg-of-surface">
@@ -354,6 +357,7 @@ export function AllWorkPage() {
             pqlSorting={filterMode === 'pql'}
             onGroupByChange={(value) => updateParams({ group_by: value, page: String(page) })}
             onToggleColumn={toggleColumn}
+            onReorderColumns={reorderColumns}
             onSortChange={(value) => updateParams({ sort: value })}
             onDensityChange={(value) => updateParams({ density: value, page: String(page) })}
             onShowEmptyGroupsChange={(value) => updateParams({ show_empty_groups: value ? null : 'false', page: String(page) })}
@@ -611,45 +615,13 @@ function WorkspaceTable({
   onSortChange: (value: WorkspaceWorkItemSort) => void
   onOpen: (item: SearchResultItem) => void
 }) {
-  const has = (column: WorkspaceColumn) => columns.includes(column)
   return (
     <DataGridFrame density={density} className="h-full" aria-label="전체 작업 표 스크롤 영역">
       <DataGrid className="table-fixed text-left" style={{ minWidth: `${360 + columns.length * 112}px` }}>
         <thead className="sticky top-0 z-10 bg-of-surface/95 backdrop-blur">
           <tr className="border-b border-of-border text-[11px] font-medium text-of-muted">
             <th className="h-9 w-72 px-4">작업</th>
-            {has('project') ? <th className="h-9 w-44 px-3">프로젝트</th> : null}
-            {has('status') ? (
-              <th
-                className="h-9 w-28 p-0"
-                aria-sort={sort === 'status_asc' ? 'ascending' : sort === 'status_desc' ? 'descending' : undefined}
-              >
-                <WorkspaceColumnSortMenu
-                  column="status"
-                  sort={sort}
-                  disabled={pqlSorting}
-                  onSortChange={onSortChange}
-                />
-              </th>
-            ) : null}
-            {has('priority') ? (
-              <th
-                className="h-9 w-28 p-0"
-                aria-sort={sort === 'priority_asc' ? 'ascending' : sort === 'priority_desc' ? 'descending' : undefined}
-              >
-                <WorkspaceColumnSortMenu
-                  column="priority"
-                  sort={sort}
-                  disabled={pqlSorting}
-                  onSortChange={onSortChange}
-                />
-              </th>
-            ) : null}
-            {has('type') ? <th className="h-9 w-24 px-3">타입</th> : null}
-            {has('assignee') ? <th className="h-9 w-28 px-3">담당자</th> : null}
-            {has('start') ? <th className="h-9 w-28 whitespace-nowrap px-2">시작일</th> : null}
-            {has('due') ? <th className="h-9 w-28 whitespace-nowrap px-2">기한</th> : null}
-            {has('updated') ? <th className="h-9 w-28 whitespace-nowrap px-2">수정일</th> : null}
+            {columns.map((column) => workspaceColumnHeader(column, sort, pqlSorting, onSortChange))}
           </tr>
         </thead>
         <tbody>
@@ -659,32 +631,42 @@ function WorkspaceTable({
                 {showIds ? <span className="mr-2 font-mono text-[10px] text-of-faint">{shortWorkspaceItemId(item)}</span> : null}
                 <button type="button" className="max-w-full truncate rounded-of text-left text-[13px] font-medium hover:text-of-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus" onClick={() => onOpen(item)}>{item.subject}</button>
               </td>
-              {has('project') ? <td className="h-10 px-3"><span className="flex min-w-0 items-center gap-1.5"><Badge variant="neutral" className="shrink-0 font-mono">{item.project_key}</Badge><span className="truncate text-of-muted">{item.project_name}</span></span></td> : null}
-              {has('status') ? (
-                <td className="px-3 py-2">
-                  <WorkspaceInlinePropertyMenu item={item} property="status" />
-                </td>
-              ) : null}
-              {has('priority') ? (
-                <td className="px-3 py-2">
-                  <WorkspaceInlinePropertyMenu item={item} property="priority" />
-                </td>
-              ) : null}
-              {has('type') ? <td className="px-3 py-2"><TypeChip type={item.type} /></td> : null}
-              {has('assignee') ? (
-                <td className="px-3 py-2">
-                  <WorkspaceInlineAssigneeMenu item={item} />
-                </td>
-              ) : null}
-              {has('start') ? <td className="h-10 whitespace-nowrap px-2 text-of-muted">{dateOnly(item.start_date)}</td> : null}
-              {has('due') ? <td className="h-10 whitespace-nowrap px-2 text-of-muted">{dateOnly(item.due_date)}</td> : null}
-              {has('updated') ? <td className="h-10 whitespace-nowrap px-2 text-of-muted">{dateOnly(item.updated_at)}</td> : null}
+              {columns.map((column) => workspaceColumnCell(column, item))}
             </tr>
           ))}
         </tbody>
       </DataGrid>
     </DataGridFrame>
   )
+}
+
+function workspaceColumnHeader(
+  column: WorkspaceColumn,
+  sort: WorkspaceWorkItemSort,
+  pqlSorting: boolean,
+  onSortChange: (value: WorkspaceWorkItemSort) => void,
+) {
+  if (column === 'project') return <th key={column} className="h-9 w-44 px-3">프로젝트</th>
+  if (column === 'status' || column === 'priority') return (
+    <th key={column} className="h-9 w-28 p-0" aria-sort={sort === `${column}_asc` ? 'ascending' : sort === `${column}_desc` ? 'descending' : undefined}>
+      <WorkspaceColumnSortMenu column={column} sort={sort} disabled={pqlSorting} onSortChange={onSortChange} />
+    </th>
+  )
+  if (column === 'type') return <th key={column} className="h-9 w-24 px-3">타입</th>
+  if (column === 'assignee') return <th key={column} className="h-9 w-28 px-3">담당자</th>
+  if (column === 'start') return <th key={column} className="h-9 w-28 whitespace-nowrap px-2">시작일</th>
+  if (column === 'due') return <th key={column} className="h-9 w-28 whitespace-nowrap px-2">기한</th>
+  return <th key={column} className="h-9 w-28 whitespace-nowrap px-2">수정일</th>
+}
+
+function workspaceColumnCell(column: WorkspaceColumn, item: SearchResultItem) {
+  if (column === 'project') return <td key={column} className="h-10 px-3"><span className="flex min-w-0 items-center gap-1.5"><Badge variant="neutral" className="shrink-0 font-mono">{item.project_key}</Badge><span className="truncate text-of-muted">{item.project_name}</span></span></td>
+  if (column === 'status' || column === 'priority') return <td key={column} className="px-3 py-2"><WorkspaceInlinePropertyMenu item={item} property={column} /></td>
+  if (column === 'type') return <td key={column} className="px-3 py-2"><TypeChip type={item.type} /></td>
+  if (column === 'assignee') return <td key={column} className="px-3 py-2"><WorkspaceInlineAssigneeMenu item={item} /></td>
+  if (column === 'start') return <td key={column} className="h-10 whitespace-nowrap px-2 text-of-muted">{dateOnly(item.start_date)}</td>
+  if (column === 'due') return <td key={column} className="h-10 whitespace-nowrap px-2 text-of-muted">{dateOnly(item.due_date)}</td>
+  return <td key={column} className="h-10 whitespace-nowrap px-2 text-of-muted">{dateOnly(item.updated_at)}</td>
 }
 
 function validChoice<const T extends string>(value: string | null, choices: readonly T[], fallback: T): T {
