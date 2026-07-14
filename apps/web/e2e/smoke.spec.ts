@@ -11334,6 +11334,19 @@ test('알 수 없는 주소는 스타일된 404 페이지를 보여준다', asyn
 
 test('로그인 화면에서 이메일 로그인 후 이동하고 OIDC 모드는 안내만 보인다', async ({ page }) => {
   await mockApi(page)
+  await page.route('**/api/v1/auth/config', async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 180))
+    await route.fulfill({
+      json: {
+        auth_mode: 'dev',
+        oidc_issuer: null,
+        oidc_client_id: null,
+        has_client_secret: false,
+        command_palette_enabled: false,
+        session_management_enabled: true,
+      },
+    })
+  })
   await page.route('**/api/v1/auth/login', (route) =>
     route.fulfill({
       json: { user_id: 'me-1', email: 'dev@oneflow.local', display_name: 'Dev User' },
@@ -11341,10 +11354,20 @@ test('로그인 화면에서 이메일 로그인 후 이동하고 OIDC 모드는
   )
 
   await page.goto('/login?next=/projects')
+  await expect(page.getByText('로그인 방법을 확인하고 있습니다')).toBeVisible()
+  await expect(page.getByRole('heading', { name: '계획을 흐름으로, 성과를 함께.' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '다시 만나 반갑습니다' })).toBeVisible()
+  await expect(page.getByText('안전한 사내 개발 로그인')).toBeVisible()
+  await expect(page.getByRole('button', { name: /Google|Microsoft|계정 만들기/ })).toHaveCount(0)
+  await page.waitForTimeout(900)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/login-ui/desktop.png',
+    fullPage: true,
+  })
   const post = page.waitForRequest(
     (r) => r.method() === 'POST' && r.url().includes('/auth/login'),
   )
-  await page.getByLabel('이메일').fill('dev@oneflow.local')
+  await page.getByLabel('이메일 주소').fill('dev@oneflow.local')
   await page.getByRole('button', { name: '로그인' }).click()
   expect(((await post).postDataJSON() as { email: string }).email).toBe('dev@oneflow.local')
   await expect(page).toHaveURL(/\/projects$/)
@@ -11358,13 +11381,115 @@ test('로그인 화면에서 이메일 로그인 후 이동하고 OIDC 모드는
         oidc_client_id: 'oneflow',
         has_client_secret: true,
         command_palette_enabled: false,
+        session_management_enabled: false,
       },
     }),
   )
   await page.goto('/login')
-  await expect(page.getByText('SSO(OIDC) 인증 모드입니다.')).toBeVisible()
-  await expect(page.getByText('발급자: https://idp.example.com')).toBeVisible()
-  await expect(page.getByLabel('이메일')).toBeHidden()
+  await expect(page.getByText('조직 로그인이 준비 중입니다')).toBeVisible()
+  await expect(page.getByText('idp.example.com')).toBeVisible()
+  await expect(page.getByLabel('이메일 주소')).toBeHidden()
+
+  await page.route('**/api/v1/auth/config', (route) =>
+    route.fulfill({
+      json: {
+        auth_mode: 'unexpected',
+        oidc_issuer: null,
+        oidc_client_id: null,
+        has_client_secret: false,
+        command_palette_enabled: false,
+        session_management_enabled: false,
+      },
+    }),
+  )
+  await page.goto('/login')
+  await expect(page.getByText('지원되지 않는 로그인 구성입니다')).toBeVisible()
+  await expect(page.getByLabel('이메일 주소')).toBeHidden()
+})
+
+test('로그인 설정 오류를 복구하고 외부 next 이동을 차단한다', async ({ page }) => {
+  await mockApi(page)
+  let configRequests = 0
+  let loginRequests = 0
+  await page.route('**/api/v1/auth/config', (route) => {
+    configRequests += 1
+    if (configRequests === 1) {
+      void route.fulfill({ status: 503, json: { detail: 'temporarily unavailable' } })
+      return
+    }
+    void route.fulfill({
+      json: {
+        auth_mode: 'dev',
+        oidc_issuer: null,
+        oidc_client_id: null,
+        has_client_secret: false,
+        command_palette_enabled: false,
+        session_management_enabled: true,
+      },
+    })
+  })
+  await page.route('**/api/v1/auth/login', (route) => {
+    loginRequests += 1
+    if (loginRequests === 1) {
+      void route.fulfill({ status: 401, json: { detail: 'login failed' } })
+      return
+    }
+    void route.fulfill({
+      json: { user_id: 'me-1', email: 'dev@oneflow.local', display_name: 'Dev User' },
+    })
+  })
+
+  await page.goto('/login?next=%2F%2Fevil.example')
+  const appOrigin = new URL(page.url()).origin
+  await expect(page.getByText('로그인 정보를 불러오지 못했습니다')).toBeVisible()
+  await page.getByRole('button', { name: '다시 시도' }).click()
+  await expect(page.getByLabel('이메일 주소')).toBeVisible()
+  await page.getByLabel('이메일 주소').fill('dev@oneflow.local')
+  await page.getByRole('button', { name: '로그인' }).click()
+  await expect(page.getByRole('alert')).toHaveText(
+    '로그인할 수 없습니다. 이메일 주소를 확인해 주세요.',
+  )
+  await expect(page.getByLabel('이메일 주소')).toHaveAttribute('aria-invalid', 'true')
+  await expect(page.getByLabel('이메일 주소')).toHaveAttribute(
+    'aria-describedby',
+    'login-email-help login-email-error',
+  )
+  await page.getByRole('button', { name: '로그인' }).click()
+  await expect(page).toHaveURL(/\/projects$/)
+  expect(new URL(page.url()).origin).toBe(appOrigin)
+
+  for (const unsafeNext of [
+    'https%3A%2F%2Fevil.example%2Fsteal',
+    '%2F%5C%5Cevil.example%2Fsteal',
+  ]) {
+    await page.goto(`/login?next=${unsafeNext}`)
+    await page.getByLabel('이메일 주소').fill('dev@oneflow.local')
+    await page.getByRole('button', { name: '로그인' }).click()
+    await expect(page).toHaveURL(/\/projects$/)
+    expect(new URL(page.url()).origin).toBe(appOrigin)
+  }
+})
+
+test('로그인 모바일 화면은 인증 흐름에 집중하고 가로 넘침이 없다', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.emulateMedia({ reducedMotion: 'reduce' })
+  await mockApi(page)
+  await page.goto('/login')
+
+  await expect(page.getByRole('heading', { name: '다시 만나 반갑습니다' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '계획을 흐름으로, 성과를 함께.' })).toBeHidden()
+  await expect(page.getByLabel('이메일 주소')).toBeFocused()
+  await expect(page.locator('.of-login-auth-card')).toHaveCSS('animation-name', 'none')
+  const viewport = await page.evaluate(() => ({
+    scrollWidth: document.documentElement.scrollWidth,
+    clientWidth: document.documentElement.clientWidth,
+  }))
+  expect(viewport.scrollWidth).toBe(viewport.clientWidth)
+  await page.waitForTimeout(550)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/login-ui/mobile.png',
+    fullPage: true,
+  })
 })
 
 test('Workspace popover가 실제 설정·멤버·로그아웃 흐름에 연결된다', async ({

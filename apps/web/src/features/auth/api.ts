@@ -5,7 +5,7 @@ import { api } from '@/lib/api'
 import { clearIdentityBoundCache } from './cache'
 
 export type AuthConfig = {
-  auth_mode: string
+  auth_mode: 'dev' | 'oidc'
   oidc_issuer: string | null
   oidc_client_id: string | null
   has_client_secret: boolean
@@ -18,6 +18,7 @@ export function useAuthConfig() {
     queryKey: ['auth-config'],
     queryFn: () => api<AuthConfig>('/api/v1/auth/config'),
     staleTime: Infinity, // changes only with a server restart
+    retry: false, // the login surface owns an explicit, accessible retry action
   })
 }
 

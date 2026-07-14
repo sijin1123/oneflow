@@ -2430,3 +2430,15 @@ Chromium typed mock fixture에서 1440x960과 390x844 viewport를 사용했다. 
 - 독립 reviewer는 권한 집계와 bounded response를 확인하고, 캐시가 남은 재조회 실패에서 이전 차트가 오류와 함께 보일 수 있는 상태 및 0건 막대의 최소 폭을 지적했다. Analytics를 열 때 최신 조회하도록 하고 오류 시 stale data를 숨기며 0건을 0px로 수정한 뒤 집중 E2E로 고정했다. reduced-motion도 overlay animation과 chart transition 제거를 직접 검증한다.
 - Chromium 증적은 `docs/screenshots/redevelopment/workspace-analytics-ui/{desktop-basic,mobile-empty}.png`에 보존한다.
 - DB, migration, permission model, environment variable, settings UI, dependency 변경과 이연 항목은 없다. API 추가와 generated shared type 갱신이 필요 범위에 포함된다.
+
+---
+
+# UI-105 Functional Login Experience 검증 (2026-07-14)
+
+- `/login`을 original paper-cut journey artwork가 있는 desktop two-column brand/auth composition과 880px 이하의 focused single-column mobile composition으로 재구성했다. 배경 자산은 built-in image generation으로 새로 만들고 1.9MB PNG를 356KB JPEG로 최적화했으며, 시안의 asset/logo/CSS/DOM은 사용하지 않았다.
+- 실제 서버 계약만 노출한다. Dev mode는 active directory user의 passwordless email 세션 생성과 identity-bound React Query cache clear를 유지하고, OIDC mode는 backend 501 경계에 맞춰 공급자 연결 준비 상태만 안내한다. Password, Google/Microsoft, reset, account creation control은 dead UI로 만들지 않았다.
+- Auth config loading, fetch error/manual retry, generic 401/no-account-enumeration message, submit pending, OIDC unavailable, unknown auth mode fail-closed, desktop/mobile, keyboard/autofill, focus, reduced-motion과 horizontal overflow를 검증했다. Login error는 `aria-describedby`로 email input과 연결한다.
+- `next`는 같은 origin의 `/` 경로만 허용한다. Absolute URL, protocol-relative URL, backslash-host 변형은 모두 `/projects`로 귀결하며 E2E에서 navigation origin 불변을 확인했다. 로그인 성공 시 기존 `queryClient.clear()` identity cache purge를 유지한다.
+- 검증: typecheck PASS, lint PASS(기존 Fast Refresh 경고 4건), production build PASS(기존 chunk 경고), unit 87, component 8, focused auth E2E 3, full E2E 265 PASS + opt-in visual QA 1 skip, clean-room frontend 161/backend 44, npm audit high 0, diff check PASS. 독립 deep-review 4건 수정 후 closure reviewer `NO FINDINGS`.
+- Chromium 증적은 `docs/screenshots/redevelopment/login-ui/{desktop,mobile}.png`에 보존한다.
+- API, DB, migration, permission contract, environment variable, settings UI, dependency 변경은 없다. 실제 OIDC code flow, password/social login, password reset과 account creation은 보안 계약·IdP 인프라가 필요한 별도 기능 PR로 명시 이연한다.

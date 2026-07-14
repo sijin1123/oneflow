@@ -272,3 +272,9 @@ Plane source, package, asset, SVG path, CSS, DOM hierarchy, exact color, wording
 `docs/plane-poc-reverse-spec/` S005에서 사용한 입력은 topbar의 compact onboarding entry와 internal route라는 visible behavior·information category뿐이다. OneFlow 구현은 기존 자체 project directory, workspace work-item search, current user/admin directory query, React Router와 shell tokens로 완료 상태와 실제 다음 동작을 독립 설계했다.
 
 Plane wording, checklist taxonomy, source, package, asset, CSS, DOM hierarchy, exact dimensions/colors, animation, icons 또는 branding은 복사하지 않았다. OneFlow의 현재 권한과 데이터만 사용하며 신규 dependency/API/DB/schema/environment/settings UI 변경은 없다. — attested-independent-derivation
+
+## UI-105 Functional Login Experience
+
+사용자 제공 OneFlow 로그인 시안에서 사용한 입력은 desktop two-column brand/auth composition, raised authentication panel, compact mobile auth focus와 밝고 협업적인 정서뿐이다. OneFlow 구현은 기존 자체 `auth/config`, passwordless dev-session login, identity-bound cache reset, React Router redirect 계약과 local design tokens로 독립 작성했다. 배경은 시안 원본을 편집하거나 추출하지 않고 built-in image generation으로 새로 만든 paper-cut journey illustration이며, 프로젝트용 JPEG로 최적화했다.
+
+참조 시안의 source, asset, logo path, CSS, DOM hierarchy, exact dimensions/colors, wording, password/provider control 또는 branding은 복사하지 않았다. 서버 계약이 없는 password, Google/Microsoft, password reset, account creation control은 dead UI로 만들지 않았고, OIDC mode는 현재 backend의 명시적 501 경계를 사용자에게 안내한다. 신규 API/DB/schema/environment/settings UI/dependency 변경은 없다. — attested-independent-derivation
