@@ -2442,3 +2442,17 @@ Chromium typed mock fixture에서 1440x960과 390x844 viewport를 사용했다. 
 - 검증: typecheck PASS, lint PASS(기존 Fast Refresh 경고 4건), production build PASS(기존 chunk 경고), unit 87, component 8, focused auth E2E 3, full E2E 265 PASS + opt-in visual QA 1 skip, clean-room frontend 161/backend 44, npm audit high 0, diff check PASS. 독립 deep-review 4건 수정 후 closure reviewer `NO FINDINGS`.
 - Chromium 증적은 `docs/screenshots/redevelopment/login-ui/{desktop,mobile}.png`에 보존한다.
 - API, DB, migration, permission contract, environment variable, settings UI, dependency 변경은 없다. 실제 OIDC code flow, password/social login, password reset과 account creation은 보안 계약·IdP 인프라가 필요한 별도 기능 PR로 명시 이연한다.
+
+---
+
+# UI-106 Workspace Column Ordering 검증 (2026-07-14)
+
+- Workspace Views의 Display 메뉴에서 현재 표시 중인 열의 순서를 별도 dialog로 조정할 수 있다. 선택 열만 노출하며 첫 행의 위 이동과 마지막 행의 아래 이동은 비활성화되고, 경계로 이동한 뒤에도 다음 유효 명령으로 focus가 이어진다.
+- 변경된 순서는 기존 `columns` URL 배열에 그대로 반영된다. 중복·알 수 없는 값은 제거하되 첫 유효 등장 순서를 보존하고, 현재 page와 Basic/PQL query, sort, layout 등 다른 presentation state는 유지한다.
+- Table header와 각 data row는 같은 ordered column 배열을 사용한다. 기존 상태·우선순위 sort menu와 inline editor도 순서 변경 뒤 그대로 작동한다.
+- private saved view의 create, PATCH, 재적용 계약이 열 배열 순서를 보존한다. 저장 전 변경 상태와 되돌리기, 다음 Add view 동작까지 검증해 menu/dialog overlay가 body pointer lock을 남기지 않도록 고정했다.
+- Dialog는 명시적 닫기, Escape, outside dismiss, trigger focus restore, desktop/mobile responsive 상태를 제공한다. 모바일에서도 수평 overflow 없이 열 이동 control을 사용할 수 있다.
+- 검증: typecheck PASS, lint PASS(기존 Fast Refresh 경고 4건), production build PASS(기존 chunk 경고), unit 87, component 8, focused UI-106 E2E 1 PASS, full E2E 264 PASS + opt-in visual QA 1 skip. full E2E의 unrelated parallel timing 실패 2건은 즉시 격리 재실행해 2 PASS를 확인했다. OpenAPI drift PASS, clean-room frontend 161/backend 44, npm audit 0 vulnerabilities, diff check PASS.
+- Chromium 증적은 `docs/screenshots/redevelopment/workspace-column-order-ui/{desktop,mobile}.png`에 보존한다.
+- 독립 reviewer는 실행 예산 종료 전 unit/TypeScript/diff check를 확인하고 boundary disabled, 실제 row cell order, page 보존 assertion 보강을 요청했다. root가 세 범주를 E2E에 추가한 뒤 focused E2E와 전체 회귀를 다시 통과시켰다.
+- API, DB, migration, permission contract, environment variable, settings UI, dependency 변경과 이연 항목은 없다.

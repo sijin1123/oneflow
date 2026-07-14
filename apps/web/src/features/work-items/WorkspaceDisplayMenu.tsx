@@ -1,4 +1,6 @@
-import { ArrowDownAZ, Columns3, Group, Rows2, Rows3, Settings2 } from 'lucide-react'
+import * as Dialog from '@radix-ui/react-dialog'
+import { ArrowDown, ArrowDownAZ, ArrowUp, ArrowUpDown, Columns3, Group, Rows2, Rows3, Settings2, X } from 'lucide-react'
+import { type RefObject, useRef, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
 import type { GridDensity } from '@/components/ui/data-grid'
@@ -6,6 +8,7 @@ import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
   DropdownMenuContent,
+  DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
@@ -57,6 +60,7 @@ export function WorkspaceDisplayMenu({
   pqlSorting,
   onGroupByChange,
   onToggleColumn,
+  onReorderColumns,
   onSortChange,
   onDensityChange,
   onShowEmptyGroupsChange,
@@ -72,6 +76,7 @@ export function WorkspaceDisplayMenu({
   pqlSorting: boolean
   onGroupByChange: (value: WorkspaceGroupBy) => void
   onToggleColumn: (value: WorkspaceColumn) => void
+  onReorderColumns: (columns: WorkspaceColumn[]) => void
   onSortChange: (value: WorkspaceWorkItemSort) => void
   onDensityChange: (value: GridDensity) => void
   onShowEmptyGroupsChange: (value: boolean) => void
@@ -79,11 +84,13 @@ export function WorkspaceDisplayMenu({
 }) {
   const showBoard = layout === 'board'
   const showTable = layout === 'table'
+  const [columnOrderOpen, setColumnOrderOpen] = useState(false)
+  const triggerRef = useRef<HTMLButtonElement>(null)
 
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button type="button" variant="outline" size="sm" aria-label="Display">
+        <Button ref={triggerRef} type="button" variant="outline" size="sm" aria-label="Display">
           <Settings2 size={13} /> Display
         </Button>
       </DropdownMenuTrigger>
@@ -128,10 +135,16 @@ export function WorkspaceDisplayMenu({
         {showTable ? (
           <>
             <DropdownMenuSeparator />
-            <DropdownMenuLabel className="flex items-center justify-between gap-2">
+            <DropdownMenuItem
+              aria-label="열 순서 변경"
+              className="flex min-h-0 items-center justify-between py-1 text-[11px] font-medium text-of-muted"
+              onSelect={() => window.setTimeout(() => setColumnOrderOpen(true), 0)}
+            >
               <span className="flex items-center gap-1.5"><Columns3 size={12} />표시 열</span>
-              <span className="font-normal tabular-nums">{columns.length}</span>
-            </DropdownMenuLabel>
+              <span className="flex items-center gap-1 font-normal tabular-nums text-of-muted">
+                {columns.length}<ArrowUpDown size={12} aria-hidden="true" />
+              </span>
+            </DropdownMenuItem>
             {WORKSPACE_COLUMNS.map((column) => (
               <DropdownMenuCheckboxItem
                 key={column}
@@ -160,6 +173,103 @@ export function WorkspaceDisplayMenu({
           </>
         ) : null}
       </DropdownMenuContent>
+      <WorkspaceColumnOrderDialog
+        columns={columns}
+        open={columnOrderOpen}
+        triggerRef={triggerRef}
+        onOpenChange={setColumnOrderOpen}
+        onReorder={onReorderColumns}
+      />
     </DropdownMenu>
+  )
+}
+
+function WorkspaceColumnOrderDialog({
+  columns,
+  open,
+  triggerRef,
+  onOpenChange,
+  onReorder,
+}: {
+  columns: WorkspaceColumn[]
+  open: boolean
+  triggerRef: RefObject<HTMLButtonElement | null>
+  onOpenChange: (open: boolean) => void
+  onReorder: (columns: WorkspaceColumn[]) => void
+}) {
+  const moveButtonRefs = useRef<Record<string, HTMLButtonElement | null>>({})
+  const move = (column: WorkspaceColumn, direction: -1 | 1) => {
+    const index = columns.indexOf(column)
+    const targetIndex = index + direction
+    if (index < 0 || targetIndex < 0 || targetIndex >= columns.length) return
+    const next = [...columns]
+    ;[next[index], next[targetIndex]] = [next[targetIndex], next[index]]
+    onReorder(next)
+    const focusDirection = targetIndex === 0 || targetIndex === columns.length - 1
+      ? -direction
+      : direction
+    requestAnimationFrame(() => moveButtonRefs.current[`${column}:${focusDirection}`]?.focus())
+  }
+
+  return (
+    <Dialog.Root open={open} onOpenChange={onOpenChange}>
+      <Dialog.Portal>
+        <Dialog.Overlay className="fixed inset-0 z-[var(--of-z-modal)] bg-black/30 of-overlay-enter motion-reduce:animate-none" />
+        <Dialog.Content
+          className="fixed left-1/2 top-1/2 z-[calc(var(--of-z-modal)+1)] w-[min(28rem,calc(100vw-1.5rem))] -translate-x-1/2 -translate-y-1/2 rounded-of-lg border border-of-border bg-of-surface-raised p-4 shadow-[var(--of-shadow-popover)] focus:outline-none"
+          onCloseAutoFocus={(event) => {
+            event.preventDefault()
+            triggerRef.current?.focus()
+          }}
+        >
+          <div className="flex items-start gap-3">
+            <div className="min-w-0 flex-1">
+              <Dialog.Title className="text-sm font-semibold">열 순서 변경</Dialog.Title>
+              <Dialog.Description className="mt-1 text-xs text-of-muted">
+                위·아래 버튼으로 표에 표시되는 열 순서를 바꿉니다.
+              </Dialog.Description>
+            </div>
+            <Dialog.Close asChild>
+              <Button type="button" variant="ghost" size="icon" aria-label="열 순서 닫기">
+                <X size={14} aria-hidden="true" />
+              </Button>
+            </Dialog.Close>
+          </div>
+          <ol aria-label="현재 표시 열" className="mt-4 max-h-[min(50vh,22rem)] space-y-1 overflow-y-auto pr-1">
+            {columns.map((column, index) => (
+              <li key={column} className="flex min-h-10 items-center gap-2 rounded-of border border-of-border px-2.5">
+                <span className="min-w-0 flex-1 truncate text-sm">{COLUMN_LABELS[column]}</span>
+                <div className="flex shrink-0 gap-1">
+                  <Button
+                    ref={(element) => { moveButtonRefs.current[`${column}:-1`] = element }}
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8"
+                    aria-label={`${COLUMN_LABELS[column]} 위로 이동`}
+                    disabled={index === 0}
+                    onClick={() => move(column, -1)}
+                  >
+                    <ArrowUp size={14} aria-hidden="true" />
+                  </Button>
+                  <Button
+                    ref={(element) => { moveButtonRefs.current[`${column}:1`] = element }}
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8"
+                    aria-label={`${COLUMN_LABELS[column]} 아래로 이동`}
+                    disabled={index === columns.length - 1}
+                    onClick={() => move(column, 1)}
+                  >
+                    <ArrowDown size={14} aria-hidden="true" />
+                  </Button>
+                </div>
+              </li>
+            ))}
+          </ol>
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
   )
 }

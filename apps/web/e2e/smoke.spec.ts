@@ -2613,6 +2613,94 @@ test('Workspace Display URL은 손상된 그룹·열·표시 값을 canonical st
   })
 })
 
+test('Workspace Views 열 순서는 표·URL·private saved view에서 동일하게 왕복한다', async ({ page }) => {
+  test.setTimeout(45_000)
+  await mockApi(page)
+  await page.route('**/api/v1/search/work-packages**', async (route) => {
+    const request = route.request()
+    if (request.method() === 'GET' && new URL(request.url()).pathname.endsWith('/search/work-packages')) {
+      await route.fulfill({ json: { ...allWorkItems, total: 51 } })
+      return
+    }
+    await route.fallback()
+  })
+  await page.goto('/work-items?layout=table&columns=due,status,project&page=2')
+
+  const headerLabels = async () => page.getByRole('columnheader').allTextContents()
+  await expect.poll(headerLabels).toEqual(['작업', '기한', '상태', '프로젝트'])
+  const firstRowCells = page.locator('tbody tr').first().getByRole('cell')
+  await expect(firstRowCells.nth(1)).toContainText('2026')
+  await expect(firstRowCells.nth(2)).toContainText('할 일')
+  await expect(firstRowCells.nth(3)).toContainText('ONE')
+
+  const display = page.getByRole('button', { name: 'Display' })
+  await display.click()
+  await page.getByRole('menuitem', { name: '열 순서 변경' }).click()
+  const orderDialog = page.getByRole('dialog', { name: '열 순서 변경' })
+  await expect(orderDialog).toBeVisible()
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/workspace-column-order-ui/desktop.png',
+  })
+
+  await expect(orderDialog.getByRole('button', { name: '기한 위로 이동' })).toBeDisabled()
+  await expect(orderDialog.getByRole('button', { name: '프로젝트 아래로 이동' })).toBeDisabled()
+  await orderDialog.getByRole('button', { name: '상태 위로 이동' }).click()
+  await expect(orderDialog.getByRole('button', { name: '상태 아래로 이동' })).toBeFocused()
+  expect(new URL(page.url()).searchParams.get('columns')).toBe('status,due,project')
+  expect(new URL(page.url()).searchParams.get('page')).toBe('2')
+  await page.keyboard.press('Escape')
+  await expect(orderDialog).toBeHidden()
+  await expect(display).toBeFocused()
+  await expect.poll(headerLabels).toEqual(['작업', '상태', '기한', '프로젝트'])
+  await expect(firstRowCells.nth(1)).toContainText('할 일')
+  await expect(firstRowCells.nth(2)).toContainText('2026')
+  await expect(firstRowCells.nth(3)).toContainText('ONE')
+
+  await page.getByRole('button', { name: 'Add view' }).click()
+  const saveDialog = page.getByRole('dialog', { name: '작업영역 뷰 저장' })
+  await saveDialog.getByLabel('뷰 이름').fill('열 순서 뷰')
+  const createRequest = page.waitForRequest((request) =>
+    request.method() === 'POST' && request.url().endsWith('/api/v1/me/workspace-views'),
+  )
+  await saveDialog.getByRole('button', { name: '저장', exact: true }).click()
+  const createdBody = (await createRequest).postDataJSON() as { params: WorkspaceSavedViewParams }
+  expect(createdBody.params.columns).toEqual(['status', 'due', 'project'])
+
+  await display.click()
+  await page.getByRole('menuitem', { name: '열 순서 변경' }).click()
+  await orderDialog.getByRole('button', { name: '프로젝트 위로 이동' }).click()
+  await orderDialog.getByRole('button', { name: '열 순서 닫기' }).click()
+  expect(new URL(page.url()).searchParams.get('columns')).toBe('status,project,due')
+  await expect.poll(headerLabels).toEqual(['작업', '상태', '프로젝트', '기한'])
+
+  const updateRequest = page.waitForRequest((request) =>
+    request.method() === 'PATCH' && request.url().includes('/api/v1/me/workspace-views/'),
+  )
+  await page.getByRole('button', { name: '갱신' }).click()
+  const updatedBody = (await updateRequest).postDataJSON() as { params: WorkspaceSavedViewParams }
+  expect(updatedBody.params.columns).toEqual(['status', 'project', 'due'])
+
+  await display.click()
+  await page.getByRole('menuitem', { name: '열 순서 변경' }).click()
+  await orderDialog.getByRole('button', { name: '상태 아래로 이동' }).click()
+  await page.keyboard.press('Escape')
+  expect(new URL(page.url()).searchParams.get('columns')).toBe('project,status,due')
+  await page.getByRole('button', { name: '되돌리기' }).click()
+  expect(new URL(page.url()).searchParams.get('columns')).toBe('status,project,due')
+  await expect.poll(headerLabels).toEqual(['작업', '상태', '프로젝트', '기한'])
+
+  await page.setViewportSize({ width: 390, height: 844 })
+  await display.click()
+  await page.getByRole('menuitem', { name: '열 순서 변경' }).click()
+  await expect(orderDialog).toBeVisible()
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/workspace-column-order-ui/mobile.png',
+  })
+  await orderDialog.getByRole('button', { name: '열 순서 닫기' }).click()
+  await expect(display).toBeFocused()
+})
+
 test('Workspace Table 상태·우선순위 셀은 CAS PATCH와 갱신된 version을 연결한다', async ({ page }) => {
   await mockApi(page)
   await page.goto('/work-items?layout=table&columns=status,priority')

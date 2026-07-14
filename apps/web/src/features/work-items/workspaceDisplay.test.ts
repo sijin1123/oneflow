@@ -29,9 +29,10 @@ function item(overrides: Partial<SearchResultItem>): SearchResultItem {
   }
 }
 
-test('workspace columns canonicalize unknown and duplicate values', () => {
-  assert.deepEqual(parseWorkspaceColumns('due,status,status,unknown'), ['status', 'due'])
+test('workspace columns preserve first valid URL occurrence order', () => {
+  assert.deepEqual(parseWorkspaceColumns('due,status,status,unknown,project,due'), ['due', 'status', 'project'])
   assert.deepEqual(parseWorkspaceColumns('unknown'), DEFAULT_WORKSPACE_COLUMNS)
+  assert.deepEqual(parseWorkspaceColumns(''), DEFAULT_WORKSPACE_COLUMNS)
   assert.equal(serializeWorkspaceColumns(['status', 'due']), 'status,due')
 })
 
