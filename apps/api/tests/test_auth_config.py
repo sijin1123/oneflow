@@ -18,6 +18,7 @@ async def test_dev_mode_config_is_minimal(client):
         "auth_mode": "dev",
         "oidc_issuer": None,
         "oidc_client_id": None,
+        "oidc_provider": None,
         "has_client_secret": False,
         "command_palette_enabled": False,
         "session_management_enabled": False,
@@ -61,6 +62,7 @@ async def test_oidc_mode_answers_config_and_requires_a_login_session():
         assert body["auth_mode"] == "oidc"
         assert body["oidc_issuer"] == "https://idp.example.com/realms/test"
         assert body["oidc_client_id"] == "oneflow-web"
+        assert body["oidc_provider"] == "sso"
         assert body["has_client_secret"] is True
         assert body["command_palette_enabled"] is False
         assert body["session_management_enabled"] is True
@@ -94,6 +96,11 @@ def test_oidc_web_origin_must_be_in_cors_allowlist():
 def test_oidc_cross_host_allowlist_rejects_url_shaped_entries():
     with pytest.raises(Exception, match="exact host"):
         make_oidc_test_settings(oidc_allowed_hosts="https://keys.example.com")
+
+
+def test_oidc_provider_must_use_the_public_closed_vocabulary():
+    with pytest.raises(Exception, match="ONEFLOW_OIDC_PROVIDER"):
+        make_oidc_test_settings(oidc_provider="custom")
 
 
 def test_dev_mode_ignores_partial_oidc_values():

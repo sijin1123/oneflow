@@ -1,18 +1,26 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
-import { api } from '@/lib/api'
+import { api, BASE_URL } from '@/lib/api'
 
 import { clearIdentityBoundCache } from './cache'
+import { buildOidcStartUrl, type OidcProvider } from './oidc'
+
+export type { OidcProvider } from './oidc'
 
 export type AuthConfig = {
   auth_mode: 'dev' | 'oidc'
   oidc_issuer: string | null
   oidc_client_id: string | null
+  oidc_provider: OidcProvider | null
   has_client_secret: boolean
   command_palette_enabled: boolean
   session_management_enabled: boolean
   password_required: boolean
   oidc_login_enabled: boolean
+}
+
+export function oidcStartUrl(provider: OidcProvider, next: string) {
+  return buildOidcStartUrl(BASE_URL, provider, next)
 }
 
 export function useAuthConfig() {

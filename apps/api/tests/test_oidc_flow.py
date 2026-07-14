@@ -100,7 +100,10 @@ async def provision(app, email: str = "employee@example.test", *, active: bool =
 
 
 async def start_login(client: AsyncClient, provider: MockOidcProvider, next_path: str = "/"):
-    response = await client.get("/api/v1/auth/oidc/start", params={"next": next_path})
+    response = await client.get(
+        "/api/v1/auth/oidc/start",
+        params={"next": next_path, "provider": "sso"},
+    )
     assert response.status_code == 302, response.text
     transaction_cookie = response.headers["set-cookie"]
     assert "oneflow_oidc_transaction=" in transaction_cookie
@@ -286,7 +289,7 @@ async def test_oidc_provider_cancel_consumes_state(oidc_harness):
 async def test_oidc_rejects_discovered_endpoint_outside_allowlist(oidc_harness):
     _app, client, provider = oidc_harness
     provider.metadata_overrides["token_endpoint"] = "https://attacker.example/token"
-    response = await client.get("/api/v1/auth/oidc/start")
+    response = await client.get("/api/v1/auth/oidc/start", params={"provider": "sso"})
     assert response.status_code == 503
     assert response.json()["detail"] == "identity provider is unavailable"
 
@@ -294,7 +297,7 @@ async def test_oidc_rejects_discovered_endpoint_outside_allowlist(oidc_harness):
 async def test_oidc_requires_discovered_issuer_to_match_exactly(oidc_harness):
     _app, client, provider = oidc_harness
     provider.metadata_overrides["issuer"] = "https://idp.example.test/"
-    response = await client.get("/api/v1/auth/oidc/start")
+    response = await client.get("/api/v1/auth/oidc/start", params={"provider": "sso"})
     assert response.status_code == 503
 
 
@@ -332,3 +335,27 @@ async def test_oidc_start_normalizes_unsafe_next_path(oidc_harness):
         params={"state": query["state"][0], "code": "authorization-code"},
     )
     assert callback.headers["location"] == "https://oneflow.test/"
+
+
+async def test_oidc_start_rejects_a_button_that_is_not_the_configured_provider(oidc_harness):
+    _app, client, _provider = oidc_harness
+    response = await client.get("/api/v1/auth/oidc/start", params={"provider": "google"})
+    assert response.status_code == 404
+    assert response.json()["detail"] == "oidc provider is unavailable"
+
+
+async def test_oidc_start_requires_provider_classification(oidc_harness):
+    _app, client, _provider = oidc_harness
+    response = await client.get("/api/v1/auth/oidc/start")
+    assert response.status_code == 422
+
+
+async def test_oidc_start_preserves_a_safe_relative_fragment(oidc_harness):
+    app, client, provider = oidc_harness
+    await provision(app)
+    query, _ = await start_login(client, provider, "/projects?view=board#focus")
+    callback = await client.get(
+        "/api/v1/auth/oidc/callback",
+        params={"state": query["state"][0], "code": "authorization-code"},
+    )
+    assert callback.headers["location"] == "https://oneflow.test/projects?view=board#focus"

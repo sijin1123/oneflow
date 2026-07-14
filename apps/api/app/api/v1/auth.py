@@ -16,6 +16,7 @@ import logging
 import secrets
 import uuid
 from datetime import UTC, datetime, timedelta
+from typing import Literal
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response
@@ -52,6 +53,7 @@ class AuthConfigRead(BaseModel):
     auth_mode: str
     oidc_issuer: str | None = None
     oidc_client_id: str | None = None
+    oidc_provider: Literal["google", "microsoft", "sso"] | None = None
     has_client_secret: bool = False
     command_palette_enabled: bool = False
     session_management_enabled: bool = False
@@ -73,6 +75,7 @@ async def auth_config(settings: Settings = Depends(get_settings)) -> AuthConfigR
         auth_mode="oidc",
         oidc_issuer=settings.oidc_issuer,
         oidc_client_id=settings.oidc_client_id,
+        oidc_provider=settings.oidc_provider,
         has_client_secret=bool(settings.oidc_client_secret),
         command_palette_enabled=settings.command_palette_is_enabled,
         session_management_enabled=True,
@@ -91,7 +94,6 @@ def _safe_next_path(value: str | None) -> str:
         or len(candidate) > 2048
         or parts.scheme
         or parts.netloc
-        or parts.fragment
         or any(ord(char) < 32 for char in candidate)
     ):
         return "/"
@@ -149,6 +151,7 @@ def _clear_oidc_transaction_cookie(response: Response) -> None:
 @router.get("/auth/oidc/start")
 async def oidc_start(
     request: Request,
+    provider: Literal["google", "microsoft", "sso"],
     next: str | None = None,
     session: AsyncSession = Depends(get_session),
     settings: Settings = Depends(get_settings),
@@ -156,6 +159,8 @@ async def oidc_start(
     """Start a server-side Authorization Code + PKCE transaction."""
     if settings.auth_mode != "oidc":
         raise HTTPException(status_code=404, detail="oidc login is unavailable")
+    if provider != settings.oidc_provider:
+        raise HTTPException(status_code=404, detail="oidc provider is unavailable")
     existing_client = getattr(request.app.state, "oidc_http_client", None)
     try:
         async with provider_client(existing_client) as client:

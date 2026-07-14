@@ -623,6 +623,7 @@ async function mockApi(page: Page, opts: { conflictOnPatch?: boolean } = {}) {
         auth_mode: 'dev',
         oidc_issuer: null,
         oidc_client_id: null,
+        oidc_provider: null,
         has_client_secret: false,
         command_palette_enabled: false,
       },
@@ -11538,6 +11539,7 @@ test('로그인 화면은 참조 시안의 기능 계약을 유지하고 안전�
         command_palette_enabled: false,
         session_management_enabled: true,
         password_required: true,
+        oidc_login_enabled: false,
       },
     })
   })
@@ -11595,24 +11597,51 @@ test('로그인 화면은 참조 시안의 기능 계약을 유지하고 안전�
         auth_mode: 'oidc',
         oidc_issuer: 'https://idp.example.com',
         oidc_client_id: 'oneflow',
+        oidc_provider: 'sso',
         has_client_secret: true,
         command_palette_enabled: false,
         session_management_enabled: false,
         password_required: false,
+        oidc_login_enabled: true,
       },
     }),
   )
   await page.goto('/login')
   await expect(page.locator('.of-login-mode-note')).toContainText(
-    'Local credentials are unavailable in SSO mode',
+    'Continue with the configured identity provider below',
   )
   await expect(page.getByLabel('Email address')).toBeDisabled()
   await expect(page.getByLabel('Password', { exact: true })).toBeDisabled()
-  await expect(page.getByRole('button', { name: 'Continue with SSO' })).toBeVisible()
-  await page.getByRole('button', { name: 'Continue with SSO' }).click()
-  await expect(page.getByRole('dialog')).toContainText(
-    'An OIDC provider is configured, but its sign-in callback is not enabled in this build.',
+  await expect(page.getByRole('button', { name: 'Continue with SSO, configured' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Continue with Google, not configured' })).toBeVisible()
+  let releaseOidcStart: () => void = () => undefined
+  const oidcStartReleased = new Promise<void>((resolve) => { releaseOidcStart = resolve })
+  let oidcStartCount = 0
+  await page.route('**/api/v1/auth/oidc/start?*', async (route) => {
+    oidcStartCount += 1
+    await oidcStartReleased
+    await route.fulfill({ status: 204 })
+  })
+  const oidcStart = page.waitForRequest(
+    (request) => request.url().includes('/api/v1/auth/oidc/start?'),
   )
+  const configuredSso = page.getByRole('button', { name: 'Continue with SSO, configured' })
+  await configuredSso.click({ noWaitAfter: true })
+  await expect(configuredSso).toHaveAttribute('aria-busy', 'true')
+  await configuredSso.evaluate((button) => (button as HTMLButtonElement).click())
+  await page.waitForTimeout(50)
+  expect(oidcStartCount).toBe(1)
+  releaseOidcStart()
+  const oidcStartUrl = new URL((await oidcStart).url())
+  expect(oidcStartUrl.searchParams.get('provider')).toBe('sso')
+  expect(oidcStartUrl.searchParams.get('next')).toBe('/projects')
+
+  await page.goto('/login?auth_error=access_denied')
+  await expect(page.getByRole('alert')).toContainText(
+    'Sign-in was cancelled at the identity provider.',
+  )
+  await page.getByRole('button', { name: 'Continue with Google, not configured' }).click()
+  await expect(page.getByRole('dialog')).toContainText('Google OAuth is not configured')
   await page.getByRole('dialog').getByRole('button', { name: 'Close' }).click()
 
   await page.route('**/api/v1/auth/config', (route) =>
@@ -11621,10 +11650,12 @@ test('로그인 화면은 참조 시안의 기능 계약을 유지하고 안전�
         auth_mode: 'unexpected',
         oidc_issuer: null,
         oidc_client_id: null,
+        oidc_provider: null,
         has_client_secret: false,
         command_palette_enabled: false,
         session_management_enabled: false,
         password_required: false,
+        oidc_login_enabled: false,
       },
     }),
   )
