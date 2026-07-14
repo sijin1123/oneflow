@@ -27,11 +27,17 @@ from app.models import User
 from app.models.auth_session import AuthSession
 from tests.conftest import make_test_settings
 
+DEV_LOGIN_PASSWORD = "test-development-password"
+
 
 @pytest.fixture
 async def login_app(_clean_tables, app):
     """Flag-ON app sharing the SAME test DB/tables as the default app."""
-    application = create_app(make_test_settings(dev_login_required="true"))
+    application = create_app(
+        make_test_settings(
+            dev_login_required="true", dev_login_password=DEV_LOGIN_PASSWORD
+        )
+    )
     yield application
     await application.state.engine.dispose()
 
@@ -79,11 +85,63 @@ async def test_login_failures_are_generic_401(app, client):
     assert r1.json()["detail"] == r2.json()["detail"]  # no account enumeration
 
 
+async def test_required_login_keeps_password_and_account_failures_generic(login_app, login_client):
+    async with login_app.state.sessionmaker() as session, session.begin():
+        session.add(User(email="gone@oneflow.local", display_name="Gone", is_active=False))
+    attempts = [
+        {"email": DEV_USER_EMAIL},
+        {"email": DEV_USER_EMAIL, "password": "wrong-password"},
+        {"email": DEV_USER_EMAIL, "password": "잘못된-비밀번호"},
+        {"email": "nobody@oneflow.local", "password": DEV_LOGIN_PASSWORD},
+        {"email": "gone@oneflow.local", "password": DEV_LOGIN_PASSWORD},
+    ]
+    responses = [
+        await login_client.post("/api/v1/auth/login", json=payload) for payload in attempts
+    ]
+    assert all(response.status_code == 401 for response in responses)
+    assert {response.json()["detail"] for response in responses} == {"login failed"}
+
+
+async def test_remembered_login_sets_persistent_cookie_and_seven_day_session(
+    login_app, login_client
+):
+    started_at = datetime.now(UTC)
+    remembered = await login_client.post(
+        "/api/v1/auth/login",
+        json={
+            "email": DEV_USER_EMAIL,
+            "password": DEV_LOGIN_PASSWORD,
+            "remember_me": True,
+        },
+    )
+    assert remembered.status_code == 200
+    assert "Max-Age=604800" in remembered.headers["set-cookie"]
+
+    nonremembered = await login_client.post(
+        "/api/v1/auth/login",
+        json={"email": DEV_USER_EMAIL, "password": DEV_LOGIN_PASSWORD},
+    )
+    assert nonremembered.status_code == 200
+    assert "Max-Age" not in nonremembered.headers["set-cookie"]
+
+    async with login_app.state.sessionmaker() as session:
+        expirations = sorted(
+            (await session.execute(select(AuthSession.expires_at))).scalars().all()
+        )
+    assert len(expirations) == 2
+    assert expirations[0] - started_at < timedelta(hours=12, minutes=1)
+    assert expirations[0] - started_at > timedelta(hours=11, minutes=59)
+    assert expirations[1] - started_at < timedelta(days=7, minutes=1)
+    assert expirations[1] - started_at > timedelta(days=6, hours=23, minutes=59)
+
+
 async def test_flag_on_requires_valid_session(app, login_client):
     # No cookie → 401 (the goal's '/me 401' contract).
     assert (await login_client.get("/api/v1/me")).status_code == 401
     # Login → 200 with identity.
-    res = await login_client.post("/api/v1/auth/login", json={"email": DEV_USER_EMAIL})
+    res = await login_client.post(
+        "/api/v1/auth/login", json={"email": DEV_USER_EMAIL, "password": DEV_LOGIN_PASSWORD}
+    )
     assert res.status_code == 200, res.text
     me = await login_client.get("/api/v1/me")
     assert me.status_code == 200
@@ -97,11 +155,15 @@ async def test_flag_on_requires_valid_session(app, login_client):
 
 
 async def test_session_management_lists_only_own_active_sessions(login_app, login_client):
-    login = await login_client.post("/api/v1/auth/login", json={"email": DEV_USER_EMAIL})
+    login = await login_client.post(
+        "/api/v1/auth/login", json={"email": DEV_USER_EMAIL, "password": DEV_LOGIN_PASSWORD}
+    )
     assert login.status_code == 200
     transport = ASGITransport(app=login_app)
     async with AsyncClient(transport=transport, base_url="http://test") as second:
-        login = await second.post("/api/v1/auth/login", json={"email": DEV_USER_EMAIL})
+        login = await second.post(
+            "/api/v1/auth/login", json={"email": DEV_USER_EMAIL, "password": DEV_LOGIN_PASSWORD}
+        )
         assert login.status_code == 200
 
         async with login_app.state.sessionmaker() as session, session.begin():
@@ -139,11 +201,15 @@ async def test_session_management_lists_only_own_active_sessions(login_app, logi
 async def test_session_revoke_is_owner_scoped_idempotent_and_clears_current(
     login_app, login_client
 ):
-    login = await login_client.post("/api/v1/auth/login", json={"email": DEV_USER_EMAIL})
+    login = await login_client.post(
+        "/api/v1/auth/login", json={"email": DEV_USER_EMAIL, "password": DEV_LOGIN_PASSWORD}
+    )
     assert login.status_code == 200
     transport = ASGITransport(app=login_app)
     async with AsyncClient(transport=transport, base_url="http://test") as second:
-        login = await second.post("/api/v1/auth/login", json={"email": DEV_USER_EMAIL})
+        login = await second.post(
+            "/api/v1/auth/login", json={"email": DEV_USER_EMAIL, "password": DEV_LOGIN_PASSWORD}
+        )
         assert login.status_code == 200
         second_id = next(
             item["id"]
@@ -199,7 +265,9 @@ async def test_session_management_rejects_wrong_mode_bearer_and_foreign_origin(
         "/api/v1/me/sessions", headers={"Authorization": "Bearer fake"}
     )
     assert bearer_only.status_code == 401
-    login = await login_client.post("/api/v1/auth/login", json={"email": DEV_USER_EMAIL})
+    login = await login_client.post(
+        "/api/v1/auth/login", json={"email": DEV_USER_EMAIL, "password": DEV_LOGIN_PASSWORD}
+    )
     assert login.status_code == 200
     current_id = next(
         item["id"]
@@ -224,7 +292,9 @@ async def test_session_management_rejects_wrong_mode_bearer_and_foreign_origin(
 
 
 async def test_flag_on_expired_session_401_and_login_lazy_cleanup(app, login_client):
-    res = await login_client.post("/api/v1/auth/login", json={"email": DEV_USER_EMAIL})
+    res = await login_client.post(
+        "/api/v1/auth/login", json={"email": DEV_USER_EMAIL, "password": DEV_LOGIN_PASSWORD}
+    )
     assert res.status_code == 200
     async with app.state.sessionmaker() as session, session.begin():
         await session.execute(
@@ -232,7 +302,9 @@ async def test_flag_on_expired_session_401_and_login_lazy_cleanup(app, login_cli
         )
     assert (await login_client.get("/api/v1/me")).status_code == 401
     # Next login sweeps this user's stale rows (R1-⑥) and works again.
-    res = await login_client.post("/api/v1/auth/login", json={"email": DEV_USER_EMAIL})
+    res = await login_client.post(
+        "/api/v1/auth/login", json={"email": DEV_USER_EMAIL, "password": DEV_LOGIN_PASSWORD}
+    )
     assert res.status_code == 200
     async with app.state.sessionmaker() as session:
         rows = (await session.execute(select(AuthSession))).scalars().all()
@@ -243,7 +315,9 @@ async def test_flag_on_expired_session_401_and_login_lazy_cleanup(app, login_cli
 async def test_flag_on_inactive_user_blocked(app, login_client):
     async with app.state.sessionmaker() as session, session.begin():
         session.add(User(email="temp@oneflow.local", display_name="Temp"))
-    res = await login_client.post("/api/v1/auth/login", json={"email": "temp@oneflow.local"})
+    res = await login_client.post(
+        "/api/v1/auth/login", json={"email": "temp@oneflow.local", "password": DEV_LOGIN_PASSWORD}
+    )
     assert res.status_code == 200
     # Deactivation kills the live session at auth time (403 — existing contract).
     async with app.state.sessionmaker() as session, session.begin():

@@ -13,7 +13,12 @@ from tests.conftest import make_test_settings
 async def token_app(_clean_tables, app):
     """Session-required app sharing the same test DB, so Bearer auth proves
     tokens work without the dev auto-login fallback."""
-    application = create_app(make_test_settings(dev_login_required="true"))
+    application = create_app(
+        make_test_settings(
+            dev_login_required="true",
+            dev_login_password="test-development-password",
+        )
+    )
     yield application
     await application.state.engine.dispose()
 

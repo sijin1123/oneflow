@@ -2444,6 +2444,17 @@ test('개인 메모 충돌은 초안을 보존하고 최신 버전으로 명시�
 
 test('사용자 전환 로그인은 이전 사용자의 개인 메모 캐시를 즉시 제거한다', async ({ page }) => {
   await mockApi(page)
+  await page.route('**/api/v1/auth/config', (route) => route.fulfill({
+    json: {
+      auth_mode: 'dev',
+      oidc_issuer: null,
+      oidc_client_id: null,
+      has_client_secret: false,
+      command_palette_enabled: false,
+      session_management_enabled: true,
+      password_required: true,
+    },
+  }))
   await page.unroute('**/api/v1/me/personal-notes**')
   let identity: 'a' | 'b' = 'a'
   let releaseUserB: (() => void) | undefined
@@ -2493,8 +2504,9 @@ test('사용자 전환 로그인은 이전 사용자의 개인 메모 캐시를 
   await page.goto('/notes')
   await expect(page.getByRole('article', { name: 'A 사용자 비공개 메모' })).toBeVisible()
   await page.goto('/login?next=/notes')
-  await page.getByLabel('이메일').fill('user-b@oneflow.local')
-  await page.getByRole('button', { name: '로그인' }).click()
+  await page.getByLabel('Email address').fill('user-b@oneflow.local')
+  await page.getByLabel('Password', { exact: true }).fill('development-password')
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click()
   await expect(page).toHaveURL(/\/notes$/)
   await userBRequested
   await expect(page.getByText('A 사용자 비공개 메모')).toHaveCount(0)
@@ -11513,10 +11525,10 @@ test('알 수 없는 주소는 스타일된 404 페이지를 보여준다', asyn
   await expect(page).toHaveURL(/\/projects$/)
 })
 
-test('로그인 화면에서 이메일 로그인 후 이동하고 OIDC 모드는 안내만 보인다', async ({ page }) => {
+test('로그인 화면은 참조 시안의 기능 계약을 유지하고 안전하게 이동한다', async ({ page }) => {
   await mockApi(page)
   await page.route('**/api/v1/auth/config', async (route) => {
-    await new Promise((resolve) => setTimeout(resolve, 180))
+    await new Promise((resolve) => setTimeout(resolve, 700))
     await route.fulfill({
       json: {
         auth_mode: 'dev',
@@ -11525,6 +11537,7 @@ test('로그인 화면에서 이메일 로그인 후 이동하고 OIDC 모드는
         has_client_secret: false,
         command_palette_enabled: false,
         session_management_enabled: true,
+        password_required: true,
       },
     })
   })
@@ -11535,25 +11548,47 @@ test('로그인 화면에서 이메일 로그인 후 이동하고 OIDC 모드는
   )
 
   await page.goto('/login?next=/projects')
-  await expect(page.getByText('로그인 방법을 확인하고 있습니다')).toBeVisible()
-  await expect(page.getByRole('heading', { name: '계획을 흐름으로, 성과를 함께.' })).toBeVisible()
-  await expect(page.getByRole('heading', { name: '다시 만나 반갑습니다' })).toBeVisible()
-  await expect(page.getByText('안전한 사내 개발 로그인')).toBeVisible()
-  await expect(page.getByRole('button', { name: /Google|Microsoft|계정 만들기/ })).toHaveCount(0)
-  await page.waitForTimeout(900)
-  await page.screenshot({
-    path: '../../docs/screenshots/redevelopment/login-ui/desktop.png',
-    fullPage: true,
-  })
+  await expect(page.getByText('Checking sign-in options...')).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Plan. Flow. Deliver. Together.' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: /Welcome back/ })).toBeVisible()
+  await expect(page.getByText('Kanban Board', { exact: true })).toBeVisible()
+  await expect(page.getByText('Upcoming', { exact: true })).toBeVisible()
+  await expect(page.getByText('Team activity', { exact: true })).toBeVisible()
+  await expect(page.getByText('Project progress', { exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Continue with Google' })).toBeVisible()
+  await page.getByRole('button', { name: 'Continue with Google' }).click()
+  await expect(page.getByRole('dialog')).toContainText('Google OAuth is not configured')
+  await page.getByRole('dialog').getByRole('button', { name: 'Close' }).click()
+  await page.getByRole('button', { name: 'Forgot password?' }).click()
+  await expect(page.getByRole('dialog')).toContainText('Password recovery')
+  await page.getByRole('dialog').getByRole('button', { name: 'Close' }).click()
+  await page.getByRole('button', { name: 'Terms' }).click()
+  await expect(page.getByRole('dialog')).toContainText('Terms of use')
+  await page.getByRole('dialog').getByRole('button', { name: 'Close' }).click()
+  await page.getByRole('button', { name: 'Choose language' }).click()
+  await page.getByRole('menuitemradio', { name: '한국어' }).click()
+  await expect(page.getByRole('heading', { name: /다시 만나 반가워요/ })).toBeVisible()
+  await page.getByRole('button', { name: 'Choose language' }).click()
+  await page.getByRole('menuitemradio', { name: 'English' }).click()
+
   const post = page.waitForRequest(
     (r) => r.method() === 'POST' && r.url().includes('/auth/login'),
   )
-  await page.getByLabel('이메일 주소').fill('dev@oneflow.local')
-  await page.getByRole('button', { name: '로그인' }).click()
-  expect(((await post).postDataJSON() as { email: string }).email).toBe('dev@oneflow.local')
+  await page.getByLabel('Email address').fill('dev@oneflow.local')
+  await page.getByLabel('Password', { exact: true }).fill('development-password')
+  await page.getByRole('button', { name: 'Show password' }).click()
+  await expect(page.getByLabel('Password', { exact: true })).toHaveAttribute('type', 'text')
+  await page.getByRole('button', { name: 'Hide password' }).click()
+  await page.getByLabel('Remember me').uncheck()
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click()
+  expect((await post).postDataJSON()).toEqual({
+    email: 'dev@oneflow.local',
+    password: 'development-password',
+    remember_me: false,
+  })
   await expect(page).toHaveURL(/\/projects$/)
 
-  // OIDC mode: guidance only, no form (real IdP not wired — 501 policy).
+  // OIDC mode keeps credentials fail-closed while preserving provider discovery.
   await page.route('**/api/v1/auth/config', (route) =>
     route.fulfill({
       json: {
@@ -11563,13 +11598,22 @@ test('로그인 화면에서 이메일 로그인 후 이동하고 OIDC 모드는
         has_client_secret: true,
         command_palette_enabled: false,
         session_management_enabled: false,
+        password_required: false,
       },
     }),
   )
   await page.goto('/login')
-  await expect(page.getByText('조직 로그인이 준비 중입니다')).toBeVisible()
-  await expect(page.getByText('idp.example.com')).toBeVisible()
-  await expect(page.getByLabel('이메일 주소')).toBeHidden()
+  await expect(page.locator('.of-login-mode-note')).toContainText(
+    'Local credentials are unavailable in SSO mode',
+  )
+  await expect(page.getByLabel('Email address')).toBeDisabled()
+  await expect(page.getByLabel('Password', { exact: true })).toBeDisabled()
+  await expect(page.getByRole('button', { name: 'Continue with SSO' })).toBeVisible()
+  await page.getByRole('button', { name: 'Continue with SSO' }).click()
+  await expect(page.getByRole('dialog')).toContainText(
+    'An OIDC provider is configured, but its sign-in callback is not enabled in this build.',
+  )
+  await page.getByRole('dialog').getByRole('button', { name: 'Close' }).click()
 
   await page.route('**/api/v1/auth/config', (route) =>
     route.fulfill({
@@ -11580,12 +11624,15 @@ test('로그인 화면에서 이메일 로그인 후 이동하고 OIDC 모드는
         has_client_secret: false,
         command_palette_enabled: false,
         session_management_enabled: false,
+        password_required: false,
       },
     }),
   )
   await page.goto('/login')
-  await expect(page.getByText('지원되지 않는 로그인 구성입니다')).toBeVisible()
-  await expect(page.getByLabel('이메일 주소')).toBeHidden()
+  await expect(page.locator('.of-login-mode-note.is-error')).toContainText(
+    'This authentication configuration is not supported',
+  )
+  await expect(page.getByLabel('Email address')).toBeDisabled()
 })
 
 test('로그인 설정 오류를 복구하고 외부 next 이동을 차단한다', async ({ page }) => {
@@ -11606,6 +11653,7 @@ test('로그인 설정 오류를 복구하고 외부 next 이동을 차단한다
         has_client_secret: false,
         command_palette_enabled: false,
         session_management_enabled: true,
+        password_required: true,
       },
     })
   })
@@ -11622,20 +11670,21 @@ test('로그인 설정 오류를 복구하고 외부 next 이동을 차단한다
 
   await page.goto('/login?next=%2F%2Fevil.example')
   const appOrigin = new URL(page.url()).origin
-  await expect(page.getByText('로그인 정보를 불러오지 못했습니다')).toBeVisible()
-  await page.getByRole('button', { name: '다시 시도' }).click()
-  await expect(page.getByLabel('이메일 주소')).toBeVisible()
-  await page.getByLabel('이메일 주소').fill('dev@oneflow.local')
-  await page.getByRole('button', { name: '로그인' }).click()
+  await expect(page.getByText('Sign-in options could not be loaded.')).toBeVisible()
+  await page.getByRole('button', { name: 'Retry' }).click()
+  await expect(page.getByLabel('Email address')).toBeVisible()
+  await page.getByLabel('Email address').fill('dev@oneflow.local')
+  await page.getByLabel('Password', { exact: true }).fill('development-password')
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click()
   await expect(page.getByRole('alert')).toHaveText(
-    '로그인할 수 없습니다. 이메일 주소를 확인해 주세요.',
+    'We could not sign you in. Check your credentials and try again.',
   )
-  await expect(page.getByLabel('이메일 주소')).toHaveAttribute('aria-invalid', 'true')
-  await expect(page.getByLabel('이메일 주소')).toHaveAttribute(
+  await expect(page.getByLabel('Email address')).toHaveAttribute('aria-invalid', 'true')
+  await expect(page.getByLabel('Email address')).toHaveAttribute(
     'aria-describedby',
-    'login-email-help login-email-error',
+    'login-auth-help login-auth-error',
   )
-  await page.getByRole('button', { name: '로그인' }).click()
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click()
   await expect(page).toHaveURL(/\/projects$/)
   expect(new URL(page.url()).origin).toBe(appOrigin)
 
@@ -11644,8 +11693,9 @@ test('로그인 설정 오류를 복구하고 외부 next 이동을 차단한다
     '%2F%5C%5Cevil.example%2Fsteal',
   ]) {
     await page.goto(`/login?next=${unsafeNext}`)
-    await page.getByLabel('이메일 주소').fill('dev@oneflow.local')
-    await page.getByRole('button', { name: '로그인' }).click()
+    await page.getByLabel('Email address').fill('dev@oneflow.local')
+    await page.getByLabel('Password', { exact: true }).fill('development-password')
+    await page.getByRole('button', { name: 'Sign in', exact: true }).click()
     await expect(page).toHaveURL(/\/projects$/)
     expect(new URL(page.url()).origin).toBe(appOrigin)
   }
@@ -11655,22 +11705,63 @@ test('로그인 모바일 화면은 인증 흐름에 집중하고 가로 넘침�
   await page.setViewportSize({ width: 390, height: 844 })
   await page.emulateMedia({ reducedMotion: 'reduce' })
   await mockApi(page)
+  await page.route('**/api/v1/auth/config', (route) => route.fulfill({
+    json: {
+      auth_mode: 'dev',
+      oidc_issuer: null,
+      oidc_client_id: null,
+      has_client_secret: false,
+      command_palette_enabled: false,
+      session_management_enabled: true,
+      password_required: true,
+    },
+  }))
   await page.goto('/login')
 
-  await expect(page.getByRole('heading', { name: '다시 만나 반갑습니다' })).toBeVisible()
-  await expect(page.getByRole('heading', { name: '계획을 흐름으로, 성과를 함께.' })).toBeHidden()
-  await expect(page.getByLabel('이메일 주소')).toBeFocused()
+  await expect(page.getByRole('heading', { name: /Welcome back/ })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Plan. Flow. Deliver. Together.' })).toBeVisible()
+  await expect(page.getByLabel('Email address')).toBeFocused()
   await expect(page.locator('.of-login-auth-card')).toHaveCSS('animation-name', 'none')
   const viewport = await page.evaluate(() => ({
     scrollWidth: document.documentElement.scrollWidth,
     clientWidth: document.documentElement.clientWidth,
   }))
   expect(viewport.scrollWidth).toBe(viewport.clientWidth)
-  await page.waitForTimeout(550)
-  await page.screenshot({
-    path: '../../docs/screenshots/redevelopment/login-ui/mobile.png',
-    fullPage: true,
-  })
+})
+
+test('로그인 참조 UI는 6개 목표 뷰포트에서 넘침 없이 렌더링된다', async ({ page }) => {
+  test.setTimeout(90_000)
+  await page.emulateMedia({ reducedMotion: 'reduce' })
+  await mockApi(page)
+  await page.route('**/api/v1/auth/config', (route) => route.fulfill({
+    json: {
+      auth_mode: 'dev',
+      oidc_issuer: null,
+      oidc_client_id: null,
+      has_client_secret: false,
+      command_palette_enabled: false,
+      session_management_enabled: true,
+      password_required: true,
+    },
+  }))
+  const viewports = [
+    { name: '1920x1080', width: 1920, height: 1080 },
+    { name: '1440x900', width: 1440, height: 900 },
+    { name: '1366x768', width: 1366, height: 768 },
+    { name: '1024x768', width: 1024, height: 768 },
+    { name: '768x1024', width: 768, height: 1024 },
+    { name: '390x844', width: 390, height: 844 },
+  ]
+  for (const viewport of viewports) {
+    await page.setViewportSize({ width: viewport.width, height: viewport.height })
+    await page.goto('/login')
+    await expect(page.getByRole('heading', { name: /Welcome back/ })).toBeVisible()
+    await expectNoHorizontalOverflow(page)
+    await page.screenshot({
+      path: `../../docs/screenshots/redevelopment/login-reference-ui/${viewport.name}.png`,
+      fullPage: true,
+    })
+  }
 })
 
 test('Workspace popover가 실제 설정·멤버·로그아웃 흐름에 연결된다', async ({
@@ -11827,7 +11918,7 @@ test('Topbar 도움말은 실제 화면 이동, 단축키 안내, 단일 메뉴 
   await page.keyboard.press('Escape')
   await expect(helpTrigger).toBeFocused()
   await helpTrigger.click()
-  await page.mouse.click(500, 500)
+  await page.getByRole('main').click({ position: { x: 20, y: 200 } })
   await expect(helpMenu).toHaveCount(0)
   await helpTrigger.click()
   await helpMenu.getByRole('menuitem', { name: '키보드 단축키' }).click()
@@ -15253,8 +15344,8 @@ test('Customers surface는 고객 관리와 작업 연결을 기능적으로 제
   await page.goto(`/projects/${project.id}/work-packages?customer_id=${customers.customerId}`)
   await expect(page.getByLabel('고객 필터')).toHaveValue(customers.customerId)
   await page.getByRole('button', { name: '워크패키지 API 구현' }).click()
-  await expect(page.getByLabel('고객')).toBeVisible()
-  await page.getByLabel('고객').selectOption(customers.customerId)
+  await expect(page.getByLabel('고객', { exact: true })).toBeVisible()
+  await page.getByLabel('고객', { exact: true }).selectOption(customers.customerId)
 
   await page.setViewportSize({ width: 390, height: 844 })
   await page.goto('/customers')
