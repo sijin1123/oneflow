@@ -59,6 +59,20 @@ def make_test_settings(**overrides) -> Settings:
     return Settings(**base)
 
 
+def make_oidc_test_settings(**overrides) -> Settings:
+    base = dict(
+        auth_mode="oidc",
+        cors_origins="https://oneflow.test",
+        oidc_issuer="https://idp.example.test",
+        oidc_client_id="oneflow-web",
+        oidc_client_secret="test-client-secret",
+        oidc_redirect_uri="https://api.oneflow.test/api/v1/auth/oidc/callback",
+        oidc_web_origin="https://oneflow.test",
+    )
+    base.update(overrides)
+    return make_test_settings(**base)
+
+
 async def _ensure_database() -> None:
     admin = await asyncpg.connect(
         host=_parsed.host or "localhost",
@@ -207,6 +221,7 @@ __all__ = [
     "create_project",
     "create_wp",
     "make_test_settings",
+    "make_oidc_test_settings",
     "TEST_URL",
     "WorkPackageRelation",
     "uuid",

@@ -12,6 +12,7 @@ export type AuthConfig = {
   command_palette_enabled: boolean
   session_management_enabled: boolean
   password_required: boolean
+  oidc_login_enabled: boolean
 }
 
 export function useAuthConfig() {

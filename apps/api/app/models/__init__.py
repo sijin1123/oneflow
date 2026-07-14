@@ -20,6 +20,7 @@ from app.models.milestone import Milestone
 from app.models.module import Module, ModuleMember
 from app.models.notification import Notification
 from app.models.notification_setting import UserNotificationSettings
+from app.models.oidc import OidcIdentity, OidcLoginAttempt
 from app.models.personal_note import PersonalNote
 from app.models.project import Project
 from app.models.project_directory_preferences import UserProjectDirectoryPreferences
@@ -86,6 +87,8 @@ __all__ = [
     "MeetingAgendaTemplate",
     "Attachment",
     "AuthSession",
+    "OidcIdentity",
+    "OidcLoginAttempt",
     "WpWatcher",
     "WebhookEndpoint",
     "WebhookDelivery",

@@ -9,10 +9,11 @@ from app.db.base import Base
 
 
 class AuthSession(Base):
-    """Dev-login session (Pass 72, v72.1). token_hash is the SHA-256 hex of
-    the cookie token — the raw token is never stored. A session counts only
-    while unexpired and unrevoked; stale rows for a user are lazily deleted
-    on that user's next login (dev-only table — no sweep by decision)."""
+    """Interactive dev-login or OIDC session.
+
+    token_hash is the SHA-256 hex of the cookie token; the raw token is never
+    stored. A session counts only while unexpired and unrevoked.
+    """
 
     __tablename__ = "auth_sessions"
     __table_args__ = (

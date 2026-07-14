@@ -9,7 +9,7 @@ Two regimes:
   forged, expired, revoked all 401; inactive users are refused at login
   (generic 401) and at auth time (403).
 
-oidc mode keeps 501 for login/logout; the dev loopback guard blocks
+oidc mode disables password login and requires an OIDC session; the dev loopback guard blocks
 non-local callers before any of this runs.
 """
 
@@ -25,7 +25,7 @@ from app.core.auth import DEV_USER_EMAIL
 from app.main import create_app
 from app.models import User
 from app.models.auth_session import AuthSession
-from tests.conftest import make_test_settings
+from tests.conftest import make_oidc_test_settings, make_test_settings
 
 DEV_LOGIN_PASSWORD = "test-development-password"
 
@@ -325,21 +325,16 @@ async def test_flag_on_inactive_user_blocked(app, login_client):
     assert (await login_client.get("/api/v1/me")).status_code == 403
 
 
-async def test_oidc_mode_keeps_501(_clean_tables):
-    application = create_app(
-        make_test_settings(
-            auth_mode="oidc",
-            oidc_issuer="https://idp.example.com",
-            oidc_client_id="oneflow-test",
-            oidc_client_secret="placeholder-not-a-real-secret",
-        )
-    )
+async def test_oidc_mode_disables_password_login_and_requires_session(_clean_tables):
+    application = create_app(make_oidc_test_settings())
     try:
         transport = ASGITransport(app=application)
         async with AsyncClient(transport=transport, base_url="http://test") as c:
-            assert (await c.post("/api/v1/auth/login", json={"email": "x@y.z"})).status_code == 501
-            assert (await c.post("/api/v1/auth/logout")).status_code == 501
-            assert (await c.get("/api/v1/me")).status_code == 501
+            assert (await c.post("/api/v1/auth/login", json={"email": "x@y.z"})).status_code == 404
+            assert (
+                await c.post("/api/v1/auth/logout", headers={"Origin": "https://oneflow.test"})
+            ).status_code == 204
+            assert (await c.get("/api/v1/me")).status_code == 401
             cfg = await c.get("/api/v1/auth/config")
             assert cfg.status_code == 200  # discovery stays open for the login screen
     finally:

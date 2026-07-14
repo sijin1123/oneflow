@@ -6,7 +6,7 @@ tests and scripts stay deterministic (v72.1 R1-④).
 dev mode, flag on: a valid `oneflow_session` cookie is REQUIRED — missing,
 unknown, expired or revoked all yield 401.
 Bearer access tokens are validated before the interactive auth-mode branch.
-oidc mode without a valid Bearer token: explicit 501 — never a silent bypass.
+oidc mode without a valid Bearer token: requires an unexpired OIDC session.
 """
 
 import hashlib
@@ -102,7 +102,12 @@ async def get_current_user(
     if authorization:
         return await access_token_user(session, authorization)
     if settings.auth_mode == "oidc":
-        raise HTTPException(status_code=501, detail="oidc auth mode is not implemented yet")
+        user = await session_user(session, oneflow_session)
+        if user is None:
+            raise HTTPException(status_code=401, detail="login required")
+        if not user.is_active:
+            raise HTTPException(status_code=403, detail="account disabled")
+        return user
     if settings.dev_login_required_enabled:
         # Session-cookie regime (Pass 72): the cookie is the ONLY identity.
         user = await session_user(session, oneflow_session)
