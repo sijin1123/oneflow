@@ -33,6 +33,7 @@ from app.api.v1 import (
     ops,
     permissions,
     personal_notes,
+    project_phases,
     project_statuses,
     project_templates,
     project_types,
@@ -139,6 +140,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(access_tokens.router, prefix="/api/v1", tags=["access-tokens"])
     app.include_router(webhooks.router, prefix="/api/v1", tags=["webhooks"])
     app.include_router(projects.router, prefix="/api/v1/projects", tags=["projects"])
+    app.include_router(project_phases.router, prefix="/api/v1", tags=["project-phases"])
     app.include_router(
         project_templates.router,
         prefix="/api/v1/project-templates",

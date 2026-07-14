@@ -24,6 +24,7 @@ from app.models.personal_note import PersonalNote
 from app.models.project import Project
 from app.models.project_directory_preferences import UserProjectDirectoryPreferences
 from app.models.project_health_history import ProjectHealthHistory
+from app.models.project_phase import ProjectPhase
 from app.models.project_status import ProjectStatus
 from app.models.project_template import (
     ProjectTemplate,
@@ -50,6 +51,7 @@ __all__ = [
     "Project",
     "UserProjectDirectoryPreferences",
     "ProjectHealthHistory",
+    "ProjectPhase",
     "Customer",
     "ProjectMember",
     "WorkPackage",

@@ -6,6 +6,7 @@ import {
   ListChecks,
   Settings2,
   ShieldAlert,
+  Waypoints,
   UsersRound,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
@@ -28,6 +29,7 @@ import { GeneralPanel } from './GeneralPanel'
 import { StoragePanel } from './StoragePanel'
 import { MembersPanel } from './MembersPanel'
 import { MilestonesPanel } from './MilestonesPanel'
+import { ProjectPhasesPanel } from './ProjectPhasesPanel'
 import { SettingsFrame, SettingsTabList, type SettingsNavItem } from './SettingsShell'
 
 /* Project settings as a tabbed control surface (expansion PLAN Pass 1 PR-A).
@@ -36,6 +38,7 @@ const TABS = [
   { key: 'general', label: '일반', description: '프로젝트 정보와 상태', icon: Settings2 },
   { key: 'members', label: '멤버', description: '역할과 권한', icon: UsersRound },
   { key: 'workflow', label: '워크플로우', description: '상태와 타입', icon: GitBranch },
+  { key: 'lifecycle', label: '수명주기', description: '프로젝트 단계와 일정', icon: Waypoints },
   { key: 'milestones', label: '마일스톤', description: '릴리스 기준점', icon: Flag },
   { key: 'fields', label: '필드', description: '커스텀 속성', icon: ListChecks },
   { key: 'automation', label: '자동화', description: '규칙과 실행 조건', icon: Bot },
@@ -114,6 +117,9 @@ export function SettingsPage() {
               <StatusManager projectId={projectId} isOwner={isOwner} />
               <TypeManager projectId={projectId} isOwner={isOwner} />
             </WorkflowGovernanceSurface>
+          ) : null}
+          {tab === 'lifecycle' ? (
+            <ProjectPhasesPanel projectId={projectId} isOwner={isOwner} onDirtyChange={onDirtyChange} />
           ) : null}
           {tab === 'milestones' ? (
             <MilestonesPanel projectId={projectId} isOwner={isOwner} onDirtyChange={onDirtyChange} />

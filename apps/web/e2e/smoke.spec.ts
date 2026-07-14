@@ -15,6 +15,8 @@ import type {
   Project,
   ProjectHealthHistoryList,
   ProjectList,
+  ProjectPhase,
+  ProjectPhaseList,
 } from '../src/features/projects/types'
 import type { ProjectTemplate } from '../src/features/project-templates/api'
 import type { SearchResults, SearchWorkPackageAnalytics } from '../src/features/search/api'
@@ -96,6 +98,15 @@ const projectRollups = {
   initiative_overflow: 0,
 }
 const projects: ProjectList = { items: [{ ...project, ...projectRollups }], total: 1 }
+const inactiveProjectPhases: ProjectPhaseList = {
+  items: [
+    { key: 'discover', name: '발견', color: 'sky', position: 0, active: false, start_date: null, end_date: null, version: 0 },
+    { key: 'plan', name: '계획', color: 'indigo', position: 1, active: false, start_date: null, end_date: null, version: 0 },
+    { key: 'deliver', name: '실행', color: 'emerald', position: 2, active: false, start_date: null, end_date: null, version: 0 },
+    { key: 'close', name: '마감', color: 'amber', position: 3, active: false, start_date: null, end_date: null, version: 0 },
+  ],
+  total: 4,
+}
 const workPackages: WorkPackageList = { items: [wpA, wpB], total: 2 }
 const allWorkItems: SearchResults = {
   query: '',
@@ -490,6 +501,9 @@ async function mockApi(page: Page, opts: { conflictOnPatch?: boolean } = {}) {
   await page.route('**/api/v1/projects/*/health-history**', (route) =>
     route.fulfill({ json: { items: [], total: 0 } satisfies ProjectHealthHistoryList }),
   )
+  await page.route('**/api/v1/projects/*/phases**', (route) =>
+    route.fulfill({ json: inactiveProjectPhases }),
+  )
   // The Topbar bell polls this on every page — default to an empty inbox.
   await page.route('**/api/v1/me/notifications', (route) =>
     route.fulfill({ json: { items: [], total: 0, unread: 0 } }),
@@ -816,6 +830,46 @@ async function expectNoHorizontalOverflow(page: Page) {
   await expect
     .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth))
     .toBe(true)
+}
+
+function localDateOffset(days: number) {
+  const value = new Date()
+  value.setDate(value.getDate() + days)
+  const year = value.getFullYear()
+  const month = String(value.getMonth() + 1).padStart(2, '0')
+  const day = String(value.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+async function mockProjectOverview(page: Page) {
+  await page.route(`**/api/v1/projects/${project.id}/dashboard`, (route) =>
+    route.fulfill({
+      json: {
+        id: project.id,
+        key: project.key,
+        name: project.name,
+        description: project.description,
+        health: 'on_track',
+        health_note: '계획대로 진행 중입니다.',
+        archived_at: null,
+        completion_percent: 40,
+        recent_work_packages: [],
+        total_work_packages: 5,
+        open_work_packages: 3,
+        overdue_count: 1,
+        status_counts: [],
+        priority_counts: [],
+        type_counts: [],
+        total_estimated_hours: 32,
+        total_spent_hours: 14,
+        budget: null,
+        total_cost: 0,
+      },
+    }),
+  )
+  await page.route(`**/api/v1/projects/${project.id}/activities**`, (route) =>
+    route.fulfill({ json: { items: [], total: 0, truncated: false } }),
+  )
 }
 
 test('앱 셸과 프로젝트/워크패키지 목록이 렌더링된다', async ({ page }) => {
@@ -12816,6 +12870,214 @@ test('프로젝트 상태 보고 이력은 오류를 알리고 재시도 뒤 빈
   await timeline.getByRole('button', { name: '재시도' }).click()
   await expect(timeline).toContainText('아직 기록된 상태 보고가 없습니다.')
   await expect(timeline).toContainText('0건')
+})
+
+test('프로젝트 소유자는 단계를 편집하고 Overview에서 현재 수명주기를 확인한다', async ({ page }) => {
+  await mockApi(page)
+  await mockProjectOverview(page)
+  const discoverStart = localDateOffset(-14)
+  const discoverEnd = localDateOffset(-7)
+  const planStart = localDateOffset(-2)
+  const updatedPlanStart = localDateOffset(-1)
+  const planEnd = localDateOffset(7)
+  const deliverStart = localDateOffset(8)
+  const deliverEnd = localDateOffset(30)
+  let phases: ProjectPhaseList = {
+    items: [
+      {
+        key: 'discover',
+        name: '발견',
+        color: 'sky',
+        position: 0,
+        active: true,
+        start_date: discoverStart,
+        end_date: discoverEnd,
+        version: 1,
+      },
+      {
+        key: 'plan',
+        name: '계획',
+        color: 'indigo',
+        position: 1,
+        active: true,
+        start_date: planStart,
+        end_date: planEnd,
+        version: 1,
+      },
+      {
+        key: 'deliver',
+        name: '실행',
+        color: 'emerald',
+        position: 2,
+        active: true,
+        start_date: deliverStart,
+        end_date: deliverEnd,
+        version: 1,
+      },
+      {
+        key: 'close',
+        name: '마감',
+        color: 'amber',
+        position: 3,
+        active: false,
+        start_date: null,
+        end_date: null,
+        version: 0,
+      },
+    ],
+    total: 4,
+  }
+  const updates: Array<{
+    active?: boolean
+    start_date?: string | null
+    end_date?: string | null
+    version: number
+  }> = []
+  await page.route('**/api/v1/projects/*/phases**', async (route) => {
+    const request = route.request()
+    if (request.method() === 'PATCH') {
+      const key = new URL(request.url()).pathname.split('/').at(-1)
+      const body = request.postDataJSON() as {
+        active?: boolean
+        start_date?: string | null
+        end_date?: string | null
+        version: number
+      }
+      const index = phases.items.findIndex((phase) => phase.key === key)
+      const current = phases.items[index]
+      if (!current || current.version !== body.version) {
+        await route.fulfill({ status: 409, json: { detail: 'phase version conflict' } })
+        return
+      }
+      updates.push(body)
+      const updated: ProjectPhase = { ...current, ...body, version: current.version + 1 }
+      phases = {
+        ...phases,
+        items: phases.items.map((phase, itemIndex) => (itemIndex === index ? updated : phase)),
+      }
+      await route.fulfill({ json: updated })
+      return
+    }
+    await route.fulfill({ json: phases })
+  })
+
+  await page.goto(`/projects/${project.id}/settings?tab=lifecycle`)
+  const panel = page.getByRole('region', { name: '프로젝트 단계 설정' })
+  await expect(panel).toContainText('활성 3/4')
+  const planRow = panel.locator('li').filter({ hasText: '계획' })
+  await planRow.getByLabel('계획 시작일').fill(updatedPlanStart)
+  const datePatch = page.waitForRequest(
+    (request) => request.method() === 'PATCH' && request.url().endsWith('/phases/plan'),
+  )
+  await planRow.getByRole('button', { name: '저장' }).click()
+  expect((await datePatch).postDataJSON()).toEqual({
+    start_date: updatedPlanStart,
+    end_date: planEnd,
+    version: 1,
+  })
+  await expect(planRow.getByRole('button', { name: '저장' })).toBeDisabled()
+
+  const closeSwitch = panel.getByRole('switch', { name: '마감 단계 활성화' })
+  await closeSwitch.click()
+  await expect(panel.getByRole('switch', { name: '마감 단계 비활성화' })).toHaveAttribute(
+    'aria-checked',
+    'true',
+  )
+  expect(updates.at(-1)).toEqual({ active: true, version: 0 })
+  await expect(panel).toContainText('활성 4/4')
+  await page.locator('[data-shell-scroll-region]').evaluate((element) => element.scrollTo({ top: 0 }))
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/project-phases-ui/settings-desktop.png',
+    fullPage: true,
+  })
+
+  await page.goto(`/projects/${project.id}/overview`)
+  const timeline = page.getByRole('region', { name: '프로젝트 수명주기' })
+  await expect(timeline).toContainText('4단계')
+  await expect(timeline.locator('li').filter({ hasText: '발견' })).toContainText('완료')
+  await expect(timeline.locator('li').filter({ hasText: '계획' })).toContainText('현재 단계')
+  await expect(timeline.locator('li').filter({ hasText: '실행' })).toContainText('예정')
+  await expect(timeline.locator('li').filter({ hasText: '마감' })).toContainText('일정 필요')
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/project-phases-ui/overview-desktop.png',
+    fullPage: true,
+  })
+
+  await page.setViewportSize({ width: 390, height: 844 })
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/project-phases-ui/overview-mobile.png',
+    fullPage: true,
+  })
+})
+
+test('프로젝트 단계 설정은 오류 재시도 후 멤버에게 읽기 전용으로 열린다', async ({ page }) => {
+  await mockApi(page)
+  let shouldFail = true
+  const memberPhases: ProjectPhaseList = {
+    items: inactiveProjectPhases.items.map((phase, index) => ({
+      ...phase,
+      active: index === 0,
+      start_date: index === 0 ? '2026-07-01' : null,
+      end_date: index === 0 ? '2026-07-05' : null,
+      version: index === 0 ? 1 : 0,
+    })),
+    total: 4,
+  }
+  await page.route(`**/api/v1/projects/${project.id}/members`, (route) =>
+    route.fulfill({
+      json: {
+        items: [
+          {
+            user_id: 'me-1',
+            email: 'dev@oneflow.local',
+            display_name: 'Dev User',
+            role: 'member',
+          },
+        ],
+        total: 1,
+      },
+    }),
+  )
+  await page.route('**/api/v1/projects/*/phases**', (route) =>
+    shouldFail
+      ? route.fulfill({ status: 500, json: { detail: 'phase unavailable' } })
+      : route.fulfill({ json: memberPhases }),
+  )
+
+  await page.goto(`/projects/${project.id}/settings?tab=lifecycle`)
+  await expect(page.getByRole('alert')).toContainText('데이터를 불러오지 못했습니다')
+  shouldFail = false
+  await page.getByRole('button', { name: '다시 시도' }).click()
+  const panel = page.getByRole('region', { name: '프로젝트 단계 설정' })
+  await expect(panel).toContainText('읽기 전용')
+  await expect(panel.getByRole('switch')).toHaveCount(4)
+  for (const control of await panel.getByRole('switch').all()) {
+    await expect(control).toBeDisabled()
+  }
+  await expect(panel.getByRole('button', { name: '저장' })).toHaveCount(0)
+})
+
+test('Overview 단계 오류는 재시도할 수 있고 모든 단계가 비활성이면 표면을 숨긴다', async ({
+  page,
+}) => {
+  await mockApi(page)
+  await mockProjectOverview(page)
+  let shouldFail = true
+  await page.route('**/api/v1/projects/*/phases**', (route) =>
+    shouldFail
+      ? route.fulfill({ status: 500, json: { detail: 'phase unavailable' } })
+      : route.fulfill({ json: inactiveProjectPhases }),
+  )
+
+  await page.goto(`/projects/${project.id}/overview`)
+  const timeline = page.getByRole('region', { name: '프로젝트 수명주기' })
+  await expect(timeline.getByRole('alert')).toContainText('불러오지 못했습니다')
+  shouldFail = false
+  await timeline.getByRole('button', { name: '재시도' }).click()
+  await expect(timeline).toHaveCount(0)
+  await page.setViewportSize({ width: 390, height: 844 })
+  await expectNoHorizontalOverflow(page)
 })
 
 test('손상된 프로젝트 cover 이미지는 깨진 이미지 대신 fallback visual을 표시한다', async ({ page }) => {

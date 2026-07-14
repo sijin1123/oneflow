@@ -3,7 +3,14 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import { registerIdentityReset } from '@/features/auth/cache'
 
-import type { Project, ProjectHealthHistoryList, ProjectList } from './types'
+import type {
+  Project,
+  ProjectHealthHistoryList,
+  ProjectList,
+  ProjectPhase,
+  ProjectPhaseKey,
+  ProjectPhaseList,
+} from './types'
 import {
   LatestPreferenceWriter,
   toProjectDirectoryPreferencesPayload,
@@ -72,6 +79,46 @@ export function useProjectHealthHistory(projectId: string) {
   return useQuery({
     queryKey: ['project-health-history', projectId],
     queryFn: () => getProjectHealthHistory(projectId),
+  })
+}
+
+export function useProjectPhases(projectId: string) {
+  return useQuery({
+    queryKey: ['project-phases', projectId],
+    queryFn: () => api<ProjectPhaseList>(`/api/v1/projects/${projectId}/phases`),
+    enabled: Boolean(projectId),
+  })
+}
+
+export function useUpdateProjectPhase(projectId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({
+      phaseKey,
+      ...input
+    }: {
+      phaseKey: ProjectPhaseKey
+      active?: boolean
+      start_date?: string | null
+      end_date?: string | null
+      version: number
+    }) =>
+      api<ProjectPhase>(`/api/v1/projects/${projectId}/phases/${phaseKey}`, {
+        method: 'PATCH',
+        body: JSON.stringify(input),
+      }),
+    onSuccess: (phase) => {
+      queryClient.setQueryData<ProjectPhaseList>(['project-phases', projectId], (current) => {
+        if (!current) return current
+        return {
+          ...current,
+          items: current.items.map((item) => (item.key === phase.key ? phase : item)),
+        }
+      })
+    },
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: ['project-phases', projectId] })
+    },
   })
 }
 
