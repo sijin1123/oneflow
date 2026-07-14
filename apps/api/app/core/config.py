@@ -194,9 +194,7 @@ class Settings(BaseSettings):
         ):
             raise ValueError("ONEFLOW_DEV_LOGIN_PASSWORD must be at least 12 characters")
         if self.dev_login_required_enabled and self.dev_login_password is None:
-            raise ValueError(
-                "ONEFLOW_DEV_LOGIN_REQUIRED=true requires ONEFLOW_DEV_LOGIN_PASSWORD"
-            )
+            raise ValueError("ONEFLOW_DEV_LOGIN_REQUIRED=true requires ONEFLOW_DEV_LOGIN_PASSWORD")
         if self.ai_summary not in {"true", "false"}:
             raise ValueError("ONEFLOW_AI_SUMMARY accepts exactly 'true' or 'false'")
         if self.command_palette_enabled not in {"true", "false"}:

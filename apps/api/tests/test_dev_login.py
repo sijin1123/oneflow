@@ -34,9 +34,7 @@ DEV_LOGIN_PASSWORD = "test-development-password"
 async def login_app(_clean_tables, app):
     """Flag-ON app sharing the SAME test DB/tables as the default app."""
     application = create_app(
-        make_test_settings(
-            dev_login_required="true", dev_login_password=DEV_LOGIN_PASSWORD
-        )
+        make_test_settings(dev_login_required="true", dev_login_password=DEV_LOGIN_PASSWORD)
     )
     yield application
     await application.state.engine.dispose()

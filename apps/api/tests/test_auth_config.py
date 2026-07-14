@@ -28,9 +28,7 @@ async def test_dev_mode_config_is_minimal(client):
 
 async def test_dev_login_password_is_never_exposed_in_auth_config():
     password = "test-development-password"
-    app = create_app(
-        make_test_settings(dev_login_required="true", dev_login_password=password)
-    )
+    app = create_app(make_test_settings(dev_login_required="true", dev_login_password=password))
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         res = await client.get("/api/v1/auth/config")
         assert res.status_code == 200
