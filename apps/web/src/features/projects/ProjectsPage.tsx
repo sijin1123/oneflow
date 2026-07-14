@@ -11,8 +11,8 @@ import {
   SlidersHorizontal,
   X,
 } from 'lucide-react'
-import { useMemo, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { useEffect, useMemo, useState } from 'react'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 
 import { EmptyState, ErrorState, ListSkeleton } from '@/components/shell/states'
 import { Badge } from '@/components/ui/badge'
@@ -524,12 +524,14 @@ function matchesProject(project: ProjectListItem, query: string) {
 
 export function ProjectsPage() {
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
   const [includeArchived, setIncludeArchived] = useState(false)
   const [columns, setColumns] = useState<RollupKey[]>(loadColumns)
   const [sort, setSort] = useState<{ key: ProjectSortKey; dir: SortDir }>(loadSort)
   const [layout, setLayout] = useState<ProjectLayout>(loadLayout)
   const [query, setQuery] = useState('')
-  const [creating, setCreating] = useState(false)
+  const createRequested = searchParams.get('new') === '1'
+  const [creating, setCreating] = useState(createRequested)
   const capabilities = useWorkspaceCapabilities()
   const initiativesEnabled = capabilities.data?.initiatives.enabled === true
   const availableColumns = initiativesEnabled
@@ -540,6 +542,18 @@ export function ProjectsPage() {
   )
 
   const { data, isPending, isFetching, isError, error, refetch } = useProjects(includeArchived)
+
+  useEffect(() => {
+    if (createRequested) setCreating(true)
+  }, [createRequested])
+
+  const closeCreate = () => {
+    setCreating(false)
+    if (!createRequested) return
+    const next = new URLSearchParams(searchParams)
+    next.delete('new')
+    setSearchParams(next, { replace: true })
+  }
 
   const changeSort = (next: { key: ProjectSortKey; dir: SortDir }) => {
     setSort(next)
@@ -727,7 +741,7 @@ export function ProjectsPage() {
         </section>
       </div>
 
-      {creating ? <div className="mx-auto w-full max-w-7xl px-4 py-3 sm:px-6"><NewProjectForm onClose={() => setCreating(false)} /></div> : null}
+      {creating ? <div className="mx-auto w-full max-w-7xl px-4 py-3 sm:px-6"><NewProjectForm onClose={closeCreate} /></div> : null}
 
       {data.total === 0 && !creating ? (
         <div className="px-4 sm:px-6"><EmptyState title="아직 프로젝트가 없습니다" hint="첫 프로젝트를 만들어 시작하세요.">

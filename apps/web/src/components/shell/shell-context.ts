@@ -6,6 +6,7 @@ const workspaceRouteLabels: Array<{ path: string; title: string; parent: string 
   { path: '/drafts', title: '작업 초안', parent: '워크스페이스' },
   { path: '/inbox', title: '인박스', parent: '워크스페이스' },
   { path: '/work-items', title: '전체 작업', parent: '워크스페이스' },
+  { path: '/get-started', title: '시작하기', parent: '워크스페이스' },
   { path: '/customers', title: '고객', parent: '워크스페이스' },
   { path: '/projects', title: '프로젝트', parent: '워크스페이스' },
   { path: '/templates', title: '프로젝트 템플릿', parent: '워크스페이스' },

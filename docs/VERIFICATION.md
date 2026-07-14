@@ -2401,8 +2401,20 @@ Chromium typed mock fixture에서 1440x960과 390x844 viewport를 사용했다. 
 - 기존 five-track clip/crossfade 구성을 실제 높이, action group, persistent trigger rotation의 three-track WAAPI로 단순화했다. 세 track은 opening/closing별 하나의 `Animation.startTime`을 공유하며 declarative CSS는 첫 frame에서 paused 상태로 유지된다.
 - Opening phase 첫 렌더에서 X 한 개가 표시되고 48px collapsed pill이 측정된 action stack 높이까지 위로 펼쳐진다. Closing phase 첫 렌더에서는 note 한 개가 표시되고 같은 trigger가 역회전하는 동안 실제 pill 높이가 48px로 접힌다. `column-reverse`와 shrink 방지로 trigger DOM, 크기, 하단 중심은 1px 이내에서 유지된다.
 - Current-frame reverse, duplicate input, Escape, focus handoff, collision avoidance, central-frame scroll geometry, runtime reduced-motion settlement와 Personal Notes CRUD 계약은 유지한다.
-- 검증: typecheck PASS, lint PASS(기존 Fast Refresh 경고 4건), production build PASS(기존 chunk 경고), unit 87, component 8, focused E2E 2 및 병렬 repeat 6, full E2E 257 PASS + opt-in visual QA 1 skip, clean-room frontend 161/backend 44, npm audit high 0, diff check PASS. CI 결과는 PR 게이트 후 이어서 기록한다.
+- 검증: typecheck PASS, lint PASS(기존 Fast Refresh 경고 4건), production build PASS(기존 chunk 경고), unit 87, component 8, focused E2E 2 및 병렬 repeat 6, full E2E 257 PASS + opt-in visual QA 1 skip, clean-room frontend 161/backend 44, npm audit high 0, diff check PASS. PR #278 CI run `29292331964`과 main integration run `29292668210`의 backend/frontend/cleanroom/security-audit 4잡이 모두 PASS했고 squash merge `823d36a`로 반영됐다.
 - 초기 구현에서 actual-height flex shrink가 trigger 중심을 32px 이동시키는 실패를 focused E2E가 검출했다. Bottom-first fixed-size flex ordering으로 수정한 뒤 동일 geometry/phase test가 PASS했다.
 - 독립 reviewer는 opening 중 비동기 메모 도착으로 action 수가 바뀌면 height 종점이 낡을 수 있음을 지적했다. 현재 computed frame을 스냅샷으로 잡고 원래 deadline까지 남은 시간 동안 height/actions/rotation 세 track을 새 공통 epoch로 재시작하도록 수정했으며, 2→3 action retarget의 연속 높이·최종 측정 높이·1ms 이하 start-time skew를 E2E로 고정했다.
 - Chromium early-frame 증적은 `docs/screenshots/redevelopment/quick-dock-height-fold-ui/{early-opening,early-closing}.png`에 보존한다.
 - API, DB, migration, permission contract, environment variable, settings UI, dependency 변경과 이연 항목은 없다.
+
+---
+
+# UI-103 Functional Get Started 검증 (2026-07-14)
+
+- Global Topbar에 compact `시작하기` route entry를 추가하고 `/get-started`에 현재 워크스페이스의 실제 프로젝트, 전체 작업, 관리자용 활성 사용자 데이터를 이용한 체크리스트를 제공한다. 완료 여부는 브라우저 임시 상태로 바뀌지 않으며 query 오류는 미완료가 아닌 재시도 가능한 오류로 표시된다.
+- 프로젝트 없음은 `/projects?new=1`의 기존 생성 form, 쓰기 가능한 프로젝트의 작업 없음은 해당 project composer, 완료된 프로젝트·작업은 Overview와 All work items, 관리자 팀 항목은 `/admin/users`로 이동한다. 일반 멤버는 admin users query와 팀 항목을 모두 건너뛴다.
+- 프로젝트 생성 deep link는 취소 시 `new` query를 replace로 제거한다. Desktop/mobile에서 active topbar state, progressbar, 권한별 2/3항목, 마지막 action의 Quick Dock 비가림과 가로 overflow 없음을 확인했다.
+- 독립 reviewer가 전체 사용자 수를 쓰면 비활성 계정이 팀 완료로 계산되는 문제를 발견했다. 활성 사용자 2명 이상으로 기준을 수정하고 비활성 계정 회귀 테스트를 추가해 focused E2E 4건을 PASS했다.
+- 전체 E2E 첫 실행은 신규 3건 포함 258 PASS 중 기존 Quick Dock 수동 timeline 2건이 병렬 CPU stall로 1초 phase를 놓쳤다. 해당 test-only 구간을 10초 manual timeline과 명시적 `finish()`로 고정하고 production 기본 300ms assertion은 유지했으며 repeat 6과 재실행 full E2E 260 PASS + opt-in visual QA 1 skip을 확인했다. 활성 사용자 보정과 회귀 테스트 추가 후 focused 4, typecheck/lint/build 및 최종 full E2E 261 PASS + opt-in visual QA 1 skip을 다시 확인했다.
+- Production build PASS(기존 chunk 경고), unit 87, component 8, clean-room frontend 161/backend 44, npm audit high 0, diff check PASS. Chromium 증적은 `docs/screenshots/redevelopment/get-started-ui/{desktop-complete,mobile-complete}.png`에 보존한다.
+- 기존 API만 재사용했고 API, DB, migration, permission contract, environment variable, settings UI, dependency 변경과 이연 항목은 없다. PR/CI 결과는 게이트 후 이어서 기록한다.

@@ -23,10 +23,11 @@ export type UserMembership = {
 
 export type UserMembershipList = { items: UserMembership[]; total: number }
 
-export function useUsers() {
+export function useUsers(enabled = true) {
   return useQuery({
     queryKey: ['admin-users'],
     queryFn: () => api<DirectoryList>('/api/v1/users'),
+    enabled,
   })
 }
 
