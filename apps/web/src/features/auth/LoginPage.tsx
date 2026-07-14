@@ -32,7 +32,8 @@ import {
 import { Input } from '@/components/ui/input'
 import { ApiError } from '@/lib/api'
 
-import { useAuthConfig, useLogin } from './api'
+import { oidcStartUrl, useAuthConfig, useLogin, type OidcProvider } from './api'
+import { oidcErrorKey } from './oidc'
 import './LoginPage.css'
 
 type Locale = 'en' | 'ko'
@@ -49,6 +50,7 @@ const copy = {
     password: 'Password',
     passwordPlaceholder: 'Enter your password',
     passwordNotRequired: 'Password is not required in this local environment',
+    passwordProvider: 'Use the identity provider below',
     remember: 'Remember me',
     forgot: 'Forgot password?',
     signIn: 'Sign in',
@@ -70,8 +72,16 @@ const copy = {
     networkError: 'The sign-in request could not be completed. Try again shortly.',
     devNote: 'Protected local development sign-in',
     devHelp: 'Use an active directory account and the configured local password.',
-    oidcUnavailable: 'Local credentials are unavailable in SSO mode. The configured organization sign-in callback is not enabled in this build.',
-    providerHelp: 'Provider buttons explain which sign-in methods are available in this deployment.',
+    oidcUnavailable: 'Local credentials are unavailable in SSO mode. No usable identity provider is configured.',
+    oidcAvailable: 'Local credentials are unavailable. Continue with the configured identity provider below.',
+    providerHelp: 'A blue status mark identifies the provider configured for this deployment.',
+    providerConfigured: 'configured',
+    providerUnavailable: 'not configured',
+    oauthInvalidState: 'Your sign-in session expired or was already used. Start again.',
+    oauthCancelled: 'Sign-in was cancelled at the identity provider.',
+    oauthProviderError: 'The identity provider could not complete sign-in. Try again or contact your administrator.',
+    oauthInvalidResponse: 'The identity provider returned an incomplete response. Start again.',
+    oauthAccountUnavailable: 'This account is not active or provisioned in Oneflow. Request workspace access.',
     unsupported: 'This authentication configuration is not supported. Contact your administrator.',
     configLoading: 'Checking sign-in options...',
     configError: 'Sign-in options could not be loaded.',
@@ -85,6 +95,7 @@ const copy = {
     password: '비밀번호',
     passwordPlaceholder: '비밀번호를 입력하세요',
     passwordNotRequired: '현재 로컬 환경에서는 비밀번호가 필요하지 않습니다',
+    passwordProvider: '아래 인증 공급자를 사용하세요',
     remember: '로그인 상태 유지',
     forgot: '비밀번호를 잊으셨나요?',
     signIn: '로그인',
@@ -106,8 +117,16 @@ const copy = {
     networkError: '로그인 요청을 완료하지 못했습니다. 잠시 후 다시 시도하세요.',
     devNote: '보호된 로컬 개발 로그인',
     devHelp: '활성 사용자 계정과 설정된 로컬 비밀번호를 사용합니다.',
-    oidcUnavailable: 'SSO 모드에서는 로컬 계정을 사용할 수 없습니다. 구성된 조직 로그인 콜백은 이 빌드에서 아직 활성화되지 않았습니다.',
-    providerHelp: '공급자 버튼에서 이 배포 환경에 사용할 수 있는 로그인 방식을 확인할 수 있습니다.',
+    oidcUnavailable: 'SSO 모드에서는 로컬 계정을 사용할 수 없습니다. 사용 가능한 인증 공급자가 구성되지 않았습니다.',
+    oidcAvailable: '로컬 계정은 사용할 수 없습니다. 아래에 구성된 인증 공급자로 계속하세요.',
+    providerHelp: '파란 상태 표시가 이 배포 환경에 구성된 인증 공급자를 나타냅니다.',
+    providerConfigured: '구성됨',
+    providerUnavailable: '구성되지 않음',
+    oauthInvalidState: '로그인 세션이 만료됐거나 이미 사용되었습니다. 다시 시작하세요.',
+    oauthCancelled: '인증 공급자에서 로그인이 취소되었습니다.',
+    oauthProviderError: '인증 공급자가 로그인을 완료하지 못했습니다. 다시 시도하거나 관리자에게 문의하세요.',
+    oauthInvalidResponse: '인증 공급자가 불완전한 응답을 반환했습니다. 다시 시작하세요.',
+    oauthAccountUnavailable: '이 계정은 Oneflow에 등록되지 않았거나 비활성 상태입니다. 접근을 요청하세요.',
     unsupported: '지원되지 않는 인증 구성입니다. 관리자에게 문의하세요.',
     configLoading: '로그인 방법을 확인하고 있어요...',
     configError: '로그인 방법을 불러오지 못했습니다.',
@@ -265,13 +284,13 @@ function StoryPanel() {
   )
 }
 
-function ProviderGlyph({ provider }: { provider: 'google' | 'microsoft' | 'sso' }) {
+function ProviderGlyph({ provider }: { provider: OidcProvider }) {
   if (provider === 'google') return <span className="of-login-google" aria-hidden="true">G</span>
   if (provider === 'microsoft') return <span className="of-login-microsoft" aria-hidden="true"><i /><i /><i /><i /></span>
   return <Building2 aria-hidden="true" />
 }
 
-function NoticeDialog({ kind, locale, ssoConfigured, close }: { kind: NoticeKind | null; locale: Locale; ssoConfigured: boolean; close: () => void }) {
+function NoticeDialog({ kind, locale, close }: { kind: NoticeKind | null; locale: Locale; close: () => void }) {
   const isKorean = locale === 'ko'
   const details: Record<NoticeKind, { title: string; body: string }> = {
     forgot: {
@@ -290,13 +309,9 @@ function NoticeDialog({ kind, locale, ssoConfigured, close }: { kind: NoticeKind
     microsoft: { title: 'Microsoft sign-in', body: isKorean ? 'Microsoft Entra 공급자가 아직 구성되지 않았습니다.' : 'Microsoft Entra is not configured for this deployment.' },
     sso: {
       title: 'Organization SSO',
-      body: ssoConfigured
-        ? isKorean
-          ? 'OIDC 공급자 구성은 확인됐지만 로그인 콜백은 이 빌드에서 아직 활성화되지 않았습니다.'
-          : 'An OIDC provider is configured, but its sign-in callback is not enabled in this build.'
-        : isKorean
-          ? '조직 SSO 공급자가 이 배포 환경에 구성되지 않았습니다.'
-          : 'An organization SSO provider is not configured for this deployment.',
+      body: isKorean
+        ? '조직 SSO 공급자가 이 배포 환경에 구성되지 않았습니다.'
+        : 'An organization SSO provider is not configured for this deployment.',
     },
     terms: { title: isKorean ? '이용약관' : 'Terms of use', body: isKorean ? 'Oneflow는 승인된 사내 업무와 프로젝트 협업에만 사용합니다.' : 'Use Oneflow only for authorized internal work and project collaboration.' },
     privacy: { title: isKorean ? '개인정보 처리' : 'Privacy', body: isKorean ? '계정·프로젝트 활동 정보는 접근 제어와 감사 정책에 따라 처리됩니다.' : 'Account and project activity data is handled under workspace access and audit policies.' },
@@ -337,8 +352,10 @@ export function LoginPage() {
   const [showPassword, setShowPassword] = useState(false)
   const [rememberMe, setRememberMe] = useState(true)
   const [notice, setNotice] = useState<NoticeKind | null>(null)
+  const [redirectingProvider, setRedirectingProvider] = useState<OidcProvider | null>(null)
   const [validationError, setValidationError] = useState<string | null>(null)
   const emailInputRef = useRef<HTMLInputElement>(null)
+  const redirectingRef = useRef(false)
   const [locale, setLocale] = useState<Locale>(() => {
     const stored = window.localStorage.getItem(LOGIN_LOCALE_KEY)
     return stored === 'ko' ? 'ko' : 'en'
@@ -350,6 +367,8 @@ export function LoginPage() {
   }, [locale])
 
   const authMode = config.data?.auth_mode
+  const oidcProvider = config.data?.oidc_provider
+  const oidcReady = authMode === 'oidc' && config.data?.oidc_login_enabled === true && Boolean(oidcProvider)
   const devEnabled = authMode === 'dev'
   const passwordRequired = devEnabled && Boolean(config.data?.password_required)
   const formEnabled = devEnabled && !config.isPending && !config.isError
@@ -377,6 +396,20 @@ export function LoginPage() {
     ? login.error.status === 401 ? text.genericError : text.networkError
     : login.isError ? text.networkError : null
   const errorText = validationError ?? requestError
+  const oauthErrorCode = oidcErrorKey(searchParams.get('auth_error'))
+  const oauthError = oauthErrorCode ? text[oauthErrorCode] : null
+
+  const startProvider = (provider: OidcProvider) => {
+    if (!oidcReady || provider !== oidcProvider) {
+      setNotice(provider)
+      return
+    }
+    if (redirectingRef.current) return
+    redirectingRef.current = true
+    setRedirectingProvider(provider)
+    const destination = oidcStartUrl(provider, safeNextLocation(searchParams.get('next')))
+    window.requestAnimationFrame(() => window.location.assign(destination))
+  }
 
   return (
     <div className="of-login-page" data-locale={locale}>
@@ -396,7 +429,7 @@ export function LoginPage() {
               <Button type="button" variant="outline" onClick={() => void config.refetch()}><RefreshCw aria-hidden="true" /> {text.retry}</Button>
             </div>
           ) : null}
-          {authMode === 'oidc' ? <p className="of-login-mode-note"><ShieldCheck aria-hidden="true" />{text.oidcUnavailable}</p> : null}
+          {authMode === 'oidc' ? <p className="of-login-mode-note"><ShieldCheck aria-hidden="true" />{oidcReady ? text.oidcAvailable : text.oidcUnavailable}</p> : null}
           {authMode && authMode !== 'dev' && authMode !== 'oidc' ? <p className="of-login-mode-note is-error" role="alert">{text.unsupported}</p> : null}
 
           <form className="of-login-form" onSubmit={(event) => { event.preventDefault(); submit() }} noValidate>
@@ -434,7 +467,7 @@ export function LoginPage() {
                   autoComplete="current-password"
                   value={password}
                   onChange={(event) => { setPassword(event.target.value); setValidationError(null); login.reset() }}
-                  placeholder={passwordRequired ? text.passwordPlaceholder : text.passwordNotRequired}
+                  placeholder={authMode === 'oidc' ? text.passwordProvider : passwordRequired ? text.passwordPlaceholder : text.passwordNotRequired}
                   disabled={!formEnabled || !passwordRequired || login.isPending}
                   aria-invalid={Boolean(errorText && passwordRequired && !password)}
                 />
@@ -458,6 +491,7 @@ export function LoginPage() {
               <button type="button" className="of-login-link" onClick={() => setNotice('forgot')}>{text.forgot}</button>
             </div>
 
+            {oauthError ? <p className="of-login-oauth-error" role="alert"><ShieldCheck aria-hidden="true" />{oauthError}</p> : null}
             {errorText ? <p id="login-auth-error" className="of-login-error" role="alert">{errorText}</p> : null}
             <Button type="submit" className="of-login-submit" disabled={!formEnabled || !email.trim() || (passwordRequired && !password) || login.isPending} aria-busy={login.isPending}>
               {login.isPending ? <Loader2 className="of-login-spinner" aria-hidden="true" /> : <KeyRound aria-hidden="true" />}
@@ -466,25 +500,33 @@ export function LoginPage() {
 
             <div className="of-login-divider"><span />{text.or}<span /></div>
             <div className="of-login-providers">
-              {(['google', 'microsoft', 'sso'] as const).map((provider) => (
-                <button
-                  key={provider}
-                  type="button"
-                  className="of-login-provider-button"
-                  aria-describedby="login-provider-help"
-                  data-availability={provider === 'sso' && authMode === 'oidc' ? 'configured-pending' : 'unconfigured'}
-                  onClick={() => setNotice(provider)}
-                >
-                  <ProviderGlyph provider={provider} />
-                  {provider === 'google' ? text.google : provider === 'microsoft' ? text.microsoft : text.sso}
-                </button>
-              ))}
+              {(['google', 'microsoft', 'sso'] as const).map((provider) => {
+                const available = oidcReady && provider === oidcProvider
+                const redirecting = redirectingProvider === provider
+                return (
+                  <button
+                    key={provider}
+                    type="button"
+                    className="of-login-provider-button"
+                    aria-describedby="login-provider-help"
+                    aria-label={`${provider === 'google' ? text.google : provider === 'microsoft' ? text.microsoft : text.sso}, ${available ? text.providerConfigured : text.providerUnavailable}`}
+                    data-availability={available ? 'configured' : 'unconfigured'}
+                    data-redirecting={redirecting || undefined}
+                    disabled={Boolean(redirectingProvider)}
+                    aria-busy={redirecting}
+                    onClick={() => startProvider(provider)}
+                  >
+                    <ProviderGlyph provider={provider} />
+                    {provider === 'google' ? text.google : provider === 'microsoft' ? text.microsoft : text.sso}
+                  </button>
+                )
+              })}
             </div>
 
             <p className="of-login-create">{text.newTo} <button type="button" onClick={() => setNotice('request')}>{text.request}</button></p>
             <p className="of-login-assistive" id="login-auth-help">
               {authMode === 'oidc'
-                ? text.oidcUnavailable
+                ? oidcReady ? text.oidcAvailable : text.oidcUnavailable
                 : authMode && authMode !== 'dev'
                   ? text.unsupported
                   : passwordRequired
@@ -515,7 +557,7 @@ export function LoginPage() {
           </DropdownMenu>
         </footer>
       </main>
-      <NoticeDialog kind={notice} locale={locale} ssoConfigured={authMode === 'oidc'} close={() => setNotice(null)} />
+      <NoticeDialog kind={notice} locale={locale} close={() => setNotice(null)} />
     </div>
   )
 }

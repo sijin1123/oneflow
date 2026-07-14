@@ -13,6 +13,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 ALLOWED_ENVS = {"development", "test", "staging", "production"}
 ALLOWED_AUTH_MODES = {"dev", "oidc"}
+ALLOWED_OIDC_PROVIDERS = {"google", "microsoft", "sso"}
 ALLOWED_LOG_LEVELS = {"DEBUG", "INFO", "WARNING", "ERROR"}
 DB_URL_SCHEME = "postgresql+asyncpg://"
 WEBHOOK_LEGACY_KEY_ID = "legacy-v1"
@@ -70,6 +71,7 @@ class Settings(BaseSettings):
     # origin used after the callback. Cross-host discovery endpoints must be
     # named explicitly in oidc_allowed_hosts (issuer host is always allowed).
     oidc_issuer: str | None = None
+    oidc_provider: str = "sso"
     oidc_client_id: str | None = None
     oidc_client_secret: SecretStr | None = None
     oidc_redirect_uri: str | None = None
@@ -153,6 +155,11 @@ class Settings(BaseSettings):
             raise ValueError(
                 f"ONEFLOW_AUTH_MODE must be one of {sorted(ALLOWED_AUTH_MODES)}, "
                 f"got {self.auth_mode!r}"
+            )
+        if self.oidc_provider not in ALLOWED_OIDC_PROVIDERS:
+            raise ValueError(
+                "ONEFLOW_OIDC_PROVIDER must be one of "
+                f"{sorted(ALLOWED_OIDC_PROVIDERS)}, got {self.oidc_provider!r}"
             )
         # Guard (1): dev auth is forbidden outside development/test.
         if self.env in {"staging", "production"} and self.auth_mode == "dev":

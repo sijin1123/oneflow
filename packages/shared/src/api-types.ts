@@ -3454,6 +3454,8 @@ export interface components {
              * @default false
              */
             oidc_login_enabled: boolean;
+            /** Oidc Provider */
+            oidc_provider?: ("google" | "microsoft" | "sso") | null;
             /**
              * Password Required
              * @default false
@@ -8608,7 +8610,8 @@ export interface operations {
     };
     oidc_start_api_v1_auth_oidc_start_get: {
         parameters: {
-            query?: {
+            query: {
+                provider: "google" | "microsoft" | "sso";
                 next?: string | null;
             };
             header?: never;

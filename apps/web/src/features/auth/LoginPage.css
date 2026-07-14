@@ -504,6 +504,8 @@
 .of-login-link:focus-visible { border-radius: 4px; outline: 2px solid var(--of-login-blue); outline-offset: 2px; }
 
 .of-login-error { margin: -5px 0 0; color: #b53c3c; font-size: 11px; line-height: 1.4; }
+.of-login-oauth-error { display: flex; align-items: flex-start; gap: 7px; margin: -2px 0 0; border: 1px solid #f0c5c5; border-radius: 8px; background: #fff6f6; padding: 9px 10px; color: #a33b3b; font-size: 11px; line-height: 1.4; }
+.of-login-oauth-error svg { width: 15px; height: 15px; flex: none; }
 .of-login-submit { min-height: 52px; border: 0; border-radius: 9px; background: linear-gradient(100deg, #5367f5 0%, #6558f4 100%); box-shadow: 0 11px 24px rgb(83 103 245 / 0.21); font-size: 13px; }
 .of-login-submit:hover { background: linear-gradient(100deg, #4458e6 0%, #5749e5 100%); }
 .of-login-submit:focus-visible { --of-focus: #5367f5; }
@@ -514,6 +516,10 @@
 .of-login-providers { display: grid; gap: 9px; }
 .of-login-provider-button { position: relative; display: grid; grid-template-columns: 28px 1fr 28px; min-height: 50px; align-items: center; border: 1px solid #dbe1ec; border-radius: 8px; background: white; padding: 0 13px; color: #17223d; font-size: 12px; font-weight: 620; text-align: center; box-shadow: 0 3px 10px rgb(42 58 105 / 0.03); cursor: help; }
 .of-login-provider-button::after { width: 7px; height: 7px; justify-self: end; border-radius: 50%; background: #c6ccda; content: ''; }
+.of-login-provider-button[data-availability='configured'] { cursor: pointer; }
+.of-login-provider-button[data-availability='configured']::after { background: var(--of-login-blue); box-shadow: 0 0 0 3px rgb(83 103 245 / 0.12); }
+.of-login-provider-button[data-redirecting='true']::after { width: 13px; height: 13px; border: 2px solid rgb(83 103 245 / 0.22); border-top-color: var(--of-login-blue); background: transparent; box-shadow: none; animation: of-login-spin 700ms linear infinite; }
+.of-login-provider-button:disabled { cursor: wait; opacity: 0.7; }
 .of-login-provider-button:hover { border-color: #bfc8da; background: #f9faff; }
 .of-login-provider-button:focus-visible { border-color: var(--of-login-blue); outline: 2px solid rgb(83 103 245 / 0.2); outline-offset: 1px; }
 .of-login-provider-button > svg { width: 18px; color: #405174; }
@@ -652,6 +658,7 @@
   .of-login-story-widgets blockquote,
   .of-login-auth-card,
   .of-login-spinner,
+  .of-login-provider-button[data-redirecting='true']::after,
   .of-login-dialog-overlay,
   .of-login-dialog-content { animation: none; }
 }
