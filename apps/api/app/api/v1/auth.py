@@ -11,13 +11,15 @@ presence as a boolean, so an operator can verify configuration without a
 shell on the box.
 """
 
+import hashlib
+import hmac
 import secrets
 import uuid
 from datetime import UTC, datetime, timedelta
 from urllib.parse import urlsplit
 
 from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response
-from pydantic import BaseModel
+from pydantic import BaseModel, SecretStr
 from sqlalchemy import delete as sa_delete
 from sqlalchemy import select
 from sqlalchemy import update as sa_update
@@ -39,6 +41,7 @@ class AuthConfigRead(BaseModel):
     has_client_secret: bool = False
     command_palette_enabled: bool = False
     session_management_enabled: bool = False
+    password_required: bool = False
 
 
 @router.get("/auth/config", response_model=AuthConfigRead)
@@ -48,6 +51,7 @@ async def auth_config(settings: Settings = Depends(get_settings)) -> AuthConfigR
             auth_mode=settings.auth_mode,
             command_palette_enabled=settings.command_palette_is_enabled,
             session_management_enabled=settings.dev_login_required_enabled,
+            password_required=settings.dev_login_required_enabled,
         )
     return AuthConfigRead(
         auth_mode="oidc",
@@ -56,6 +60,7 @@ async def auth_config(settings: Settings = Depends(get_settings)) -> AuthConfigR
         has_client_secret=bool(settings.oidc_client_secret),
         command_palette_enabled=settings.command_palette_is_enabled,
         session_management_enabled=False,
+        password_required=False,
     )
 
 
@@ -68,6 +73,8 @@ async def auth_config(settings: Settings = Depends(get_settings)) -> AuthConfigR
 
 class LoginRequest(BaseModel):
     email: str
+    password: SecretStr | None = None
+    remember_me: bool = False
 
 
 class LoginResult(BaseModel):
@@ -88,11 +95,13 @@ class AuthSessionList(BaseModel):
     total: int
 
 
-def _set_session_cookie(response: Response, token: str, settings: Settings) -> None:
+def _set_session_cookie(
+    response: Response, token: str, settings: Settings, *, remember_me: bool
+) -> None:
     response.set_cookie(
         SESSION_COOKIE,
         token,
-        max_age=SESSION_TTL_DAYS * 86400,
+        max_age=SESSION_TTL_DAYS * 86400 if remember_me else None,
         httponly=True,
         samesite="lax",
         path="/",
@@ -214,16 +223,31 @@ async def dev_login(
     session: AsyncSession = Depends(get_session),
     settings: Settings = Depends(get_settings),
 ) -> LoginResult:
-    """Passwordless DEV login (Pass 72): the email of an existing ACTIVE
-    directory user starts a 7-day session. Unknown and inactive emails are
-    the SAME generic 401 (no account enumeration). oidc mode stays 501."""
+    """Development login with generic failures and optional remembered sessions."""
     if settings.auth_mode == "oidc":
         raise HTTPException(status_code=501, detail="oidc auth mode is not implemented yet")
+    password_matches = True
+    if settings.dev_login_required_enabled:
+        configured_password = settings.dev_login_password
+        supplied_password = (body.password.get_secret_value() if body.password else "").encode(
+            "utf-8"
+        )
+        configured_password_bytes = (
+            configured_password.get_secret_value().encode("utf-8")
+            if configured_password is not None
+            else b""
+        )
+        password_matches = hmac.compare_digest(
+            hashlib.sha256(supplied_password).digest(),
+            hashlib.sha256(configured_password_bytes).digest(),
+        )
     email = body.email.strip().lower()
     user = (
         await session.execute(select(User).where(User.email == email, User.is_active.is_(True)))
     ).scalar_one_or_none()
-    if user is None:
+    # Query and credential comparison are both completed before the generic
+    # failure so password validity cannot be inferred from the response path.
+    if user is None or not password_matches:
         raise HTTPException(status_code=401, detail="login failed")
     # Lazy cleanup (v72.1 R1-⑥): this user's expired/revoked rows go now.
     await session.execute(
@@ -237,11 +261,12 @@ async def dev_login(
         AuthSession(
             token_hash=token_hash(token),
             user_id=user.id,
-            expires_at=datetime.now(UTC) + timedelta(days=SESSION_TTL_DAYS),
+            expires_at=datetime.now(UTC)
+            + (timedelta(days=SESSION_TTL_DAYS) if body.remember_me else timedelta(hours=12)),
         )
     )
     await session.commit()
-    _set_session_cookie(response, token, settings)
+    _set_session_cookie(response, token, settings, remember_me=body.remember_me)
     return LoginResult(user_id=user.id, email=user.email, display_name=user.display_name)
 
 

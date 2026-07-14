@@ -24,6 +24,7 @@ def test_dev_auth_forbidden_outside_dev_test(env):
 
 def test_oidc_allowed_in_production():
     s = Settings(
+        _env_file=None,
         env="production",
         auth_mode="oidc",
         database_url=TEST_URL,
@@ -175,6 +176,7 @@ def test_seed_env_guard_blocks_staging_production():
         with pytest.raises(SeedGuardError):
             check_env_guard(
                 Settings(
+                    _env_file=None,
                     env=env,
                     auth_mode="oidc",
                     database_url=TEST_URL,

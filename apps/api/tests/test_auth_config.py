@@ -22,7 +22,19 @@ async def test_dev_mode_config_is_minimal(client):
         "has_client_secret": False,
         "command_palette_enabled": False,
         "session_management_enabled": False,
+        "password_required": False,
     }
+
+
+async def test_dev_login_password_is_never_exposed_in_auth_config():
+    password = "test-development-password"
+    app = create_app(make_test_settings(dev_login_required="true", dev_login_password=password))
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        res = await client.get("/api/v1/auth/config")
+        assert res.status_code == 200
+        assert res.json()["password_required"] is True
+        assert password not in res.text
+    await app.state.engine.dispose()
 
 
 async def test_command_palette_config_flag_is_public_and_default_off():
@@ -54,6 +66,7 @@ async def test_oidc_mode_answers_config_but_501s_everything_else():
         assert body["has_client_secret"] is True
         assert body["command_palette_enabled"] is False
         assert body["session_management_enabled"] is False
+        assert body["password_required"] is False
         # …and the secret VALUE appears nowhere in the response.
         assert "s3cr3t-value" not in res.text
 
@@ -81,3 +94,27 @@ def test_dev_mode_ignores_partial_oidc_values():
     # Extra oidc values in dev mode are inert — no guard trips.
     s: Settings = make_test_settings(oidc_issuer="https://idp.example.com")
     assert s.auth_mode == "dev"
+
+
+@pytest.mark.parametrize(
+    ("overrides", "message"),
+    [
+        ({"dev_login_required": "true"}, "requires ONEFLOW_DEV_LOGIN_PASSWORD"),
+        ({"dev_login_required": "enabled"}, "accepts exactly 'true' or 'false'"),
+        ({"dev_login_password": "short"}, "at least 12 characters"),
+        (
+            {
+                "env": "production",
+                "auth_mode": "oidc",
+                "oidc_issuer": "https://idp.example.com",
+                "oidc_client_id": "oneflow-web",
+                "oidc_client_secret": "secret",
+                "dev_login_password": "test-development-password",
+            },
+            "only valid in development/test",
+        ),
+    ],
+)
+def test_dev_login_password_startup_guards(overrides, message):
+    with pytest.raises(Exception, match=message):
+        make_test_settings(**overrides)

@@ -43,6 +43,8 @@ class Settings(BaseSettings):
     # "true" = a session cookie is REQUIRED (missing/invalid → 401). Restart
     # to change; never exposed in any settings UI (boot-time config).
     dev_login_required: str = "false"
+    # Kept secret so validation/repr paths cannot disclose its value.
+    dev_login_password: SecretStr | None = None
     # AI summary feature flag (PLAN §3 Phase 3 AI/RAG). Default OFF; exactly "true"
     # enables the work-package summary endpoint. Uses a local, no-secret provider.
     ai_summary: str = "false"
@@ -182,6 +184,17 @@ class Settings(BaseSettings):
             )
         if self.dev_allow_nonlocal not in {"true", "false"}:
             raise ValueError("ONEFLOW_DEV_ALLOW_NONLOCAL accepts exactly 'true' or 'false'")
+        if self.dev_login_required not in {"true", "false"}:
+            raise ValueError("ONEFLOW_DEV_LOGIN_REQUIRED accepts exactly 'true' or 'false'")
+        if self.dev_login_password is not None and self.env not in {"development", "test"}:
+            raise ValueError("ONEFLOW_DEV_LOGIN_PASSWORD is only valid in development/test")
+        if (
+            self.dev_login_password is not None
+            and len(self.dev_login_password.get_secret_value()) < 12
+        ):
+            raise ValueError("ONEFLOW_DEV_LOGIN_PASSWORD must be at least 12 characters")
+        if self.dev_login_required_enabled and self.dev_login_password is None:
+            raise ValueError("ONEFLOW_DEV_LOGIN_REQUIRED=true requires ONEFLOW_DEV_LOGIN_PASSWORD")
         if self.ai_summary not in {"true", "false"}:
             raise ValueError("ONEFLOW_AI_SUMMARY accepts exactly 'true' or 'false'")
         if self.command_palette_enabled not in {"true", "false"}:

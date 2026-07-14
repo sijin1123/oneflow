@@ -274,9 +274,7 @@ export interface paths {
         put?: never;
         /**
          * Dev Login
-         * @description Passwordless DEV login (Pass 72): the email of an existing ACTIVE
-         *     directory user starts a 7-day session. Unknown and inactive emails are
-         *     the SAME generic 401 (no account enumeration). oidc mode stays 501.
+         * @description Development login with generic failures and optional remembered sessions.
          */
         post: operations["dev_login_api_v1_auth_login_post"];
         delete?: never;
@@ -3412,6 +3410,11 @@ export interface components {
             /** Oidc Issuer */
             oidc_issuer?: string | null;
             /**
+             * Password Required
+             * @default false
+             */
+            password_required: boolean;
+            /**
              * Session Management Enabled
              * @default false
              */
@@ -4679,6 +4682,13 @@ export interface components {
         LoginRequest: {
             /** Email */
             email: string;
+            /** Password */
+            password?: string | null;
+            /**
+             * Remember Me
+             * @default false
+             */
+            remember_me: boolean;
         };
         /** LoginResult */
         LoginResult: {

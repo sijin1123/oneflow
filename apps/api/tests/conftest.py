@@ -46,6 +46,10 @@ def make_test_settings(**overrides) -> Settings:
         database_url=TEST_URL,
         test_database_url=TEST_URL,
         auth_mode="dev",
+        # Never inherit local interactive-login credentials from apps/api/.env.
+        # Tests that exercise required login opt in through explicit overrides.
+        dev_login_required="false",
+        dev_login_password=None,
         cors_origins="http://localhost:5173",
         log_level="WARNING",
         # Isolated per-run blob root — uploads never land in the repo tree.

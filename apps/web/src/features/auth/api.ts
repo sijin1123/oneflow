@@ -11,6 +11,7 @@ export type AuthConfig = {
   has_client_secret: boolean
   command_palette_enabled: boolean
   session_management_enabled: boolean
+  password_required: boolean
 }
 
 export function useAuthConfig() {
@@ -23,15 +24,16 @@ export function useAuthConfig() {
 }
 
 export type LoginResult = { user_id: string; email: string; display_name: string }
+export type LoginInput = { email: string; password?: string; remember_me: boolean }
 
 export function useLogin() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (email: string) =>
+    mutationFn: (input: LoginInput) =>
       api<LoginResult>('/api/v1/auth/login', {
         method: 'POST',
-        body: JSON.stringify({ email }),
-    }),
+        body: JSON.stringify(input),
+      }),
     onSuccess: () => {
       clearIdentityBoundCache(queryClient)
     },
