@@ -2468,3 +2468,14 @@ Chromium typed mock fixture에서 1440x960과 390x844 viewport를 사용했다. 
 - 검증: API focused 4 및 full 679 PASS(기존 Alembic 경고 1건), Ruff/format PASS, migration `0081 -> 0080 -> 0081` PASS, OpenAPI generation/drift PASS, typecheck/lint/build PASS(기존 Fast Refresh 4·chunk 경고), unit 91, component 8, full E2E 268 PASS + opt-in visual QA 1 skip 후 lifecycle 보정 focused Project Directory 3·인증 3 PASS, clean-room frontend 161/backend 44, web npm audit 0 vulnerabilities, diff check PASS.
 - Chromium 증적은 `docs/screenshots/redevelopment/project-directory-preferences-ui/{desktop,mobile}.png`에 보존한다.
 - Migration `0081` 적용이 필요하다. 환경변수, 설정 UI, dependency 변경과 기능 이연 항목은 없다.
+
+---
+
+# UI-108 Project Health History 검증 (2026-07-14)
+
+- 기존 owner-only 프로젝트 상태 PATCH와 archive write guard를 유지하면서, 실제 report가 바뀐 경우에만 이전/현재 health+note, 작성자, 시각을 같은 transaction의 append-only `project_health_history`에 기록한다. 동일한 정규화 report는 최신 stamp와 이력 모두 움직이지 않는 true no-op이다.
+- 신규 member-only `GET /api/v1/projects/{project_id}/health-history`는 limit 1–100과 offset을 적용하고 최신순으로 반환한다. 비멤버는 404, 작성자 삭제는 FK `SET NULL`과 UI의 `이전 구성원` fallback으로 처리하며, 프로젝트 삭제는 history를 cascade한다.
+- Project Overview에는 별도 카드 중첩 없이 최신순 전환 타임라인을 추가했다. loading skeleton, fetch error/retry, true empty, bounded-count 안내, current-note fallback과 mobile-safe 줄바꿈을 제공하고, 상태 저장 mutation은 current project와 history cache를 함께 무효화한다.
+- 검증: API focused 4 및 full 681 PASS(기존 Alembic 경고 1건), Ruff/format PASS, migration 0082 full upgrade→base downgrade→head upgrade PASS, OpenAPI generation/drift PASS, unit 91, component 8, typecheck/lint/build PASS(기존 Fast Refresh 4·chunk 경고), focused E2E 2 PASS. Full E2E는 268 PASS+visual QA 1 skip이며 병렬 API 부하에서 timeout 난 unrelated 3건을 격리 재실행해 3 PASS를 확인했다.
+- Clean-room frontend 161/backend 44, npm/pip audit 0 vulnerabilities, diff check와 desktop/mobile visual QA가 통과했다. 증적은 `docs/screenshots/redevelopment/project-health-history-ui/{desktop,mobile}.png`에 보존한다.
+- Migration `0082` 적용이 필요하다. 환경변수, 설정 UI, dependency 변경은 없다. Project Phases는 다음 독립 lifecycle surface로 이연한다.

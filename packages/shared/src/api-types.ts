@@ -1786,6 +1786,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{project_id}/health-history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Project Health History */
+        get: operations["list_project_health_history_api_v1_projects__project_id__health_history_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{project_id}/intake": {
         parameters: {
             query?: never;
@@ -5886,6 +5903,43 @@ export interface components {
             sort_key: "default" | "name" | "work_package_count" | "open_work_package_count" | "overdue_count" | "member_count" | "health";
             /** Updated At */
             updated_at: string | null;
+        };
+        /** ProjectHealthHistoryList */
+        ProjectHealthHistoryList: {
+            /** Items */
+            items: components["schemas"]["ProjectHealthHistoryRead"][];
+            /** Total */
+            total: number;
+        };
+        /** ProjectHealthHistoryRead */
+        ProjectHealthHistoryRead: {
+            /** Changed By */
+            changed_by: string | null;
+            /** Changed By Name */
+            changed_by_name?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Health */
+            health: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Note */
+            note: string | null;
+            /** Previous Health */
+            previous_health: string | null;
+            /** Previous Note */
+            previous_note: string | null;
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
         };
         /** ProjectInitiativeRef */
         ProjectInitiativeRef: {
@@ -12345,6 +12399,44 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DocumentRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_project_health_history_api_v1_projects__project_id__health_history_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectHealthHistoryList"];
                 };
             };
             /** @description Validation Error */

@@ -1,9 +1,9 @@
 """Shared health-report transition (v37.1 table; Pass 44 extracted).
 
-PURE payload transition only — authorization, visibility, and display-name
+PURE payload transition only — authorization, history, visibility, and display-name
 resolution stay in each domain router (v44.1 R1-③). Concurrency is
-last-write-wins by design (snapshot-only; the always-replaced note keeps a
-stale reason from lingering)."""
+last-write-wins by design; the caller may persist the resulting transition.
+The always-replaced note keeps a stale reason from lingering."""
 
 import uuid
 

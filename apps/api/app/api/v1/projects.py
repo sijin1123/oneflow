@@ -16,6 +16,7 @@ from app.models.attachment import Attachment
 from app.models.initiative import Initiative, InitiativeProject
 from app.models.member import ProjectMember
 from app.models.project import Project
+from app.models.project_health_history import ProjectHealthHistory
 from app.models.project_status import DEFAULT_STATUSES, ProjectStatus
 from app.models.project_type import DEFAULT_TYPES, ProjectType
 from app.models.user import User
@@ -23,6 +24,8 @@ from app.models.work_package import WP_CLOSED_STATUSES, WorkPackage
 from app.schemas.project import (
     ProjectCreate,
     ProjectCreateResponse,
+    ProjectHealthHistoryList,
+    ProjectHealthHistoryRead,
     ProjectInitiativeRef,
     ProjectList,
     ProjectListItem,
@@ -278,6 +281,49 @@ async def get_project(
     return ProjectRead.model_validate(project)
 
 
+@router.get(
+    "/{project_id}/health-history",
+    response_model=ProjectHealthHistoryList,
+)
+async def list_project_health_history(
+    project_id: uuid.UUID,
+    limit: int = Query(default=20, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+) -> ProjectHealthHistoryList:
+    await require_member(session, project_id, user)
+    predicate = ProjectHealthHistory.project_id == project_id
+    total = await session.scalar(
+        select(func.count()).select_from(ProjectHealthHistory).where(predicate)
+    )
+    rows = (
+        await session.execute(
+            select(ProjectHealthHistory, User.display_name)
+            .outerjoin(User, ProjectHealthHistory.changed_by == User.id)
+            .where(predicate)
+            .order_by(
+                ProjectHealthHistory.created_at.desc(),
+                ProjectHealthHistory.id.desc(),
+            )
+            .limit(limit)
+            .offset(offset)
+        )
+    ).all()
+    return ProjectHealthHistoryList(
+        items=[
+            ProjectHealthHistoryRead(
+                **ProjectHealthHistoryRead.model_validate(history).model_dump(
+                    exclude={"changed_by_name"}
+                ),
+                changed_by_name=display_name,
+            )
+            for history, display_name in rows
+        ],
+        total=total or 0,
+    )
+
+
 @router.patch("/{project_id}", response_model=ProjectRead)
 async def update_project(
     project_id: uuid.UUID,
@@ -292,6 +338,11 @@ async def update_project(
         await session.execute(select(Project).where(Project.id == project_id).with_for_update())
     ).scalar_one()
     fields = body.model_dump(exclude_unset=True)
+    health_was_requested = "health" in fields
+    previous_health = project.health
+    previous_note = project.health_note
+    previous_health_updated_by = project.health_updated_by
+    previous_health_updated_at = project.health_updated_at
     # `name` is NOT NULL: an explicit null is a client error (422), never an
     # unhandled IntegrityError → 500 (fable5 audit: PATCH null-semantics).
     if "name" in fields and fields["name"] is None:
@@ -323,6 +374,23 @@ async def update_project(
             )
     # Health transition table (v37.1 R1-②; shared pure helper since Pass 44).
     apply_health_patch(project, fields, user.id)
+    if health_was_requested:
+        if (previous_health, previous_note) != (project.health, project.health_note):
+            session.add(
+                ProjectHealthHistory(
+                    project_id=project_id,
+                    previous_health=previous_health,
+                    previous_note=previous_note,
+                    health=project.health,
+                    note=project.health_note,
+                    changed_by=user.id,
+                )
+            )
+        else:
+            # An identical explicit report is a true no-op: its latest stamp
+            # and append-only history remain aligned.
+            project.health_updated_by = previous_health_updated_by
+            project.health_updated_at = previous_health_updated_at
     for key, value in fields.items():
         setattr(project, key, value)
     await session.commit()
