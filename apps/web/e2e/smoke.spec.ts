@@ -11,7 +11,11 @@ import type { Milestone } from '../src/features/milestones/api'
 import type { Customer } from '../src/features/customers/types'
 import type { DataTransferJob } from '../src/features/ops/dataTransfersApi'
 import type { DocumentList } from '../src/features/documents/api'
-import type { Project, ProjectList } from '../src/features/projects/types'
+import type {
+  Project,
+  ProjectHealthHistoryList,
+  ProjectList,
+} from '../src/features/projects/types'
 import type { ProjectTemplate } from '../src/features/project-templates/api'
 import type { SearchResults, SearchWorkPackageAnalytics } from '../src/features/search/api'
 import type { MyActivityList, MyWorkItemList } from '../src/features/my-work/api'
@@ -483,6 +487,9 @@ async function mockApi(page: Page, opts: { conflictOnPatch?: boolean } = {}) {
   await page.route(`**/api/v1/projects/${project.id}`, (route) =>
     route.fulfill({ json: project }),
   )
+  await page.route('**/api/v1/projects/*/health-history**', (route) =>
+    route.fulfill({ json: { items: [], total: 0 } satisfies ProjectHealthHistoryList }),
+  )
   // The Topbar bell polls this on every page — default to an empty inbox.
   await page.route('**/api/v1/me/notifications', (route) =>
     route.fulfill({ json: { items: [], total: 0, unread: 0 } }),
@@ -878,6 +885,11 @@ test('프로젝트 작업 화면 제어가 보기·필터·분석·생성 흐름
   })
   await page.setViewportSize({ width: 390, height: 844 })
   await expectNoHorizontalOverflow(page)
+  await page.locator('[data-shell-scroll-region]').evaluate((container) => {
+    const target = container.querySelector('[aria-label="프로젝트 상태 보고 이력"]')
+    if (!target) return
+    container.scrollTop += target.getBoundingClientRect().top - container.getBoundingClientRect().top - 8
+  })
   await page.screenshot({
     path: '../../docs/screenshots/redevelopment/project-work-items-composition-ui/mobile.png',
   })
@@ -12662,6 +12674,148 @@ test('프로젝트 cover는 디렉터리와 Overview를 공유하고 owner가 �
   await expect(page.getByRole('dialog', { name: '프로젝트 표지' })).toHaveCount(0)
   await expect(page.getByAltText(`${project.name} 표지`)).toHaveAttribute('src', /cover-new\/download$/)
   expect(cleanupCount).toBe(1)
+})
+
+test('프로젝트 Overview 상태 보고 이력은 전환과 작성자를 최신순으로 표시한다', async ({ page }) => {
+  await mockApi(page)
+  const dashboard = {
+    id: project.id,
+    key: project.key,
+    name: project.name,
+    description: project.description,
+    health: 'off_track',
+    health_note: '배포 차단을 우선 해소합니다.',
+    archived_at: null,
+    completion_percent: 40,
+    recent_work_packages: [],
+    total_work_packages: 5,
+    open_work_packages: 3,
+    overdue_count: 1,
+    status_counts: [],
+    priority_counts: [],
+    type_counts: [],
+    total_estimated_hours: 32,
+    total_spent_hours: 14,
+    budget: null,
+    total_cost: 0,
+  }
+  const healthHistory: ProjectHealthHistoryList = {
+    items: [
+      {
+        id: 'history-3',
+        project_id: project.id,
+        previous_health: 'at_risk',
+        previous_note: '일정 변동을 확인합니다.',
+        health: 'off_track',
+        note: '배포 차단을 우선 해소합니다.',
+        changed_by: 'me-1',
+        changed_by_name: 'Dev User',
+        created_at: '2026-07-14T08:30:00Z',
+      },
+      {
+        id: 'history-2',
+        project_id: project.id,
+        previous_health: 'on_track',
+        previous_note: '계획대로 진행 중입니다.',
+        health: 'at_risk',
+        note: '일정 변동을 확인합니다.',
+        changed_by: null,
+        changed_by_name: null,
+        created_at: '2026-07-13T05:00:00Z',
+      },
+      {
+        id: 'history-1',
+        project_id: project.id,
+        previous_health: null,
+        previous_note: null,
+        health: 'on_track',
+        note: null,
+        changed_by: 'u-alex',
+        changed_by_name: 'Alex Kim',
+        created_at: '2026-07-12T03:00:00Z',
+      },
+    ],
+    total: 24,
+  }
+
+  await page.route(`**/api/v1/projects/${project.id}/dashboard`, (route) =>
+    route.fulfill({ json: dashboard }),
+  )
+  await page.route(`**/api/v1/projects/${project.id}/activities**`, (route) =>
+    route.fulfill({ json: { items: [], total: 0, truncated: false } }),
+  )
+  await page.route('**/api/v1/projects/*/health-history**', async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 250))
+    await route.fulfill({ json: healthHistory })
+  })
+
+  await page.goto(`/projects/${project.id}/overview`)
+  await expect(page.getByRole('status', { name: '상태 이력 불러오는 중' })).toBeVisible()
+  const timeline = page.getByRole('region', { name: '프로젝트 상태 보고 이력' })
+  await expect(timeline).toContainText('24건')
+  await expect(timeline.locator('li').first()).toContainText('배포 차단을 우선 해소합니다.')
+  await expect(timeline.locator('li').first()).toContainText('Dev User')
+  await expect(timeline).toContainText('이전 구성원')
+  await expect(timeline).toContainText('메모 없이 상태만 변경했습니다.')
+  await expect(timeline).toContainText('최신 3개를 표시합니다.')
+  await expect(timeline.locator('li').nth(0)).toContainText('위험')
+  await expect(timeline.locator('li').nth(1)).toContainText('주의')
+
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/project-health-history-ui/desktop.png',
+    fullPage: true,
+  })
+  await page.setViewportSize({ width: 390, height: 844 })
+  await expectNoHorizontalOverflow(page)
+  await timeline.screenshot({
+    path: '../../docs/screenshots/redevelopment/project-health-history-ui/mobile.png',
+  })
+})
+
+test('프로젝트 상태 보고 이력은 오류를 알리고 재시도 뒤 빈 상태를 표시한다', async ({ page }) => {
+  await mockApi(page)
+  let shouldFail = true
+  const dashboard = {
+    id: project.id,
+    key: project.key,
+    name: project.name,
+    description: project.description,
+    health: null,
+    health_note: null,
+    archived_at: null,
+    completion_percent: 0,
+    recent_work_packages: [],
+    total_work_packages: 0,
+    open_work_packages: 0,
+    overdue_count: 0,
+    status_counts: [],
+    priority_counts: [],
+    type_counts: [],
+    total_estimated_hours: 0,
+    total_spent_hours: 0,
+    budget: null,
+    total_cost: 0,
+  }
+
+  await page.route(`**/api/v1/projects/${project.id}/dashboard`, (route) =>
+    route.fulfill({ json: dashboard }),
+  )
+  await page.route(`**/api/v1/projects/${project.id}/activities**`, (route) =>
+    route.fulfill({ json: { items: [], total: 0, truncated: false } }),
+  )
+  await page.route('**/api/v1/projects/*/health-history**', (route) =>
+    shouldFail
+      ? route.fulfill({ status: 500, json: { detail: 'history unavailable' } })
+      : route.fulfill({ json: { items: [], total: 0 } satisfies ProjectHealthHistoryList }),
+  )
+
+  await page.goto(`/projects/${project.id}/overview`)
+  const timeline = page.getByRole('region', { name: '프로젝트 상태 보고 이력' })
+  await expect(timeline.getByRole('alert')).toContainText('불러오지 못했습니다')
+  shouldFail = false
+  await timeline.getByRole('button', { name: '재시도' }).click()
+  await expect(timeline).toContainText('아직 기록된 상태 보고가 없습니다.')
+  await expect(timeline).toContainText('0건')
 })
 
 test('손상된 프로젝트 cover 이미지는 깨진 이미지 대신 fallback visual을 표시한다', async ({ page }) => {

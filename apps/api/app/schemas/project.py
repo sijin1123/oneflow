@@ -109,6 +109,25 @@ class ProjectRead(BaseModel):
     updated_at: datetime
 
 
+class ProjectHealthHistoryRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    project_id: uuid.UUID
+    previous_health: str | None
+    previous_note: str | None
+    health: str | None
+    note: str | None
+    changed_by: uuid.UUID | None
+    changed_by_name: str | None = None
+    created_at: datetime
+
+
+class ProjectHealthHistoryList(BaseModel):
+    items: list[ProjectHealthHistoryRead]
+    total: int
+
+
 class TemplateApplied(BaseModel):
     """Copy counts when a project was created from a template (never silent)."""
 

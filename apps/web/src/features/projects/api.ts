@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import { registerIdentityReset } from '@/features/auth/cache'
 
-import type { Project, ProjectList } from './types'
+import type { Project, ProjectHealthHistoryList, ProjectList } from './types'
 import {
   LatestPreferenceWriter,
   toProjectDirectoryPreferencesPayload,
@@ -61,6 +61,20 @@ export function useProject(projectId: string) {
   })
 }
 
+export function getProjectHealthHistory(projectId: string, limit = 20, offset = 0) {
+  const params = new URLSearchParams({ limit: String(limit), offset: String(offset) })
+  return api<ProjectHealthHistoryList>(
+    `/api/v1/projects/${projectId}/health-history?${params.toString()}`,
+  )
+}
+
+export function useProjectHealthHistory(projectId: string) {
+  return useQuery({
+    queryKey: ['project-health-history', projectId],
+    queryFn: () => getProjectHealthHistory(projectId),
+  })
+}
+
 export function useCreateProject() {
   const queryClient = useQueryClient()
   return useMutation({
@@ -93,6 +107,7 @@ export function useUpdateProject(projectId: string) {
       }),
     onSettled: () => {
       void queryClient.invalidateQueries({ queryKey: ['project', projectId] })
+      void queryClient.invalidateQueries({ queryKey: ['project-health-history', projectId] })
       void queryClient.invalidateQueries({ queryKey: ['dashboard', projectId] })
       void queryClient.invalidateQueries({ queryKey: ['projects'] })
     },

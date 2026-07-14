@@ -28,6 +28,7 @@ import { cn } from '@/lib/utils'
 import { getProject, useProject, useUpdateProject } from './api'
 import { HEALTH_LABELS, HEALTH_STYLES, type Project } from './types'
 import { ProjectCover } from './ProjectCover'
+import { ProjectHealthHistoryTimeline } from './ProjectHealthHistoryTimeline'
 
 const COVER_TYPES = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp'])
 
@@ -260,6 +261,7 @@ export function ProjectOverviewPage() {
                 </ul>
               )}
             </section>
+            <ProjectHealthHistoryTimeline projectId={projectId} />
             <RecentActivity projectId={projectId} />
           </div>
 

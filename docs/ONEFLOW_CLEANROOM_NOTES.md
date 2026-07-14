@@ -290,3 +290,9 @@ Plane source, package, asset, CSS, DOM hierarchy, exact dimensions/colors, wordi
 `docs/plane-poc-reverse-spec/` D004/S009-S015에서 사용한 입력은 프로젝트 탐색 화면의 표시 선택이 개인 보기 상태로 유지된다는 행동 범주뿐이다. OneFlow 구현은 기존 자체 Project Directory control과 localStorage fallback, FastAPI authentication, PostgreSQL user identity, React Query cache를 사용해 계정별 hydration·안전한 legacy 승격·직렬 저장·실패 재시도를 독립 설계했다.
 
 Plane source, API, database schema, package, asset, CSS, DOM hierarchy, exact dimensions/colors, wording, preference key 또는 branding은 복사하지 않았다. OneFlow 고유 사용자 preference API와 migration `0081`을 추가했으며 신규 dependency/environment/settings UI 변경과 기능 이연 항목은 없다. — attested-independent-derivation
+
+## UI-108 Project Health History
+
+OpenProject의 project lifecycle/status history 범주와 `docs/plane-poc-reverse-spec/`의 compact Overview 정보구조에서 사용한 입력은 상태 변화가 프로젝트 문맥 안에서 추적 가능해야 한다는 제품 행동뿐이다. OneFlow 구현은 기존 자체 owner-only health transition, project membership, archive write guard, React Query cache와 local design tokens를 사용해 append-only report history와 Overview timeline을 독립 설계했다.
+
+Plane/OpenProject source, API, database schema, package, asset, CSS, DOM hierarchy, exact dimensions/colors, wording, timeline implementation, icons 또는 branding은 복사하지 않았다. OneFlow 고유 migration `0082`, member-only bounded API, no-op/concurrency/deleted-author 계약을 추가했으며 신규 dependency/environment/settings UI 변경은 없다. Project Phases는 별도 기능형 surface로 유지한다. — attested-independent-derivation

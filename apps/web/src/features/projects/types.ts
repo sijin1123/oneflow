@@ -20,6 +20,23 @@ export type Project = {
 
 export type ProjectHealth = 'on_track' | 'at_risk' | 'off_track'
 
+export type ProjectHealthHistoryItem = {
+  id: string
+  project_id: string
+  previous_health: ProjectHealth | null
+  previous_note: string | null
+  health: ProjectHealth | null
+  note: string | null
+  changed_by: string | null
+  changed_by_name: string | null
+  created_at: string
+}
+
+export type ProjectHealthHistoryList = {
+  items: ProjectHealthHistoryItem[]
+  total: number
+}
+
 export const HEALTH_LABELS: Record<ProjectHealth, string> = {
   on_track: '정상',
   at_risk: '주의',
