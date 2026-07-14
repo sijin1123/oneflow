@@ -3,9 +3,8 @@
 import pytest
 from pydantic import ValidationError
 
-from app.core.config import Settings
 from app.seed import SeedGuardError, check_env_guard, check_reset_guard
-from tests.conftest import TEST_URL, make_test_settings
+from tests.conftest import TEST_URL, make_oidc_test_settings, make_test_settings
 
 
 def _expect_invalid(**kwargs):
@@ -23,16 +22,7 @@ def test_dev_auth_forbidden_outside_dev_test(env):
 
 
 def test_oidc_allowed_in_production():
-    s = Settings(
-        _env_file=None,
-        env="production",
-        auth_mode="oidc",
-        database_url=TEST_URL,
-        test_database_url=TEST_URL,
-        oidc_issuer="https://idp.example.com/realms/test",
-        oidc_client_id="oneflow-web",
-        oidc_client_secret="test-secret",
-    )
+    s = make_oidc_test_settings(env="production")
     assert s.auth_mode == "oidc"
 
 
@@ -112,14 +102,9 @@ def test_webhook_key_ring_validation_never_echoes_secret_input():
 
 
 def test_dev_allow_nonlocal_forbidden_outside_dev_test():
-    _expect_invalid(
-        env="production",
-        auth_mode="oidc",
-        dev_allow_nonlocal="true",
-        oidc_issuer="https://idp.example.com/realms/test",
-        oidc_client_id="oneflow-web",
-        oidc_client_secret="test-secret",
-    )
+    values = make_oidc_test_settings(env="production").model_dump()
+    values["dev_allow_nonlocal"] = "true"
+    _expect_invalid(**values)
 
 
 # --- dev loopback middleware (v5.1, §9 guard 4) ---
@@ -174,18 +159,7 @@ async def test_nonlocal_allowed_with_escape_hatch():
 def test_seed_env_guard_blocks_staging_production():
     for env in ("staging", "production"):
         with pytest.raises(SeedGuardError):
-            check_env_guard(
-                Settings(
-                    _env_file=None,
-                    env=env,
-                    auth_mode="oidc",
-                    database_url=TEST_URL,
-                    test_database_url=TEST_URL,
-                    oidc_issuer="https://idp.example.com/realms/test",
-                    oidc_client_id="oneflow-web",
-                    oidc_client_secret="test-secret",
-                )
-            )
+            check_env_guard(make_oidc_test_settings(env=env))
 
 
 def test_reset_allows_local_test_db():

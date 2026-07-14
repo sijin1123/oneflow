@@ -1,15 +1,14 @@
-"""OIDC configuration surface (expansion PLAN Pass 5 PR-N).
+"""OIDC configuration and fail-closed startup surface.
 
-Contract: /auth/config is unauthenticated (a login screen must reach it in
-oidc mode where every authenticated route is 501); the client secret is never
-echoed anywhere; oidc mode without a complete config fails startup."""
+Contract: /auth/config is unauthenticated, secrets are never echoed, and OIDC
+mode without complete trust anchors fails startup."""
 
 import pytest
 from httpx import ASGITransport, AsyncClient
 
 from app.core.config import Settings
 from app.main import create_app
-from tests.conftest import make_test_settings
+from tests.conftest import make_oidc_test_settings, make_test_settings
 
 
 async def test_dev_mode_config_is_minimal(client):
@@ -23,6 +22,7 @@ async def test_dev_mode_config_is_minimal(client):
         "command_palette_enabled": False,
         "session_management_enabled": False,
         "password_required": False,
+        "oidc_login_enabled": False,
     }
 
 
@@ -47,11 +47,9 @@ async def test_command_palette_config_flag_is_public_and_default_off():
     await app.state.engine.dispose()
 
 
-async def test_oidc_mode_answers_config_but_501s_everything_else():
-    settings = make_test_settings(
-        auth_mode="oidc",
+async def test_oidc_mode_answers_config_and_requires_a_login_session():
+    settings = make_oidc_test_settings(
         oidc_issuer="https://idp.example.com/realms/test",
-        oidc_client_id="oneflow-web",
         oidc_client_secret="s3cr3t-value",
     )
     app = create_app(settings)
@@ -65,14 +63,15 @@ async def test_oidc_mode_answers_config_but_501s_everything_else():
         assert body["oidc_client_id"] == "oneflow-web"
         assert body["has_client_secret"] is True
         assert body["command_palette_enabled"] is False
-        assert body["session_management_enabled"] is False
+        assert body["session_management_enabled"] is True
         assert body["password_required"] is False
+        assert body["oidc_login_enabled"] is True
         # …and the secret VALUE appears nowhere in the response.
         assert "s3cr3t-value" not in res.text
 
-        # Every authenticated route keeps the explicit 501.
-        assert (await client.get("/api/v1/projects")).status_code == 501
-        assert (await client.get("/api/v1/me")).status_code == 501
+        # Authenticated routes require a validated OIDC session.
+        assert (await client.get("/api/v1/projects")).status_code == 401
+        assert (await client.get("/api/v1/me")).status_code == 401
 
 
 def test_oidc_mode_without_config_fails_startup():
@@ -82,12 +81,19 @@ def test_oidc_mode_without_config_fails_startup():
 
 def test_oidc_issuer_must_be_https():
     with pytest.raises(Exception, match="https"):
-        make_test_settings(
-            auth_mode="oidc",
+        make_oidc_test_settings(
             oidc_issuer="http://insecure.example.com",
-            oidc_client_id="x",
-            oidc_client_secret="y",
         )
+
+
+def test_oidc_web_origin_must_be_in_cors_allowlist():
+    with pytest.raises(Exception, match="ONEFLOW_CORS_ORIGINS"):
+        make_oidc_test_settings(cors_origins="https://another.example.com")
+
+
+def test_oidc_cross_host_allowlist_rejects_url_shaped_entries():
+    with pytest.raises(Exception, match="exact host"):
+        make_oidc_test_settings(oidc_allowed_hosts="https://keys.example.com")
 
 
 def test_dev_mode_ignores_partial_oidc_values():
@@ -109,6 +115,9 @@ def test_dev_mode_ignores_partial_oidc_values():
                 "oidc_issuer": "https://idp.example.com",
                 "oidc_client_id": "oneflow-web",
                 "oidc_client_secret": "secret",
+                "oidc_redirect_uri": "https://api.example.com/api/v1/auth/oidc/callback",
+                "oidc_web_origin": "https://oneflow.example.com",
+                "cors_origins": "https://oneflow.example.com",
                 "dev_login_password": "test-development-password",
             },
             "only valid in development/test",

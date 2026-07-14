@@ -65,12 +65,16 @@ class Settings(BaseSettings):
     allow_destructive_reset: str | None = None
     db_pool_size: int = 10
     db_max_overflow: int = 20
-    # OIDC provider surface (Pass 5 PR-N). Configuration only — the actual
-    # login flow stays 501 until the real integration lands. The secret is
-    # never echoed by any endpoint (only its presence as a boolean).
+    # OIDC Authorization Code + PKCE provider. The redirect URI is the exact
+    # callback registered with the IdP; web_origin is the trusted browser
+    # origin used after the callback. Cross-host discovery endpoints must be
+    # named explicitly in oidc_allowed_hosts (issuer host is always allowed).
     oidc_issuer: str | None = None
     oidc_client_id: str | None = None
-    oidc_client_secret: str | None = None
+    oidc_client_secret: SecretStr | None = None
+    oidc_redirect_uri: str | None = None
+    oidc_web_origin: str | None = None
+    oidc_allowed_hosts: str = ""
     # File uploads (Pass 4 PR-M). Not secrets; restart required to change.
     # Local-dev default — production should point at a dedicated volume.
     storage_dir: str = "var/uploads"
@@ -96,6 +100,16 @@ class Settings(BaseSettings):
     @property
     def command_palette_is_enabled(self) -> bool:
         return self.command_palette_enabled == "true"
+
+    @property
+    def oidc_allowed_host_list(self) -> list[str]:
+        hosts = {
+            host.strip().lower() for host in self.oidc_allowed_hosts.split(",") if host.strip()
+        }
+        issuer_host = urlsplit(self.oidc_issuer or "").netloc.lower()
+        if issuer_host:
+            hosts.add(issuer_host)
+        return sorted(hosts)
 
     @property
     def webhook_allowed_host_list(self) -> list[str]:
@@ -154,15 +168,52 @@ class Settings(BaseSettings):
                 for name, value in (
                     ("ONEFLOW_OIDC_ISSUER", self.oidc_issuer),
                     ("ONEFLOW_OIDC_CLIENT_ID", self.oidc_client_id),
-                    ("ONEFLOW_OIDC_CLIENT_SECRET", self.oidc_client_secret),
+                    (
+                        "ONEFLOW_OIDC_CLIENT_SECRET",
+                        self.oidc_client_secret.get_secret_value()
+                        if self.oidc_client_secret is not None
+                        else None,
+                    ),
+                    ("ONEFLOW_OIDC_REDIRECT_URI", self.oidc_redirect_uri),
+                    ("ONEFLOW_OIDC_WEB_ORIGIN", self.oidc_web_origin),
                 )
                 if not value
             ]
             if missing:
                 raise ValueError("ONEFLOW_AUTH_MODE=oidc requires " + ", ".join(missing))
             parts = urlsplit(self.oidc_issuer or "")
-            if parts.scheme != "https" or not parts.netloc:
+            if parts.scheme != "https" or not parts.netloc or len(self.oidc_issuer or "") > 512:
                 raise ValueError("ONEFLOW_OIDC_ISSUER must be an https:// URL")
+            if parts.query or parts.fragment or parts.username or parts.password:
+                raise ValueError("ONEFLOW_OIDC_ISSUER must not contain credentials or query data")
+            redirect = urlsplit(self.oidc_redirect_uri or "")
+            if redirect.scheme != "https" or not redirect.netloc:
+                raise ValueError("ONEFLOW_OIDC_REDIRECT_URI must be an https:// URL")
+            if redirect.query or redirect.fragment or redirect.username or redirect.password:
+                raise ValueError(
+                    "ONEFLOW_OIDC_REDIRECT_URI must not contain credentials or query data"
+                )
+            web = urlsplit(self.oidc_web_origin or "")
+            if web.scheme != "https" or not web.netloc or web.path not in {"", "/"}:
+                raise ValueError("ONEFLOW_OIDC_WEB_ORIGIN must be an https:// origin")
+            if web.query or web.fragment or web.username or web.password:
+                raise ValueError("ONEFLOW_OIDC_WEB_ORIGIN must be an https:// origin")
+            normalized_web_origin = f"{web.scheme}://{web.netloc}"
+            if normalized_web_origin not in self.cors_origin_list:
+                raise ValueError("ONEFLOW_OIDC_WEB_ORIGIN must be listed in ONEFLOW_CORS_ORIGINS")
+            for host in self.oidc_allowed_host_list:
+                if (
+                    "://" in host
+                    or "/" in host
+                    or "\\" in host
+                    or "@" in host
+                    or "?" in host
+                    or "#" in host
+                    or any(char.isspace() for char in host)
+                ):
+                    raise ValueError(
+                        "ONEFLOW_OIDC_ALLOWED_HOSTS entries must be exact host or host:port values"
+                    )
         # Guard (2): asyncpg scheme only — ONEFLOW_DATABASE_URL is the single DB entrypoint.
         for name, url in (
             ("ONEFLOW_DATABASE_URL", self.database_url),
