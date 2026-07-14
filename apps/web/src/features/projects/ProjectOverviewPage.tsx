@@ -29,6 +29,7 @@ import { getProject, useProject, useUpdateProject } from './api'
 import { HEALTH_LABELS, HEALTH_STYLES, type Project } from './types'
 import { ProjectCover } from './ProjectCover'
 import { ProjectHealthHistoryTimeline } from './ProjectHealthHistoryTimeline'
+import { ProjectLifecycleTimeline } from './ProjectLifecycleTimeline'
 
 const COVER_TYPES = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp'])
 
@@ -235,6 +236,7 @@ export function ProjectOverviewPage() {
 
         <div className="grid min-w-0 gap-6 py-5 lg:grid-cols-[minmax(0,1fr)_17rem]">
           <div className="min-w-0 space-y-6">
+            <ProjectLifecycleTimeline projectId={projectId} />
             <section aria-label="최근 작업" className="min-w-0">
               <div className="mb-2 flex items-center justify-between gap-3">
                 <h3 className="text-sm font-semibold">최근 작업</h3>

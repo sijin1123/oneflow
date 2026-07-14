@@ -37,6 +37,25 @@ export type ProjectHealthHistoryList = {
   total: number
 }
 
+export type ProjectPhaseKey = 'discover' | 'plan' | 'deliver' | 'close'
+export type ProjectPhaseColor = 'sky' | 'indigo' | 'emerald' | 'amber'
+
+export type ProjectPhase = {
+  key: ProjectPhaseKey
+  name: string
+  color: ProjectPhaseColor
+  position: number
+  active: boolean
+  start_date: string | null
+  end_date: string | null
+  version: number
+}
+
+export type ProjectPhaseList = {
+  items: ProjectPhase[]
+  total: number
+}
+
 export const HEALTH_LABELS: Record<ProjectHealth, string> = {
   on_track: '정상',
   at_risk: '주의',

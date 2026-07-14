@@ -2038,6 +2038,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{project_id}/phases": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Project Phases */
+        get: operations["list_project_phases_api_v1_projects__project_id__phases_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/phases/{phase_key}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Patch Project Phase */
+        patch: operations["patch_project_phase_api_v1_projects__project_id__phases__phase_key__patch"];
+        trace?: never;
+    };
     "/api/v1/projects/{project_id}/relations": {
         parameters: {
             query?: never;
@@ -6032,6 +6066,52 @@ export interface components {
              * @default 0
              */
             work_package_count: number;
+        };
+        /** ProjectPhaseList */
+        ProjectPhaseList: {
+            /** Items */
+            items: components["schemas"]["ProjectPhaseRead"][];
+            /** Total */
+            total: number;
+        };
+        /**
+         * ProjectPhasePatch
+         * @description Omitted fields remain unchanged; an explicit null clears a date.
+         */
+        ProjectPhasePatch: {
+            /** Active */
+            active?: boolean | null;
+            /** End Date */
+            end_date?: string | null;
+            /** Start Date */
+            start_date?: string | null;
+            /** Version */
+            version: number;
+        };
+        /** ProjectPhaseRead */
+        ProjectPhaseRead: {
+            /** Active */
+            active: boolean;
+            /**
+             * Color
+             * @enum {string}
+             */
+            color: "sky" | "indigo" | "emerald" | "amber";
+            /** End Date */
+            end_date: string | null;
+            /**
+             * Key
+             * @enum {string}
+             */
+            key: "discover" | "plan" | "deliver" | "close";
+            /** Name */
+            name: string;
+            /** Position */
+            position: number;
+            /** Start Date */
+            start_date: string | null;
+            /** Version */
+            version: number;
         };
         /** ProjectRead */
         ProjectRead: {
@@ -13254,6 +13334,81 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PermissionReportRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_project_phases_api_v1_projects__project_id__phases_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectPhaseList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_project_phase_api_v1_projects__project_id__phases__phase_key__patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                project_id: string;
+                phase_key: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProjectPhasePatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectPhaseRead"];
                 };
             };
             /** @description Validation Error */

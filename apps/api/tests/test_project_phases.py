@@ -1,0 +1,199 @@
+"""Project lifecycle phase API contracts (UI-109)."""
+
+import asyncio
+
+from app.api.v1 import project_phases as project_phases_api
+from tests.conftest import create_project
+
+
+async def test_list_synthesizes_ordered_defaults_and_is_member_scoped(
+    client, member_project, foreign_project
+):
+    project = await create_project(client)
+    response = await client.get(f"/api/v1/projects/{project['id']}/phases")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["total"] == 4
+    assert [item["key"] for item in body["items"]] == [
+        "discover",
+        "plan",
+        "deliver",
+        "close",
+    ]
+    assert [item["position"] for item in body["items"]] == [0, 1, 2, 3]
+    assert [item["color"] for item in body["items"]] == [
+        "sky",
+        "indigo",
+        "emerald",
+        "amber",
+    ]
+    assert all(
+        item["active"] is False
+        and item["start_date"] is None
+        and item["end_date"] is None
+        and item["version"] == 0
+        for item in body["items"]
+    )
+
+    member = await client.get(f"/api/v1/projects/{member_project['project_id']}/phases")
+    assert member.status_code == 200
+    hidden = await client.get(f"/api/v1/projects/{foreign_project['project_id']}/phases")
+    assert hidden.status_code == 404
+
+
+async def test_owner_update_supports_partial_dates_noop_conflict_and_preserved_deactivation(client):
+    project = await create_project(client)
+    url = f"/api/v1/projects/{project['id']}/phases/discover"
+
+    partial = await client.patch(
+        url,
+        json={"active": True, "start_date": "2026-07-01", "version": 0},
+    )
+    assert partial.status_code == 200
+    assert partial.json() == {
+        "key": "discover",
+        "name": "발견",
+        "color": "sky",
+        "position": 0,
+        "active": True,
+        "start_date": "2026-07-01",
+        "end_date": None,
+        "version": 1,
+    }
+
+    no_op = await client.patch(
+        url,
+        json={"active": True, "start_date": "2026-07-01", "version": 1},
+    )
+    assert no_op.status_code == 200
+    assert no_op.json()["version"] == 1
+
+    stale = await client.patch(url, json={"end_date": "2026-07-10", "version": 0})
+    assert stale.status_code == 409
+
+    complete = await client.patch(url, json={"end_date": "2026-07-10", "version": 1})
+    assert complete.status_code == 200
+    assert complete.json()["version"] == 2
+
+    cleared = await client.patch(url, json={"start_date": None, "version": 2})
+    assert cleared.status_code == 200
+    assert cleared.json()["start_date"] is None
+    assert cleared.json()["end_date"] == "2026-07-10"
+    assert cleared.json()["version"] == 3
+    listed = await client.get(f"/api/v1/projects/{project['id']}/phases")
+    assert listed.json()["items"][0] == cleared.json()
+
+    inactive = await client.patch(url, json={"active": False, "version": 3})
+    assert inactive.status_code == 200
+    assert inactive.json()["active"] is False
+    assert inactive.json()["start_date"] is None
+    assert inactive.json()["end_date"] == "2026-07-10"
+    assert inactive.json()["version"] == 4
+
+
+async def test_phase_dates_follow_definition_order_and_validate_shape(client):
+    project = await create_project(client)
+    base = f"/api/v1/projects/{project['id']}/phases"
+
+    discover = await client.patch(
+        f"{base}/discover",
+        json={
+            "active": True,
+            "start_date": "2026-07-01",
+            "end_date": "2026-07-10",
+            "version": 0,
+        },
+    )
+    assert discover.status_code == 200
+
+    overlap = await client.patch(
+        f"{base}/plan",
+        json={
+            "active": True,
+            "start_date": "2026-07-10",
+            "end_date": "2026-07-20",
+            "version": 0,
+        },
+    )
+    assert overlap.status_code == 422
+
+    ordered = await client.patch(
+        f"{base}/plan",
+        json={
+            "active": True,
+            "start_date": "2026-07-11",
+            "end_date": "2026-07-20",
+            "version": 0,
+        },
+    )
+    assert ordered.status_code == 200
+
+    reverse = await client.patch(
+        f"{base}/deliver",
+        json={
+            "active": True,
+            "start_date": "2026-08-10",
+            "end_date": "2026-08-01",
+            "version": 0,
+        },
+    )
+    assert reverse.status_code == 422
+
+    unknown = await client.patch(f"{base}/unknown", json={"active": True, "version": 0})
+    assert unknown.status_code == 404
+    null_active = await client.patch(f"{base}/close", json={"active": None, "version": 0})
+    assert null_active.status_code == 422
+
+
+async def test_phase_mutation_is_owner_only_and_archived_projects_are_read_only(
+    client, member_project
+):
+    denied = await client.patch(
+        f"/api/v1/projects/{member_project['project_id']}/phases/plan",
+        json={"active": True, "version": 0},
+    )
+    assert denied.status_code == 403
+
+    project = await create_project(client, key="ARC", name="보관 수명주기")
+    archived = await client.post(f"/api/v1/projects/{project['id']}/archive")
+    assert archived.status_code == 200
+    locked = await client.patch(
+        f"/api/v1/projects/{project['id']}/phases/plan",
+        json={"active": True, "version": 0},
+    )
+    assert locked.status_code == 409
+
+    visible = await client.get(f"/api/v1/projects/{project['id']}/phases")
+    assert visible.status_code == 200
+    assert all(item["active"] is False for item in visible.json()["items"])
+
+
+async def test_archive_committed_after_role_guard_blocks_phase_write(client, monkeypatch):
+    project = await create_project(client, key="RACE", name="보관 경쟁")
+    guard_passed = asyncio.Event()
+    continue_write = asyncio.Event()
+    original = project_phases_api.require_role
+
+    async def paused_require_role(session, project_id, user, roles, *, write=False):
+        role = await original(session, project_id, user, roles, write=write)
+        guard_passed.set()
+        await continue_write.wait()
+        return role
+
+    monkeypatch.setattr(project_phases_api, "require_role", paused_require_role)
+    write = asyncio.create_task(
+        client.patch(
+            f"/api/v1/projects/{project['id']}/phases/plan",
+            json={"active": True, "version": 0},
+        )
+    )
+    await asyncio.wait_for(guard_passed.wait(), timeout=2)
+    archived = await client.post(f"/api/v1/projects/{project['id']}/archive")
+    assert archived.status_code == 200
+    continue_write.set()
+
+    blocked = await asyncio.wait_for(write, timeout=2)
+    assert blocked.status_code == 409
+    assert blocked.json()["detail"] == "project is archived"
+    visible = await client.get(f"/api/v1/projects/{project['id']}/phases")
+    assert all(item["active"] is False for item in visible.json()["items"])
