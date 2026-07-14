@@ -17,6 +17,7 @@ import { MeetingsPage } from '@/features/meetings/MeetingsPage'
 import { ModulesPage } from '@/features/modules/ModulesPage'
 import { MyWorkPage } from '@/features/my-work/MyWorkPage'
 import { PersonalNotesPage } from '@/features/personal-notes/PersonalNotesPage'
+import { GetStartedPage } from '@/features/onboarding/GetStartedPage'
 import { InboxPage } from '@/features/notifications/InboxPage'
 import { ProjectsPage } from '@/features/projects/ProjectsPage'
 import { ProjectOverviewPage } from '@/features/projects/ProjectOverviewPage'
@@ -75,6 +76,7 @@ export const router = createBrowserRouter([
       { path: 'drafts', element: <WorkItemDraftsPage /> },
       { path: 'inbox', element: <InboxPage /> },
       { path: 'work-items', element: <AllWorkPage /> },
+      { path: 'get-started', element: <GetStartedPage /> },
       {
         path: 'customers',
         element: <CustomersRoute><CustomersPage /></CustomersRoute>,

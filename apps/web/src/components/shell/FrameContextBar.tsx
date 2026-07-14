@@ -1,4 +1,4 @@
-import { ChevronRight, FolderKanban, House, PanelLeftOpen, Settings, StickyNote } from 'lucide-react'
+import { ChevronRight, FolderKanban, House, PanelLeftOpen, Rocket, Settings, StickyNote } from 'lucide-react'
 import { Link, useLocation, useParams } from 'react-router-dom'
 
 import { useProjects } from '@/features/projects/api'
@@ -28,6 +28,8 @@ export function FrameContextBar({
   )
   const PageIcon = location.pathname === '/my'
     ? House
+    : location.pathname === '/get-started'
+      ? Rocket
     : location.pathname === '/notes'
       ? StickyNote
       : location.pathname === '/settings' || location.pathname.startsWith('/admin')

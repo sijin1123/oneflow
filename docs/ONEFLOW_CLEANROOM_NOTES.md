@@ -266,3 +266,9 @@ Plane source, package, asset, CSS, DOM hierarchy, exact dimensions/colors, wordi
 Authenticated live inspection에서 사용한 입력은 bottom-anchored dock이 contained actual height로 펼쳐지고 접히며, persistent trigger의 현재 note/X 상태와 300ms half-turn이 layout transition 시작과 함께 바뀐다는 visible behavior뿐이다. OneFlow 구현은 기존 자체 four-phase state, WAAPI interruption snapshot, Personal Notes API, collision observer, focus lifecycle, Lucide icons와 shell tokens로 독립 작성했다.
 
 Plane source, package, asset, SVG path, CSS, DOM hierarchy, exact color, wording, animation implementation 또는 branding은 복사하지 않았다. UI-only correction이며 신규 dependency/API/DB/schema/environment/settings UI 변경은 없다. — attested-independent-derivation
+
+## UI-103 Functional Get Started
+
+`docs/plane-poc-reverse-spec/` S005에서 사용한 입력은 topbar의 compact onboarding entry와 internal route라는 visible behavior·information category뿐이다. OneFlow 구현은 기존 자체 project directory, workspace work-item search, current user/admin directory query, React Router와 shell tokens로 완료 상태와 실제 다음 동작을 독립 설계했다.
+
+Plane wording, checklist taxonomy, source, package, asset, CSS, DOM hierarchy, exact dimensions/colors, animation, icons 또는 branding은 복사하지 않았다. OneFlow의 현재 권한과 데이터만 사용하며 신규 dependency/API/DB/schema/environment/settings UI 변경은 없다. — attested-independent-derivation

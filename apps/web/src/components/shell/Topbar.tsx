@@ -1,6 +1,6 @@
-import { Check, ChevronDown, LogOut, Menu, Settings, SlidersHorizontal, Users } from 'lucide-react'
+import { Check, ChevronDown, LogOut, Menu, Rocket, Settings, SlidersHorizontal, Users } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 
 import { Avatar } from '@/components/ui/avatar'
 import { IconButton } from '@/components/ui/icon-button'
@@ -214,6 +214,7 @@ export function Topbar({
   onOpenMobileSidebar?: () => void
 }) {
   const workspaceProfile = useWorkspaceProfile()
+  const location = useLocation()
   const [openMenu, setOpenMenu] = useState<'workspace' | 'help' | 'account' | null>(null)
   const setWorkspaceOpen = useCallback((open: boolean) => setOpenMenu(open ? 'workspace' : null), [])
   const setHelpOpen = useCallback((open: boolean) => setOpenMenu(open ? 'help' : null), [])
@@ -235,6 +236,19 @@ export function Topbar({
           <CommandPalette prominent />
         </div>
         <div className="flex min-w-0 items-center justify-end gap-1.5 md:gap-2">
+          <Link
+            to="/get-started"
+            aria-label="시작하기"
+            aria-current={location.pathname === '/get-started' ? 'page' : undefined}
+            className={`flex h-7 shrink-0 items-center justify-center gap-1.5 rounded-of border px-1.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus sm:px-2.5 ${
+              location.pathname === '/get-started'
+                ? 'border-of-accent bg-of-accent-soft text-of-accent'
+                : 'border-of-border bg-of-surface text-of-secondary hover:bg-of-surface-hover hover:text-of-text'
+            }`}
+          >
+            <Rocket size={13} aria-hidden="true" />
+            <span className="hidden sm:inline">시작하기</span>
+          </Link>
           <NotificationBell />
           <TopbarHelp open={openMenu === 'help'} onOpenChange={setHelpOpen} />
           <AccountMenu
