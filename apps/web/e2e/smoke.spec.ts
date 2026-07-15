@@ -11527,9 +11527,12 @@ test('알 수 없는 주소는 스타일된 404 페이지를 보여준다', asyn
 })
 
 test('로그인 화면은 참조 시안의 기능 계약을 유지하고 안전하게 이동한다', async ({ page }) => {
+  test.setTimeout(60_000)
   await mockApi(page)
+  let releaseConfig!: () => void
+  const configGate = new Promise<void>((resolve) => { releaseConfig = resolve })
   await page.route('**/api/v1/auth/config', async (route) => {
-    await new Promise((resolve) => setTimeout(resolve, 700))
+    await configGate
     await route.fulfill({
       json: {
         auth_mode: 'dev',
@@ -11548,9 +11551,19 @@ test('로그인 화면은 참조 시안의 기능 계약을 유지하고 안전�
       json: { user_id: 'me-1', email: 'dev@oneflow.local', display_name: 'Dev User' },
     }),
   )
+  await page.route('**/api/v1/auth/assistance-requests', (route) =>
+    route.fulfill({
+      status: 202,
+      json: {
+        accepted: true,
+        message: 'If assistance is available, a workspace administrator will review the request.',
+      },
+    }),
+  )
 
   await page.goto('/login?next=/projects')
   await expect(page.getByText('Checking sign-in options...')).toBeVisible()
+  releaseConfig()
   await expect(page.getByRole('heading', { name: 'Plan. Flow. Deliver. Together.' })).toBeVisible()
   await expect(page.getByRole('heading', { name: /Welcome back/ })).toBeVisible()
   await expect(page.getByText('Kanban Board', { exact: true })).toBeVisible()
@@ -11562,8 +11575,22 @@ test('로그인 화면은 참조 시안의 기능 계약을 유지하고 안전�
   await expect(page.getByRole('dialog')).toContainText('Google OAuth is not configured')
   await page.getByRole('dialog').getByRole('button', { name: 'Close' }).click()
   await page.getByRole('button', { name: 'Forgot password?' }).click()
-  await expect(page.getByRole('dialog')).toContainText('Password recovery')
-  await page.getByRole('dialog').getByRole('button', { name: 'Close' }).click()
+  const assistanceDialog = page.getByRole('dialog')
+  await expect(assistanceDialog).toContainText('Request sign-in help')
+  await assistanceDialog.getByLabel('Company email').fill('dev@oneflow.local')
+  await assistanceDialog.getByLabel('What do you need help with? (optional)').fill('Cannot use my provider')
+  const assistancePost = page.waitForRequest(
+    (request) => request.method() === 'POST' && request.url().endsWith('/auth/assistance-requests'),
+  )
+  await assistanceDialog.getByRole('button', { name: 'Send request' }).click()
+  expect((await assistancePost).postDataJSON()).toEqual({
+    kind: 'sign_in_help',
+    email: 'dev@oneflow.local',
+    reason: 'Cannot use my provider',
+  })
+  await expect(assistanceDialog).toContainText('Request received')
+  await assistanceDialog.getByRole('button', { name: 'Done' }).click()
+  await expect(page.getByRole('button', { name: 'Forgot password?' })).toBeFocused()
   await page.getByRole('button', { name: 'Terms' }).click()
   await expect(page.getByRole('dialog')).toContainText('Terms of use')
   await page.getByRole('dialog').getByRole('button', { name: 'Close' }).click()
@@ -11692,6 +11719,65 @@ test('로그인 화면은 참조 시안의 기능 계약을 유지하고 안전�
     'This authentication configuration is not supported',
   )
   await expect(page.getByLabel('Email address')).toBeDisabled()
+})
+
+test('로그인 접근 요청은 모바일에서 실패를 복구하고 기능형 결과를 표시한다', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await mockApi(page)
+  await page.route('**/api/v1/auth/config', (route) => route.fulfill({
+    json: {
+      auth_mode: 'dev',
+      oidc_issuer: null,
+      oidc_client_id: null,
+      oidc_provider: null,
+      oidc_providers: [],
+      has_client_secret: false,
+      command_palette_enabled: false,
+      session_management_enabled: true,
+      password_required: true,
+      oidc_login_enabled: false,
+    },
+  }))
+  let attempts = 0
+  let releaseFirstAttempt!: () => void
+  const firstAttemptGate = new Promise<void>((resolve) => { releaseFirstAttempt = resolve })
+  await page.route('**/api/v1/auth/assistance-requests', async (route) => {
+    attempts += 1
+    if (attempts === 1) {
+      await firstAttemptGate
+      await route.fulfill({ status: 503, json: { detail: 'temporarily unavailable' } })
+      return
+    }
+    await route.fulfill({
+      status: 202,
+      json: {
+        accepted: true,
+        message: 'If assistance is available, a workspace administrator will review the request.',
+      },
+    })
+  })
+
+  await page.goto('/login')
+  await page.getByRole('button', { name: 'Request access' }).click()
+  const dialog = page.getByRole('dialog')
+  await expect(dialog).toContainText('Request workspace access')
+  await dialog.getByLabel('Company email').fill(' New.Person@Example.Test ')
+  await dialog.getByLabel('What do you need help with? (optional)').fill('Joining delivery')
+  const submit = dialog.locator('button[type="submit"]')
+  const firstClick = submit.click()
+  await expect.poll(() => attempts).toBe(1)
+  await expect(submit).toHaveAttribute('aria-busy', 'true')
+  releaseFirstAttempt()
+  await firstClick
+  await expect(dialog.getByRole('alert')).toContainText('could not submit')
+  await submit.click()
+  await expect(dialog).toContainText('Request received')
+  expect(attempts).toBe(2)
+  const viewport = await page.evaluate(() => ({
+    scrollWidth: document.documentElement.scrollWidth,
+    clientWidth: document.documentElement.clientWidth,
+  }))
+  expect(viewport.scrollWidth).toBe(viewport.clientWidth)
 })
 
 test('로그인 설정 오류를 복구하고 외부 next 이동을 차단한다', async ({ page }) => {

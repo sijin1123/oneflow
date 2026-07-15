@@ -50,6 +50,24 @@ export function useLogin() {
   })
 }
 
+export type AuthAssistanceKind = 'sign_in_help' | 'workspace_access'
+export type AuthAssistanceInput = {
+  kind: AuthAssistanceKind
+  email: string
+  reason?: string
+}
+export type AuthAssistanceAccepted = { accepted: true; message: string }
+
+export function useAuthAssistance() {
+  return useMutation({
+    mutationFn: (input: AuthAssistanceInput) =>
+      api<AuthAssistanceAccepted>('/api/v1/auth/assistance-requests', {
+        method: 'POST',
+        body: JSON.stringify(input),
+      }),
+  })
+}
+
 export function useLogout() {
   const queryClient = useQueryClient()
   return useMutation({

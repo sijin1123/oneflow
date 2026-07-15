@@ -546,10 +546,36 @@
 .of-login-dialog-close:hover { background: #f1f3f8; }
 .of-login-dialog-close:focus-visible { outline: 2px solid var(--of-login-blue); }
 .of-login-dialog-close svg { width: 18px; }
-.of-login-dialog-action { display: inline-flex; min-height: 42px; align-items: center; gap: 7px; margin-top: 18px; border: 1px solid #d6ddec; border-radius: 8px; padding: 0 13px; color: #41506e; font-size: 12px; font-weight: 650; text-decoration: none; }
-.of-login-dialog-action:hover { border-color: #aebad0; background: #f7f9fd; }
-.of-login-dialog-action:focus-visible { outline: 2px solid var(--of-login-blue); outline-offset: 2px; }
-.of-login-dialog-action svg { width: 16px; }
+.of-login-assistance-dialog { width: min(452px, calc(100vw - 32px)); }
+.of-login-assistance-form { display: grid; gap: 14px; margin-top: 20px; }
+.of-login-dialog-field { display: grid; gap: 7px; color: #26324d; font-size: 12px; font-weight: 650; }
+.of-login-dialog-input-wrap { position: relative; display: block; }
+.of-login-dialog-input-wrap > svg { position: absolute; top: 50%; left: 12px; width: 16px; color: #71809d; transform: translateY(-50%); pointer-events: none; }
+.of-login-dialog-field input,
+.of-login-dialog-field textarea { width: 100%; border: 1px solid #d6ddec; border-radius: 8px; background: #fff; color: var(--of-login-ink); font: inherit; font-weight: 500; outline: 0; transition: border-color 140ms ease, box-shadow 140ms ease, background 140ms ease; }
+.of-login-dialog-field input { height: 44px; padding: 0 12px 0 38px; }
+.of-login-dialog-field textarea { min-height: 82px; resize: vertical; padding: 11px 12px; line-height: 1.5; }
+.of-login-dialog-field input::placeholder,
+.of-login-dialog-field textarea::placeholder { color: #98a3b8; }
+.of-login-dialog-field input:hover,
+.of-login-dialog-field textarea:hover { border-color: #bac4d7; }
+.of-login-dialog-field input:focus-visible,
+.of-login-dialog-field textarea:focus-visible { border-color: var(--of-login-blue); box-shadow: 0 0 0 3px rgb(82 101 236 / 0.12); }
+.of-login-dialog-field input[aria-invalid='true'] { border-color: #c84d62; box-shadow: 0 0 0 3px rgb(200 77 98 / 0.1); }
+.of-login-dialog-field input:disabled,
+.of-login-dialog-field textarea:disabled { cursor: wait; background: #f6f7fa; color: #7f899c; }
+.of-login-dialog-help { margin: -3px 0 0 !important; color: #71809a !important; font-size: 11px !important; }
+.of-login-dialog-error { margin: -3px 0 0 !important; color: #b4374d !important; font-weight: 600; }
+.of-login-dialog-primary { display: inline-flex; min-height: 44px; align-items: center; justify-content: center; gap: 8px; border: 0; border-radius: 8px; background: linear-gradient(120deg, #5267ee, #6660f2); padding: 0 16px; color: #fff; font-size: 12px; font-weight: 700; box-shadow: 0 8px 20px rgb(82 101 236 / 0.2); transition: transform 140ms ease, box-shadow 140ms ease, opacity 140ms ease; }
+.of-login-dialog-primary:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 10px 24px rgb(82 101 236 / 0.25); }
+.of-login-dialog-primary:focus-visible { outline: 2px solid var(--of-login-blue); outline-offset: 3px; }
+.of-login-dialog-primary:disabled { cursor: wait; opacity: 0.62; }
+.of-login-dialog-primary svg { width: 16px; height: 16px; }
+.of-login-assistance-success { display: grid; justify-items: center; gap: 10px; padding: 12px 4px 2px; text-align: center; }
+.of-login-assistance-success > svg { width: 34px; height: 34px; color: #4c67dc; }
+.of-login-assistance-success h2 { margin: 0; }
+.of-login-assistance-success p { max-width: 330px; }
+.of-login-assistance-success .of-login-dialog-primary { width: 100%; margin-top: 8px; }
 
 @keyframes of-login-art-enter { from { opacity: 0; transform: scale(1.04); } to { opacity: 1; transform: scale(1.01); } }
 @keyframes of-login-copy-enter { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
