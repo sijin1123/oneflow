@@ -139,6 +139,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/workspace/calendar": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update Workspace Calendar */
+        patch: operations["update_workspace_calendar_api_v1_admin_workspace_calendar_patch"];
+        trace?: never;
+    };
     "/api/v1/admin/workspace/features/ai": {
         parameters: {
             query?: never;
@@ -3155,6 +3172,23 @@ export interface paths {
         post?: never;
         /** Unwatch */
         delete: operations["unwatch_api_v1_work_packages__wp_id__watchers_me_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspace/calendar": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Workspace Calendar */
+        get: operations["get_workspace_calendar_api_v1_workspace_calendar_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -7703,6 +7737,31 @@ export interface components {
             /** Version */
             version: number;
         };
+        /** WorkspaceCalendarRead */
+        WorkspaceCalendarRead: {
+            /** Holidays */
+            holidays: string[];
+            /** Revision */
+            revision: number;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Updated By Name */
+            updated_by_name: string | null;
+            /** Updated By User Id */
+            updated_by_user_id: string | null;
+            /** Working Weekdays */
+            working_weekdays: (0 | 1 | 2 | 3 | 4 | 5 | 6)[];
+        };
+        /** WorkspaceCalendarUpdate */
+        WorkspaceCalendarUpdate: {
+            /** Holidays */
+            holidays: string[];
+            /** Working Weekdays */
+            working_weekdays: (0 | 1 | 2 | 3 | 4 | 5 | 6)[];
+        };
         /** WorkspaceCapabilitiesRead */
         WorkspaceCapabilitiesRead: {
             ai: components["schemas"]["AiWorkspaceFeatureCapability"];
@@ -8261,6 +8320,44 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AdminWorklogOptions"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_workspace_calendar_api_v1_admin_workspace_calendar_patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                "If-Match"?: string | null;
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkspaceCalendarUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceCalendarRead"];
                 };
             };
             /** @description Validation Error */
@@ -16385,6 +16482,39 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_workspace_calendar_api_v1_workspace_calendar_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceCalendarRead"];
+                };
             };
             /** @description Validation Error */
             422: {

@@ -230,6 +230,46 @@ async def test_finish_change_reschedules_active_successors_on_working_days(clien
     ]
 
 
+async def test_finish_change_uses_workspace_weekdays_and_holidays(client):
+    calendar = await client.patch(
+        "/api/v1/admin/workspace/calendar",
+        json={
+            "working_weekdays": [0, 1, 2, 3, 4, 5],
+            "holidays": ["2026-07-20"],
+        },
+        headers={"If-Match": '"1"'},
+    )
+    assert calendar.status_code == 200, calendar.text
+    project = await create_project(client)
+    base = f"/api/v1/projects/{project['id']}/phases"
+    source = await client.patch(
+        f"{base}/discover",
+        json={
+            "active": True,
+            "start_date": "2026-07-13",
+            "end_date": "2026-07-16",
+            "version": 0,
+        },
+    )
+    assert source.status_code == 200
+    successor = await client.patch(
+        f"{base}/plan",
+        json={
+            "active": True,
+            "start_date": "2026-07-20",
+            "end_date": "2026-07-24",
+            "version": 0,
+        },
+    )
+    assert successor.status_code == 200
+
+    changed = await client.patch(f"{base}/discover", json={"end_date": "2026-07-17", "version": 1})
+    assert changed.status_code == 200
+    phases = {phase["key"]: phase for phase in (await client.get(base)).json()["items"]}
+    assert phases["plan"]["start_date"] == "2026-07-18"
+    assert phases["plan"]["end_date"] == "2026-07-23"
+
+
 async def test_finish_change_skips_inactive_and_stops_at_partial_successor(client):
     project = await create_project(client)
     base = f"/api/v1/projects/{project['id']}/phases"
