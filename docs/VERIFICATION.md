@@ -2522,3 +2522,14 @@ Chromium typed mock fixture에서 1440x960과 390x844 viewport를 사용했다. 
 - 검증: API focused 11 및 full 737 PASS(기존 Alembic 경고 1건), Ruff/format PASS, OpenAPI drift PASS, typecheck/lint PASS(기존 Fast Refresh 경고 4건), unit 93, component 8, production build PASS(기존 chunk 경고), focused E2E 1 및 격리 worktree full E2E 283 PASS + opt-in visual QA 1 skip, clean-room frontend 161/backend 45, npm/pip audit 0 vulnerabilities, diff check와 desktop/mobile visual QA PASS.
 - Chromium 증적은 `docs/screenshots/redevelopment/project-phase-activation-ui/{settings-desktop,settings-mobile}.png`에 보존한다. 신규 route, DB schema/migration, environment variable, permission registry, dependency 변경은 없다.
 - **이연 항목**: workspace custom phase definition administration만 다음 독립 lifecycle surface로 유지한다.
+
+---
+
+# UI-116 Workspace Project Phase Definition Administration 검증 (2026-07-15)
+
+- **UI 변경**: Workspace administration에 `프로젝트 단계` surface를 추가했다. 관리자는 안정 키 4개를 유지하면서 compact list에서 표시명·색상·순서를 변경하고 저장·되돌리기할 수 있다. Loading/error/retry, local validation, 저장 중 잠금, 412 stale 편집 보존, updater metadata와 desktop/mobile overflow 상태를 제공하며 모든 control은 실제 API에 연결된다.
+- **기능/API 반영**: migration `0089`가 singleton Workspace profile에 exact four-item JSONB 단계 정의를 추가한다. 인증 사용자는 effective definitions를 읽고 admin만 strong `If-Match` revision으로 원자 변경한다. 이름은 trim/1-40/대소문자 무시 중복 금지, key set과 color는 닫힌 어휘다. Project Settings·Overview·gate label·단계 겹침 검증·근무일 후속 일정은 저장된 동일 순서를 즉시 소비하며 기존 프로젝트의 active/date/gate/version 값은 바꾸지 않는다.
+- 새 엔드포인트 자체의 428/403/422/412와 concurrent writers `200/412`, 두 프로젝트 즉시 전파, per-project state/date/gate/version 보존, reorder scheduler를 API 테스트로 고정했다. Frontend E2E는 첫 저장 412 뒤 local edit와 최신 revision을 유지해 재저장하고 Project Settings/Overview 및 모바일 하단 명령까지 같은 정의를 확인한다.
+- 검증: API Ruff/format PASS, focused API 21 PASS와 product-code 변경 후 full API 741 PASS(기존 Alembic 경고 1건), migration `0089 -> 0088 -> 0089` 및 constraint-name 검사 PASS, OpenAPI generation/drift PASS, typecheck PASS, lint PASS(기존 Fast Refresh 경고 4건), unit 93, component 8, production build PASS(기존 chunk 경고), focused E2E 1 PASS, CI-mode full E2E 284 PASS + opt-in visual QA 1 skip, clean-room frontend 161/backend 45, npm/pip audit 0 vulnerabilities, diff check와 desktop/mobile visual QA PASS.
+- Chromium 증적은 `docs/screenshots/redevelopment/workspace-phase-definitions-ui/{desktop,mobile,mobile-bottom}.png`에 보존한다. Sol reviewer fallback은 tool-call budget에서 verdict 없이 종료되어 root가 migration/authz/CAS/lock order/scheduler/stale UI와 전체 diff를 재검토했고 P0-P2 잔여 결함을 찾지 못했다.
+- Migration `0089` 적용이 필요하다. 환경변수와 dependency 변경은 없다. **이연 항목**은 안정 키/단계 수 자체를 바꾸는 동적 workflow schema뿐이며, 현재 4단계 기능이나 UI에 dead control로 노출하지 않는다.

@@ -48,6 +48,7 @@ import {
   StickyNote,
   Users,
   Webhook,
+  Workflow,
   X,
   type LucideIcon,
 } from 'lucide-react'
@@ -845,6 +846,7 @@ function SidebarContent({
                     <div className="space-y-0.5">
                       <NavLink to="/admin/general" className={navLinkClass} onClick={onNavigate}><Settings /><span>일반</span></NavLink>
                       <NavLink to="/admin/calendar" className={navLinkClass} onClick={onNavigate}><CalendarCheck2 /><span>근무 일정</span></NavLink>
+                      <NavLink to="/admin/project-phases" className={navLinkClass} onClick={onNavigate}><Workflow /><span>프로젝트 단계</span></NavLink>
                       <NavLink to="/admin/users" className={navLinkClass} onClick={onNavigate}><Users /><span>사용자</span></NavLink>
                       <NavLink to="/admin/auth-assistance" className={navLinkClass} onClick={onNavigate}><LifeBuoy /><span>로그인 지원</span></NavLink>
                       <NavLink to="/admin/worklogs" className={navLinkClass} onClick={onNavigate}><Clock3 /><span>Worklogs</span></NavLink>

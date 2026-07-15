@@ -21,6 +21,7 @@ import type {
 } from '../src/features/projects/types'
 import type { ProjectTemplate } from '../src/features/project-templates/api'
 import type { SearchResults, SearchWorkPackageAnalytics } from '../src/features/search/api'
+import type { WorkspaceProjectPhaseDefinitions } from '../src/features/workspace-profile/api'
 import type { MyActivityList, MyWorkItemList } from '../src/features/my-work/api'
 import type {
   WorkItemDraft,
@@ -6623,6 +6624,148 @@ test('워크스페이스 근무 일정은 요일·휴일과 revision 충돌 복�
   await expectNoHorizontalOverflow(page)
   await page.screenshot({
     path: '../../docs/screenshots/redevelopment/workspace-working-calendar-ui/mobile.png',
+    fullPage: true,
+  })
+})
+
+test('워크스페이스 프로젝트 단계 정의는 충돌을 복구하고 프로젝트 전반에 반영된다', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 })
+  await mockApi(page)
+  await mockProjectOverview(page)
+  let definitions: WorkspaceProjectPhaseDefinitions = {
+    items: [
+      { key: 'discover' as const, name: '발견', color: 'sky' as const, position: 0 },
+      { key: 'plan' as const, name: '계획', color: 'indigo' as const, position: 1 },
+      { key: 'deliver' as const, name: '실행', color: 'emerald' as const, position: 2 },
+      { key: 'close' as const, name: '마감', color: 'amber' as const, position: 3 },
+    ],
+    revision: 1,
+    updated_by_user_id: null as string | null,
+    updated_by_name: null as string | null,
+    updated_at: '2026-07-01T00:00:00Z',
+  }
+  let patchCount = 0
+  const projectPhases = (): ProjectPhaseList => ({
+    items: definitions.items.map((definition) => ({
+      ...definition,
+      active: definition.key === 'plan' || definition.key === 'discover',
+      start_date: definition.key === 'plan'
+        ? '2026-07-01'
+        : definition.key === 'discover'
+          ? '2026-07-13'
+          : null,
+      end_date: definition.key === 'plan'
+        ? '2026-07-10'
+        : definition.key === 'discover'
+          ? '2026-07-17'
+          : null,
+      start_gate: {
+        kind: 'start' as const,
+        name: `${definition.name} 시작 게이트`,
+        active: definition.key === 'plan',
+        date: definition.key === 'plan' ? '2026-07-01' : null,
+      },
+      finish_gate: {
+        kind: 'finish' as const,
+        name: `${definition.name} 완료 게이트`,
+        active: definition.key === 'plan',
+        date: definition.key === 'plan' ? '2026-07-10' : null,
+      },
+      version: definition.key === 'plan' || definition.key === 'discover' ? 1 : 0,
+    })),
+    total: definitions.items.length,
+  })
+
+  await page.route('**/api/v1/workspace/project-phase-definitions', (route) =>
+    route.fulfill({ json: definitions, headers: { ETag: `"${definitions.revision}"` } }),
+  )
+  await page.route('**/api/v1/admin/workspace/project-phase-definitions', async (route) => {
+    patchCount += 1
+    const sent = route.request().postDataJSON() as {
+      items: Array<{ key: 'discover' | 'plan' | 'deliver' | 'close'; name: string; color: 'sky' | 'indigo' | 'emerald' | 'amber' }>
+    }
+    if (patchCount === 1) {
+      expect(route.request().headers()['if-match']).toBe('"1"')
+      definitions = { ...definitions, revision: 2, updated_by_name: 'Other Admin' }
+      await route.fulfill({
+        status: 412,
+        json: { detail: { code: 'stale_revision', current_revision: 2 } },
+        headers: { ETag: '"2"' },
+      })
+      return
+    }
+    expect(route.request().headers()['if-match']).toBe('"2"')
+    expect(sent.items.map((item) => [item.key, item.name, item.color])).toEqual([
+      ['plan', '설계', 'amber'],
+      ['discover', '탐색', 'sky'],
+      ['deliver', '실행', 'emerald'],
+      ['close', '마감', 'amber'],
+    ])
+    definitions = {
+      ...definitions,
+      items: sent.items.map((item, position) => ({ ...item, position })),
+      revision: 3,
+      updated_by_user_id: 'me-1',
+      updated_by_name: 'Dev User',
+      updated_at: '2026-07-15T13:00:00Z',
+    }
+    await route.fulfill({ json: definitions, headers: { ETag: '"3"' } })
+  })
+  await page.route('**/api/v1/projects/*/phases**', (route) =>
+    route.fulfill({ json: projectPhases() }),
+  )
+
+  await page.goto('/admin/project-phases')
+  const surface = page.getByRole('region', { name: '워크스페이스 프로젝트 단계 정의' })
+  await surface.getByRole('button', { name: '계획 단계 위로 이동' }).click()
+  const rows = surface.locator('ol > li')
+  await rows.nth(0).getByLabel('1번째 단계 이름').fill('설계')
+  await rows.nth(0).getByText('앰버', { exact: true }).click()
+  await rows.nth(1).getByLabel('2번째 단계 이름').fill('탐색')
+
+  await page.getByRole('button', { name: '단계 저장' }).click()
+  await expect(page.getByRole('alert')).toContainText('현재 편집은 유지')
+  await expect(rows.nth(0).getByLabel('1번째 단계 이름')).toHaveValue('설계')
+  await expect(page.getByText('revision 2')).toBeVisible()
+  await page.getByRole('button', { name: '단계 저장' }).click()
+  await expect(page.getByText('revision 3')).toBeVisible()
+  await expect(page.getByText('최근 변경: Dev User')).toBeVisible()
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/workspace-phase-definitions-ui/desktop.png',
+    fullPage: true,
+  })
+
+  await page.goto(`/projects/${project.id}/settings?tab=lifecycle`)
+  const panel = page.getByRole('region', { name: '프로젝트 단계 설정' })
+  const phaseRows = panel.locator('ol > li')
+  await expect(phaseRows.nth(0)).toContainText('설계')
+  await expect(phaseRows.nth(1)).toContainText('탐색')
+  await expect(panel).toContainText('활성 2/4')
+
+  await page.goto(`/projects/${project.id}/overview`)
+  const timeline = page.getByRole('region', { name: '프로젝트 수명주기' })
+  const timelinePhases = timeline.locator(':scope > ol > li')
+  await expect(timelinePhases.nth(0)).toContainText('설계')
+  await expect(timelinePhases.nth(1)).toContainText('탐색')
+
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto('/admin/project-phases')
+  await expect(page.getByRole('heading', { name: '프로젝트 단계' })).toBeVisible()
+  await expect(page.getByLabel('1번째 단계 이름')).toHaveValue('설계')
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/workspace-phase-definitions-ui/mobile.png',
+    fullPage: true,
+  })
+  await page.locator('[data-shell-scroll-region]').evaluate((element) =>
+    element.scrollTo({ top: element.scrollHeight, behavior: 'instant' }),
+  )
+  await expect(page.getByLabel('4번째 단계 이름')).toHaveValue('마감')
+  await expect(page.getByRole('button', { name: '단계 저장' })).toBeVisible()
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/workspace-phase-definitions-ui/mobile-bottom.png',
     fullPage: true,
   })
 })

@@ -327,6 +327,9 @@ ENDPOINT_ALLOWLIST: dict[str, str] = {
     ),
     "PATCH /api/v1/admin/workspace/profile": "워크스페이스 identity 설정 — is_admin 전용",
     "PATCH /api/v1/admin/workspace/calendar": "워크스페이스 근무 일정 설정 — is_admin 전용",
+    "PATCH /api/v1/admin/workspace/project-phase-definitions": (
+        "워크스페이스 프로젝트 단계 정의 설정 — is_admin 전용"
+    ),
     "POST /api/v1/customers": "워크스페이스 admin 고객 생성 — is_admin 전용",
     "PATCH /api/v1/customers/{customer_id}": "워크스페이스 admin 고객 수정 — is_admin 전용",
     "POST /api/v1/customers/{customer_id}/archive": (

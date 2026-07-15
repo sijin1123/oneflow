@@ -259,7 +259,7 @@ export function ProjectPhasesPanel({
         </div>
         <Badge variant={canEdit ? 'accent' : 'outline'} className="shrink-0">
           {canEdit ? (
-            `활성 ${activeCount}/4`
+            `활성 ${activeCount}/${phases.data.total}`
           ) : (
             <>
               <LockKeyhole size={12} /> 읽기 전용

@@ -320,3 +320,9 @@ OpenProject/Plane source, API, database schema, package, asset, CSS, DOM hierarc
 OpenProject의 공개 project lifecycle/working-time 제품 범주에서 사용한 입력은 저장된 단계 일정이 활성화될 때 이전 단계와 조직 근무일을 기준으로 일관되게 배치돼야 한다는 공개 행동뿐이다. OneFlow 구현은 자체 fixed phase vocabulary, revisioned workspace calendar, owner-only optimistic PATCH, project/calendar row lock, React Query cache와 Settings tokens로 활성화 전환·기간 보존·후속 연쇄·부분 일정 보존을 독립 설계했다.
 
 OpenProject/Plane source, API, database schema, package, asset, CSS, DOM hierarchy, exact dimensions/colors, wording, 일정 계산 구현 또는 branding은 복사하지 않았다. 신규 dependency, route, migration, environment 또는 permission contract 변경은 없다. Workspace custom phase definition administration만 별도 후속 surface로 유지한다. — attested-independent-derivation
+
+## UI-116 Workspace Project Phase Definition Administration
+
+OpenProject의 공개 project lifecycle administration 범주에서 사용한 입력은 조직이 단계의 표시명·색상·순서를 관리하고 프로젝트 전반이 같은 단계 어휘와 순서를 사용한다는 공개 제품 행동뿐이다. OneFlow 구현은 자체 안정 키 4개, singleton Workspace revision, admin authorization, PostgreSQL JSONB, owner-only project phase transaction, React Query cache와 기존 Settings tokens를 사용해 독립 설계했다.
+
+OpenProject/Plane source, API, database schema, package, asset, CSS, DOM hierarchy, exact dimensions/colors, wording, 단계 정의 또는 정렬 구현, icons 및 branding은 복사하지 않았다. OneFlow 고유 migration `0089`, exact-key/name/color validation, atomic ETag CAS와 project scheduler consumption을 추가했으며 신규 dependency/environment 변경은 없다. 안정 키나 단계 수를 바꾸는 동적 workflow schema는 별도 기능형 surface로 유지한다. — attested-independent-derivation

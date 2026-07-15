@@ -584,3 +584,117 @@ async def test_archive_committed_after_role_guard_blocks_phase_write(client, mon
     assert blocked.json()["detail"] == "project is archived"
     visible = await client.get(f"/api/v1/projects/{project['id']}/phases")
     assert all(item["active"] is False for item in visible.json()["items"])
+
+
+async def test_workspace_definitions_propagate_without_mutating_project_phase_state(client):
+    first = await create_project(client, key="PHASEA", name="단계 정의 A")
+    second = await create_project(client, key="PHASEB", name="단계 정의 B")
+    first_base = f"/api/v1/projects/{first['id']}/phases"
+    stored = await client.patch(
+        f"{first_base}/discover",
+        json={
+            "active": True,
+            "start_date": "2026-07-01",
+            "end_date": "2026-07-10",
+            "start_gate_active": True,
+            "finish_gate_active": True,
+            "version": 0,
+        },
+    )
+    assert stored.status_code == 200, stored.text
+
+    updated = await client.patch(
+        "/api/v1/admin/workspace/project-phase-definitions",
+        json={
+            "items": [
+                {"key": "plan", "name": "설계", "color": "amber"},
+                {"key": "discover", "name": "탐색", "color": "emerald"},
+                {"key": "deliver", "name": "구현", "color": "indigo"},
+                {"key": "close", "name": "종료", "color": "sky"},
+            ]
+        },
+        headers={"If-Match": '"1"'},
+    )
+    assert updated.status_code == 200, updated.text
+
+    for project in (first, second):
+        response = await client.get(f"/api/v1/projects/{project['id']}/phases")
+        assert response.status_code == 200
+        assert [
+            (item["key"], item["name"], item["color"], item["position"])
+            for item in response.json()["items"]
+        ] == [
+            ("plan", "설계", "amber", 0),
+            ("discover", "탐색", "emerald", 1),
+            ("deliver", "구현", "indigo", 2),
+            ("close", "종료", "sky", 3),
+        ]
+
+    preserved = {item["key"]: item for item in (await client.get(first_base)).json()["items"]}[
+        "discover"
+    ]
+    assert preserved["active"] is True
+    assert preserved["start_date"] == "2026-07-01"
+    assert preserved["end_date"] == "2026-07-10"
+    assert preserved["start_gate"] == {
+        "kind": "start",
+        "name": "탐색 시작 게이트",
+        "active": True,
+        "date": "2026-07-01",
+    }
+    assert preserved["finish_gate"] == {
+        "kind": "finish",
+        "name": "탐색 완료 게이트",
+        "active": True,
+        "date": "2026-07-10",
+    }
+    assert preserved["version"] == 1
+
+
+async def test_phase_scheduler_uses_workspace_definition_order(client):
+    definitions = await client.patch(
+        "/api/v1/admin/workspace/project-phase-definitions",
+        json={
+            "items": [
+                {"key": "plan", "name": "설계", "color": "indigo"},
+                {"key": "discover", "name": "탐색", "color": "sky"},
+                {"key": "deliver", "name": "구현", "color": "emerald"},
+                {"key": "close", "name": "종료", "color": "amber"},
+            ]
+        },
+        headers={"If-Match": '"1"'},
+    )
+    assert definitions.status_code == 200, definitions.text
+    project = await create_project(client, key="ORDER", name="단계 순서")
+    base = f"/api/v1/projects/{project['id']}/phases"
+    for key, start_date, end_date in [
+        ("plan", "2026-07-06", "2026-07-10"),
+        ("discover", "2026-07-13", "2026-07-17"),
+    ]:
+        response = await client.patch(
+            f"{base}/{key}",
+            json={
+                "active": True,
+                "start_date": start_date,
+                "end_date": end_date,
+                "version": 0,
+            },
+        )
+        assert response.status_code == 200, response.text
+
+    moved = await client.patch(
+        f"{base}/plan",
+        json={"end_date": "2026-07-17", "version": 1},
+    )
+    assert moved.status_code == 200, moved.text
+    phases = (await client.get(base)).json()["items"]
+    assert [(phase["key"], phase["position"]) for phase in phases] == [
+        ("plan", 0),
+        ("discover", 1),
+        ("deliver", 2),
+        ("close", 3),
+    ]
+    by_key = {phase["key"]: phase for phase in phases}
+    assert by_key["discover"]["start_date"] == "2026-07-20"
+    assert by_key["discover"]["end_date"] == "2026-07-24"
+    assert by_key["discover"]["version"] == 2
