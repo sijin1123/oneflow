@@ -129,8 +129,15 @@ async def _clean_tables(app):
     async with app.state.sessionmaker() as session, session.begin():
         await session.execute(
             text(
-                "TRUNCATE TABLE work_package_relations, work_packages, "
+                "TRUNCATE TABLE auth_assistance_rate_limits, auth_assistance_requests, "
+                "work_package_relations, work_packages, "
                 "project_members, projects, users RESTART IDENTITY CASCADE"
+            )
+        )
+        await session.execute(
+            text(
+                "INSERT INTO auth_assistance_rate_limits "
+                "(id, window_started_at, attempt_count) VALUES (1, now(), 0)"
             )
         )
         await session.execute(
