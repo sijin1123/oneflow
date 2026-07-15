@@ -2545,3 +2545,14 @@ Chromium typed mock fixture에서 1440x960과 390x844 viewport를 사용했다. 
 - 검증: API Ruff/format PASS, focused API 34 PASS와 full API 746 PASS(기존 Alembic 경고 1건), OpenAPI generation/drift PASS, typecheck/lint PASS(기존 Fast Refresh 경고 4건), unit 93, component 8, production build PASS(기존 chunk 경고), focused E2E 2 PASS, 최종 full E2E 285 PASS + opt-in visual QA 1 skip, clean-room frontend 161/backend 45, npm/pip audit 0 vulnerabilities와 desktop/mobile visual QA PASS.
 - Chromium 증적은 `docs/screenshots/redevelopment/dynamic-project-phases-ui/{desktop,mobile}.png`에 보존한다. Sol reviewer fallback은 독립 verdict 전에 종료되어 root가 migration downgrade guard, admin authz/CAS, project/workspace lock order, retire race, lazy adoption, scheduler와 전체 diff를 재검토했고 잔여 P0-P2 결함을 찾지 못했다.
 - Migration `0090` 적용이 필요하다. 환경변수, 설정 UI 노출 대상, dependency 변경은 없다. **이연 항목**은 없으며 PR CI와 main integration 결과만 merge 후 기록한다.
+
+---
+
+# UI-118 Initiative Ownership Continuity 검증 (2026-07-15)
+
+- **UI 변경**: Initiatives 카드에 현재 소유자의 소유권 관리 패널과 owner 부재·비활성 상태의 복구 표시/claim 명령을 추가했다. 후보 loading, 조회 실패와 실제 재시도, 빈 후보, 선택·확인·이전 실패, claim 충돌·재시도, pending, desktop/mobile과 수평 overflow 상태를 실제 API에 연결했다.
+- **기능/API 반영**: 현재 owner만 호출자가 볼 수 있는 연결 프로젝트의 활성 멤버 후보를 조회하고 소유권을 이전한다. Owner가 없거나 비활성이면 연결 프로젝트의 active owner-role 멤버만 claim할 수 있다. Initiative row lock, commit 시점 owner 재검증과 후보 재검증으로 동시 이전/claim은 단일 승자로 수렴하며 기존 visibility와 caller-visible roll-up 경계를 유지한다.
+- 후보 조회를 다중 연결 프로젝트에 대해 `IN (SELECT ...)`로 고정하고, inactive/foreign/self 후보 거부, plain member claim 거부, active owner 409, 두 동시 transfer의 `200/404` 단일 승자와 최종 owner를 실제 PostgreSQL 회귀 테스트로 검증했다.
+- 검증: API Ruff/format PASS, focused API 19 PASS와 full API 751 PASS(기존 Alembic 경고 1건), OpenAPI generation/drift PASS, typecheck PASS, lint PASS(기존 Fast Refresh 경고 4건), unit 93, component 8, production build PASS(기존 chunk 경고), focused E2E 2 PASS, full E2E 286 PASS + opt-in visual QA 1 skip, clean-room frontend 161/backend 45, npm/pip audit 0 vulnerabilities, diff check와 desktop/mobile visual QA PASS.
+- Chromium 증적은 `docs/screenshots/redevelopment/initiative-ownership-ui/{desktop,mobile}.png`에 보존한다. 독립 reviewer는 잔여 에이전트 슬롯 때문에 생성되지 않아 root가 authz, existence hiding, candidate scope, lock/race, cache invalidation, error/retry와 전체 diff를 직접 재검토했고 P0-P2 잔여 결함을 찾지 못했다.
+- Migration, 환경변수, 설정 UI, dependency 변경은 없다. **이연 항목**은 initiative-level notifications와 work-item 연결이며 현재 소유권 연속성 surface에는 dead control로 노출하지 않는다.

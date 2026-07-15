@@ -332,3 +332,9 @@ OpenProject/Plane source, API, database schema, package, asset, CSS, DOM hierarc
 OpenProject의 공개 project lifecycle administration 범주에서 사용한 입력은 조직이 수명주기 단계를 추가·비활성화하고 기존 프로젝트 기록을 보존해야 한다는 제품 행동뿐이다. OneFlow 구현은 UI-116의 자체 Workspace revision, built-in 안정 키, per-project optimistic row, 근무 일정 scheduler와 Settings tokens를 확장해 서버 생성 custom key, lazy adoption, retire/restore와 무손실 downgrade guard를 독립 설계했다.
 
 OpenProject/Plane source, API, database schema, package, asset, CSS, DOM hierarchy, exact dimensions/colors, wording, key 형식, retire 구현, icons 또는 branding은 복사하지 않았다. OneFlow 고유 migration `0090`, bounded revisioned definition contract, project-data preservation과 race 회귀 검증을 추가했으며 신규 dependency/environment 변경은 없다. — attested-independent-derivation
+
+## UI-118 Initiative Ownership Continuity
+
+Plane/OpenProject의 공개 portfolio/initiative 제품 범주에서 사용한 입력은 전략 묶음의 소유권이 구성원 이탈 뒤에도 안전하게 인계되고 프로젝트 접근 경계를 넘지 않아야 한다는 제품 행동뿐이다. OneFlow 구현은 기존 자체 Initiative visibility, connected-project membership, nullable owner, PostgreSQL transaction과 React Query 카드 surface를 사용해 safe candidate transfer와 orphan claim을 독립 설계했다.
+
+Plane/OpenProject source, API, database schema, package, asset, CSS, DOM hierarchy, exact dimensions/colors, wording, ownership UI 구현, icons 또는 branding은 복사하지 않았다. OneFlow 고유 candidate scope, row-lock single-winner, inactive owner recovery와 error/retry E2E 계약을 추가했으며 신규 migration, dependency, environment 또는 settings UI 변경은 없다. — attested-independent-derivation

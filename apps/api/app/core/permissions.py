@@ -404,6 +404,12 @@ ENDPOINT_ALLOWLIST: dict[str, str] = {
     "POST /api/v1/initiatives": "워크스페이스 리소스 — creator-only 축",
     "PATCH /api/v1/initiatives/{initiative_id}": "워크스페이스 리소스 — creator-only 축",
     "DELETE /api/v1/initiatives/{initiative_id}": "워크스페이스 리소스 — creator-only 축",
+    "POST /api/v1/initiatives/{initiative_id}/owner": (
+        "워크스페이스 이니셔티브 — 현재 owner의 안전 후보 이전"
+    ),
+    "POST /api/v1/initiatives/{initiative_id}/owner/claim": (
+        "워크스페이스 이니셔티브 — 고아 상태를 연결 프로젝트 owner가 복구"
+    ),
     "POST /api/v1/initiatives/{initiative_id}/projects": "워크스페이스 리소스 — creator-only 축",
     "DELETE /api/v1/initiatives/{initiative_id}/projects/{project_id}": (
         "워크스페이스 리소스 — creator-only 축"
