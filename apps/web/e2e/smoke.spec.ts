@@ -12,6 +12,7 @@ import type { Customer } from '../src/features/customers/types'
 import type { DataTransferJob } from '../src/features/ops/dataTransfersApi'
 import type { AuthAssistanceRequest } from '../src/features/admin/authAssistanceApi'
 import type { DocumentList } from '../src/features/documents/api'
+import type { Initiative } from '../src/features/initiatives/api'
 import type {
   Project,
   ProjectHealthHistoryList,
@@ -7689,7 +7690,7 @@ test('이니셔티브에서 프로젝트를 연결하면 POST가 간다', async 
 test('모바일 이니셔티브 카드에서 고아 소유권을 claim한다', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 })
   await mockApi(page)
-  const orphan = {
+  const orphan: Initiative = {
     id: 'ini-orphan',
     name: '복구할 전략',
     description: null,
