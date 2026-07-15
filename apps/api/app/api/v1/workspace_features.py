@@ -24,6 +24,9 @@ from app.schemas.workspace_profile import (
     WorkspaceIdentityRead,
     WorkspaceProfileRead,
     WorkspaceProfileUpdate,
+    WorkspaceProjectPhaseDefinitionRead,
+    WorkspaceProjectPhaseDefinitionsRead,
+    WorkspaceProjectPhaseDefinitionsUpdate,
 )
 from app.services.workspace_features import (
     AI_FEATURE,
@@ -81,6 +84,19 @@ def _calendar_read(row: WorkspaceProfile) -> WorkspaceCalendarRead:
     return WorkspaceCalendarRead(
         working_weekdays=row.working_weekdays,
         holidays=row.holidays,
+        revision=row.revision,
+        updated_by_user_id=row.updated_by_user_id,
+        updated_by_name=row.updated_by_name,
+        updated_at=row.updated_at,
+    )
+
+
+def _phase_definitions_read(row: WorkspaceProfile) -> WorkspaceProjectPhaseDefinitionsRead:
+    return WorkspaceProjectPhaseDefinitionsRead(
+        items=[
+            WorkspaceProjectPhaseDefinitionRead(**definition, position=position)
+            for position, definition in enumerate(row.project_phase_definitions)
+        ],
         revision=row.revision,
         updated_by_user_id=row.updated_by_user_id,
         updated_by_name=row.updated_by_name,
@@ -226,6 +242,67 @@ async def update_workspace_calendar(
     await session.commit()
     response.headers["ETag"] = _etag(row.revision)
     return _calendar_read(row)
+
+
+@router.get(
+    "/workspace/project-phase-definitions",
+    response_model=WorkspaceProjectPhaseDefinitionsRead,
+)
+async def get_workspace_project_phase_definitions(
+    response: Response,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+) -> WorkspaceProjectPhaseDefinitionsRead:
+    del user
+    row = await session.get(WorkspaceProfile, 1)
+    if row is None:
+        raise HTTPException(status_code=500, detail="workspace profile is missing")
+    response.headers["ETag"] = _etag(row.revision)
+    return _phase_definitions_read(row)
+
+
+@router.patch(
+    "/admin/workspace/project-phase-definitions",
+    response_model=WorkspaceProjectPhaseDefinitionsRead,
+)
+async def update_workspace_project_phase_definitions(
+    body: WorkspaceProjectPhaseDefinitionsUpdate,
+    response: Response,
+    if_match: str | None = Header(default=None, alias="If-Match"),
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+) -> WorkspaceProjectPhaseDefinitionsRead:
+    _require_admin(user)
+    expected = _expected_revision(if_match)
+    row = (
+        await session.execute(
+            update(WorkspaceProfile)
+            .where(WorkspaceProfile.id == 1, WorkspaceProfile.revision == expected)
+            .values(
+                project_phase_definitions=[item.model_dump() for item in body.items],
+                revision=WorkspaceProfile.revision + 1,
+                updated_by_user_id=user.id,
+                updated_by_name=user.display_name,
+                updated_at=func.now(),
+            )
+            .returning(WorkspaceProfile)
+        )
+    ).scalar_one_or_none()
+    if row is None:
+        current = await session.get(WorkspaceProfile, 1)
+        if current is None:
+            await session.rollback()
+            raise HTTPException(status_code=500, detail="workspace profile is missing")
+        current_revision = current.revision
+        await session.rollback()
+        raise HTTPException(
+            status_code=412,
+            detail={"code": "stale_revision", "current_revision": current_revision},
+            headers={"ETag": _etag(current_revision)},
+        )
+    await session.commit()
+    response.headers["ETag"] = _etag(row.revision)
+    return _phase_definitions_read(row)
 
 
 @router.get("/workspace/capabilities", response_model=WorkspaceCapabilitiesRead)

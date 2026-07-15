@@ -23,9 +23,28 @@ export type WorkspaceCalendar = {
   updated_at: string
 }
 
+export type ProjectPhaseKey = 'discover' | 'plan' | 'deliver' | 'close'
+export type ProjectPhaseColor = 'sky' | 'indigo' | 'emerald' | 'amber'
+
+export type WorkspaceProjectPhaseDefinition = {
+  key: ProjectPhaseKey
+  name: string
+  color: ProjectPhaseColor
+  position: number
+}
+
+export type WorkspaceProjectPhaseDefinitions = {
+  items: WorkspaceProjectPhaseDefinition[]
+  revision: number
+  updated_by_user_id: string | null
+  updated_by_name: string | null
+  updated_at: string
+}
+
 export const workspaceProfileKey = ['workspace-profile'] as const
 export const adminWorkspaceProfileKey = ['admin-workspace-profile'] as const
 export const workspaceCalendarKey = ['workspace-calendar'] as const
+export const workspaceProjectPhaseDefinitionsKey = ['workspace-project-phase-definitions'] as const
 
 export function useWorkspaceProfile() {
   return useQuery({
@@ -105,5 +124,51 @@ export function useUpdateWorkspaceCalendar() {
       ])
     },
     onError: () => queryClient.invalidateQueries({ queryKey: workspaceCalendarKey }),
+  })
+}
+
+export function useWorkspaceProjectPhaseDefinitions() {
+  return useQuery({
+    queryKey: workspaceProjectPhaseDefinitionsKey,
+    queryFn: () =>
+      api<WorkspaceProjectPhaseDefinitions>('/api/v1/workspace/project-phase-definitions'),
+  })
+}
+
+export function useUpdateWorkspaceProjectPhaseDefinitions() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({
+      items,
+      revision,
+    }: {
+      items: Array<Omit<WorkspaceProjectPhaseDefinition, 'position'>>
+      revision: number
+    }) =>
+      api<WorkspaceProjectPhaseDefinitions>(
+        '/api/v1/admin/workspace/project-phase-definitions',
+        {
+          method: 'PATCH',
+          headers: { 'If-Match': `"${revision}"` },
+          body: JSON.stringify({ items }),
+        },
+      ),
+    onSuccess: async (definitions) => {
+      queryClient.setQueryData(workspaceProjectPhaseDefinitionsKey, definitions)
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: adminWorkspaceProfileKey }),
+        queryClient.invalidateQueries({ queryKey: workspaceProfileKey }),
+        queryClient.invalidateQueries({ queryKey: workspaceCalendarKey }),
+        queryClient.invalidateQueries({ queryKey: ['project-phases'] }),
+      ])
+    },
+    onError: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: workspaceProjectPhaseDefinitionsKey }),
+        queryClient.invalidateQueries({ queryKey: adminWorkspaceProfileKey }),
+        queryClient.invalidateQueries({ queryKey: workspaceProfileKey }),
+        queryClient.invalidateQueries({ queryKey: workspaceCalendarKey }),
+      ])
+    },
   })
 }

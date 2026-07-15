@@ -264,6 +264,23 @@ export interface paths {
         patch: operations["update_workspace_profile_api_v1_admin_workspace_profile_patch"];
         trace?: never;
     };
+    "/api/v1/admin/workspace/project-phase-definitions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update Workspace Project Phase Definitions */
+        patch: operations["update_workspace_project_phase_definitions_api_v1_admin_workspace_project_phase_definitions_patch"];
+        trace?: never;
+    };
     "/api/v1/attachments/{attachment_id}": {
         parameters: {
             query?: never;
@@ -3220,6 +3237,23 @@ export interface paths {
         };
         /** Get Workspace Profile */
         get: operations["get_workspace_profile_api_v1_workspace_profile_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspace/project-phase-definitions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Workspace Project Phase Definitions */
+        get: operations["get_workspace_project_phase_definitions_api_v1_workspace_project_phase_definitions_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -7830,6 +7864,59 @@ export interface components {
             /** Name */
             name: string;
         };
+        /** WorkspaceProjectPhaseDefinitionRead */
+        WorkspaceProjectPhaseDefinitionRead: {
+            /**
+             * Color
+             * @enum {string}
+             */
+            color: "sky" | "indigo" | "emerald" | "amber";
+            /**
+             * Key
+             * @enum {string}
+             */
+            key: "discover" | "plan" | "deliver" | "close";
+            /** Name */
+            name: string;
+            /** Position */
+            position: number;
+        };
+        /** WorkspaceProjectPhaseDefinitionUpdate */
+        WorkspaceProjectPhaseDefinitionUpdate: {
+            /**
+             * Color
+             * @enum {string}
+             */
+            color: "sky" | "indigo" | "emerald" | "amber";
+            /**
+             * Key
+             * @enum {string}
+             */
+            key: "discover" | "plan" | "deliver" | "close";
+            /** Name */
+            name: string;
+        };
+        /** WorkspaceProjectPhaseDefinitionsRead */
+        WorkspaceProjectPhaseDefinitionsRead: {
+            /** Items */
+            items: components["schemas"]["WorkspaceProjectPhaseDefinitionRead"][];
+            /** Revision */
+            revision: number;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Updated By Name */
+            updated_by_name: string | null;
+            /** Updated By User Id */
+            updated_by_user_id: string | null;
+        };
+        /** WorkspaceProjectPhaseDefinitionsUpdate */
+        WorkspaceProjectPhaseDefinitionsUpdate: {
+            /** Items */
+            items: components["schemas"]["WorkspaceProjectPhaseDefinitionUpdate"][];
+        };
         /** WorkspaceSavedViewConflict */
         WorkspaceSavedViewConflict: {
             current: components["schemas"]["WorkspaceSavedViewRead"];
@@ -8784,6 +8871,44 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["WorkspaceProfileRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_workspace_project_phase_definitions_api_v1_admin_workspace_project_phase_definitions_patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                "If-Match"?: string | null;
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkspaceProjectPhaseDefinitionsUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceProjectPhaseDefinitionsRead"];
                 };
             };
             /** @description Validation Error */
@@ -16580,6 +16705,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["WorkspaceIdentityRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_workspace_project_phase_definitions_api_v1_workspace_project_phase_definitions_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceProjectPhaseDefinitionsRead"];
                 };
             };
             /** @description Validation Error */

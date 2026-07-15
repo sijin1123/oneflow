@@ -10,12 +10,7 @@ from app.core.auth import get_current_user
 from app.core.authz import require_member, require_role
 from app.db.session import get_session
 from app.models.project import Project
-from app.models.project_phase import (
-    PROJECT_PHASE_BY_KEY,
-    PROJECT_PHASE_GATE_NAMES,
-    PROJECT_PHASES,
-    ProjectPhase,
-)
+from app.models.project_phase import ProjectPhase
 from app.models.user import User
 from app.models.workspace_profile import WorkspaceProfile
 from app.schemas.project_phase import (
@@ -24,13 +19,32 @@ from app.schemas.project_phase import (
     ProjectPhasePatch,
     ProjectPhaseRead,
 )
+from app.schemas.workspace_profile import WorkspaceProjectPhaseDefinitionsUpdate
 
 router = APIRouter()
 
 
-def _read(key: str, row: ProjectPhase | None) -> ProjectPhaseRead:
-    _, name, color, position = PROJECT_PHASE_BY_KEY[key]
-    start_gate_name, finish_gate_name = PROJECT_PHASE_GATE_NAMES[key]
+def _definitions(row: WorkspaceProfile) -> list[dict[str, str]]:
+    try:
+        definitions = WorkspaceProjectPhaseDefinitionsUpdate(
+            items=row.project_phase_definitions
+        ).items
+    except ValueError as error:
+        raise HTTPException(
+            status_code=500,
+            detail="workspace project phase definitions are invalid",
+        ) from error
+    return [definition.model_dump() for definition in definitions]
+
+
+def _read(
+    definition: dict[str, str],
+    row: ProjectPhase | None,
+    position: int,
+) -> ProjectPhaseRead:
+    key = definition["key"]
+    name = definition["name"]
+    color = definition["color"]
     active = False if row is None else row.is_active
     start_gate_active = False if row is None else row.start_gate_active
     finish_gate_active = False if row is None else row.finish_gate_active
@@ -46,13 +60,13 @@ def _read(key: str, row: ProjectPhase | None) -> ProjectPhaseRead:
         end_date=end_date,
         start_gate=ProjectPhaseGateRead(
             kind="start",
-            name=start_gate_name,
+            name=f"{name} 시작 게이트",
             active=start_gate_active,
             date=start_date if active and start_gate_active else None,
         ),
         finish_gate=ProjectPhaseGateRead(
             kind="finish",
-            name=finish_gate_name,
+            name=f"{name} 완료 게이트",
             active=finish_gate_active,
             date=end_date if active and finish_gate_active else None,
         ),
@@ -110,10 +124,11 @@ def _next_working_day(value: date, weekdays: set[int], holidays: set[date]) -> d
 
 def _previous_active_end(
     phase_key: str,
+    phase_keys: list[str],
     proposed_by_key: dict[str, ProjectPhaseRead],
 ) -> date | None:
     predecessor_end = None
-    for key, _, _, _ in PROJECT_PHASES:
+    for key in phase_keys:
         if key == phase_key:
             break
         phase = proposed_by_key[key]
@@ -124,6 +139,7 @@ def _previous_active_end(
 
 def _reschedule_successors(
     phase_key: str,
+    phase_keys: list[str],
     predecessor_end: date,
     proposed_by_key: dict[str, ProjectPhaseRead],
     persisted_by_key: dict[str, ProjectPhase],
@@ -134,7 +150,7 @@ def _reschedule_successors(
 ) -> set[str]:
     scheduled_keys: set[str] = set()
     after_predecessor = False
-    for key, _, _, _ in PROJECT_PHASES:
+    for key in phase_keys:
         if key == phase_key:
             after_predecessor = True
             continue
@@ -159,11 +175,10 @@ def _reschedule_successors(
                 update={"start_date": start_date, "end_date": end_date}
             )
             proposed_by_key[key] = successor
-            persisted = _read(key, persisted_by_key.get(key))
-            if (
-                successor.start_date != persisted.start_date
-                or successor.end_date != persisted.end_date
-            ):
+            persisted = persisted_by_key.get(key)
+            persisted_start = None if persisted is None else persisted.start_date
+            persisted_end = None if persisted is None else persisted.end_date
+            if successor.start_date != persisted_start or successor.end_date != persisted_end:
                 scheduled_keys.add(key)
             predecessor_end = end_date
             continue
@@ -174,7 +189,10 @@ def _reschedule_successors(
                 update={"start_date": _next_working_day(predecessor_end, weekdays, holidays)}
             )
             proposed_by_key[key] = successor
-            if successor.start_date != _read(key, persisted_by_key.get(key)).start_date:
+            persisted_start = (
+                None if persisted_by_key.get(key) is None else persisted_by_key[key].start_date
+            )
+            if successor.start_date != persisted_start:
                 scheduled_keys.add(key)
             break
         break
@@ -188,13 +206,20 @@ async def list_project_phases(
     user: User = Depends(get_current_user),
 ) -> ProjectPhaseList:
     await require_member(session, project_id, user)
+    workspace = await session.get(WorkspaceProfile, 1)
+    if workspace is None:
+        raise HTTPException(status_code=500, detail="workspace profile is missing")
+    definitions = _definitions(workspace)
     rows = (
         (await session.execute(select(ProjectPhase).where(ProjectPhase.project_id == project_id)))
         .scalars()
         .all()
     )
     by_key = {row.key: row for row in rows}
-    items = [_read(key, by_key.get(key)) for key, _, _, _ in PROJECT_PHASES]
+    items = [
+        _read(definition, by_key.get(definition["key"]), position)
+        for position, definition in enumerate(definitions)
+    ]
     return ProjectPhaseList(items=items, total=len(items))
 
 
@@ -206,8 +231,6 @@ async def patch_project_phase(
     session: AsyncSession = Depends(get_session),
     user: User = Depends(get_current_user),
 ) -> ProjectPhaseRead:
-    if phase_key not in PROJECT_PHASE_BY_KEY:
-        raise HTTPException(status_code=404, detail="not found")
     await require_role(session, project_id, user, {"owner"}, write=True)
 
     project = (
@@ -219,6 +242,19 @@ async def patch_project_phase(
     # locked row so an archive committed in between cannot admit a late write.
     if project.archived_at is not None:
         raise HTTPException(status_code=409, detail="project is archived")
+    workspace = (
+        await session.execute(
+            select(WorkspaceProfile).where(WorkspaceProfile.id == 1).with_for_update()
+        )
+    ).scalar_one_or_none()
+    if workspace is None:
+        raise HTTPException(status_code=500, detail="workspace profile is missing")
+    definitions = _definitions(workspace)
+    definitions_by_key = {definition["key"]: definition for definition in definitions}
+    phase_keys = [definition["key"] for definition in definitions]
+    if phase_key not in definitions_by_key:
+        raise HTTPException(status_code=404, detail="not found")
+    position_by_key = {key: position for position, key in enumerate(phase_keys)}
     rows = (
         (await session.execute(select(ProjectPhase).where(ProjectPhase.project_id == project_id)))
         .scalars()
@@ -234,7 +270,7 @@ async def patch_project_phase(
     for field in {"active", "start_gate_active", "finish_gate_active"} & provided:
         if getattr(body, field) is None:
             raise HTTPException(status_code=422, detail=f"{field} cannot be null")
-    before = _read(phase_key, current)
+    before = _read(definitions_by_key[phase_key], current, position_by_key[phase_key])
     candidate_values = {
         "active": before.active,
         "start_date": before.start_date,
@@ -249,8 +285,10 @@ async def patch_project_phase(
     if candidate.start_date and candidate.end_date and candidate.start_date > candidate.end_date:
         raise HTTPException(status_code=422, detail="start_date must be on or before end_date")
     proposed_by_key = {
-        key: candidate if key == phase_key else _read(key, by_key.get(key))
-        for key, _, _, _ in PROJECT_PHASES
+        key: candidate
+        if key == phase_key
+        else _read(definitions_by_key[key], by_key.get(key), position_by_key[key])
+        for key in phase_keys
     }
     scheduled_keys: set[str] = set()
     finish_changed = (
@@ -260,7 +298,11 @@ async def patch_project_phase(
         and candidate.end_date != before.end_date
     )
     activated = "active" in provided and candidate.active and not before.active
-    activation_predecessor_end = _previous_active_end(phase_key, proposed_by_key)
+    activation_predecessor_end = _previous_active_end(
+        phase_key,
+        phase_keys,
+        proposed_by_key,
+    )
     activation_reschedules = bool(
         activated
         and before.start_date
@@ -270,15 +312,8 @@ async def patch_project_phase(
     )
     try:
         if finish_changed or activation_reschedules:
-            calendar = (
-                await session.execute(
-                    select(WorkspaceProfile).where(WorkspaceProfile.id == 1).with_for_update()
-                )
-            ).scalar_one_or_none()
-            if calendar is None:
-                raise HTTPException(status_code=500, detail="workspace calendar is missing")
-            working_weekdays = set(calendar.working_weekdays)
-            holidays = {date.fromisoformat(value) for value in calendar.holidays}
+            working_weekdays = set(workspace.working_weekdays)
+            holidays = {date.fromisoformat(value) for value in workspace.holidays}
             if activation_reschedules:
                 assert activation_predecessor_end is not None
                 assert candidate.start_date is not None
@@ -308,6 +343,7 @@ async def patch_project_phase(
                     scheduled_keys.update(
                         _reschedule_successors(
                             phase_key,
+                            phase_keys,
                             end_date,
                             proposed_by_key,
                             by_key,
@@ -320,6 +356,7 @@ async def patch_project_phase(
                 scheduled_keys.update(
                     _reschedule_successors(
                         phase_key,
+                        phase_keys,
                         candidate.end_date,
                         proposed_by_key,
                         by_key,
@@ -332,7 +369,7 @@ async def patch_project_phase(
             status_code=422,
             detail="rescheduled phase dates exceed the supported range",
         ) from error
-    proposed = [proposed_by_key[key] for key, _, _, _ in PROJECT_PHASES]
+    proposed = [proposed_by_key[key] for key in phase_keys]
     _validate_ranges(proposed)
 
     changed = any(
@@ -357,4 +394,4 @@ async def patch_project_phase(
         successor.end_date = scheduled.end_date
         successor.version += 1
     await session.commit()
-    return _read(phase_key, current)
+    return _read(definitions_by_key[phase_key], current, position_by_key[phase_key])

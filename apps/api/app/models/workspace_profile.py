@@ -1,11 +1,32 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import BigInteger, CheckConstraint, DateTime, ForeignKey, SmallInteger, String, func
+from sqlalchemy import (
+    BigInteger,
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    SmallInteger,
+    String,
+    func,
+    text,
+)
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
+
+PROJECT_PHASE_KEYS: tuple[str, ...] = ("discover", "plan", "deliver", "close")
+DEFAULT_PROJECT_PHASE_DEFINITIONS: tuple[dict[str, str], ...] = (
+    {"key": "discover", "name": "발견", "color": "sky"},
+    {"key": "plan", "name": "계획", "color": "indigo"},
+    {"key": "deliver", "name": "실행", "color": "emerald"},
+    {"key": "close", "name": "마감", "color": "amber"},
+)
+
+
+def default_project_phase_definitions() -> list[dict[str, str]]:
+    return [dict(definition) for definition in DEFAULT_PROJECT_PHASE_DEFINITIONS]
 
 
 class WorkspaceProfile(Base):
@@ -29,6 +50,11 @@ class WorkspaceProfile(Base):
             "jsonb_typeof(holidays) = 'array' AND jsonb_array_length(holidays) <= 366",
             name="workspace_profile_holidays_array",
         ),
+        CheckConstraint(
+            "jsonb_typeof(project_phase_definitions) = 'array' "
+            "AND jsonb_array_length(project_phase_definitions) = 4",
+            name="workspace_phase_definitions_array",
+        ),
     )
 
     id: Mapped[int] = mapped_column(SmallInteger, primary_key=True, default=1)
@@ -44,6 +70,19 @@ class WorkspaceProfile(Base):
         nullable=False,
         default=list,
         server_default="[]",
+    )
+    project_phase_definitions: Mapped[list[dict[str, str]]] = mapped_column(
+        JSONB,
+        nullable=False,
+        default=default_project_phase_definitions,
+        server_default=text(
+            "'["
+            '{"key":"discover","name":"발견","color":"sky"},'
+            '{"key":"plan","name":"계획","color":"indigo"},'
+            '{"key":"deliver","name":"실행","color":"emerald"},'
+            '{"key":"close","name":"마감","color":"amber"}'
+            "]'::jsonb"
+        ),
     )
     revision: Mapped[int] = mapped_column(BigInteger, nullable=False, default=1)
     updated_by_user_id: Mapped[uuid.UUID | None] = mapped_column(

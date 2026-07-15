@@ -2,7 +2,9 @@ import uuid
 from datetime import date, datetime
 from typing import Literal
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, ConfigDict, field_validator, model_validator
+
+from app.models.workspace_profile import PROJECT_PHASE_KEYS
 
 
 class WorkspaceIdentityRead(BaseModel):
@@ -60,3 +62,51 @@ class WorkspaceCalendarUpdate(BaseModel):
         if len(normalized) > 366:
             raise ValueError("holidays cannot exceed 366 dates")
         return normalized
+
+
+ProjectPhaseKey = Literal["discover", "plan", "deliver", "close"]
+ProjectPhaseColor = Literal["sky", "indigo", "emerald", "amber"]
+
+
+class WorkspaceProjectPhaseDefinitionRead(BaseModel):
+    key: ProjectPhaseKey
+    name: str
+    color: ProjectPhaseColor
+    position: int
+
+
+class WorkspaceProjectPhaseDefinitionsRead(BaseModel):
+    items: list[WorkspaceProjectPhaseDefinitionRead]
+    revision: int
+    updated_by_user_id: uuid.UUID | None
+    updated_by_name: str | None
+    updated_at: datetime
+
+
+class WorkspaceProjectPhaseDefinitionUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    key: ProjectPhaseKey
+    name: str
+    color: ProjectPhaseColor
+
+    @field_validator("name")
+    @classmethod
+    def _name(cls, value: str) -> str:
+        value = value.strip()
+        if not 1 <= len(value) <= 40:
+            raise ValueError("name must be 1-40 chars after trim")
+        return value
+
+
+class WorkspaceProjectPhaseDefinitionsUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    items: list[WorkspaceProjectPhaseDefinitionUpdate]
+
+    @model_validator(mode="after")
+    def _items(self) -> "WorkspaceProjectPhaseDefinitionsUpdate":
+        keys = [item.key for item in self.items]
+        if len(keys) != len(PROJECT_PHASE_KEYS) or set(keys) != set(PROJECT_PHASE_KEYS):
+            raise ValueError("items must contain each stable phase key exactly once")
+        if len({item.name.casefold() for item in self.items}) != len(self.items):
+            raise ValueError("phase names must be unique ignoring case")
+        return self
