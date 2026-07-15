@@ -87,10 +87,6 @@ def _working_day_count(start: date, end: date, weekdays: set[int], holidays: set
     return count
 
 
-def _working_days_inclusive(start: date, end: date, weekdays: set[int], holidays: set[date]) -> int:
-    return max(_working_day_count(start, end, weekdays, holidays), 1)
-
-
 def _add_working_days(start: date, days: int, weekdays: set[int], holidays: set[date]) -> date:
     if days <= 0:
         return start
@@ -110,6 +106,79 @@ def _add_working_days(start: date, days: int, weekdays: set[int], holidays: set[
 
 def _next_working_day(value: date, weekdays: set[int], holidays: set[date]) -> date:
     return _add_working_days(value, 1, weekdays, holidays)
+
+
+def _previous_active_end(
+    phase_key: str,
+    proposed_by_key: dict[str, ProjectPhaseRead],
+) -> date | None:
+    predecessor_end = None
+    for key, _, _, _ in PROJECT_PHASES:
+        if key == phase_key:
+            break
+        phase = proposed_by_key[key]
+        if phase.active and phase.end_date is not None:
+            predecessor_end = phase.end_date
+    return predecessor_end
+
+
+def _reschedule_successors(
+    phase_key: str,
+    predecessor_end: date,
+    proposed_by_key: dict[str, ProjectPhaseRead],
+    persisted_by_key: dict[str, ProjectPhase],
+    weekdays: set[int],
+    holidays: set[date],
+    *,
+    preserve_partial: bool = False,
+) -> set[str]:
+    scheduled_keys: set[str] = set()
+    after_predecessor = False
+    for key, _, _, _ in PROJECT_PHASES:
+        if key == phase_key:
+            after_predecessor = True
+            continue
+        if not after_predecessor:
+            continue
+        successor = proposed_by_key[key]
+        if not successor.active:
+            continue
+        if successor.start_date and successor.end_date:
+            start_date = _next_working_day(predecessor_end, weekdays, holidays)
+            duration = _working_day_count(
+                successor.start_date,
+                successor.end_date,
+                weekdays,
+                holidays,
+            )
+            if duration == 0 and preserve_partial:
+                break
+            duration = max(duration, 1)
+            end_date = _add_working_days(start_date, duration - 1, weekdays, holidays)
+            successor = successor.model_copy(
+                update={"start_date": start_date, "end_date": end_date}
+            )
+            proposed_by_key[key] = successor
+            persisted = _read(key, persisted_by_key.get(key))
+            if (
+                successor.start_date != persisted.start_date
+                or successor.end_date != persisted.end_date
+            ):
+                scheduled_keys.add(key)
+            predecessor_end = end_date
+            continue
+        if successor.start_date:
+            if preserve_partial:
+                break
+            successor = successor.model_copy(
+                update={"start_date": _next_working_day(predecessor_end, weekdays, holidays)}
+            )
+            proposed_by_key[key] = successor
+            if successor.start_date != _read(key, persisted_by_key.get(key)).start_date:
+                scheduled_keys.add(key)
+            break
+        break
+    return scheduled_keys
 
 
 @router.get("/projects/{project_id}/phases", response_model=ProjectPhaseList)
@@ -190,8 +259,17 @@ async def patch_project_phase(
         and candidate.end_date is not None
         and candidate.end_date != before.end_date
     )
+    activated = "active" in provided and candidate.active and not before.active
+    activation_predecessor_end = _previous_active_end(phase_key, proposed_by_key)
+    activation_reschedules = bool(
+        activated
+        and before.start_date
+        and before.end_date
+        and activation_predecessor_end is not None
+        and not ({"start_date", "end_date"} & provided)
+    )
     try:
-        if finish_changed:
+        if finish_changed or activation_reschedules:
             calendar = (
                 await session.execute(
                     select(WorkspaceProfile).where(WorkspaceProfile.id == 1).with_for_update()
@@ -201,53 +279,54 @@ async def patch_project_phase(
                 raise HTTPException(status_code=500, detail="workspace calendar is missing")
             working_weekdays = set(calendar.working_weekdays)
             holidays = {date.fromisoformat(value) for value in calendar.holidays}
-            predecessor_end = candidate.end_date
-            after_predecessor = False
-            for key, _, _, _ in PROJECT_PHASES:
-                if key == phase_key:
-                    after_predecessor = True
-                    continue
-                if not after_predecessor:
-                    continue
-                successor = proposed_by_key[key]
-                if not successor.active:
-                    continue
-                if successor.start_date and successor.end_date:
-                    start_date = _next_working_day(predecessor_end, working_weekdays, holidays)
-                    duration = _working_days_inclusive(
-                        successor.start_date,
-                        successor.end_date,
+            if activation_reschedules:
+                assert activation_predecessor_end is not None
+                assert candidate.start_date is not None
+                assert candidate.end_date is not None
+                start_date = _next_working_day(
+                    activation_predecessor_end,
+                    working_weekdays,
+                    holidays,
+                )
+                duration = _working_day_count(
+                    candidate.start_date,
+                    candidate.end_date,
+                    working_weekdays,
+                    holidays,
+                )
+                if duration > 0:
+                    end_date = _add_working_days(
+                        start_date,
+                        duration - 1,
                         working_weekdays,
                         holidays,
                     )
-                    end_date = _add_working_days(
-                        start_date, duration - 1, working_weekdays, holidays
-                    )
-                    successor = successor.model_copy(
+                    candidate = candidate.model_copy(
                         update={"start_date": start_date, "end_date": end_date}
                     )
-                    proposed_by_key[key] = successor
-                    persisted = _read(key, by_key.get(key))
-                    if (
-                        successor.start_date != persisted.start_date
-                        or successor.end_date != persisted.end_date
-                    ):
-                        scheduled_keys.add(key)
-                    predecessor_end = end_date
-                    continue
-                if successor.start_date:
-                    successor = successor.model_copy(
-                        update={
-                            "start_date": _next_working_day(
-                                predecessor_end, working_weekdays, holidays
-                            )
-                        }
+                    proposed_by_key[phase_key] = candidate
+                    scheduled_keys.update(
+                        _reschedule_successors(
+                            phase_key,
+                            end_date,
+                            proposed_by_key,
+                            by_key,
+                            working_weekdays,
+                            holidays,
+                            preserve_partial=True,
+                        )
                     )
-                    proposed_by_key[key] = successor
-                    if successor.start_date != _read(key, by_key.get(key)).start_date:
-                        scheduled_keys.add(key)
-                    break
-                break
+            else:
+                scheduled_keys.update(
+                    _reschedule_successors(
+                        phase_key,
+                        candidate.end_date,
+                        proposed_by_key,
+                        by_key,
+                        working_weekdays,
+                        holidays,
+                    )
+                )
     except OverflowError as error:
         raise HTTPException(
             status_code=422,

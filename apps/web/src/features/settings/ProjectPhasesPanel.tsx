@@ -44,7 +44,9 @@ function EditablePhaseRow({
   const update = useUpdateProjectPhase(projectId)
   const [startDate, setStartDate] = useState(phase.start_date ?? '')
   const [endDate, setEndDate] = useState(phase.end_date ?? '')
-  const [scheduleNotice, setScheduleNotice] = useState(false)
+  const [scheduleNotice, setScheduleNotice] = useState<
+    'finish' | 'activation-rescheduled' | 'activation-preserved' | null
+  >(null)
   const willReschedule = Boolean(endDate) && endDate !== (phase.end_date ?? '')
 
   useEffect(() => {
@@ -81,9 +83,24 @@ function EditablePhaseRow({
                 checked={phase.active}
                 label={`${phase.name} 단계 ${phase.active ? '비활성화' : '활성화'}`}
                 disabled={!canEdit || pendingForRow || dirty}
-                onCheckedChange={(active) =>
-                  update.mutate({ phaseKey: phase.key, active, version: phase.version })
-                }
+                onCheckedChange={(active) => {
+                  setScheduleNotice(null)
+                  update.mutate(
+                    { phaseKey: phase.key, active, version: phase.version },
+                    {
+                      onSuccess: (updated) => {
+                        if (!active) return
+                        const datesChanged =
+                          updated.start_date !== phase.start_date || updated.end_date !== phase.end_date
+                        setScheduleNotice(
+                          datesChanged
+                            ? 'activation-rescheduled'
+                            : 'activation-preserved',
+                        )
+                      },
+                    },
+                  )
+                }}
               />
             </div>
           </div>
@@ -99,7 +116,7 @@ function EditablePhaseRow({
                 aria-label={`${phase.name} 시작일`}
                 className="mt-1 text-xs"
                 onChange={(event) => {
-                  setScheduleNotice(false)
+                  setScheduleNotice(null)
                   setStartDate(event.target.value)
                 }}
               />
@@ -114,7 +131,7 @@ function EditablePhaseRow({
                 aria-label={`${phase.name} 종료일`}
                 className="mt-1 text-xs"
                 onChange={(event) => {
-                  setScheduleNotice(false)
+                  setScheduleNotice(null)
                   setEndDate(event.target.value)
                 }}
               />
@@ -133,7 +150,7 @@ function EditablePhaseRow({
                       end_date: endDate || null,
                       version: phase.version,
                     },
-                    { onSuccess: () => setScheduleNotice(willReschedule) },
+                    { onSuccess: () => setScheduleNotice(willReschedule ? 'finish' : null) },
                   )
                 }
               >
@@ -147,7 +164,12 @@ function EditablePhaseRow({
           ) : null}
           {scheduleNotice && !update.isPending ? (
             <p role="status" className="mt-2 flex items-center gap-1.5 text-xs text-of-success">
-              <CheckCircle2 size={13} /> 일정을 저장하고 후속 활성 단계에 근무일 규칙을 적용했습니다.
+              <CheckCircle2 size={13} />
+              {scheduleNotice === 'finish'
+                ? '일정을 저장하고 후속 활성 단계에 근무일 규칙을 적용했습니다.'
+                : scheduleNotice === 'activation-rescheduled'
+                  ? '단계를 활성화하고 저장된 일정을 이전 활성 단계 다음 근무일로 재배치했습니다.'
+                  : '단계를 활성화했습니다. 저장된 날짜는 변경되지 않았습니다.'}
             </p>
           ) : null}
           <div className="mt-3 grid min-w-0 gap-2 sm:grid-cols-2" aria-label={`${phase.name} 단계 게이트`}>
@@ -255,10 +277,10 @@ export function ProjectPhasesPanel({
       <div className="mt-3 flex min-w-0 items-start gap-2 border-l-2 border-of-accent px-3 py-1.5">
         <CalendarCheck2 size={15} className="mt-0.5 shrink-0 text-of-accent" />
         <div className="min-w-0">
-          <p className="text-xs font-semibold">월-금 후속 단계 자동 일정</p>
+          <p className="text-xs font-semibold">워크스페이스 근무일 자동 일정</p>
           <p className="mt-0.5 text-[11px] leading-5 text-of-muted">
-            종료일을 저장하면 다음 활성 단계가 다음 근무일에 시작합니다. 완전한 후속 일정은 기존 근무일
-            기간을 유지하고, 부분 일정과 비활성 단계는 보존합니다.
+            종료일 저장과 완전한 저장 일정의 활성화는 다음 유효 근무일부터 단계를 정렬합니다. 완전한
+            후속 일정은 근무일 기간을 유지하고, 부분 일정과 비활성화는 기존 날짜를 보존합니다.
           </p>
         </div>
       </div>

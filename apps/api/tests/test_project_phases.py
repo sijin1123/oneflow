@@ -270,6 +270,141 @@ async def test_finish_change_uses_workspace_weekdays_and_holidays(client):
     assert phases["plan"]["end_date"] == "2026-07-23"
 
 
+async def test_activation_reschedules_complete_phase_and_successors_with_workspace_calendar(
+    client,
+):
+    calendar = await client.patch(
+        "/api/v1/admin/workspace/calendar",
+        json={
+            "working_weekdays": [0, 1, 2, 3, 4],
+            "holidays": ["2026-07-20"],
+        },
+        headers={"If-Match": '"1"'},
+    )
+    assert calendar.status_code == 200, calendar.text
+    project = await create_project(client)
+    base = f"/api/v1/projects/{project['id']}/phases"
+    for key, active, start_date, end_date in [
+        ("discover", True, "2026-07-13", "2026-07-17"),
+        ("plan", False, "2026-07-13", "2026-07-17"),
+        ("deliver", True, "2026-07-21", "2026-07-22"),
+        ("close", True, "2026-08-03", None),
+    ]:
+        response = await client.patch(
+            f"{base}/{key}",
+            json={
+                "active": active,
+                "start_date": start_date,
+                "end_date": end_date,
+                "version": 0,
+            },
+        )
+        assert response.status_code == 200, response.text
+
+    activated = await client.patch(f"{base}/plan", json={"active": True, "version": 1})
+    assert activated.status_code == 200, activated.text
+    assert (
+        activated.json()["start_date"],
+        activated.json()["end_date"],
+        activated.json()["version"],
+    ) == ("2026-07-21", "2026-07-27", 2)
+    phases = {phase["key"]: phase for phase in (await client.get(base)).json()["items"]}
+    assert (
+        phases["deliver"]["start_date"],
+        phases["deliver"]["end_date"],
+        phases["deliver"]["version"],
+    ) == ("2026-07-28", "2026-07-29", 2)
+    assert (
+        phases["close"]["start_date"],
+        phases["close"]["end_date"],
+        phases["close"]["version"],
+    ) == ("2026-08-03", None, 1)
+
+
+async def test_activation_preserves_partial_or_unanchored_schedules_and_overflow_is_atomic(client):
+    project = await create_project(client)
+    base = f"/api/v1/projects/{project['id']}/phases"
+    partial = await client.patch(
+        f"{base}/plan",
+        json={"active": False, "start_date": "2026-07-13", "version": 0},
+    )
+    assert partial.status_code == 200
+    partial_activation = await client.patch(f"{base}/plan", json={"active": True, "version": 1})
+    assert partial_activation.status_code == 200
+    assert partial_activation.json()["start_date"] == "2026-07-13"
+    assert partial_activation.json()["end_date"] is None
+
+    unanchored = await client.patch(
+        f"{base}/close",
+        json={
+            "active": False,
+            "start_date": "2026-08-03",
+            "end_date": "2026-08-07",
+            "version": 0,
+        },
+    )
+    assert unanchored.status_code == 200
+    unanchored_activation = await client.patch(f"{base}/close", json={"active": True, "version": 1})
+    assert unanchored_activation.status_code == 200
+    assert unanchored_activation.json()["start_date"] == "2026-08-03"
+    assert unanchored_activation.json()["end_date"] == "2026-08-07"
+
+    weekend_project = await create_project(client, key="WEEKEND", name="주말 단계")
+    weekend = f"/api/v1/projects/{weekend_project['id']}/phases"
+    for key, active, start_date, end_date in [
+        ("discover", True, "2026-07-13", "2026-07-17"),
+        ("plan", False, "2026-07-18", "2026-07-19"),
+        ("deliver", True, "2026-07-20", "2026-07-22"),
+    ]:
+        response = await client.patch(
+            f"{weekend}/{key}",
+            json={
+                "active": active,
+                "start_date": start_date,
+                "end_date": end_date,
+                "version": 0,
+            },
+        )
+        assert response.status_code == 200, response.text
+    weekend_activation = await client.patch(f"{weekend}/plan", json={"active": True, "version": 1})
+    assert weekend_activation.status_code == 200
+    assert weekend_activation.json()["start_date"] == "2026-07-18"
+    assert weekend_activation.json()["end_date"] == "2026-07-19"
+    weekend_phases = {phase["key"]: phase for phase in (await client.get(weekend)).json()["items"]}
+    assert weekend_phases["deliver"]["start_date"] == "2026-07-20"
+    assert weekend_phases["deliver"]["version"] == 1
+
+    boundary_project = await create_project(client, key="ACTMAX", name="활성화 날짜 경계")
+    boundary = f"/api/v1/projects/{boundary_project['id']}/phases"
+    predecessor = await client.patch(
+        f"{boundary}/discover",
+        json={
+            "active": True,
+            "start_date": "9999-12-30",
+            "end_date": "9999-12-31",
+            "version": 0,
+        },
+    )
+    assert predecessor.status_code == 200
+    stored = await client.patch(
+        f"{boundary}/plan",
+        json={
+            "active": False,
+            "start_date": "9999-12-31",
+            "end_date": "9999-12-31",
+            "version": 0,
+        },
+    )
+    assert stored.status_code == 200
+    rejected = await client.patch(f"{boundary}/plan", json={"active": True, "version": 1})
+    assert rejected.status_code == 422
+    assert rejected.json()["detail"] == "rescheduled phase dates exceed the supported range"
+    unchanged = {phase["key"]: phase for phase in (await client.get(boundary)).json()["items"]}
+    assert unchanged["plan"]["active"] is False
+    assert unchanged["plan"]["start_date"] == "9999-12-31"
+    assert unchanged["plan"]["version"] == 1
+
+
 async def test_finish_change_skips_inactive_and_stops_at_partial_successor(client):
     project = await create_project(client)
     base = f"/api/v1/projects/{project['id']}/phases"
