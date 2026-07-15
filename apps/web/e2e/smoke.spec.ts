@@ -10,6 +10,7 @@ import { expect, test, type Page } from '@playwright/test'
 import type { Milestone } from '../src/features/milestones/api'
 import type { Customer } from '../src/features/customers/types'
 import type { DataTransferJob } from '../src/features/ops/dataTransfersApi'
+import type { AuthAssistanceRequest } from '../src/features/admin/authAssistanceApi'
 import type { DocumentList } from '../src/features/documents/api'
 import type {
   Project,
@@ -14512,6 +14513,255 @@ test('Workspace Worklogs 목록 오류는 명시적 재시도로 복구한다', 
   await expect(page.getByRole('alert')).toContainText('데이터를 불러오지 못했습니다')
   await page.getByRole('button', { name: '다시 시도' }).click()
   await expect(page.getByText('조회 범위에 Worklog가 없습니다')).toBeVisible()
+})
+
+function authAssistanceFixture(
+  overrides: Partial<AuthAssistanceRequest> & { id: string },
+): AuthAssistanceRequest {
+  const { id, ...rest } = overrides
+  return {
+    id,
+    kind: 'sign_in_help',
+    status: 'pending',
+    email: 'member@oneflow.local',
+    reason: '비밀번호를 잊어 로그인할 수 없습니다.',
+    submission_count: 1,
+    last_submitted_at: '2026-07-15T01:00:00Z',
+    version: 0,
+    triage_note: null,
+    triaged_by_id: null,
+    triaged_at: null,
+    redacted_at: null,
+    created_at: '2026-07-15T01:00:00Z',
+    updated_at: '2026-07-15T01:00:00Z',
+    ...rest,
+  }
+}
+
+async function mockAdminAuthAssistance(
+  page: Page,
+  initial: AuthAssistanceRequest[],
+  options: { conflictFirstPatch?: boolean } = {},
+) {
+  let items = initial.map((item) => ({ ...item }))
+  let patchCount = 0
+  const patchBodies: Array<{ status: string; expected_version: number; note?: string }> = []
+  const deletedIds: string[] = []
+
+  await page.route('**/api/v1/admin/auth-assistance-requests**', async (route) => {
+    const request = route.request()
+    const url = new URL(request.url())
+    const id = url.pathname.split('/').at(-1)!
+
+    if (request.method() === 'PATCH') {
+      const body = request.postDataJSON() as { status: string; expected_version: number; note?: string }
+      patchBodies.push(body)
+      patchCount += 1
+      const current = items.find((item) => item.id === id)
+      if (options.conflictFirstPatch && patchCount === 1) {
+        await route.fulfill({ status: 409, json: { detail: 'request version conflict', current } })
+        return
+      }
+      if (!current || current.version !== body.expected_version) {
+        await route.fulfill({ status: current ? 409 : 404, json: { detail: 'request version conflict', current } })
+        return
+      }
+      const allowed =
+        (current.status === 'pending' && ['in_review', 'resolved', 'rejected'].includes(body.status)) ||
+        (current.status === 'in_review' && ['resolved', 'rejected'].includes(body.status))
+      const terminal = body.status === 'resolved' || body.status === 'rejected'
+      if (!allowed || (terminal && !body.note?.trim())) {
+        await route.fulfill({ status: 409, json: { detail: 'invalid assistance transition', current } })
+        return
+      }
+      const updated: AuthAssistanceRequest = {
+        ...current,
+        status: body.status as AuthAssistanceRequest['status'],
+        triage_note: body.note ?? current.triage_note,
+        triaged_by_id: 'me-1',
+        triaged_at: '2026-07-15T02:00:00Z',
+        version: current.version + 1,
+        updated_at: '2026-07-15T02:00:00Z',
+      }
+      items = items.map((item) => item.id === id ? updated : item)
+      await route.fulfill({ json: updated })
+      return
+    }
+
+    if (request.method() === 'DELETE') {
+      const current = items.find((item) => item.id === id)
+      if (!current || current.status === 'pending' || current.status === 'in_review') {
+        await route.fulfill({ status: current ? 409 : 404, json: { detail: 'terminal request required' } })
+        return
+      }
+      deletedIds.push(id)
+      items = items.map((item) => item.id === id ? {
+        ...item,
+        email: null,
+        reason: null,
+        triage_note: null,
+        redacted_at: '2026-07-15T03:00:00Z',
+        version: item.version + 1,
+        updated_at: '2026-07-15T03:00:00Z',
+      } : item)
+      await route.fulfill({ status: 204, body: '' })
+      return
+    }
+
+    const status = url.searchParams.get('status')
+    const kind = url.searchParams.get('kind')
+    const offset = Number(url.searchParams.get('offset') ?? 0)
+    const limit = Number(url.searchParams.get('limit') ?? 50)
+    const filtered = items.filter(
+      (item) => (!status || item.status === status) && (!kind || item.kind === kind),
+    )
+    await route.fulfill({
+      json: {
+        items: filtered.slice(offset, offset + limit),
+        total: filtered.length,
+        limit,
+        offset,
+      },
+    })
+  })
+
+  return { patchBodies, deletedIds }
+}
+
+test('로그인 지원 큐는 모바일 탐색과 실제 검토 수명주기를 연결한다', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await mockApi(page)
+  const mock = await mockAdminAuthAssistance(page, [authAssistanceFixture({ id: 'assist-mobile' })])
+
+  await page.goto('/my')
+  await page.getByRole('button', { name: '사이드바 열기' }).click()
+  await page
+    .getByRole('dialog', { name: '모바일 내비게이션' })
+    .getByRole('navigation', { name: '글로벌 내비게이션' })
+    .getByRole('link', { name: 'Settings' })
+    .click()
+  await page.getByRole('button', { name: '사이드바 열기' }).click()
+  await page
+    .getByRole('dialog', { name: '모바일 내비게이션' })
+    .getByRole('navigation', { name: '설정 컨텍스트 내비게이션' })
+    .getByRole('link', { name: '로그인 지원' })
+    .click()
+
+  await expect(page.getByRole('heading', { name: '로그인 지원' })).toBeVisible()
+  const mobileList = page.getByRole('list', { name: '모바일 로그인 지원 요청' })
+  await expect(mobileList.getByText('member@oneflow.local')).toBeVisible()
+  await mobileList.getByRole('button', { name: '검토 시작' }).click()
+  await expect(mobileList.getByText('검토 중')).toBeVisible()
+  expect(mock.patchBodies[0]).toEqual({ status: 'in_review', expected_version: 0 })
+
+  const resolve = mobileList.getByRole('button', { name: '해결', exact: true })
+  await resolve.click()
+  const decision = page.getByRole('dialog', { name: '요청 해결' })
+  await expect(decision.getByRole('button', { name: '해결 확정' })).toBeDisabled()
+  await page.keyboard.press('Escape')
+  await expect(resolve).toBeFocused()
+
+  await resolve.click()
+  await decision.getByLabel('로그인 지원 검토 메모').fill('본인 확인 후 개발용 비밀번호를 재발급했습니다.')
+  await decision.getByRole('button', { name: '해결 확정' }).click()
+  await expect(mobileList.getByText('해결').first()).toBeVisible()
+  expect(mock.patchBodies[1]).toEqual({
+    status: 'resolved',
+    expected_version: 1,
+    note: '본인 확인 후 개발용 비밀번호를 재발급했습니다.',
+  })
+
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/auth-assistance-admin-ui/mobile.png',
+    fullPage: true,
+  })
+})
+
+test('로그인 지원 큐는 충돌 복구·PII 삭제·canonical URL을 보장한다', async ({ page }) => {
+  await mockApi(page)
+  const items = [
+    authAssistanceFixture({ id: 'assist-pending' }),
+    authAssistanceFixture({
+      id: 'assist-terminal',
+      kind: 'workspace_access',
+      status: 'resolved',
+      email: 'contractor@oneflow.local',
+      reason: '프로젝트 초대가 필요합니다.',
+      triage_note: '프로젝트 소유자 승인 완료',
+      triaged_at: '2026-07-15T02:00:00Z',
+      version: 3,
+    }),
+  ]
+  const mock = await mockAdminAuthAssistance(page, items, { conflictFirstPatch: true })
+
+  await page.goto('/admin/auth-assistance?status=unknown&kind=bad&offset=17')
+  await expect(page).not.toHaveURL(/status=|kind=|offset=/)
+  await page.getByRole('button', { name: '검토 시작' }).click()
+  await expect(page.getByRole('alert')).toContainText('다른 관리자가 이미 변경')
+  await page.getByRole('button', { name: '목록 새로고침' }).click()
+  await expect(page.getByRole('alert')).toHaveCount(0)
+
+  const terminalRow = page.getByRole('row').filter({ hasText: 'contractor@oneflow.local' })
+  await terminalRow.getByRole('button', { name: '개인정보 삭제' }).click()
+  const redaction = page.getByRole('dialog', { name: '연락 정보 삭제' })
+  await expect(redaction).toContainText('영구 삭제')
+  await redaction.getByRole('button', { name: '삭제', exact: true }).click()
+  await expect(page.getByRole('table').getByText('개인정보 삭제됨')).toBeVisible()
+  expect(mock.deletedIds).toEqual(['assist-terminal'])
+
+  await page.getByLabel('로그인 지원 상태').selectOption('resolved')
+  await expect(page).toHaveURL(/status=resolved/)
+  await page.getByLabel('로그인 지원 유형').selectOption('workspace_access')
+  await expect(page).toHaveURL(/kind=workspace_access/)
+  await expect(page.getByRole('table').getByText('개인정보 삭제됨')).toBeVisible()
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/auth-assistance-admin-ui/desktop.png',
+    fullPage: true,
+  })
+})
+
+test('로그인 지원 큐는 범위 밖 페이지와 API 권한 변경을 복구한다', async ({ page }) => {
+  await mockApi(page)
+  const items = Array.from({ length: 51 }, (_, index) =>
+    authAssistanceFixture({ id: `assist-${index + 1}` }),
+  )
+  await mockAdminAuthAssistance(page, items)
+  await page.goto('/admin/auth-assistance?offset=100')
+  await expect(page).toHaveURL(/offset=50/)
+  await expect(page.getByText('51-51 / 51')).toBeVisible()
+
+  await page.route('**/api/v1/admin/auth-assistance-requests**', (route) =>
+    route.fulfill({ status: 403, json: { detail: 'workspace admin required' } }),
+  )
+  await page.goto('/admin/auth-assistance?status=resolved')
+  await expect(page.getByText('접근 권한이 없습니다')).toBeVisible()
+  await expect(page.getByRole('heading', { name: '로그인 지원' })).toHaveCount(0)
+})
+
+test('로그인 지원 큐는 비관리자를 민감한 collection GET 전에 차단한다', async ({ page }) => {
+  await mockApi(page)
+  await page.route('**/api/v1/me', (route) => route.fulfill({
+    json: {
+      id: 'viewer-1',
+      email: 'viewer@oneflow.local',
+      display_name: 'Viewer',
+      is_active: true,
+      is_admin: false,
+    },
+  }))
+  let collectionRequests = 0
+  await page.route('**/api/v1/admin/auth-assistance-requests**', (route) => {
+    collectionRequests += 1
+    return route.fulfill({ status: 403, json: { detail: 'workspace admin required' } })
+  })
+
+  await page.goto('/admin/auth-assistance')
+  await expect(page.getByText('접근 권한이 없습니다')).toBeVisible()
+  await expect(page.getByText('워크스페이스 설정은 관리자만 열 수 있습니다.')).toBeVisible()
+  await page.waitForTimeout(250)
+  expect(collectionRequests).toBe(0)
 })
 
 function draftFixture(
