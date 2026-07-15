@@ -7,7 +7,6 @@ import {
   Eye,
   EyeOff,
   Globe2,
-  KeyRound,
   Loader2,
   LockKeyhole,
   Mail,
@@ -20,7 +19,8 @@ import {
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 
-import loginJourney from '@/assets/generated/oneflow-login-journey.jpg'
+import oneflowRibbonMark from '@/assets/brand/oneflow-ribbon-mark.svg'
+import loginJourney from '@/assets/generated/oneflow-login-journey-watercolor-v2.webp'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -74,7 +74,7 @@ const copy = {
     devHelp: 'Use an active directory account and the configured local password.',
     oidcUnavailable: 'Local credentials are unavailable in SSO mode. No usable identity provider is configured.',
     oidcAvailable: 'Local credentials are unavailable. Continue with the configured identity provider below.',
-    providerHelp: 'A blue status mark identifies the provider configured for this deployment.',
+    providerHelp: 'Each sign-in option announces whether it is configured for this deployment.',
     providerConfigured: 'configured',
     providerUnavailable: 'not configured',
     oauthInvalidState: 'Your sign-in session expired or was already used. Start again.',
@@ -119,7 +119,7 @@ const copy = {
     devHelp: '활성 사용자 계정과 설정된 로컬 비밀번호를 사용합니다.',
     oidcUnavailable: 'SSO 모드에서는 로컬 계정을 사용할 수 없습니다. 사용 가능한 인증 공급자가 구성되지 않았습니다.',
     oidcAvailable: '로컬 계정은 사용할 수 없습니다. 아래에 구성된 인증 공급자로 계속하세요.',
-    providerHelp: '파란 상태 표시가 이 배포 환경에 구성된 인증 공급자를 나타냅니다.',
+    providerHelp: '각 로그인 옵션은 이 배포 환경의 구성 여부를 안내합니다.',
     providerConfigured: '구성됨',
     providerUnavailable: '구성되지 않음',
     oauthInvalidState: '로그인 세션이 만료됐거나 이미 사용되었습니다. 다시 시작하세요.',
@@ -149,10 +149,7 @@ function safeNextLocation(next: string | null) {
 function BrandLockup({ compact = false }: { compact?: boolean }) {
   return (
     <div className="of-login-brand" data-compact={compact || undefined} aria-label="oneflow">
-      <span className="of-login-brand-mark" aria-hidden="true">
-        <span />
-        <span />
-      </span>
+      <img className="of-login-brand-mark" src={oneflowRibbonMark} alt="" aria-hidden="true" />
       <span>
         <strong>oneflow</strong>
         {!compact ? <small>project management system</small> : null}
@@ -265,7 +262,10 @@ function StoryPanel() {
       <div className="of-login-story-wash" aria-hidden="true" />
       <div className="of-login-story-copy">
         <BrandLockup />
-        <h1 id="login-story-title">Plan. Flow. Deliver.<span>Together.</span></h1>
+        <h1 id="login-story-title">
+          <span className="of-login-story-line">Plan. Flow. Deliver.</span>
+          <span>Together.</span>
+        </h1>
         <p>Oneflow helps teams plan, collaborate,<br />and ship great work—seamlessly.</p>
       </div>
       <div className="of-login-story-widgets" aria-hidden="true">
@@ -497,7 +497,7 @@ export function LoginPage() {
             {oauthError ? <p className="of-login-oauth-error" role="alert"><ShieldCheck aria-hidden="true" />{oauthError}</p> : null}
             {errorText ? <p id="login-auth-error" className="of-login-error" role="alert">{errorText}</p> : null}
             <Button type="submit" className="of-login-submit" disabled={!formEnabled || !email.trim() || (passwordRequired && !password) || login.isPending} aria-busy={login.isPending}>
-              {login.isPending ? <Loader2 className="of-login-spinner" aria-hidden="true" /> : <KeyRound aria-hidden="true" />}
+              {login.isPending ? <Loader2 className="of-login-spinner" aria-hidden="true" /> : null}
               {login.isPending ? text.signingIn : text.signIn}
             </Button>
 
