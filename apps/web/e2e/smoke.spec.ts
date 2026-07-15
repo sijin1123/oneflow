@@ -11936,6 +11936,53 @@ test('로그인 참조 UI는 6개 목표 뷰포트에서 넘침 없이 렌더링
   }
 })
 
+test('로그인 정밀 비주얼은 선명한 보드와 흐르는 협업 경로를 유지한다', async ({ page }) => {
+  await mockApi(page)
+  await page.route('**/api/v1/auth/config', (route) => route.fulfill({
+    json: {
+      auth_mode: 'dev',
+      oidc_issuer: null,
+      oidc_client_id: null,
+      has_client_secret: false,
+      command_palette_enabled: false,
+      session_management_enabled: true,
+      password_required: true,
+    },
+  }))
+
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.goto('/login')
+  await expect(page.locator('.of-login-kanban')).toHaveCSS('transform', 'none')
+  await expect(page.locator('.of-login-kanban')).toHaveCSS('backdrop-filter', 'none')
+  await expect(page.locator('.of-login-collaboration-route-flow')).toHaveCSS(
+    'animation-name',
+    'of-login-route-flow',
+  )
+  await expect(page.locator('.of-login-collaboration-route-base')).toHaveAttribute(
+    'd',
+    /M151 18C177/,
+  )
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/login-visual-polish-ui/desktop.png',
+    fullPage: true,
+  })
+
+  await page.emulateMedia({ reducedMotion: 'reduce' })
+  await expect(page.locator('.of-login-collaboration-route-flow')).toHaveCSS(
+    'animation-name',
+    'none',
+  )
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.reload()
+  await expect(page.getByRole('heading', { name: /Welcome back/ })).toBeVisible()
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/login-visual-polish-ui/mobile.png',
+    fullPage: true,
+  })
+})
+
 test('Workspace popover가 실제 설정·멤버·로그아웃 흐름에 연결된다', async ({
   page,
 }) => {
