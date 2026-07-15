@@ -6266,6 +6266,20 @@ export interface components {
              */
             work_package_count: number;
         };
+        /** ProjectPhaseGateRead */
+        ProjectPhaseGateRead: {
+            /** Active */
+            active: boolean;
+            /** Date */
+            date: string | null;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "start" | "finish";
+            /** Name */
+            name: string;
+        };
         /** ProjectPhaseList */
         ProjectPhaseList: {
             /** Items */
@@ -6282,8 +6296,12 @@ export interface components {
             active?: boolean | null;
             /** End Date */
             end_date?: string | null;
+            /** Finish Gate Active */
+            finish_gate_active?: boolean | null;
             /** Start Date */
             start_date?: string | null;
+            /** Start Gate Active */
+            start_gate_active?: boolean | null;
             /** Version */
             version: number;
         };
@@ -6298,6 +6316,7 @@ export interface components {
             color: "sky" | "indigo" | "emerald" | "amber";
             /** End Date */
             end_date: string | null;
+            finish_gate: components["schemas"]["ProjectPhaseGateRead"];
             /**
              * Key
              * @enum {string}
@@ -6309,6 +6328,7 @@ export interface components {
             position: number;
             /** Start Date */
             start_date: string | null;
+            start_gate: components["schemas"]["ProjectPhaseGateRead"];
             /** Version */
             version: number;
         };

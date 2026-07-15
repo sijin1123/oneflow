@@ -24,6 +24,15 @@ PROJECT_PHASES: tuple[tuple[str, str, str, int], ...] = (
 )
 PROJECT_PHASE_BY_KEY = {phase[0]: phase for phase in PROJECT_PHASES}
 
+# Gate labels are product vocabulary, not user-managed project data. Their
+# activation state is persisted on the phase; their dates are API-derived.
+PROJECT_PHASE_GATE_NAMES: dict[str, tuple[str, str]] = {
+    "discover": ("발견 시작 게이트", "발견 완료 게이트"),
+    "plan": ("계획 시작 게이트", "계획 완료 게이트"),
+    "deliver": ("실행 시작 게이트", "실행 완료 게이트"),
+    "close": ("마감 시작 게이트", "마감 완료 게이트"),
+}
+
 
 class ProjectPhase(Base):
     """Persisted per-project state for OneFlow's fixed project phase vocabulary."""
@@ -46,6 +55,8 @@ class ProjectPhase(Base):
     )
     key: Mapped[str] = mapped_column(String(20), nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    start_gate_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    finish_gate_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     start_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     end_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     version: Mapped[int] = mapped_column(Integer, nullable=False, default=0)

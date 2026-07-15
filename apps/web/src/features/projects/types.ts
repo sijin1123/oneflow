@@ -40,6 +40,13 @@ export type ProjectHealthHistoryList = {
 export type ProjectPhaseKey = 'discover' | 'plan' | 'deliver' | 'close'
 export type ProjectPhaseColor = 'sky' | 'indigo' | 'emerald' | 'amber'
 
+export type ProjectPhaseGate = {
+  kind: 'start' | 'finish'
+  name: string
+  active: boolean
+  date: string | null
+}
+
 export type ProjectPhase = {
   key: ProjectPhaseKey
   name: string
@@ -48,6 +55,8 @@ export type ProjectPhase = {
   active: boolean
   start_date: string | null
   end_date: string | null
+  start_gate: ProjectPhaseGate
+  finish_gate: ProjectPhaseGate
   version: number
 }
 

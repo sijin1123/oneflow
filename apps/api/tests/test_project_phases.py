@@ -31,9 +31,20 @@ async def test_list_synthesizes_ordered_defaults_and_is_member_scoped(
         item["active"] is False
         and item["start_date"] is None
         and item["end_date"] is None
+        and item["start_gate"]["active"] is False
+        and item["start_gate"]["date"] is None
+        and item["finish_gate"]["active"] is False
+        and item["finish_gate"]["date"] is None
         and item["version"] == 0
         for item in body["items"]
     )
+    assert body["items"][0]["start_gate"] == {
+        "kind": "start",
+        "name": "발견 시작 게이트",
+        "active": False,
+        "date": None,
+    }
+    assert body["items"][0]["finish_gate"]["name"] == "발견 완료 게이트"
 
     member = await client.get(f"/api/v1/projects/{member_project['project_id']}/phases")
     assert member.status_code == 200
@@ -47,7 +58,13 @@ async def test_owner_update_supports_partial_dates_noop_conflict_and_preserved_d
 
     partial = await client.patch(
         url,
-        json={"active": True, "start_date": "2026-07-01", "version": 0},
+        json={
+            "active": True,
+            "start_date": "2026-07-01",
+            "start_gate_active": True,
+            "finish_gate_active": True,
+            "version": 0,
+        },
     )
     assert partial.status_code == 200
     assert partial.json() == {
@@ -58,12 +75,24 @@ async def test_owner_update_supports_partial_dates_noop_conflict_and_preserved_d
         "active": True,
         "start_date": "2026-07-01",
         "end_date": None,
+        "start_gate": {
+            "kind": "start",
+            "name": "발견 시작 게이트",
+            "active": True,
+            "date": "2026-07-01",
+        },
+        "finish_gate": {
+            "kind": "finish",
+            "name": "발견 완료 게이트",
+            "active": True,
+            "date": None,
+        },
         "version": 1,
     }
 
     no_op = await client.patch(
         url,
-        json={"active": True, "start_date": "2026-07-01", "version": 1},
+        json={"active": True, "start_gate_active": True, "version": 1},
     )
     assert no_op.status_code == 200
     assert no_op.json()["version"] == 1
@@ -74,6 +103,7 @@ async def test_owner_update_supports_partial_dates_noop_conflict_and_preserved_d
     complete = await client.patch(url, json={"end_date": "2026-07-10", "version": 1})
     assert complete.status_code == 200
     assert complete.json()["version"] == 2
+    assert complete.json()["finish_gate"]["date"] == "2026-07-10"
 
     cleared = await client.patch(url, json={"start_date": None, "version": 2})
     assert cleared.status_code == 200
@@ -88,6 +118,10 @@ async def test_owner_update_supports_partial_dates_noop_conflict_and_preserved_d
     assert inactive.json()["active"] is False
     assert inactive.json()["start_date"] is None
     assert inactive.json()["end_date"] == "2026-07-10"
+    assert inactive.json()["start_gate"]["active"] is True
+    assert inactive.json()["finish_gate"]["active"] is True
+    assert inactive.json()["start_gate"]["date"] is None
+    assert inactive.json()["finish_gate"]["date"] is None
     assert inactive.json()["version"] == 4
 
 
@@ -143,6 +177,8 @@ async def test_phase_dates_follow_definition_order_and_validate_shape(client):
     assert unknown.status_code == 404
     null_active = await client.patch(f"{base}/close", json={"active": None, "version": 0})
     assert null_active.status_code == 422
+    null_gate = await client.patch(f"{base}/close", json={"start_gate_active": None, "version": 0})
+    assert null_gate.status_code == 422
 
 
 async def test_phase_mutation_is_owner_only_and_archived_projects_are_read_only(
