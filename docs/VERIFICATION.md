@@ -2500,3 +2500,14 @@ Chromium typed mock fixture에서 1440x960과 390x844 viewport를 사용했다. 
 - Settings는 월-금 자동 일정 범위를 설명하고 실제 종료일 변경 저장에만 적용 완료 상태를 표시한다. mutation은 후속 단계 cache refetch까지 pending을 유지해 새 start/end와 Overview gate 날짜를 즉시 같은 사실로 보여준다. 시작일 단독 저장에는 적용 문구가 나타나지 않는다.
 - 검증: API focused 8 및 full 733 PASS(기존 Alembic 경고 1건), Ruff/format PASS, typecheck/lint/build PASS(기존 Fast Refresh 4·chunk 경고), unit 93, component 8, focused lifecycle E2E PASS, full E2E 281 PASS + opt-in visual QA 1 skip, clean-room frontend 161/backend 45, npm/pip audit 0 vulnerabilities, diff check PASS.
 - Chromium 증적은 `docs/screenshots/redevelopment/project-phase-working-days-ui/{settings-desktop,overview-desktop,overview-mobile}.png`에 보존한다. 신규 API route, DB schema/migration, environment variable, dependency 변경은 없다. 공휴일·사용자 정의 근무일, 활성화 전환 재배치와 workspace custom phase definition 관리는 후속 PR로 이연한다.
+
+---
+
+# UI-114 Workspace Working Calendar 검증 (2026-07-15)
+
+- **UI 변경**: Workspace administration에 `근무 일정` surface를 추가했다. 월~일 근무 요일 선택, 날짜형 휴일 추가·제거, 유효 일정 요약, 저장·되돌리기, loading/error/retry, stale revision 입력 보존과 desktop/mobile 반응형 상태를 제공한다. 장식용 control 없이 모든 명령이 실제 API에 연결된다.
+- **기능/API 반영**: migration `0088`이 singleton workspace profile에 JSONB 근무 요일·휴일을 추가하고 array 길이와 요일 닫힌 어휘를 DB에서 제한한다. 인증 사용자는 effective calendar를 읽고 admin만 `If-Match` revision으로 변경한다. 프로젝트 단계 후속 일정은 같은 transaction에서 해당 근무 요일과 휴일을 읽어 다음 근무일·기존 유효 근무일 기간을 계산한다.
+- 테스트 fixture가 근무 일정까지 매번 기본값으로 복원해 설정 누수를 막는다. migration 왕복 첫 실행이 naming convention이 downgrade 제약명에 이중 적용되는 결함을 검출했고, `op.f(...)`로 고친 뒤 test DB에서 `0088 -> 0087 -> 0088`과 실제 weekday containment constraint를 확인했다.
+- 검증: API focused 22 및 full 735 PASS(기존 Alembic 경고 1건), Ruff/format PASS, OpenAPI generation/drift PASS, typecheck/lint/build PASS(기존 Fast Refresh 4·chunk 경고), unit 93, component 8, focused E2E 1 PASS, full E2E 282 PASS + opt-in visual QA 1 skip, clean-room frontend 161/backend 45, npm/pip audit 0 vulnerabilities, diff check PASS.
+- Chromium 증적은 `docs/screenshots/redevelopment/workspace-working-calendar-ui/{desktop,mobile}.png`에 보존한다. Migration `0088` 적용이 필요하다. 환경변수와 dependency 변경은 없다.
+- **이연 항목**: phase 활성화 전환 시 자동 재배치와 workspace custom phase definition 관리는 다음 lifecycle surface로 유지한다.

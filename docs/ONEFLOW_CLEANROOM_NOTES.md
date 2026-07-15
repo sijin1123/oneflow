@@ -308,3 +308,9 @@ OpenProject/Plane source, API, database schema, package, asset, CSS, DOM hierarc
 OpenProject 공식 lifecycle 문서에서 사용한 입력은 앞 단계 종료일 변경 시 후속 단계가 다음 근무일에 시작하고 기존 기간을 유지한다는 공개 제품 행동뿐이다. OneFlow 구현은 기존 고정 단계 어휘, owner-only optimistic PATCH, project archive row lock, PostgreSQL transaction과 React Query cache를 사용해 월-금 계산과 후속 단계 연쇄 이동을 독립 설계했다.
 
 OpenProject/Plane source, API, database schema, package, asset, CSS, DOM hierarchy, exact dimensions/colors, wording, 일정 계산 구현 또는 branding은 복사하지 않았다. 신규 dependency, migration, environment, permission contract 변경은 없다. 공휴일·사용자 정의 근무일, 단계 활성화 전환 재배치와 workspace custom phase definition 관리는 후속 기능형 surface로 유지한다. — attested-independent-derivation
+
+## UI-114 Workspace Working Calendar
+
+OpenProject의 공개 working-time/calendar 제품 범주에서 사용한 입력은 조직이 근무 요일과 휴일을 설정하고 일정 계산이 같은 유효 달력을 사용한다는 공개 행동뿐이다. OneFlow 구현은 자체 singleton workspace profile revision, admin authorization, PostgreSQL JSONB constraints, project-phase transaction, React Query cache와 Settings design tokens를 사용해 독립 설계했다.
+
+OpenProject/Plane source, API, database schema, package, asset, CSS, DOM hierarchy, exact dimensions/colors, wording, calendar implementation 또는 branding은 복사하지 않았다. OneFlow 고유 migration `0088`, revisioned read/write API, closed weekday validation과 holiday-aware scheduler를 추가했으며 신규 dependency/environment 변경은 없다. Phase 활성화 전환 재배치와 workspace custom phase definition 관리는 후속 lifecycle surface로 유지한다. — attested-independent-derivation

@@ -14,8 +14,18 @@ export type WorkspaceProfile = WorkspaceIdentity & {
   updated_at: string
 }
 
+export type WorkspaceCalendar = {
+  working_weekdays: number[]
+  holidays: string[]
+  revision: number
+  updated_by_user_id: string | null
+  updated_by_name: string | null
+  updated_at: string
+}
+
 export const workspaceProfileKey = ['workspace-profile'] as const
 export const adminWorkspaceProfileKey = ['admin-workspace-profile'] as const
+export const workspaceCalendarKey = ['workspace-calendar'] as const
 
 export function useWorkspaceProfile() {
   return useQuery({
@@ -60,5 +70,40 @@ export function useUpdateWorkspaceProfile() {
         queryClient.invalidateQueries({ queryKey: workspaceProfileKey }),
       ])
     },
+  })
+}
+
+export function useWorkspaceCalendar() {
+  return useQuery({
+    queryKey: workspaceCalendarKey,
+    queryFn: () => api<WorkspaceCalendar>('/api/v1/workspace/calendar'),
+  })
+}
+
+export function useUpdateWorkspaceCalendar() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({
+      workingWeekdays,
+      holidays,
+      revision,
+    }: {
+      workingWeekdays: number[]
+      holidays: string[]
+      revision: number
+    }) =>
+      api<WorkspaceCalendar>('/api/v1/admin/workspace/calendar', {
+        method: 'PATCH',
+        headers: { 'If-Match': `"${revision}"` },
+        body: JSON.stringify({ working_weekdays: workingWeekdays, holidays }),
+      }),
+    onSuccess: async (calendar) => {
+      queryClient.setQueryData(workspaceCalendarKey, calendar)
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: adminWorkspaceProfileKey }),
+        queryClient.invalidateQueries({ queryKey: workspaceProfileKey }),
+      ])
+    },
+    onError: () => queryClient.invalidateQueries({ queryKey: workspaceCalendarKey }),
   })
 }

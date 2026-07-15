@@ -37,6 +37,7 @@ import { ReleasesSettingsPage } from '@/features/admin/ReleasesSettingsPage'
 import { CustomersSettingsPage } from '@/features/admin/CustomersSettingsPage'
 import { WorkspaceSettingsShell } from '@/features/admin/WorkspaceSettingsShell'
 import { WorkspaceGeneralSettingsPage } from '@/features/admin/WorkspaceGeneralSettingsPage'
+import { WorkspaceCalendarSettingsPage } from '@/features/admin/WorkspaceCalendarSettingsPage'
 import { PersonalSettingsPage } from '@/features/settings/PersonalSettingsPage'
 import { SettingsPage } from '@/features/settings/SettingsPage'
 import { AllWorkPage } from '@/features/work-items/AllWorkPage'
@@ -106,6 +107,7 @@ export const router = createBrowserRouter([
         children: [
           { index: true, element: <Navigate to="users" replace /> },
           { path: 'general', element: <WorkspaceGeneralSettingsPage /> },
+          { path: 'calendar', element: <WorkspaceCalendarSettingsPage /> },
           { path: 'users', element: <UsersPage /> },
           { path: 'auth-assistance', element: <AuthAssistancePage /> },
           { path: 'webhooks', element: <WebhooksPage /> },

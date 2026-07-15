@@ -6548,6 +6548,85 @@ test('워크스페이스 이름 충돌은 입력을 보존하고 최신 revision
   await expect(input).toHaveValue('Delivery Draft')
 })
 
+test('워크스페이스 근무 일정은 요일·휴일과 revision 충돌 복구를 실제 저장한다', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 })
+  await mockApi(page)
+  let calendar = {
+    working_weekdays: [0, 1, 2, 3, 4],
+    holidays: [] as string[],
+    revision: 1,
+    updated_by_user_id: null as string | null,
+    updated_by_name: null as string | null,
+    updated_at: '2026-07-01T00:00:00Z',
+  }
+  let patchCount = 0
+  await page.route('**/api/v1/workspace/calendar', (route) => route.fulfill({ json: calendar }))
+  await page.route('**/api/v1/admin/workspace/calendar', async (route) => {
+    patchCount += 1
+    if (patchCount === 1) {
+      expect(route.request().headers()['if-match']).toBe('"1"')
+      calendar = { ...calendar, revision: 2, updated_by_name: 'Other Admin' }
+      await route.fulfill({
+        status: 412,
+        json: { detail: { code: 'stale_revision', current_revision: 2 } },
+        headers: { ETag: '"2"' },
+      })
+      return
+    }
+    expect(route.request().headers()['if-match']).toBe('"2"')
+    const sent = route.request().postDataJSON() as {
+      working_weekdays: number[]
+      holidays: string[]
+    }
+    calendar = {
+      ...calendar,
+      ...sent,
+      revision: 3,
+      updated_by_user_id: 'me-1',
+      updated_by_name: 'Dev User',
+      updated_at: '2026-07-15T12:00:00Z',
+    }
+    await route.fulfill({ json: calendar, headers: { ETag: '"3"' } })
+  })
+
+  await page.goto('/admin/calendar')
+  await page.getByRole('checkbox', { name: '토' }).check()
+  await page.getByLabel('휴일 날짜').fill('2026-07-20')
+  await page.getByRole('button', { name: '휴일 추가' }).click()
+  await expect(page.getByRole('list', { name: '등록된 휴일' })).toContainText('2026-07-20')
+
+  await page.getByRole('button', { name: '일정 저장' }).click()
+  await expect(page.getByRole('alert')).toContainText('현재 선택은 유지')
+  await expect(page.getByRole('checkbox', { name: '토' })).toBeChecked()
+  await expect(page.getByRole('list', { name: '등록된 휴일' })).toContainText('2026-07-20')
+  await expect(page.getByText('revision 2')).toBeVisible()
+
+  const retry = page.waitForRequest(
+    (request) => request.method() === 'PATCH' && request.url().endsWith('/admin/workspace/calendar'),
+  )
+  await page.getByRole('button', { name: '일정 저장' }).click()
+  expect((await retry).postDataJSON()).toEqual({
+    working_weekdays: [0, 1, 2, 3, 4, 5],
+    holidays: ['2026-07-20'],
+  })
+  await expect(page.getByText('revision 3')).toBeVisible()
+  await expect(page.getByText('월 · 화 · 수 · 목 · 금 · 토 · 휴일 1일')).toBeVisible()
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/workspace-working-calendar-ui/desktop.png',
+    fullPage: true,
+  })
+
+  await page.setViewportSize({ width: 390, height: 844 })
+  await expect(page.getByRole('heading', { name: '근무 일정' })).toBeVisible()
+  await expect(page.getByText('월 · 화 · 수 · 목 · 금 · 토 · 휴일 1일')).toBeVisible()
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/workspace-working-calendar-ui/mobile.png',
+    fullPage: true,
+  })
+})
+
 test('settings/admin IA는 모바일 폭에서 표면별 탐색을 유지한다', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 })
   await mockApi(page)
