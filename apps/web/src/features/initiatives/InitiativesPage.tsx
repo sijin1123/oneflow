@@ -1,4 +1,4 @@
-import { Loader2, Plus, RefreshCw, Trash2, UserRoundCog, X } from 'lucide-react'
+import { ListChecks, Loader2, Plus, RefreshCw, Trash2, UserRoundCog, X } from 'lucide-react'
 import { useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 
@@ -31,6 +31,7 @@ import {
   useTransferInitiativeOwnership,
   useUpdateInitiative,
 } from './api'
+import { InitiativeDetailDrawer } from './InitiativeDetailDrawer'
 
 const STATE_ORDER: InitiativeState[] = ['in_progress', 'planned', 'paused', 'completed', 'cancelled']
 
@@ -46,9 +47,11 @@ function Progress({ done, total }: { done: number; total: number }) {
 function InitiativeCard({
   initiative,
   highlighted = false,
+  onOpenDetails,
 }: {
   initiative: Initiative
   highlighted?: boolean
+  onOpenDetails: () => void
 }) {
   const navigate = useNavigate()
   const update = useUpdateInitiative()
@@ -79,7 +82,13 @@ function InitiativeCard({
       <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-start">
         <div className="min-w-0 flex-1">
           <div className="flex min-w-0 flex-wrap items-center gap-2">
-            <span className="min-w-0 truncate text-[13px] font-medium">{initiative.name}</span>
+            <button
+              type="button"
+              className="min-w-0 truncate text-left text-[13px] font-medium hover:text-of-accent hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus"
+              onClick={onOpenDetails}
+            >
+              {initiative.name}
+            </button>
             {initiative.health ? (
               <span
                 title={initiative.health_note ?? undefined}
@@ -95,6 +104,14 @@ function InitiativeCard({
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-1.5">
+          <Button
+            size="sm"
+            variant="ghost"
+            aria-label={`${initiative.name} 전략 범위 열기`}
+            onClick={onOpenDetails}
+          >
+            <ListChecks /> {initiative.connected_work_item_count}
+          </Button>
           {initiative.is_mine ? (
             <>
               <Select
@@ -370,7 +387,7 @@ function HealthReportRow({ initiative }: { initiative: Initiative }) {
 /* Cross-project initiatives (Pass 3 PR-L): strategic groupings with per-project
    progress roll-ups limited to the caller's member projects. */
 export function InitiativesPage() {
-  const [searchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useSearchParams()
   // Project-list chip deep link (Pass 51): highlight the target card;
   // an unknown/invisible id silently degrades to the plain page.
   const highlightId = searchParams.get('highlight')
@@ -383,6 +400,22 @@ export function InitiativesPage() {
     return <ErrorState error={initiatives.error} onRetry={() => initiatives.refetch()} />
 
   const items = initiatives.data.items
+  const selectedInitiative =
+    items.find((initiative) => initiative.id === searchParams.get('initiative')) ?? null
+  const openDetails = (initiativeId: string) => {
+    setSearchParams((previous) => {
+      const next = new URLSearchParams(previous)
+      next.set('initiative', initiativeId)
+      return next
+    })
+  }
+  const closeDetails = () => {
+    setSearchParams((previous) => {
+      const next = new URLSearchParams(previous)
+      next.delete('initiative')
+      return next
+    })
+  }
   const activeCount = items.filter((i) => i.state === 'in_progress').length
   const riskCount = items.filter((i) => i.health === 'at_risk' || i.health === 'off_track').length
   const visibleProjectCount = items.reduce((sum, i) => sum + i.projects.length, 0)
@@ -392,68 +425,76 @@ export function InitiativesPage() {
   )
 
   return (
-    <ReportingSurface
-      title="이니셔티브"
-      description="여러 프로젝트를 하나의 전략 묶음으로 연결해 진행률과 헬스 상태를 봅니다."
-    >
-      <ReportingSummaryGrid>
-        <ReportingMetricCard label="전체" value={`${items.length}개`} detail="전략 묶음" />
-        <ReportingMetricCard label="진행 중" value={activeCount} tone="accent" />
-        <ReportingMetricCard
-          label="주의 필요"
-          value={riskCount}
-          detail="주의 또는 위험"
-          tone={riskCount > 0 ? 'danger' : 'neutral'}
-        />
-        <ReportingMetricCard
-          label="연결 프로젝트"
-          value={visibleProjectCount}
-          detail={hiddenProjectCount > 0 ? `권한 밖 ${hiddenProjectCount}개 제외` : '가시 범위'}
-        />
-      </ReportingSummaryGrid>
-
-      <ReportingSection title="새 이니셔티브">
-        <div className="grid min-w-0 grid-cols-1 gap-2 rounded-of border border-of-border bg-of-surface p-3 sm:grid-cols-[minmax(0,1fr)_auto]">
-          <Input
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="이니셔티브 이름"
-            aria-label="새 이니셔티브 이름"
-            className="h-8 min-w-0 text-xs"
+    <>
+      <ReportingSurface
+        title="이니셔티브"
+        description="여러 프로젝트를 하나의 전략 묶음으로 연결해 진행률과 헬스 상태를 봅니다."
+      >
+        <ReportingSummaryGrid>
+          <ReportingMetricCard label="전체" value={`${items.length}개`} detail="전략 묶음" />
+          <ReportingMetricCard label="진행 중" value={activeCount} tone="accent" />
+          <ReportingMetricCard
+            label="주의 필요"
+            value={riskCount}
+            detail="주의 또는 위험"
+            tone={riskCount > 0 ? 'danger' : 'neutral'}
           />
-          <Button
-            size="sm"
-            disabled={!name.trim() || create.isPending}
-            onClick={() => create.mutate({ name: name.trim() }, { onSuccess: () => setName('') })}
-          >
-            <Plus size={13} /> 이니셔티브 추가
-          </Button>
-        </div>
-      </ReportingSection>
+          <ReportingMetricCard
+            label="연결 프로젝트"
+            value={visibleProjectCount}
+            detail={hiddenProjectCount > 0 ? `권한 밖 ${hiddenProjectCount}개 제외` : '가시 범위'}
+          />
+        </ReportingSummaryGrid>
 
-      {items.length === 0 ? (
-        <EmptyState title="이니셔티브가 없습니다" hint="위에서 첫 이니셔티브를 만들어 보세요." />
-      ) : (
-        <div className="space-y-5">
-          {STATE_ORDER.map((state) => {
-            const group = items.filter((i) => i.state === state)
-            if (group.length === 0) return null
-            return (
-              <section key={state} aria-label={INITIATIVE_STATE_LABELS[state]} className="min-w-0">
-                <h2 className="mb-1.5 text-sm font-semibold">
-                  {INITIATIVE_STATE_LABELS[state]}{' '}
-                  <span className="text-xs font-normal text-of-muted">{group.length}</span>
-                </h2>
-                <ul className="space-y-2">
-                  {group.map((i) => (
-                    <InitiativeCard key={i.id} initiative={i} highlighted={i.id === highlightId} />
-                  ))}
-                </ul>
-              </section>
-            )
-          })}
-        </div>
-      )}
-    </ReportingSurface>
+        <ReportingSection title="새 이니셔티브">
+          <div className="grid min-w-0 grid-cols-1 gap-2 rounded-of border border-of-border bg-of-surface p-3 sm:grid-cols-[minmax(0,1fr)_auto]">
+            <Input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="이니셔티브 이름"
+              aria-label="새 이니셔티브 이름"
+              className="h-8 min-w-0 text-xs"
+            />
+            <Button
+              size="sm"
+              disabled={!name.trim() || create.isPending}
+              onClick={() => create.mutate({ name: name.trim() }, { onSuccess: () => setName('') })}
+            >
+              <Plus size={13} /> 이니셔티브 추가
+            </Button>
+          </div>
+        </ReportingSection>
+
+        {items.length === 0 ? (
+          <EmptyState title="이니셔티브가 없습니다" hint="위에서 첫 이니셔티브를 만들어 보세요." />
+        ) : (
+          <div className="space-y-5">
+            {STATE_ORDER.map((state) => {
+              const group = items.filter((i) => i.state === state)
+              if (group.length === 0) return null
+              return (
+                <section key={state} aria-label={INITIATIVE_STATE_LABELS[state]} className="min-w-0">
+                  <h2 className="mb-1.5 text-sm font-semibold">
+                    {INITIATIVE_STATE_LABELS[state]}{' '}
+                    <span className="text-xs font-normal text-of-muted">{group.length}</span>
+                  </h2>
+                  <ul className="space-y-2">
+                    {group.map((i) => (
+                      <InitiativeCard
+                        key={i.id}
+                        initiative={i}
+                        highlighted={i.id === highlightId}
+                        onOpenDetails={() => openDetails(i.id)}
+                      />
+                    ))}
+                  </ul>
+                </section>
+              )
+            })}
+          </div>
+        )}
+      </ReportingSurface>
+      <InitiativeDetailDrawer initiative={selectedInitiative} onClose={closeDetails} />
+    </>
   )
 }

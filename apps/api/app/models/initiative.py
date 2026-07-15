@@ -6,6 +6,7 @@ from sqlalchemy import (
     Date,
     DateTime,
     ForeignKey,
+    ForeignKeyConstraint,
     Index,
     String,
     Text,
@@ -95,6 +96,41 @@ class InitiativeProject(Base):
     project_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False
     )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class InitiativeWorkPackage(Base):
+    """Explicit strategic scope constrained to a connected project."""
+
+    __tablename__ = "initiative_work_packages"
+    __table_args__ = (
+        UniqueConstraint(
+            "initiative_id",
+            "work_package_id",
+            name="uq_initiative_work_packages_pair",
+        ),
+        ForeignKeyConstraint(
+            ["initiative_id", "project_id"],
+            ["initiative_projects.initiative_id", "initiative_projects.project_id"],
+            name="fk_initiative_work_packages_connected_project",
+            ondelete="CASCADE",
+        ),
+        ForeignKeyConstraint(
+            ["work_package_id", "project_id"],
+            ["work_packages.id", "work_packages.project_id"],
+            name="fk_initiative_work_packages_same_project",
+            ondelete="CASCADE",
+        ),
+        Index("ix_initiative_work_packages_project", "project_id"),
+        Index("ix_initiative_work_packages_work_package", "work_package_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    initiative_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    project_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    work_package_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

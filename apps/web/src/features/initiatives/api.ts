@@ -28,6 +28,7 @@ export type Initiative = {
   is_mine: boolean
   can_claim_ownership: boolean
   connected_project_count: number
+  connected_work_item_count: number
   projects: InitiativeProject[]
   created_at: string
   updated_at: string
@@ -37,6 +38,28 @@ export type InitiativeList = { items: Initiative[]; total: number }
 
 export type InitiativeOwnerCandidate = { user_id: string; display_name: string }
 export type InitiativeOwnerCandidateList = { items: InitiativeOwnerCandidate[]; total: number }
+
+export type InitiativeWorkItem = {
+  id: string
+  project_id: string
+  project_name: string
+  subject: string
+  status: string
+  priority: string
+  assignee_id: string | null
+  due_date: string | null
+}
+
+export type InitiativeWorkItemList = {
+  items: InitiativeWorkItem[]
+  total: number
+  connected_work_item_count: number
+}
+
+export type InitiativeWorkItemCandidateList = {
+  items: InitiativeWorkItem[]
+  total: number
+}
 
 export const INITIATIVE_STATE_LABELS: Record<InitiativeState, string> = {
   planned: '계획됨',
@@ -92,6 +115,69 @@ export function useClaimInitiativeOwnership() {
     mutationFn: (id: string) =>
       api<Initiative>(`/api/v1/initiatives/${id}/owner/claim`, { method: 'POST' }),
     onSuccess: () => invalidate(queryClient),
+  })
+}
+
+export function useInitiativeWorkItems(initiativeId: string, enabled: boolean) {
+  return useQuery({
+    queryKey: ['initiative-work-items', initiativeId],
+    queryFn: () =>
+      api<InitiativeWorkItemList>(`/api/v1/initiatives/${initiativeId}/work-items`),
+    enabled,
+    retry: false,
+  })
+}
+
+export function useInitiativeWorkItemCandidates(
+  initiativeId: string,
+  query: string,
+  enabled: boolean,
+) {
+  const params = new URLSearchParams()
+  if (query.trim()) params.set('q', query.trim())
+  const suffix = params.size > 0 ? `?${params.toString()}` : ''
+  return useQuery({
+    queryKey: ['initiative-work-item-candidates', initiativeId, query.trim()],
+    queryFn: () =>
+      api<InitiativeWorkItemCandidateList>(
+        `/api/v1/initiatives/${initiativeId}/work-item-candidates${suffix}`,
+      ),
+    enabled,
+    retry: false,
+  })
+}
+
+function invalidateWorkItemScope(
+  queryClient: ReturnType<typeof useQueryClient>,
+  initiativeId: string,
+) {
+  invalidate(queryClient)
+  void queryClient.invalidateQueries({ queryKey: ['initiative-work-items', initiativeId] })
+  void queryClient.invalidateQueries({
+    queryKey: ['initiative-work-item-candidates', initiativeId],
+  })
+}
+
+export function useConnectInitiativeWorkItem(initiativeId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (workPackageId: string) =>
+      api<InitiativeWorkItem>(`/api/v1/initiatives/${initiativeId}/work-items`, {
+        method: 'POST',
+        body: JSON.stringify({ work_package_id: workPackageId }),
+      }),
+    onSuccess: () => invalidateWorkItemScope(queryClient, initiativeId),
+  })
+}
+
+export function useDisconnectInitiativeWorkItem(initiativeId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (workPackageId: string) =>
+      api<void>(`/api/v1/initiatives/${initiativeId}/work-items/${workPackageId}`, {
+        method: 'DELETE',
+      }),
+    onSuccess: () => invalidateWorkItemScope(queryClient, initiativeId),
   })
 }
 

@@ -925,6 +925,58 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/initiatives/{initiative_id}/work-item-candidates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Initiative Work Item Candidates */
+        get: operations["list_initiative_work_item_candidates_api_v1_initiatives__initiative_id__work_item_candidates_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/initiatives/{initiative_id}/work-items": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Initiative Work Items */
+        get: operations["list_initiative_work_items_api_v1_initiatives__initiative_id__work_items_get"];
+        put?: never;
+        /** Connect Initiative Work Item */
+        post: operations["connect_initiative_work_item_api_v1_initiatives__initiative_id__work_items_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/initiatives/{initiative_id}/work-items/{work_package_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Disconnect Initiative Work Item */
+        delete: operations["disconnect_initiative_work_item_api_v1_initiatives__initiative_id__work_items__work_package_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/me": {
         parameters: {
             query?: never;
@@ -4918,6 +4970,8 @@ export interface components {
             can_claim_ownership: boolean;
             /** Connected Project Count */
             connected_project_count: number;
+            /** Connected Work Item Count */
+            connected_work_item_count: number;
             /**
              * Created At
              * Format: date-time
@@ -4978,6 +5032,55 @@ export interface components {
             state?: string | null;
             /** Target Date */
             target_date?: string | null;
+        };
+        /** InitiativeWorkItemCandidateList */
+        InitiativeWorkItemCandidateList: {
+            /** Items */
+            items: components["schemas"]["InitiativeWorkItemRead"][];
+            /** Total */
+            total: number;
+        };
+        /** InitiativeWorkItemConnect */
+        InitiativeWorkItemConnect: {
+            /**
+             * Work Package Id
+             * Format: uuid
+             */
+            work_package_id: string;
+        };
+        /** InitiativeWorkItemList */
+        InitiativeWorkItemList: {
+            /** Connected Work Item Count */
+            connected_work_item_count: number;
+            /** Items */
+            items: components["schemas"]["InitiativeWorkItemRead"][];
+            /** Total */
+            total: number;
+        };
+        /** InitiativeWorkItemRead */
+        InitiativeWorkItemRead: {
+            /** Assignee Id */
+            assignee_id: string | null;
+            /** Due Date */
+            due_date: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Priority */
+            priority: string;
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            /** Project Name */
+            project_name: string;
+            /** Status */
+            status: string;
+            /** Subject */
+            subject: string;
         };
         /** IntakeCreate */
         IntakeCreate: {
@@ -10621,6 +10724,156 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["InitiativeRead"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_initiative_work_item_candidates_api_v1_initiatives__initiative_id__work_item_candidates_get: {
+        parameters: {
+            query?: {
+                q?: string | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                initiative_id: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InitiativeWorkItemCandidateList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_initiative_work_items_api_v1_initiatives__initiative_id__work_items_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                initiative_id: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InitiativeWorkItemList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    connect_initiative_work_item_api_v1_initiatives__initiative_id__work_items_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                initiative_id: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InitiativeWorkItemConnect"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InitiativeWorkItemRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    disconnect_initiative_work_item_api_v1_initiatives__initiative_id__work_items__work_package_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                initiative_id: string;
+                work_package_id: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

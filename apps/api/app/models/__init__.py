@@ -12,7 +12,7 @@ from app.models.cycle import Cycle
 from app.models.data_transfer_job import DataTransferJob
 from app.models.document import DocumentWorkPackageLink, ProjectDocument
 from app.models.document_comment import ProjectDocumentComment
-from app.models.initiative import Initiative, InitiativeProject
+from app.models.initiative import Initiative, InitiativeProject, InitiativeWorkPackage
 from app.models.intake import IntakeItem
 from app.models.meeting import Meeting, MeetingActionItem
 from app.models.meeting_template import MeetingAgendaTemplate
@@ -103,4 +103,5 @@ __all__ = [
     "WpCustomValue",
     "Initiative",
     "InitiativeProject",
+    "InitiativeWorkPackage",
 ]

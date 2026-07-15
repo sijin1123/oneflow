@@ -338,3 +338,9 @@ OpenProject/Plane source, API, database schema, package, asset, CSS, DOM hierarc
 Plane/OpenProject의 공개 portfolio/initiative 제품 범주에서 사용한 입력은 전략 묶음의 소유권이 구성원 이탈 뒤에도 안전하게 인계되고 프로젝트 접근 경계를 넘지 않아야 한다는 제품 행동뿐이다. OneFlow 구현은 기존 자체 Initiative visibility, connected-project membership, nullable owner, PostgreSQL transaction과 React Query 카드 surface를 사용해 safe candidate transfer와 orphan claim을 독립 설계했다.
 
 Plane/OpenProject source, API, database schema, package, asset, CSS, DOM hierarchy, exact dimensions/colors, wording, ownership UI 구현, icons 또는 branding은 복사하지 않았다. OneFlow 고유 candidate scope, row-lock single-winner, inactive owner recovery와 error/retry E2E 계약을 추가했으며 신규 migration, dependency, environment 또는 settings UI 변경은 없다. — attested-independent-derivation
+
+## UI-119 Initiative Work Item Scope / Detail
+
+Plane/OpenProject의 공개 portfolio/initiative 제품 범주와 `docs/plane-poc-reverse-spec/`의 compact detail·work-item 탐색 정보구조에서 사용한 입력은 전략 묶음이 프로젝트 전체 집계뿐 아니라 명시적인 실행 작업 범위를 가져야 한다는 제품 행동뿐이다. OneFlow 구현은 기존 자체 Initiative visibility/ownership, connected-project membership, Work Package schema, PostgreSQL 복합 FK, React Query와 Radix Sheet를 사용해 독립 설계했다.
+
+Plane/OpenProject source, API, database schema, package, asset, CSS, DOM hierarchy, exact dimensions/colors, wording, work-item picker/detail 구현, icons 또는 branding은 복사하지 않았다. OneFlow 고유 migration `0091`, connected-project constrained relation, owner-only row-locked write, member-visible bounded read와 hidden-count leak guard를 추가했으며 신규 dependency, environment 또는 settings UI 변경은 없다. Initiative-level notifications는 별도 기능형 surface로 유지한다. — attested-independent-derivation
