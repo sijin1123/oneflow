@@ -2490,3 +2490,13 @@ Chromium typed mock fixture에서 1440x960과 390x844 viewport를 사용했다. 
 - 검증: API focused 5 및 full 730 PASS(기존 Alembic 경고 1건), Ruff/format PASS, 전용 DB에서 full upgrade와 `0087 -> 0086 -> 0087` PASS, OpenAPI generation/drift PASS, typecheck/lint/build PASS(기존 Fast Refresh 4·chunk 경고), unit 93, component 8, focused phase E2E 3 PASS. Full E2E는 279 PASS + visual QA 1 skip이며 unrelated 병렬 timeout 2건을 단일 worker로 각 3회 재실행해 6 PASS를 확인했다.
 - Clean-room frontend 161/backend 45, npm/pip audit 0 vulnerabilities, diff check와 desktop/mobile visual QA가 통과했다. 제한 독립 reviewer와 root 전체 diff review에서 P0-P2 결함은 발견되지 않았다. 증적은 `docs/screenshots/redevelopment/project-phase-gates-ui/`에 보존한다.
 - Migration `0087` 적용이 필요하다. 환경변수, dependency 변경은 없다. Working-day 기반 자동 재스케줄과 workspace-wide custom phase definition 관리는 후속 lifecycle surface로 명시 이연한다.
+
+---
+
+# UI-113 Project Phase Working-day Scheduling 검증 (2026-07-15)
+
+- 활성 단계의 비어 있지 않은 종료일이 실제로 바뀌면 뒤의 활성 단계를 고정 순서로 순회한다. 완전한 일정은 다음 월-금 근무일에 시작하고 기존 inclusive 근무일 기간을 보존해 연쇄 이동하며, 비활성 단계는 건너뛴다. 시작일만 있는 부분 일정은 다음 근무일로 한 번 이동한 뒤 연쇄를 멈추고, 종료일만 있거나 일정이 없는 단계는 보존하고 멈춘다.
+- 종료일 삭제·시작일 단독 변경·비활성 원본 단계는 후속 일정을 바꾸지 않는다. owner-only write, member read, archived project lock, optimistic version, true no-op, gate boundary 파생과 단일 transaction 계약을 유지한다. 날짜 상한을 넘는 계산은 422로 전체 쓰기를 거부한다.
+- Settings는 월-금 자동 일정 범위를 설명하고 실제 종료일 변경 저장에만 적용 완료 상태를 표시한다. mutation은 후속 단계 cache refetch까지 pending을 유지해 새 start/end와 Overview gate 날짜를 즉시 같은 사실로 보여준다. 시작일 단독 저장에는 적용 문구가 나타나지 않는다.
+- 검증: API focused 8 및 full 733 PASS(기존 Alembic 경고 1건), Ruff/format PASS, typecheck/lint/build PASS(기존 Fast Refresh 4·chunk 경고), unit 93, component 8, focused lifecycle E2E PASS, full E2E 281 PASS + opt-in visual QA 1 skip, clean-room frontend 161/backend 45, npm/pip audit 0 vulnerabilities, diff check PASS.
+- Chromium 증적은 `docs/screenshots/redevelopment/project-phase-working-days-ui/{settings-desktop,overview-desktop,overview-mobile}.png`에 보존한다. 신규 API route, DB schema/migration, environment variable, dependency 변경은 없다. 공휴일·사용자 정의 근무일, 활성화 전환 재배치와 workspace custom phase definition 관리는 후속 PR로 이연한다.

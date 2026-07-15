@@ -1,4 +1,4 @@
-import { CalendarDays, CircleDot, LockKeyhole, RotateCcw, Save } from 'lucide-react'
+import { CalendarCheck2, CalendarDays, CheckCircle2, CircleDot, LockKeyhole, RotateCcw, Save } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { ErrorState, ListSkeleton } from '@/components/shell/states'
@@ -44,6 +44,8 @@ function EditablePhaseRow({
   const update = useUpdateProjectPhase(projectId)
   const [startDate, setStartDate] = useState(phase.start_date ?? '')
   const [endDate, setEndDate] = useState(phase.end_date ?? '')
+  const [scheduleNotice, setScheduleNotice] = useState(false)
+  const willReschedule = Boolean(endDate) && endDate !== (phase.end_date ?? '')
 
   useEffect(() => {
     setStartDate(phase.start_date ?? '')
@@ -96,7 +98,10 @@ function EditablePhaseRow({
                 disabled={!phase.active || pendingForRow}
                 aria-label={`${phase.name} 시작일`}
                 className="mt-1 text-xs"
-                onChange={(event) => setStartDate(event.target.value)}
+                onChange={(event) => {
+                  setScheduleNotice(false)
+                  setStartDate(event.target.value)
+                }}
               />
             </label>
             <label className="min-w-0 text-[11px] font-medium text-of-muted">
@@ -108,7 +113,10 @@ function EditablePhaseRow({
                 disabled={!phase.active || pendingForRow}
                 aria-label={`${phase.name} 종료일`}
                 className="mt-1 text-xs"
-                onChange={(event) => setEndDate(event.target.value)}
+                onChange={(event) => {
+                  setScheduleNotice(false)
+                  setEndDate(event.target.value)
+                }}
               />
             </label>
             {canEdit ? (
@@ -118,12 +126,15 @@ function EditablePhaseRow({
                 variant="outline"
                 disabled={!dirty || invalidRange || pendingForRow}
                 onClick={() =>
-                  update.mutate({
-                    phaseKey: phase.key,
-                    start_date: startDate || null,
-                    end_date: endDate || null,
-                    version: phase.version,
-                  })
+                  update.mutate(
+                    {
+                      phaseKey: phase.key,
+                      start_date: startDate || null,
+                      end_date: endDate || null,
+                      version: phase.version,
+                    },
+                    { onSuccess: () => setScheduleNotice(willReschedule) },
+                  )
                 }
               >
                 <Save size={13} /> 저장
@@ -133,6 +144,11 @@ function EditablePhaseRow({
 
           {invalidRange ? (
             <p role="alert" className="mt-2 text-xs text-of-danger">종료일은 시작일보다 빠를 수 없습니다.</p>
+          ) : null}
+          {scheduleNotice && !update.isPending ? (
+            <p role="status" className="mt-2 flex items-center gap-1.5 text-xs text-of-success">
+              <CheckCircle2 size={13} /> 일정을 저장하고 후속 활성 단계에 근무일 규칙을 적용했습니다.
+            </p>
           ) : null}
           <div className="mt-3 grid min-w-0 gap-2 sm:grid-cols-2" aria-label={`${phase.name} 단계 게이트`}>
             {gates.map((gate) => {
@@ -235,6 +251,17 @@ export function ProjectPhasesPanel({
           보관된 프로젝트의 단계와 일정은 변경할 수 없습니다.
         </p>
       ) : null}
+
+      <div className="mt-3 flex min-w-0 items-start gap-2 border-l-2 border-of-accent px-3 py-1.5">
+        <CalendarCheck2 size={15} className="mt-0.5 shrink-0 text-of-accent" />
+        <div className="min-w-0">
+          <p className="text-xs font-semibold">월-금 후속 단계 자동 일정</p>
+          <p className="mt-0.5 text-[11px] leading-5 text-of-muted">
+            종료일을 저장하면 다음 활성 단계가 다음 근무일에 시작합니다. 완전한 후속 일정은 기존 근무일
+            기간을 유지하고, 부분 일정과 비활성 단계는 보존합니다.
+          </p>
+        </div>
+      </div>
 
       <ol className="mt-2">
         {phases.data.items.map((phase) => (

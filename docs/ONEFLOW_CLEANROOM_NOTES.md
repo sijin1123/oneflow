@@ -302,3 +302,9 @@ Plane/OpenProject source, API, database schema, package, asset, CSS, DOM hierarc
 OpenProject 공식 사용자·관리자 문서에서 사용한 입력은 gate가 phase 시작·종료 경계에 붙는 선택형 checkpoint이며 날짜가 phase boundary에서 파생된다는 공개 제품 행동뿐이다. OneFlow 구현은 기존 자체 fixed phase vocabulary, owner-only optimistic PATCH, archive row lock, React Query cache와 local Settings/Overview tokens를 사용해 독립 설계했다.
 
 OpenProject/Plane source, API, database schema, package, asset, CSS, DOM hierarchy, exact dimensions/colors, wording, gate name 또는 icon implementation은 복사하지 않았다. OneFlow 고유 gate vocabulary와 migration `0087`을 추가했으며 신규 dependency/environment 변경은 없다. Working-day 자동 재스케줄과 workspace custom phase definition 관리는 구현하지 않고 별도 후속 surface로 유지한다. — attested-independent-derivation
+
+## UI-113 Project Phase Working-day Scheduling
+
+OpenProject 공식 lifecycle 문서에서 사용한 입력은 앞 단계 종료일 변경 시 후속 단계가 다음 근무일에 시작하고 기존 기간을 유지한다는 공개 제품 행동뿐이다. OneFlow 구현은 기존 고정 단계 어휘, owner-only optimistic PATCH, project archive row lock, PostgreSQL transaction과 React Query cache를 사용해 월-금 계산과 후속 단계 연쇄 이동을 독립 설계했다.
+
+OpenProject/Plane source, API, database schema, package, asset, CSS, DOM hierarchy, exact dimensions/colors, wording, 일정 계산 구현 또는 branding은 복사하지 않았다. 신규 dependency, migration, environment, permission contract 변경은 없다. 공휴일·사용자 정의 근무일, 단계 활성화 전환 재배치와 workspace custom phase definition 관리는 후속 기능형 surface로 유지한다. — attested-independent-derivation
