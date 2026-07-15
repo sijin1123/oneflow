@@ -1,4 +1,4 @@
-import { CalendarDays, LockKeyhole, RotateCcw, Save } from 'lucide-react'
+import { CalendarDays, CircleDot, LockKeyhole, RotateCcw, Save } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { ErrorState, ListSkeleton } from '@/components/shell/states'
@@ -59,6 +59,7 @@ function EditablePhaseRow({
   }, [dirty, onDirtyChange, phase.key])
 
   const pendingForRow = update.isPending && update.variables?.phaseKey === phase.key
+  const gates = [phase.start_gate, phase.finish_gate] as const
 
   return (
     <li className="border-b border-of-border py-3 last:border-b-0">
@@ -133,6 +134,33 @@ function EditablePhaseRow({
           {invalidRange ? (
             <p role="alert" className="mt-2 text-xs text-of-danger">종료일은 시작일보다 빠를 수 없습니다.</p>
           ) : null}
+          <div className="mt-3 grid min-w-0 gap-2 sm:grid-cols-2" aria-label={`${phase.name} 단계 게이트`}>
+            {gates.map((gate) => {
+              const field = gate.kind === 'start' ? 'start_gate_active' : 'finish_gate_active'
+              return (
+                <div
+                  key={gate.kind}
+                  className="flex min-w-0 items-center gap-2 border-l-2 border-of-border px-2 py-1.5"
+                >
+                  <CircleDot size={13} className={cn('shrink-0', gate.active ? 'text-of-accent' : 'text-of-muted')} />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-xs font-medium">{gate.name}</p>
+                    <p className="mt-0.5 truncate text-[10px] tabular-nums text-of-muted">
+                      {gate.active ? gate.date ?? '경계 날짜 미정' : '사용 안 함'}
+                    </p>
+                  </div>
+                  <Switch
+                    checked={gate.active}
+                    label={`${gate.name} ${gate.active ? '비활성화' : '활성화'}`}
+                    disabled={!canEdit || pendingForRow || dirty}
+                    onCheckedChange={(active) =>
+                      update.mutate({ phaseKey: phase.key, [field]: active, version: phase.version })
+                    }
+                  />
+                </div>
+              )
+            })}
+          </div>
           {update.isError ? (
             <div role="alert" className="mt-2 flex flex-wrap items-center gap-2 text-xs text-of-danger">
               <span>{mutationMessage(update.error)}</span>
@@ -187,7 +215,8 @@ export function ProjectPhasesPanel({
             <CalendarDays size={15} /> 프로젝트 단계
           </h2>
           <p className="mt-1 max-w-2xl text-xs leading-5 text-of-muted">
-            팀이 공유할 수명주기 단계를 선택하고 각 단계의 기간을 지정합니다. 비활성 단계의 날짜는 보존됩니다.
+            팀이 공유할 수명주기 단계와 시작·종료 게이트를 선택합니다. 게이트 날짜는 단계 경계에서 자동으로
+            결정되며 비활성 단계의 설정은 보존됩니다.
           </p>
         </div>
         <Badge variant={canEdit ? 'accent' : 'outline'} className="shrink-0">

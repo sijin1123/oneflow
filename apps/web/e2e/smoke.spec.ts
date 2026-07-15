@@ -101,10 +101,10 @@ const projectRollups = {
 const projects: ProjectList = { items: [{ ...project, ...projectRollups }], total: 1 }
 const inactiveProjectPhases: ProjectPhaseList = {
   items: [
-    { key: 'discover', name: '발견', color: 'sky', position: 0, active: false, start_date: null, end_date: null, version: 0 },
-    { key: 'plan', name: '계획', color: 'indigo', position: 1, active: false, start_date: null, end_date: null, version: 0 },
-    { key: 'deliver', name: '실행', color: 'emerald', position: 2, active: false, start_date: null, end_date: null, version: 0 },
-    { key: 'close', name: '마감', color: 'amber', position: 3, active: false, start_date: null, end_date: null, version: 0 },
+    { key: 'discover', name: '발견', color: 'sky', position: 0, active: false, start_date: null, end_date: null, start_gate: { kind: 'start', name: '발견 시작 게이트', active: false, date: null }, finish_gate: { kind: 'finish', name: '발견 완료 게이트', active: false, date: null }, version: 0 },
+    { key: 'plan', name: '계획', color: 'indigo', position: 1, active: false, start_date: null, end_date: null, start_gate: { kind: 'start', name: '계획 시작 게이트', active: false, date: null }, finish_gate: { kind: 'finish', name: '계획 완료 게이트', active: false, date: null }, version: 0 },
+    { key: 'deliver', name: '실행', color: 'emerald', position: 2, active: false, start_date: null, end_date: null, start_gate: { kind: 'start', name: '실행 시작 게이트', active: false, date: null }, finish_gate: { kind: 'finish', name: '실행 완료 게이트', active: false, date: null }, version: 0 },
+    { key: 'close', name: '마감', color: 'amber', position: 3, active: false, start_date: null, end_date: null, start_gate: { kind: 'start', name: '마감 시작 게이트', active: false, date: null }, finish_gate: { kind: 'finish', name: '마감 완료 게이트', active: false, date: null }, version: 0 },
   ],
   total: 4,
 }
@@ -13202,6 +13202,8 @@ test('프로젝트 소유자는 단계를 편집하고 Overview에서 현재 수
         active: true,
         start_date: discoverStart,
         end_date: discoverEnd,
+        start_gate: { kind: 'start', name: '발견 시작 게이트', active: true, date: discoverStart },
+        finish_gate: { kind: 'finish', name: '발견 완료 게이트', active: true, date: discoverEnd },
         version: 1,
       },
       {
@@ -13212,6 +13214,8 @@ test('프로젝트 소유자는 단계를 편집하고 Overview에서 현재 수
         active: true,
         start_date: planStart,
         end_date: planEnd,
+        start_gate: { kind: 'start', name: '계획 시작 게이트', active: true, date: planStart },
+        finish_gate: { kind: 'finish', name: '계획 완료 게이트', active: false, date: null },
         version: 1,
       },
       {
@@ -13222,6 +13226,8 @@ test('프로젝트 소유자는 단계를 편집하고 Overview에서 현재 수
         active: true,
         start_date: deliverStart,
         end_date: deliverEnd,
+        start_gate: { kind: 'start', name: '실행 시작 게이트', active: false, date: null },
+        finish_gate: { kind: 'finish', name: '실행 완료 게이트', active: true, date: deliverEnd },
         version: 1,
       },
       {
@@ -13232,6 +13238,8 @@ test('프로젝트 소유자는 단계를 편집하고 Overview에서 현재 수
         active: false,
         start_date: null,
         end_date: null,
+        start_gate: { kind: 'start', name: '마감 시작 게이트', active: false, date: null },
+        finish_gate: { kind: 'finish', name: '마감 완료 게이트', active: false, date: null },
         version: 0,
       },
     ],
@@ -13239,6 +13247,8 @@ test('프로젝트 소유자는 단계를 편집하고 Overview에서 현재 수
   }
   const updates: Array<{
     active?: boolean
+    start_gate_active?: boolean
+    finish_gate_active?: boolean
     start_date?: string | null
     end_date?: string | null
     version: number
@@ -13249,6 +13259,8 @@ test('프로젝트 소유자는 단계를 편집하고 Overview에서 현재 수
       const key = new URL(request.url()).pathname.split('/').at(-1)
       const body = request.postDataJSON() as {
         active?: boolean
+        start_gate_active?: boolean
+        finish_gate_active?: boolean
         start_date?: string | null
         end_date?: string | null
         version: number
@@ -13260,7 +13272,28 @@ test('프로젝트 소유자는 단계를 편집하고 Overview에서 현재 수
         return
       }
       updates.push(body)
-      const updated: ProjectPhase = { ...current, ...body, version: current.version + 1 }
+      const active = body.active ?? current.active
+      const startDate = body.start_date === undefined ? current.start_date : body.start_date
+      const endDate = body.end_date === undefined ? current.end_date : body.end_date
+      const startGateActive = body.start_gate_active ?? current.start_gate.active
+      const finishGateActive = body.finish_gate_active ?? current.finish_gate.active
+      const updated: ProjectPhase = {
+        ...current,
+        active,
+        start_date: startDate,
+        end_date: endDate,
+        start_gate: {
+          ...current.start_gate,
+          active: startGateActive,
+          date: active && startGateActive ? startDate : null,
+        },
+        finish_gate: {
+          ...current.finish_gate,
+          active: finishGateActive,
+          date: active && finishGateActive ? endDate : null,
+        },
+        version: current.version + 1,
+      }
       phases = {
         ...phases,
         items: phases.items.map((phase, itemIndex) => (itemIndex === index ? updated : phase)),
@@ -13287,6 +13320,16 @@ test('프로젝트 소유자는 단계를 편집하고 Overview에서 현재 수
   })
   await expect(planRow.getByRole('button', { name: '저장' })).toBeDisabled()
 
+  const finishGatePatch = page.waitForRequest(
+    (request) => request.method() === 'PATCH' && request.url().endsWith('/phases/plan'),
+  )
+  await planRow.getByRole('switch', { name: '계획 완료 게이트 활성화' }).click()
+  expect((await finishGatePatch).postDataJSON()).toEqual({ finish_gate_active: true, version: 2 })
+  await expect(planRow.getByRole('switch', { name: '계획 완료 게이트 비활성화' })).toHaveAttribute(
+    'aria-checked',
+    'true',
+  )
+
   const closeSwitch = panel.getByRole('switch', { name: '마감 단계 활성화' })
   await closeSwitch.click()
   await expect(panel.getByRole('switch', { name: '마감 단계 비활성화' })).toHaveAttribute(
@@ -13297,26 +13340,29 @@ test('프로젝트 소유자는 단계를 편집하고 Overview에서 현재 수
   await expect(panel).toContainText('활성 4/4')
   await page.locator('[data-shell-scroll-region]').evaluate((element) => element.scrollTo({ top: 0 }))
   await page.screenshot({
-    path: '../../docs/screenshots/redevelopment/project-phases-ui/settings-desktop.png',
+    path: '../../docs/screenshots/redevelopment/project-phase-gates-ui/settings-desktop.png',
     fullPage: true,
   })
 
   await page.goto(`/projects/${project.id}/overview`)
   const timeline = page.getByRole('region', { name: '프로젝트 수명주기' })
+  const phaseRows = timeline.locator('ol > li')
   await expect(timeline).toContainText('4단계')
-  await expect(timeline.locator('li').filter({ hasText: '발견' })).toContainText('완료')
-  await expect(timeline.locator('li').filter({ hasText: '계획' })).toContainText('현재 단계')
-  await expect(timeline.locator('li').filter({ hasText: '실행' })).toContainText('예정')
-  await expect(timeline.locator('li').filter({ hasText: '마감' })).toContainText('일정 필요')
+  await expect(phaseRows.filter({ hasText: '발견' })).toContainText('완료')
+  await expect(phaseRows.filter({ hasText: '계획' })).toContainText('현재 단계')
+  await expect(phaseRows.filter({ hasText: '계획' })).toContainText('계획 완료 게이트')
+  await expect(phaseRows.filter({ hasText: '계획' })).toContainText(planEnd)
+  await expect(phaseRows.filter({ hasText: '실행' })).toContainText('예정')
+  await expect(phaseRows.filter({ hasText: '마감' })).toContainText('일정 필요')
   await page.screenshot({
-    path: '../../docs/screenshots/redevelopment/project-phases-ui/overview-desktop.png',
+    path: '../../docs/screenshots/redevelopment/project-phase-gates-ui/overview-desktop.png',
     fullPage: true,
   })
 
   await page.setViewportSize({ width: 390, height: 844 })
   await expectNoHorizontalOverflow(page)
   await page.screenshot({
-    path: '../../docs/screenshots/redevelopment/project-phases-ui/overview-mobile.png',
+    path: '../../docs/screenshots/redevelopment/project-phase-gates-ui/overview-mobile.png',
     fullPage: true,
   })
 })
@@ -13330,6 +13376,16 @@ test('프로젝트 단계 설정은 오류 재시도 후 멤버에게 읽기 전
       active: index === 0,
       start_date: index === 0 ? '2026-07-01' : null,
       end_date: index === 0 ? '2026-07-05' : null,
+      start_gate: {
+        ...phase.start_gate,
+        active: index === 0,
+        date: index === 0 ? '2026-07-01' : null,
+      },
+      finish_gate: {
+        ...phase.finish_gate,
+        active: index === 0,
+        date: index === 0 ? '2026-07-05' : null,
+      },
       version: index === 0 ? 1 : 0,
     })),
     total: 4,
@@ -13361,7 +13417,7 @@ test('프로젝트 단계 설정은 오류 재시도 후 멤버에게 읽기 전
   await page.getByRole('button', { name: '다시 시도' }).click()
   const panel = page.getByRole('region', { name: '프로젝트 단계 설정' })
   await expect(panel).toContainText('읽기 전용')
-  await expect(panel.getByRole('switch')).toHaveCount(4)
+  await expect(panel.getByRole('switch')).toHaveCount(12)
   for (const control of await panel.getByRole('switch').all()) {
     await expect(control).toBeDisabled()
   }

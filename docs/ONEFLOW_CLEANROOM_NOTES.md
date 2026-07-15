@@ -296,3 +296,9 @@ Plane source, API, database schema, package, asset, CSS, DOM hierarchy, exact di
 OpenProject의 project lifecycle/status history 범주와 `docs/plane-poc-reverse-spec/`의 compact Overview 정보구조에서 사용한 입력은 상태 변화가 프로젝트 문맥 안에서 추적 가능해야 한다는 제품 행동뿐이다. OneFlow 구현은 기존 자체 owner-only health transition, project membership, archive write guard, React Query cache와 local design tokens를 사용해 append-only report history와 Overview timeline을 독립 설계했다.
 
 Plane/OpenProject source, API, database schema, package, asset, CSS, DOM hierarchy, exact dimensions/colors, wording, timeline implementation, icons 또는 branding은 복사하지 않았다. OneFlow 고유 migration `0082`, member-only bounded API, no-op/concurrency/deleted-author 계약을 추가했으며 신규 dependency/environment/settings UI 변경은 없다. Project Phases는 별도 기능형 surface로 유지한다. — attested-independent-derivation
+
+## UI-112 Project Phase Gates
+
+OpenProject 공식 사용자·관리자 문서에서 사용한 입력은 gate가 phase 시작·종료 경계에 붙는 선택형 checkpoint이며 날짜가 phase boundary에서 파생된다는 공개 제품 행동뿐이다. OneFlow 구현은 기존 자체 fixed phase vocabulary, owner-only optimistic PATCH, archive row lock, React Query cache와 local Settings/Overview tokens를 사용해 독립 설계했다.
+
+OpenProject/Plane source, API, database schema, package, asset, CSS, DOM hierarchy, exact dimensions/colors, wording, gate name 또는 icon implementation은 복사하지 않았다. OneFlow 고유 gate vocabulary와 migration `0087`을 추가했으며 신규 dependency/environment 변경은 없다. Working-day 자동 재스케줄과 workspace custom phase definition 관리는 구현하지 않고 별도 후속 surface로 유지한다. — attested-independent-derivation

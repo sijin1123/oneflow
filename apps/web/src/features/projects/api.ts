@@ -99,6 +99,8 @@ export function useUpdateProjectPhase(projectId: string) {
     }: {
       phaseKey: ProjectPhaseKey
       active?: boolean
+      start_gate_active?: boolean
+      finish_gate_active?: boolean
       start_date?: string | null
       end_date?: string | null
       version: number

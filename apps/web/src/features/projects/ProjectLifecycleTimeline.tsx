@@ -1,4 +1,4 @@
-import { CalendarRange, RotateCcw } from 'lucide-react'
+import { CalendarRange, CircleDot, RotateCcw } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { todayISO } from '@/lib/datetime'
@@ -124,6 +124,21 @@ export function ProjectLifecycleTimeline({ projectId }: { projectId: string }) {
                     ? `${phase.start_date ?? '미정'} - ${phase.end_date ?? '미정'}`
                     : '날짜 미정'}
                 </p>
+                {phase.start_gate.active || phase.finish_gate.active ? (
+                  <ul className="mt-2 space-y-1 border-l border-of-border pl-2" aria-label={`${phase.name} 단계 게이트`}>
+                    {[phase.start_gate, phase.finish_gate]
+                      .filter((gate) => gate.active)
+                      .map((gate) => (
+                        <li key={gate.kind} className="flex min-w-0 items-center gap-1.5 text-[10px] leading-4">
+                          <CircleDot size={10} className="shrink-0 text-of-accent" aria-hidden="true" />
+                          <span className="min-w-0 truncate font-medium">{gate.name}</span>
+                          <span className="ml-auto shrink-0 tabular-nums text-of-muted">
+                            {gate.date ?? '경계 날짜 미정'}
+                          </span>
+                        </li>
+                      ))}
+                  </ul>
+                ) : null}
               </div>
             </li>
           )

@@ -2479,3 +2479,14 @@ Chromium typed mock fixture에서 1440x960과 390x844 viewport를 사용했다. 
 - 검증: API focused 4 및 full 681 PASS(기존 Alembic 경고 1건), Ruff/format PASS, migration 0082 full upgrade→base downgrade→head upgrade PASS, OpenAPI generation/drift PASS, unit 91, component 8, typecheck/lint/build PASS(기존 Fast Refresh 4·chunk 경고), focused E2E 2 PASS. Full E2E는 268 PASS+visual QA 1 skip이며 병렬 API 부하에서 timeout 난 unrelated 3건을 격리 재실행해 3 PASS를 확인했다.
 - Clean-room frontend 161/backend 44, npm/pip audit 0 vulnerabilities, diff check와 desktop/mobile visual QA가 통과했다. 증적은 `docs/screenshots/redevelopment/project-health-history-ui/{desktop,mobile}.png`에 보존한다.
 - Migration `0082` 적용이 필요하다. 환경변수, 설정 UI, dependency 변경은 없다. Project Phases는 다음 독립 lifecycle surface로 이연한다.
+
+---
+
+# UI-112 Project Phase Gates 검증 (2026-07-15)
+
+- 기존 fixed project phase에 선택형 시작·종료 gate를 추가했다. Gate 활성화는 phase row에 영속화하고, 표시 날짜는 활성 phase의 start/end boundary에서만 파생한다. Gate 날짜를 독립 입력하는 API나 UI는 만들지 않았다.
+- 프로젝트 owner만 기존 optimistic `version` PATCH로 gate를 변경할 수 있다. Member는 Settings와 Overview에서 읽을 수 있으며, archive row lock 재확인, null boolean 거부, true no-op, version conflict, inactive phase의 gate 설정 보존과 파생 날짜 숨김을 유지한다.
+- Settings는 단계별 두 gate의 실제 switch와 파생 날짜 상태를 제공하고, 미저장 날짜가 있으면 같은 phase의 즉시 mutation을 잠가 stale version 경쟁을 막는다. Overview는 활성 gate만 phase 아래에 표시하며 desktop/mobile 정보 흐름과 오류·빈 상태를 유지한다.
+- 검증: API focused 5 및 full 730 PASS(기존 Alembic 경고 1건), Ruff/format PASS, 전용 DB에서 full upgrade와 `0087 -> 0086 -> 0087` PASS, OpenAPI generation/drift PASS, typecheck/lint/build PASS(기존 Fast Refresh 4·chunk 경고), unit 93, component 8, focused phase E2E 3 PASS. Full E2E는 279 PASS + visual QA 1 skip이며 unrelated 병렬 timeout 2건을 단일 worker로 각 3회 재실행해 6 PASS를 확인했다.
+- Clean-room frontend 161/backend 45, npm/pip audit 0 vulnerabilities, diff check와 desktop/mobile visual QA가 통과했다. 제한 독립 reviewer와 root 전체 diff review에서 P0-P2 결함은 발견되지 않았다. 증적은 `docs/screenshots/redevelopment/project-phase-gates-ui/`에 보존한다.
+- Migration `0087` 적용이 필요하다. 환경변수, dependency 변경은 없다. Working-day 기반 자동 재스케줄과 workspace-wide custom phase definition 관리는 후속 lifecycle surface로 명시 이연한다.
