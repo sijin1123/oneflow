@@ -17,15 +17,17 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.db.base import Base
 
 PROJECT_PHASE_KEYS: tuple[str, ...] = ("discover", "plan", "deliver", "close")
-DEFAULT_PROJECT_PHASE_DEFINITIONS: tuple[dict[str, str], ...] = (
-    {"key": "discover", "name": "발견", "color": "sky"},
-    {"key": "plan", "name": "계획", "color": "indigo"},
-    {"key": "deliver", "name": "실행", "color": "emerald"},
-    {"key": "close", "name": "마감", "color": "amber"},
+MAX_ACTIVE_PROJECT_PHASES = 12
+MAX_PROJECT_PHASE_DEFINITIONS = 32
+DEFAULT_PROJECT_PHASE_DEFINITIONS: tuple[dict[str, str | bool], ...] = (
+    {"key": "discover", "name": "발견", "color": "sky", "retired": False},
+    {"key": "plan", "name": "계획", "color": "indigo", "retired": False},
+    {"key": "deliver", "name": "실행", "color": "emerald", "retired": False},
+    {"key": "close", "name": "마감", "color": "amber", "retired": False},
 )
 
 
-def default_project_phase_definitions() -> list[dict[str, str]]:
+def default_project_phase_definitions() -> list[dict[str, str | bool]]:
     return [dict(definition) for definition in DEFAULT_PROJECT_PHASE_DEFINITIONS]
 
 
@@ -52,7 +54,7 @@ class WorkspaceProfile(Base):
         ),
         CheckConstraint(
             "jsonb_typeof(project_phase_definitions) = 'array' "
-            "AND jsonb_array_length(project_phase_definitions) = 4",
+            "AND jsonb_array_length(project_phase_definitions) BETWEEN 4 AND 32",
             name="workspace_phase_definitions_array",
         ),
     )
@@ -71,16 +73,16 @@ class WorkspaceProfile(Base):
         default=list,
         server_default="[]",
     )
-    project_phase_definitions: Mapped[list[dict[str, str]]] = mapped_column(
+    project_phase_definitions: Mapped[list[dict[str, str | bool]]] = mapped_column(
         JSONB,
         nullable=False,
         default=default_project_phase_definitions,
         server_default=text(
             "'["
-            '{"key":"discover","name":"발견","color":"sky"},'
-            '{"key":"plan","name":"계획","color":"indigo"},'
-            '{"key":"deliver","name":"실행","color":"emerald"},'
-            '{"key":"close","name":"마감","color":"amber"}'
+            '{"key":"discover","name":"발견","color":"sky","retired":false},'
+            '{"key":"plan","name":"계획","color":"indigo","retired":false},'
+            '{"key":"deliver","name":"실행","color":"emerald","retired":false},'
+            '{"key":"close","name":"마감","color":"amber","retired":false}'
             "]'::jsonb"
         ),
     )

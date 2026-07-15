@@ -273,12 +273,47 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        post?: never;
+        /** Create Workspace Project Phase Definition */
+        post: operations["create_workspace_project_phase_definition_api_v1_admin_workspace_project_phase_definitions_post"];
         delete?: never;
         options?: never;
         head?: never;
         /** Update Workspace Project Phase Definitions */
         patch: operations["update_workspace_project_phase_definitions_api_v1_admin_workspace_project_phase_definitions_patch"];
+        trace?: never;
+    };
+    "/api/v1/admin/workspace/project-phase-definitions/{phase_key}/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Restore Workspace Project Phase Definition */
+        post: operations["restore_workspace_project_phase_definition_api_v1_admin_workspace_project_phase_definitions__phase_key__restore_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/workspace/project-phase-definitions/{phase_key}/retire": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Retire Workspace Project Phase Definition */
+        post: operations["retire_workspace_project_phase_definition_api_v1_admin_workspace_project_phase_definitions__phase_key__retire_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/attachments/{attachment_id}": {
@@ -6377,6 +6412,8 @@ export interface components {
         ProjectPhaseRead: {
             /** Active */
             active: boolean;
+            /** Built In */
+            built_in: boolean;
             /**
              * Color
              * @enum {string}
@@ -6385,15 +6422,14 @@ export interface components {
             /** End Date */
             end_date: string | null;
             finish_gate: components["schemas"]["ProjectPhaseGateRead"];
-            /**
-             * Key
-             * @enum {string}
-             */
-            key: "discover" | "plan" | "deliver" | "close";
+            /** Key */
+            key: string;
             /** Name */
             name: string;
             /** Position */
             position: number;
+            /** Retired */
+            retired: boolean;
             /** Start Date */
             start_date: string | null;
             start_gate: components["schemas"]["ProjectPhaseGateRead"];
@@ -7864,22 +7900,33 @@ export interface components {
             /** Name */
             name: string;
         };
-        /** WorkspaceProjectPhaseDefinitionRead */
-        WorkspaceProjectPhaseDefinitionRead: {
+        /** WorkspaceProjectPhaseDefinitionCreate */
+        WorkspaceProjectPhaseDefinitionCreate: {
             /**
              * Color
              * @enum {string}
              */
             color: "sky" | "indigo" | "emerald" | "amber";
+            /** Name */
+            name: string;
+        };
+        /** WorkspaceProjectPhaseDefinitionRead */
+        WorkspaceProjectPhaseDefinitionRead: {
+            /** Built In */
+            built_in: boolean;
             /**
-             * Key
+             * Color
              * @enum {string}
              */
-            key: "discover" | "plan" | "deliver" | "close";
+            color: "sky" | "indigo" | "emerald" | "amber";
+            /** Key */
+            key: string;
             /** Name */
             name: string;
             /** Position */
             position: number;
+            /** Retired */
+            retired: boolean;
         };
         /** WorkspaceProjectPhaseDefinitionUpdate */
         WorkspaceProjectPhaseDefinitionUpdate: {
@@ -7888,11 +7935,8 @@ export interface components {
              * @enum {string}
              */
             color: "sky" | "indigo" | "emerald" | "amber";
-            /**
-             * Key
-             * @enum {string}
-             */
-            key: "discover" | "plan" | "deliver" | "close";
+            /** Key */
+            key: string;
             /** Name */
             name: string;
         };
@@ -8884,6 +8928,44 @@ export interface operations {
             };
         };
     };
+    create_workspace_project_phase_definition_api_v1_admin_workspace_project_phase_definitions_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "If-Match"?: string | null;
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkspaceProjectPhaseDefinitionCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceProjectPhaseDefinitionsRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     update_workspace_project_phase_definitions_api_v1_admin_workspace_project_phase_definitions_patch: {
         parameters: {
             query?: never;
@@ -8901,6 +8983,78 @@ export interface operations {
                 "application/json": components["schemas"]["WorkspaceProjectPhaseDefinitionsUpdate"];
             };
         };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceProjectPhaseDefinitionsRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    restore_workspace_project_phase_definition_api_v1_admin_workspace_project_phase_definitions__phase_key__restore_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "If-Match"?: string | null;
+                authorization?: string | null;
+            };
+            path: {
+                phase_key: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceProjectPhaseDefinitionsRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    retire_workspace_project_phase_definition_api_v1_admin_workspace_project_phase_definitions__phase_key__retire_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "If-Match"?: string | null;
+                authorization?: string | null;
+            };
+            path: {
+                phase_key: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             200: {

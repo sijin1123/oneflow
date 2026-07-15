@@ -1,4 +1,13 @@
-import { CalendarCheck2, CalendarDays, CheckCircle2, CircleDot, LockKeyhole, RotateCcw, Save } from 'lucide-react'
+import {
+  Archive,
+  CalendarCheck2,
+  CalendarDays,
+  CheckCircle2,
+  CircleDot,
+  LockKeyhole,
+  RotateCcw,
+  Save,
+} from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { ErrorState, ListSkeleton } from '@/components/shell/states'
@@ -242,7 +251,9 @@ export function ProjectPhasesPanel({
   if (phases.isError) return <ErrorState error={phases.error} onRetry={() => phases.refetch()} />
   if (project.isError) return <ErrorState error={project.error} onRetry={() => project.refetch()} />
 
-  const activeCount = phases.data.items.filter((phase) => phase.active).length
+  const available = phases.data.items.filter((phase) => !phase.retired)
+  const retired = phases.data.items.filter((phase) => phase.retired)
+  const activeCount = available.filter((phase) => phase.active).length
 
   return (
     <section aria-label="프로젝트 단계 설정" className="min-w-0">
@@ -259,7 +270,7 @@ export function ProjectPhasesPanel({
         </div>
         <Badge variant={canEdit ? 'accent' : 'outline'} className="shrink-0">
           {canEdit ? (
-            `활성 ${activeCount}/${phases.data.total}`
+            `활성 ${activeCount}/${available.length}`
           ) : (
             <>
               <LockKeyhole size={12} /> 읽기 전용
@@ -286,7 +297,7 @@ export function ProjectPhasesPanel({
       </div>
 
       <ol className="mt-2">
-        {phases.data.items.map((phase) => (
+        {available.map((phase) => (
           <EditablePhaseRow
             key={phase.key}
             phase={phase}
@@ -296,6 +307,31 @@ export function ProjectPhasesPanel({
           />
         ))}
       </ol>
+
+      {retired.length > 0 ? (
+        <div className="mt-5 border-t border-of-border pt-4">
+          <h3 className="flex items-center gap-2 text-xs font-semibold">
+            <Archive size={13} /> 은퇴한 Workspace 단계
+          </h3>
+          <p className="mt-1 text-[11px] leading-5 text-of-muted">
+            기존 프로젝트 값은 손실 없이 보존됩니다. Workspace 관리자가 단계를 복원하기 전에는 변경하거나 자동 일정에 사용할 수 없습니다.
+          </p>
+          <ul className="mt-2 divide-y divide-of-border border-y border-of-border">
+            {retired.map((phase) => (
+              <li key={phase.key} className="flex min-w-0 items-center gap-3 py-3 text-xs">
+                <span className={cn('h-2.5 w-2.5 shrink-0 rounded-full opacity-60', MARK_STYLES[phase.color])} />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate font-medium">{phase.name}</p>
+                  <p className="mt-0.5 truncate text-[10px] tabular-nums text-of-muted">
+                    {phase.start_date ?? '미정'} - {phase.end_date ?? '미정'} · version {phase.version}
+                  </p>
+                </div>
+                <Badge variant="neutral">보존됨</Badge>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
     </section>
   )
 }

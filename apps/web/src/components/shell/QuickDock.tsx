@@ -138,7 +138,12 @@ export function QuickDock({
           ),
         )
           .filter((element) => !element.closest('[data-quick-dock]'))
-          .map((element) => element.getBoundingClientRect())
+          .map((element) => {
+            const visualTarget = element instanceof HTMLInputElement && element.classList.contains('sr-only')
+              ? element.closest<HTMLElement>('label') ?? element
+              : element
+            return visualTarget.getBoundingClientRect()
+          })
           .filter((rect) => rect.width > 0 && rect.height > 0)
 
         const overlaps = (offset: number) => {
