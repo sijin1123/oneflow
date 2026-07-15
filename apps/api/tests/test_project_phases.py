@@ -181,6 +181,182 @@ async def test_phase_dates_follow_definition_order_and_validate_shape(client):
     assert null_gate.status_code == 422
 
 
+async def test_finish_change_reschedules_active_successors_on_working_days(client):
+    project = await create_project(client)
+    base = f"/api/v1/projects/{project['id']}/phases"
+
+    for key, start_date, end_date in [
+        ("discover", "2026-06-29", "2026-07-03"),
+        ("plan", "2026-07-06", "2026-07-10"),
+        ("deliver", "2026-07-13", "2026-07-15"),
+    ]:
+        payload = {
+            "active": True,
+            "start_date": start_date,
+            "end_date": end_date,
+            "version": 0,
+        }
+        if key == "deliver":
+            payload["finish_gate_active"] = True
+        response = await client.patch(
+            f"{base}/{key}",
+            json=payload,
+        )
+        assert response.status_code == 200
+
+    changed = await client.patch(f"{base}/discover", json={"end_date": "2026-07-10", "version": 1})
+    assert changed.status_code == 200
+    phases = (await client.get(base)).json()["items"]
+    assert [
+        (phase["key"], phase["start_date"], phase["end_date"], phase["version"]) for phase in phases
+    ] == [
+        ("discover", "2026-06-29", "2026-07-10", 2),
+        ("plan", "2026-07-13", "2026-07-17", 2),
+        ("deliver", "2026-07-20", "2026-07-22", 2),
+        ("close", None, None, 0),
+    ]
+    assert phases[2]["finish_gate"]["date"] == "2026-07-22"
+
+    backward = await client.patch(f"{base}/discover", json={"end_date": "2026-07-03", "version": 2})
+    assert backward.status_code == 200
+    phases = (await client.get(base)).json()["items"]
+    assert [
+        (phase["key"], phase["start_date"], phase["end_date"], phase["version"])
+        for phase in phases[:3]
+    ] == [
+        ("discover", "2026-06-29", "2026-07-03", 3),
+        ("plan", "2026-07-06", "2026-07-10", 3),
+        ("deliver", "2026-07-13", "2026-07-15", 3),
+    ]
+
+
+async def test_finish_change_skips_inactive_and_stops_at_partial_successor(client):
+    project = await create_project(client)
+    base = f"/api/v1/projects/{project['id']}/phases"
+    discover = await client.patch(
+        f"{base}/discover",
+        json={"active": True, "start_date": "2026-07-06", "end_date": "2026-07-10", "version": 0},
+    )
+    assert discover.status_code == 200
+    inactive = await client.patch(
+        f"{base}/plan",
+        json={"active": False, "start_date": "2026-07-13", "end_date": "2026-07-17", "version": 0},
+    )
+    assert inactive.status_code == 200
+    partial = await client.patch(
+        f"{base}/deliver", json={"active": True, "start_date": "2026-07-13", "version": 0}
+    )
+    assert partial.status_code == 200
+    untouched = await client.patch(
+        f"{base}/close",
+        json={"active": True, "start_date": "2026-08-03", "end_date": "2026-08-07", "version": 0},
+    )
+    assert untouched.status_code == 200
+
+    changed = await client.patch(f"{base}/discover", json={"end_date": "2026-07-17", "version": 1})
+    assert changed.status_code == 200
+    phases = {phase["key"]: phase for phase in (await client.get(base)).json()["items"]}
+    assert (
+        phases["plan"]["start_date"],
+        phases["plan"]["end_date"],
+        phases["plan"]["version"],
+    ) == (
+        "2026-07-13",
+        "2026-07-17",
+        1,
+    )
+    assert (
+        phases["deliver"]["start_date"],
+        phases["deliver"]["end_date"],
+        phases["deliver"]["version"],
+    ) == (
+        "2026-07-20",
+        None,
+        2,
+    )
+    assert (
+        phases["close"]["start_date"],
+        phases["close"]["end_date"],
+        phases["close"]["version"],
+    ) == (
+        "2026-08-03",
+        "2026-08-07",
+        1,
+    )
+
+    cleared = await client.patch(f"{base}/discover", json={"end_date": None, "version": 2})
+    assert cleared.status_code == 200
+    direct_start = await client.patch(
+        f"{base}/discover", json={"start_date": "2026-07-07", "version": 3}
+    )
+    assert direct_start.status_code == 200
+    phases = {phase["key"]: phase for phase in (await client.get(base)).json()["items"]}
+    assert phases["deliver"]["start_date"] == "2026-07-20"
+
+
+async def test_inactive_source_does_not_reschedule_and_overflow_is_atomic(client):
+    project = await create_project(client)
+    base = f"/api/v1/projects/{project['id']}/phases"
+    inactive = await client.patch(
+        f"{base}/discover",
+        json={
+            "active": False,
+            "start_date": "2026-07-06",
+            "end_date": "2026-07-10",
+            "version": 0,
+        },
+    )
+    assert inactive.status_code == 200
+    successor = await client.patch(
+        f"{base}/plan",
+        json={
+            "active": True,
+            "start_date": "2026-07-13",
+            "end_date": "2026-07-17",
+            "version": 0,
+        },
+    )
+    assert successor.status_code == 200
+    changed = await client.patch(f"{base}/discover", json={"end_date": "2026-07-24", "version": 1})
+    assert changed.status_code == 200
+    phases = {phase["key"]: phase for phase in (await client.get(base)).json()["items"]}
+    assert phases["plan"]["start_date"] == "2026-07-13"
+    assert phases["plan"]["version"] == 1
+
+    boundary_project = await create_project(client, key="MAX", name="날짜 경계")
+    boundary = f"/api/v1/projects/{boundary_project['id']}/phases"
+    root = await client.patch(
+        f"{boundary}/discover",
+        json={
+            "active": True,
+            "start_date": "9999-12-29",
+            "end_date": "9999-12-30",
+            "version": 0,
+        },
+    )
+    assert root.status_code == 200
+    end_phase = await client.patch(
+        f"{boundary}/plan",
+        json={
+            "active": True,
+            "start_date": "9999-12-31",
+            "end_date": "9999-12-31",
+            "version": 0,
+        },
+    )
+    assert end_phase.status_code == 200
+    rejected = await client.patch(
+        f"{boundary}/discover", json={"end_date": "9999-12-31", "version": 1}
+    )
+    assert rejected.status_code == 422
+    assert rejected.json()["detail"] == "rescheduled phase dates exceed the supported range"
+    unchanged = {phase["key"]: phase for phase in (await client.get(boundary)).json()["items"]}
+    assert unchanged["discover"]["end_date"] == "9999-12-30"
+    assert unchanged["discover"]["version"] == 1
+    assert unchanged["plan"]["start_date"] == "9999-12-31"
+    assert unchanged["plan"]["version"] == 1
+
+
 async def test_phase_mutation_is_owner_only_and_archived_projects_are_read_only(
     client, member_project
 ):
