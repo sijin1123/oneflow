@@ -2556,3 +2556,14 @@ Chromium typed mock fixture에서 1440x960과 390x844 viewport를 사용했다. 
 - 검증: API Ruff/format PASS, focused API 19 PASS와 full API 751 PASS(기존 Alembic 경고 1건), OpenAPI generation/drift PASS, typecheck PASS, lint PASS(기존 Fast Refresh 경고 4건), unit 93, component 8, production build PASS(기존 chunk 경고), focused E2E 2 PASS, full E2E 286 PASS + opt-in visual QA 1 skip, clean-room frontend 161/backend 45, npm/pip audit 0 vulnerabilities, diff check와 desktop/mobile visual QA PASS.
 - Chromium 증적은 `docs/screenshots/redevelopment/initiative-ownership-ui/{desktop,mobile}.png`에 보존한다. 독립 reviewer는 잔여 에이전트 슬롯 때문에 생성되지 않아 root가 authz, existence hiding, candidate scope, lock/race, cache invalidation, error/retry와 전체 diff를 직접 재검토했고 P0-P2 잔여 결함을 찾지 못했다.
 - Migration, 환경변수, 설정 UI, dependency 변경은 없다. **이연 항목**은 initiative-level notifications와 work-item 연결이며 현재 소유권 연속성 surface에는 dead control로 노출하지 않는다.
+
+---
+
+# UI-119 Initiative Work Item Scope / Detail 검증 (2026-07-15)
+
+- **UI 변경**: Initiative 이름과 전략 범위 수에서 URL 상태를 보존하는 기능형 상세 drawer를 연다. 연결 작업은 프로젝트·제목·상태·우선순위·기한과 실제 전체 상세 이동을 제공하고, owner는 연결 프로젝트의 후보를 검색해 연결하거나 확인 후 해제할 수 있다. Loading/error/retry/empty, mutation 오류, bounded-count 안내와 desktop/mobile 상태를 실제 API에 연결했다.
+- **기능/API 반영**: migration `0091`은 Initiative-Work Package 관계를 연결 프로젝트와 동일 프로젝트의 작업으로만 제한하는 복합 FK로 저장한다. Owner-only 연결·해제는 Initiative row lock 뒤 membership과 연결 프로젝트를 재검증하고, member read는 호출자가 볼 수 있는 프로젝트의 작업 상세만 반환한다. 권한 밖 연결은 총수로만 알리고 제목·프로젝트·식별자는 숨긴다. 프로젝트 연결 해제나 작업 삭제 시 관계는 cascade된다.
+- API 테스트는 후보 검색, 중복 409, 비연결 프로젝트 404, owner-only write, member visibility, hidden-row 비노출과 project-disconnect cleanup을 고정했다. E2E는 후보 조회 실패·재시도, 검색, 연결·해제, URL/Escape lifecycle, mobile member read-only와 수평 overflow를 검증했다.
+- 검증: API Ruff/format PASS, focused API 12 및 full API 753 PASS(기존 Alembic 경고 1건), migration full upgrade→base downgrade→head upgrade PASS, OpenAPI generation/drift PASS, typecheck PASS, lint PASS(기존 Fast Refresh 경고 4건), unit 93, component 8, production build PASS(기존 chunk 경고), focused E2E 2 PASS, full E2E 288 PASS + opt-in visual QA 1 skip, clean-room frontend 161/backend 45, npm/pip audit 0 vulnerabilities, diff check와 desktop/mobile visual QA PASS.
+- Chromium 증적은 `docs/screenshots/redevelopment/initiative-work-items-ui/{desktop,mobile}.png`에 보존한다. 독립 reviewer는 에이전트 thread limit으로 생성되지 않아 root가 복합 FK/cascade, existence hiding, membership leak guard, owner-transfer race lock, pagination/count, cache invalidation과 전체 diff를 재검토했고 P0-P2 잔여 결함을 찾지 못했다.
+- Migration `0091` 적용이 필요하다. 환경변수, 설정 UI와 dependency 변경은 없다. **이연 항목**은 initiative-level notifications이며 현재 상세 surface에는 dead control로 노출하지 않는다.

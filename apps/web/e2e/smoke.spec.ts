@@ -12,7 +12,7 @@ import type { Customer } from '../src/features/customers/types'
 import type { DataTransferJob } from '../src/features/ops/dataTransfersApi'
 import type { AuthAssistanceRequest } from '../src/features/admin/authAssistanceApi'
 import type { DocumentList } from '../src/features/documents/api'
-import type { Initiative } from '../src/features/initiatives/api'
+import type { Initiative, InitiativeWorkItem } from '../src/features/initiatives/api'
 import type {
   Project,
   ProjectHealthHistoryList,
@@ -7588,6 +7588,7 @@ test('이니셔티브에서 프로젝트를 연결하면 POST가 간다', async 
     is_mine: true,
     can_claim_ownership: false,
     connected_project_count: 1,
+    connected_work_item_count: 0,
     projects: [
       {
         project_id: project.id,
@@ -7687,6 +7688,217 @@ test('이니셔티브에서 프로젝트를 연결하면 POST가 간다', async 
   await expect(page.getByRole('button', { name: '플랫폼 개편 소유권 관리' })).toHaveCount(0)
 })
 
+test('이니셔티브 상세에서 전략 범위 작업을 검색해 연결하고 해제한다', async ({ page }) => {
+  await mockApi(page)
+  const initiative: Initiative = {
+    id: 'ini-scope',
+    name: '전략 범위 개편',
+    description: '핵심 출시 범위를 명시적으로 추적합니다.',
+    owner_id: 'me-1',
+    owner_name: 'Dev User',
+    owner_active: true,
+    state: 'in_progress',
+    start_date: null,
+    target_date: null,
+    health: 'on_track',
+    health_note: null,
+    health_updated_by: 'me-1',
+    health_updated_at: '2026-07-15T00:00:00Z',
+    is_mine: true,
+    can_claim_ownership: false,
+    connected_project_count: 1,
+    connected_work_item_count: 1,
+    projects: [
+      {
+        project_id: project.id,
+        project_name: project.name,
+        work_package_count: 4,
+        done_work_package_count: 1,
+      },
+    ],
+    created_at: '2026-07-15T00:00:00Z',
+    updated_at: '2026-07-15T00:00:00Z',
+  }
+  const linked: InitiativeWorkItem[] = [
+    {
+      id: wpA.id,
+      project_id: project.id,
+      project_name: project.name,
+      subject: wpA.subject,
+      status: wpA.status,
+      priority: wpA.priority,
+      assignee_id: wpA.assignee_id,
+      due_date: wpA.due_date,
+    },
+  ]
+  let available: InitiativeWorkItem[] = [
+    {
+      id: wpB.id,
+      project_id: project.id,
+      project_name: project.name,
+      subject: wpB.subject,
+      status: wpB.status,
+      priority: wpB.priority,
+      assignee_id: wpB.assignee_id,
+      due_date: wpB.due_date,
+    },
+  ]
+  await page.route('**/api/v1/initiatives', (route) =>
+    route.fulfill({
+      json: {
+        items: [{ ...initiative, connected_work_item_count: linked.length }],
+        total: 1,
+      },
+    }),
+  )
+  await page.route('**/api/v1/initiatives/ini-scope/work-items', async (route) => {
+    if (route.request().method() === 'POST') {
+      const body = route.request().postDataJSON() as { work_package_id: string }
+      const item = available.find((candidate) => candidate.id === body.work_package_id)
+      if (!item) {
+        await route.fulfill({ status: 409, json: { detail: 'already connected' } })
+        return
+      }
+      linked.push(item)
+      available = available.filter((candidate) => candidate.id !== item.id)
+      await route.fulfill({ status: 201, json: item })
+      return
+    }
+    await route.fulfill({
+      json: {
+        items: linked,
+        total: linked.length,
+        connected_work_item_count: linked.length,
+      },
+    })
+  })
+  let candidateAttempts = 0
+  await page.route('**/api/v1/initiatives/ini-scope/work-item-candidates**', async (route) => {
+    candidateAttempts += 1
+    if (candidateAttempts === 1) {
+      await route.fulfill({ status: 503, json: { detail: 'temporary candidate failure' } })
+      return
+    }
+    const query = new URL(route.request().url()).searchParams.get('q') ?? ''
+    const items = available.filter((item) => item.subject.includes(query))
+    await route.fulfill({ json: { items, total: items.length } })
+  })
+  await page.route('**/api/v1/initiatives/ini-scope/work-items/*', async (route) => {
+    const id = route.request().url().split('/').at(-1)
+    const index = linked.findIndex((item) => item.id === id)
+    if (index < 0) {
+      await route.fulfill({ status: 404, json: { detail: 'not found' } })
+      return
+    }
+    available.push(linked[index])
+    linked.splice(index, 1)
+    await route.fulfill({ status: 204 })
+  })
+
+  await page.goto('/initiatives')
+  await page.getByRole('button', { name: '전략 범위 개편 전략 범위 열기' }).click()
+  await expect(page).toHaveURL(/initiative=ini-scope/)
+  await expect(page.getByRole('heading', { name: '전략 범위 개편' })).toBeVisible()
+  await expect(page.getByText(wpA.subject, { exact: true })).toBeVisible()
+
+  await page.getByRole('button', { name: '작업 연결' }).click()
+  await expect(page.getByText('작업 후보를 불러오지 못했습니다.')).toBeVisible()
+  await page.getByRole('button', { name: '재시도' }).click()
+  await expect(page.getByText(wpB.subject, { exact: true })).toBeVisible()
+  await page.getByLabel('연결할 작업 검색').fill('보드')
+  const searchRequest = page.waitForRequest((request) =>
+    request.url().includes('/work-item-candidates?q=%EB%B3%B4%EB%93%9C'),
+  )
+  await page.getByRole('button', { name: '검색', exact: true }).click()
+  await searchRequest
+
+  const connectRequest = page.waitForRequest(
+    (request) =>
+      request.method() === 'POST' && request.url().endsWith('/ini-scope/work-items'),
+  )
+  await page.getByRole('listitem').filter({ hasText: wpB.subject }).getByRole('button', { name: '연결' }).click()
+  expect((await connectRequest).postDataJSON()).toEqual({ work_package_id: wpB.id })
+  await expect(page.getByRole('button', { name: `${wpB.subject} 열기` })).toBeVisible()
+
+  page.once('dialog', (dialog) => dialog.accept())
+  const disconnectRequest = page.waitForRequest(
+    (request) => request.method() === 'DELETE' && request.url().endsWith(`/work-items/${wpA.id}`),
+  )
+  await page.getByRole('button', { name: `${wpA.subject} 이니셔티브 연결 해제` }).click()
+  await disconnectRequest
+  await expect(page.getByRole('button', { name: `${wpA.subject} 열기` })).toHaveCount(0)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/initiative-work-items-ui/desktop.png',
+    fullPage: true,
+  })
+
+  await page.keyboard.press('Escape')
+  await expect(page).not.toHaveURL(/initiative=/)
+})
+
+test('모바일 이니셔티브 상세는 숨은 전략 작업 수를 누수 없이 표시한다', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await mockApi(page)
+  const initiative: Initiative = {
+    id: 'ini-member-scope',
+    name: '멤버 전략 범위',
+    description: null,
+    owner_id: 'owner-1',
+    owner_name: 'Owner',
+    owner_active: true,
+    state: 'planned',
+    start_date: null,
+    target_date: null,
+    health: null,
+    health_note: null,
+    health_updated_by: null,
+    health_updated_at: null,
+    is_mine: false,
+    can_claim_ownership: false,
+    connected_project_count: 2,
+    connected_work_item_count: 2,
+    projects: [
+      {
+        project_id: project.id,
+        project_name: project.name,
+        work_package_count: 4,
+        done_work_package_count: 1,
+      },
+    ],
+    created_at: '2026-07-15T00:00:00Z',
+    updated_at: '2026-07-15T00:00:00Z',
+  }
+  const visible: InitiativeWorkItem = {
+    id: wpA.id,
+    project_id: project.id,
+    project_name: project.name,
+    subject: wpA.subject,
+    status: wpA.status,
+    priority: wpA.priority,
+    assignee_id: wpA.assignee_id,
+    due_date: wpA.due_date,
+  }
+  await page.route('**/api/v1/initiatives', (route) =>
+    route.fulfill({ json: { items: [initiative], total: 1 } }),
+  )
+  await page.route('**/api/v1/initiatives/ini-member-scope/work-items', (route) =>
+    route.fulfill({
+      json: { items: [visible], total: 1, connected_work_item_count: 2 },
+    }),
+  )
+
+  await page.goto('/initiatives?initiative=ini-member-scope')
+  await expect(page.getByRole('heading', { name: '멤버 전략 범위' })).toBeVisible()
+  await expect(page.getByText('권한이 없는 프로젝트의 연결 작업 1개')).toBeVisible()
+  await expect(page.getByRole('button', { name: '작업 연결' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: /이니셔티브 연결 해제/ })).toHaveCount(0)
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/initiative-work-items-ui/mobile.png',
+    fullPage: true,
+  })
+})
+
 test('모바일 이니셔티브 카드에서 고아 소유권을 claim한다', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 })
   await mockApi(page)
@@ -7707,6 +7919,7 @@ test('모바일 이니셔티브 카드에서 고아 소유권을 claim한다', a
     is_mine: false,
     can_claim_ownership: true,
     connected_project_count: 1,
+    connected_work_item_count: 0,
     projects: [
       {
         project_id: project.id,
@@ -13393,6 +13606,7 @@ test('프로젝트 목록 이니셔티브 열을 켜면 칩이 보이고 클릭 
             is_mine: true,
             can_claim_ownership: false,
             connected_project_count: 1,
+            connected_work_item_count: 0,
             projects: [],
             created_at: '2026-07-01T00:00:00Z',
             updated_at: '2026-07-01T00:00:00Z',
@@ -15077,6 +15291,7 @@ test('보고 표면은 모바일에서 포트폴리오와 이니셔티브를 넘
             is_mine: true,
             can_claim_ownership: false,
             connected_project_count: 2,
+            connected_work_item_count: 0,
             projects: [
               {
                 project_id: project.id,
