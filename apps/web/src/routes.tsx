@@ -26,6 +26,7 @@ import { TemplatesPage } from '@/features/project-templates/TemplatesPage'
 import { OperationsPage } from '@/features/ops/OperationsPage'
 import { StatusPage } from '@/features/ops/StatusPage'
 import { UsersPage } from '@/features/admin/UsersPage'
+import { AuthAssistancePage } from '@/features/admin/AuthAssistancePage'
 import { WebhooksPage } from '@/features/admin/WebhooksPage'
 import { WorklogsPage } from '@/features/admin/WorklogsPage'
 import { WikiSettingsPage } from '@/features/admin/WikiSettingsPage'
@@ -106,6 +107,7 @@ export const router = createBrowserRouter([
           { index: true, element: <Navigate to="users" replace /> },
           { path: 'general', element: <WorkspaceGeneralSettingsPage /> },
           { path: 'users', element: <UsersPage /> },
+          { path: 'auth-assistance', element: <AuthAssistancePage /> },
           { path: 'webhooks', element: <WebhooksPage /> },
           { path: 'worklogs', element: <WorklogsPage /> },
           { path: 'wiki', element: <WikiSettingsPage /> },
