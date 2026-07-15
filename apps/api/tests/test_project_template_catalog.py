@@ -252,6 +252,50 @@ async def test_noncreator_catalog_permissions_are_server_derived(client, app):
     assert applied.status_code == 201, applied.text
 
 
+async def test_unpublished_templates_are_visible_only_to_managers(client, app):
+    await _clear_templates(app)
+    source = await create_project(client, key="DRAFT", name="Draft source")
+    response = await client.post(
+        "/api/v1/project-templates",
+        json={
+            "name": "Private draft",
+            "source_project_id": source["id"],
+            "publish": False,
+        },
+    )
+    assert response.status_code == 201, response.text
+    draft = response.json()
+    assert draft["archived_at"] is not None
+    assert (await client.get("/api/v1/project-templates")).json()["items"] == []
+    managed = (
+        await client.get(
+            "/api/v1/project-templates",
+            params={"include_archived": "true"},
+        )
+    ).json()["items"]
+    assert [item["id"] for item in managed] == [draft["id"]]
+    assert managed[0]["can_manage"] is True
+
+    async with app.state.sessionmaker() as session, session.begin():
+        dev = (
+            await session.execute(select(User).where(User.email == "dev@oneflow.local"))
+        ).scalar_one()
+        other = User(email="template-publisher@oneflow.local", display_name="Publisher")
+        session.add(other)
+        await session.flush()
+        row = await session.get(ProjectTemplate, uuid.UUID(draft["id"]))
+        row.created_by = other.id
+        dev.is_admin = False
+
+    hidden = await client.get(
+        "/api/v1/project-templates",
+        params={"include_archived": "true"},
+    )
+    assert hidden.status_code == 200
+    assert hidden.json()["items"] == []
+    assert hidden.json()["total"] == 0
+
+
 async def test_catalog_search_treats_wildcards_literally(client, app):
     await _clear_templates(app)
     source = await create_project(client, key="LIT", name="Literal source")

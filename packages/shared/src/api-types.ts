@@ -6446,6 +6446,11 @@ export interface components {
             /** Name */
             name: string;
             /**
+             * Publish
+             * @default true
+             */
+            publish: boolean;
+            /**
              * Source Project Id
              * Format: uuid
              */

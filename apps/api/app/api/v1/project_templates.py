@@ -4,7 +4,7 @@ import uuid
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
-from sqlalchemy import func, select, text
+from sqlalchemy import func, or_, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -178,6 +178,13 @@ async def list_project_templates(
     base = select(ProjectTemplate).where(ProjectTemplate.deleted_at.is_(None))
     if not include_archived:
         base = base.where(ProjectTemplate.archived_at.is_(None))
+    elif not (user.is_active and user.is_admin):
+        base = base.where(
+            or_(
+                ProjectTemplate.archived_at.is_(None),
+                ProjectTemplate.created_by == user.id,
+            )
+        )
     if q:
         base = base.where(ProjectTemplate.name.icontains(q.strip(), autoescape=True))
     total = (await session.execute(select(func.count()).select_from(base.subquery()))).scalar_one()
@@ -218,6 +225,7 @@ async def create_project_template(
             description=body.description,
             source_project_id=source.id,
             created_by=user_id,
+            archived_at=None if body.publish else datetime.now(UTC),
         )
         session.add(template)
         await session.flush()

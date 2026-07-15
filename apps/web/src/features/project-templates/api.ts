@@ -23,7 +23,12 @@ export type ProjectTemplate = {
 }
 export type ProjectTemplateList = { items: ProjectTemplate[]; total: number; limit: number; offset: number }
 export type ProjectCreateResponse = { id: string }
-type CreateInput = { name: string; description?: string | null; source_project_id: string }
+type CreateInput = {
+  name: string
+  description?: string | null
+  source_project_id: string
+  publish?: boolean
+}
 type ApplyInput = { name: string; key: string; description?: string | null }
 
 export function useProjectTemplates(q: string, includeArchived: boolean, offset: number) {

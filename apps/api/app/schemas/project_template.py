@@ -267,6 +267,7 @@ class ProjectTemplateCreate(BaseModel):
     name: str
     description: str | None = None
     source_project_id: uuid.UUID
+    publish: bool = True
 
     @field_validator("name")
     @classmethod
