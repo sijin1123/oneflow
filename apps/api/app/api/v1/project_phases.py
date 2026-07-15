@@ -9,25 +9,59 @@ from app.core.auth import get_current_user
 from app.core.authz import require_member, require_role
 from app.db.session import get_session
 from app.models.project import Project
-from app.models.project_phase import PROJECT_PHASE_BY_KEY, PROJECT_PHASES, ProjectPhase
+from app.models.project_phase import (
+    PROJECT_PHASE_BY_KEY,
+    PROJECT_PHASE_GATE_NAMES,
+    PROJECT_PHASES,
+    ProjectPhase,
+)
 from app.models.user import User
-from app.schemas.project_phase import ProjectPhaseList, ProjectPhasePatch, ProjectPhaseRead
+from app.schemas.project_phase import (
+    ProjectPhaseGateRead,
+    ProjectPhaseList,
+    ProjectPhasePatch,
+    ProjectPhaseRead,
+)
 
 router = APIRouter()
 
 
 def _read(key: str, row: ProjectPhase | None) -> ProjectPhaseRead:
     _, name, color, position = PROJECT_PHASE_BY_KEY[key]
+    start_gate_name, finish_gate_name = PROJECT_PHASE_GATE_NAMES[key]
+    active = False if row is None else row.is_active
+    start_gate_active = False if row is None else row.start_gate_active
+    finish_gate_active = False if row is None else row.finish_gate_active
+    start_date = None if row is None else row.start_date
+    end_date = None if row is None else row.end_date
     return ProjectPhaseRead(
         key=key,
         name=name,
         color=color,
         position=position,
-        active=False if row is None else row.is_active,
-        start_date=None if row is None else row.start_date,
-        end_date=None if row is None else row.end_date,
+        active=active,
+        start_date=start_date,
+        end_date=end_date,
+        start_gate=ProjectPhaseGateRead(
+            kind="start",
+            name=start_gate_name,
+            active=start_gate_active,
+            date=start_date if active and start_gate_active else None,
+        ),
+        finish_gate=ProjectPhaseGateRead(
+            kind="finish",
+            name=finish_gate_name,
+            active=finish_gate_active,
+            date=end_date if active and finish_gate_active else None,
+        ),
         version=0 if row is None else row.version,
     )
+
+
+def _current_value(field: str, before: ProjectPhaseRead, current: ProjectPhase | None) -> object:
+    if field in {"active", "start_date", "end_date"}:
+        return getattr(before, field)
+    return False if current is None else getattr(current, field)
 
 
 def _validate_ranges(rows: Iterable[ProjectPhaseRead]) -> None:
@@ -90,10 +124,21 @@ async def patch_project_phase(
         raise HTTPException(status_code=409, detail="phase version conflict")
 
     provided = body.model_fields_set - {"version"}
-    if "active" in provided and body.active is None:
-        raise HTTPException(status_code=422, detail="active cannot be null")
+    for field in {"active", "start_gate_active", "finish_gate_active"} & provided:
+        if getattr(body, field) is None:
+            raise HTTPException(status_code=422, detail=f"{field} cannot be null")
     before = _read(phase_key, current)
-    candidate = before.model_copy(update={field: getattr(body, field) for field in provided})
+    candidate_values = {
+        "active": before.active,
+        "start_date": before.start_date,
+        "end_date": before.end_date,
+        "start_gate_active": False if current is None else current.start_gate_active,
+        "finish_gate_active": False if current is None else current.finish_gate_active,
+    }
+    candidate_values.update({field: getattr(body, field) for field in provided})
+    candidate = before.model_copy(
+        update={field: candidate_values[field] for field in {"active", "start_date", "end_date"}}
+    )
     if candidate.start_date and candidate.end_date and candidate.start_date > candidate.end_date:
         raise HTTPException(status_code=422, detail="start_date must be on or before end_date")
     proposed = [
@@ -102,7 +147,9 @@ async def patch_project_phase(
     ]
     _validate_ranges(proposed)
 
-    changed = any(getattr(candidate, field) != getattr(before, field) for field in provided)
+    changed = any(
+        candidate_values[field] != _current_value(field, before, current) for field in provided
+    )
     if not changed:
         return before
 
@@ -110,6 +157,8 @@ async def patch_project_phase(
         current = ProjectPhase(project_id=project_id, key=phase_key, version=0)
         session.add(current)
     current.is_active = candidate.active
+    current.start_gate_active = candidate_values["start_gate_active"]
+    current.finish_gate_active = candidate_values["finish_gate_active"]
     current.start_date = candidate.start_date
     current.end_date = candidate.end_date
     current.version += 1
