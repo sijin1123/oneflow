@@ -1,9 +1,12 @@
 from datetime import date
-from typing import Literal
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field
 
-ProjectPhaseKey = Literal["discover", "plan", "deliver", "close"]
+ProjectPhaseKey = Annotated[
+    str,
+    Field(pattern=r"^(discover|plan|deliver|close|custom_[0-9a-f]{32})$", max_length=48),
+]
 ProjectPhaseColor = Literal["sky", "indigo", "emerald", "amber"]
 ProjectPhaseGateKind = Literal["start", "finish"]
 
@@ -26,6 +29,8 @@ class ProjectPhaseRead(BaseModel):
     start_gate: ProjectPhaseGateRead
     finish_gate: ProjectPhaseGateRead
     version: int
+    retired: bool
+    built_in: bool
 
 
 class ProjectPhaseList(BaseModel):

@@ -88,6 +88,8 @@ async def test_owner_update_supports_partial_dates_noop_conflict_and_preserved_d
             "date": None,
         },
         "version": 1,
+        "retired": False,
+        "built_in": True,
     }
 
     no_op = await client.patch(
@@ -698,3 +700,127 @@ async def test_phase_scheduler_uses_workspace_definition_order(client):
     assert by_key["discover"]["start_date"] == "2026-07-20"
     assert by_key["discover"]["end_date"] == "2026-07-24"
     assert by_key["discover"]["version"] == 2
+
+
+async def test_custom_phase_adoption_retire_restore_preserves_project_state(client):
+    created = await client.post(
+        "/api/v1/admin/workspace/project-phase-definitions",
+        json={"name": "검증", "color": "sky"},
+        headers={"If-Match": '"1"'},
+    )
+    assert created.status_code == 201, created.text
+    custom = created.json()["items"][-1]
+    project = await create_project(client, key="CUSTOMPH", name="사용자 단계")
+    untouched_project = await create_project(client, key="CUSTOMNO", name="미사용 단계")
+    base = f"/api/v1/projects/{project['id']}/phases"
+
+    synthesized = await client.get(base)
+    assert synthesized.status_code == 200
+    synthesized_custom = synthesized.json()["items"][-1]
+    assert synthesized_custom["key"] == custom["key"]
+    assert synthesized_custom["version"] == 0
+    assert synthesized_custom["active"] is False
+    assert synthesized_custom["retired"] is False
+    untouched = await client.get(f"/api/v1/projects/{untouched_project['id']}/phases")
+    untouched_custom = next(
+        item for item in untouched.json()["items"] if item["key"] == custom["key"]
+    )
+    assert untouched_custom["active"] is False
+    assert untouched_custom["version"] == 0
+
+    adopted = await client.patch(
+        f"{base}/{custom['key']}",
+        json={
+            "active": True,
+            "start_date": "2026-08-03",
+            "end_date": "2026-08-07",
+            "start_gate_active": True,
+            "version": 0,
+        },
+    )
+    assert adopted.status_code == 200, adopted.text
+    assert adopted.json()["version"] == 1
+
+    retired = await client.post(
+        f"/api/v1/admin/workspace/project-phase-definitions/{custom['key']}/retire",
+        headers={"If-Match": '"2"'},
+    )
+    assert retired.status_code == 200, retired.text
+    preserved = next(
+        item for item in (await client.get(base)).json()["items"] if item["key"] == custom["key"]
+    )
+    assert preserved["retired"] is True
+    assert preserved["active"] is True
+    assert preserved["start_date"] == "2026-08-03"
+    assert preserved["start_gate"]["active"] is True
+    assert preserved["version"] == 1
+    blocked = await client.patch(
+        f"{base}/{custom['key']}",
+        json={"active": False, "version": 1},
+    )
+    assert blocked.status_code == 409
+    assert blocked.json()["detail"] == "phase is retired"
+
+    restored = await client.post(
+        f"/api/v1/admin/workspace/project-phase-definitions/{custom['key']}/restore",
+        headers={"If-Match": '"3"'},
+    )
+    assert restored.status_code == 200, restored.text
+    recovered = next(
+        item for item in (await client.get(base)).json()["items"] if item["key"] == custom["key"]
+    )
+    assert recovered["retired"] is False
+    assert recovered["active"] is True
+    assert recovered["start_date"] == "2026-08-03"
+    assert recovered["end_date"] == "2026-08-07"
+    assert recovered["version"] == 1
+    untouched_after_restore = await client.get(f"/api/v1/projects/{untouched_project['id']}/phases")
+    untouched_custom = next(
+        item for item in untouched_after_restore.json()["items"] if item["key"] == custom["key"]
+    )
+    assert untouched_custom["active"] is False
+    assert untouched_custom["version"] == 0
+
+
+async def test_custom_phase_retire_race_with_project_update_is_lossless(client):
+    created = await client.post(
+        "/api/v1/admin/workspace/project-phase-definitions",
+        json={"name": "동시 검증", "color": "indigo"},
+        headers={"If-Match": '"1"'},
+    )
+    assert created.status_code == 201, created.text
+    custom = created.json()["items"][-1]
+    project = await create_project(client, key="PHASERACE", name="단계 경합")
+    base = f"/api/v1/projects/{project['id']}/phases"
+
+    updated, retired = await asyncio.gather(
+        client.patch(
+            f"{base}/{custom['key']}",
+            json={
+                "active": True,
+                "start_date": "2026-09-01",
+                "end_date": "2026-09-04",
+                "version": 0,
+            },
+        ),
+        client.post(
+            f"/api/v1/admin/workspace/project-phase-definitions/{custom['key']}/retire",
+            headers={"If-Match": '"2"'},
+        ),
+    )
+
+    assert retired.status_code == 200, retired.text
+    assert updated.status_code in {200, 409}, updated.text
+    preserved = next(
+        item for item in (await client.get(base)).json()["items"] if item["key"] == custom["key"]
+    )
+    assert preserved["retired"] is True
+    if updated.status_code == 200:
+        assert preserved["active"] is True
+        assert preserved["start_date"] == "2026-09-01"
+        assert preserved["end_date"] == "2026-09-04"
+        assert preserved["version"] == 1
+    else:
+        assert updated.json()["detail"] == "phase is retired"
+        assert preserved["active"] is False
+        assert preserved["version"] == 0

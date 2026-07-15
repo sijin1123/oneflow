@@ -35,12 +35,15 @@ PROJECT_PHASE_GATE_NAMES: dict[str, tuple[str, str]] = {
 
 
 class ProjectPhase(Base):
-    """Persisted per-project state for OneFlow's fixed project phase vocabulary."""
+    """Persisted per-project state keyed by a workspace phase definition."""
 
     __tablename__ = "project_phases"
     __table_args__ = (
         UniqueConstraint("project_id", "key", name="uq_project_phases_project_key"),
-        CheckConstraint("key IN ('discover', 'plan', 'deliver', 'close')", name="key_allowed"),
+        CheckConstraint(
+            "key IN ('discover', 'plan', 'deliver', 'close') OR key ~ '^custom_[0-9a-f]{32}$'",
+            name="key_allowed",
+        ),
         CheckConstraint(
             "start_date IS NULL OR end_date IS NULL OR start_date <= end_date",
             name="dates_ordered",
@@ -53,7 +56,7 @@ class ProjectPhase(Base):
     project_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False
     )
-    key: Mapped[str] = mapped_column(String(20), nullable=False)
+    key: Mapped[str] = mapped_column(String(48), nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     start_gate_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     finish_gate_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)

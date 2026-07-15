@@ -23,7 +23,7 @@ export type WorkspaceCalendar = {
   updated_at: string
 }
 
-export type ProjectPhaseKey = 'discover' | 'plan' | 'deliver' | 'close'
+export type ProjectPhaseKey = string
 export type ProjectPhaseColor = 'sky' | 'indigo' | 'emerald' | 'amber'
 
 export type WorkspaceProjectPhaseDefinition = {
@@ -31,6 +31,8 @@ export type WorkspaceProjectPhaseDefinition = {
   name: string
   color: ProjectPhaseColor
   position: number
+  retired: boolean
+  built_in: boolean
 }
 
 export type WorkspaceProjectPhaseDefinitions = {
@@ -142,7 +144,7 @@ export function useUpdateWorkspaceProjectPhaseDefinitions() {
       items,
       revision,
     }: {
-      items: Array<Omit<WorkspaceProjectPhaseDefinition, 'position'>>
+      items: Array<Pick<WorkspaceProjectPhaseDefinition, 'key' | 'name' | 'color'>>
       revision: number
     }) =>
       api<WorkspaceProjectPhaseDefinitions>(
@@ -170,5 +172,75 @@ export function useUpdateWorkspaceProjectPhaseDefinitions() {
         queryClient.invalidateQueries({ queryKey: workspaceCalendarKey }),
       ])
     },
+  })
+}
+
+function usePhaseDefinitionsMutation() {
+  const queryClient = useQueryClient()
+  return {
+    onSuccess: async (definitions: WorkspaceProjectPhaseDefinitions) => {
+      queryClient.setQueryData(workspaceProjectPhaseDefinitionsKey, definitions)
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: adminWorkspaceProfileKey }),
+        queryClient.invalidateQueries({ queryKey: workspaceProfileKey }),
+        queryClient.invalidateQueries({ queryKey: workspaceCalendarKey }),
+        queryClient.invalidateQueries({ queryKey: ['project-phases'] }),
+      ])
+    },
+    onError: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: workspaceProjectPhaseDefinitionsKey }),
+        queryClient.invalidateQueries({ queryKey: adminWorkspaceProfileKey }),
+        queryClient.invalidateQueries({ queryKey: workspaceProfileKey }),
+        queryClient.invalidateQueries({ queryKey: workspaceCalendarKey }),
+      ])
+    },
+  }
+}
+
+export function useCreateWorkspaceProjectPhaseDefinition() {
+  const callbacks = usePhaseDefinitionsMutation()
+  return useMutation({
+    mutationFn: ({
+      name,
+      color,
+      revision,
+    }: {
+      name: string
+      color: ProjectPhaseColor
+      revision: number
+    }) =>
+      api<WorkspaceProjectPhaseDefinitions>(
+        '/api/v1/admin/workspace/project-phase-definitions',
+        {
+          method: 'POST',
+          headers: { 'If-Match': `"${revision}"` },
+          body: JSON.stringify({ name, color }),
+        },
+      ),
+    ...callbacks,
+  })
+}
+
+export function useSetWorkspaceProjectPhaseRetired() {
+  const callbacks = usePhaseDefinitionsMutation()
+  return useMutation({
+    mutationFn: ({
+      phaseKey,
+      retired,
+      revision,
+    }: {
+      phaseKey: string
+      retired: boolean
+      revision: number
+    }) =>
+      api<WorkspaceProjectPhaseDefinitions>(
+        `/api/v1/admin/workspace/project-phase-definitions/${phaseKey}/${retired ? 'retire' : 'restore'}`,
+        {
+          method: 'POST',
+          headers: { 'If-Match': `"${revision}"` },
+        },
+      ),
+    ...callbacks,
   })
 }

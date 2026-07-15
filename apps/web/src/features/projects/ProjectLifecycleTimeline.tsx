@@ -71,7 +71,7 @@ export function ProjectLifecycleTimeline({ projectId }: { projectId: string }) {
     )
   }
 
-  const active = phases.data.items.filter((phase) => phase.active)
+  const active = phases.data.items.filter((phase) => phase.active && !phase.retired)
   if (active.length === 0) return null
   const today = todayISO()
 

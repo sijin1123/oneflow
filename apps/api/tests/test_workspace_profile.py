@@ -252,3 +252,132 @@ async def test_workspace_phase_definitions_validate_and_require_admin(client, ap
         headers={"If-Match": '"1"'},
     )
     assert denied.status_code == 403
+
+
+async def test_workspace_custom_phase_create_retire_restore_and_key_immutability(client):
+    created = await client.post(
+        "/api/v1/admin/workspace/project-phase-definitions",
+        json={"name": "검증", "color": "sky"},
+        headers={"If-Match": '"1"'},
+    )
+    assert created.status_code == 201, created.text
+    assert created.headers["etag"] == '"2"'
+    custom = created.json()["items"][-1]
+    assert custom["key"].startswith("custom_")
+    assert len(custom["key"]) == 39
+    assert custom["built_in"] is False
+    assert custom["retired"] is False
+    assert custom["position"] == 4
+
+    duplicate = await client.post(
+        "/api/v1/admin/workspace/project-phase-definitions",
+        json={"name": " 검증 ", "color": "amber"},
+        headers={"If-Match": '"2"'},
+    )
+    assert duplicate.status_code == 422
+
+    missing_custom = await client.patch(
+        "/api/v1/admin/workspace/project-phase-definitions",
+        json={
+            "items": [
+                {"key": item["key"], "name": item["name"], "color": item["color"]}
+                for item in created.json()["items"]
+                if item["key"] != custom["key"]
+            ]
+        },
+        headers={"If-Match": '"2"'},
+    )
+    assert missing_custom.status_code == 422
+    assert missing_custom.json()["detail"] == (
+        "items must contain every current phase key exactly once"
+    )
+
+    built_in = await client.post(
+        "/api/v1/admin/workspace/project-phase-definitions/discover/retire",
+        headers={"If-Match": '"2"'},
+    )
+    assert built_in.status_code == 422
+    retired = await client.post(
+        f"/api/v1/admin/workspace/project-phase-definitions/{custom['key']}/retire",
+        headers={"If-Match": '"2"'},
+    )
+    assert retired.status_code == 200, retired.text
+    assert retired.headers["etag"] == '"3"'
+    assert retired.json()["items"][-1]["retired"] is True
+
+    retired_noop = await client.post(
+        f"/api/v1/admin/workspace/project-phase-definitions/{custom['key']}/retire",
+        headers={"If-Match": '"3"'},
+    )
+    assert retired_noop.status_code == 200
+    assert retired_noop.headers["etag"] == '"3"'
+
+    restored = await client.post(
+        f"/api/v1/admin/workspace/project-phase-definitions/{custom['key']}/restore",
+        headers={"If-Match": '"3"'},
+    )
+    assert restored.status_code == 200, restored.text
+    assert restored.headers["etag"] == '"4"'
+    restored_custom = next(
+        item for item in restored.json()["items"] if item["key"] == custom["key"]
+    )
+    assert restored_custom["retired"] is False
+    assert restored_custom["position"] == 4
+
+
+async def test_workspace_custom_phase_mutations_require_admin_and_match(client, app):
+    missing_match = await client.post(
+        "/api/v1/admin/workspace/project-phase-definitions",
+        json={"name": "검증", "color": "sky"},
+    )
+    assert missing_match.status_code == 428
+    async with app.state.sessionmaker() as session, session.begin():
+        await session.execute(text("UPDATE users SET is_admin = false"))
+    denied = await client.post(
+        "/api/v1/admin/workspace/project-phase-definitions",
+        json={"name": "검증", "color": "sky"},
+        headers={"If-Match": '"1"'},
+    )
+    assert denied.status_code == 403
+
+
+async def test_workspace_custom_phase_active_bound_applies_to_create_and_restore(client):
+    custom_keys: list[str] = []
+    revision = 1
+    for index in range(8):
+        response = await client.post(
+            "/api/v1/admin/workspace/project-phase-definitions",
+            json={"name": f"Custom {index + 1}", "color": "sky"},
+            headers={"If-Match": f'"{revision}"'},
+        )
+        assert response.status_code == 201, response.text
+        revision += 1
+        custom_keys.append(response.json()["items"][3 + index + 1]["key"])
+
+    overflow = await client.post(
+        "/api/v1/admin/workspace/project-phase-definitions",
+        json={"name": "Custom 9", "color": "amber"},
+        headers={"If-Match": f'"{revision}"'},
+    )
+    assert overflow.status_code == 422
+    assert overflow.json()["detail"] == "active phases cannot exceed 12"
+
+    retired = await client.post(
+        f"/api/v1/admin/workspace/project-phase-definitions/{custom_keys[0]}/retire",
+        headers={"If-Match": f'"{revision}"'},
+    )
+    assert retired.status_code == 200
+    revision += 1
+    replacement = await client.post(
+        "/api/v1/admin/workspace/project-phase-definitions",
+        json={"name": "Replacement", "color": "amber"},
+        headers={"If-Match": f'"{revision}"'},
+    )
+    assert replacement.status_code == 201
+    revision += 1
+    restore_overflow = await client.post(
+        f"/api/v1/admin/workspace/project-phase-definitions/{custom_keys[0]}/restore",
+        headers={"If-Match": f'"{revision}"'},
+    )
+    assert restore_overflow.status_code == 422
+    assert restore_overflow.json()["detail"] == "active phases cannot exceed 12"

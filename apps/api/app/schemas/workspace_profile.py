@@ -1,10 +1,14 @@
 import uuid
 from datetime import date, datetime
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from app.models.workspace_profile import PROJECT_PHASE_KEYS
+from app.models.workspace_profile import (
+    MAX_ACTIVE_PROJECT_PHASES,
+    MAX_PROJECT_PHASE_DEFINITIONS,
+    PROJECT_PHASE_KEYS,
+)
 
 
 class WorkspaceIdentityRead(BaseModel):
@@ -64,8 +68,65 @@ class WorkspaceCalendarUpdate(BaseModel):
         return normalized
 
 
-ProjectPhaseKey = Literal["discover", "plan", "deliver", "close"]
+ProjectPhaseKey = Annotated[
+    str,
+    Field(pattern=r"^(discover|plan|deliver|close|custom_[0-9a-f]{32})$", max_length=48),
+]
 ProjectPhaseColor = Literal["sky", "indigo", "emerald", "amber"]
+
+
+def _validate_phase_collection(
+    items: list["WorkspaceProjectPhaseDefinitionStored"],
+) -> list["WorkspaceProjectPhaseDefinitionStored"]:
+    keys = [item.key for item in items]
+    if len(keys) != len(set(keys)):
+        raise ValueError("phase keys must be unique")
+    if not set(PROJECT_PHASE_KEYS).issubset(keys):
+        raise ValueError("items must contain every built-in phase key")
+    if any(item.retired for item in items if item.key in PROJECT_PHASE_KEYS):
+        raise ValueError("built-in phases cannot be retired")
+    retired_seen = False
+    for item in items:
+        if item.retired:
+            retired_seen = True
+        elif retired_seen:
+            raise ValueError("active phases must appear before retired phases")
+    if len({item.name.casefold() for item in items}) != len(items):
+        raise ValueError("phase names must be unique ignoring case")
+    if sum(not item.retired for item in items) > MAX_ACTIVE_PROJECT_PHASES:
+        raise ValueError(f"active phases cannot exceed {MAX_ACTIVE_PROJECT_PHASES}")
+    return items
+
+
+class WorkspaceProjectPhaseDefinitionStored(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    key: ProjectPhaseKey
+    name: str
+    color: ProjectPhaseColor
+    retired: bool = False
+
+    @field_validator("name")
+    @classmethod
+    def _name(cls, value: str) -> str:
+        value = value.strip()
+        if not 1 <= len(value) <= 40:
+            raise ValueError("name must be 1-40 chars after trim")
+        return value
+
+
+class WorkspaceProjectPhaseDefinitionsStored(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    items: list[WorkspaceProjectPhaseDefinitionStored] = Field(
+        min_length=len(PROJECT_PHASE_KEYS),
+        max_length=MAX_PROJECT_PHASE_DEFINITIONS,
+    )
+
+    @field_validator("items")
+    @classmethod
+    def _items(
+        cls, value: list[WorkspaceProjectPhaseDefinitionStored]
+    ) -> list[WorkspaceProjectPhaseDefinitionStored]:
+        return _validate_phase_collection(value)
 
 
 class WorkspaceProjectPhaseDefinitionRead(BaseModel):
@@ -73,6 +134,8 @@ class WorkspaceProjectPhaseDefinitionRead(BaseModel):
     name: str
     color: ProjectPhaseColor
     position: int
+    retired: bool
+    built_in: bool
 
 
 class WorkspaceProjectPhaseDefinitionsRead(BaseModel):
@@ -100,13 +163,32 @@ class WorkspaceProjectPhaseDefinitionUpdate(BaseModel):
 
 class WorkspaceProjectPhaseDefinitionsUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    items: list[WorkspaceProjectPhaseDefinitionUpdate]
+    items: list[WorkspaceProjectPhaseDefinitionUpdate] = Field(
+        min_length=len(PROJECT_PHASE_KEYS),
+        max_length=MAX_PROJECT_PHASE_DEFINITIONS,
+    )
 
     @model_validator(mode="after")
     def _items(self) -> "WorkspaceProjectPhaseDefinitionsUpdate":
         keys = [item.key for item in self.items]
-        if len(keys) != len(PROJECT_PHASE_KEYS) or set(keys) != set(PROJECT_PHASE_KEYS):
-            raise ValueError("items must contain each stable phase key exactly once")
+        if len(keys) != len(set(keys)):
+            raise ValueError("phase keys must be unique")
+        if not set(PROJECT_PHASE_KEYS).issubset(keys):
+            raise ValueError("items must contain every built-in phase key")
         if len({item.name.casefold() for item in self.items}) != len(self.items):
             raise ValueError("phase names must be unique ignoring case")
         return self
+
+
+class WorkspaceProjectPhaseDefinitionCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    name: str
+    color: ProjectPhaseColor
+
+    @field_validator("name")
+    @classmethod
+    def _name(cls, value: str) -> str:
+        value = value.strip()
+        if not 1 <= len(value) <= 40:
+            raise ValueError("name must be 1-40 chars after trim")
+        return value

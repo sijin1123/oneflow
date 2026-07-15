@@ -12,39 +12,38 @@ from app.db.session import get_session
 from app.models.project import Project
 from app.models.project_phase import ProjectPhase
 from app.models.user import User
-from app.models.workspace_profile import WorkspaceProfile
+from app.models.workspace_profile import PROJECT_PHASE_KEYS, WorkspaceProfile
 from app.schemas.project_phase import (
     ProjectPhaseGateRead,
     ProjectPhaseList,
     ProjectPhasePatch,
     ProjectPhaseRead,
 )
-from app.schemas.workspace_profile import WorkspaceProjectPhaseDefinitionsUpdate
+from app.schemas.workspace_profile import WorkspaceProjectPhaseDefinitionStored
+from app.services.project_phase_definitions import parse_phase_definitions
 
 router = APIRouter()
 
 
-def _definitions(row: WorkspaceProfile) -> list[dict[str, str]]:
+def _definitions(row: WorkspaceProfile) -> list[WorkspaceProjectPhaseDefinitionStored]:
     try:
-        definitions = WorkspaceProjectPhaseDefinitionsUpdate(
-            items=row.project_phase_definitions
-        ).items
+        definitions = parse_phase_definitions(row.project_phase_definitions)
     except ValueError as error:
         raise HTTPException(
             status_code=500,
             detail="workspace project phase definitions are invalid",
         ) from error
-    return [definition.model_dump() for definition in definitions]
+    return definitions
 
 
 def _read(
-    definition: dict[str, str],
+    definition: WorkspaceProjectPhaseDefinitionStored,
     row: ProjectPhase | None,
     position: int,
 ) -> ProjectPhaseRead:
-    key = definition["key"]
-    name = definition["name"]
-    color = definition["color"]
+    key = definition.key
+    name = definition.name
+    color = definition.color
     active = False if row is None else row.is_active
     start_gate_active = False if row is None else row.start_gate_active
     finish_gate_active = False if row is None else row.finish_gate_active
@@ -71,6 +70,8 @@ def _read(
             date=end_date if active and finish_gate_active else None,
         ),
         version=0 if row is None else row.version,
+        retired=definition.retired,
+        built_in=definition.key in PROJECT_PHASE_KEYS,
     )
 
 
@@ -217,7 +218,7 @@ async def list_project_phases(
     )
     by_key = {row.key: row for row in rows}
     items = [
-        _read(definition, by_key.get(definition["key"]), position)
+        _read(definition, by_key.get(definition.key), position)
         for position, definition in enumerate(definitions)
     ]
     return ProjectPhaseList(items=items, total=len(items))
@@ -250,10 +251,14 @@ async def patch_project_phase(
     if workspace is None:
         raise HTTPException(status_code=500, detail="workspace profile is missing")
     definitions = _definitions(workspace)
-    definitions_by_key = {definition["key"]: definition for definition in definitions}
-    phase_keys = [definition["key"] for definition in definitions]
+    definitions_by_key = {definition.key: definition for definition in definitions}
+    active_definitions = [definition for definition in definitions if not definition.retired]
+    active_definitions_by_key = {definition.key: definition for definition in active_definitions}
+    phase_keys = [definition.key for definition in active_definitions]
     if phase_key not in definitions_by_key:
         raise HTTPException(status_code=404, detail="not found")
+    if phase_key not in active_definitions_by_key:
+        raise HTTPException(status_code=409, detail="phase is retired")
     position_by_key = {key: position for position, key in enumerate(phase_keys)}
     rows = (
         (await session.execute(select(ProjectPhase).where(ProjectPhase.project_id == project_id)))

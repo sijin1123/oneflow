@@ -102,10 +102,10 @@ const projectRollups = {
 const projects: ProjectList = { items: [{ ...project, ...projectRollups }], total: 1 }
 const inactiveProjectPhases: ProjectPhaseList = {
   items: [
-    { key: 'discover', name: '발견', color: 'sky', position: 0, active: false, start_date: null, end_date: null, start_gate: { kind: 'start', name: '발견 시작 게이트', active: false, date: null }, finish_gate: { kind: 'finish', name: '발견 완료 게이트', active: false, date: null }, version: 0 },
-    { key: 'plan', name: '계획', color: 'indigo', position: 1, active: false, start_date: null, end_date: null, start_gate: { kind: 'start', name: '계획 시작 게이트', active: false, date: null }, finish_gate: { kind: 'finish', name: '계획 완료 게이트', active: false, date: null }, version: 0 },
-    { key: 'deliver', name: '실행', color: 'emerald', position: 2, active: false, start_date: null, end_date: null, start_gate: { kind: 'start', name: '실행 시작 게이트', active: false, date: null }, finish_gate: { kind: 'finish', name: '실행 완료 게이트', active: false, date: null }, version: 0 },
-    { key: 'close', name: '마감', color: 'amber', position: 3, active: false, start_date: null, end_date: null, start_gate: { kind: 'start', name: '마감 시작 게이트', active: false, date: null }, finish_gate: { kind: 'finish', name: '마감 완료 게이트', active: false, date: null }, version: 0 },
+    { key: 'discover', name: '발견', color: 'sky', position: 0, active: false, start_date: null, end_date: null, start_gate: { kind: 'start', name: '발견 시작 게이트', active: false, date: null }, finish_gate: { kind: 'finish', name: '발견 완료 게이트', active: false, date: null }, version: 0, retired: false, built_in: true },
+    { key: 'plan', name: '계획', color: 'indigo', position: 1, active: false, start_date: null, end_date: null, start_gate: { kind: 'start', name: '계획 시작 게이트', active: false, date: null }, finish_gate: { kind: 'finish', name: '계획 완료 게이트', active: false, date: null }, version: 0, retired: false, built_in: true },
+    { key: 'deliver', name: '실행', color: 'emerald', position: 2, active: false, start_date: null, end_date: null, start_gate: { kind: 'start', name: '실행 시작 게이트', active: false, date: null }, finish_gate: { kind: 'finish', name: '실행 완료 게이트', active: false, date: null }, version: 0, retired: false, built_in: true },
+    { key: 'close', name: '마감', color: 'amber', position: 3, active: false, start_date: null, end_date: null, start_gate: { kind: 'start', name: '마감 시작 게이트', active: false, date: null }, finish_gate: { kind: 'finish', name: '마감 완료 게이트', active: false, date: null }, version: 0, retired: false, built_in: true },
   ],
   total: 4,
 }
@@ -6634,10 +6634,10 @@ test('워크스페이스 프로젝트 단계 정의는 충돌을 복구하고 �
   await mockProjectOverview(page)
   let definitions: WorkspaceProjectPhaseDefinitions = {
     items: [
-      { key: 'discover' as const, name: '발견', color: 'sky' as const, position: 0 },
-      { key: 'plan' as const, name: '계획', color: 'indigo' as const, position: 1 },
-      { key: 'deliver' as const, name: '실행', color: 'emerald' as const, position: 2 },
-      { key: 'close' as const, name: '마감', color: 'amber' as const, position: 3 },
+      { key: 'discover', name: '발견', color: 'sky', position: 0, retired: false, built_in: true },
+      { key: 'plan', name: '계획', color: 'indigo', position: 1, retired: false, built_in: true },
+      { key: 'deliver', name: '실행', color: 'emerald', position: 2, retired: false, built_in: true },
+      { key: 'close', name: '마감', color: 'amber', position: 3, retired: false, built_in: true },
     ],
     revision: 1,
     updated_by_user_id: null as string | null,
@@ -6703,7 +6703,12 @@ test('워크스페이스 프로젝트 단계 정의는 충돌을 복구하고 �
     ])
     definitions = {
       ...definitions,
-      items: sent.items.map((item, position) => ({ ...item, position })),
+      items: sent.items.map((item, position) => ({
+        ...item,
+        position,
+        retired: false,
+        built_in: true,
+      })),
       revision: 3,
       updated_by_user_id: 'me-1',
       updated_by_name: 'Dev User',
@@ -6766,6 +6771,158 @@ test('워크스페이스 프로젝트 단계 정의는 충돌을 복구하고 �
   await expectNoHorizontalOverflow(page)
   await page.screenshot({
     path: '../../docs/screenshots/redevelopment/workspace-phase-definitions-ui/mobile-bottom.png',
+    fullPage: true,
+  })
+})
+
+test('custom 프로젝트 단계는 생성하고 은퇴해도 프로젝트 데이터를 보존한 채 복원된다', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 })
+  await mockApi(page)
+  const customKey = 'custom_0123456789abcdef0123456789abcdef'
+  let definitions: WorkspaceProjectPhaseDefinitions = {
+    items: [
+      { key: 'discover', name: '발견', color: 'sky', position: 0, retired: false, built_in: true },
+      { key: 'plan', name: '계획', color: 'indigo', position: 1, retired: false, built_in: true },
+      { key: 'deliver', name: '실행', color: 'emerald', position: 2, retired: false, built_in: true },
+      { key: 'close', name: '마감', color: 'amber', position: 3, retired: false, built_in: true },
+    ],
+    revision: 1,
+    updated_by_user_id: null,
+    updated_by_name: null,
+    updated_at: '2026-07-01T00:00:00Z',
+  }
+  const phaseList = (): ProjectPhaseList => ({
+    items: definitions.items.map((definition) => ({
+      ...definition,
+      active: definition.key === customKey,
+      start_date: definition.key === customKey ? '2026-08-03' : null,
+      end_date: definition.key === customKey ? '2026-08-07' : null,
+      start_gate: {
+        kind: 'start',
+        name: `${definition.name} 시작 게이트`,
+        active: definition.key === customKey,
+        date: definition.key === customKey ? '2026-08-03' : null,
+      },
+      finish_gate: {
+        kind: 'finish',
+        name: `${definition.name} 완료 게이트`,
+        active: false,
+        date: null,
+      },
+      version: definition.key === customKey ? 3 : 0,
+    })),
+    total: definitions.items.length,
+  })
+
+  await page.route('**/api/v1/workspace/project-phase-definitions', (route) =>
+    route.fulfill({ json: definitions, headers: { ETag: `"${definitions.revision}"` } }),
+  )
+  await page.route('**/api/v1/admin/workspace/project-phase-definitions**', async (route) => {
+    const path = new URL(route.request().url()).pathname
+    const expected = `"${definitions.revision}"`
+    expect(route.request().headers()['if-match']).toBe(expected)
+    if (path.endsWith('/retire')) {
+      definitions = {
+        ...definitions,
+        items: definitions.items.map((item) =>
+          item.key === customKey ? { ...item, retired: true } : item,
+        ),
+        revision: definitions.revision + 1,
+      }
+    } else if (path.endsWith('/restore')) {
+      definitions = {
+        ...definitions,
+        items: definitions.items.map((item) =>
+          item.key === customKey ? { ...item, retired: false } : item,
+        ),
+        revision: definitions.revision + 1,
+      }
+    } else {
+      const body = route.request().postDataJSON() as { name: string; color: 'sky' }
+      definitions = {
+        ...definitions,
+        items: [
+          ...definitions.items,
+          {
+            key: customKey,
+            name: body.name,
+            color: body.color,
+            position: definitions.items.length,
+            retired: false,
+            built_in: false,
+          },
+        ],
+        revision: definitions.revision + 1,
+        updated_by_user_id: 'me-1',
+        updated_by_name: 'Dev User',
+        updated_at: '2026-07-15T15:00:00Z',
+      }
+    }
+    await route.fulfill({ json: definitions, headers: { ETag: `"${definitions.revision}"` } })
+  })
+  await page.route('**/api/v1/projects/*/phases**', (route) =>
+    route.fulfill({ json: phaseList() }),
+  )
+
+  await page.goto('/admin/project-phases')
+  await page.getByLabel('새 단계 이름').fill('검증')
+  await page.getByRole('button', { name: '단계 추가' }).click()
+  await expect(page.getByLabel('5번째 단계 이름')).toHaveValue('검증')
+  await expect(page.getByText('현재 활성 5/12 · 전체 5/32')).toBeVisible()
+  await expect(page.getByText('revision 2')).toBeVisible()
+
+  page.once('dialog', (dialog) => dialog.accept())
+  await page.getByRole('button', { name: '검증 단계 은퇴' }).click()
+  await expect(page.getByRole('heading', { name: '은퇴한 단계' })).toBeVisible()
+  await expect(page.getByRole('button', { name: '복원' })).toBeVisible()
+  await expect(page.getByText('revision 3')).toBeVisible()
+
+  await page.goto(`/projects/${project.id}/settings?tab=lifecycle`)
+  const panel = page.getByRole('region', { name: '프로젝트 단계 설정' })
+  await expect(panel.getByRole('heading', { name: '은퇴한 Workspace 단계' })).toBeVisible()
+  await expect(panel).toContainText('2026-08-03 - 2026-08-07 · version 3')
+  await expect(panel).toContainText('보존됨')
+  await expect(panel).toContainText('활성 0/4')
+
+  await page.goto(`/projects/${project.id}/overview`)
+  await expect(page.getByRole('region', { name: '프로젝트 수명주기' })).toHaveCount(0)
+
+  await page.goto('/admin/project-phases')
+  await page.getByRole('button', { name: '복원' }).click()
+  await expect(page.getByLabel('5번째 단계 이름')).toHaveValue('검증')
+  await expect(page.getByRole('heading', { name: '은퇴한 단계' })).toHaveCount(0)
+  await expect(page.getByText('revision 4')).toBeVisible()
+  await expect(page.getByRole('button', { name: '검증 단계 은퇴' })).toBeEnabled()
+  await page.locator('[data-shell-scroll-region]').evaluate((element) =>
+    element.scrollTo({ top: 0, behavior: 'instant' }),
+  )
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/dynamic-project-phases-ui/desktop.png',
+    fullPage: true,
+  })
+
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.reload()
+  await expect(page.getByLabel('5번째 단계 이름')).toHaveValue('검증')
+  await expectNoHorizontalOverflow(page)
+  const dockAvoidsVisibleControls = () => page.locator('main [role="radiogroup"] label').evaluateAll((controls) => {
+    const dock = document.querySelector<HTMLElement>('[data-quick-dock]')
+    if (!dock) return false
+    const dockBox = dock.getBoundingClientRect()
+    return controls
+      .map((control) => control.getBoundingClientRect())
+      .filter((box) => box.width > 0 && box.height > 0)
+      .every((box) => !(
+        box.left < dockBox.right &&
+        box.right > dockBox.left &&
+        box.top < dockBox.bottom &&
+        box.bottom > dockBox.top
+      ))
+  })
+  await expect.poll(dockAvoidsVisibleControls).toBe(true)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/dynamic-project-phases-ui/mobile.png',
     fullPage: true,
   })
 })
@@ -13472,6 +13629,8 @@ test('프로젝트 소유자는 단계를 편집하고 Overview에서 현재 수
         start_gate: { kind: 'start', name: '발견 시작 게이트', active: true, date: discoverStart },
         finish_gate: { kind: 'finish', name: '발견 완료 게이트', active: true, date: discoverEnd },
         version: 1,
+        retired: false,
+        built_in: true,
       },
       {
         key: 'plan',
@@ -13484,6 +13643,8 @@ test('프로젝트 소유자는 단계를 편집하고 Overview에서 현재 수
         start_gate: { kind: 'start', name: '계획 시작 게이트', active: true, date: planStart },
         finish_gate: { kind: 'finish', name: '계획 완료 게이트', active: false, date: null },
         version: 1,
+        retired: false,
+        built_in: true,
       },
       {
         key: 'deliver',
@@ -13496,6 +13657,8 @@ test('프로젝트 소유자는 단계를 편집하고 Overview에서 현재 수
         start_gate: { kind: 'start', name: '실행 시작 게이트', active: false, date: null },
         finish_gate: { kind: 'finish', name: '실행 완료 게이트', active: true, date: deliverEnd },
         version: 1,
+        retired: false,
+        built_in: true,
       },
       {
         key: 'close',
@@ -13508,6 +13671,8 @@ test('프로젝트 소유자는 단계를 편집하고 Overview에서 현재 수
         start_gate: { kind: 'start', name: '마감 시작 게이트', active: false, date: null },
         finish_gate: { kind: 'finish', name: '마감 완료 게이트', active: false, date: null },
         version: 0,
+        retired: false,
+        built_in: true,
       },
     ],
     total: 4,
@@ -13733,6 +13898,8 @@ test('저장된 단계 활성화는 근무일 일정 재배치와 보존 결과�
         start_gate: { kind: 'start', name: '발견 시작 게이트', active: false, date: null },
         finish_gate: { kind: 'finish', name: '발견 완료 게이트', active: false, date: null },
         version: 1,
+        retired: false,
+        built_in: true,
       },
       {
         key: 'plan',
@@ -13745,6 +13912,8 @@ test('저장된 단계 활성화는 근무일 일정 재배치와 보존 결과�
         start_gate: { kind: 'start', name: '계획 시작 게이트', active: false, date: null },
         finish_gate: { kind: 'finish', name: '계획 완료 게이트', active: false, date: null },
         version: 1,
+        retired: false,
+        built_in: true,
       },
       {
         key: 'deliver',
@@ -13757,6 +13926,8 @@ test('저장된 단계 활성화는 근무일 일정 재배치와 보존 결과�
         start_gate: { kind: 'start', name: '실행 시작 게이트', active: false, date: null },
         finish_gate: { kind: 'finish', name: '실행 완료 게이트', active: false, date: null },
         version: 1,
+        retired: false,
+        built_in: true,
       },
       {
         key: 'close',
@@ -13769,6 +13940,8 @@ test('저장된 단계 활성화는 근무일 일정 재배치와 보존 결과�
         start_gate: { kind: 'start', name: '마감 시작 게이트', active: false, date: null },
         finish_gate: { kind: 'finish', name: '마감 완료 게이트', active: false, date: null },
         version: 1,
+        retired: false,
+        built_in: true,
       },
     ],
     total: 4,

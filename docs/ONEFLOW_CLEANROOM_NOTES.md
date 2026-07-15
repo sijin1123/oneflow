@@ -326,3 +326,9 @@ OpenProject/Plane source, API, database schema, package, asset, CSS, DOM hierarc
 OpenProject의 공개 project lifecycle administration 범주에서 사용한 입력은 조직이 단계의 표시명·색상·순서를 관리하고 프로젝트 전반이 같은 단계 어휘와 순서를 사용한다는 공개 제품 행동뿐이다. OneFlow 구현은 자체 안정 키 4개, singleton Workspace revision, admin authorization, PostgreSQL JSONB, owner-only project phase transaction, React Query cache와 기존 Settings tokens를 사용해 독립 설계했다.
 
 OpenProject/Plane source, API, database schema, package, asset, CSS, DOM hierarchy, exact dimensions/colors, wording, 단계 정의 또는 정렬 구현, icons 및 branding은 복사하지 않았다. OneFlow 고유 migration `0089`, exact-key/name/color validation, atomic ETag CAS와 project scheduler consumption을 추가했으며 신규 dependency/environment 변경은 없다. 안정 키나 단계 수를 바꾸는 동적 workflow schema는 별도 기능형 surface로 유지한다. — attested-independent-derivation
+
+## UI-117 Dynamic Workspace Project Phase Schema
+
+OpenProject의 공개 project lifecycle administration 범주에서 사용한 입력은 조직이 수명주기 단계를 추가·비활성화하고 기존 프로젝트 기록을 보존해야 한다는 제품 행동뿐이다. OneFlow 구현은 UI-116의 자체 Workspace revision, built-in 안정 키, per-project optimistic row, 근무 일정 scheduler와 Settings tokens를 확장해 서버 생성 custom key, lazy adoption, retire/restore와 무손실 downgrade guard를 독립 설계했다.
+
+OpenProject/Plane source, API, database schema, package, asset, CSS, DOM hierarchy, exact dimensions/colors, wording, key 형식, retire 구현, icons 또는 branding은 복사하지 않았다. OneFlow 고유 migration `0090`, bounded revisioned definition contract, project-data preservation과 race 회귀 검증을 추가했으며 신규 dependency/environment 변경은 없다. — attested-independent-derivation

@@ -2533,3 +2533,15 @@ Chromium typed mock fixture에서 1440x960과 390x844 viewport를 사용했다. 
 - 검증: API Ruff/format PASS, focused API 21 PASS와 product-code 변경 후 full API 741 PASS(기존 Alembic 경고 1건), migration `0089 -> 0088 -> 0089` 및 constraint-name 검사 PASS, OpenAPI generation/drift PASS, typecheck PASS, lint PASS(기존 Fast Refresh 경고 4건), unit 93, component 8, production build PASS(기존 chunk 경고), focused E2E 1 PASS, CI-mode full E2E 284 PASS + opt-in visual QA 1 skip, clean-room frontend 161/backend 45, npm/pip audit 0 vulnerabilities, diff check와 desktop/mobile visual QA PASS.
 - Chromium 증적은 `docs/screenshots/redevelopment/workspace-phase-definitions-ui/{desktop,mobile,mobile-bottom}.png`에 보존한다. Sol reviewer fallback은 tool-call budget에서 verdict 없이 종료되어 root가 migration/authz/CAS/lock order/scheduler/stale UI와 전체 diff를 재검토했고 P0-P2 잔여 결함을 찾지 못했다.
 - Migration `0089` 적용이 필요하다. 환경변수와 dependency 변경은 없다. **이연 항목**은 안정 키/단계 수 자체를 바꾸는 동적 workflow schema뿐이며, 현재 4단계 기능이나 UI에 dead control로 노출하지 않는다.
+
+---
+
+# UI-117 Dynamic Workspace Project Phase Schema 검증 (2026-07-15)
+
+- **UI 변경**: Workspace `프로젝트 단계` surface에서 custom 단계를 생성하고 built-in과 함께 이름·색상·순서를 편집할 수 있다. Custom 단계는 확인 후 은퇴하고 별도 보존 목록에서 같은 키로 복원한다. Project Settings는 은퇴 단계의 active/date/gate/version을 읽기 전용으로 표시하고, Overview와 자동 일정은 활성 정의만 사용한다. Loading/error/stale, 최대 수량, desktop/mobile과 Quick Dock 비겹침을 실제 control로 검증했다.
+- **기능/API 반영**: migration `0090`은 project phase key를 built-in 또는 서버 생성 `custom_<32 hex>`로 확장하고 Workspace JSONB 정의에 `retired`를 추가한다. Built-in 4개는 삭제·은퇴할 수 없고 custom key는 생성 후 불변이다. Admin create/rename/color/order/retire/restore는 동일 Workspace revision과 strong `If-Match`를 사용하며 active 12개·전체 32개, 이름/키 중복과 active-before-retired 순서를 제한한다.
+- 프로젝트는 정의 조회만으로 row를 대량 생성하지 않고 version 0 inactive 상태를 합성한다. Owner가 처음 변경할 때만 row를 채택한다. Retire는 정의와 project row를 삭제하지 않으며 project write는 409로 차단하고, 복원 후 이전 active/date/gate/version을 그대로 재사용한다. Project update와 retire 경합은 update-before-retire의 보존 또는 retire-before-update의 409 둘 중 하나로 원자 수렴한다.
+- Migration은 custom definition 또는 project row가 있으면 0089 downgrade를 명시적으로 거부해 데이터 손실을 막는다. 실제 PostgreSQL에서 `0089 -> 0090 -> 0089 -> 0090`, server default, custom-data downgrade guard를 확인했다.
+- 검증: API Ruff/format PASS, focused API 34 PASS와 full API 746 PASS(기존 Alembic 경고 1건), OpenAPI generation/drift PASS, typecheck/lint PASS(기존 Fast Refresh 경고 4건), unit 93, component 8, production build PASS(기존 chunk 경고), focused E2E 2 PASS, 최종 full E2E 285 PASS + opt-in visual QA 1 skip, clean-room frontend 161/backend 45, npm/pip audit 0 vulnerabilities와 desktop/mobile visual QA PASS.
+- Chromium 증적은 `docs/screenshots/redevelopment/dynamic-project-phases-ui/{desktop,mobile}.png`에 보존한다. Sol reviewer fallback은 독립 verdict 전에 종료되어 root가 migration downgrade guard, admin authz/CAS, project/workspace lock order, retire race, lazy adoption, scheduler와 전체 diff를 재검토했고 잔여 P0-P2 결함을 찾지 못했다.
+- Migration `0090` 적용이 필요하다. 환경변수, 설정 UI 노출 대상, dependency 변경은 없다. **이연 항목**은 없으며 PR CI와 main integration 결과만 merge 후 기록한다.
