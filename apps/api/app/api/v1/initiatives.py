@@ -17,6 +17,9 @@ from app.schemas.initiative import (
     InitiativeConnect,
     InitiativeCreate,
     InitiativeList,
+    InitiativeOwnerCandidateList,
+    InitiativeOwnerCandidateRead,
+    InitiativeOwnerTransfer,
     InitiativeProjectRead,
     InitiativeRead,
     InitiativeUpdate,
@@ -81,6 +84,106 @@ async def _require_creator(
     return ini
 
 
+async def _claimable_by(session: AsyncSession, initiative_id: uuid.UUID, user: User) -> bool:
+    return (
+        await session.execute(
+            select(func.count())
+            .select_from(ProjectMember)
+            .join(
+                InitiativeProject,
+                InitiativeProject.project_id == ProjectMember.project_id,
+            )
+            .where(
+                InitiativeProject.initiative_id == initiative_id,
+                ProjectMember.user_id == user.id,
+                ProjectMember.role == "owner",
+            )
+        )
+    ).scalar_one() > 0
+
+
+async def _owner_candidates(
+    session: AsyncSession, initiative_id: uuid.UUID, user: User
+) -> list[InitiativeOwnerCandidateRead]:
+    visible_connected_projects = select(InitiativeProject.project_id).where(
+        InitiativeProject.initiative_id == initiative_id,
+        InitiativeProject.project_id.in_(_membership(user)),
+    )
+    rows = (
+        await session.execute(
+            select(User.id, User.display_name)
+            .join(ProjectMember, ProjectMember.user_id == User.id)
+            .where(
+                User.is_active.is_(True),
+                User.id != user.id,
+                ProjectMember.project_id.in_(visible_connected_projects),
+            )
+            .distinct()
+            .order_by(User.display_name.asc(), User.id.asc())
+        )
+    ).all()
+    return [
+        InitiativeOwnerCandidateRead(user_id=user_id, display_name=display_name)
+        for user_id, display_name in rows
+    ]
+
+
+async def _lock_eligible_owner_candidate(
+    session: AsyncSession,
+    initiative_id: uuid.UUID,
+    current_owner: User,
+    candidate_id: uuid.UUID,
+) -> bool:
+    candidate = (
+        await session.execute(
+            select(User.id)
+            .where(User.id == candidate_id, User.is_active.is_(True))
+            .with_for_update()
+        )
+    ).scalar_one_or_none()
+    if candidate is None or candidate == current_owner.id:
+        return False
+    membership = (
+        await session.execute(
+            select(ProjectMember.id)
+            .join(
+                InitiativeProject,
+                InitiativeProject.project_id == ProjectMember.project_id,
+            )
+            .where(
+                InitiativeProject.initiative_id == initiative_id,
+                ProjectMember.user_id == candidate_id,
+                ProjectMember.project_id.in_(_membership(current_owner)),
+            )
+            .with_for_update(of=ProjectMember)
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    return membership is not None
+
+
+async def _lock_claimable_membership(
+    session: AsyncSession, initiative_id: uuid.UUID, user: User
+) -> bool:
+    membership = (
+        await session.execute(
+            select(ProjectMember.id)
+            .join(
+                InitiativeProject,
+                InitiativeProject.project_id == ProjectMember.project_id,
+            )
+            .where(
+                InitiativeProject.initiative_id == initiative_id,
+                ProjectMember.user_id == user.id,
+                ProjectMember.role == "owner",
+            )
+            .with_for_update(of=ProjectMember)
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    return membership is not None
+
+
 async def _read_one(session: AsyncSession, ini: Initiative, user: User) -> InitiativeRead:
     total_connected = (
         await session.execute(
@@ -104,16 +207,25 @@ async def _read_one(session: AsyncSession, ini: Initiative, user: User) -> Initi
         )
     ).all()
     owner_name = None
+    owner_active = False
     if ini.owner_id is not None:
-        owner_name = (
-            await session.execute(select(User.display_name).where(User.id == ini.owner_id))
-        ).scalar_one_or_none()
+        owner = (
+            await session.execute(
+                select(User.display_name, User.is_active).where(User.id == ini.owner_id)
+            )
+        ).one_or_none()
+        if owner is not None:
+            owner_name, owner_active = owner
+    can_claim_ownership = False
+    if not owner_active:
+        can_claim_ownership = await _claimable_by(session, ini.id, user)
     return InitiativeRead(
         id=ini.id,
         name=ini.name,
         description=ini.description,
         owner_id=ini.owner_id,
         owner_name=owner_name,
+        owner_active=owner_active,
         state=ini.state,
         start_date=ini.start_date,
         target_date=ini.target_date,
@@ -122,6 +234,7 @@ async def _read_one(session: AsyncSession, ini: Initiative, user: User) -> Initi
         health_updated_by=ini.health_updated_by,
         health_updated_at=ini.health_updated_at,
         is_mine=ini.owner_id == user.id,
+        can_claim_ownership=can_claim_ownership,
         connected_project_count=total_connected,
         projects=[
             InitiativeProjectRead(
@@ -178,6 +291,70 @@ async def create_initiative(
     )
     session.add(ini)
     await session.commit()
+    return await _read_one(session, ini, user)
+
+
+@router.get(
+    "/initiatives/{initiative_id}/owner-candidates",
+    response_model=InitiativeOwnerCandidateList,
+)
+async def list_owner_candidates(
+    initiative_id: uuid.UUID,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+) -> InitiativeOwnerCandidateList:
+    await _require_creator(session, initiative_id, user)
+    items = await _owner_candidates(session, initiative_id, user)
+    return InitiativeOwnerCandidateList(items=items, total=len(items))
+
+
+@router.post("/initiatives/{initiative_id}/owner", response_model=InitiativeRead)
+async def transfer_ownership(
+    initiative_id: uuid.UUID,
+    body: InitiativeOwnerTransfer,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+) -> InitiativeRead:
+    ini = (
+        await session.execute(
+            select(Initiative).where(Initiative.id == initiative_id).with_for_update()
+        )
+    ).scalar_one_or_none()
+    if ini is None or ini.owner_id != user.id:
+        raise HTTPException(status_code=404, detail="not found")
+    if not await _lock_eligible_owner_candidate(session, initiative_id, user, body.owner_id):
+        raise HTTPException(status_code=422, detail="owner is not an eligible active member")
+    ini.owner_id = body.owner_id
+    await session.commit()
+    await session.refresh(ini)
+    return await _read_one(session, ini, user)
+
+
+@router.post("/initiatives/{initiative_id}/owner/claim", response_model=InitiativeRead)
+async def claim_ownership(
+    initiative_id: uuid.UUID,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+) -> InitiativeRead:
+    ini = (
+        await session.execute(
+            select(Initiative).where(Initiative.id == initiative_id).with_for_update()
+        )
+    ).scalar_one_or_none()
+    if ini is None or not await _lock_claimable_membership(session, initiative_id, user):
+        raise HTTPException(status_code=404, detail="not found")
+    owner_active = False
+    if ini.owner_id is not None:
+        owner_active = (
+            await session.execute(
+                select(User.is_active).where(User.id == ini.owner_id).with_for_update()
+            )
+        ).scalar_one_or_none() is True
+    if owner_active:
+        raise HTTPException(status_code=409, detail="initiative already has an active owner")
+    ini.owner_id = user.id
+    await session.commit()
+    await session.refresh(ini)
     return await _read_one(session, ini, user)
 
 

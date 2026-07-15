@@ -4,9 +4,11 @@ Contract: creator-only mutations; visibility = creator OR member of a
 connected project; roll-ups aggregate ONLY the caller's member projects
 (no cross-project leakage beyond the connection count)."""
 
+import asyncio
+
 from sqlalchemy import select
 
-from app.models import Initiative, InitiativeProject, Project
+from app.models import Initiative, InitiativeProject, Project, ProjectMember, User
 from tests.conftest import create_project, create_wp
 
 
@@ -104,6 +106,139 @@ async def test_visibility_via_membership_and_leak_guard(client, app, member_proj
     ).status_code == 404
     assert (await connect(client, ini_id, str(shared_pid))).status_code == 404
     assert (await client.delete(f"/api/v1/initiatives/{ini_id}")).status_code == 404
+
+
+async def test_owner_candidates_and_transfer_are_visibility_scoped(client, app):
+    shared = await create_project(client, key="INIO", name="소유권 프로젝트")
+    shared_second = await create_project(client, key="INI2", name="두 번째 소유권 프로젝트")
+    ini = await create_initiative(client, name="소유권 이전")
+    assert (await connect(client, ini["id"], shared["id"])).status_code == 200
+    assert (await connect(client, ini["id"], shared_second["id"])).status_code == 200
+    async with app.state.sessionmaker() as session, session.begin():
+        eligible = User(email="eligible@oneflow.local", display_name="Eligible")
+        eligible_second = User(email="eligible-second@oneflow.local", display_name="Second")
+        inactive = User(email="inactive@oneflow.local", display_name="Inactive", is_active=False)
+        foreign = User(email="foreign@oneflow.local", display_name="Foreign")
+        foreign_project = Project(key="INIF", name="외부 프로젝트")
+        session.add_all([eligible, eligible_second, inactive, foreign, foreign_project])
+        await session.flush()
+        session.add_all(
+            [
+                ProjectMember(project_id=shared["id"], user_id=eligible.id, role="member"),
+                ProjectMember(
+                    project_id=shared_second["id"], user_id=eligible_second.id, role="member"
+                ),
+                ProjectMember(project_id=shared["id"], user_id=inactive.id, role="member"),
+                ProjectMember(project_id=foreign_project.id, user_id=foreign.id, role="owner"),
+            ]
+        )
+        eligible_id = str(eligible.id)
+        eligible_second_id = str(eligible_second.id)
+        inactive_id = str(inactive.id)
+        foreign_id = str(foreign.id)
+
+    candidates = await client.get(f"/api/v1/initiatives/{ini['id']}/owner-candidates")
+    assert candidates.status_code == 200
+    assert [(row["user_id"], row["display_name"]) for row in candidates.json()["items"]] == [
+        (eligible_id, "Eligible"),
+        (eligible_second_id, "Second"),
+    ]
+    for invalid in (inactive_id, foreign_id, ini["owner_id"]):
+        rejected = await client.post(
+            f"/api/v1/initiatives/{ini['id']}/owner", json={"owner_id": invalid}
+        )
+        assert rejected.status_code == 422
+
+    transferred = await client.post(
+        f"/api/v1/initiatives/{ini['id']}/owner", json={"owner_id": eligible_id}
+    )
+    assert transferred.status_code == 200, transferred.text
+    assert transferred.json()["owner_id"] == eligible_id
+    assert transferred.json()["owner_name"] == "Eligible"
+    assert transferred.json()["is_mine"] is False
+    assert (
+        await client.patch(f"/api/v1/initiatives/{ini['id']}", json={"name": "old owner edit"})
+    ).status_code == 404
+
+
+async def test_concurrent_owner_transfer_has_single_winner(client, app):
+    project = await create_project(client, key="INIR", name="소유권 경쟁 프로젝트")
+    ini = await create_initiative(client, name="소유권 경쟁")
+    assert (await connect(client, ini["id"], project["id"])).status_code == 200
+    async with app.state.sessionmaker() as session, session.begin():
+        first = User(email="first-owner@oneflow.local", display_name="First")
+        second = User(email="second-owner@oneflow.local", display_name="Second")
+        session.add_all([first, second])
+        await session.flush()
+        session.add_all(
+            [
+                ProjectMember(project_id=project["id"], user_id=first.id, role="member"),
+                ProjectMember(project_id=project["id"], user_id=second.id, role="member"),
+            ]
+        )
+        first_id = str(first.id)
+        second_id = str(second.id)
+
+    first_response, second_response = await asyncio.gather(
+        client.post(
+            f"/api/v1/initiatives/{ini['id']}/owner",
+            json={"owner_id": first_id},
+        ),
+        client.post(
+            f"/api/v1/initiatives/{ini['id']}/owner",
+            json={"owner_id": second_id},
+        ),
+    )
+    assert sorted([first_response.status_code, second_response.status_code]) == [200, 404]
+    winner = first_response if first_response.status_code == 200 else second_response
+    listed = (await client.get("/api/v1/initiatives")).json()
+    row = next(item for item in listed["items"] if item["id"] == ini["id"])
+    assert row["owner_id"] == winner.json()["owner_id"]
+
+
+async def test_project_owner_claims_orphan_but_not_active_owner(client, app):
+    project = await create_project(client, key="INIC", name="복구 프로젝트")
+    ini = await create_initiative(client, name="복구 대상")
+    assert (await connect(client, ini["id"], project["id"])).status_code == 200
+    assert (await client.post(f"/api/v1/initiatives/{ini['id']}/owner/claim")).status_code == 409
+
+    async with app.state.sessionmaker() as session, session.begin():
+        row = (
+            await session.execute(select(Initiative).where(Initiative.id == ini["id"]))
+        ).scalar_one()
+        row.owner_id = None
+
+    listed = (await client.get("/api/v1/initiatives")).json()
+    orphan = next(row for row in listed["items"] if row["id"] == ini["id"])
+    assert orphan["owner_id"] is None
+    assert orphan["can_claim_ownership"] is True
+    claimed = await client.post(f"/api/v1/initiatives/{ini['id']}/owner/claim")
+    assert claimed.status_code == 200, claimed.text
+    assert claimed.json()["owner_id"] == ini["owner_id"]
+    assert claimed.json()["is_mine"] is True
+
+
+async def test_plain_member_cannot_claim_inactive_owner(client, app, member_project):
+    async with app.state.sessionmaker() as session, session.begin():
+        owner = await session.get(User, member_project["owner_id"])
+        owner.is_active = False
+        ini = Initiative(name="member cannot claim", owner_id=owner.id)
+        session.add(ini)
+        await session.flush()
+        session.add(
+            InitiativeProject(
+                initiative_id=ini.id,
+                project_id=member_project["project_id"],
+            )
+        )
+        ini_id = str(ini.id)
+    row = next(
+        item
+        for item in (await client.get("/api/v1/initiatives")).json()["items"]
+        if item["id"] == ini_id
+    )
+    assert row["can_claim_ownership"] is False
+    assert (await client.post(f"/api/v1/initiatives/{ini_id}/owner/claim")).status_code == 404
 
 
 async def test_connect_requires_project_membership(client, foreign_project):

@@ -95,6 +95,7 @@ class InitiativeRead(BaseModel):
     description: str | None
     owner_id: uuid.UUID | None
     owner_name: str | None
+    owner_active: bool
     state: str
     start_date: date | None
     target_date: date | None
@@ -105,6 +106,7 @@ class InitiativeRead(BaseModel):
     health_updated_by: uuid.UUID | None
     health_updated_at: datetime | None
     is_mine: bool
+    can_claim_ownership: bool
     # Total connections vs the subset the caller can see — the UI shows
     # "N개 프로젝트 (내가 볼 수 있는 M개)" when they differ.
     connected_project_count: int
@@ -120,3 +122,17 @@ class InitiativeList(BaseModel):
 
 class InitiativeConnect(BaseModel):
     project_id: uuid.UUID
+
+
+class InitiativeOwnerCandidateRead(BaseModel):
+    user_id: uuid.UUID
+    display_name: str
+
+
+class InitiativeOwnerCandidateList(BaseModel):
+    items: list[InitiativeOwnerCandidateRead]
+    total: int
+
+
+class InitiativeOwnerTransfer(BaseModel):
+    owner_id: uuid.UUID

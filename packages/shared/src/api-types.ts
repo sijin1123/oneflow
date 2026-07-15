@@ -840,6 +840,57 @@ export interface paths {
         patch: operations["update_initiative_api_v1_initiatives__initiative_id__patch"];
         trace?: never;
     };
+    "/api/v1/initiatives/{initiative_id}/owner": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Transfer Ownership */
+        post: operations["transfer_ownership_api_v1_initiatives__initiative_id__owner_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/initiatives/{initiative_id}/owner-candidates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Owner Candidates */
+        get: operations["list_owner_candidates_api_v1_initiatives__initiative_id__owner_candidates_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/initiatives/{initiative_id}/owner/claim": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Claim Ownership */
+        post: operations["claim_ownership_api_v1_initiatives__initiative_id__owner_claim_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/initiatives/{initiative_id}/projects": {
         parameters: {
             query?: never;
@@ -4819,6 +4870,31 @@ export interface components {
             /** Total */
             total: number;
         };
+        /** InitiativeOwnerCandidateList */
+        InitiativeOwnerCandidateList: {
+            /** Items */
+            items: components["schemas"]["InitiativeOwnerCandidateRead"][];
+            /** Total */
+            total: number;
+        };
+        /** InitiativeOwnerCandidateRead */
+        InitiativeOwnerCandidateRead: {
+            /** Display Name */
+            display_name: string;
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+        };
+        /** InitiativeOwnerTransfer */
+        InitiativeOwnerTransfer: {
+            /**
+             * Owner Id
+             * Format: uuid
+             */
+            owner_id: string;
+        };
         /**
          * InitiativeProjectRead
          * @description A connected project AS VISIBLE TO THE CALLER (member projects only).
@@ -4838,6 +4914,8 @@ export interface components {
         };
         /** InitiativeRead */
         InitiativeRead: {
+            /** Can Claim Ownership */
+            can_claim_ownership: boolean;
             /** Connected Project Count */
             connected_project_count: number;
             /**
@@ -4864,6 +4942,8 @@ export interface components {
             is_mine: boolean;
             /** Name */
             name: string;
+            /** Owner Active */
+            owner_active: boolean;
             /** Owner Id */
             owner_id: string | null;
             /** Owner Name */
@@ -10348,6 +10428,115 @@ export interface operations {
                 "application/json": components["schemas"]["InitiativeUpdate"];
             };
         };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InitiativeRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    transfer_ownership_api_v1_initiatives__initiative_id__owner_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                initiative_id: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InitiativeOwnerTransfer"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InitiativeRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_owner_candidates_api_v1_initiatives__initiative_id__owner_candidates_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                initiative_id: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InitiativeOwnerCandidateList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    claim_ownership_api_v1_initiatives__initiative_id__owner_claim_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                initiative_id: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             200: {
