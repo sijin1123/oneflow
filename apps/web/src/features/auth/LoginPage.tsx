@@ -32,12 +32,20 @@ import {
 import { Input } from '@/components/ui/input'
 import { ApiError } from '@/lib/api'
 
-import { oidcStartUrl, useAuthConfig, useLogin, type OidcProvider } from './api'
+import {
+  oidcStartUrl,
+  useAuthAssistance,
+  useAuthConfig,
+  useLogin,
+  type OidcProvider,
+} from './api'
 import { oidcErrorKey } from './oidc'
 import './LoginPage.css'
 
 type Locale = 'en' | 'ko'
-type NoticeKind = 'forgot' | 'request' | 'google' | 'microsoft' | 'sso' | 'terms' | 'privacy' | 'security'
+type AssistanceNoticeKind = 'forgot' | 'request'
+type InformationNoticeKind = 'google' | 'microsoft' | 'sso' | 'terms' | 'privacy' | 'security'
+type NoticeKind = AssistanceNoticeKind | InformationNoticeKind
 
 const LOGIN_LOCALE_KEY = 'oneflow.login.locale'
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/
@@ -290,21 +298,9 @@ function ProviderGlyph({ provider }: { provider: OidcProvider }) {
   return <Building2 aria-hidden="true" />
 }
 
-function NoticeDialog({ kind, locale, close }: { kind: NoticeKind | null; locale: Locale; close: () => void }) {
+function NoticeDialog({ kind, locale, close }: { kind: InformationNoticeKind | null; locale: Locale; close: () => void }) {
   const isKorean = locale === 'ko'
-  const details: Record<NoticeKind, { title: string; body: string }> = {
-    forgot: {
-      title: isKorean ? '비밀번호 복구' : 'Password recovery',
-      body: isKorean
-        ? '이 배포 환경에는 메일 기반 복구 공급자가 구성되지 않았습니다. 워크스페이스 관리자에게 비밀번호 초기화를 요청하세요.'
-        : 'This deployment has no mail recovery provider configured. Ask your workspace administrator to reset your local credential.',
-    },
-    request: {
-      title: isKorean ? '워크스페이스 접근 요청' : 'Request workspace access',
-      body: isKorean
-        ? '메일 앱을 열어 워크스페이스 관리자에게 접근 목적과 회사 이메일을 전달합니다.'
-        : 'Open your mail app and send your workspace administrator your company email and reason for access.',
-    },
+  const details: Record<InformationNoticeKind, { title: string; body: string }> = {
     google: { title: 'Google sign-in', body: isKorean ? 'Google OAuth 공급자가 아직 구성되지 않았습니다.' : 'Google OAuth is not configured for this deployment.' },
     microsoft: { title: 'Microsoft sign-in', body: isKorean ? 'Microsoft Entra 공급자가 아직 구성되지 않았습니다.' : 'Microsoft Entra is not configured for this deployment.' },
     sso: {
@@ -326,17 +322,149 @@ function NoticeDialog({ kind, locale, close }: { kind: NoticeKind | null; locale
           <Dialog.Content className="of-login-dialog-content">
             <Dialog.Title>{current.title}</Dialog.Title>
             <Dialog.Description>{current.body}</Dialog.Description>
-            {kind === 'forgot' || kind === 'request' ? (
-              <a
-                className="of-login-dialog-action"
-                href={`mailto:?subject=${encodeURIComponent(kind === 'forgot' ? 'Oneflow password recovery' : 'Oneflow workspace access request')}`}
-              >
-                <Mail aria-hidden="true" /> {isKorean ? '메일 앱 열기' : 'Open mail app'}
-              </a>
-            ) : null}
             <Dialog.Close className="of-login-dialog-close" aria-label={isKorean ? '닫기' : 'Close'}><X aria-hidden="true" /></Dialog.Close>
           </Dialog.Content>
         ) : null}
+      </Dialog.Portal>
+    </Dialog.Root>
+  )
+}
+
+function AssistanceDialog({
+  kind,
+  locale,
+  initialEmail,
+  close,
+}: {
+  kind: AssistanceNoticeKind
+  locale: Locale
+  initialEmail: string
+  close: () => void
+}) {
+  const assistance = useAuthAssistance()
+  const [contactEmail, setContactEmail] = useState(() => initialEmail.trim().toLowerCase())
+  const [reason, setReason] = useState('')
+  const [validationError, setValidationError] = useState<string | null>(null)
+  const isKorean = locale === 'ko'
+  const isAccess = kind === 'request'
+  const labels = isKorean
+    ? {
+        title: isAccess ? '워크스페이스 접근 요청' : '로그인 도움 요청',
+        body: isAccess
+          ? '회사 이메일과 필요한 접근 내용을 보내면 워크스페이스 관리자가 검토합니다.'
+          : 'OneFlow는 인증 공급자가 관리하는 비밀번호를 직접 초기화하지 않습니다. 계정 접근에 도움이 필요하면 관리자 검토를 요청하세요.',
+        email: '회사 이메일',
+        reason: '도움이 필요한 내용 (선택)',
+        reasonPlaceholder: isAccess ? '소속 팀과 접근 목적을 알려주세요' : '로그인 방식이나 발생한 문제를 알려주세요',
+        submit: '요청 보내기',
+        submitting: '요청 보내는 중',
+        successTitle: '요청을 접수했습니다',
+        successBody: '지원 가능한 요청이면 워크스페이스 관리자가 확인합니다.',
+        invalidEmail: '올바른 이메일 주소를 입력하세요.',
+        error: '요청을 보내지 못했습니다. 잠시 후 다시 시도하세요.',
+        done: '완료',
+        close: '닫기',
+      }
+    : {
+        title: isAccess ? 'Request workspace access' : 'Request sign-in help',
+        body: isAccess
+          ? 'Send your company email and access context for a workspace administrator to review.'
+          : 'OneFlow cannot reset passwords owned by your identity provider. Request an administrator review if you need help accessing your account.',
+        email: 'Company email',
+        reason: 'What do you need help with? (optional)',
+        reasonPlaceholder: isAccess ? 'Tell us your team and why you need access' : 'Describe the sign-in method or problem',
+        submit: 'Send request',
+        submitting: 'Sending request',
+        successTitle: 'Request received',
+        successBody: 'If assistance is available, a workspace administrator will review your request.',
+        invalidEmail: 'Enter a valid email address.',
+        error: 'We could not submit the request. Try again shortly.',
+        done: 'Done',
+        close: 'Close',
+      }
+
+  const submit = () => {
+    const normalizedEmail = contactEmail.trim().toLowerCase()
+    if (!EMAIL_RE.test(normalizedEmail)) {
+      setValidationError(labels.invalidEmail)
+      return
+    }
+    setValidationError(null)
+    assistance.mutate({
+      kind: isAccess ? 'workspace_access' : 'sign_in_help',
+      email: normalizedEmail,
+      reason: reason.trim() || undefined,
+    })
+  }
+
+  const requestError = assistance.isError
+    ? assistance.error instanceof ApiError && assistance.error.status === 422
+      ? labels.invalidEmail
+      : labels.error
+    : null
+
+  return (
+    <Dialog.Root open onOpenChange={(open) => { if (!open) close() }}>
+      <Dialog.Portal>
+        <Dialog.Overlay className="of-login-dialog-overlay" />
+        <Dialog.Content className="of-login-dialog-content of-login-assistance-dialog">
+          {assistance.isSuccess ? (
+            <div className="of-login-assistance-success" role="status">
+              <CheckCircle2 aria-hidden="true" />
+              <Dialog.Title>{labels.successTitle}</Dialog.Title>
+              <Dialog.Description>{labels.successBody}</Dialog.Description>
+              <button type="button" className="of-login-dialog-primary" onClick={close}>{labels.done}</button>
+            </div>
+          ) : (
+            <>
+              <Dialog.Title>{labels.title}</Dialog.Title>
+              <Dialog.Description>{labels.body}</Dialog.Description>
+              <form className="of-login-assistance-form" onSubmit={(event) => { event.preventDefault(); submit() }} noValidate>
+                <label className="of-login-dialog-field" htmlFor="assistance-email">
+                  <span>{labels.email}</span>
+                  <span className="of-login-dialog-input-wrap">
+                    <Mail aria-hidden="true" />
+                    <input
+                      id="assistance-email"
+                      type="email"
+                      inputMode="email"
+                      autoComplete="email"
+                      autoCapitalize="none"
+                      spellCheck={false}
+                      maxLength={255}
+                      required
+                      autoFocus
+                      value={contactEmail}
+                      disabled={assistance.isPending}
+                      aria-invalid={Boolean(validationError || requestError)}
+                      aria-describedby={validationError || requestError ? 'assistance-help assistance-error' : 'assistance-help'}
+                      onChange={(event) => { setContactEmail(event.target.value); setValidationError(null); assistance.reset() }}
+                    />
+                  </span>
+                </label>
+                <label className="of-login-dialog-field" htmlFor="assistance-reason">
+                  <span>{labels.reason}</span>
+                  <textarea
+                    id="assistance-reason"
+                    maxLength={1000}
+                    rows={3}
+                    value={reason}
+                    placeholder={labels.reasonPlaceholder}
+                    disabled={assistance.isPending}
+                    onChange={(event) => { setReason(event.target.value); assistance.reset() }}
+                  />
+                </label>
+                <p id="assistance-help" className="of-login-dialog-help">{labels.successBody}</p>
+                {validationError || requestError ? <p id="assistance-error" className="of-login-dialog-error" role="alert">{validationError ?? requestError}</p> : null}
+                <button type="submit" className="of-login-dialog-primary" disabled={assistance.isPending || !contactEmail.trim()} aria-busy={assistance.isPending}>
+                  {assistance.isPending ? <Loader2 className="of-login-spinner" aria-hidden="true" /> : <Mail aria-hidden="true" />}
+                  {assistance.isPending ? labels.submitting : labels.submit}
+                </button>
+              </form>
+            </>
+          )}
+          <Dialog.Close className="of-login-dialog-close" aria-label={labels.close}><X aria-hidden="true" /></Dialog.Close>
+        </Dialog.Content>
       </Dialog.Portal>
     </Dialog.Root>
   )
@@ -355,6 +483,8 @@ export function LoginPage() {
   const [redirectingProvider, setRedirectingProvider] = useState<OidcProvider | null>(null)
   const [validationError, setValidationError] = useState<string | null>(null)
   const emailInputRef = useRef<HTMLInputElement>(null)
+  const forgotButtonRef = useRef<HTMLButtonElement>(null)
+  const requestAccessButtonRef = useRef<HTMLButtonElement>(null)
   const redirectingRef = useRef(false)
   const [locale, setLocale] = useState<Locale>(() => {
     const stored = window.localStorage.getItem(LOGIN_LOCALE_KEY)
@@ -401,6 +531,14 @@ export function LoginPage() {
   const errorText = validationError ?? requestError
   const oauthErrorCode = oidcErrorKey(searchParams.get('auth_error'))
   const oauthError = oauthErrorCode ? text[oauthErrorCode] : null
+  const assistanceNotice = notice === 'forgot' || notice === 'request' ? notice : null
+  const informationNotice = notice && notice !== 'forgot' && notice !== 'request' ? notice : null
+
+  const closeAssistance = (kind: AssistanceNoticeKind) => {
+    const trigger = kind === 'forgot' ? forgotButtonRef.current : requestAccessButtonRef.current
+    setNotice(null)
+    window.requestAnimationFrame(() => trigger?.focus({ preventScroll: true }))
+  }
 
   const startProvider = (provider: OidcProvider) => {
     if (!isOidcProviderConfigured(provider)) {
@@ -491,7 +629,7 @@ export function LoginPage() {
                 <input type="checkbox" checked={rememberMe} onChange={(event) => setRememberMe(event.target.checked)} disabled={!formEnabled || login.isPending} />
                 <span><Check aria-hidden="true" /></span>{text.remember}
               </label>
-              <button type="button" className="of-login-link" onClick={() => setNotice('forgot')}>{text.forgot}</button>
+              <button ref={forgotButtonRef} type="button" className="of-login-link" onClick={() => setNotice('forgot')}>{text.forgot}</button>
             </div>
 
             {oauthError ? <p className="of-login-oauth-error" role="alert"><ShieldCheck aria-hidden="true" />{oauthError}</p> : null}
@@ -526,7 +664,7 @@ export function LoginPage() {
               })}
             </div>
 
-            <p className="of-login-create">{text.newTo} <button type="button" onClick={() => setNotice('request')}>{text.request}</button></p>
+            <p className="of-login-create">{text.newTo} <button ref={requestAccessButtonRef} type="button" onClick={() => setNotice('request')}>{text.request}</button></p>
             <p className="of-login-assistive" id="login-auth-help">
               {authMode === 'oidc'
                 ? oidcReady ? text.oidcAvailable : text.oidcUnavailable
@@ -560,7 +698,16 @@ export function LoginPage() {
           </DropdownMenu>
         </footer>
       </main>
-      <NoticeDialog kind={notice} locale={locale} close={() => setNotice(null)} />
+      {assistanceNotice ? (
+        <AssistanceDialog
+          key={assistanceNotice}
+          kind={assistanceNotice}
+          locale={locale}
+          initialEmail={email}
+          close={() => closeAssistance(assistanceNotice)}
+        />
+      ) : null}
+      <NoticeDialog kind={informationNotice} locale={locale} close={() => setNotice(null)} />
     </div>
   )
 }
