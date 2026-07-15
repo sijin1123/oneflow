@@ -63,7 +63,7 @@ def _source_hash(request: Request) -> str:
 async def _consume_source_capacity(
     session: AsyncSession,
     source_hash: str,
-) -> tuple[bool, datetime]:
+) -> tuple[bool, datetime, AuthAssistanceRateLimit]:
     await session.execute(
         pg_insert(AuthAssistanceRateLimit)
         .values(source_hash=source_hash)
@@ -81,9 +81,9 @@ async def _consume_source_capacity(
         bucket.window_started_at = now
         bucket.attempt_count = 0
     if bucket.attempt_count >= AUTH_ASSISTANCE_SOURCE_LIMIT_PER_HOUR:
-        return False, now
+        return False, now, bucket
     bucket.attempt_count += 1
-    return True, now
+    return True, now, bucket
 
 
 @router.post(
@@ -111,11 +111,11 @@ async def submit_auth_assistance(
     if active is not None:
         return AuthAssistanceAccepted()
 
-    capacity, now = await _consume_source_capacity(session, _source_hash(request))
+    capacity, now, bucket = await _consume_source_capacity(session, _source_hash(request))
     if not capacity:
         await session.commit()
         return AuthAssistanceAccepted()
-    await session.execute(
+    inserted = await session.execute(
         pg_insert(AuthAssistanceRequest)
         .values(
             id=uuid.uuid4(),
@@ -125,7 +125,10 @@ async def submit_auth_assistance(
             last_submitted_at=now,
         )
         .on_conflict_do_nothing()
+        .returning(AuthAssistanceRequest.id)
     )
+    if inserted.scalar_one_or_none() is None:
+        bucket.attempt_count -= 1
     await session.commit()
     return AuthAssistanceAccepted()
 

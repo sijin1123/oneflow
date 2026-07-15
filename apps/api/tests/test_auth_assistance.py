@@ -123,8 +123,10 @@ async def test_concurrent_same_email_submission_is_idempotent(client, app, monke
     assert first.json() == duplicate.json()
     async with app.state.sessionmaker() as session:
         rows = (await session.execute(select(AuthAssistanceRequest))).scalars().all()
+        buckets = (await session.execute(select(AuthAssistanceRateLimit))).scalars().all()
     assert len(rows) == 1
     assert rows[0].email == "same@example.test"
+    assert sum(bucket.attempt_count for bucket in buckets) == 1
 
 
 async def test_public_resubmission_cannot_mutate_in_review_request(client):
