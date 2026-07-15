@@ -137,9 +137,12 @@ async def _clean_tables(app):
         await session.execute(
             text(
                 "INSERT INTO workspace_profiles "
-                "(id, name, revision, updated_by_user_id, updated_by_name) "
-                "VALUES (1, 'OneFlow', 1, NULL, NULL) "
-                "ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, revision = 1, "
+                "(id, name, working_weekdays, holidays, revision, "
+                "updated_by_user_id, updated_by_name) "
+                "VALUES (1, 'OneFlow', '[0, 1, 2, 3, 4]'::jsonb, '[]'::jsonb, 1, NULL, NULL) "
+                "ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, "
+                "working_weekdays = EXCLUDED.working_weekdays, holidays = EXCLUDED.holidays, "
+                "revision = 1, "
                 "updated_by_user_id = NULL, updated_by_name = NULL, updated_at = now()"
             )
         )

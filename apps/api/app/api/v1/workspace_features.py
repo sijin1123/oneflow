@@ -19,6 +19,8 @@ from app.schemas.workspace_feature_policy import (
     WorkspaceFeaturePolicyUpdate,
 )
 from app.schemas.workspace_profile import (
+    WorkspaceCalendarRead,
+    WorkspaceCalendarUpdate,
     WorkspaceIdentityRead,
     WorkspaceProfileRead,
     WorkspaceProfileUpdate,
@@ -68,6 +70,17 @@ def _profile_read(row: WorkspaceProfile) -> WorkspaceProfileRead:
     return WorkspaceProfileRead(
         id=row.id,
         name=row.name,
+        revision=row.revision,
+        updated_by_user_id=row.updated_by_user_id,
+        updated_by_name=row.updated_by_name,
+        updated_at=row.updated_at,
+    )
+
+
+def _calendar_read(row: WorkspaceProfile) -> WorkspaceCalendarRead:
+    return WorkspaceCalendarRead(
+        working_weekdays=row.working_weekdays,
+        holidays=row.holidays,
         revision=row.revision,
         updated_by_user_id=row.updated_by_user_id,
         updated_by_name=row.updated_by_name,
@@ -157,6 +170,62 @@ async def update_workspace_profile(
     await session.commit()
     response.headers["ETag"] = _etag(row.revision)
     return _profile_read(row)
+
+
+@router.get("/workspace/calendar", response_model=WorkspaceCalendarRead)
+async def get_workspace_calendar(
+    response: Response,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+) -> WorkspaceCalendarRead:
+    del user
+    row = await session.get(WorkspaceProfile, 1)
+    if row is None:
+        raise HTTPException(status_code=500, detail="workspace profile is missing")
+    response.headers["ETag"] = _etag(row.revision)
+    return _calendar_read(row)
+
+
+@router.patch("/admin/workspace/calendar", response_model=WorkspaceCalendarRead)
+async def update_workspace_calendar(
+    body: WorkspaceCalendarUpdate,
+    response: Response,
+    if_match: str | None = Header(default=None, alias="If-Match"),
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+) -> WorkspaceCalendarRead:
+    _require_admin(user)
+    expected = _expected_revision(if_match)
+    row = (
+        await session.execute(
+            update(WorkspaceProfile)
+            .where(WorkspaceProfile.id == 1, WorkspaceProfile.revision == expected)
+            .values(
+                working_weekdays=body.working_weekdays,
+                holidays=[value.isoformat() for value in body.holidays],
+                revision=WorkspaceProfile.revision + 1,
+                updated_by_user_id=user.id,
+                updated_by_name=user.display_name,
+                updated_at=func.now(),
+            )
+            .returning(WorkspaceProfile)
+        )
+    ).scalar_one_or_none()
+    if row is None:
+        current = await session.get(WorkspaceProfile, 1)
+        if current is None:
+            await session.rollback()
+            raise HTTPException(status_code=500, detail="workspace profile is missing")
+        current_revision = current.revision
+        await session.rollback()
+        raise HTTPException(
+            status_code=412,
+            detail={"code": "stale_revision", "current_revision": current_revision},
+            headers={"ETag": _etag(current_revision)},
+        )
+    await session.commit()
+    response.headers["ETag"] = _etag(row.revision)
+    return _calendar_read(row)
 
 
 @router.get("/workspace/capabilities", response_model=WorkspaceCapabilitiesRead)

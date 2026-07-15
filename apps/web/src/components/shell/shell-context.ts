@@ -16,6 +16,7 @@ const workspaceRouteLabels: Array<{ path: string; title: string; parent: string 
   { path: '/operations', title: '운영 허브', parent: '운영' },
   { path: '/status', title: '시스템 상태', parent: '운영' },
   { path: '/admin/general', title: '일반 설정', parent: '워크스페이스 설정' },
+  { path: '/admin/calendar', title: '근무 일정', parent: '워크스페이스 설정' },
   { path: '/admin/users', title: '사용자 관리', parent: '워크스페이스 설정' },
   { path: '/admin/auth-assistance', title: '로그인 지원', parent: '워크스페이스 설정' },
   { path: '/admin/worklogs', title: 'Worklogs', parent: '워크스페이스 설정' },

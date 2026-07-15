@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import BigInteger, CheckConstraint, DateTime, ForeignKey, SmallInteger, String, func
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -19,10 +19,32 @@ class WorkspaceProfile(Base):
             name="workspace_profile_name_not_blank",
         ),
         CheckConstraint("revision >= 1", name="workspace_profile_revision_positive"),
+        CheckConstraint(
+            "jsonb_typeof(working_weekdays) = 'array' "
+            "AND jsonb_array_length(working_weekdays) BETWEEN 1 AND 7 "
+            "AND working_weekdays <@ '[0, 1, 2, 3, 4, 5, 6]'::jsonb",
+            name="workspace_profile_working_weekdays_array",
+        ),
+        CheckConstraint(
+            "jsonb_typeof(holidays) = 'array' AND jsonb_array_length(holidays) <= 366",
+            name="workspace_profile_holidays_array",
+        ),
     )
 
     id: Mapped[int] = mapped_column(SmallInteger, primary_key=True, default=1)
     name: Mapped[str] = mapped_column(String(80), nullable=False, default="OneFlow")
+    working_weekdays: Mapped[list[int]] = mapped_column(
+        JSONB,
+        nullable=False,
+        default=lambda: [0, 1, 2, 3, 4],
+        server_default="[0, 1, 2, 3, 4]",
+    )
+    holidays: Mapped[list[str]] = mapped_column(
+        JSONB,
+        nullable=False,
+        default=list,
+        server_default="[]",
+    )
     revision: Mapped[int] = mapped_column(BigInteger, nullable=False, default=1)
     updated_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True

@@ -17,6 +17,7 @@ from app.models.project_phase import (
     ProjectPhase,
 )
 from app.models.user import User
+from app.models.workspace_profile import WorkspaceProfile
 from app.schemas.project_phase import (
     ProjectPhaseGateRead,
     ProjectPhaseList,
@@ -75,27 +76,40 @@ def _validate_ranges(rows: Iterable[ProjectPhaseRead]) -> None:
             )
 
 
-def _next_working_day(value: date) -> date:
-    value += timedelta(days=1)
-    while value.weekday() >= 5:
-        value += timedelta(days=1)
-    return value
-
-
-def _working_days_inclusive(start: date, end: date) -> int:
+def _working_day_count(start: date, end: date, weekdays: set[int], holidays: set[date]) -> int:
+    if end < start:
+        return 0
     days = (end - start).days + 1
     weeks, remainder = divmod(days, 7)
-    working_days = weeks * 5
-    working_days += sum((start.weekday() + offset) % 7 < 5 for offset in range(remainder))
-    return max(working_days, 1)
+    count = weeks * len(weekdays)
+    count += sum((start.weekday() + offset) % 7 in weekdays for offset in range(remainder))
+    count -= sum(start <= holiday <= end and holiday.weekday() in weekdays for holiday in holidays)
+    return count
 
 
-def _add_working_days(start: date, days: int) -> date:
-    weeks, remainder = divmod(days, 5)
-    calendar_days = weeks * 7 + remainder
-    if start.weekday() + remainder >= 5:
-        calendar_days += 2
-    return start + timedelta(days=calendar_days)
+def _working_days_inclusive(start: date, end: date, weekdays: set[int], holidays: set[date]) -> int:
+    return max(_working_day_count(start, end, weekdays, holidays), 1)
+
+
+def _add_working_days(start: date, days: int, weekdays: set[int], holidays: set[date]) -> date:
+    if days <= 0:
+        return start
+    low = 1
+    high = (date.max - start).days
+    if _working_day_count(start + timedelta(days=1), date.max, weekdays, holidays) < days:
+        raise OverflowError
+    while low < high:
+        middle = (low + high) // 2
+        candidate = start + timedelta(days=middle)
+        if _working_day_count(start + timedelta(days=1), candidate, weekdays, holidays) >= days:
+            high = middle
+        else:
+            low = middle + 1
+    return start + timedelta(days=low)
+
+
+def _next_working_day(value: date, weekdays: set[int], holidays: set[date]) -> date:
+    return _add_working_days(value, 1, weekdays, holidays)
 
 
 @router.get("/projects/{project_id}/phases", response_model=ProjectPhaseList)
@@ -178,6 +192,15 @@ async def patch_project_phase(
     )
     try:
         if finish_changed:
+            calendar = (
+                await session.execute(
+                    select(WorkspaceProfile).where(WorkspaceProfile.id == 1).with_for_update()
+                )
+            ).scalar_one_or_none()
+            if calendar is None:
+                raise HTTPException(status_code=500, detail="workspace calendar is missing")
+            working_weekdays = set(calendar.working_weekdays)
+            holidays = {date.fromisoformat(value) for value in calendar.holidays}
             predecessor_end = candidate.end_date
             after_predecessor = False
             for key, _, _, _ in PROJECT_PHASES:
@@ -190,9 +213,16 @@ async def patch_project_phase(
                 if not successor.active:
                     continue
                 if successor.start_date and successor.end_date:
-                    start_date = _next_working_day(predecessor_end)
-                    duration = _working_days_inclusive(successor.start_date, successor.end_date)
-                    end_date = _add_working_days(start_date, duration - 1)
+                    start_date = _next_working_day(predecessor_end, working_weekdays, holidays)
+                    duration = _working_days_inclusive(
+                        successor.start_date,
+                        successor.end_date,
+                        working_weekdays,
+                        holidays,
+                    )
+                    end_date = _add_working_days(
+                        start_date, duration - 1, working_weekdays, holidays
+                    )
                     successor = successor.model_copy(
                         update={"start_date": start_date, "end_date": end_date}
                     )
@@ -207,7 +237,11 @@ async def patch_project_phase(
                     continue
                 if successor.start_date:
                     successor = successor.model_copy(
-                        update={"start_date": _next_working_day(predecessor_end)}
+                        update={
+                            "start_date": _next_working_day(
+                                predecessor_end, working_weekdays, holidays
+                            )
+                        }
                     )
                     proposed_by_key[key] = successor
                     if successor.start_date != _read(key, by_key.get(key)).start_date:
