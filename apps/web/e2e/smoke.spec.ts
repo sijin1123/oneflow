@@ -7576,6 +7576,7 @@ test('이니셔티브에서 프로젝트를 연결하면 POST가 간다', async 
     description: null,
     owner_id: 'u-dev',
     owner_name: 'Dev User',
+    owner_active: true,
     state: 'in_progress',
     start_date: null,
     target_date: null,
@@ -7584,6 +7585,7 @@ test('이니셔티브에서 프로젝트를 연결하면 POST가 간다', async 
     health_updated_by: 'me-1',
     health_updated_at: '2026-07-08T00:00:00Z',
     is_mine: true,
+    can_claim_ownership: false,
     connected_project_count: 1,
     projects: [
       {
@@ -7596,12 +7598,32 @@ test('이니셔티브에서 프로젝트를 연결하면 POST가 간다', async 
     created_at: '2026-07-07T00:00:00Z',
     updated_at: '2026-07-07T00:00:00Z',
   }
+  let currentIni = ini
   await page.route('**/api/v1/initiatives', (route) =>
-    route.fulfill({ json: { items: [ini], total: 1 } }),
+    route.fulfill({ json: { items: [currentIni], total: 1 } }),
   )
   await page.route('**/api/v1/initiatives/ini-1/projects', (route) =>
     route.fulfill({ json: ini }),
   )
+  let candidateAttempts = 0
+  await page.route('**/api/v1/initiatives/ini-1/owner-candidates', (route) => {
+    candidateAttempts += 1
+    if (candidateAttempts === 1) {
+      return route.fulfill({ status: 500, json: { detail: 'temporary candidate failure' } })
+    }
+    return route.fulfill({
+      json: { items: [{ user_id: 'u-next', display_name: 'Next Owner' }], total: 1 },
+    })
+  })
+  await page.route('**/api/v1/initiatives/ini-1/owner', (route) => {
+    currentIni = {
+      ...ini,
+      owner_id: 'u-next',
+      owner_name: 'Next Owner',
+      is_mine: false,
+    }
+    return route.fulfill({ json: currentIni })
+  })
   // A second (unconnected) project so the connect select has a candidate.
   await page.route('**/api/v1/projects', (route) =>
     route.fulfill({
@@ -7643,6 +7665,107 @@ test('이니셔티브에서 프로젝트를 연결하면 POST가 간다', async 
   await page.getByLabel('플랫폼 개편에 프로젝트 연결').selectOption('p-2')
   const sent = (await post).postDataJSON() as { project_id: string }
   expect(sent.project_id).toBe('p-2')
+
+  await page.getByRole('button', { name: '플랫폼 개편 소유권 관리' }).click()
+  await expect(page.getByRole('group', { name: '플랫폼 개편 소유권 이전' })).toBeVisible()
+  await expect(page.getByText('소유권 후보를 불러오지 못했습니다.')).toBeVisible()
+  await page.getByRole('button', { name: '재시도' }).click()
+  await expect(page.getByLabel('플랫폼 개편 새 소유자')).toBeVisible()
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/initiative-ownership-ui/desktop.png',
+    fullPage: true,
+  })
+  await page.getByLabel('플랫폼 개편 새 소유자').selectOption('u-next')
+  page.once('dialog', (dialog) => dialog.accept())
+  const ownershipPost = page.waitForRequest(
+    (request) =>
+      request.method() === 'POST' && request.url().endsWith('/initiatives/ini-1/owner'),
+  )
+  await page.getByRole('button', { name: '이전', exact: true }).click()
+  expect((await ownershipPost).postDataJSON()).toEqual({ owner_id: 'u-next' })
+  await expect(page.getByRole('button', { name: '플랫폼 개편 소유권 관리' })).toHaveCount(0)
+})
+
+test('모바일 이니셔티브 카드에서 고아 소유권을 claim한다', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await mockApi(page)
+  const orphan = {
+    id: 'ini-orphan',
+    name: '복구할 전략',
+    description: null,
+    owner_id: null,
+    owner_name: null,
+    owner_active: false,
+    state: 'paused',
+    start_date: null,
+    target_date: null,
+    health: null,
+    health_note: null,
+    health_updated_by: null,
+    health_updated_at: null,
+    is_mine: false,
+    can_claim_ownership: true,
+    connected_project_count: 1,
+    projects: [
+      {
+        project_id: project.id,
+        project_name: project.name,
+        work_package_count: 4,
+        done_work_package_count: 1,
+      },
+    ],
+    created_at: '2026-07-07T00:00:00Z',
+    updated_at: '2026-07-07T00:00:00Z',
+  }
+  let current = orphan
+  await page.route('**/api/v1/initiatives', (route) =>
+    route.fulfill({ json: { items: [current], total: 1 } }),
+  )
+  let claimAttempts = 0
+  await page.route('**/api/v1/initiatives/ini-orphan/owner/claim', (route) => {
+    claimAttempts += 1
+    if (claimAttempts === 1) {
+      return route.fulfill({ status: 409, json: { detail: 'ownership changed' } })
+    }
+    current = {
+      ...orphan,
+      owner_id: 'me-1',
+      owner_name: 'Dev User',
+      owner_active: true,
+      is_mine: true,
+      can_claim_ownership: false,
+    }
+    return route.fulfill({ json: current })
+  })
+
+  await page.goto('/initiatives')
+  const card = page.locator('li', { hasText: '복구할 전략' })
+  await expect(card.getByText('소유자 없음')).toBeVisible()
+  await expect(card.getByText('복구 필요')).toBeVisible()
+  page.once('dialog', (dialog) => dialog.accept())
+  const failedClaim = page.waitForResponse(
+    (request) =>
+      request.request().method() === 'POST' &&
+      request.url().endsWith('/initiatives/ini-orphan/owner/claim'),
+  )
+  await card.getByRole('button', { name: '소유권 가져오기' }).click()
+  expect((await failedClaim).status()).toBe(409)
+  await expect(card.getByRole('alert')).toBeVisible()
+
+  page.once('dialog', (dialog) => dialog.accept())
+  const claimPost = page.waitForRequest(
+    (request) =>
+      request.method() === 'POST' && request.url().endsWith('/initiatives/ini-orphan/owner/claim'),
+  )
+  await card.getByRole('button', { name: '소유권 가져오기' }).click()
+  await claimPost
+  await expect(card.getByText('Dev User')).toBeVisible()
+  await expect(card.getByRole('button', { name: '소유권 가져오기' })).toHaveCount(0)
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/initiative-ownership-ui/mobile.png',
+    fullPage: true,
+  })
 })
 
 test('파일 업로드가 raw body POST로 나가고 다운로드 링크가 생긴다', async ({ page }) => {
@@ -13258,6 +13381,7 @@ test('프로젝트 목록 이니셔티브 열을 켜면 칩이 보이고 클릭 
             description: null,
             owner_id: 'me-1',
             owner_name: 'Dev User',
+            owner_active: true,
             state: 'in_progress',
             start_date: null,
             target_date: null,
@@ -13266,6 +13390,7 @@ test('프로젝트 목록 이니셔티브 열을 켜면 칩이 보이고 클릭 
             health_updated_by: null,
             health_updated_at: null,
             is_mine: true,
+            can_claim_ownership: false,
             connected_project_count: 1,
             projects: [],
             created_at: '2026-07-01T00:00:00Z',
@@ -14940,6 +15065,7 @@ test('보고 표면은 모바일에서 포트폴리오와 이니셔티브를 넘
             description: null,
             owner_id: 'u-dev',
             owner_name: 'Dev User',
+            owner_active: true,
             state: 'in_progress',
             start_date: null,
             target_date: null,
@@ -14948,6 +15074,7 @@ test('보고 표면은 모바일에서 포트폴리오와 이니셔티브를 넘
             health_updated_by: 'me-1',
             health_updated_at: '2026-07-08T00:00:00Z',
             is_mine: true,
+            can_claim_ownership: false,
             connected_project_count: 2,
             projects: [
               {

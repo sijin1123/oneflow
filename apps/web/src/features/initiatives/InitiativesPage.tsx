@@ -1,4 +1,4 @@
-import { Plus, Trash2, X } from 'lucide-react'
+import { Loader2, Plus, RefreshCw, Trash2, UserRoundCog, X } from 'lucide-react'
 import { useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 
@@ -21,11 +21,14 @@ import {
   INITIATIVE_STATE_LABELS,
   type Initiative,
   type InitiativeState,
+  useClaimInitiativeOwnership,
   useConnectProject,
   useCreateInitiative,
   useDeleteInitiative,
   useDisconnectProject,
+  useInitiativeOwnerCandidates,
   useInitiatives,
+  useTransferInitiativeOwnership,
   useUpdateInitiative,
 } from './api'
 
@@ -52,8 +55,16 @@ function InitiativeCard({
   const remove = useDeleteInitiative()
   const connect = useConnectProject(initiative.id)
   const disconnect = useDisconnectProject(initiative.id)
+  const transfer = useTransferInitiativeOwnership()
+  const claim = useClaimInitiativeOwnership()
   const projects = useProjects()
   const [selecting, setSelecting] = useState('')
+  const [ownerOpen, setOwnerOpen] = useState(false)
+  const [nextOwnerId, setNextOwnerId] = useState('')
+  const ownerCandidates = useInitiativeOwnerCandidates(
+    initiative.id,
+    ownerOpen && initiative.is_mine,
+  )
 
   const connectedIds = new Set(initiative.projects.map((p) => p.project_id))
   const candidates = (projects.data?.items ?? []).filter((p) => !connectedIds.has(p.id))
@@ -78,9 +89,10 @@ function InitiativeCard({
               </span>
             ) : null}
           </div>
-          <p className="mt-0.5 text-[11px] text-of-muted">
-            {initiative.owner_name ?? '알 수 없음'}
-          </p>
+          <div className="mt-0.5 flex min-w-0 flex-wrap items-center gap-1.5 text-[11px] text-of-muted">
+            <span>{initiative.owner_name ?? '소유자 없음'}</span>
+            {!initiative.owner_active ? <Badge variant="outline">복구 필요</Badge> : null}
+          </div>
         </div>
         <div className="flex shrink-0 items-center gap-1.5">
           {initiative.is_mine ? (
@@ -102,6 +114,19 @@ function InitiativeCard({
               </Select>
               <button
                 type="button"
+                aria-label={`${initiative.name} 소유권 관리`}
+                aria-expanded={ownerOpen}
+                className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-of text-of-muted hover:bg-of-surface-hover hover:text-of-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus"
+                onClick={() => {
+                  setOwnerOpen((open) => !open)
+                  setNextOwnerId('')
+                  transfer.reset()
+                }}
+              >
+                <UserRoundCog size={13} aria-hidden="true" />
+              </button>
+              <button
+                type="button"
                 aria-label={`${initiative.name} 삭제`}
                 disabled={remove.isPending}
                 className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-of text-of-muted hover:bg-of-surface-hover hover:text-of-danger"
@@ -117,11 +142,117 @@ function InitiativeCard({
                 <Trash2 size={13} aria-hidden="true" />
               </button>
             </>
+          ) : initiative.can_claim_ownership ? (
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={claim.isPending}
+              onClick={() => {
+                claim.reset()
+                if (window.confirm(`'${initiative.name}' 이니셔티브의 소유권을 가져올까요?`)) {
+                  claim.mutate(initiative.id)
+                }
+              }}
+            >
+              {claim.isPending ? <Loader2 className="animate-spin" /> : <UserRoundCog />}
+              소유권 가져오기
+            </Button>
           ) : (
             <Badge variant="neutral">{INITIATIVE_STATE_LABELS[initiative.state]}</Badge>
           )}
         </div>
       </div>
+
+      {ownerOpen && initiative.is_mine ? (
+        <div
+          role="group"
+          aria-label={`${initiative.name} 소유권 이전`}
+          className="flex min-w-0 flex-col gap-2 border-y border-of-border-subtle bg-of-surface-2 px-2 py-2 sm:flex-row sm:items-center sm:flex-wrap"
+        >
+          {ownerCandidates.isPending ? (
+            <p className="flex items-center gap-1.5 text-xs text-of-muted" role="status">
+              <Loader2 className="animate-spin" size={13} aria-hidden="true" /> 후보 확인 중
+            </p>
+          ) : ownerCandidates.isError ? (
+            <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2" role="alert">
+              <span className="text-xs text-of-danger">소유권 후보를 불러오지 못했습니다.</span>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => void ownerCandidates.refetch()}
+              >
+                <RefreshCw /> 재시도
+              </Button>
+            </div>
+          ) : ownerCandidates.data.total === 0 ? (
+            <p className="min-w-0 flex-1 text-xs text-of-muted">
+              함께 볼 수 있는 연결 프로젝트에 이전 가능한 활성 멤버가 없습니다.
+            </p>
+          ) : (
+            <>
+              <Select
+                aria-label={`${initiative.name} 새 소유자`}
+                className="h-7 min-w-0 flex-1 text-xs"
+                value={nextOwnerId}
+                disabled={transfer.isPending}
+                onChange={(event) => setNextOwnerId(event.target.value)}
+              >
+                <option value="">새 소유자 선택</option>
+                {ownerCandidates.data.items.map((candidate) => (
+                  <option key={candidate.user_id} value={candidate.user_id}>
+                    {candidate.display_name}
+                  </option>
+                ))}
+              </Select>
+              <Button
+                size="sm"
+                disabled={!nextOwnerId || transfer.isPending}
+                onClick={() => {
+                  const candidate = ownerCandidates.data.items.find(
+                    (item) => item.user_id === nextOwnerId,
+                  )
+                  if (
+                    candidate &&
+                    window.confirm(
+                      `'${initiative.name}' 이니셔티브의 소유권을 ${candidate.display_name}님에게 이전할까요?`,
+                    )
+                  ) {
+                    transfer.mutate(
+                      { id: initiative.id, ownerId: candidate.user_id },
+                      { onSuccess: () => setOwnerOpen(false) },
+                    )
+                  }
+                }}
+              >
+                {transfer.isPending ? <Loader2 className="animate-spin" /> : null}
+                이전
+              </Button>
+            </>
+          )}
+          <Button
+            size="sm"
+            variant="ghost"
+            disabled={transfer.isPending}
+            onClick={() => setOwnerOpen(false)}
+          >
+            취소
+          </Button>
+          {transfer.isError ? (
+            <p role="alert" className="w-full text-xs text-of-danger sm:basis-full">
+              {transfer.error instanceof Error
+                ? transfer.error.message
+                : '소유권을 이전하지 못했습니다.'}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+      {claim.isError ? (
+        <p role="alert" className="text-xs text-of-danger">
+          {claim.error instanceof Error
+            ? claim.error.message
+            : '이니셔티브 소유권을 복구하지 못했습니다.'}
+        </p>
+      ) : null}
 
       <div className="flex min-w-0 flex-wrap items-center gap-1.5">
         {initiative.projects.map((p) => (

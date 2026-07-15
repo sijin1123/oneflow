@@ -17,6 +17,7 @@ export type Initiative = {
   description: string | null
   owner_id: string | null
   owner_name: string | null
+  owner_active: boolean
   state: InitiativeState
   start_date: string | null
   target_date: string | null
@@ -25,6 +26,7 @@ export type Initiative = {
   health_updated_by: string | null
   health_updated_at: string | null
   is_mine: boolean
+  can_claim_ownership: boolean
   connected_project_count: number
   projects: InitiativeProject[]
   created_at: string
@@ -32,6 +34,9 @@ export type Initiative = {
 }
 
 export type InitiativeList = { items: Initiative[]; total: number }
+
+export type InitiativeOwnerCandidate = { user_id: string; display_name: string }
+export type InitiativeOwnerCandidateList = { items: InitiativeOwnerCandidate[]; total: number }
 
 export const INITIATIVE_STATE_LABELS: Record<InitiativeState, string> = {
   planned: '계획됨',
@@ -50,6 +55,44 @@ export function useInitiatives() {
 
 function invalidate(queryClient: ReturnType<typeof useQueryClient>) {
   void queryClient.invalidateQueries({ queryKey: ['initiatives'] })
+}
+
+export function useInitiativeOwnerCandidates(initiativeId: string, enabled: boolean) {
+  return useQuery({
+    queryKey: ['initiative-owner-candidates', initiativeId],
+    queryFn: () =>
+      api<InitiativeOwnerCandidateList>(
+        `/api/v1/initiatives/${initiativeId}/owner-candidates`,
+      ),
+    enabled,
+    retry: false,
+  })
+}
+
+export function useTransferInitiativeOwnership() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, ownerId }: { id: string; ownerId: string }) =>
+      api<Initiative>(`/api/v1/initiatives/${id}/owner`, {
+        method: 'POST',
+        body: JSON.stringify({ owner_id: ownerId }),
+      }),
+    onSuccess: (_data, variables) => {
+      invalidate(queryClient)
+      void queryClient.invalidateQueries({
+        queryKey: ['initiative-owner-candidates', variables.id],
+      })
+    },
+  })
+}
+
+export function useClaimInitiativeOwnership() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) =>
+      api<Initiative>(`/api/v1/initiatives/${id}/owner/claim`, { method: 'POST' }),
+    onSuccess: () => invalidate(queryClient),
+  })
 }
 
 export function useCreateInitiative() {
