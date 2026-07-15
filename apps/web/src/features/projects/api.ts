@@ -118,9 +118,7 @@ export function useUpdateProjectPhase(projectId: string) {
         }
       })
     },
-    onSettled: () => {
-      void queryClient.invalidateQueries({ queryKey: ['project-phases', projectId] })
-    },
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ['project-phases', projectId] }),
   })
 }
 

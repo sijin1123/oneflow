@@ -843,6 +843,45 @@ function localDateOffset(days: number) {
   return `${year}-${month}-${day}`
 }
 
+function localDateFromISO(value: string) {
+  const [year, month, day] = value.split('-').map(Number)
+  return new Date(year, month - 1, day, 12)
+}
+
+function localDateISO(value: Date) {
+  const year = value.getFullYear()
+  const month = String(value.getMonth() + 1).padStart(2, '0')
+  const day = String(value.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+function nextWorkingDate(value: string) {
+  const date = localDateFromISO(value)
+  do date.setDate(date.getDate() + 1)
+  while (date.getDay() === 0 || date.getDay() === 6)
+  return localDateISO(date)
+}
+
+function workingDaysInclusive(start: string, end: string) {
+  const date = localDateFromISO(start)
+  const last = localDateFromISO(end)
+  let count = 0
+  while (date <= last) {
+    if (date.getDay() !== 0 && date.getDay() !== 6) count += 1
+    date.setDate(date.getDate() + 1)
+  }
+  return Math.max(count, 1)
+}
+
+function addWorkingDays(start: string, days: number) {
+  const date = localDateFromISO(start)
+  while (days > 0) {
+    date.setDate(date.getDate() + 1)
+    if (date.getDay() !== 0 && date.getDay() !== 6) days -= 1
+  }
+  return localDateISO(date)
+}
+
 async function mockProjectOverview(page: Page) {
   await page.route(`**/api/v1/projects/${project.id}/dashboard`, (route) =>
     route.fulfill({
@@ -13190,8 +13229,14 @@ test('프로젝트 소유자는 단계를 편집하고 Overview에서 현재 수
   const planStart = localDateOffset(-2)
   const updatedPlanStart = localDateOffset(-1)
   const planEnd = localDateOffset(7)
+  const updatedPlanEnd = localDateOffset(9)
   const deliverStart = localDateOffset(8)
   const deliverEnd = localDateOffset(30)
+  const updatedDeliverStart = nextWorkingDate(updatedPlanEnd)
+  const updatedDeliverEnd = addWorkingDays(
+    updatedDeliverStart,
+    workingDaysInclusive(deliverStart, deliverEnd) - 1,
+  )
   let phases: ProjectPhaseList = {
     items: [
       {
@@ -13294,9 +13339,19 @@ test('프로젝트 소유자는 단계를 편집하고 Overview에서 현재 수
         },
         version: current.version + 1,
       }
+      let nextItems = phases.items.map((phase, itemIndex) => (itemIndex === index ? updated : phase))
+      if (key === 'plan' && body.end_date !== undefined && body.end_date !== current.end_date) {
+        nextItems = nextItems.map((phase) => phase.key === 'deliver' ? {
+          ...phase,
+          start_date: updatedDeliverStart,
+          end_date: updatedDeliverEnd,
+          finish_gate: { ...phase.finish_gate, date: updatedDeliverEnd },
+          version: phase.version + 1,
+        } : phase)
+      }
       phases = {
         ...phases,
-        items: phases.items.map((phase, itemIndex) => (itemIndex === index ? updated : phase)),
+        items: nextItems,
       }
       await route.fulfill({ json: updated })
       return
@@ -13319,6 +13374,7 @@ test('프로젝트 소유자는 단계를 편집하고 Overview에서 현재 수
     version: 1,
   })
   await expect(planRow.getByRole('button', { name: '저장' })).toBeDisabled()
+  await expect(planRow.getByRole('status')).toHaveCount(0)
 
   const finishGatePatch = page.waitForRequest(
     (request) => request.method() === 'PATCH' && request.url().endsWith('/phases/plan'),
@@ -13330,6 +13386,21 @@ test('프로젝트 소유자는 단계를 편집하고 Overview에서 현재 수
     'true',
   )
 
+  await planRow.getByLabel('계획 종료일').fill(updatedPlanEnd)
+  const schedulePatch = page.waitForRequest(
+    (request) => request.method() === 'PATCH' && request.url().endsWith('/phases/plan'),
+  )
+  await planRow.getByRole('button', { name: '저장' }).click()
+  expect((await schedulePatch).postDataJSON()).toEqual({
+    start_date: updatedPlanStart,
+    end_date: updatedPlanEnd,
+    version: 3,
+  })
+  await expect(planRow.getByRole('status')).toContainText('후속 활성 단계에 근무일 규칙을 적용했습니다')
+  const deliverRow = panel.locator('li').filter({ hasText: '실행' })
+  await expect(deliverRow.getByLabel('실행 시작일')).toHaveValue(updatedDeliverStart)
+  await expect(deliverRow.getByLabel('실행 종료일')).toHaveValue(updatedDeliverEnd)
+
   const closeSwitch = panel.getByRole('switch', { name: '마감 단계 활성화' })
   await closeSwitch.click()
   await expect(panel.getByRole('switch', { name: '마감 단계 비활성화' })).toHaveAttribute(
@@ -13340,7 +13411,7 @@ test('프로젝트 소유자는 단계를 편집하고 Overview에서 현재 수
   await expect(panel).toContainText('활성 4/4')
   await page.locator('[data-shell-scroll-region]').evaluate((element) => element.scrollTo({ top: 0 }))
   await page.screenshot({
-    path: '../../docs/screenshots/redevelopment/project-phase-gates-ui/settings-desktop.png',
+    path: '../../docs/screenshots/redevelopment/project-phase-working-days-ui/settings-desktop.png',
     fullPage: true,
   })
 
@@ -13351,18 +13422,19 @@ test('프로젝트 소유자는 단계를 편집하고 Overview에서 현재 수
   await expect(phaseRows.filter({ hasText: '발견' })).toContainText('완료')
   await expect(phaseRows.filter({ hasText: '계획' })).toContainText('현재 단계')
   await expect(phaseRows.filter({ hasText: '계획' })).toContainText('계획 완료 게이트')
-  await expect(phaseRows.filter({ hasText: '계획' })).toContainText(planEnd)
+  await expect(phaseRows.filter({ hasText: '계획' })).toContainText(updatedPlanEnd)
   await expect(phaseRows.filter({ hasText: '실행' })).toContainText('예정')
+  await expect(phaseRows.filter({ hasText: '실행' })).toContainText(updatedDeliverStart)
   await expect(phaseRows.filter({ hasText: '마감' })).toContainText('일정 필요')
   await page.screenshot({
-    path: '../../docs/screenshots/redevelopment/project-phase-gates-ui/overview-desktop.png',
+    path: '../../docs/screenshots/redevelopment/project-phase-working-days-ui/overview-desktop.png',
     fullPage: true,
   })
 
   await page.setViewportSize({ width: 390, height: 844 })
   await expectNoHorizontalOverflow(page)
   await page.screenshot({
-    path: '../../docs/screenshots/redevelopment/project-phase-gates-ui/overview-mobile.png',
+    path: '../../docs/screenshots/redevelopment/project-phase-working-days-ui/overview-mobile.png',
     fullPage: true,
   })
 })

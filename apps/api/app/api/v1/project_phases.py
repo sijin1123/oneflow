@@ -1,5 +1,6 @@
 import uuid
 from collections.abc import Iterable
+from datetime import date, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
@@ -74,6 +75,29 @@ def _validate_ranges(rows: Iterable[ProjectPhaseRead]) -> None:
             )
 
 
+def _next_working_day(value: date) -> date:
+    value += timedelta(days=1)
+    while value.weekday() >= 5:
+        value += timedelta(days=1)
+    return value
+
+
+def _working_days_inclusive(start: date, end: date) -> int:
+    days = (end - start).days + 1
+    weeks, remainder = divmod(days, 7)
+    working_days = weeks * 5
+    working_days += sum((start.weekday() + offset) % 7 < 5 for offset in range(remainder))
+    return max(working_days, 1)
+
+
+def _add_working_days(start: date, days: int) -> date:
+    weeks, remainder = divmod(days, 5)
+    calendar_days = weeks * 7 + remainder
+    if start.weekday() + remainder >= 5:
+        calendar_days += 2
+    return start + timedelta(days=calendar_days)
+
+
 @router.get("/projects/{project_id}/phases", response_model=ProjectPhaseList)
 async def list_project_phases(
     project_id: uuid.UUID,
@@ -141,10 +165,61 @@ async def patch_project_phase(
     )
     if candidate.start_date and candidate.end_date and candidate.start_date > candidate.end_date:
         raise HTTPException(status_code=422, detail="start_date must be on or before end_date")
-    proposed = [
-        candidate if key == phase_key else _read(key, by_key.get(key))
+    proposed_by_key = {
+        key: candidate if key == phase_key else _read(key, by_key.get(key))
         for key, _, _, _ in PROJECT_PHASES
-    ]
+    }
+    scheduled_keys: set[str] = set()
+    finish_changed = (
+        "end_date" in provided
+        and candidate.active
+        and candidate.end_date is not None
+        and candidate.end_date != before.end_date
+    )
+    try:
+        if finish_changed:
+            predecessor_end = candidate.end_date
+            after_predecessor = False
+            for key, _, _, _ in PROJECT_PHASES:
+                if key == phase_key:
+                    after_predecessor = True
+                    continue
+                if not after_predecessor:
+                    continue
+                successor = proposed_by_key[key]
+                if not successor.active:
+                    continue
+                if successor.start_date and successor.end_date:
+                    start_date = _next_working_day(predecessor_end)
+                    duration = _working_days_inclusive(successor.start_date, successor.end_date)
+                    end_date = _add_working_days(start_date, duration - 1)
+                    successor = successor.model_copy(
+                        update={"start_date": start_date, "end_date": end_date}
+                    )
+                    proposed_by_key[key] = successor
+                    persisted = _read(key, by_key.get(key))
+                    if (
+                        successor.start_date != persisted.start_date
+                        or successor.end_date != persisted.end_date
+                    ):
+                        scheduled_keys.add(key)
+                    predecessor_end = end_date
+                    continue
+                if successor.start_date:
+                    successor = successor.model_copy(
+                        update={"start_date": _next_working_day(predecessor_end)}
+                    )
+                    proposed_by_key[key] = successor
+                    if successor.start_date != _read(key, by_key.get(key)).start_date:
+                        scheduled_keys.add(key)
+                    break
+                break
+    except OverflowError as error:
+        raise HTTPException(
+            status_code=422,
+            detail="rescheduled phase dates exceed the supported range",
+        ) from error
+    proposed = [proposed_by_key[key] for key, _, _, _ in PROJECT_PHASES]
     _validate_ranges(proposed)
 
     changed = any(
@@ -162,5 +237,11 @@ async def patch_project_phase(
     current.start_date = candidate.start_date
     current.end_date = candidate.end_date
     current.version += 1
+    for key in scheduled_keys:
+        successor = by_key[key]
+        scheduled = proposed_by_key[key]
+        successor.start_date = scheduled.start_date
+        successor.end_date = scheduled.end_date
+        successor.version += 1
     await session.commit()
     return _read(phase_key, current)
