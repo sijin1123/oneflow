@@ -8,7 +8,15 @@ import asyncio
 
 from sqlalchemy import select
 
-from app.models import Initiative, InitiativeProject, Project, ProjectMember, User
+from app.models import (
+    Initiative,
+    InitiativeProject,
+    InitiativeWorkPackage,
+    Project,
+    ProjectMember,
+    User,
+    WorkPackage,
+)
 from tests.conftest import create_project, create_wp
 
 
@@ -50,6 +58,142 @@ async def test_create_connect_and_rollup(client, project_factory=None):
     res = await client.delete(f"/api/v1/initiatives/{ini['id']}/projects/{a['id']}")
     assert res.status_code == 200
     assert res.json()["connected_project_count"] == 1
+
+
+async def test_work_item_scope_candidates_connect_disconnect_and_project_cleanup(client, app):
+    first = await create_project(client, key="INIW", name="전략 프로젝트")
+    second = await create_project(client, key="INIX", name="확장 프로젝트")
+    unrelated = await create_project(client, key="INIU", name="비연결 프로젝트")
+    first_wp = await create_wp(client, first["id"], subject="인증 전환")
+    second_wp = await create_wp(client, second["id"], subject="검색 개편", status="done")
+    unrelated_wp = await create_wp(client, unrelated["id"], subject="범위 밖 작업")
+    ini = await create_initiative(client, name="전략 범위")
+    assert (await connect(client, ini["id"], first["id"])).status_code == 200
+    assert (await connect(client, ini["id"], second["id"])).status_code == 200
+
+    candidates = await client.get(f"/api/v1/initiatives/{ini['id']}/work-item-candidates")
+    assert candidates.status_code == 200, candidates.text
+    assert candidates.json()["total"] == 2
+    assert {row["subject"] for row in candidates.json()["items"]} == {
+        "인증 전환",
+        "검색 개편",
+    }
+    searched = await client.get(
+        f"/api/v1/initiatives/{ini['id']}/work-item-candidates", params={"q": "검색"}
+    )
+    assert [row["id"] for row in searched.json()["items"]] == [second_wp["id"]]
+
+    linked = await client.post(
+        f"/api/v1/initiatives/{ini['id']}/work-items",
+        json={"work_package_id": first_wp["id"]},
+    )
+    assert linked.status_code == 201, linked.text
+    assert linked.json()["project_name"] == "전략 프로젝트"
+    assert (
+        await client.post(
+            f"/api/v1/initiatives/{ini['id']}/work-items",
+            json={"work_package_id": first_wp["id"]},
+        )
+    ).status_code == 409
+    assert (
+        await client.post(
+            f"/api/v1/initiatives/{ini['id']}/work-items",
+            json={"work_package_id": unrelated_wp["id"]},
+        )
+    ).status_code == 404
+
+    scope = await client.get(f"/api/v1/initiatives/{ini['id']}/work-items")
+    assert scope.status_code == 200
+    assert (scope.json()["total"], scope.json()["connected_work_item_count"]) == (1, 1)
+    assert scope.json()["items"][0]["id"] == first_wp["id"]
+    listed = next(
+        row
+        for row in (await client.get("/api/v1/initiatives")).json()["items"]
+        if row["id"] == ini["id"]
+    )
+    assert listed["connected_work_item_count"] == 1
+
+    disconnected = await client.delete(f"/api/v1/initiatives/{ini['id']}/projects/{first['id']}")
+    assert disconnected.status_code == 200
+    assert disconnected.json()["connected_work_item_count"] == 0
+    async with app.state.sessionmaker() as session:
+        links = (
+            (
+                await session.execute(
+                    select(InitiativeWorkPackage).where(
+                        InitiativeWorkPackage.initiative_id == ini["id"]
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assert links == []
+
+
+async def test_work_item_scope_hides_foreign_rows_and_is_owner_write_only(
+    client, app, member_project
+):
+    async with app.state.sessionmaker() as session, session.begin():
+        private = Project(key="INIP", name="비공개 전략 프로젝트")
+        session.add(private)
+        await session.flush()
+        shared_wp = WorkPackage(project_id=member_project["project_id"], subject="공유 전략 작업")
+        private_wp = WorkPackage(project_id=private.id, subject="비공개 전략 작업")
+        session.add_all([shared_wp, private_wp])
+        await session.flush()
+        ini = Initiative(name="멤버 전략", owner_id=member_project["owner_id"])
+        session.add(ini)
+        await session.flush()
+        session.add_all(
+            [
+                InitiativeProject(initiative_id=ini.id, project_id=member_project["project_id"]),
+                InitiativeProject(initiative_id=ini.id, project_id=private.id),
+            ]
+        )
+        await session.flush()
+        session.add_all(
+            [
+                InitiativeWorkPackage(
+                    initiative_id=ini.id,
+                    project_id=member_project["project_id"],
+                    work_package_id=shared_wp.id,
+                ),
+                InitiativeWorkPackage(
+                    initiative_id=ini.id,
+                    project_id=private.id,
+                    work_package_id=private_wp.id,
+                ),
+            ]
+        )
+        ini_id = str(ini.id)
+        shared_wp_id = str(shared_wp.id)
+        private_wp_id = str(private_wp.id)
+
+    listed = next(
+        row
+        for row in (await client.get("/api/v1/initiatives")).json()["items"]
+        if row["id"] == ini_id
+    )
+    assert listed["connected_work_item_count"] == 2
+    scope = await client.get(f"/api/v1/initiatives/{ini_id}/work-items")
+    assert scope.status_code == 200
+    assert (scope.json()["total"], scope.json()["connected_work_item_count"]) == (1, 2)
+    assert [row["subject"] for row in scope.json()["items"]] == ["공유 전략 작업"]
+    assert "비공개 전략 작업" not in scope.text
+
+    assert (
+        await client.get(f"/api/v1/initiatives/{ini_id}/work-item-candidates")
+    ).status_code == 404
+    assert (
+        await client.post(
+            f"/api/v1/initiatives/{ini_id}/work-items",
+            json={"work_package_id": shared_wp_id},
+        )
+    ).status_code == 404
+    assert (
+        await client.delete(f"/api/v1/initiatives/{ini_id}/work-items/{private_wp_id}")
+    ).status_code == 404
 
 
 async def test_state_and_date_validation(client):

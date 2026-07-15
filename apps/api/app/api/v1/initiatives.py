@@ -1,14 +1,14 @@
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Response
-from sqlalchemy import func, or_, select
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import get_current_user
 from app.core.authz import require_member
 from app.db.session import get_session
-from app.models.initiative import Initiative, InitiativeProject
+from app.models.initiative import Initiative, InitiativeProject, InitiativeWorkPackage
 from app.models.member import ProjectMember
 from app.models.project import Project
 from app.models.user import User
@@ -23,6 +23,10 @@ from app.schemas.initiative import (
     InitiativeProjectRead,
     InitiativeRead,
     InitiativeUpdate,
+    InitiativeWorkItemCandidateList,
+    InitiativeWorkItemConnect,
+    InitiativeWorkItemList,
+    InitiativeWorkItemRead,
 )
 from app.services.health import apply_health_patch
 from app.services.workspace_features import INITIATIVES_FEATURE, feature_enabled
@@ -80,6 +84,19 @@ async def _require_creator(
     # already partial via visibility, keep the mutation surface consistent).
     ini = await _visible_initiative(session, initiative_id, user)
     if ini.owner_id != user.id:
+        raise HTTPException(status_code=404, detail="not found")
+    return ini
+
+
+async def _require_creator_locked(
+    session: AsyncSession, initiative_id: uuid.UUID, user: User
+) -> Initiative:
+    ini = (
+        await session.execute(
+            select(Initiative).where(Initiative.id == initiative_id).with_for_update()
+        )
+    ).scalar_one_or_none()
+    if ini is None or ini.owner_id != user.id:
         raise HTTPException(status_code=404, detail="not found")
     return ini
 
@@ -184,12 +201,32 @@ async def _lock_claimable_membership(
     return membership is not None
 
 
+def _work_item_read(wp: WorkPackage, project_name: str) -> InitiativeWorkItemRead:
+    return InitiativeWorkItemRead(
+        id=wp.id,
+        project_id=wp.project_id,
+        project_name=project_name,
+        subject=wp.subject,
+        status=wp.status,
+        priority=wp.priority,
+        assignee_id=wp.assignee_id,
+        due_date=wp.due_date,
+    )
+
+
 async def _read_one(session: AsyncSession, ini: Initiative, user: User) -> InitiativeRead:
     total_connected = (
         await session.execute(
             select(func.count())
             .select_from(InitiativeProject)
             .where(InitiativeProject.initiative_id == ini.id)
+        )
+    ).scalar_one()
+    total_connected_work_items = (
+        await session.execute(
+            select(func.count())
+            .select_from(InitiativeWorkPackage)
+            .where(InitiativeWorkPackage.initiative_id == ini.id)
         )
     ).scalar_one()
     done = func.count().filter(WorkPackage.status.in_(WP_CLOSED_STATUSES))
@@ -236,6 +273,7 @@ async def _read_one(session: AsyncSession, ini: Initiative, user: User) -> Initi
         is_mine=ini.owner_id == user.id,
         can_claim_ownership=can_claim_ownership,
         connected_project_count=total_connected,
+        connected_work_item_count=total_connected_work_items,
         projects=[
             InitiativeProjectRead(
                 project_id=pid,
@@ -356,6 +394,188 @@ async def claim_ownership(
     await session.commit()
     await session.refresh(ini)
     return await _read_one(session, ini, user)
+
+
+@router.get(
+    "/initiatives/{initiative_id}/work-items",
+    response_model=InitiativeWorkItemList,
+)
+async def list_initiative_work_items(
+    initiative_id: uuid.UUID,
+    limit: int = Query(default=100, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+) -> InitiativeWorkItemList:
+    await _visible_initiative(session, initiative_id, user)
+    visible = (
+        select(WorkPackage, Project.name)
+        .join(
+            InitiativeWorkPackage,
+            InitiativeWorkPackage.work_package_id == WorkPackage.id,
+        )
+        .join(Project, Project.id == WorkPackage.project_id)
+        .where(
+            InitiativeWorkPackage.initiative_id == initiative_id,
+            WorkPackage.project_id.in_(_membership(user)),
+        )
+    )
+    total = (
+        await session.execute(select(func.count()).select_from(visible.subquery()))
+    ).scalar_one()
+    connected_work_item_count = (
+        await session.execute(
+            select(func.count())
+            .select_from(InitiativeWorkPackage)
+            .where(InitiativeWorkPackage.initiative_id == initiative_id)
+        )
+    ).scalar_one()
+    rows = (
+        await session.execute(
+            visible.order_by(
+                Project.name.asc(),
+                WorkPackage.subject.collate("oneflow_korean").asc(),
+                WorkPackage.id.asc(),
+            )
+            .limit(limit)
+            .offset(offset)
+        )
+    ).all()
+    return InitiativeWorkItemList(
+        items=[_work_item_read(wp, project_name) for wp, project_name in rows],
+        total=total,
+        connected_work_item_count=connected_work_item_count,
+    )
+
+
+@router.get(
+    "/initiatives/{initiative_id}/work-item-candidates",
+    response_model=InitiativeWorkItemCandidateList,
+)
+async def list_initiative_work_item_candidates(
+    initiative_id: uuid.UUID,
+    q: str | None = Query(default=None, max_length=255),
+    limit: int = Query(default=30, ge=1, le=50),
+    offset: int = Query(default=0, ge=0),
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+) -> InitiativeWorkItemCandidateList:
+    await _require_creator(session, initiative_id, user)
+    linked_ids = select(InitiativeWorkPackage.work_package_id).where(
+        InitiativeWorkPackage.initiative_id == initiative_id
+    )
+    candidates = (
+        select(WorkPackage, Project.name)
+        .join(Project, Project.id == WorkPackage.project_id)
+        .join(
+            InitiativeProject,
+            and_(
+                InitiativeProject.initiative_id == initiative_id,
+                InitiativeProject.project_id == WorkPackage.project_id,
+            ),
+        )
+        .where(
+            WorkPackage.project_id.in_(_membership(user)),
+            WorkPackage.id.not_in(linked_ids),
+        )
+    )
+    if q:
+        candidates = candidates.where(WorkPackage.subject.icontains(q, autoescape=True))
+    total = (
+        await session.execute(select(func.count()).select_from(candidates.subquery()))
+    ).scalar_one()
+    rows = (
+        await session.execute(
+            candidates.order_by(
+                Project.name.asc(),
+                WorkPackage.subject.collate("oneflow_korean").asc(),
+                WorkPackage.id.asc(),
+            )
+            .limit(limit)
+            .offset(offset)
+        )
+    ).all()
+    return InitiativeWorkItemCandidateList(
+        items=[_work_item_read(wp, project_name) for wp, project_name in rows],
+        total=total,
+    )
+
+
+@router.post(
+    "/initiatives/{initiative_id}/work-items",
+    response_model=InitiativeWorkItemRead,
+    status_code=201,
+)
+async def connect_initiative_work_item(
+    initiative_id: uuid.UUID,
+    body: InitiativeWorkItemConnect,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+) -> InitiativeWorkItemRead:
+    await _require_creator_locked(session, initiative_id, user)
+    row = (
+        await session.execute(
+            select(WorkPackage, Project.name)
+            .join(Project, Project.id == WorkPackage.project_id)
+            .join(
+                InitiativeProject,
+                and_(
+                    InitiativeProject.initiative_id == initiative_id,
+                    InitiativeProject.project_id == WorkPackage.project_id,
+                ),
+            )
+            .where(
+                WorkPackage.id == body.work_package_id,
+                WorkPackage.project_id.in_(_membership(user)),
+            )
+        )
+    ).one_or_none()
+    if row is None:
+        raise HTTPException(status_code=404, detail="not found")
+    wp, project_name = row
+    try:
+        session.add(
+            InitiativeWorkPackage(
+                initiative_id=initiative_id,
+                project_id=wp.project_id,
+                work_package_id=wp.id,
+            )
+        )
+        await session.commit()
+    except IntegrityError as exc:
+        await session.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="work item already connected or no longer eligible",
+        ) from exc
+    return _work_item_read(wp, project_name)
+
+
+@router.delete(
+    "/initiatives/{initiative_id}/work-items/{work_package_id}",
+    status_code=204,
+)
+async def disconnect_initiative_work_item(
+    initiative_id: uuid.UUID,
+    work_package_id: uuid.UUID,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+) -> Response:
+    await _require_creator_locked(session, initiative_id, user)
+    link = (
+        await session.execute(
+            select(InitiativeWorkPackage).where(
+                InitiativeWorkPackage.initiative_id == initiative_id,
+                InitiativeWorkPackage.work_package_id == work_package_id,
+                InitiativeWorkPackage.project_id.in_(_membership(user)),
+            )
+        )
+    ).scalar_one_or_none()
+    if link is None:
+        raise HTTPException(status_code=404, detail="not found")
+    await session.delete(link)
+    await session.commit()
+    return Response(status_code=204)
 
 
 @router.patch("/initiatives/{initiative_id}", response_model=InitiativeRead)

@@ -110,6 +110,7 @@ class InitiativeRead(BaseModel):
     # Total connections vs the subset the caller can see — the UI shows
     # "N개 프로젝트 (내가 볼 수 있는 M개)" when they differ.
     connected_project_count: int
+    connected_work_item_count: int
     projects: list[InitiativeProjectRead]
     created_at: datetime
     updated_at: datetime
@@ -122,6 +123,32 @@ class InitiativeList(BaseModel):
 
 class InitiativeConnect(BaseModel):
     project_id: uuid.UUID
+
+
+class InitiativeWorkItemConnect(BaseModel):
+    work_package_id: uuid.UUID
+
+
+class InitiativeWorkItemRead(BaseModel):
+    id: uuid.UUID
+    project_id: uuid.UUID
+    project_name: str
+    subject: str
+    status: str
+    priority: str
+    assignee_id: uuid.UUID | None
+    due_date: date | None
+
+
+class InitiativeWorkItemList(BaseModel):
+    items: list[InitiativeWorkItemRead]
+    total: int
+    connected_work_item_count: int
+
+
+class InitiativeWorkItemCandidateList(BaseModel):
+    items: list[InitiativeWorkItemRead]
+    total: int
 
 
 class InitiativeOwnerCandidateRead(BaseModel):
