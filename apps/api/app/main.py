@@ -12,6 +12,7 @@ from app.api.v1 import (
     ai,
     attachments,
     auth,
+    auth_assistance,
     automation_rules,
     comments,
     cost_entries,
@@ -59,6 +60,7 @@ from app.core.middleware import (
     RequestLogMiddleware,
 )
 from app.db.session import build_engine, build_sessionmaker, get_session
+from app.services.auth_assistance import auth_assistance_retention_loop
 from app.services.webhooks import webhook_worker_loop
 
 
@@ -73,6 +75,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def lifespan(application: FastAPI):
         stop = asyncio.Event()
         worker = None
+        retention_worker = asyncio.create_task(
+            auth_assistance_retention_loop(sessionmaker, stop),
+            name="oneflow-auth-assistance-retention",
+        )
         if settings.webhooks_enabled:
             worker = asyncio.create_task(
                 webhook_worker_loop(
@@ -91,6 +97,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 worker.cancel()
                 with suppress(asyncio.CancelledError):
                     await worker
+            retention_worker.cancel()
+            with suppress(asyncio.CancelledError):
+                await retention_worker
             await engine.dispose()
 
     is_production = settings.env == "production"
@@ -137,6 +146,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(ops.router, prefix="/api/v1", tags=["ops"])
     app.include_router(admin_worklogs.router, prefix="/api/v1", tags=["admin-worklogs"])
     app.include_router(auth.router, prefix="/api/v1", tags=["auth"])
+    app.include_router(
+        auth_assistance.router,
+        prefix="/api/v1",
+        tags=["auth-assistance"],
+    )
     app.include_router(access_tokens.router, prefix="/api/v1", tags=["access-tokens"])
     app.include_router(webhooks.router, prefix="/api/v1", tags=["webhooks"])
     app.include_router(projects.router, prefix="/api/v1/projects", tags=["projects"])

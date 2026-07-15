@@ -1,6 +1,7 @@
 from app.models.access_token import PersonalAccessToken
 from app.models.activity import Activity
 from app.models.attachment import Attachment
+from app.models.auth_assistance_request import AuthAssistanceRateLimit, AuthAssistanceRequest
 from app.models.auth_session import AuthSession
 from app.models.automation_rule import AutomationRule
 from app.models.comment import WorkPackageComment
@@ -87,6 +88,8 @@ __all__ = [
     "MeetingAgendaTemplate",
     "Attachment",
     "AuthSession",
+    "AuthAssistanceRequest",
+    "AuthAssistanceRateLimit",
     "OidcIdentity",
     "OidcLoginAttempt",
     "WpWatcher",

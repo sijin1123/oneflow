@@ -53,6 +53,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/auth-assistance-requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Auth Assistance */
+        get: operations["list_auth_assistance_api_v1_admin_auth_assistance_requests_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/auth-assistance-requests/{request_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Redact Auth Assistance */
+        delete: operations["redact_auth_assistance_api_v1_admin_auth_assistance_requests__request_id__delete"];
+        options?: never;
+        head?: never;
+        /** Triage Auth Assistance */
+        patch: operations["triage_auth_assistance_api_v1_admin_auth_assistance_requests__request_id__patch"];
+        trace?: never;
+    };
     "/api/v1/admin/worklogs": {
         parameters: {
             query?: never;
@@ -240,6 +275,26 @@ export interface paths {
         get: operations["download_attachment_api_v1_attachments__attachment_id__download_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/assistance-requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Submit Auth Assistance
+         * @description Accept login help without revealing whether an account exists.
+         */
+        post: operations["submit_auth_assistance_api_v1_auth_assistance_requests_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3430,6 +3485,91 @@ export interface components {
             url: string;
             /** Work Package Id */
             work_package_id?: string | null;
+        };
+        /** AuthAssistanceAccepted */
+        AuthAssistanceAccepted: {
+            /**
+             * Accepted
+             * @default true
+             */
+            accepted: boolean;
+            /**
+             * Message
+             * @default If assistance is available, a workspace administrator will review the request.
+             */
+            message: string;
+        };
+        /** AuthAssistanceCreate */
+        AuthAssistanceCreate: {
+            /** Email */
+            email: string;
+            /** Kind */
+            kind: string;
+            /** Reason */
+            reason?: string | null;
+        };
+        /** AuthAssistanceList */
+        AuthAssistanceList: {
+            /** Items */
+            items: components["schemas"]["AuthAssistanceRead"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Total */
+            total: number;
+        };
+        /** AuthAssistanceRead */
+        AuthAssistanceRead: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Email */
+            email: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Kind */
+            kind: string;
+            /**
+             * Last Submitted At
+             * Format: date-time
+             */
+            last_submitted_at: string;
+            /** Reason */
+            reason: string | null;
+            /** Redacted At */
+            redacted_at: string | null;
+            /** Status */
+            status: string;
+            /** Submission Count */
+            submission_count: number;
+            /** Triage Note */
+            triage_note: string | null;
+            /** Triaged At */
+            triaged_at: string | null;
+            /** Triaged By Id */
+            triaged_by_id: string | null;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Version */
+            version: number;
+        };
+        /** AuthAssistanceTriage */
+        AuthAssistanceTriage: {
+            /** Expected Version */
+            expected_version: number;
+            /** Note */
+            note?: string | null;
+            /** Status */
+            status: string;
         };
         /** AuthConfigRead */
         AuthConfigRead: {
@@ -7888,6 +8028,116 @@ export interface operations {
             };
         };
     };
+    list_auth_assistance_api_v1_admin_auth_assistance_requests_get: {
+        parameters: {
+            query?: {
+                status?: string | null;
+                kind?: string | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthAssistanceList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    redact_auth_assistance_api_v1_admin_auth_assistance_requests__request_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                request_id: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    triage_auth_assistance_api_v1_admin_auth_assistance_requests__request_id__patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                request_id: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AuthAssistanceTriage"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthAssistanceRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_worklogs_api_v1_admin_worklogs_get: {
         parameters: {
             query: {
@@ -8480,6 +8730,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    submit_auth_assistance_api_v1_auth_assistance_requests_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AuthAssistanceCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthAssistanceAccepted"];
                 };
             };
             /** @description Validation Error */
