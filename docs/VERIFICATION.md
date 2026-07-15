@@ -2511,3 +2511,14 @@ Chromium typed mock fixture에서 1440x960과 390x844 viewport를 사용했다. 
 - 검증: API focused 22 및 full 735 PASS(기존 Alembic 경고 1건), Ruff/format PASS, OpenAPI generation/drift PASS, typecheck/lint/build PASS(기존 Fast Refresh 4·chunk 경고), unit 93, component 8, focused E2E 1 PASS, full E2E 282 PASS + opt-in visual QA 1 skip, clean-room frontend 161/backend 45, npm/pip audit 0 vulnerabilities, diff check PASS.
 - Chromium 증적은 `docs/screenshots/redevelopment/workspace-working-calendar-ui/{desktop,mobile}.png`에 보존한다. Migration `0088` 적용이 필요하다. 환경변수와 dependency 변경은 없다.
 - **이연 항목**: phase 활성화 전환 시 자동 재배치와 workspace custom phase definition 관리는 다음 lifecycle surface로 유지한다.
+
+---
+
+# UI-115 Project Phase Activation Scheduling 검증 (2026-07-15)
+
+- **UI 변경**: Project Settings의 단계 활성화 switch가 실제 서버 응답을 기준으로 `재배치됨`과 `저장 날짜 유지` 결과를 구분해 알린다. 기존 월-금 고정 문구를 `워크스페이스 근무일 자동 일정`으로 바로잡고 종료일 저장과 저장 일정 활성화의 적용 범위를 함께 설명한다. Desktop/mobile에서 활성화된 현재 단계와 연쇄 이동된 후속 단계가 같은 refetch 결과로 갱신된다.
+- **기능/API 반영**: 이미 비활성 상태로 저장된 완전한 단계 일정에만 활성화 전환 재배치를 적용한다. 이전 활성 단계의 종료 다음 유효 근무일로 시작을 옮기고 유효 근무일 기간을 보존하며, 뒤의 완전한 활성 일정도 같은 규칙으로 연쇄 정렬한다. 활성화와 날짜 입력을 한 요청으로 수행한 경우, 부분·무일정, 기준 종료일 없음, 비활성화, 근무일 0일 일정은 입력·저장 날짜를 보존한다.
+- 기존 owner-only PATCH, member read, project row lock과 archive 재확인, optimistic version, true no-op, workspace calendar row lock, 날짜 overflow atomic 422를 유지한다. 독립 reviewer가 부분 후속 일정 이동, 근무일 0일 변환, stale cache 기반 UI 추정 3건을 발견했고 각각 보존·중단 규칙과 서버 응답 기반 피드백으로 수정한 뒤 P0-P2 잔여 없음으로 닫았다.
+- 검증: API focused 11 및 full 737 PASS(기존 Alembic 경고 1건), Ruff/format PASS, OpenAPI drift PASS, typecheck/lint PASS(기존 Fast Refresh 경고 4건), unit 93, component 8, production build PASS(기존 chunk 경고), focused E2E 1 및 격리 worktree full E2E 283 PASS + opt-in visual QA 1 skip, clean-room frontend 161/backend 45, npm/pip audit 0 vulnerabilities, diff check와 desktop/mobile visual QA PASS.
+- Chromium 증적은 `docs/screenshots/redevelopment/project-phase-activation-ui/{settings-desktop,settings-mobile}.png`에 보존한다. 신규 route, DB schema/migration, environment variable, permission registry, dependency 변경은 없다.
+- **이연 항목**: workspace custom phase definition administration만 다음 독립 lifecycle surface로 유지한다.

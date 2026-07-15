@@ -13575,6 +13575,129 @@ test('프로젝트 단계 설정은 오류 재시도 후 멤버에게 읽기 전
   await expect(panel.getByRole('button', { name: '저장' })).toHaveCount(0)
 })
 
+test('저장된 단계 활성화는 근무일 일정 재배치와 보존 결과를 구분해 알린다', async ({ page }) => {
+  await mockApi(page)
+  let phases: ProjectPhaseList = {
+    items: [
+      {
+        key: 'discover',
+        name: '발견',
+        color: 'sky',
+        position: 0,
+        active: true,
+        start_date: '2026-07-13',
+        end_date: '2026-07-17',
+        start_gate: { kind: 'start', name: '발견 시작 게이트', active: false, date: null },
+        finish_gate: { kind: 'finish', name: '발견 완료 게이트', active: false, date: null },
+        version: 1,
+      },
+      {
+        key: 'plan',
+        name: '계획',
+        color: 'indigo',
+        position: 1,
+        active: false,
+        start_date: '2026-07-13',
+        end_date: '2026-07-17',
+        start_gate: { kind: 'start', name: '계획 시작 게이트', active: false, date: null },
+        finish_gate: { kind: 'finish', name: '계획 완료 게이트', active: false, date: null },
+        version: 1,
+      },
+      {
+        key: 'deliver',
+        name: '실행',
+        color: 'emerald',
+        position: 2,
+        active: true,
+        start_date: '2026-07-20',
+        end_date: '2026-07-22',
+        start_gate: { kind: 'start', name: '실행 시작 게이트', active: false, date: null },
+        finish_gate: { kind: 'finish', name: '실행 완료 게이트', active: false, date: null },
+        version: 1,
+      },
+      {
+        key: 'close',
+        name: '마감',
+        color: 'amber',
+        position: 3,
+        active: false,
+        start_date: '2026-08-03',
+        end_date: null,
+        start_gate: { kind: 'start', name: '마감 시작 게이트', active: false, date: null },
+        finish_gate: { kind: 'finish', name: '마감 완료 게이트', active: false, date: null },
+        version: 1,
+      },
+    ],
+    total: 4,
+  }
+  await page.route('**/api/v1/projects/*/phases**', async (route) => {
+    const request = route.request()
+    if (request.method() !== 'PATCH') {
+      await route.fulfill({ json: phases })
+      return
+    }
+    const key = new URL(request.url()).pathname.split('/').at(-1)
+    const body = request.postDataJSON() as { active: boolean; version: number }
+    const index = phases.items.findIndex((phase) => phase.key === key)
+    const current = phases.items[index]
+    if (!current || current.version !== body.version) {
+      await route.fulfill({ status: 409, json: { detail: 'phase version conflict' } })
+      return
+    }
+    const updated: ProjectPhase = key === 'plan'
+      ? {
+          ...current,
+          active: true,
+          start_date: '2026-07-20',
+          end_date: '2026-07-24',
+          version: 2,
+        }
+      : { ...current, active: true, version: 2 }
+    let nextItems = phases.items.map((phase, itemIndex) => itemIndex === index ? updated : phase)
+    if (key === 'plan') {
+      nextItems = nextItems.map((phase) => phase.key === 'deliver'
+        ? { ...phase, start_date: '2026-07-27', end_date: '2026-07-29', version: 2 }
+        : phase)
+    }
+    phases = { ...phases, items: nextItems }
+    await route.fulfill({ json: updated })
+  })
+
+  await page.goto(`/projects/${project.id}/settings?tab=lifecycle`)
+  const panel = page.getByRole('region', { name: '프로젝트 단계 설정' })
+  await expect(panel).toContainText('워크스페이스 근무일 자동 일정')
+  const planRow = panel.locator('li').filter({ hasText: '계획' })
+  const planPatch = page.waitForRequest(
+    (request) => request.method() === 'PATCH' && request.url().endsWith('/phases/plan'),
+  )
+  await planRow.getByRole('switch', { name: '계획 단계 활성화' }).click()
+  expect((await planPatch).postDataJSON()).toEqual({ active: true, version: 1 })
+  await expect(planRow.getByRole('status')).toContainText('다음 근무일로 재배치했습니다')
+  await expect(planRow.getByLabel('계획 시작일')).toHaveValue('2026-07-20')
+  await expect(planRow.getByLabel('계획 종료일')).toHaveValue('2026-07-24')
+  const deliverRow = panel.locator('li').filter({ hasText: '실행' })
+  await expect(deliverRow.getByLabel('실행 시작일')).toHaveValue('2026-07-27')
+  await expect(deliverRow.getByLabel('실행 종료일')).toHaveValue('2026-07-29')
+
+  const closeRow = panel.locator('li').filter({ hasText: '마감' })
+  await closeRow.getByRole('switch', { name: '마감 단계 활성화' }).click()
+  await expect(closeRow.getByRole('status')).toContainText('저장된 날짜는 변경되지 않았습니다')
+  await expect(closeRow.getByLabel('마감 시작일')).toHaveValue('2026-08-03')
+
+  await page.locator('[data-shell-scroll-region]').evaluate((element) => element.scrollTo({ top: 0 }))
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/project-phase-activation-ui/settings-desktop.png',
+    fullPage: true,
+  })
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.locator('[data-shell-scroll-region]').evaluate((element) => element.scrollTo({ top: 0 }))
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/project-phase-activation-ui/settings-mobile.png',
+    fullPage: true,
+  })
+})
+
 test('Overview 단계 오류는 재시도할 수 있고 모든 단계가 비활성이면 표면을 숨긴다', async ({
   page,
 }) => {
