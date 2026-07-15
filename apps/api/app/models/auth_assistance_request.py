@@ -7,7 +7,6 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
-    SmallInteger,
     String,
     Text,
     func,
@@ -81,15 +80,12 @@ class AuthAssistanceRequest(Base):
 
 
 class AuthAssistanceRateLimit(Base):
-    """Singleton database bucket for an atomic workspace-wide submission cap."""
+    """Short-lived database bucket for an atomic per-source submission cap."""
 
     __tablename__ = "auth_assistance_rate_limits"
-    __table_args__ = (
-        CheckConstraint("id = 1", name="singleton"),
-        CheckConstraint("attempt_count >= 0", name="attempt_count_nonnegative"),
-    )
+    __table_args__ = (CheckConstraint("attempt_count >= 0", name="attempt_count_nonnegative"),)
 
-    id: Mapped[int] = mapped_column(SmallInteger, primary_key=True, default=1)
+    source_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
     window_started_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

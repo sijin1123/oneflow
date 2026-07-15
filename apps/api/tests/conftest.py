@@ -136,12 +136,6 @@ async def _clean_tables(app):
         )
         await session.execute(
             text(
-                "INSERT INTO auth_assistance_rate_limits "
-                "(id, window_started_at, attempt_count) VALUES (1, now(), 0)"
-            )
-        )
-        await session.execute(
-            text(
                 "INSERT INTO workspace_profiles "
                 "(id, name, revision, updated_by_user_id, updated_by_name) "
                 "VALUES (1, 'OneFlow', 1, NULL, NULL) "

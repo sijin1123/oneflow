@@ -3,13 +3,14 @@ import logging
 from contextlib import suppress
 from datetime import datetime, timedelta
 
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy import update as sa_update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.models.auth_assistance_request import AuthAssistanceRequest
+from app.models.auth_assistance_request import AuthAssistanceRateLimit, AuthAssistanceRequest
 
 AUTH_ASSISTANCE_RETENTION_DAYS = 90
+AUTH_ASSISTANCE_RATE_BUCKET_RETENTION_HOURS = 2
 AUTH_ASSISTANCE_RETENTION_INTERVAL_SECONDS = 6 * 60 * 60
 logger = logging.getLogger(__name__)
 
@@ -36,7 +37,31 @@ async def redact_expired_auth_assistance(
             version=AuthAssistanceRequest.version + 1,
         )
     )
-    return result.rowcount
+    open_result = await session.execute(
+        sa_update(AuthAssistanceRequest)
+        .where(
+            AuthAssistanceRequest.status.in_({"pending", "in_review"}),
+            AuthAssistanceRequest.updated_at
+            <= authoritative_now - timedelta(days=AUTH_ASSISTANCE_RETENTION_DAYS),
+        )
+        .values(
+            status="rejected",
+            email=None,
+            reason=None,
+            triage_note=None,
+            triaged_at=authoritative_now,
+            redacted_at=authoritative_now,
+            updated_at=authoritative_now,
+            version=AuthAssistanceRequest.version + 1,
+        )
+    )
+    await session.execute(
+        delete(AuthAssistanceRateLimit).where(
+            AuthAssistanceRateLimit.window_started_at
+            <= authoritative_now - timedelta(hours=AUTH_ASSISTANCE_RATE_BUCKET_RETENTION_HOURS)
+        )
+    )
+    return result.rowcount + open_result.rowcount
 
 
 async def auth_assistance_retention_loop(

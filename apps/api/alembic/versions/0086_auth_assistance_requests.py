@@ -81,7 +81,7 @@ def upgrade() -> None:
     )
     op.create_table(
         "auth_assistance_rate_limits",
-        sa.Column("id", sa.SmallInteger(), nullable=False),
+        sa.Column("source_hash", sa.String(length=64), nullable=False),
         sa.Column(
             "window_started_at",
             sa.DateTime(timezone=True),
@@ -92,13 +92,8 @@ def upgrade() -> None:
         sa.Column(
             "updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
         ),
-        sa.CheckConstraint("id = 1", name="singleton"),
         sa.CheckConstraint("attempt_count >= 0", name="attempt_count_nonnegative"),
-        sa.PrimaryKeyConstraint("id", name="pk_auth_assistance_rate_limits"),
-    )
-    op.execute(
-        "INSERT INTO auth_assistance_rate_limits "
-        "(id, window_started_at, attempt_count) VALUES (1, now(), 0)"
+        sa.PrimaryKeyConstraint("source_hash", name="pk_auth_assistance_rate_limits"),
     )
 
 
