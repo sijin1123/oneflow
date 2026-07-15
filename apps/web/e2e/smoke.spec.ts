@@ -11902,9 +11902,19 @@ test('로그인 참조 UI는 6개 목표 뷰포트에서 넘침 없이 렌더링
     await page.setViewportSize({ width: viewport.width, height: viewport.height })
     await page.goto('/login')
     await expect(page.getByRole('heading', { name: /Welcome back/ })).toBeVisible()
+    await expect(page.locator('.of-login-mini-avatar').first()).toHaveCSS(
+      'background-image',
+      /oneflow-login-avatar-sprite-v1/,
+    )
+    if (viewport.width >= 1366) {
+      const panel = await page.locator('.of-login-page').boundingBox()
+      expect(panel).not.toBeNull()
+      expect(panel!.width).toBeLessThanOrEqual(1181)
+      expect(panel!.width).toBeLessThan(viewport.width - 120)
+    }
     await expectNoHorizontalOverflow(page)
     await page.screenshot({
-      path: `../../docs/screenshots/redevelopment/login-reference-ui/${viewport.name}.png`,
+      path: `../../docs/screenshots/redevelopment/login-watercolor-compact-ui/${viewport.name}.png`,
       fullPage: true,
     })
   }

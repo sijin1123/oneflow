@@ -20,7 +20,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 
 import oneflowRibbonMark from '@/assets/brand/oneflow-ribbon-mark.svg'
-import loginJourney from '@/assets/generated/oneflow-login-journey-watercolor-v2.webp'
+import loginJourney from '@/assets/generated/oneflow-login-watercolor-compact-v3.jpg'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -167,21 +167,21 @@ function BrandLockup({ compact = false }: { compact?: boolean }) {
 }
 
 const kanbanColumns = [
-  { name: 'To do', count: 3, tasks: [['Design new landing page', 'UI/UX', 'SA']] },
+  { name: 'To do', count: 3, tasks: [['Design new landing page', 'UI/UX', '1']] },
   {
     name: 'In Progress',
     count: 2,
     tasks: [
-      ['Implement OAuth flow', 'Backend', 'MK'],
-      ['Create dashboard charts', 'Data', 'PR'],
+      ['Implement OAuth flow', 'Backend', '2'],
+      ['Create dashboard charts', 'Data', '3'],
     ],
   },
   {
     name: 'Review',
     count: 2,
     tasks: [
-      ['Review PR #124', '', 'AL'],
-      ['Fix mobile layout issue', 'Bug', 'DU'],
+      ['Review PR #124', '', '4'],
+      ['Fix mobile layout issue', 'Bug', '5'],
     ],
   },
 ] as const
@@ -203,7 +203,7 @@ function KanbanCard() {
               <article key={title}>
                 <strong>{title}</strong>
                 <footer>
-                  <span className="of-login-mini-avatar">{avatar}</span>
+                  <span className="of-login-mini-avatar" data-avatar={avatar} />
                   {tag ? <small data-tag={tag.toLowerCase()}>{tag}</small> : null}
                 </footer>
               </article>
@@ -244,9 +244,9 @@ function ActivityCard() {
     <section className="of-login-activity" aria-label="Team activity preview">
       <strong>Team activity</strong>
       <ul>
-        <li><span className="of-login-mini-avatar is-lilac">SA</span><p><b>Sarah updated task</b><small>Design system v2</small></p><time>2m ago</time></li>
+        <li><span className="of-login-mini-avatar" data-avatar="1" /><p><b>Sarah updated task</b><small>Design system v2</small></p><time>2m ago</time></li>
         <li><CheckCircle2 aria-hidden="true" /><p><b>Mike completed</b><small>API rate limiting</small></p><time>15m ago</time></li>
-        <li><span className="of-login-mini-avatar is-coral">PR</span><p><b>Priya commented on</b><small>Project roadmap</small></p><time>1h ago</time></li>
+        <li><span className="of-login-mini-avatar" data-avatar="5" /><p><b>Priya commented on</b><small>Project roadmap</small></p><time>1h ago</time></li>
       </ul>
       <p className="of-login-activity-link">View all activity <span aria-hidden="true">→</span></p>
     </section>
@@ -553,9 +553,10 @@ export function LoginPage() {
   }
 
   return (
-    <div className="of-login-page" data-locale={locale}>
-      <StoryPanel />
-      <main className="of-login-auth" aria-labelledby="login-title">
+    <div className="of-login-canvas">
+      <div className="of-login-page" data-locale={locale}>
+        <StoryPanel />
+        <main className="of-login-auth" aria-labelledby="login-title">
         <section className="of-login-auth-card">
           <div className="of-login-auth-brand"><BrandLockup compact /></div>
           <header className="of-login-heading">
@@ -697,7 +698,8 @@ export function LoginPage() {
             </DropdownMenuContent>
           </DropdownMenu>
         </footer>
-      </main>
+        </main>
+      </div>
       {assistanceNotice ? (
         <AssistanceDialog
           key={assistanceNotice}
