@@ -1749,6 +1749,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{project_id}/attachments/search-index/rebuild": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Rebuild Attachment Search Index
+         * @description Bounded legacy LocalStorage reindex. New uploads are indexed inline;
+         *     this endpoint consumes at most 100 pending rows and may be repeated.
+         */
+        post: operations["rebuild_attachment_search_index_api_v1_projects__project_id__attachments_search_index_rebuild_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{project_id}/attachments/upload": {
         parameters: {
             query?: never;
@@ -3786,6 +3807,13 @@ export interface components {
              * Format: uuid
              */
             project_id: string;
+            /**
+             * Search Index Status
+             * @enum {string}
+             */
+            search_index_status: "not_applicable" | "pending" | "indexed" | "unsupported" | "too_large" | "invalid_text" | "missing_blob";
+            /** Search Indexed At */
+            search_indexed_at: string | null;
             /** Size Bytes */
             size_bytes: number | null;
             /** Uploaded By */
@@ -3794,6 +3822,19 @@ export interface components {
             url: string;
             /** Work Package Id */
             work_package_id?: string | null;
+        };
+        /** AttachmentSearchReindexResult */
+        AttachmentSearchReindexResult: {
+            /** Indexed */
+            indexed: number;
+            /** Processed */
+            processed: number;
+            /** Remaining */
+            remaining: number;
+            /** Statuses */
+            statuses: {
+                [key: string]: number;
+            };
         };
         /** AuthAssistanceAccepted */
         AuthAssistanceAccepted: {
@@ -5090,6 +5131,15 @@ export interface components {
             title?: string | null;
             /** Visibility */
             visibility?: ("shared" | "private") | null;
+        };
+        /** FileGroup */
+        FileGroup: {
+            /** Items */
+            items: components["schemas"]["SearchFileItem"][];
+            /** Returned */
+            returned: number;
+            /** Truncated */
+            truncated: boolean;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -7479,6 +7529,36 @@ export interface components {
             /** Title */
             title: string;
         };
+        /** SearchFileItem */
+        SearchFileItem: {
+            /** Content Type */
+            content_type: string | null;
+            /** Filename */
+            filename: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Matched In
+             * @default primary
+             */
+            matched_in: string;
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            /** Project Key */
+            project_key: string;
+            /** Project Name */
+            project_name: string;
+            /** Size Bytes */
+            size_bytes: number | null;
+            /** Snippet */
+            snippet?: string | null;
+        };
         /** SearchInitiativeItem */
         SearchInitiativeItem: {
             /**
@@ -7710,6 +7790,7 @@ export interface components {
         UnifiedSearchResults: {
             cycles: components["schemas"]["NamedGroup"];
             documents: components["schemas"]["DocumentGroup"];
+            files: components["schemas"]["FileGroup"];
             initiatives: components["schemas"]["InitiativeGroup"];
             meetings: components["schemas"]["MeetingGroup"];
             modules: components["schemas"]["NamedGroup"];
@@ -13294,6 +13375,43 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AttachmentRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    rebuild_attachment_search_index_api_v1_projects__project_id__attachments_search_index_rebuild_post: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AttachmentSearchReindexResult"];
                 };
             };
             /** @description Validation Error */

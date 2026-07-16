@@ -4,8 +4,8 @@ Scope is the caller's member projects only — the same existence-hiding boundar
 every other read path. Non-member projects never appear in results; archived
 projects are excluded. Matching is icontains with %/_ autoescape (§6.1); the
 unified endpoint groups results per resource kind with a limit+1 truncation
-probe (v14.1 — never a silent cut). Documents/meetings match on TITLE only
-(full-text body search is a follow-up).
+probe (v14.1 — never a silent cut). Supported fields and derived upload text
+are searched inside the same visibility scope; request-time blob reads are not used.
 """
 
 from datetime import timedelta
@@ -13,13 +13,14 @@ from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
-from sqlalchemy import case, func, or_, select
+from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
 from app.core.auth import get_current_user
 from app.core.dates import utc_today
 from app.db.session import get_session
+from app.models.attachment import Attachment
 from app.models.cycle import Cycle
 from app.models.document import ProjectDocument
 from app.models.initiative import Initiative, InitiativeProject
@@ -32,6 +33,7 @@ from app.models.watcher import WpWatcher
 from app.models.work_package import WP_CLOSED_STATUSES, WP_PRIORITIES, WP_STATUSES, WorkPackage
 from app.schemas.search import (
     DocumentGroup,
+    FileGroup,
     InitiativeGroup,
     MeetingGroup,
     NamedGroup,
@@ -40,6 +42,7 @@ from app.schemas.search import (
     SearchAnalyticsProjectOverflow,
     SearchAnalyticsScheduleBuckets,
     SearchDocumentItem,
+    SearchFileItem,
     SearchInitiativeItem,
     SearchMeetingItem,
     SearchNamedItem,
@@ -419,6 +422,37 @@ async def unified_search(
                 .limit(probe)
             )
         ).all()
+    file_rows = (
+        await session.execute(
+            select(Attachment, Project.key, Project.name)
+            .join(Project, Attachment.project_id == Project.id)
+            .outerjoin(ProjectDocument, Attachment.document_id == ProjectDocument.id)
+            .where(Attachment.project_id.in_(visible_member_projects))
+            .where(Project.archived_at.is_(None))
+            .where(Attachment.storage_key.is_not(None))
+            .where(
+                or_(
+                    Attachment.filename.icontains(q, autoescape=True),
+                    and_(
+                        Attachment.search_index_status == "indexed",
+                        Attachment.search_text.icontains(q, autoescape=True),
+                    ),
+                )
+            )
+            .where(
+                or_(
+                    Attachment.document_id.is_(None),
+                    and_(
+                        wiki_is_enabled,
+                        ProjectDocument.archived_at.is_(None),
+                        document_visible_clause(user.id),
+                    ),
+                )
+            )
+            .order_by(Attachment.filename.asc(), Attachment.id.asc())
+            .limit(probe)
+        )
+    ).all()
     meeting_rows = (
         await session.execute(
             scoped(Meeting, Meeting.title, Meeting.agenda, Meeting.minutes)
@@ -469,6 +503,7 @@ async def unified_search(
 
     wps, wp_trunc = cut(wp_rows)
     docs, doc_trunc = cut(doc_rows)
+    files, file_trunc = cut(file_rows)
     meetings, meeting_trunc = cut(meeting_rows)
     cycles, cycle_trunc = cut(cycle_rows)
     modules, module_trunc = cut(module_rows)
@@ -523,6 +558,24 @@ async def unified_search(
             ],
             returned=len(docs),
             truncated=doc_trunc,
+        ),
+        files=FileGroup(
+            items=[
+                SearchFileItem(
+                    id=attachment.id,
+                    project_id=attachment.project_id,
+                    project_key=key,
+                    project_name=name,
+                    filename=attachment.filename,
+                    content_type=attachment.content_type,
+                    size_bytes=attachment.size_bytes,
+                    matched_in=(fm := classify(attachment.filename, attachment.search_text))[0],
+                    snippet=fm[1],
+                )
+                for attachment, key, name in files
+            ],
+            returned=len(files),
+            truncated=file_trunc,
         ),
         meetings=MeetingGroup(
             items=[

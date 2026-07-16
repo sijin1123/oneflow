@@ -13,7 +13,7 @@ from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from fastapi.responses import FileResponse
-from sqlalchemy import or_, select, text
+from sqlalchemy import func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import get_current_user
@@ -31,17 +31,25 @@ from app.models.document import ProjectDocument
 from app.models.project import Project
 from app.models.user import User
 from app.models.work_package import WorkPackage
-from app.schemas.attachment import AttachmentCreate, AttachmentList, AttachmentRead, StorageRead
+from app.schemas.attachment import (
+    AttachmentCreate,
+    AttachmentList,
+    AttachmentRead,
+    AttachmentSearchReindexResult,
+    StorageRead,
+)
+from app.services.attachment_search import apply_attachment_search_index
 from app.services.document_access import document_is_visible, document_visible_clause
 from app.services.storage import LocalStorage, storage_key
 from app.services.storage_usage import storage_usage, used_bytes
-from app.services.workspace_features import require_feature_enabled
+from app.services.workspace_features import feature_enabled, require_feature_enabled
 
 router = APIRouter()
 
 # One advisory lock per transaction (house rule from work_packages.py): quota
 # check + insert serialize per project so concurrent uploads cannot overshoot.
 UPLOAD_LOCK_CLASSID = 427002
+ATTACHMENT_REINDEX_LOCK_CLASSID = 427015
 
 # Raster types that may render inline (document images — v68.1 R1-②/③).
 INLINE_IMAGE_TYPES = {"image/png", "image/jpeg", "image/gif", "image/webp"}
@@ -58,6 +66,25 @@ def _read(att: Attachment) -> AttachmentRead:
     read = AttachmentRead.model_validate(att)
     read.has_file = att.storage_key is not None
     return read
+
+
+def _visible_attachment_clause(
+    project_id: uuid.UUID,
+    user_id: uuid.UUID,
+    *,
+    wiki_enabled: bool,
+):
+    if not wiki_enabled:
+        return Attachment.document_id.is_(None)
+    visible_active_documents = select(ProjectDocument.id).where(
+        ProjectDocument.project_id == project_id,
+        ProjectDocument.archived_at.is_(None),
+        document_visible_clause(user_id),
+    )
+    return or_(
+        Attachment.document_id.is_(None),
+        Attachment.document_id.in_(visible_active_documents),
+    )
 
 
 async def _validate_anchor(
@@ -111,12 +138,15 @@ async def list_attachments(
     422; a missing/cross-project anchor id simply matches nothing inside the
     project scope (existence hiding)."""
     await require_member(session, project_id, user)
+    wiki_is_enabled = await feature_enabled(session)
     if work_package_id is not None and document_id is not None:
         raise HTTPException(status_code=422, detail="at most one anchor filter is allowed")
     stmt = select(Attachment).where(Attachment.project_id == project_id)
     if work_package_id is not None:
         stmt = stmt.where(Attachment.work_package_id == work_package_id)
     if document_id is not None:
+        if not wiki_is_enabled:
+            return AttachmentList(items=[], total=0)
         document = (
             await session.execute(
                 select(ProjectDocument).where(
@@ -129,15 +159,11 @@ async def list_attachments(
             return AttachmentList(items=[], total=0)
         stmt = stmt.where(Attachment.document_id == document_id)
     else:
-        visible_active_documents = select(ProjectDocument.id).where(
-            ProjectDocument.project_id == project_id,
-            ProjectDocument.archived_at.is_(None),
-            document_visible_clause(user.id),
-        )
         stmt = stmt.where(
-            or_(
-                Attachment.document_id.is_(None),
-                Attachment.document_id.in_(visible_active_documents),
+            _visible_attachment_clause(
+                project_id,
+                user.id,
+                wiki_enabled=wiki_is_enabled,
             )
         )
     rows = (
@@ -291,12 +317,89 @@ async def upload_attachment(
         raise HTTPException(status_code=500, detail="upload failed") from exc
 
     att.size_bytes = written
+    apply_attachment_search_index(att, storage)
     try:
         await session.commit()
     except Exception:
         storage.delete(att.storage_key)  # keep blob and row consistent
         raise
     return _read(att)
+
+
+@router.post(
+    "/projects/{project_id}/attachments/search-index/rebuild",
+    response_model=AttachmentSearchReindexResult,
+)
+async def rebuild_attachment_search_index(
+    project_id: uuid.UUID,
+    limit: int = Query(default=100, ge=1, le=100),
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+    settings: Settings = Depends(get_settings),
+) -> AttachmentSearchReindexResult:
+    """Bounded legacy LocalStorage reindex. New uploads are indexed inline;
+    this endpoint consumes at most 100 pending rows and may be repeated."""
+    await require_member(session, project_id, user, write=True)
+    wiki_is_enabled = await feature_enabled(session)
+    visible_clause = _visible_attachment_clause(
+        project_id,
+        user.id,
+        wiki_enabled=wiki_is_enabled,
+    )
+    await session.execute(text("SET LOCAL lock_timeout = '5s'"))
+    await session.execute(
+        text("SELECT pg_advisory_xact_lock(:classid, hashtext(:pid))").bindparams(
+            classid=ATTACHMENT_REINDEX_LOCK_CLASSID,
+            pid=str(project_id),
+        )
+    )
+    rows = (
+        (
+            await session.execute(
+                select(Attachment)
+                .where(
+                    Attachment.project_id == project_id,
+                    Attachment.storage_key.is_not(None),
+                    Attachment.search_index_status == "pending",
+                    visible_clause,
+                )
+                .order_by(Attachment.created_at.asc(), Attachment.id.asc())
+                .limit(limit)
+                .with_for_update()
+            )
+        )
+        .scalars()
+        .all()
+    )
+    storage = LocalStorage(settings.storage_dir)
+    statuses: dict[str, int] = {}
+    indexed = 0
+    for attachment in rows:
+        apply_attachment_search_index(attachment, storage)
+        statuses[attachment.search_index_status] = (
+            statuses.get(attachment.search_index_status, 0) + 1
+        )
+        indexed += int(attachment.search_index_status == "indexed")
+    await session.flush()
+    remaining = (
+        await session.execute(
+            select(func.count())
+            .select_from(Attachment)
+            .where(
+                Attachment.project_id == project_id,
+                Attachment.storage_key.is_not(None),
+                Attachment.search_index_status == "pending",
+                visible_clause,
+            )
+        )
+    ).scalar_one()
+    await session.commit()
+    return AttachmentSearchReindexResult(
+        processed=len(rows),
+        indexed=indexed,
+        remaining=remaining,
+        statuses=statuses,
+    )
 
 
 @router.get("/attachments/{attachment_id}/download")

@@ -163,6 +163,11 @@ async def test_viewer_write_matrix_403(client, viewer_project):
         ),
         ("delete", f"/api/v1/documents/{viewer_project['doc_id']}", None),
         (
+            "post",
+            f"/api/v1/projects/{pid}/attachments/search-index/rebuild",
+            None,
+        ),
+        (
             "put",
             f"/api/v1/document-comments/{viewer_project['document_comment_id']}/reactions/👍",
             None,

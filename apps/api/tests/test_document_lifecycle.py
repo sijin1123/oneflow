@@ -5,6 +5,7 @@ from sqlalchemy import select
 
 from app.core.auth import DEV_USER_EMAIL, token_hash
 from app.models.access_token import PersonalAccessToken
+from app.models.attachment import Attachment
 from app.models.document import ProjectDocument
 from app.models.member import ProjectMember
 from app.models.user import User
@@ -120,7 +121,7 @@ async def test_workspace_document_list_is_membership_and_visibility_scoped(
     assert [item["id"] for item in archived_list.json()["items"]] == [owner_shared["id"]]
 
 
-async def test_private_links_and_attachments_do_not_leak(client, project, other):
+async def test_private_links_and_attachments_do_not_leak(client, app, project, other):
     private = await _create(
         client,
         project["id"],
@@ -160,8 +161,12 @@ async def test_private_links_and_attachments_do_not_leak(client, project, other)
     uploaded = await client.post(
         f"/api/v1/projects/{project['id']}/attachments/upload"
         f"?filename=private-upload.txt&document_id={private['id']}",
-        headers=other["headers"],
         content=b"private file body",
+        headers={
+            **other["headers"],
+            "content-type": "text/plain",
+            "content-length": "17",
+        },
     )
     assert uploaded.status_code == 201, uploaded.text
     assert (
@@ -172,6 +177,32 @@ async def test_private_links_and_attachments_do_not_leak(client, project, other)
     )
     assert own_download.status_code == 200
     assert own_download.content == b"private file body"
+    async with app.state.sessionmaker() as session, session.begin():
+        row = await session.get(Attachment, uploaded.json()["id"])
+        assert row is not None
+        row.search_text = None
+        row.search_index_status = "pending"
+        row.search_indexed_at = None
+
+    hidden_reindex = await client.post(
+        f"/api/v1/projects/{project['id']}/attachments/search-index/rebuild"
+    )
+    assert hidden_reindex.json()["processed"] == 0
+    assert hidden_reindex.json()["remaining"] == 0
+    own_reindex = await client.post(
+        f"/api/v1/projects/{project['id']}/attachments/search-index/rebuild",
+        headers=other["headers"],
+    )
+    assert own_reindex.json()["processed"] == 1
+    assert own_reindex.json()["indexed"] == 1
+    assert (await client.get("/api/v1/search?q=private%20file%20body")).json()["files"][
+        "returned"
+    ] == 0
+    own_file_search = await client.get(
+        "/api/v1/search?q=private%20file%20body",
+        headers=other["headers"],
+    )
+    assert own_file_search.json()["files"]["returned"] == 1
 
     hidden_storage = (await client.get(f"/api/v1/projects/{project['id']}/storage")).json()
     hidden_counts = (

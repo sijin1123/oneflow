@@ -13,6 +13,7 @@ import pytest
 from sqlalchemy import delete as sa_delete
 
 from app.models import (
+    Attachment,
     Cycle,
     Initiative,
     InitiativeProject,
@@ -60,7 +61,15 @@ async def test_groups_match_across_kinds(client, project):
     assert body["initiatives"]["items"][0]["name"] == "배포 이니셔티브"
     assert all(
         body[g]["truncated"] is False
-        for g in ("work_packages", "documents", "meetings", "cycles", "modules", "initiatives")
+        for g in (
+            "work_packages",
+            "documents",
+            "files",
+            "meetings",
+            "cycles",
+            "modules",
+            "initiatives",
+        )
     )
 
     # Load control: a 1-char query is a 422.
@@ -108,6 +117,17 @@ async def test_hidden_only_matches_do_not_leak_counts_or_truncation(client, app,
                     end_date=date(2026, 7, 14),
                 ),
                 Module(project_id=foreign_pid, name=f"{token} 모듈"),
+                Attachment(
+                    project_id=foreign_pid,
+                    filename=f"{token}.txt",
+                    content_type="text/plain",
+                    size_bytes=10,
+                    url="oneflow://attachments/hidden",
+                    storage_key=f"{foreign_pid}/hidden-search",
+                    search_text=token,
+                    search_index_status="indexed",
+                    search_indexed_at=datetime.now(UTC),
+                ),
             ]
         )
         initiative = Initiative(name=f"{token} 이니셔티브", owner_id=foreign_user)
@@ -116,7 +136,15 @@ async def test_hidden_only_matches_do_not_leak_counts_or_truncation(client, app,
         session.add(InitiativeProject(initiative_id=initiative.id, project_id=foreign_pid))
 
     body = (await search(client, token, limit=1)).json()
-    for group in ("work_packages", "documents", "meetings", "cycles", "modules", "initiatives"):
+    for group in (
+        "work_packages",
+        "documents",
+        "files",
+        "meetings",
+        "cycles",
+        "modules",
+        "initiatives",
+    ):
         assert body[group]["items"] == []
         assert body[group]["returned"] == 0
         assert body[group]["truncated"] is False
@@ -299,4 +327,6 @@ async def test_content_never_leaks_foreign_projects(client, app, foreign_project
         )
     res = (await client.get("/api/v1/search?q=극비-본문-토큰")).json()
     assert res["work_packages"]["returned"] == 0
-    assert all(res[g]["returned"] == 0 for g in ("documents", "meetings", "cycles", "modules"))
+    assert all(
+        res[g]["returned"] == 0 for g in ("documents", "files", "meetings", "cycles", "modules")
+    )

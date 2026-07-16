@@ -42,6 +42,118 @@ async def test_upload_download_roundtrip(client, app):
     # The list marks the row as a real file.
     listed = (await client.get(f"/api/v1/projects/{project['id']}/attachments")).json()
     assert listed["items"][0]["has_file"] is True
+    assert listed["items"][0]["search_index_status"] == "indexed"
+
+
+async def test_text_upload_is_searchable_and_filename_match_wins(client):
+    project = await create_project(client, key="FSR", name="파일 검색")
+    pid = project["id"]
+    token = "파일본문토큰"
+    uploaded = await upload(
+        client,
+        pid,
+        filename="운영 가이드.txt",
+        body=f"배포 전 {token} 확인".encode(),
+        content_type="text/plain",
+    )
+    assert uploaded.status_code == 201, uploaded.text
+    assert uploaded.json()["search_index_status"] == "indexed"
+
+    by_body = (await client.get(f"/api/v1/search?q={token}")).json()["files"]
+    assert by_body["returned"] == 1
+    assert by_body["items"][0]["matched_in"] == "content"
+    assert token in by_body["items"][0]["snippet"]
+
+    by_name = (await client.get("/api/v1/search?q=운영%20가이드")).json()["files"]
+    assert by_name["items"][0]["matched_in"] == "primary"
+    assert by_name["items"][0]["snippet"] is None
+
+
+async def test_unsupported_and_invalid_text_are_not_body_searched(client):
+    project = await create_project(client, key="FSX", name="파일 검색 제외")
+    pid = project["id"]
+    unsupported = await upload(
+        client,
+        pid,
+        filename="binary.bin",
+        body=b"hidden-binary-token",
+        content_type="application/octet-stream",
+    )
+    assert unsupported.json()["search_index_status"] == "unsupported"
+    invalid = await upload(
+        client,
+        pid,
+        filename="invalid.txt",
+        body=b"\xff\xfe hidden-invalid-token",
+        content_type="text/plain",
+    )
+    assert invalid.json()["search_index_status"] == "invalid_text"
+
+    assert (await client.get("/api/v1/search?q=hidden-binary-token")).json()["files"][
+        "returned"
+    ] == 0
+    assert (await client.get("/api/v1/search?q=hidden-invalid-token")).json()["files"][
+        "returned"
+    ] == 0
+
+
+async def test_pending_legacy_upload_can_be_reindexed_in_bounded_batches(client, app):
+    project = await create_project(client, key="FSI", name="파일 재인덱스")
+    pid = project["id"]
+    token = "레거시검색토큰"
+    uploaded = [
+        (
+            await upload(
+                client,
+                pid,
+                filename=f"legacy-{index}.txt",
+                body=f"{token} {index}".encode(),
+                content_type="text/plain",
+            )
+        ).json()
+        for index in range(2)
+    ]
+    async with app.state.sessionmaker() as session, session.begin():
+        rows = [await session.get(Attachment, attachment["id"]) for attachment in uploaded]
+        assert all(row is not None for row in rows)
+        for row in rows:
+            row.search_text = None
+            row.search_index_status = "pending"
+            row.search_indexed_at = None
+
+    assert (await client.get(f"/api/v1/search?q={token}")).json()["files"]["returned"] == 0
+    rebuilt = await client.post(f"/api/v1/projects/{pid}/attachments/search-index/rebuild?limit=1")
+    assert rebuilt.status_code == 200, rebuilt.text
+    assert rebuilt.json() == {
+        "processed": 1,
+        "indexed": 1,
+        "remaining": 1,
+        "statuses": {"indexed": 1},
+    }
+    assert (await client.get(f"/api/v1/search?q={token}")).json()["files"]["returned"] == 1
+
+    completed = await client.post(f"/api/v1/projects/{pid}/attachments/search-index/rebuild")
+    assert completed.json() == {
+        "processed": 1,
+        "indexed": 1,
+        "remaining": 0,
+        "statuses": {"indexed": 1},
+    }
+    assert (await client.get(f"/api/v1/search?q={token}")).json()["files"]["returned"] == 2
+
+    assert (await client.post(f"/api/v1/projects/{pid}/archive")).status_code == 200
+    assert (
+        await upload(
+            client,
+            pid,
+            filename="archived.txt",
+            body=b"blocked",
+        )
+    ).status_code == 409
+    assert (
+        await client.post(f"/api/v1/projects/{pid}/attachments/search-index/rebuild")
+    ).status_code == 409
+    await client.post(f"/api/v1/projects/{pid}/unarchive")
 
 
 async def test_size_limits_and_quota(client, app):

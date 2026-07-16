@@ -277,6 +277,7 @@ ENDPOINT_VERBS: dict[str, str] = {
     "POST /api/v1/work-packages/{wp_id}/cost-entries": "work.write",
     "POST /api/v1/projects/{project_id}/attachments": "work.write",
     "POST /api/v1/projects/{project_id}/attachments/upload": "work.write",
+    "POST /api/v1/projects/{project_id}/attachments/search-index/rebuild": "work.write",
     "DELETE /api/v1/attachments/{attachment_id}": "work.write",
     # milestone.write
     "POST /api/v1/projects/{project_id}/milestones": "milestone.write",
