@@ -23,10 +23,38 @@ export type IntakeItem = {
 
 export type IntakeList = { items: IntakeItem[]; total: number }
 
+export type IntakeDecisionHistoryItem = {
+  id: string
+  intake_item_id: string
+  previous_status: IntakeStatus
+  status: Exclude<IntakeStatus, 'pending'>
+  note: string | null
+  snooze_until: string | null
+  decided_by: string | null
+  decided_by_name: string | null
+  created_at: string
+}
+
+export type IntakeDecisionHistoryList = {
+  items: IntakeDecisionHistoryItem[]
+  total: number
+}
+
 export function useIntake(projectId: string) {
   return useQuery({
     queryKey: ['intake', projectId],
     queryFn: () => api<IntakeList>(`/api/v1/projects/${projectId}/intake`),
+  })
+}
+
+export function useIntakeDecisionHistory(projectId: string, itemId: string, enabled: boolean) {
+  return useQuery({
+    queryKey: ['intake-history', projectId, itemId],
+    queryFn: () =>
+      api<IntakeDecisionHistoryList>(
+        `/api/v1/projects/${projectId}/intake/${itemId}/history`,
+      ),
+    enabled,
   })
 }
 
@@ -60,8 +88,11 @@ export function useTriageIntake(projectId: string) {
         method: 'POST',
         body: JSON.stringify(input),
       }),
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
       void queryClient.invalidateQueries({ queryKey: ['intake', projectId] })
+      void queryClient.invalidateQueries({
+        queryKey: ['intake-history', projectId, variables.itemId],
+      })
       void queryClient.invalidateQueries({ queryKey: ['work-packages', projectId] })
     },
   })

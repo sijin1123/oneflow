@@ -2104,6 +2104,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{project_id}/intake/{item_id}/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Intake Decision History */
+        get: operations["list_intake_decision_history_api_v1_projects__project_id__intake__item_id__history_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{project_id}/intake/{item_id}/triage": {
         parameters: {
             query?: never;
@@ -5117,6 +5134,43 @@ export interface components {
             body?: string | null;
             /** Title */
             title: string;
+        };
+        /** IntakeDecisionHistoryList */
+        IntakeDecisionHistoryList: {
+            /** Items */
+            items: components["schemas"]["IntakeDecisionHistoryRead"][];
+            /** Total */
+            total: number;
+        };
+        /** IntakeDecisionHistoryRead */
+        IntakeDecisionHistoryRead: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Decided By */
+            decided_by: string | null;
+            /** Decided By Name */
+            decided_by_name?: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Intake Item Id
+             * Format: uuid
+             */
+            intake_item_id: string;
+            /** Note */
+            note: string | null;
+            /** Previous Status */
+            previous_status: string;
+            /** Snooze Until */
+            snooze_until: string | null;
+            /** Status */
+            status: string;
         };
         /** IntakeList */
         IntakeList: {
@@ -13947,6 +14001,45 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["IntakeRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_intake_decision_history_api_v1_projects__project_id__intake__item_id__history_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                project_id: string;
+                item_id: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IntakeDecisionHistoryList"];
                 };
             };
             /** @description Validation Error */

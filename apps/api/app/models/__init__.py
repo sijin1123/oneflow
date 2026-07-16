@@ -18,7 +18,7 @@ from app.models.initiative import (
     InitiativeSubscriber,
     InitiativeWorkPackage,
 )
-from app.models.intake import IntakeItem
+from app.models.intake import IntakeDecisionHistory, IntakeItem
 from app.models.meeting import Meeting, MeetingActionItem
 from app.models.meeting_template import MeetingAgendaTemplate
 from app.models.member import ProjectMember
@@ -104,6 +104,7 @@ __all__ = [
     "UserNotificationSettings",
     "PersonalNote",
     "IntakeItem",
+    "IntakeDecisionHistory",
     "CustomField",
     "WpCustomValue",
     "Initiative",
