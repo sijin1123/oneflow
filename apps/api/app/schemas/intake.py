@@ -1,7 +1,7 @@
 import uuid
 from datetime import date, datetime
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, ConfigDict, field_validator
 
 from app.models.intake import INTAKE_STATUSES
 
@@ -69,4 +69,23 @@ class IntakeRead(BaseModel):
 
 class IntakeList(BaseModel):
     items: list[IntakeRead]
+    total: int
+
+
+class IntakeDecisionHistoryRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    intake_item_id: uuid.UUID
+    previous_status: str
+    status: str
+    note: str | None
+    snooze_until: date | None
+    decided_by: uuid.UUID | None
+    decided_by_name: str | None = None
+    created_at: datetime
+
+
+class IntakeDecisionHistoryList(BaseModel):
+    items: list[IntakeDecisionHistoryRead]
     total: int

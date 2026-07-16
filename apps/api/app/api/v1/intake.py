@@ -1,6 +1,6 @@
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select
 from sqlalchemy import update as sa_update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -9,10 +9,17 @@ from app.core.auth import get_current_user
 from app.core.authz import member_role, require_member, require_role
 from app.core.config import Settings, get_settings
 from app.db.session import get_session
-from app.models.intake import INTAKE_OPEN_STATUSES, IntakeItem
+from app.models.intake import INTAKE_OPEN_STATUSES, IntakeDecisionHistory, IntakeItem
 from app.models.user import User
 from app.models.work_package import WorkPackage
-from app.schemas.intake import IntakeCreate, IntakeList, IntakeRead, IntakeTriage
+from app.schemas.intake import (
+    IntakeCreate,
+    IntakeDecisionHistoryList,
+    IntakeDecisionHistoryRead,
+    IntakeList,
+    IntakeRead,
+    IntakeTriage,
+)
 from app.services.activity import record_created
 from app.services.notification import record_intake_triage
 from app.services.sanitize import sanitize_html
@@ -82,6 +89,60 @@ async def submit_intake(
     return _to_read(row, user.display_name)
 
 
+@router.get(
+    "/projects/{project_id}/intake/{item_id}/history",
+    response_model=IntakeDecisionHistoryList,
+)
+async def list_intake_decision_history(
+    project_id: uuid.UUID,
+    item_id: uuid.UUID,
+    limit: int = Query(default=20, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+) -> IntakeDecisionHistoryList:
+    await require_member(session, project_id, user)
+    role = await member_role(session, project_id, user.id)
+    visible_item = select(IntakeItem.id).where(
+        IntakeItem.id == item_id,
+        IntakeItem.project_id == project_id,
+    )
+    if role != "owner":
+        visible_item = visible_item.where(IntakeItem.submitted_by == user.id)
+    if (await session.execute(visible_item)).scalar_one_or_none() is None:
+        raise HTTPException(status_code=404, detail="not found")
+
+    predicate = IntakeDecisionHistory.intake_item_id == item_id
+    total = await session.scalar(
+        select(func.count()).select_from(IntakeDecisionHistory).where(predicate)
+    )
+    rows = (
+        await session.execute(
+            select(IntakeDecisionHistory, User.display_name)
+            .outerjoin(User, IntakeDecisionHistory.decided_by == User.id)
+            .where(predicate)
+            .order_by(
+                IntakeDecisionHistory.created_at.desc(),
+                IntakeDecisionHistory.id.desc(),
+            )
+            .limit(limit)
+            .offset(offset)
+        )
+    ).all()
+    return IntakeDecisionHistoryList(
+        items=[
+            IntakeDecisionHistoryRead(
+                **IntakeDecisionHistoryRead.model_validate(history).model_dump(
+                    exclude={"decided_by_name"}
+                ),
+                decided_by_name=display_name,
+            )
+            for history, display_name in rows
+        ],
+        total=total or 0,
+    )
+
+
 @router.post(
     "/projects/{project_id}/intake/{item_id}/triage",
     response_model=IntakeRead,
@@ -107,6 +168,7 @@ async def triage_intake(
     ).scalar_one_or_none()
     if item is None or item.project_id != project_id:
         raise HTTPException(status_code=404, detail="not found")
+    previous_status = item.status
 
     accepted_wp_id: uuid.UUID | None = None
     if body.status == "accepted":
@@ -143,6 +205,16 @@ async def triage_intake(
         # including the just-inserted work package.
         await session.rollback()
         raise HTTPException(status_code=409, detail="item was already triaged")
+    session.add(
+        IntakeDecisionHistory(
+            intake_item_id=item_id,
+            previous_status=previous_status,
+            status=body.status,
+            note=body.note,
+            snooze_until=body.snooze_until if body.status == "snoozed" else None,
+            decided_by=user.id,
+        )
+    )
     if body.status == "accepted":
         await enqueue_work_package_event(
             session,
