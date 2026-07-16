@@ -168,7 +168,7 @@ export function InboxPage() {
           <p className="mb-1 text-[11px] font-medium uppercase text-of-muted">Inbox</p>
           <h1 className="text-base font-semibold">인박스</h1>
           <p className="mt-1 max-w-2xl text-xs leading-5 text-of-muted">
-            작업, 인테이크, 기한 변경에서 내가 확인해야 할 알림을 한 화면에서 정리합니다.
+            작업, 이니셔티브, 인테이크, 기한 변경에서 내가 확인해야 할 알림을 정리합니다.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -215,7 +215,7 @@ export function InboxPage() {
       {items.length === 0 ? (
         <EmptyState
           title="확인할 알림이 없습니다"
-          hint="작업 배정, 기한, 멘션, 인테이크 판정 알림이 생기면 여기에 모입니다."
+          hint="작업 배정, 이니셔티브 변경, 기한, 멘션, 인테이크 판정 알림이 여기에 모입니다."
         >
           <Link
             to="/settings"

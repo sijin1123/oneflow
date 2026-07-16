@@ -7,15 +7,83 @@ notification is committed atomically with the change that triggered it.
 import uuid
 from collections.abc import Iterable
 
-from sqlalchemy import and_, false, func, insert, literal, select, true
+from sqlalchemy import and_, exists, false, func, insert, literal, or_, select, true
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.initiative import Initiative, InitiativeProject, InitiativeSubscriber
 from app.models.member import ProjectMember
 from app.models.notification import Notification
 from app.models.notification_setting import UserNotificationSettings
 from app.models.user import User
 from app.models.watcher import WpWatcher
+
+
+async def notify_initiative_subscribers(
+    session: AsyncSession,
+    *,
+    initiative_id: uuid.UUID,
+    actor_id: uuid.UUID,
+    kind: str,
+) -> set[uuid.UUID]:
+    """Create an in-app initiative event for currently eligible followers.
+
+    Subscriptions are durable, but delivery rechecks active identity, current
+    owner/project visibility and the personal preference in the domain
+    transaction. Revoked members therefore receive no new event and can resume
+    their subscription if access is restored later.
+    """
+    if not kind.startswith("initiative_"):
+        raise ValueError("initiative notification kind required")
+    uid = PGUUID(as_uuid=True)
+    visible_project = exists(
+        select(ProjectMember.id)
+        .join(
+            InitiativeProject,
+            InitiativeProject.project_id == ProjectMember.project_id,
+        )
+        .where(
+            InitiativeProject.initiative_id == initiative_id,
+            ProjectMember.user_id == InitiativeSubscriber.user_id,
+        )
+    )
+    recipients = (
+        select(
+            func.gen_random_uuid(),
+            InitiativeSubscriber.user_id,
+            literal(None, type_=uid),
+            literal(initiative_id, type_=uid),
+            literal(actor_id, type_=uid),
+            literal(kind),
+            false(),
+        )
+        .select_from(InitiativeSubscriber)
+        .join(Initiative, Initiative.id == InitiativeSubscriber.initiative_id)
+        .join(User, User.id == InitiativeSubscriber.user_id)
+        .outerjoin(
+            UserNotificationSettings,
+            UserNotificationSettings.user_id == InitiativeSubscriber.user_id,
+        )
+        .where(
+            InitiativeSubscriber.initiative_id == initiative_id,
+            InitiativeSubscriber.user_id != actor_id,
+            User.is_active.is_(True),
+            or_(
+                Initiative.owner_id == InitiativeSubscriber.user_id,
+                visible_project,
+            ),
+            func.coalesce(UserNotificationSettings.initiatives, true()),
+        )
+    )
+    created = await session.execute(
+        insert(Notification)
+        .from_select(
+            ["id", "user_id", "project_id", "initiative_id", "actor_id", "kind", "read"],
+            recipients,
+        )
+        .returning(Notification.user_id)
+    )
+    return set(created.scalars().all())
 
 
 async def record_assignment(

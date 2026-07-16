@@ -344,3 +344,9 @@ Plane/OpenProject source, API, database schema, package, asset, CSS, DOM hierarc
 Plane/OpenProject의 공개 portfolio/initiative 제품 범주와 `docs/plane-poc-reverse-spec/`의 compact detail·work-item 탐색 정보구조에서 사용한 입력은 전략 묶음이 프로젝트 전체 집계뿐 아니라 명시적인 실행 작업 범위를 가져야 한다는 제품 행동뿐이다. OneFlow 구현은 기존 자체 Initiative visibility/ownership, connected-project membership, Work Package schema, PostgreSQL 복합 FK, React Query와 Radix Sheet를 사용해 독립 설계했다.
 
 Plane/OpenProject source, API, database schema, package, asset, CSS, DOM hierarchy, exact dimensions/colors, wording, work-item picker/detail 구현, icons 또는 branding은 복사하지 않았다. OneFlow 고유 migration `0091`, connected-project constrained relation, owner-only row-locked write, member-visible bounded read와 hidden-count leak guard를 추가했으며 신규 dependency, environment 또는 settings UI 변경은 없다. Initiative-level notifications는 별도 기능형 surface로 유지한다. — attested-independent-derivation
+
+## UI-120 Initiative Subscriptions / Notifications
+
+Plane/OpenProject의 공개 portfolio/initiative subscription 제품 범주와 `docs/plane-poc-reverse-spec/`의 compact detail·inbox 정보구조에서 사용한 입력은 사용자가 전략 묶음을 구독하고 관련 변경 알림을 현재 접근 권한 안에서 받아야 한다는 공개 제품 행동뿐이다. OneFlow 구현은 자체 Initiative visibility, connected-project membership, notification preference/inbox, PostgreSQL transaction과 React Query detail surface를 사용해 독립 설계했다.
+
+Plane/OpenProject source, API, database schema, package, asset, CSS, DOM hierarchy, exact dimensions/colors, wording, subscription/fan-out/inbox 구현, icons 또는 branding은 복사하지 않았다. OneFlow 고유 migration `0092`, self-service durable subscription, actor·active-user·current-visibility·preference fan-out guard와 direct initiative target을 추가했으며 신규 dependency 또는 environment 변경은 없다. 설정 UI에는 개인 이니셔티브 알림 토글만 추가했고 외부 SMTP/email delivery는 별도 transport surface로 유지한다. — attested-independent-derivation

@@ -3,7 +3,7 @@ from datetime import date, timedelta
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy import update as sa_update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import IntegrityError
@@ -13,6 +13,7 @@ from app.core.auth import get_current_user
 from app.core.dates import utc_today
 from app.db.session import get_session
 from app.models.activity import Activity
+from app.models.initiative import Initiative, InitiativeProject
 from app.models.member import ProjectMember
 from app.models.notification import Notification
 from app.models.notification_setting import UserNotificationSettings
@@ -433,6 +434,7 @@ async def get_notification_settings(
             mention=True,
             due_alerts=True,
             intake=True,
+            initiatives=True,
         )
     return NotificationSettingsRead(
         assigned=row.assigned,
@@ -441,6 +443,7 @@ async def get_notification_settings(
         mention=row.mention,
         due_alerts=row.due_alerts,
         intake=row.intake,
+        initiatives=row.initiatives,
     )
 
 
@@ -469,6 +472,7 @@ async def update_notification_settings(
         mention=row.mention,
         due_alerts=row.due_alerts,
         intake=row.intake,
+        initiatives=row.initiatives,
     )
 
 
@@ -483,16 +487,33 @@ async def list_notifications(
     name joined for display. `unread` is always the true unread total so the bell
     badge is correct even when the list is filtered."""
     actor = User.__table__.alias("actor")
+    visible_project_initiatives = (
+        select(InitiativeProject.initiative_id)
+        .join(ProjectMember, ProjectMember.project_id == InitiativeProject.project_id)
+        .where(ProjectMember.user_id == user.id)
+    )
+    visible_initiatives = select(Initiative.id).where(
+        or_(
+            Initiative.owner_id == user.id,
+            Initiative.id.in_(visible_project_initiatives),
+        )
+    )
+    notification_is_visible = or_(
+        Notification.initiative_id.is_(None),
+        Notification.initiative_id.in_(visible_initiatives),
+    )
     stmt = (
         select(
             Notification,
             WorkPackage.subject.label("wp_subject"),
+            Initiative.name.label("initiative_name"),
             actor.c.display_name.label("actor_name"),
         )
         .select_from(Notification)
         .outerjoin(WorkPackage, Notification.work_package_id == WorkPackage.id)
+        .outerjoin(Initiative, Notification.initiative_id == Initiative.id)
         .outerjoin(actor, Notification.actor_id == actor.c.id)
-        .where(Notification.user_id == user.id)
+        .where(Notification.user_id == user.id, notification_is_visible)
     )
     if unread_only:
         stmt = stmt.where(Notification.read.is_(False))
@@ -504,20 +525,26 @@ async def list_notifications(
             id=n.id,
             kind=n.kind,
             project_id=n.project_id,
+            initiative_id=n.initiative_id,
             work_package_id=n.work_package_id,
             intake_item_id=n.intake_item_id,
             work_package_subject=wp_subject,
+            initiative_name=initiative_name,
             actor_name=actor_name,
             read=n.read,
             created_at=n.created_at,
         )
-        for n, wp_subject, actor_name in rows
+        for n, wp_subject, initiative_name, actor_name in rows
     ]
     unread = (
         await session.execute(
             select(func.count())
             .select_from(Notification)
-            .where(Notification.user_id == user.id, Notification.read.is_(False))
+            .where(
+                Notification.user_id == user.id,
+                Notification.read.is_(False),
+                notification_is_visible,
+            )
         )
     ).scalar_one()
     return NotificationList(items=items, total=len(items), unread=unread)

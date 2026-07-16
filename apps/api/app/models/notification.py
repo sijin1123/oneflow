@@ -19,6 +19,11 @@ NOTIFICATION_KINDS = (
     "overdue",
     "intake_accepted",
     "intake_declined",
+    "initiative_updated",
+    "initiative_state",
+    "initiative_health",
+    "initiative_owner",
+    "initiative_scope",
 )
 
 
@@ -32,8 +37,16 @@ class Notification(Base):
     __table_args__ = (
         CheckConstraint(
             "kind IN ('assigned', 'watch_status', 'watch_comment', 'watch_assigned', 'mention',"
-            " 'due_soon', 'overdue', 'intake_accepted', 'intake_declined')",
+            " 'due_soon', 'overdue', 'intake_accepted', 'intake_declined',"
+            " 'initiative_updated', 'initiative_state', 'initiative_health',"
+            " 'initiative_owner', 'initiative_scope')",
             name="notification_kind_allowed",
+        ),
+        CheckConstraint(
+            "(kind LIKE 'initiative_%' AND initiative_id IS NOT NULL AND project_id IS NULL"
+            " AND work_package_id IS NULL AND intake_item_id IS NULL) OR"
+            " (kind NOT LIKE 'initiative_%' AND initiative_id IS NULL AND project_id IS NOT NULL)",
+            name="notification_target_shape",
         ),
         # Feed query: a user's notifications newest-first.
         Index("ix_notifications_user_created", "user_id", "created_at"),
@@ -46,8 +59,8 @@ class Notification(Base):
     user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
     )
-    project_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False
+    project_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=True
     )
     work_package_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("work_packages.id", ondelete="CASCADE"), nullable=True
@@ -61,6 +74,9 @@ class Notification(Base):
     # web route to the intake page.
     intake_item_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("intake_items.id", ondelete="SET NULL"), nullable=True
+    )
+    initiative_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("initiatives.id", ondelete="CASCADE"), nullable=True
     )
     read: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     created_at: Mapped[datetime] = mapped_column(

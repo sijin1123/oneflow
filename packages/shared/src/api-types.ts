@@ -925,6 +925,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/initiatives/{initiative_id}/subscription": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Follow Initiative */
+        post: operations["follow_initiative_api_v1_initiatives__initiative_id__subscription_post"];
+        /** Unfollow Initiative */
+        delete: operations["unfollow_initiative_api_v1_initiatives__initiative_id__subscription_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/initiatives/{initiative_id}/work-item-candidates": {
         parameters: {
             query?: never;
@@ -4979,6 +4997,8 @@ export interface components {
             created_at: string;
             /** Description */
             description: string | null;
+            /** Follower Count */
+            follower_count: number;
             /** Health */
             health: string | null;
             /** Health Note */
@@ -4992,6 +5012,8 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            /** Is Following */
+            is_following: boolean;
             /** Is Mine */
             is_mine: boolean;
             /** Name */
@@ -5015,6 +5037,13 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
+        };
+        /** InitiativeSubscriptionRead */
+        InitiativeSubscriptionRead: {
+            /** Follower Count */
+            follower_count: number;
+            /** Is Following */
+            is_following: boolean;
         };
         /** InitiativeUpdate */
         InitiativeUpdate: {
@@ -5862,15 +5891,16 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            /** Initiative Id */
+            initiative_id?: string | null;
+            /** Initiative Name */
+            initiative_name?: string | null;
             /** Intake Item Id */
             intake_item_id?: string | null;
             /** Kind */
             kind: string;
-            /**
-             * Project Id
-             * Format: uuid
-             */
-            project_id: string;
+            /** Project Id */
+            project_id: string | null;
             /** Read */
             read: boolean;
             /** Work Package Id */
@@ -5886,6 +5916,8 @@ export interface components {
             commented: boolean;
             /** Due Alerts */
             due_alerts: boolean;
+            /** Initiatives */
+            initiatives: boolean;
             /** Intake */
             intake: boolean;
             /** Mention */
@@ -5904,6 +5936,8 @@ export interface components {
             commented?: boolean | null;
             /** Due Alerts */
             due_alerts?: boolean | null;
+            /** Initiatives */
+            initiatives?: boolean | null;
             /** Intake */
             intake?: boolean | null;
             /** Mention */
@@ -10723,6 +10757,76 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["InitiativeRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    follow_initiative_api_v1_initiatives__initiative_id__subscription_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                initiative_id: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InitiativeSubscriptionRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    unfollow_initiative_api_v1_initiatives__initiative_id__subscription_delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                initiative_id: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InitiativeSubscriptionRead"];
                 };
             };
             /** @description Validation Error */

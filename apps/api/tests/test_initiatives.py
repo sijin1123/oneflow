@@ -5,16 +5,20 @@ connected project; roll-ups aggregate ONLY the caller's member projects
 (no cross-project leakage beyond the connection count)."""
 
 import asyncio
+import uuid
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.models import (
     Initiative,
     InitiativeProject,
+    InitiativeSubscriber,
     InitiativeWorkPackage,
+    Notification,
     Project,
     ProjectMember,
     User,
+    UserNotificationSettings,
     WorkPackage,
 )
 from tests.conftest import create_project, create_wp
@@ -209,6 +213,188 @@ async def test_state_and_date_validation(client):
     res = await client.patch(f"/api/v1/initiatives/{ini['id']}", json={"state": "in_progress"})
     assert res.status_code == 200
     assert res.json()["state"] == "in_progress"
+
+
+async def test_subscription_is_self_service_idempotent_and_reflected_in_list(client):
+    ini = await create_initiative(client, name="구독 전략")
+
+    first = await client.post(f"/api/v1/initiatives/{ini['id']}/subscription")
+    assert first.status_code == 200
+    assert first.json() == {"is_following": True, "follower_count": 1}
+    second = await client.post(f"/api/v1/initiatives/{ini['id']}/subscription")
+    assert second.status_code == 200
+    assert second.json() == first.json()
+
+    listed = (await client.get("/api/v1/initiatives")).json()["items"][0]
+    assert (listed["is_following"], listed["follower_count"]) == (True, 1)
+
+    removed = await client.delete(f"/api/v1/initiatives/{ini['id']}/subscription")
+    assert removed.status_code == 200
+    assert removed.json() == {"is_following": False, "follower_count": 0}
+    again = await client.delete(f"/api/v1/initiatives/{ini['id']}/subscription")
+    assert again.status_code == 200
+    assert again.json() == removed.json()
+
+
+async def test_initiative_events_recheck_visibility_activity_and_preference(client, app):
+    project = await create_project(client, key="ININ", name="알림 전략 프로젝트")
+    wp = await create_wp(client, project["id"], subject="알림 전략 작업")
+    ini = await create_initiative(client, name="알림 전략")
+    assert (await connect(client, ini["id"], project["id"])).status_code == 200
+
+    async with app.state.sessionmaker() as session, session.begin():
+        eligible = User(email="eligible@oneflow.local", display_name="Eligible", is_active=True)
+        muted = User(email="muted@oneflow.local", display_name="Muted", is_active=True)
+        revoked = User(email="revoked@oneflow.local", display_name="Revoked", is_active=True)
+        inactive = User(email="inactive@oneflow.local", display_name="Inactive", is_active=False)
+        session.add_all([eligible, muted, revoked, inactive])
+        await session.flush()
+        project_id = uuid.UUID(project["id"])
+        initiative_id = uuid.UUID(ini["id"])
+        session.add_all(
+            [
+                ProjectMember(project_id=project_id, user_id=eligible.id, role="member"),
+                ProjectMember(project_id=project_id, user_id=muted.id, role="member"),
+                ProjectMember(project_id=project_id, user_id=inactive.id, role="member"),
+                *[
+                    InitiativeSubscriber(initiative_id=initiative_id, user_id=user.id)
+                    for user in (eligible, muted, revoked, inactive)
+                ],
+            ]
+        )
+        session.add(UserNotificationSettings(user_id=muted.id, initiatives=False))
+        eligible_id = eligible.id
+
+    assert (
+        await client.post(
+            f"/api/v1/initiatives/{ini['id']}/work-items",
+            json={"work_package_id": wp["id"]},
+        )
+    ).status_code == 201
+    assert (
+        await client.patch(f"/api/v1/initiatives/{ini['id']}", json={"health": "on_track"})
+    ).status_code == 200
+    assert (
+        await client.patch(f"/api/v1/initiatives/{ini['id']}", json={"state": "in_progress"})
+    ).status_code == 200
+    assert (
+        await client.patch(f"/api/v1/initiatives/{ini['id']}", json={"name": "알림 전략 2"})
+    ).status_code == 200
+    assert (
+        await client.post(
+            f"/api/v1/initiatives/{ini['id']}/owner",
+            json={"owner_id": str(eligible_id)},
+        )
+    ).status_code == 200
+
+    async with app.state.sessionmaker() as session:
+        rows = (
+            (
+                await session.execute(
+                    select(Notification)
+                    .where(Notification.user_id == eligible_id)
+                    .order_by(Notification.created_at, Notification.id)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assert [row.kind for row in rows] == [
+            "initiative_scope",
+            "initiative_health",
+            "initiative_state",
+            "initiative_updated",
+            "initiative_owner",
+        ]
+        assert all(row.project_id is None and row.initiative_id is not None for row in rows)
+        assert await session.scalar(select(func.count()).select_from(Notification)) == 5
+
+
+async def test_initiative_notification_inbox_target_and_delete_cascade(client, app):
+    ini = await create_initiative(client, name="인박스 전략")
+    assert (await client.post(f"/api/v1/initiatives/{ini['id']}/subscription")).status_code == 200
+    me = (await client.get("/api/v1/me")).json()
+    async with app.state.sessionmaker() as session, session.begin():
+        session.add(
+            Notification(
+                user_id=uuid.UUID(me["id"]),
+                initiative_id=uuid.UUID(ini["id"]),
+                kind="initiative_state",
+            )
+        )
+
+    inbox = (await client.get("/api/v1/me/notifications")).json()
+    assert inbox["items"][0]["project_id"] is None
+    assert inbox["items"][0]["initiative_id"] == ini["id"]
+    assert inbox["items"][0]["initiative_name"] == "인박스 전략"
+
+    assert (await client.delete(f"/api/v1/initiatives/{ini['id']}")).status_code == 204
+    async with app.state.sessionmaker() as session:
+        assert await session.scalar(select(func.count()).select_from(Notification)) == 0
+        assert await session.scalar(select(func.count()).select_from(InitiativeSubscriber)) == 0
+
+
+async def test_inbox_hides_initiative_notification_after_visibility_is_revoked(
+    client, app, member_project
+):
+    me = (await client.get("/api/v1/me")).json()
+    me_id = uuid.UUID(me["id"])
+    project_id = uuid.UUID(str(member_project["project_id"]))
+    owner_id = uuid.UUID(str(member_project["owner_id"]))
+
+    async with app.state.sessionmaker() as session, session.begin():
+        initiative = Initiative(name="권한 회수 전략", owner_id=owner_id)
+        session.add(initiative)
+        await session.flush()
+        session.add_all(
+            [
+                InitiativeProject(initiative_id=initiative.id, project_id=project_id),
+                Notification(
+                    user_id=me_id,
+                    initiative_id=initiative.id,
+                    kind="initiative_health",
+                ),
+            ]
+        )
+
+    visible = (await client.get("/api/v1/me/notifications")).json()
+    assert visible["unread"] == 1
+    assert visible["items"][0]["initiative_name"] == "권한 회수 전략"
+
+    async with app.state.sessionmaker() as session, session.begin():
+        membership = (
+            await session.execute(
+                select(ProjectMember).where(
+                    ProjectMember.project_id == project_id,
+                    ProjectMember.user_id == me_id,
+                )
+            )
+        ).scalar_one()
+        await session.delete(membership)
+
+    hidden = (await client.get("/api/v1/me/notifications")).json()
+    assert hidden == {"items": [], "total": 0, "unread": 0}
+
+
+async def test_notification_target_shape_rejects_mixed_initiative_targets(client, app):
+    import pytest
+    from sqlalchemy.exc import IntegrityError
+
+    project = await create_project(client, key="INCK", name="알림 제약")
+    initiative = await create_initiative(client, name="알림 제약 전략")
+    me = (await client.get("/api/v1/me")).json()
+
+    for kind in ("initiative_state", "assigned"):
+        with pytest.raises(IntegrityError):
+            async with app.state.sessionmaker() as session, session.begin():
+                session.add(
+                    Notification(
+                        user_id=uuid.UUID(me["id"]),
+                        project_id=uuid.UUID(project["id"]),
+                        initiative_id=uuid.UUID(initiative["id"]),
+                        kind=kind,
+                    )
+                )
 
 
 async def test_visibility_via_membership_and_leak_guard(client, app, member_project):

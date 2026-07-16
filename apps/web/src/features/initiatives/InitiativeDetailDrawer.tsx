@@ -1,5 +1,7 @@
 import {
   ArrowUpRight,
+  Bell,
+  BellOff,
   CalendarDays,
   Link2,
   Loader2,
@@ -30,6 +32,7 @@ import {
   useDisconnectInitiativeWorkItem,
   useInitiativeWorkItemCandidates,
   useInitiativeWorkItems,
+  useUpdateInitiativeSubscription,
 } from './api'
 
 function WorkItemMeta({ item }: { item: InitiativeWorkItem }) {
@@ -139,6 +142,7 @@ function InitiativeDetailBody({ initiative }: { initiative: Initiative }) {
   const scope = useInitiativeWorkItems(initiative.id, true)
   const connect = useConnectInitiativeWorkItem(initiative.id)
   const disconnect = useDisconnectInitiativeWorkItem(initiative.id)
+  const subscription = useUpdateInitiativeSubscription(initiative.id)
   const [pickerOpen, setPickerOpen] = useState(false)
   const [draftQuery, setDraftQuery] = useState('')
   const [query, setQuery] = useState('')
@@ -163,11 +167,26 @@ function InitiativeDetailBody({ initiative }: { initiative: Initiative }) {
         <div className="flex min-w-0 flex-wrap items-center gap-2">
           <h2 className="min-w-0 flex-1 truncate text-base font-semibold">{initiative.name}</h2>
           <Badge variant="accent">{INITIATIVE_STATE_LABELS[initiative.state]}</Badge>
+          <Button
+            size="sm"
+            variant={initiative.is_following ? 'secondary' : 'outline'}
+            disabled={subscription.isPending}
+            aria-pressed={initiative.is_following}
+            onClick={() => subscription.mutate(!initiative.is_following)}
+          >
+            {initiative.is_following ? <BellOff /> : <Bell />}
+            {initiative.is_following ? '팔로잉' : '팔로우'}
+          </Button>
         </div>
         <p className="mt-1 text-xs text-of-muted">
           {initiative.description ?? '연결된 작업으로 이니셔티브의 실제 전략 범위를 구성합니다.'}
         </p>
-        <dl className="mt-3 grid grid-cols-2 gap-px overflow-hidden rounded-of border border-of-border-subtle bg-of-border-subtle sm:grid-cols-3">
+        {subscription.isError ? (
+          <p role="alert" className="mt-2 text-xs text-of-danger">
+            구독 상태를 저장하지 못했습니다. 다시 시도해 주세요.
+          </p>
+        ) : null}
+        <dl className="mt-3 grid grid-cols-2 gap-px overflow-hidden rounded-of border border-of-border-subtle bg-of-border-subtle sm:grid-cols-4">
           <div className="bg-of-surface px-3 py-2">
             <dt className="text-[10px] text-of-muted">소유자</dt>
             <dd className="mt-0.5 truncate text-xs font-medium">
@@ -180,10 +199,16 @@ function InitiativeDetailBody({ initiative }: { initiative: Initiative }) {
               {initiative.connected_project_count}개
             </dd>
           </div>
-          <div className="col-span-2 bg-of-surface px-3 py-2 sm:col-span-1">
+          <div className="bg-of-surface px-3 py-2">
             <dt className="text-[10px] text-of-muted">전략 범위 작업</dt>
             <dd className="mt-0.5 text-xs font-medium tabular-nums">
               {scope.data?.connected_work_item_count ?? initiative.connected_work_item_count}개
+            </dd>
+          </div>
+          <div className="bg-of-surface px-3 py-2">
+            <dt className="text-[10px] text-of-muted">팔로워</dt>
+            <dd className="mt-0.5 text-xs font-medium tabular-nums">
+              {initiative.follower_count}명
             </dd>
           </div>
         </dl>

@@ -2567,3 +2567,13 @@ Chromium typed mock fixture에서 1440x960과 390x844 viewport를 사용했다. 
 - 검증: API Ruff/format PASS, focused API 12 및 full API 753 PASS(기존 Alembic 경고 1건), migration full upgrade→base downgrade→head upgrade PASS, OpenAPI generation/drift PASS, typecheck PASS, lint PASS(기존 Fast Refresh 경고 4건), unit 93, component 8, production build PASS(기존 chunk 경고), focused E2E 2 PASS, full E2E 288 PASS + opt-in visual QA 1 skip, clean-room frontend 161/backend 45, npm/pip audit 0 vulnerabilities, diff check와 desktop/mobile visual QA PASS.
 - Chromium 증적은 `docs/screenshots/redevelopment/initiative-work-items-ui/{desktop,mobile}.png`에 보존한다. 독립 reviewer는 에이전트 thread limit으로 생성되지 않아 root가 복합 FK/cascade, existence hiding, membership leak guard, owner-transfer race lock, pagination/count, cache invalidation과 전체 diff를 재검토했고 P0-P2 잔여 결함을 찾지 못했다.
 - Migration `0091` 적용이 필요하다. 환경변수, 설정 UI와 dependency 변경은 없다. **이연 항목**은 initiative-level notifications이며 현재 상세 surface에는 dead control로 노출하지 않는다.
+
+---
+
+# UI-120 Initiative Subscriptions / Notifications 검증 (2026-07-16)
+
+- **UI 변경**: Initiative detail drawer에 실제 `Follow`/`Following` 전환, mutation pending, 오류·재시도와 follower count를 추가했다. Personal notification settings에는 이니셔티브 알림 토글을 추가했고, Inbox는 initiative 이름과 직접 target을 표시해 `/initiatives?initiative={id}`로 이동한다. Desktop/mobile에서 drawer·settings·inbox 상태와 수평 overflow를 실제 API에 연결해 검증했다.
+- **기능/API 반영**: migration `0092`는 durable self-subscription과 initiative notification target/kinds, 개인 `initiatives` preference를 추가한다. 상태·헬스·소유권·work-item scope 변경 시 actor를 제외하고 활성 사용자, 현재 이니셔티브 visibility와 현재 preference를 fan-out 시점에 재검증한다. 삭제는 subscription/notification target을 정리하며 project identity를 임의로 만들거나 hidden project/work-item 정보를 노출하지 않는다.
+- 독립 reviewer가 발견한 inbox 조회 시 현재 visibility 재검증 누락, E2E의 initiative 이동 뒤 inbox control 사용, mixed project/initiative target 제약 회귀 검증 누락을 수정했다. Inbox list와 unread count에 동일한 owner-or-connected-project membership 필터를 적용하고, E2E lifecycle을 실제 화면 순서로 고쳤으며 잘못된 mixed target row가 DB constraint로 거부됨을 고정했다.
+- 검증: API Ruff/format PASS, focused API 28 및 clean full API 758 PASS(기존 Alembic 경고 1건), migration `0092 -> 0091 -> 0092` PASS, OpenAPI shared types drift PASS, web unit 95·component 8, typecheck PASS, lint PASS(기존 Fast Refresh 경고 4건), production build PASS(기존 chunk 경고), focused E2E 4 및 clean full E2E 288 PASS + opt-in visual QA 1 skip, clean-room frontend 161/backend 45, npm/pip audit 0 vulnerabilities와 diff check PASS.
+- Chromium 증적은 `docs/screenshots/redevelopment/initiative-notifications-ui/{desktop,mobile}.png`에 보존한다. Migration `0092` 적용이 필요하고 환경변수·dependency 변경은 없다. 설정 UI 변경은 개인 이니셔티브 알림 토글이며 재기동은 필요 없다. **이연 항목**은 외부 SMTP/email delivery로, 현재 in-app surface에는 dead mail control을 추가하지 않았다.

@@ -33,6 +33,8 @@ class UserNotificationSettings(Base):
     due_alerts: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     # Gates intake_accepted/intake_declined creation (Pass 49).
     intake: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    # Gates all initiative_* creation; durable subscriptions stay unchanged.
+    initiatives: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
     )

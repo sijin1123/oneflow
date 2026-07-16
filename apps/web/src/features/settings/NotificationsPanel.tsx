@@ -24,6 +24,11 @@ const TOGGLES: Array<{ key: keyof NotificationSettings; label: string; hint: str
     label: '접수 판정 알림',
     hint: '내가 제출한 접수 항목이 판정되면 알립니다.',
   },
+  {
+    key: 'initiatives',
+    label: '이니셔티브 알림',
+    hint: '팔로우한 이니셔티브의 상태·헬스·소유권·전략 범위 변경을 알립니다.',
+  },
 ]
 
 /* Personal notification preferences (PR-E2) — applies to NEW notifications
