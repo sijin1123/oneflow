@@ -173,6 +173,23 @@ export type CsvRowError = {
   raw: string
 }
 
+export type CsvImportAssigneeIdentity = {
+  source_value: string
+  row_count: number
+  suggested_user_id: string | null
+  suggested_display_name: string | null
+  suggested_email: string | null
+  selected_user_id: string | null
+  selected_display_name: string | null
+}
+
+export type CsvImportAssignableMember = {
+  user_id: string
+  email: string
+  display_name: string
+  role: 'owner' | 'member'
+}
+
 export type CsvImportResult = {
   dry_run: boolean
   total_rows: number
@@ -181,9 +198,13 @@ export type CsvImportResult = {
   inserted: number
   /** sha256 of the valid rows — reconcile a dry-run preview against the commit (대사) */
   checksum: string
+  /** sha256 of the exact uploaded text — binds mapping decisions to this preview */
+  preview_checksum: string
   errors: CsvRowError[]
-  /** adapter advisories (Jira import: unmapped assignees, fallback counts, ignored columns) */
+  /** adapter advisories (fallback counts, ignored columns, assignment summary) */
   notes: string[]
+  assignee_identities: CsvImportAssigneeIdentity[]
+  assignable_members: CsvImportAssignableMember[]
 }
 
 export const STATUS_LABELS: Record<WpStatus, string> = {

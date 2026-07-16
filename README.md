@@ -93,6 +93,16 @@ uv run python -m app.services.due_alerts --create   # 실제 생성
 - 공유 레이아웃을 삭제해도 기존 개인 override는 삭제되지 않는다. 개인 설정이 없는 사용자는 즉시 기본 레이아웃으로 전환된다.
 - 배포 시 migration `0099` 적용이 필요하다. 신규 환경변수, dependency 또는 재기동 조건은 없다.
 
+## Jira/Linear CSV 담당자 계정 매핑 (UI-128)
+
+Jira 또는 Linear CSV에 `Assignee` 열이 있으면 dry-run 결과에 원본 담당자 값별 사용 건수와 현재 프로젝트의 배정 가능 멤버가 표시된다.
+
+- 이메일이 현재 활성 project owner/member와 대소문자 무시 정확히 일치하면 제안으로만 표시된다. 자동 배정이나 이름 기반 fuzzy matching은 하지 않는다.
+- 사용자는 모든 원본 값을 프로젝트 멤버 또는 `미배정`으로 명시적으로 결정해야 실행할 수 있다. Viewer, 비활성 사용자, 다른 프로젝트 사용자 ID는 서버가 거부한다.
+- 실행 요청은 dry-run 원문 SHA-256과 매핑 목록을 함께 보내며, 서버는 기존 project import advisory lock 안에서 원문·매핑 범위·현재 멤버십과 역할을 다시 검증한 뒤 Work Package와 같은 transaction으로 `assignee_id`를 저장한다.
+- 동시 동일 업로드는 기존처럼 한 요청만 생성하고 후발 요청은 duplicate 행으로 정상 수렴한다. Row isolation, disabled type guard, checksum reconciliation, transfer-job notes/audit는 유지된다.
+- DB migration, 환경변수, dependency, 재기동 또는 별도 설정 UI 변경은 없다.
+
 ## 백업/복구 런북
 
 백업 대상은 두 가지입니다: **PostgreSQL 데이터베이스**(메타데이터 전부)와 **업로드 스토리지 디렉터리**(`ONEFLOW_STORAGE_DIR`, 기본 `apps/api/var/uploads` — 블롭 본문). 반드시 **DB를 먼저, 블롭을 나중에** 백업합니다 — 행⇄블롭 계약상 "블롭만 남는" 고아는 무해하고 스윕 가능하지만, "행만 남는" 결손은 다운로드가 깨집니다.

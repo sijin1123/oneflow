@@ -397,3 +397,9 @@ Plane source, API, database schema, package, asset, CSS, DOM hierarchy, exact di
 `docs/plane-poc-reverse-spec/`의 dashboard/widget customization 관찰에서 사용한 입력은 프로젝트 공통 위젯 구성을 관리하면서 개인별 표시 설정과 적용 출처를 구분한다는 제품 행동뿐이다. OneFlow 구현은 기존 자체 `dashboard_layouts`, project membership/role, PostgreSQL transaction, React Query Dashboard와 OneFlow token/lucide surface를 사용해 personal > shared > built-in 상속을 독립 설계했다.
 
 Plane source, API, database schema, package, asset, CSS, DOM hierarchy, exact dimensions/colors, wording, widget manager, inheritance/CAS implementation, icons 또는 branding은 복사하지 않았다. OneFlow 고유 migration `0099`, project-owned closed-vocabulary row, owner-only active-project versioned write, archive-exempt personal override/reset, source metadata와 stale draft recovery를 추가했다. 신규 dependency, 환경변수 또는 별도 설정 UI 변경은 없다. — attested-independent-derivation
+
+## UI-128 Import Assignee Account Mapping
+
+Plane/OpenProject의 공개 importer/migration 제품 범주에서 사용한 입력은 외부 tracker의 사용자 identity를 현재 프로젝트 구성원에 명시적으로 연결하고 unresolved identity를 조용히 왜곡하지 않아야 한다는 제품 행동뿐이다. OneFlow 구현은 기존 자체 Jira/Linear CSV parser, Work Package schema, project membership/role, import advisory lock, Data Transfer audit, React Sheet와 local design tokens를 사용해 독립 설계했다.
+
+Plane/OpenProject source, API, database schema, package, asset, CSS, DOM hierarchy, exact dimensions/colors, wording, account-matching algorithm, importer UI, icons 또는 branding은 복사하지 않았다. OneFlow 고유 upload-text checksum binding, exact-email suggestion-only policy, explicit member/unassigned decision, commit-time active owner/member row locking, viewer/inactive rejection과 responsive mapping panel을 추가했다. 신규 migration, dependency, environment 또는 별도 Settings UI 변경은 없다. — attested-independent-derivation
