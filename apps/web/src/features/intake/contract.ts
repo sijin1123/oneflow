@@ -3,7 +3,12 @@
 
 import type { components } from '@shared/api-types'
 
-import type { IntakeItem, IntakeList } from './api'
+import type {
+  IntakeDecisionHistoryItem,
+  IntakeDecisionHistoryList,
+  IntakeItem,
+  IntakeList,
+} from './api'
 
 type Schemas = components['schemas']
 type Assert<T extends true> = T
@@ -11,3 +16,9 @@ type Extends<A, B> = A extends B ? true : false
 
 export type _IntakeItemMatches = Assert<Extends<IntakeItem, Schemas['IntakeRead']>>
 export type _IntakeListMatches = Assert<Extends<IntakeList, Schemas['IntakeList']>>
+export type _IntakeHistoryItemMatches = Assert<
+  Extends<IntakeDecisionHistoryItem, Schemas['IntakeDecisionHistoryRead']>
+>
+export type _IntakeHistoryListMatches = Assert<
+  Extends<IntakeDecisionHistoryList, Schemas['IntakeDecisionHistoryList']>
+>

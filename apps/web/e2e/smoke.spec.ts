@@ -7340,6 +7340,109 @@ test('인테이크 표면은 모바일에서 제출과 판정 큐를 유지한�
   })
 })
 
+test('인테이크 판정 이력은 펼칠 때 지연 조회하고 모바일에서도 전이 흐름을 유지한다', async ({
+  page,
+}) => {
+  await mockApi(page)
+  let historyRequests = 0
+  await page.route(
+    `**/api/v1/projects/${project.id}/intake/it-history/history*`,
+    (route) => {
+      historyRequests += 1
+      return route.fulfill({
+        json: {
+          items: [
+            {
+              id: 'decision-2',
+              intake_item_id: 'it-history',
+              previous_status: 'snoozed',
+              status: 'accepted',
+              note: '범위를 확인해 작업으로 전환',
+              snooze_until: null,
+              decided_by: 'me-1',
+              decided_by_name: 'Dev User',
+              created_at: '2026-07-16T02:30:00Z',
+            },
+            {
+              id: 'decision-1',
+              intake_item_id: 'it-history',
+              previous_status: 'pending',
+              status: 'snoozed',
+              note: '다음 스프린트에 재검토',
+              snooze_until: '2026-08-01',
+              decided_by: 'me-1',
+              decided_by_name: 'Dev User',
+              created_at: '2026-07-15T02:30:00Z',
+            },
+          ],
+          total: 2,
+        },
+      })
+    },
+  )
+  await page.route(`**/api/v1/projects/${project.id}/intake`, (route) =>
+    route.fulfill({
+      json: {
+        items: [
+          {
+            id: 'it-history',
+            project_id: project.id,
+            title: '검색 인덱스 개선',
+            body: null,
+            status: 'accepted',
+            submitted_by: 'u-alex',
+            submitter_name: 'Alex Kim',
+            snooze_until: '2026-08-01',
+            accepted_wp_id: wpA.id,
+            triage_note: '범위를 확인해 작업으로 전환',
+            triaged_by_id: 'me-1',
+            triaged_at: '2026-07-16T02:30:00Z',
+            created_at: '2026-07-14T02:30:00Z',
+            updated_at: '2026-07-16T02:30:00Z',
+          },
+        ],
+        total: 1,
+      },
+    }),
+  )
+
+  await page.goto(`/projects/${project.id}/intake`)
+  const disclosure = page.getByRole('button', {
+    name: '검색 인덱스 개선 판정 이력 펼치기',
+  })
+  await expect(disclosure).toBeVisible()
+  expect(historyRequests).toBe(0)
+
+  await disclosure.click()
+  await expect(
+    page.getByRole('button', { name: '검색 인덱스 개선 판정 이력 접기' }),
+  ).toBeVisible()
+  const timeline = page.getByRole('list', { name: '판정 이력 목록' })
+  await expect(timeline.getByText('범위를 확인해 작업으로 전환')).toBeVisible()
+  await expect(timeline.getByText('다음 스프린트에 재검토')).toBeVisible()
+  await expect(timeline.getByText('2026-08-01까지')).toBeVisible()
+  await expect(timeline.getByText('Dev User').first()).toBeVisible()
+  expect(historyRequests).toBe(1)
+  await expectNoHorizontalOverflow(page)
+  await timeline.scrollIntoViewIfNeeded()
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/intake-decision-history-ui/desktop.png',
+    fullPage: true,
+  })
+
+  await page.setViewportSize({ width: 390, height: 844 })
+  await expect(timeline).toBeVisible()
+  await timeline.scrollIntoViewIfNeeded()
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/intake-decision-history-ui/mobile.png',
+    fullPage: true,
+  })
+
+  await page.getByRole('button', { name: '검색 인덱스 개선 판정 이력 접기' }).click()
+  await expect(timeline).not.toBeVisible()
+})
+
 test('설정 필드 탭에서 드롭다운 필드를 정의한다', async ({ page }) => {
   await mockApi(page)
   await page.route('**/api/v1/me', (route) =>

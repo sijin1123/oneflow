@@ -20,6 +20,7 @@ import { formatDateTime } from '@/lib/datetime'
 import { cn } from '@/lib/utils'
 
 import { type IntakeItem, type IntakeStatus, useIntake, useSubmitIntake, useTriageIntake } from './api'
+import { IntakeDecisionTimeline } from './IntakeDecisionTimeline'
 
 const STATUS_ORDER: IntakeStatus[] = ['pending', 'snoozed', 'accepted', 'declined', 'duplicate']
 
@@ -197,11 +198,17 @@ function ItemRow({
       ) : null}
       {!open && item.triage_note ? (
         <p className="text-[11px] text-of-muted">
-          판정 사유: <span className="whitespace-pre-wrap">{item.triage_note}</span>
+          현재 판정 사유: <span className="whitespace-pre-wrap">{item.triage_note}</span>
           {item.triaged_by_id ? ` · ${memberName(item.triaged_by_id)}` : ''}
           {item.triaged_at ? ` · ${formatDateTime(item.triaged_at)}` : ''}
         </p>
       ) : null}
+      <IntakeDecisionTimeline
+        projectId={projectId}
+        itemId={item.id}
+        itemTitle={item.title}
+        hasDecision={Boolean(item.triaged_at)}
+      />
     </li>
   )
 }
