@@ -350,3 +350,9 @@ Plane/OpenProject source, API, database schema, package, asset, CSS, DOM hierarc
 Plane/OpenProject의 공개 portfolio/initiative subscription 제품 범주와 `docs/plane-poc-reverse-spec/`의 compact detail·inbox 정보구조에서 사용한 입력은 사용자가 전략 묶음을 구독하고 관련 변경 알림을 현재 접근 권한 안에서 받아야 한다는 공개 제품 행동뿐이다. OneFlow 구현은 자체 Initiative visibility, connected-project membership, notification preference/inbox, PostgreSQL transaction과 React Query detail surface를 사용해 독립 설계했다.
 
 Plane/OpenProject source, API, database schema, package, asset, CSS, DOM hierarchy, exact dimensions/colors, wording, subscription/fan-out/inbox 구현, icons 또는 branding은 복사하지 않았다. OneFlow 고유 migration `0092`, self-service durable subscription, actor·active-user·current-visibility·preference fan-out guard와 direct initiative target을 추가했으며 신규 dependency 또는 environment 변경은 없다. 설정 UI에는 개인 이니셔티브 알림 토글만 추가했고 외부 SMTP/email delivery는 별도 transport surface로 유지한다. — attested-independent-derivation
+
+## UI-110F Login Fidelity Closure
+
+사용자 제공 `docs/oneflow-login.png`에서 사용한 입력은 compact two-column 비율, 부드러운 수채화 여백, 연결된 ribbon identity, 선명한 floating work card와 곡선을 따라 흐르는 collaboration cue라는 시각적 요구뿐이다. OneFlow 구현은 기존 자체 생성 수채화 asset, semantic React markup, 공용 brand SVG, CSS motion/reduced-motion 계약과 Playwright 회귀 테스트를 사용해 독립 보정했다.
+
+참조 이미지의 pixel, logo path, source asset, CSS, DOM hierarchy, exact dimensions/colors, typography, avatar, wording 또는 vendor branding은 복사하지 않았다. 공용 마크는 OneFlow용 단일 closed ribbon silhouette과 독립 gradient/depth path로 새로 작성했고, 비교 PNG는 QA 증빙일 뿐 runtime asset으로 사용하지 않는다. 신규 API, DB/schema, environment, dependency, permission 또는 settings UI 변경은 없다. — attested-independent-derivation
