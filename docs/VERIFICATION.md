@@ -2609,3 +2609,13 @@ Chromium typed mock fixture에서 1440x960과 390x844 viewport를 사용했다. 
 - **검증**: API Ruff/format PASS, focused Cycle/assignment/duplicate/move 20 및 full API 765 PASS(기존 Alembic 경고 1건), 전용 `oneflow_ui122_migration_test` DB에서 0001→0094→base→0094 PASS, OpenAPI generation/drift PASS. Web typecheck/lint/build PASS(기존 Fast Refresh 4·chunk 경고), unit 95, focused Cycle E2E PASS, full E2E 289 PASS + opt-in visual QA 1 skip.
 - Clean-room frontend 161/backend 45, pip/npm audit 0 vulnerabilities와 diff check가 PASS했다. Chromium 증적은 `docs/screenshots/redevelopment/cycle-scope-analytics-ui/{desktop,mobile}.png`에 보존한다. Migration `0094` 적용이 필요하고 환경변수, dependency와 설정 UI 변경은 없다.
 - **이연 항목**: migration 이전 이름 snapshot에서 배정 시점을 추정하지 않는다. 여러 과거 Cycle을 하나의 정밀 velocity로 다시 계산하는 것은 충분한 추적 완료 Cycle이 축적된 뒤 별도 analytics PR로 진행하며, 현재 UI는 기존 수치를 `현재 배정 기준`으로 숨김없이 표시한다.
+
+---
+
+# UI-123 Document Inline Comments 검증 (2026-07-16)
+
+- **UI 변경**: 문서 본문에서 한 문단 안의 1~500자 텍스트를 선택해 위치가 연결된 코멘트 스레드를 만들 수 있다. 본문 앵커와 스레드는 서로 이동하며 활성 상태를 공유하고, 답글·일반 코멘트·loading/error/retry·viewer/archive read-only·390px 모바일 Quick Dock 비겹침을 같은 surface에서 제공한다. 본문이 수정되거나 앵커가 사라진 과거 스레드는 임의 위치로 옮기지 않고 `본문 변경됨`으로 보존한다.
+- **기능/API 반영**: migration `0095`는 기존 page-level comment와 호환되는 nullable anchor UUID/quote를 추가한다. 신규 inline-comment API는 문서 row lock과 optimistic version을 사용해 sanitize된 inert `<span data-comment-anchor>` 본문 변경과 첫 코멘트를 한 transaction으로 저장한다. 답글은 현재 앵커·quote를 검증하되 문서 version을 올리지 않으며, stale/foreign/archive/quote mismatch에서는 문서와 코멘트 어느 쪽도 부분 저장하지 않는다.
+- **검증**: API Ruff/format PASS, focused document comment 5 및 full API 768 PASS(기존 Alembic 경고 1건), 전용 `oneflow_ui123_migration_test` DB에서 0001→0095→base→0095 PASS, OpenAPI generation/drift PASS. Web `npm ci`, typecheck, lint, production build PASS(기존 Fast Refresh 4·chunk 경고), unit 95, component 8, focused document E2E 4 PASS, full E2E 291 PASS + opt-in visual QA 1 skip.
+- Clean-room frontend 161/backend 45, pip/npm audit 0 vulnerabilities와 diff check가 PASS했다. Chromium 증적은 `docs/screenshots/redevelopment/document-inline-comments-ui/{desktop,mobile}.png`에 보존한다. Migration `0095`와 기존 Tiptap 패키지의 직접 dependency 선언이 필요하며 환경변수·설정 UI 변경은 없다.
+- **이연 항목**: 본문 변경 뒤 quote를 추측해 자동 재배치하지 않는다. 스레드 reaction/mention은 기존 Work Item collaboration surface와 별개인 후속 Documents surface로 추적하며, 이번 PR에는 장식용 control이나 미배선 UI를 추가하지 않았다.
