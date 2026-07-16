@@ -206,6 +206,8 @@ export type DocumentComment = {
   project_id: string
   author_id: string | null
   body: string
+  anchor_id: string | null
+  anchor_quote: string | null
   created_at: string
 }
 
@@ -228,6 +230,41 @@ export function useCreateDocumentComment(docId: string) {
       }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['document-comments', docId] })
+    },
+  })
+}
+
+export type InlineDocumentCommentInput = {
+  body: string
+  anchor_id: string
+  anchor_quote: string
+  expected_document_version?: number
+  document_body?: string
+}
+
+export type InlineDocumentCommentResult = {
+  comment: DocumentComment
+  document: ProjectDocument
+}
+
+export function useCreateInlineDocumentComment(docId: string, projectId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (input: InlineDocumentCommentInput) =>
+      api<InlineDocumentCommentResult>(`/api/v1/documents/${docId}/inline-comments`, {
+        method: 'POST',
+        body: JSON.stringify(input),
+      }),
+    onSuccess: ({ comment, document }) => {
+      queryClient.setQueryData(['document', document.id], document)
+      queryClient.setQueryData<DocumentCommentList>(
+        ['document-comments', docId],
+        (current) =>
+          current
+            ? { items: [...current.items, comment], total: current.total + 1 }
+            : { items: [comment], total: 1 },
+      )
+      void queryClient.invalidateQueries({ queryKey: ['documents', projectId] })
     },
   })
 }
