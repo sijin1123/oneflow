@@ -89,8 +89,25 @@ export function useRolloverCycle(projectId: string) {
   })
 }
 
-export type BurndownDay = { date: string; remaining: number }
-export type Burndown = { scope: string; total_scope: number; days: BurndownDay[] }
+export type BurndownDay = {
+  date: string
+  scope: number
+  remaining: number
+  delivered: number
+}
+
+export type Burndown = {
+  scope: 'tracked_assignment' | 'legacy_current_assignment'
+  tracking_started_at: string
+  coverage_start: string | null
+  coverage_complete: boolean
+  total_scope: number
+  current_scope: number
+  added_count: number
+  removed_count: number
+  delivered: number
+  days: BurndownDay[]
+}
 
 export function useCycleBurndown(projectId: string, cycleId: string | null) {
   return useQuery({

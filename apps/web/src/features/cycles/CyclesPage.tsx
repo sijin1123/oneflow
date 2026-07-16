@@ -44,12 +44,42 @@ function ProgressBar({ done, total }: { done: number; total: number }) {
   )
 }
 
-function BurndownChart({ projectId, cycleId }: { projectId: string; cycleId: string }) {
+function BurndownChart({
+  projectId,
+  cycleId,
+  cycleStatus,
+}: {
+  projectId: string
+  cycleId: string
+  cycleStatus: Cycle['status']
+}) {
   const { data, isPending, isError } = useCycleBurndown(projectId, cycleId)
   if (isPending) return <p className="px-3 pb-2 text-[11px] text-of-muted">불러오는 중…</p>
   if (isError) return <p className="px-3 pb-2 text-[11px] text-of-danger">번다운을 불러오지 못했습니다.</p>
-  if (data.days.length === 0)
-    return <p className="px-3 pb-2 text-[11px] text-of-muted">표시할 기간 데이터가 없습니다.</p>
+
+  const legacy = data.scope === 'legacy_current_assignment'
+  const coverageLabel = legacy
+    ? '정밀 추적 전 · 현재 배정 기준'
+    : data.coverage_complete
+      ? '배정 이력 기준'
+      : `배정 이력 기준 · ${data.coverage_start} 이후`
+  const stats = [
+    { label: '최대 범위', value: data.total_scope },
+    { label: cycleStatus === 'completed' ? '마감 범위' : '현재 범위', value: data.current_scope },
+    { label: '유입 / 이탈', value: `+${data.added_count} / -${data.removed_count}` },
+    { label: '완료', value: data.delivered },
+  ]
+
+  if (data.days.length === 0) {
+    return (
+      <div className="px-3 pb-3" data-testid="burndown-chart">
+        <p className="text-[10px] font-medium text-of-muted">{coverageLabel}</p>
+        <p className="mt-1 text-[11px] text-of-muted">
+          기간이 시작되지 않았거나 추적 범위에 작업이 없습니다.
+        </p>
+      </div>
+    )
+  }
 
   const W = 100
   const H = 48
@@ -57,15 +87,39 @@ function BurndownChart({ projectId, cycleId }: { projectId: string; cycleId: str
   const x = (i: number) => (data.days.length === 1 ? 0 : (i / (data.days.length - 1)) * W)
   const y = (v: number) => H - (v / maxY) * H
   const actual = data.days.map((d, i) => `${x(i)},${y(d.remaining)}`).join(' ')
+  const scope = data.days.map((d, i) => `${x(i)},${y(d.scope)}`).join(' ')
 
   return (
-    <div className="px-3 pb-2" data-testid="burndown-chart">
-      <p className="mb-1 text-[10px] text-of-muted">
-        번다운 (현재 배정 기준 · 전체 {data.total_scope}건)
-      </p>
-      <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" className="h-16 w-full">
+    <div className="px-3 pb-3" data-testid="burndown-chart">
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+        <p className="text-[10px] font-medium text-of-muted">{coverageLabel}</p>
+        <div className="flex items-center gap-3 text-[10px] text-of-muted" aria-label="차트 범례">
+          <span className="inline-flex items-center gap-1">
+            <span className="h-px w-3 bg-of-accent" />잔여
+          </span>
+          <span className="inline-flex items-center gap-1">
+            <span className="h-px w-3 border-t border-dashed border-of-muted" />범위
+          </span>
+        </div>
+      </div>
+      <dl className="mb-3 grid grid-cols-2 gap-px overflow-hidden rounded-of border border-of-border bg-of-border sm:grid-cols-4">
+        {stats.map((stat) => (
+          <div key={stat.label} className="bg-of-surface px-2.5 py-2">
+            <dt className="text-[10px] text-of-muted">{stat.label}</dt>
+            <dd className="mt-0.5 text-xs font-semibold tabular-nums">{stat.value}</dd>
+          </div>
+        ))}
+      </dl>
+      <svg
+        viewBox={`0 0 ${W} ${H}`}
+        preserveAspectRatio="none"
+        className="h-16 w-full"
+        role="img"
+        aria-label={`사이클 범위 ${data.current_scope}건, 잔여 ${data.days[data.days.length - 1].remaining}건`}
+      >
         {/* ideal: total scope on day 1 → 0 at the end */}
         <line x1={0} y1={y(data.total_scope)} x2={W} y2={y(0)} strokeDasharray="3 2" className="stroke-of-border" strokeWidth="1" vectorEffect="non-scaling-stroke" />
+        <polyline points={scope} fill="none" strokeDasharray="3 2" className="stroke-of-muted" strokeWidth="1" vectorEffect="non-scaling-stroke" />
         <polyline points={actual} fill="none" className="stroke-of-accent" strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
       </svg>
       <div className="flex justify-between text-[10px] text-of-muted">
@@ -199,7 +253,7 @@ function CycleRow({
       ) : null}
       {showBurndown ? (
         <div className="w-full">
-          <BurndownChart projectId={projectId} cycleId={cycle.id} />
+          <BurndownChart projectId={projectId} cycleId={cycle.id} cycleStatus={cycle.status} />
         </div>
       ) : null}
     </li>
@@ -260,9 +314,9 @@ export function CyclesPage() {
         { label: '진행 중', value: activeCount, hint: '현재 반복' },
         { label: '작업 범위', value: plannedScope, hint: `${doneScope}건 완료` },
         {
-          label: '벨로시티',
+          label: '기준 벨로시티',
           value: velocity ? velocity.average.toFixed(1) : '-',
-          hint: velocity ? `최근 ${velocity.points.length}개` : '완료 데이터 부족',
+          hint: velocity ? `현재 배정 · 최근 ${velocity.points.length}개` : '완료 데이터 부족',
         },
       ]}
     >
@@ -285,7 +339,7 @@ export function CyclesPage() {
             className="rounded-of border border-of-border bg-of-surface p-3"
           >
             <p className="mb-2 text-xs font-medium">
-              벨로시티{' '}
+              현재 배정 기준 벨로시티{' '}
               <span className="font-normal text-of-muted">
                 최근 완료 {velocity.points.length}개 사이클 · 평균 {velocity.average.toFixed(1)}건
               </span>
