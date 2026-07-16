@@ -6274,6 +6274,10 @@ export interface components {
             ai_summary_enabled: boolean;
             /** Auth Mode */
             auth_mode: string;
+            /** Environment */
+            environment: string;
+            /** Oidc Provider Count */
+            oidc_provider_count: number;
             /** Project Storage Quota Bytes */
             project_storage_quota_bytes: number;
             /** Storage Backend */
@@ -6295,8 +6299,54 @@ export interface components {
         OpsDatabase: {
             /** Current Revision */
             current_revision: string | null;
+            /** Expected Revision */
+            expected_revision: string | null;
+            /** Matches Head */
+            matches_head: boolean | null;
             /** Status */
             status: string;
+        };
+        /** OpsReadiness */
+        OpsReadiness: {
+            /** Checks */
+            checks: components["schemas"]["OpsReadinessCheck"][];
+            /** Errors */
+            errors: number;
+            /**
+             * Generated At
+             * Format: date-time
+             */
+            generated_at: string;
+            /** Ok */
+            ok: number;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "ok" | "warning" | "error";
+            /** Warnings */
+            warnings: number;
+        };
+        /** OpsReadinessCheck */
+        OpsReadinessCheck: {
+            /** Detail */
+            detail: string;
+            /** Expected */
+            expected?: string | null;
+            /**
+             * Id
+             * @enum {string}
+             */
+            id: "database" | "schema" | "storage" | "auth";
+            /** Label */
+            label: string;
+            /** Observed */
+            observed?: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "ok" | "warning" | "error";
         };
         /** PermissionReportRead */
         PermissionReportRead: {
@@ -7702,6 +7752,7 @@ export interface components {
             config: components["schemas"]["OpsConfig"];
             counts: components["schemas"]["OpsCounts"];
             database: components["schemas"]["OpsDatabase"];
+            readiness: components["schemas"]["OpsReadiness"];
             /** Version */
             version: string;
         };
