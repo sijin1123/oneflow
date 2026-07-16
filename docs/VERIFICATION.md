@@ -2598,3 +2598,14 @@ Chromium typed mock fixture에서 1440x960과 390x844 viewport를 사용했다. 
 - **검증**: API Ruff/format PASS, focused Intake 16 및 full API 763 PASS(기존 Alembic 경고 1건), migration `0093 -> 0092 -> 0093` PASS, OpenAPI generation/drift PASS. Web typecheck PASS, lint PASS(기존 Fast Refresh 경고 4건), production build PASS(기존 chunk 경고), unit 95, component 8, focused Intake E2E 4 PASS, 최종 full E2E 289 PASS + opt-in visual QA 1 skip. 첫 4-worker full E2E의 unrelated 병렬 timeout 5건은 단일 worker repeat 10/10 PASS 후 2-worker full E2E 전체 green으로 재검증했다.
 - Clean-room frontend 161/backend 45, npm/pip audit 0 vulnerabilities와 diff check가 PASS했다. Chromium 증적은 `docs/screenshots/redevelopment/intake-decision-history-ui/{desktop,mobile}.png`에 보존한다.
 - Migration `0093` 적용이 필요하다. 환경변수, dependency와 설정 UI 변경은 없다. Migration 이전의 단일 current audit 필드에서 알 수 없는 과거 전이를 추정해 backfill하지 않으며 UI가 현재 판정만 존재함을 명시한다. 구현 가능한 기능 이연 항목은 없다.
+
+---
+
+# UI-122 Cycle Scope Analytics 검증 (2026-07-16)
+
+- **UI 변경**: Cycle row의 실제 번다운 disclosure를 최대/현재(완료 사이클은 마감) 범위, 유입·이탈, 완료량과 범위/잔여 선으로 재구성했다. 정확 추적, 부분 추적 시작일, `정밀 추적 전 · 현재 배정 기준` legacy 모드를 구분하고 loading/error/기간 전 empty, 390px 2열 요약과 desktop 4열 요약을 제공한다. 기존 cross-cycle 막대는 과거 범위를 추정하지 않고 `현재 배정 기준 벨로시티`로 명시했다.
+- **기능/API 반영**: migration `0094`는 Cycle별 추적 시작 시각·완전성 경계와 안정 Work Package ID 기반 append-only `cycle_scope_events`를 추가한다. Migration 당시 현재 배정은 하나의 baseline으로만 기록하며 과거 배정 시각을 만들지 않는다. Work Package 생성·복제·성공한 optimistic PATCH·rollover·교차 프로젝트 move가 같은 transaction에 `added`/`removed`를 기록하고, 409 loser나 rollback은 이벤트를 남기지 않는다.
+- `GET /api/v1/projects/{project_id}/cycles/{cycle_id}/burndown`은 member read/existence hiding을 유지하면서 일별 범위·잔여·완료, 최대/마감 범위, 유입·이탈과 coverage metadata를 반환한다. 신규/추적 이후 기간은 안정 ID 이벤트로 재구성하고, migration 전에 끝난 Cycle만 기존 current-assignment 계산을 명시적 legacy mode로 제공한다. Baseline은 유입 건수에 포함하지 않는다.
+- **검증**: API Ruff/format PASS, focused Cycle/assignment/duplicate/move 20 및 full API 765 PASS(기존 Alembic 경고 1건), 전용 `oneflow_ui122_migration_test` DB에서 0001→0094→base→0094 PASS, OpenAPI generation/drift PASS. Web typecheck/lint/build PASS(기존 Fast Refresh 4·chunk 경고), unit 95, focused Cycle E2E PASS, full E2E 289 PASS + opt-in visual QA 1 skip.
+- Clean-room frontend 161/backend 45, pip/npm audit 0 vulnerabilities와 diff check가 PASS했다. Chromium 증적은 `docs/screenshots/redevelopment/cycle-scope-analytics-ui/{desktop,mobile}.png`에 보존한다. Migration `0094` 적용이 필요하고 환경변수, dependency와 설정 UI 변경은 없다.
+- **이연 항목**: migration 이전 이름 snapshot에서 배정 시점을 추정하지 않는다. 여러 과거 Cycle을 하나의 정밀 velocity로 다시 계산하는 것은 충분한 추적 완료 Cycle이 축적된 뒤 별도 analytics PR로 진행하며, 현재 UI는 기존 수치를 `현재 배정 기준`으로 숨김없이 표시한다.
