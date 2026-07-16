@@ -275,7 +275,7 @@ export function OperationsPage() {
             to="/status"
             icon={Activity}
             label="시스템 상태"
-            detail="배포 버전, 데이터베이스 리비전, 스토리지 한도"
+            detail="DB 스키마, 스토리지, 인증 준비 상태와 안전 진단 보고서"
           />
           {me.data?.is_admin ? (
             <SurfaceLink
