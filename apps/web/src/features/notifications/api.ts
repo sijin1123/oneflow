@@ -24,6 +24,8 @@ export type NotificationList = {
   unread: number
 }
 
+export type OverdueReminderDays = 0 | 3 | 7 | 14
+
 export function useNotifications() {
   return useQuery({
     queryKey: ['notifications'],
@@ -60,6 +62,7 @@ export type NotificationSettings = {
   commented: boolean
   mention: boolean
   due_alerts: boolean
+  overdue_reminder_days: OverdueReminderDays
   intake: boolean
   initiatives: boolean
 }

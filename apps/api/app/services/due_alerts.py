@@ -5,12 +5,13 @@ Run daily by an operator cron (dry-run by default; `--create` inserts):
     uv run python -m app.services.due_alerts            # report only
     uv run python -m app.services.due_alerts --create   # insert alerts
 
-Contract (v40.1):
+Contract (UI-126):
 - UTC date boundaries (`datetime.now(UTC).date()` — the v21.1 rule).
-- due_soon: due_date = tomorrow. overdue: due_date = YESTERDAY only — an item
-  alerts once, the day after it slips; there is NO backfill, so the first
-  production run cannot flood inboxes (R1-①). Days without a run are not
-  made up — the runbook says run daily; reruns are idempotent.
+- due_soon: due_date = tomorrow. overdue: every item alerts the day after it
+  slips. The personal default remains once-only (cadence 0), so deployment
+  creates no backlog flood. An explicit cadence 3/7/14 repeats from the first
+  overdue day (days overdue 1, 4, 7... for cadence 3). Missed daily runs are
+  not backfilled; reruns on the same UTC day are idempotent.
 - Recipient: the assignee, only while a CURRENT project member AND active
   (Pass 33/34 semantics), with due_alerts on (absent settings row = true).
 - One INSERT..SELECT per kind: candidates and inserts share a statement
@@ -33,7 +34,7 @@ from app.db.session import build_engine, build_sessionmaker
 DUE_ALERTS_LOCK_CLASSID = 427007
 
 # One statement per kind: SELECT and INSERT see the same snapshot.
-_INSERT = """
+_INSERT_DUE_SOON = """
 INSERT INTO notifications (id, user_id, project_id, work_package_id, actor_id, kind, read)
 SELECT gen_random_uuid(), w.assignee_id, w.project_id, w.id, NULL, :kind, false
 FROM work_packages w
@@ -54,11 +55,49 @@ WHERE w.assignee_id IS NOT NULL
   )
 """
 
-_COUNT = _INSERT.replace(
-    "INSERT INTO notifications (id, user_id, project_id, work_package_id, actor_id, kind, read)\n"
-    "SELECT gen_random_uuid(), w.assignee_id, w.project_id, w.id, NULL, :kind, false",
-    "SELECT count(*)",
-)
+_INSERT_OVERDUE = """
+INSERT INTO notifications (id, user_id, project_id, work_package_id, actor_id, kind, read)
+SELECT gen_random_uuid(), w.assignee_id, w.project_id, w.id, NULL, :kind, false
+FROM work_packages w
+JOIN projects p ON p.id = w.project_id AND p.archived_at IS NULL
+JOIN project_members m ON m.project_id = w.project_id AND m.user_id = w.assignee_id
+JOIN users u ON u.id = w.assignee_id AND u.is_active
+LEFT JOIN user_notification_settings s ON s.user_id = w.assignee_id
+WHERE w.assignee_id IS NOT NULL
+  AND (
+    w.due_date = CAST(:first_overdue_on AS date)
+    OR (
+      COALESCE(s.overdue_reminder_days, 0) IN (3, 7, 14)
+      AND w.due_date < CAST(:first_overdue_on AS date)
+      AND MOD(
+        (CAST(:today AS date) - w.due_date) - 1,
+        NULLIF(COALESCE(s.overdue_reminder_days, 0), 0)
+      ) = 0
+    )
+  )
+  AND w.status NOT IN ('done', 'cancelled')
+  AND COALESCE(s.due_alerts, true)
+  AND NOT EXISTS (
+    SELECT 1 FROM notifications n
+    WHERE n.user_id = w.assignee_id
+      AND n.work_package_id = w.id
+      AND n.kind = :kind
+      AND n.created_at >= CAST(:today AS date)
+  )
+"""
+
+
+def _as_count(insert_sql: str) -> str:
+    return insert_sql.replace(
+        "INSERT INTO notifications "
+        "(id, user_id, project_id, work_package_id, actor_id, kind, read)\n"
+        "SELECT gen_random_uuid(), w.assignee_id, w.project_id, w.id, NULL, :kind, false",
+        "SELECT count(*)",
+    )
+
+
+_COUNT_DUE_SOON = _as_count(_INSERT_DUE_SOON)
+_COUNT_OVERDUE = _as_count(_INSERT_OVERDUE)
 
 
 async def run(create: bool) -> dict[str, int] | None:
@@ -68,10 +107,20 @@ async def run(create: bool) -> dict[str, int] | None:
     from app.core.dates import utc_today
 
     today = utc_today()
-    targets = {
-        "due_soon": today + timedelta(days=1),
-        "overdue": today - timedelta(days=1),  # first day overdue only (R1-①)
-    }
+    statements = (
+        (
+            "due_soon",
+            _INSERT_DUE_SOON,
+            _COUNT_DUE_SOON,
+            {"due_on": str(today + timedelta(days=1))},
+        ),
+        (
+            "overdue",
+            _INSERT_OVERDUE,
+            _COUNT_OVERDUE,
+            {"first_overdue_on": str(today - timedelta(days=1))},
+        ),
+    )
 
     settings = get_settings()
     engine = build_engine(settings)
@@ -88,14 +137,14 @@ async def run(create: bool) -> dict[str, int] | None:
             if not locked:
                 return None
             counts: dict[str, int] = {}
-            for kind, due_on in targets.items():
-                params = {"kind": kind, "due_on": str(due_on), "today": str(today)}
+            for kind, insert_sql, count_sql, target_params in statements:
+                params = {"kind": kind, "today": str(today), **target_params}
                 if create:
-                    result = await session.execute(text(_INSERT).bindparams(**params))
+                    result = await session.execute(text(insert_sql).bindparams(**params))
                     counts[kind] = result.rowcount or 0
                 else:
                     counts[kind] = (
-                        await session.execute(text(_COUNT).bindparams(**params))
+                        await session.execute(text(count_sql).bindparams(**params))
                     ).scalar_one()
             return counts
     finally:

@@ -2640,3 +2640,15 @@ Chromium typed mock fixture에서 1440x960과 390x844 viewport를 사용했다. 
 - **권한/정보 경계**: Inbox list와 unread count는 조회 시점의 현재 프로젝트 membership과 Document visibility를 다시 적용한다. 멤버십 상실 또는 Document 삭제 뒤에는 알림이 보이지 않고, Document 삭제는 target notification을 cascade한다. Private Document는 작성자만 볼 수 있으므로 actor exclusion 뒤 다른 수신자를 만들지 않는다. 외부 email delivery는 이 in-app surface 밖에 둔다.
 - **검증**: API Ruff/format PASS, focused Document mention/reaction/viewer 26 및 full API 773 PASS(기존 Alembic 경고 1건), 전용 `oneflow_ui125_migration_test` DB에서 0001→0097→base→0097 PASS, cross-project Document target DB 거부 PASS, OpenAPI generation/drift PASS. Web typecheck PASS, lint PASS(기존 Fast Refresh 경고 4건), production build PASS(기존 chunk 경고), unit 96, component 8, focused Document E2E 3개 경로와 reply repeat 4 PASS, 최종 full E2E 293 PASS + opt-in visual QA 1 skip.
 - Clean-room frontend 161/backend 45, npm/uv audit 0 vulnerabilities와 diff check가 PASS했다. Chromium 증적은 `docs/screenshots/redevelopment/document-mentions-ui/{desktop,mobile}.png`에 보존한다. Migration `0097` 적용이 필요하며 환경변수, dependency와 신규 설정 UI 변경은 없다.
+
+---
+
+# UI-126 Personal Overdue Reminder Cadence 검증 (2026-07-17)
+
+- **UI 변경**: Personal Settings의 기존 `기한 알림` 아래에 첫 초과 알림 1회 또는 첫 알림 후 3/7/14일마다를 선택하는 기능형 control을 추가했다. 마스터 토글이 꺼지면 주기 선택을 비활성화하고 이유를 설명하며, loading skeleton, 오류·실제 재시도, 저장 pending/success/error와 390px 모바일 줄바꿈을 제공한다. 장식용 email control은 없다.
+- **기능/API 반영**: migration `0098`은 `user_notification_settings.overdue_reminder_days`를 기본값 0과 DB CHECK `0/3/7/14`로 추가한다. API도 같은 closed literal을 사용한다. 기존 daily job은 모든 사용자에게 최초 초과일 1회, 명시적 주기 사용자에게 `days_overdue = 1 + n * cadence`인 날만 같은 `overdue` 인앱 알림을 생성한다. 기본 사용자의 오래된 초과 작업은 배포 시 백필되지 않는다.
+- **보존한 경계**: current assignee, current project member, active user, active project, open status, `due_alerts` preference, UTC same-day dedupe, advisory lock `427007`, dry-run/create CLI와 actor-null system event 계약을 유지한다. 주기를 선택해도 실행하지 못한 날짜의 알림을 후일 보충하지 않는다.
+- **검증**: API Ruff/format PASS, focused notification/due-alert/constraint 10 및 full API 775 PASS(기존 Alembic 경고 1건), migration `0098 -> 0097 -> 0098`와 full `0098 -> base -> 0098` PASS, 실제 default 0/not-null/DB CHECK 확인, OpenAPI generation/drift PASS. Web typecheck PASS, lint PASS(기존 Fast Refresh 경고 4건), production build PASS(기존 chunk 경고), unit 96, component 8, focused E2E 2 PASS.
+- Full E2E는 신규 경로 포함 293 PASS + opt-in visual QA 1 skip이었다. 변경과 무관한 상세 헤더 Radix closing animation 1건이 4-worker 병렬에서 1회 실패했으나 단일 worker repeat 3/3 PASS로 재현되지 않았다. Clean-room frontend 161/backend 45, npm/uv audit 0 vulnerabilities와 diff check가 PASS했다.
+- 추가 진단용 `alembic check`는 이번 컬럼이 아니라 기존 model metadata에 선언되지 않은 `dashboard_layouts`와 여러 legacy index/constraint를 전역 제거 후보로 보고 실패했다. 이 저장소 baseline drift는 이번 PR에서 확장하지 않았으며, UI-126 migration은 위 전용 왕복·constraint-name test·실제 PostgreSQL 제약 조회로 별도 검증했다.
+- Chromium 증적은 `docs/screenshots/redevelopment/overdue-reminders-ui/{desktop,mobile}.png`에 보존한다. Migration `0098` 적용이 필요하다. 환경변수, dependency와 권한 변경은 없고 설정 UI 대상은 일반 사용자의 개인 계정이다. 재기동은 migration 적용 외 별도 필요가 없다. **이연 항목**은 실제 SMTP/email delivery뿐이며 운영 자격증명과 transport 정책이 필요한 별도 surface다.
