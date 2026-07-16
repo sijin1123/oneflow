@@ -3,6 +3,7 @@ import {
   Download,
   ExternalLink,
   FileUp,
+  FileSearch,
   HardDrive,
   Link2,
   type LucideIcon,
@@ -11,8 +12,8 @@ import {
   Trash2,
   Upload,
 } from 'lucide-react'
-import { useRef, useState, type RefObject } from 'react'
-import { useParams } from 'react-router-dom'
+import { useEffect, useRef, useState, type RefObject } from 'react'
+import { useParams, useSearchParams } from 'react-router-dom'
 
 import { ReadOnlyNotice } from '@/components/shell/ReadOnlyNotice'
 import { EmptyState, ErrorState, ListSkeleton } from '@/components/shell/states'
@@ -27,6 +28,7 @@ import { useWorkPackages } from '@/features/work-packages/api'
 import { useWorkspaceCapabilities } from '@/features/workspace-features/api'
 import { ApiError } from '@/lib/api'
 import { confirmDestructive } from '@/lib/guards'
+import { cn } from '@/lib/utils'
 
 import {
   downloadUrl,
@@ -34,6 +36,7 @@ import {
   useAttachments,
   useCreateAttachment,
   useDeleteAttachment,
+  useRebuildAttachmentSearchIndex,
   useUploadAttachment,
 } from './api'
 
@@ -57,6 +60,7 @@ export function FilesPage() {
   const create = useCreateAttachment(projectId)
   const del = useDeleteAttachment(projectId)
   const uploadFile = useUploadAttachment(projectId)
+  const rebuildSearch = useRebuildAttachmentSearchIndex(projectId)
   const canWrite = useCanWrite(projectId)
   const capabilities = useWorkspaceCapabilities()
   const fileInput = useRef<HTMLInputElement>(null)
@@ -65,6 +69,8 @@ export function FilesPage() {
   const [url, setUrl] = useState('')
   const [anchor, setAnchor] = useState('')
   const [query, setQuery] = useState('')
+  const [searchParams] = useSearchParams()
+  const highlightedFileId = searchParams.get('file')
   const { data: wps } = useWorkPackages(projectId, {})
   const wikiEnabled = capabilities.data?.wiki.enabled === true
   const { data: docs } = useDocuments(projectId, 'shared', wikiEnabled)
@@ -78,6 +84,12 @@ export function FilesPage() {
 
   const items = data?.items ?? []
   const fileCount = items.filter((a) => a.has_file).length
+  const indexedFileCount = items.filter(
+    (a) => a.has_file && a.search_index_status === 'indexed',
+  ).length
+  const pendingIndexCount = items.filter(
+    (a) => a.has_file && (a.search_index_status ?? 'pending') === 'pending',
+  ).length
   const linkCount = items.length - fileCount
   const linkedCount = items.filter((a) => a.work_package_id || a.document_id).length
   const usedBytes = items.reduce((total, a) => total + (a.size_bytes ?? 0), 0)
@@ -90,6 +102,15 @@ export function FilesPage() {
   const err = create.error instanceof ApiError ? create.error.message : null
   const urlTrimmed = url.trim()
   const urlValid = urlTrimmed === '' || HTTP_URL_RE.test(urlTrimmed)
+
+  useEffect(() => {
+    if (!highlightedFileId || isPending) return
+    requestAnimationFrame(() => {
+      document
+        .getElementById(`attachment-${highlightedFileId}`)
+        ?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+    })
+  }, [highlightedFileId, isPending])
 
   const add = () => {
     if (!filename.trim() || !urlValid || urlTrimmed === '' || create.isPending) return
@@ -179,20 +200,49 @@ export function FilesPage() {
               />
             ) : (
               <>
-                <label className="relative block min-w-0">
-                  <Search
-                    size={14}
-                    className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-of-muted"
-                    aria-hidden="true"
-                  />
-                  <Input
-                    value={query}
-                    onChange={(e) => setQuery(e.target.value)}
-                    placeholder="파일 이름 또는 연결 대상 검색"
-                    aria-label="파일 검색"
-                    className="pl-8"
-                  />
-                </label>
+                <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center">
+                  <label className="relative block min-w-0 flex-1">
+                    <Search
+                      size={14}
+                      className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-of-muted"
+                      aria-hidden="true"
+                    />
+                    <Input
+                      value={query}
+                      onChange={(e) => setQuery(e.target.value)}
+                      placeholder="파일 이름 또는 연결 대상 검색"
+                      aria-label="파일 검색"
+                      className="pl-8"
+                    />
+                  </label>
+                  {canMutate && pendingIndexCount > 0 ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={rebuildSearch.isPending}
+                      onClick={() => rebuildSearch.mutate()}
+                    >
+                      <FileSearch size={13} />
+                      {rebuildSearch.isPending
+                        ? '본문 검색 준비 중'
+                        : `본문 검색 준비 ${pendingIndexCount}건`}
+                    </Button>
+                  ) : null}
+                </div>
+                {rebuildSearch.isError ? (
+                  <p role="alert" className="text-xs text-of-danger">
+                    파일 본문 검색 준비에 실패했습니다. 다시 시도해 주세요.
+                  </p>
+                ) : rebuildSearch.data ? (
+                  <p role="status" className="text-xs text-of-muted">
+                    {rebuildSearch.data.processed}건 확인 · {rebuildSearch.data.indexed}건 검색
+                    가능
+                    {rebuildSearch.data.remaining > 0
+                      ? ` · ${rebuildSearch.data.remaining}건 남음`
+                      : ''}
+                  </p>
+                ) : null}
 
                 {visible.length === 0 ? (
                   <EmptyState
@@ -203,7 +253,15 @@ export function FilesPage() {
                 ) : (
                   <ul className="min-w-0 divide-y divide-of-border overflow-hidden rounded-of border border-of-border bg-of-surface">
                     {visible.map((att) => (
-                      <li key={att.id} className="min-w-0 px-3 py-3 hover:bg-of-surface-2">
+                      <li
+                        id={`attachment-${att.id}`}
+                        key={att.id}
+                        className={cn(
+                          'min-w-0 px-3 py-3 hover:bg-of-surface-2',
+                          highlightedFileId === att.id &&
+                            'bg-of-accent-soft ring-1 ring-inset ring-of-focus',
+                        )}
+                      >
                         <div className="grid min-w-0 gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
                           <div className="flex min-w-0 items-start gap-3">
                             <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-of bg-of-surface-2 text-of-muted">
@@ -223,6 +281,7 @@ export function FilesPage() {
                           </div>
                           <div className="flex shrink-0 items-center gap-1 sm:justify-end">
                             <Badge variant="outline">{att.has_file ? 'file' : 'link'}</Badge>
+                            {att.has_file ? <SearchIndexBadge status={att.search_index_status} /> : null}
                             {canMutate ? (
                               <button
                                 type="button"
@@ -246,6 +305,11 @@ export function FilesPage() {
           <aside aria-label="파일 요약" className="grid min-w-0 gap-2 self-start">
             <SummaryTile icon={HardDrive} label="전체 파일" value={String(data.total)} />
             <SummaryTile icon={FileUp} label="업로드" value={String(fileCount)} />
+            <SummaryTile
+              icon={FileSearch}
+              label="본문 검색"
+              value={`${indexedFileCount}/${fileCount}`}
+            />
             <SummaryTile icon={Link2} label="외부 링크" value={String(linkCount)} />
             <SummaryTile icon={Paperclip} label="연결됨" value={String(linkedCount)} />
             <SummaryTile icon={Database} label="사용량" value={fmtSize(usedBytes)} />
@@ -254,6 +318,23 @@ export function FilesPage() {
       )}
     </div>
   )
+}
+
+function SearchIndexBadge({
+  status,
+}: {
+  status: Attachment['search_index_status'] | undefined
+}) {
+  const view = {
+    indexed: { label: '검색 가능', variant: 'accent' as const },
+    pending: { label: '준비 필요', variant: 'warning' as const },
+    unsupported: { label: '형식 제외', variant: 'outline' as const },
+    too_large: { label: '용량 제외', variant: 'outline' as const },
+    invalid_text: { label: '텍스트 오류', variant: 'danger' as const },
+    missing_blob: { label: '파일 누락', variant: 'danger' as const },
+    not_applicable: { label: '해당 없음', variant: 'outline' as const },
+  }[status ?? 'pending']
+  return <Badge variant={view.variant}>{view.label}</Badge>
 }
 
 function FileComposer({

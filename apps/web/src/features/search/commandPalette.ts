@@ -1,5 +1,6 @@
 import type {
   SearchDocumentItem,
+  SearchFileItem,
   SearchInitiativeItem,
   SearchMeetingItem,
   SearchNamedItem,
@@ -10,6 +11,7 @@ import type {
 export type CommandPaletteKind =
   | 'work_packages'
   | 'documents'
+  | 'files'
   | 'meetings'
   | 'cycles'
   | 'modules'
@@ -32,6 +34,7 @@ export const COMMAND_PALETTE_TABS: Array<{ key: CommandPaletteTab; label: string
   { key: 'all', label: '전체' },
   { key: 'work_packages', label: '작업' },
   { key: 'documents', label: '문서' },
+  { key: 'files', label: '파일' },
   { key: 'meetings', label: '회의' },
   { key: 'cycles', label: '사이클' },
   { key: 'modules', label: '모듈' },
@@ -41,6 +44,7 @@ export const COMMAND_PALETTE_TABS: Array<{ key: CommandPaletteTab; label: string
 export const COMMAND_PALETTE_KIND_LABELS: Record<CommandPaletteKind, string> = {
   work_packages: '작업',
   documents: '문서',
+  files: '파일',
   meetings: '회의',
   cycles: '사이클',
   modules: '모듈',
@@ -71,6 +75,7 @@ export function countCommandPaletteItems(
     all: items.length,
     work_packages: 0,
     documents: 0,
+    files: 0,
     meetings: 0,
     cycles: 0,
     modules: 0,
@@ -100,6 +105,9 @@ export function flattenCommandPaletteResults(
     for (const item of data?.documents.items ?? []) {
       push(fromDocument(item))
     }
+  }
+  for (const item of data?.files.items ?? []) {
+    push(fromFile(item))
   }
   for (const item of data?.meetings.items ?? []) {
     push(fromMeeting(item))
@@ -139,6 +147,19 @@ function fromDocument(item: SearchDocumentItem): CommandPaletteItem {
     label: item.title,
     detail: item.project_name,
     href: `/projects/${item.project_id}/documents/${item.id}`,
+    projectKey: item.project_key,
+    snippet: item.snippet,
+    matchedIn: item.matched_in,
+  }
+}
+
+function fromFile(item: SearchFileItem): CommandPaletteItem {
+  return {
+    key: `files:${item.id}`,
+    kind: 'files',
+    label: item.filename,
+    detail: item.project_name,
+    href: `/projects/${item.project_id}/files?file=${encodeURIComponent(item.id)}`,
     projectKey: item.project_key,
     snippet: item.snippet,
     matchedIn: item.matched_in,

@@ -63,6 +63,23 @@ test('flattenCommandPaletteResults maps every group to a stable route', () => {
       returned: 1,
       truncated: false,
     },
+    files: {
+      items: [
+        {
+          id: 'file-1',
+          project_id: 'p-1',
+          project_key: 'ONE',
+          project_name: 'OneFlow 도입',
+          filename: '구현 명세.txt',
+          content_type: 'text/plain',
+          size_bytes: 120,
+          matched_in: 'content',
+          snippet: '파일 본문 구현',
+        },
+      ],
+      returned: 1,
+      truncated: false,
+    },
     meetings: {
       items: [
         {
@@ -116,6 +133,7 @@ test('flattenCommandPaletteResults maps every group to a stable route', () => {
     [
       ['work_packages', '/projects/p-1/work-packages/wp-1'],
       ['documents', '/projects/p-1/documents/doc-1'],
+      ['files', '/projects/p-1/files?file=file-1'],
       ['meetings', '/projects/p-1/meetings/mt-1'],
       ['cycles', '/projects/p-1/cycles'],
       ['modules', '/projects/p-1/modules'],
@@ -182,6 +200,7 @@ test('duplicate ids are only removed inside the same result kind', () => {
       returned: 1,
       truncated: false,
     },
+    files: emptyGroup,
     meetings: emptyGroup,
     cycles: emptyGroup,
     modules: emptyGroup,
@@ -210,6 +229,7 @@ test('counts and tab filters use flattened visible items', () => {
       returned: 1,
       truncated: false,
     },
+    files: emptyGroup,
     meetings: emptyGroup,
     cycles: emptyGroup,
     modules: emptyGroup,
