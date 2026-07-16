@@ -2619,3 +2619,14 @@ Chromium typed mock fixture에서 1440x960과 390x844 viewport를 사용했다. 
 - **검증**: API Ruff/format PASS, focused document comment 5 및 full API 768 PASS(기존 Alembic 경고 1건), 전용 `oneflow_ui123_migration_test` DB에서 0001→0095→base→0095 PASS, OpenAPI generation/drift PASS. Web `npm ci`, typecheck, lint, production build PASS(기존 Fast Refresh 4·chunk 경고), unit 95, component 8, focused document E2E 4 PASS, full E2E 291 PASS + opt-in visual QA 1 skip.
 - Clean-room frontend 161/backend 45, pip/npm audit 0 vulnerabilities와 diff check가 PASS했다. Chromium 증적은 `docs/screenshots/redevelopment/document-inline-comments-ui/{desktop,mobile}.png`에 보존한다. Migration `0095`와 기존 Tiptap 패키지의 직접 dependency 선언이 필요하며 환경변수·설정 UI 변경은 없다.
 - **이연 항목**: 본문 변경 뒤 quote를 추측해 자동 재배치하지 않는다. 스레드 reaction/mention은 기존 Work Item collaboration surface와 별개인 후속 Documents surface로 추적하며, 이번 PR에는 장식용 control이나 미배선 UI를 추가하지 않았다.
+
+---
+
+# UI-124 Document Comment Reactions 검증 (2026-07-16)
+
+- **UI 변경**: 문서의 본문 앵커 스레드와 일반 코멘트 행에 같은 compact reaction bar를 추가했다. 작성 가능한 member는 `👍·👎·🎉·❤️·😄·😕` quick reaction과 단일 custom emoji를 실제 저장·해제할 수 있고, pending 중 중복 입력을 막으며 실패를 surface 안에서 알린다. Viewer와 archived page는 기존 aggregate만 정적으로 표시한다. 390px에서 reaction wrap과 Quick Dock 비겹침을 검증했다.
+- **기능/API 반영**: migration `0096`은 `document_comment_reactions`에 comment/user cascade, `(comment_id,user_id,emoji)` 유일성, coarse emoji shape guard를 추가한다. PUT은 `INSERT ... ON CONFLICT DO NOTHING`으로 동시 요청에도 idempotent하고 DELETE도 idempotent하다. 목록은 모든 코멘트의 count와 현재 사용자의 `me`를 한 번에 집계하고 count 내림차순·emoji codepoint 오름차순으로 정렬한다.
+- **권한/정보 경계**: reaction read는 기존 Document member visibility를 그대로 따르고, mutation은 document writer와 active-project guard를 통과해야 한다. Viewer는 aggregate를 읽지만 PUT/DELETE는 403, archived project는 409, foreign/ghost comment는 404다. Comment·Document·User 삭제 시 reaction이 남지 않는다.
+- **검증**: API Ruff/format PASS, focused Document reaction/viewer 18 및 full API 770 PASS(기존 Alembic 경고 1건), 전용 `oneflow_ui124_migration_test` DB에서 0001→0096→base→0096 PASS, OpenAPI generation/drift PASS. Web typecheck, lint, production build PASS(기존 Fast Refresh 4·chunk 경고), unit 95, component 8, focused reaction/viewer E2E 2 PASS. 첫 full E2E의 unrelated 병렬 timing 실패 2건은 단일 worker repeat 6/6 PASS로 격리했고, API 부하를 분리한 최종 full E2E는 292 PASS + opt-in visual QA 1 skip으로 완료했다.
+- Clean-room frontend 161/backend 45, pip/npm audit 0 vulnerabilities와 diff check가 PASS했다. Chromium 증적은 `docs/screenshots/redevelopment/document-comment-reactions-ui/{desktop,mobile}.png`에 보존한다. Migration `0096` 적용이 필요하고 환경변수, dependency와 설정 UI 변경은 없다.
+- **이연 항목**: Document mention notification은 Inbox에 first-class document target과 deep link를 먼저 설계해야 한다. 이번 PR에는 dead mention selector를 추가하지 않았다.

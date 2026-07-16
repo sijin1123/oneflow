@@ -9,6 +9,7 @@ from sqlalchemy import (
     Index,
     String,
     Text,
+    UniqueConstraint,
     func,
 )
 from sqlalchemy.dialects.postgresql import UUID
@@ -61,6 +62,45 @@ class ProjectDocumentComment(Base):
     body: Mapped[str] = mapped_column(Text, nullable=False)
     anchor_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     anchor_quote: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class ProjectDocumentCommentReaction(Base):
+    """Ephemeral free-emoji reaction on a Document comment.
+
+    Reactions die with either the comment or user. The database constraint is
+    only a coarse shape backstop; app.services.emoji remains the write grammar.
+    """
+
+    __tablename__ = "document_comment_reactions"
+    __table_args__ = (
+        CheckConstraint(
+            "char_length(emoji) BETWEEN 1 AND 16"
+            " AND emoji ~ '[^\x01-\x7f]'"
+            " AND emoji !~ '[[:space:][:cntrl:]]'",
+            name="emoji_shape",
+        ),
+        UniqueConstraint(
+            "comment_id",
+            "user_id",
+            "emoji",
+            name="uq_document_comment_reactions_comment_user_emoji",
+        ),
+        Index("ix_document_comment_reactions_comment", "comment_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    comment_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("project_document_comments.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    emoji: Mapped[str] = mapped_column(String(16), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

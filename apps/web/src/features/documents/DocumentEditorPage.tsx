@@ -18,6 +18,7 @@ import { ReadOnlyNotice } from '@/components/shell/ReadOnlyNotice'
 import { ErrorState, ListSkeleton } from '@/components/shell/states'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { CommentReactionBar } from '@/components/ui/comment-reactions'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { useUploadAttachment } from '@/features/attachments/api'
@@ -41,6 +42,7 @@ import {
   useDocumentComments,
   useDocuments,
   useDocumentLifecycle,
+  useToggleDocumentCommentReaction,
   useUpdateDocument,
 } from './api'
 import { DocumentAttachments } from './DocumentAttachments'
@@ -415,6 +417,7 @@ function DocumentComments({
   const create = useCreateDocumentComment(doc.id)
   const createInline = useCreateInlineDocumentComment(doc.id, projectId)
   const del = useDeleteDocumentComment(doc.id)
+  const toggleReaction = useToggleDocumentCommentReaction(doc.id)
   const [draft, setDraft] = useState('')
   const [replyAnchorId, setReplyAnchorId] = useState<string | null>(null)
   const [replyDraft, setReplyDraft] = useState('')
@@ -475,22 +478,33 @@ function DocumentComments({
   const commentLine = (comment: DocumentComment) => (
     <li
       key={comment.id}
-      className="grid min-w-0 gap-1 border-t border-of-border-subtle py-2 text-xs first:border-t-0 sm:grid-cols-[auto_minmax(0,1fr)_auto_auto] sm:items-baseline"
+      className="min-w-0 border-t border-of-border-subtle py-2 text-xs first:border-t-0"
     >
-      <span className="font-medium text-of-muted">{authorLabel(comment.author_id)}</span>
-      <span className="min-w-0 whitespace-pre-wrap break-words">{comment.body}</span>
-      <span className="text-[11px] text-of-muted">{comment.created_at.slice(0, 10)}</span>
-      {canWrite && comment.author_id === me.data?.id ? (
-        <button
-          type="button"
-          aria-label="코멘트 삭제"
-          className="justify-self-start rounded-of p-1 text-of-muted hover:bg-of-surface-2 hover:text-of-danger sm:justify-self-auto"
-          disabled={del.isPending}
-          onClick={() => del.mutate(comment.id)}
-        >
-          <Trash2 size={12} />
-        </button>
-      ) : null}
+      <div className="grid min-w-0 gap-1 sm:grid-cols-[auto_minmax(0,1fr)_auto_auto] sm:items-baseline">
+        <span className="font-medium text-of-muted">{authorLabel(comment.author_id)}</span>
+        <span className="min-w-0 whitespace-pre-wrap break-words">{comment.body}</span>
+        <span className="text-[11px] text-of-muted">{comment.created_at.slice(0, 10)}</span>
+        {canWrite && comment.author_id === me.data?.id ? (
+          <button
+            type="button"
+            aria-label="코멘트 삭제"
+            className="justify-self-start rounded-of p-1 text-of-muted hover:bg-of-surface-2 hover:text-of-danger sm:justify-self-auto"
+            disabled={del.isPending}
+            onClick={() => del.mutate(comment.id)}
+          >
+            <Trash2 size={12} />
+          </button>
+        ) : null}
+      </div>
+      <CommentReactionBar
+        reactions={comment.reactions ?? []}
+        canReact={canWrite}
+        pending={toggleReaction.isPending}
+        label={`${authorLabel(comment.author_id)} 코멘트 리액션`}
+        onToggle={({ key, on }) =>
+          toggleReaction.mutate({ commentId: comment.id, key, on })
+        }
+      />
     </li>
   )
 
@@ -627,6 +641,11 @@ function DocumentComments({
             </p>
           ) : null}
         </>
+      ) : null}
+      {toggleReaction.isError ? (
+        <p role="alert" className="text-xs text-of-danger">
+          리액션을 저장하지 못했습니다. 잠시 후 다시 시도해 주세요.
+        </p>
       ) : null}
     </section>
   )

@@ -208,7 +208,14 @@ export type DocumentComment = {
   body: string
   anchor_id: string | null
   anchor_quote: string | null
+  reactions: DocumentCommentReaction[]
   created_at: string
+}
+
+export type DocumentCommentReaction = {
+  key: string
+  count: number
+  me: boolean
 }
 
 export type DocumentCommentList = { items: DocumentComment[]; total: number }
@@ -276,6 +283,39 @@ export function useDeleteDocumentComment(docId: string) {
       api(`/api/v1/document-comments/${commentId}`, { method: 'DELETE' }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['document-comments', docId] })
+    },
+  })
+}
+
+export function useToggleDocumentCommentReaction(docId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({
+      commentId,
+      key,
+      on,
+    }: {
+      commentId: string
+      key: string
+      on: boolean
+    }) =>
+      api<{ items: DocumentCommentReaction[] }>(
+        `/api/v1/document-comments/${commentId}/reactions/${encodeURIComponent(key)}`,
+        { method: on ? 'PUT' : 'DELETE' },
+      ).then((result) => ({ commentId, reactions: result.items })),
+    onSuccess: ({ commentId, reactions }) => {
+      queryClient.setQueryData<DocumentCommentList>(
+        ['document-comments', docId],
+        (current) =>
+          current
+            ? {
+                ...current,
+                items: current.items.map((comment) =>
+                  comment.id === commentId ? { ...comment, reactions } : comment,
+                ),
+              }
+            : current,
+      )
     },
   })
 }
