@@ -9,6 +9,7 @@ from app.models.cost_entry import CostEntry
 from app.models.custom_field import CustomField, WpCustomValue
 from app.models.customer import Customer
 from app.models.cycle import Cycle, CycleScopeEvent
+from app.models.dashboard_layout import DashboardLayout, DashboardSharedLayout
 from app.models.data_transfer_job import DataTransferJob
 from app.models.document import DocumentWorkPackageLink, ProjectDocument
 from app.models.document_comment import ProjectDocumentComment, ProjectDocumentCommentReaction
@@ -75,6 +76,8 @@ __all__ = [
     "Cycle",
     "CycleScopeEvent",
     "DataTransferJob",
+    "DashboardLayout",
+    "DashboardSharedLayout",
     "Module",
     "ModuleMember",
     "Notification",

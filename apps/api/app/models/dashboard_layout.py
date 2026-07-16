@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, func
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Integer, String, func, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -47,6 +47,37 @@ class DashboardLayout(Base):
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
     )
     widgets: Mapped[list] = mapped_column(JSONB, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+
+class DashboardSharedLayout(Base):
+    """Project-owned default for members without a personal override."""
+
+    __tablename__ = "dashboard_shared_layouts"
+    __table_args__ = (
+        CheckConstraint(
+            "jsonb_typeof(widgets) = 'array' AND jsonb_array_length(widgets) >= 1 "
+            'AND widgets <@ \'["summary", "budget", "progress", '
+            '"status_distribution", "priority_distribution", '
+            '"type_distribution", "recent_activity"]\'::jsonb',
+            name="widgets_valid",
+        ),
+        CheckConstraint("version >= 1", name="version_positive"),
+    )
+
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), primary_key=True
+    )
+    widgets: Mapped[list] = mapped_column(JSONB, nullable=False)
+    version: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=1, server_default=text("1")
+    )
+    updated_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    updated_by_name: Mapped[str] = mapped_column(String(120), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
     )

@@ -87,6 +87,14 @@ export type DashboardLayout = {
   widgets: string[]
   updated_at: string | null
   is_default: boolean
+  source: 'personal' | 'shared' | 'builtin'
+  shared_layout: {
+    widgets: string[]
+    version: number
+    updated_at: string
+    updated_by_name: string
+  } | null
+  can_manage_shared: boolean
 }
 
 export function useDashboardLayout(projectId: string) {
@@ -104,6 +112,53 @@ export function useSaveDashboardLayout(projectId: string) {
         method: 'PUT',
         body: JSON.stringify({ widgets }),
       }),
+    onSuccess: (layout) => {
+      queryClient.setQueryData(['dashboard-layout', projectId], layout)
+    },
+  })
+}
+
+export function useResetDashboardLayout(projectId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: () =>
+      api<DashboardLayout>(`/api/v1/projects/${projectId}/dashboard/layout`, {
+        method: 'DELETE',
+      }),
+    onSuccess: (layout) => {
+      queryClient.setQueryData(['dashboard-layout', projectId], layout)
+    },
+  })
+}
+
+export function useSaveSharedDashboardLayout(projectId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({
+      widgets,
+      expectedVersion,
+    }: {
+      widgets: string[]
+      expectedVersion: number
+    }) =>
+      api<DashboardLayout>(`/api/v1/projects/${projectId}/dashboard/shared-layout`, {
+        method: 'PUT',
+        body: JSON.stringify({ widgets, expected_version: expectedVersion }),
+      }),
+    onSuccess: (layout) => {
+      queryClient.setQueryData(['dashboard-layout', projectId], layout)
+    },
+  })
+}
+
+export function useDeleteSharedDashboardLayout(projectId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (expectedVersion: number) =>
+      api<DashboardLayout>(
+        `/api/v1/projects/${projectId}/dashboard/shared-layout?expected_version=${expectedVersion}`,
+        { method: 'DELETE' },
+      ),
     onSuccess: (layout) => {
       queryClient.setQueryData(['dashboard-layout', projectId], layout)
     },

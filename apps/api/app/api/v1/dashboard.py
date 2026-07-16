@@ -10,12 +10,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.csv_io import BOM, _guard_formula
 from app.core.auth import get_current_user
-from app.core.authz import require_member
+from app.core.authz import member_role, require_member, require_role
 from app.core.dates import utc_today
 from app.db.session import get_session
 from app.models.activity import ACTIVITY_ACTIONS, Activity
 from app.models.cost_entry import CostEntry
-from app.models.dashboard_layout import WIDGET_KEYS, DashboardLayout
+from app.models.dashboard_layout import WIDGET_KEYS, DashboardLayout, DashboardSharedLayout
 from app.models.project import Project
 from app.models.time_entry import TimeEntry
 from app.models.user import User
@@ -32,6 +32,8 @@ from app.schemas.dashboard import (
     DashboardLayoutPut,
     DashboardLayoutRead,
     DashboardRead,
+    DashboardSharedLayoutPut,
+    DashboardSharedLayoutRead,
     RecentWorkPackageRead,
 )
 
@@ -40,6 +42,83 @@ router = APIRouter()
 # The completion policy lives on the model (WP_CLOSED_STATUSES); local alias
 # only keeps the existing references short.
 CLOSED_STATUSES = WP_CLOSED_STATUSES
+
+
+def _normalize_widgets(widgets: list[str]) -> list[str]:
+    normalized: list[str] = []
+    for key in widgets:
+        if key not in WIDGET_KEYS:
+            raise HTTPException(status_code=422, detail=f"unknown widget '{key}'")
+        if key not in normalized:
+            normalized.append(key)
+    if not normalized:
+        raise HTTPException(status_code=422, detail="at least one widget is required")
+    return normalized
+
+
+def _known_widgets(widgets: list[str]) -> list[str]:
+    known: list[str] = []
+    for key in widgets:
+        if key in WIDGET_KEYS and key not in known:
+            known.append(key)
+    return known
+
+
+def _shared_read(row: DashboardSharedLayout | None) -> DashboardSharedLayoutRead | None:
+    if row is None:
+        return None
+    return DashboardSharedLayoutRead(
+        widgets=_known_widgets(row.widgets),
+        version=row.version,
+        updated_at=row.updated_at,
+        updated_by_name=row.updated_by_name,
+    )
+
+
+async def _effective_layout(
+    session: AsyncSession,
+    project_id: uuid.UUID,
+    user: User,
+) -> DashboardLayoutRead:
+    personal = (
+        await session.execute(
+            select(DashboardLayout).where(
+                DashboardLayout.project_id == project_id,
+                DashboardLayout.user_id == user.id,
+            )
+        )
+    ).scalar_one_or_none()
+    shared = (
+        await session.execute(
+            select(DashboardSharedLayout).where(DashboardSharedLayout.project_id == project_id)
+        )
+    ).scalar_one_or_none()
+    role = await member_role(session, project_id, user.id)
+    archived_at = (
+        await session.execute(select(Project.archived_at).where(Project.id == project_id))
+    ).scalar_one_or_none()
+    personal_widgets = [] if personal is None else _known_widgets(personal.widgets)
+    shared_widgets = [] if shared is None else _known_widgets(shared.widgets)
+    if personal_widgets:
+        widgets = personal_widgets
+        updated_at = personal.updated_at
+        source = "personal"
+    elif shared_widgets:
+        widgets = shared_widgets
+        updated_at = shared.updated_at
+        source = "shared"
+    else:
+        widgets = list(WIDGET_KEYS)
+        updated_at = None
+        source = "builtin"
+    return DashboardLayoutRead(
+        widgets=widgets,
+        updated_at=updated_at,
+        is_default=source == "builtin",
+        source=source,
+        shared_layout=_shared_read(shared),
+        can_manage_shared=role == "owner" and archived_at is None,
+    )
 
 
 def _ordered_buckets(counts: dict[str, int], order: tuple[str, ...]) -> list[Bucket]:
@@ -262,23 +341,10 @@ async def get_dashboard_layout(
     session: AsyncSession = Depends(get_session),
     user: User = Depends(get_current_user),
 ) -> DashboardLayoutRead:
-    """The caller's OWN layout; absent row = the built-in default. Unknown keys
-    (a widget retired by a later migration) are filtered out; if nothing
-    survives, the default backfills (v18.1 R1-⑥)."""
+    """Resolve the caller's personal override, then the project shared layout,
+    then the built-in layout. Retired keys are ignored safely."""
     await require_member(session, project_id, user)
-    row = (
-        await session.execute(
-            select(DashboardLayout).where(
-                DashboardLayout.project_id == project_id, DashboardLayout.user_id == user.id
-            )
-        )
-    ).scalar_one_or_none()
-    if row is None:
-        return DashboardLayoutRead(widgets=list(WIDGET_KEYS), updated_at=None, is_default=True)
-    known = [w for w in row.widgets if w in WIDGET_KEYS]
-    if not known:
-        return DashboardLayoutRead(widgets=list(WIDGET_KEYS), updated_at=None, is_default=True)
-    return DashboardLayoutRead(widgets=known, updated_at=row.updated_at, is_default=False)
+    return await _effective_layout(session, project_id, user)
 
 
 @router.put("/projects/{project_id}/dashboard/layout", response_model=DashboardLayoutRead)
@@ -294,14 +360,7 @@ async def put_dashboard_layout(
     preference, not project data). API normalizes: de-dup keeping the first
     occurrence; vocabulary/empty violations are 422 (DB CHECK is the backstop)."""
     await require_member(session, project_id, user)  # no write=True: archive-exempt
-    normalized: list[str] = []
-    for key in body.widgets:
-        if key not in WIDGET_KEYS:
-            raise HTTPException(status_code=422, detail=f"unknown widget '{key}'")
-        if key not in normalized:
-            normalized.append(key)
-    if not normalized:
-        raise HTTPException(status_code=422, detail="at least one widget is required")
+    normalized = _normalize_widgets(body.widgets)
     stmt = (
         pg_insert(DashboardLayout)
         .values(project_id=project_id, user_id=user.id, widgets=normalized)
@@ -312,9 +371,119 @@ async def put_dashboard_layout(
         .returning(DashboardLayout.updated_at)
     )
     try:
-        updated_at = (await session.execute(stmt)).scalar_one()
+        (await session.execute(stmt)).scalar_one()
         await session.commit()
     except IntegrityError as exc:  # project/user deleted mid-flight (R1-④)
         await session.rollback()
         raise HTTPException(status_code=404, detail="not found") from exc
-    return DashboardLayoutRead(widgets=normalized, updated_at=updated_at, is_default=False)
+    return await _effective_layout(session, project_id, user)
+
+
+@router.delete("/projects/{project_id}/dashboard/layout", response_model=DashboardLayoutRead)
+async def delete_dashboard_layout(
+    project_id: uuid.UUID,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+) -> DashboardLayoutRead:
+    """Remove only the caller's personal preference and re-resolve inheritance.
+
+    This remains archive-exempt and available to viewers for the same reason as
+    the personal PUT: it changes no project-owned data.
+    """
+    await require_member(session, project_id, user)
+    row = (
+        await session.execute(
+            select(DashboardLayout).where(
+                DashboardLayout.project_id == project_id,
+                DashboardLayout.user_id == user.id,
+            )
+        )
+    ).scalar_one_or_none()
+    if row is not None:
+        await session.delete(row)
+        await session.commit()
+    return await _effective_layout(session, project_id, user)
+
+
+@router.put("/projects/{project_id}/dashboard/shared-layout", response_model=DashboardLayoutRead)
+async def put_shared_dashboard_layout(
+    project_id: uuid.UUID,
+    body: DashboardSharedLayoutPut,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+) -> DashboardLayoutRead:
+    """Publish or revise the active project's shared layout as its owner."""
+    await require_role(session, project_id, user, {"owner"}, write=True)
+    normalized = _normalize_widgets(body.widgets)
+    project = (
+        await session.execute(select(Project).where(Project.id == project_id).with_for_update())
+    ).scalar_one_or_none()
+    if project is None:
+        raise HTTPException(status_code=404, detail="not found")
+    if project.archived_at is not None:
+        raise HTTPException(status_code=409, detail="project is archived")
+    shared = (
+        await session.execute(
+            select(DashboardSharedLayout)
+            .where(DashboardSharedLayout.project_id == project_id)
+            .with_for_update()
+        )
+    ).scalar_one_or_none()
+    current_version = 0 if shared is None else shared.version
+    if current_version != body.expected_version:
+        raise HTTPException(status_code=409, detail="shared dashboard layout version conflict")
+    if shared is None:
+        shared = DashboardSharedLayout(
+            project_id=project_id,
+            widgets=normalized,
+            version=1,
+            updated_by_user_id=user.id,
+            updated_by_name=user.display_name,
+        )
+        session.add(shared)
+    elif _known_widgets(shared.widgets) != normalized:
+        shared.widgets = normalized
+        shared.version += 1
+        shared.updated_by_user_id = user.id
+        shared.updated_by_name = user.display_name
+        shared.updated_at = func.now()
+    try:
+        await session.commit()
+    except IntegrityError as exc:
+        await session.rollback()
+        raise HTTPException(
+            status_code=409, detail="shared dashboard layout version conflict"
+        ) from exc
+    return await _effective_layout(session, project_id, user)
+
+
+@router.delete("/projects/{project_id}/dashboard/shared-layout", response_model=DashboardLayoutRead)
+async def delete_shared_dashboard_layout(
+    project_id: uuid.UUID,
+    expected_version: int = Query(ge=1, le=2_147_483_647),
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+) -> DashboardLayoutRead:
+    """Delete the project-owned layout without deleting anyone's override."""
+    await require_role(session, project_id, user, {"owner"}, write=True)
+    project = (
+        await session.execute(select(Project).where(Project.id == project_id).with_for_update())
+    ).scalar_one_or_none()
+    if project is None:
+        raise HTTPException(status_code=404, detail="not found")
+    if project.archived_at is not None:
+        raise HTTPException(status_code=409, detail="project is archived")
+    shared = (
+        await session.execute(
+            select(DashboardSharedLayout)
+            .where(DashboardSharedLayout.project_id == project_id)
+            .with_for_update()
+        )
+    ).scalar_one_or_none()
+    if shared is None:
+        raise HTTPException(status_code=404, detail="shared dashboard layout not found")
+    if shared.version != expected_version:
+        raise HTTPException(status_code=409, detail="shared dashboard layout version conflict")
+    await session.delete(shared)
+    await session.commit()
+    return await _effective_layout(session, project_id, user)

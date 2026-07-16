@@ -1,7 +1,10 @@
 import uuid
 from datetime import datetime
+from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+
+MAX_INT4 = 2_147_483_647
 
 
 class Bucket(BaseModel):
@@ -44,14 +47,28 @@ class DashboardRead(BaseModel):
     recent_work_packages: list[RecentWorkPackageRead]
 
 
+class DashboardSharedLayoutRead(BaseModel):
+    widgets: list[str]
+    version: int
+    updated_at: datetime
+    updated_by_name: str
+
+
 class DashboardLayoutRead(BaseModel):
-    """v18.1 R1-⑤: is_default marks the built-in layout (no row persisted);
-    updated_at is null in that case. PUT echoes the NORMALIZED array."""
+    """The effective layout and the inheritance source behind it."""
 
     widgets: list[str]
     updated_at: datetime | None
     is_default: bool
+    source: Literal["personal", "shared", "builtin"]
+    shared_layout: DashboardSharedLayoutRead | None
+    can_manage_shared: bool
 
 
 class DashboardLayoutPut(BaseModel):
     widgets: list[str]
+
+
+class DashboardSharedLayoutPut(BaseModel):
+    widgets: list[str]
+    expected_version: int = Field(ge=0, le=MAX_INT4)

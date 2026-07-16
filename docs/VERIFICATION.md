@@ -2652,3 +2652,15 @@ Chromium typed mock fixture에서 1440x960과 390x844 viewport를 사용했다. 
 - Full E2E는 신규 경로 포함 293 PASS + opt-in visual QA 1 skip이었다. 변경과 무관한 상세 헤더 Radix closing animation 1건이 4-worker 병렬에서 1회 실패했으나 단일 worker repeat 3/3 PASS로 재현되지 않았다. Clean-room frontend 161/backend 45, npm/uv audit 0 vulnerabilities와 diff check가 PASS했다.
 - 추가 진단용 `alembic check`는 이번 컬럼이 아니라 기존 model metadata에 선언되지 않은 `dashboard_layouts`와 여러 legacy index/constraint를 전역 제거 후보로 보고 실패했다. 이 저장소 baseline drift는 이번 PR에서 확장하지 않았으며, UI-126 migration은 위 전용 왕복·constraint-name test·실제 PostgreSQL 제약 조회로 별도 검증했다.
 - Chromium 증적은 `docs/screenshots/redevelopment/overdue-reminders-ui/{desktop,mobile}.png`에 보존한다. Migration `0098` 적용이 필요하다. 환경변수, dependency와 권한 변경은 없고 설정 UI 대상은 일반 사용자의 개인 계정이다. 재기동은 migration 적용 외 별도 필요가 없다. **이연 항목**은 실제 SMTP/email delivery뿐이며 운영 자격증명과 transport 정책이 필요한 별도 surface다.
+
+---
+
+# UI-127 Project Shared Dashboard Layouts 검증 (2026-07-17)
+
+- **UI 변경**: Dashboard 상단에 현재 적용 출처(`개인 레이아웃`/`프로젝트 공유`/`기본 레이아웃`), 공유 revision·작성자·시각과 실제 관리 action을 표시한다. 기존 위젯 편집은 개인 저장으로 유지하고, active-project owner는 같은 초안을 공유로 게시·갱신할 수 있다. 개인 사용자는 공유/기본으로 reset하며 owner는 두 단계 확인 후 공유 구성을 삭제한다. Loading/error/pending, 409 stale draft 보존·새 버전 불러오기, archived read-only와 390px 모바일 줄바꿈을 실제 API에 연결했다.
+- **기능/API 반영**: migration `0099`는 프로젝트별 단일 `dashboard_shared_layouts` row에 비어 있지 않은 닫힌 위젯 어휘, 양수 version, updater ID `SET NULL`과 이름 snapshot을 저장한다. Effective resolver는 personal > shared > built-in 순서를 고정한다. 개인 PUT/DELETE는 기존 viewer·archive-exempt preference이고, 공유 PUT/DELETE는 active project owner-only, project/shared row lock과 expected version 409를 사용한다. 공유 삭제는 어떤 개인 override도 삭제하지 않는다.
+- **권한/무결성**: non-member는 개인/공유 경로 모두 404, member/viewer는 공유 쓰기 403이지만 개인 저장·reset은 가능하다. Archived project는 공유 쓰기 409이나 effective read와 개인 preference는 유지한다. Project 삭제는 shared row를 cascade하고 updater 삭제는 snapshot 이름을 보존한다. Permission registry에 개인 DELETE와 owner-only 공유 PUT/DELETE를 등재했다.
+- **검증**: API Ruff/format, focused Dashboard/permission 19, full API 780, migration `0099 -> 0098 -> 0099`와 `base -> 0099 -> base -> 0099`, OpenAPI generation/drift, web typecheck/lint/build, unit 96, component 8, focused Dashboard E2E가 PASS했다. Lint는 기존 Fast Refresh 경고 4개, build는 기존 chunk-size 경고만 유지한다.
+- 첫 4-worker full E2E는 신규 흐름 포함 293 PASS + opt-in visual QA 1 skip이고, 변경과 무관한 webhook 새로고침 timing 1건만 실패했다. 해당 케이스는 single-worker repeat 3/3 PASS로 재현되지 않았고, 최신 테스트 정의를 포함한 최종 2-worker full E2E는 294 PASS + opt-in visual QA 1 skip으로 완료했다. Clean-room frontend 161/backend 45, pip/npm audit 0 vulnerabilities와 OpenAPI/diff gate가 PASS했다.
+- 추가 진단 `alembic check`는 UI-126 때 누락됐던 `dashboard_layouts` metadata drift가 모델 등록으로 해소됐음을 확인했다. 남은 실패는 기존 `data_transfer_jobs` unique/index와 meetings/project-health/time/work-package legacy index 8건의 전역 metadata drift뿐이며 UI-127 migration과 무관하다.
+- Chromium 증적은 `docs/screenshots/redevelopment/shared-dashboard-layouts-ui/{desktop,mobile}.png`에 보존한다. Migration `0099` 적용이 필요하다. 신규 환경변수, dependency, 재기동 또는 별도 Settings UI 변경은 없다. **이연 항목**은 없다.

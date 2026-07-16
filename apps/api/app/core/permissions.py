@@ -202,6 +202,18 @@ PERMISSION_MATRIX: list[dict[str, str | None]] = [
         "condition": None,
         "note": "개인 표시 설정 — 프로젝트 데이터를 바꾸지 않아 뷰어·아카이브에서도 허용.",
     },
+    {
+        "key": "dashboard.shared_layout",
+        "label": "프로젝트 공유 대시보드 레이아웃",
+        "owner": ALWAYS,
+        "member": NEVER,
+        "viewer": NEVER,
+        "condition": None,
+        "note": (
+            "프로젝트 기본 화면을 바꾸는 소유자 전용 설정이며 "
+            "보관 프로젝트에서는 수정할 수 없습니다."
+        ),
+    },
 ]
 
 VERB_KEYS = {row["key"] for row in PERMISSION_MATRIX}
@@ -305,6 +317,10 @@ ENDPOINT_VERBS: dict[str, str] = {
     "DELETE /api/v1/projects/{project_id}/saved-filters/{filter_id}": "saved_filter.edit",
     # personal-preference exception
     "PUT /api/v1/projects/{project_id}/dashboard/layout": "dashboard.layout",
+    "DELETE /api/v1/projects/{project_id}/dashboard/layout": "dashboard.layout",
+    # project-owned dashboard default
+    "PUT /api/v1/projects/{project_id}/dashboard/shared-layout": "dashboard.shared_layout",
+    "DELETE /api/v1/projects/{project_id}/dashboard/shared-layout": "dashboard.shared_layout",
 }
 
 # Mutating routes that are deliberately OUTSIDE the project role matrix.
