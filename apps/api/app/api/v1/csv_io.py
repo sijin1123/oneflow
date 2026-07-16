@@ -22,12 +22,16 @@ from app.core.auth import get_current_user
 from app.core.authz import require_member
 from app.core.config import Settings, get_settings
 from app.db.session import get_session
+from app.models.member import ProjectMember
 from app.models.project_type import ProjectType
 from app.models.user import User
 from app.models.work_package import WorkPackage
 from app.schemas.csv_io import (
     IMPORT_COLUMNS,
+    MAX_IMPORT_ASSIGNEE_IDENTITIES,
     MAX_IMPORT_ROWS,
+    CsvImportAssignableMember,
+    CsvImportAssigneeIdentity,
     CsvImportRequest,
     CsvImportResult,
     CsvRowError,
@@ -118,6 +122,10 @@ def _canonical(rows: list[dict]) -> str:
 
 def _checksum(rows: list[dict]) -> str:
     return hashlib.sha256(_canonical(rows).encode("utf-8")).hexdigest()
+
+
+def _preview_checksum(content: str) -> str:
+    return hashlib.sha256(content.encode("utf-8")).hexdigest()
 
 
 @router.get("/projects/{project_id}/work-packages/export.csv")
@@ -346,6 +354,7 @@ async def import_work_packages_csv(
         invalid=len(errors),
         inserted=inserted,
         checksum=_checksum(valid_dicts),
+        preview_checksum=_preview_checksum(body.content),
         errors=errors,
     )
     await persist_import_job(
@@ -364,7 +373,7 @@ async def _run_mapped_import(
     user: User,
     project_id: uuid.UUID,
     mapped: JiraMapResult,
-    dry_run: bool,
+    body: CsvImportRequest,
     settings: Settings,
 ) -> CsvImportResult:
     """Shared adapter-import pipeline (Jira #77 / Linear Pass 25): row
@@ -392,7 +401,7 @@ async def _run_mapped_import(
     # file both pass the SELECT and insert duplicates. Blocking (not 409):
     # the later request proceeds after the first commits and skips its rows
     # as duplicates. Dry-run is read-only and takes no lock.
-    if not dry_run:
+    if not body.dry_run:
         await session.execute(
             text("SELECT pg_advisory_xact_lock(:classid, hashtext(:pid))").bindparams(
                 classid=IMPORT_LOCK_CLASSID, pid=str(project_id)
@@ -401,7 +410,9 @@ async def _run_mapped_import(
 
     # Duplicate guard (idempotent re-upload): one query for existing subjects,
     # plus batch-internal dedupe.
-    candidate_subjects = [p["subject"] for (_, p, err, _) in mapped.rows if p and not err]
+    candidate_subjects = [
+        row.payload["subject"] for row in mapped.rows if row.payload and not row.error
+    ]
     existing: set[str] = set()
     if candidate_subjects:
         existing = set(
@@ -416,27 +427,22 @@ async def _run_mapped_import(
         )
     seen_in_batch: set[str] = set()
 
-    valid_models: list[WorkPackageCreate] = []
+    valid_models: list[tuple[WorkPackageCreate, str | None]] = []
     valid_dicts: list[dict] = []
     errors: list[CsvRowError] = []
     total = 0
+    identity_counts: dict[str, tuple[str, int]] = {}
 
-    for row_number, payload, map_error, raw in mapped.rows:
+    for mapped_row in mapped.rows:
+        row_number = mapped_row.row_number
+        payload = mapped_row.payload
+        map_error = mapped_row.error
+        raw = mapped_row.raw
         total += 1
         if map_error:
             errors.append(CsvRowError(row=row_number, message=map_error, raw=raw))
             continue
         assert payload is not None
-        subject = payload["subject"]
-        if subject in existing or subject in seen_in_batch:
-            errors.append(
-                CsvRowError(
-                    row=row_number,
-                    message="이미 가져온 이슈입니다(동일 제목 존재)",
-                    raw=raw,
-                )
-            )
-            continue
         try:
             model = WorkPackageCreate(**payload)
         except ValidationError as exc:
@@ -453,13 +459,113 @@ async def _run_mapped_import(
                 )
             )
             continue
+        if mapped_row.assignee_source is not None:
+            source_key = mapped_row.assignee_source.casefold()
+            display, count = identity_counts.get(
+                source_key,
+                (mapped_row.assignee_source, 0),
+            )
+            identity_counts[source_key] = (display, count + 1)
+        subject = model.subject
+        if subject in existing or subject in seen_in_batch:
+            errors.append(
+                CsvRowError(
+                    row=row_number,
+                    message="이미 가져온 이슈입니다(동일 제목 존재)",
+                    raw=raw,
+                )
+            )
+            continue
         seen_in_batch.add(subject)
-        valid_models.append(model)
+        valid_models.append((model, mapped_row.assignee_source))
         valid_dicts.append({c: getattr(model, c) for c in IMPORT_COLUMNS})
 
+    if len(identity_counts) > MAX_IMPORT_ASSIGNEE_IDENTITIES:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "import exceeds the "
+                f"{MAX_IMPORT_ASSIGNEE_IDENTITIES}-identity assignee mapping limit"
+            ),
+        )
+
+    assignable_users: list[tuple[ProjectMember, User]] = []
+    if identity_counts:
+        assignable_stmt = (
+            select(ProjectMember, User)
+            .join(User, ProjectMember.user_id == User.id)
+            .where(
+                ProjectMember.project_id == project_id,
+                ProjectMember.role.in_(("owner", "member")),
+                User.is_active.is_(True),
+            )
+            .order_by(User.display_name.asc(), User.email.asc(), User.id.asc())
+        )
+        # Commit-time row locks prevent membership removal, role demotion or user
+        # deactivation from racing after validation and before assignment.
+        if not body.dry_run:
+            assignable_stmt = assignable_stmt.with_for_update()
+        assignable_users = list((await session.execute(assignable_stmt)).all())
+
+    assignable_by_id = {member.user_id: user for member, user in assignable_users}
+    exact_email = {user.email.casefold(): user for _, user in assignable_users}
+    checksum = _checksum(valid_dicts)
+    preview_checksum = _preview_checksum(body.content)
+    mapping_by_key: dict[str, uuid.UUID | None] = {}
+    for mapping in body.assignee_mappings:
+        key = mapping.source_value.casefold()
+        if key in mapping_by_key:
+            raise HTTPException(
+                status_code=422,
+                detail=f"duplicate assignee mapping for '{mapping.source_value}'",
+            )
+        mapping_by_key[key] = mapping.user_id
+
+    selected_users: dict[str, User | None] = {}
+    if not body.dry_run:
+        if body.preview_checksum is not None and body.preview_checksum != preview_checksum:
+            raise HTTPException(
+                status_code=409,
+                detail="import preview is stale; run dry-run again",
+            )
+        required_keys = set(identity_counts)
+        if required_keys:
+            if body.preview_checksum is None:
+                raise HTTPException(
+                    status_code=422,
+                    detail="preview_checksum is required when assignee values are present",
+                )
+            missing = required_keys - set(mapping_by_key)
+            unknown = set(mapping_by_key) - required_keys
+            if missing or unknown:
+                raise HTTPException(
+                    status_code=422,
+                    detail="assignee mappings must explicitly cover every preview identity",
+                )
+            for key, mapped_user_id in mapping_by_key.items():
+                if mapped_user_id is None:
+                    selected_users[key] = None
+                    continue
+                selected = assignable_by_id.get(mapped_user_id)
+                if selected is None:
+                    raise HTTPException(
+                        status_code=422,
+                        detail="mapped assignee must be an active project owner or member",
+                    )
+                selected_users[key] = selected
+            for model, source_value in valid_models:
+                if source_value is not None:
+                    selected = selected_users[source_value.casefold()]
+                    model.assignee_id = selected.id if selected is not None else None
+        elif mapping_by_key:
+            raise HTTPException(
+                status_code=422,
+                detail="assignee mappings were provided but the preview has no identities",
+            )
+
     inserted = 0
-    if not dry_run and valid_models:
-        for model in valid_models:
+    if not body.dry_run and valid_models:
+        for model, _ in valid_models:
             data = model.model_dump()
             data["description"] = sanitize_html(data["description"])
             wp = WorkPackage(project_id=project_id, created_by=user.id, **data)
@@ -472,15 +578,66 @@ async def _run_mapped_import(
         await session.flush()
         inserted = len(valid_models)
 
+    notes = list(mapped.notes)
+    if identity_counts:
+        if body.dry_run:
+            notes.append(
+                f"담당자 원본 값 {len(identity_counts)}개를 확인했습니다. "
+                "각 값을 프로젝트 멤버 또는 미배정으로 결정하세요."
+            )
+        else:
+            applied_counts: dict[str, int] = {}
+            for _, source_value in valid_models:
+                if source_value is not None:
+                    key = source_value.casefold()
+                    applied_counts[key] = applied_counts.get(key, 0) + 1
+            mapped_rows = sum(applied_counts.values())
+            assigned_rows = sum(
+                count
+                for key, count in applied_counts.items()
+                if selected_users.get(key) is not None
+            )
+            notes.append(
+                f"담당자 매핑으로 {assigned_rows}건을 배정하고 "
+                f"{mapped_rows - assigned_rows}건의 원본 담당자 값을 미배정으로 가져왔습니다."
+            )
+
+    assignee_identities: list[CsvImportAssigneeIdentity] = []
+    for key, (source_value, row_count) in identity_counts.items():
+        suggestion = exact_email.get(key)
+        selected = selected_users.get(key)
+        assignee_identities.append(
+            CsvImportAssigneeIdentity(
+                source_value=source_value,
+                row_count=row_count,
+                suggested_user_id=suggestion.id if suggestion else None,
+                suggested_display_name=suggestion.display_name if suggestion else None,
+                suggested_email=suggestion.email if suggestion else None,
+                selected_user_id=selected.id if selected else None,
+                selected_display_name=selected.display_name if selected else None,
+            )
+        )
+
     return CsvImportResult(
-        dry_run=dry_run,
+        dry_run=body.dry_run,
         total_rows=total,
         valid=len(valid_models),
         invalid=len(errors),
         inserted=inserted,
-        checksum=_checksum(valid_dicts),
+        checksum=checksum,
+        preview_checksum=preview_checksum,
         errors=errors,
-        notes=mapped.notes,
+        notes=notes,
+        assignee_identities=assignee_identities,
+        assignable_members=[
+            CsvImportAssignableMember(
+                user_id=user_row.id,
+                email=user_row.email,
+                display_name=user_row.display_name,
+                role=member.role,
+            )
+            for member, user_row in assignable_users
+        ],
     )
 
 
@@ -499,7 +656,7 @@ async def import_jira_csv(
     the idempotent-re-upload duplicate guard ("[KEY] Summary" subjects)."""
     await require_member(session, project_id, user, write=True)
     result = await _run_mapped_import(
-        session, user, project_id, map_jira_csv(body.content), body.dry_run, settings
+        session, user, project_id, map_jira_csv(body.content), body, settings
     )
     await persist_import_job(
         session,
@@ -524,7 +681,7 @@ async def import_linear_csv(
     same pipeline and response shape as the Jira adapter)."""
     await require_member(session, project_id, user, write=True)
     result = await _run_mapped_import(
-        session, user, project_id, map_linear_csv(body.content), body.dry_run, settings
+        session, user, project_id, map_linear_csv(body.content), body, settings
     )
     await persist_import_job(
         session,

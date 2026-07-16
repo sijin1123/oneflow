@@ -4289,8 +4289,51 @@ export interface components {
              */
             work_package_id: string;
         };
+        /** CsvImportAssignableMember */
+        CsvImportAssignableMember: {
+            /** Display Name */
+            display_name: string;
+            /** Email */
+            email: string;
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "owner" | "member";
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+        };
+        /** CsvImportAssigneeIdentity */
+        CsvImportAssigneeIdentity: {
+            /** Row Count */
+            row_count: number;
+            /** Selected Display Name */
+            selected_display_name?: string | null;
+            /** Selected User Id */
+            selected_user_id?: string | null;
+            /** Source Value */
+            source_value: string;
+            /** Suggested Display Name */
+            suggested_display_name?: string | null;
+            /** Suggested Email */
+            suggested_email?: string | null;
+            /** Suggested User Id */
+            suggested_user_id?: string | null;
+        };
+        /** CsvImportAssigneeMapping */
+        CsvImportAssigneeMapping: {
+            /** Source Value */
+            source_value: string;
+            /** User Id */
+            user_id: string | null;
+        };
         /** CsvImportRequest */
         CsvImportRequest: {
+            /** Assignee Mappings */
+            assignee_mappings?: components["schemas"]["CsvImportAssigneeMapping"][];
             /** Content */
             content: string;
             /**
@@ -4298,9 +4341,15 @@ export interface components {
              * @default true
              */
             dry_run: boolean;
+            /** Preview Checksum */
+            preview_checksum?: string | null;
         };
         /** CsvImportResult */
         CsvImportResult: {
+            /** Assignable Members */
+            assignable_members?: components["schemas"]["CsvImportAssignableMember"][];
+            /** Assignee Identities */
+            assignee_identities?: components["schemas"]["CsvImportAssigneeIdentity"][];
             /** Checksum */
             checksum: string;
             /** Dry Run */
@@ -4311,11 +4360,10 @@ export interface components {
             inserted: number;
             /** Invalid */
             invalid: number;
-            /**
-             * Notes
-             * @default []
-             */
-            notes: string[];
+            /** Notes */
+            notes?: string[];
+            /** Preview Checksum */
+            preview_checksum: string;
             /** Total Rows */
             total_rows: number;
             /** Valid */
