@@ -26,7 +26,8 @@ _H_STATUS = "status"
 _H_PRIORITY = "priority"
 _H_DUE = ("due date", "due", "duedate")
 _H_KEY = ("issue key", "key", "issue id")
-_H_ASSIGNEE = ("assignee", "reporter")
+_H_ASSIGNEE = "assignee"
+_H_REPORTER = "reporter"
 
 TYPE_MAP = {
     "bug": "bug",
@@ -92,10 +93,18 @@ def _parse_jira_date(raw: str) -> str:
 
 
 @dataclass
+class MappedImportRow:
+    row_number: int
+    payload: dict | None
+    error: str | None
+    raw: str
+    assignee_source: str | None = None
+
+
+@dataclass
 class JiraMapResult:
     header_error: str | None = None
-    # (row_number, payload | None, error | None, raw_line)
-    rows: list[tuple[int, dict | None, str | None, str]] = field(default_factory=list)
+    rows: list[MappedImportRow] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
 
 
@@ -111,7 +120,8 @@ def map_jira_csv(content: str) -> JiraMapResult:
     lowered = [h.lstrip("﻿").strip().lower() for h in header]
     idx: dict[str, int] = {}
     ignored: list[str] = []
-    assignee_cols: list[int] = []
+    assignee_col: int | None = None
+    reporter_col: int | None = None
     for i, name in enumerate(lowered):
         if name == _H_SUMMARY and "summary" not in idx:
             idx["summary"] = i
@@ -127,8 +137,10 @@ def map_jira_csv(content: str) -> JiraMapResult:
             idx["due"] = i
         elif name in _H_KEY and "key" not in idx:
             idx["key"] = i
-        elif name in _H_ASSIGNEE:
-            assignee_cols.append(i)
+        elif name == _H_ASSIGNEE and assignee_col is None:
+            assignee_col = i
+        elif name == _H_REPORTER and reporter_col is None:
+            reporter_col = i
         else:
             ignored.append(header[i].strip() or "(빈 헤더)")
 
@@ -138,7 +150,7 @@ def map_jira_csv(content: str) -> JiraMapResult:
 
     unknown_types = 0
     unknown_priorities = 0
-    assignee_values = 0
+    reporter_values = 0
     row_number = 0
 
     def cell(row: list[str], key: str) -> str:
@@ -153,13 +165,22 @@ def map_jira_csv(content: str) -> JiraMapResult:
 
         summary = cell(row, "summary")
         if not summary:
-            result.rows.append((row_number, None, "Summary: 값이 비어 있습니다", raw))
+            result.rows.append(
+                MappedImportRow(row_number, None, "Summary: 값이 비어 있습니다", raw)
+            )
             continue
 
         raw_status = cell(row, "status")
         if raw_status and raw_status.lower() not in STATUS_MAP:
             # A wrong status corrupts progress — isolate instead of guessing.
-            result.rows.append((row_number, None, f"Status: 매핑할 수 없는 값 '{raw_status}'", raw))
+            result.rows.append(
+                MappedImportRow(
+                    row_number,
+                    None,
+                    f"Status: 매핑할 수 없는 값 '{raw_status}'",
+                    raw,
+                )
+            )
             continue
 
         raw_due = cell(row, "due")
@@ -169,7 +190,12 @@ def map_jira_csv(content: str) -> JiraMapResult:
                 due = _parse_jira_date(raw_due)
             except ValueError:
                 result.rows.append(
-                    (row_number, None, f"Due date: 지원하지 않는 형식 '{raw_due}'", raw)
+                    MappedImportRow(
+                        row_number,
+                        None,
+                        f"Due date: 지원하지 않는 형식 '{raw_due}'",
+                        raw,
+                    )
                 )
                 continue
 
@@ -179,10 +205,23 @@ def map_jira_csv(content: str) -> JiraMapResult:
         raw_priority = cell(row, "priority")
         if raw_priority and raw_priority.lower() not in PRIORITY_MAP:
             unknown_priorities += 1
-        for i in assignee_cols:
-            if i < len(row) and row[i].strip():
-                assignee_values += 1
-                break
+        assignee_source = (
+            row[assignee_col].strip()
+            if assignee_col is not None and assignee_col < len(row)
+            else ""
+        )
+        if len(assignee_source) > 255:
+            result.rows.append(
+                MappedImportRow(
+                    row_number,
+                    None,
+                    "Assignee: 값은 255자 이하여야 합니다",
+                    raw,
+                )
+            )
+            continue
+        if reporter_col is not None and reporter_col < len(row) and row[reporter_col].strip():
+            reporter_values += 1
 
         key = cell(row, "key")
         subject = f"[{key}] {summary}" if key else summary
@@ -196,11 +235,19 @@ def map_jira_csv(content: str) -> JiraMapResult:
             "due_date": due,
             "estimated_hours": None,
         }
-        result.rows.append((row_number, payload, None, raw))
+        result.rows.append(
+            MappedImportRow(
+                row_number,
+                payload,
+                None,
+                raw,
+                assignee_source=assignee_source or None,
+            )
+        )
 
-    if assignee_values:
+    if reporter_values:
         result.notes.append(
-            f"Assignee/Reporter 값 {assignee_values}건은 매핑되지 않았습니다(계정 매칭 불가)."
+            f"Reporter 값 {reporter_values}건은 담당자가 아니므로 가져오지 않았습니다."
         )
     if unknown_types:
         result.notes.append(f"알 수 없는 Issue Type {unknown_types}건은 'task'로 가져왔습니다.")
@@ -226,7 +273,8 @@ _L_STATUS = "status"
 _L_PRIORITY = "priority"
 _L_DUE = ("due date", "duedate")
 _L_ID = "id"
-_L_PEOPLE = ("assignee", "creator")
+_L_ASSIGNEE = "assignee"
+_L_CREATOR = "creator"
 _L_ESTIMATE = "estimate"
 
 LINEAR_STATUS_MAP = {
@@ -260,7 +308,8 @@ def map_linear_csv(content: str) -> JiraMapResult:
     lowered = [h.lstrip("\ufeff").strip().lower() for h in header]
     idx: dict[str, int] = {}
     ignored: list[str] = []
-    people_cols: list[int] = []
+    assignee_col: int | None = None
+    creator_col: int | None = None
     estimate_col: int | None = None
     for i, name in enumerate(lowered):
         if name == _L_TITLE and "title" not in idx:
@@ -275,8 +324,10 @@ def map_linear_csv(content: str) -> JiraMapResult:
             idx["due"] = i
         elif name == _L_ID and "id" not in idx:
             idx["id"] = i
-        elif name in _L_PEOPLE:
-            people_cols.append(i)
+        elif name == _L_ASSIGNEE and assignee_col is None:
+            assignee_col = i
+        elif name == _L_CREATOR and creator_col is None:
+            creator_col = i
         elif name == _L_ESTIMATE and estimate_col is None:
             estimate_col = i
         else:
@@ -287,7 +338,7 @@ def map_linear_csv(content: str) -> JiraMapResult:
         return result
 
     unknown_priorities = 0
-    people_values = 0
+    creator_values = 0
     estimates_skipped = 0
     row_number = 0
 
@@ -309,13 +360,20 @@ def map_linear_csv(content: str) -> JiraMapResult:
 
         title = cell(row, "title")
         if not title:
-            result.rows.append((row_number, None, "Title: 값이 비어 있습니다", raw))
+            result.rows.append(MappedImportRow(row_number, None, "Title: 값이 비어 있습니다", raw))
             continue
 
         raw_status = cell(row, "status")
         if raw_status and raw_status.lower() not in LINEAR_STATUS_MAP:
             # Custom Linear statuses isolate — a wrong status corrupts progress.
-            result.rows.append((row_number, None, f"Status: 매핑할 수 없는 값 '{raw_status}'", raw))
+            result.rows.append(
+                MappedImportRow(
+                    row_number,
+                    None,
+                    f"Status: 매핑할 수 없는 값 '{raw_status}'",
+                    raw,
+                )
+            )
             continue
 
         raw_due = cell(row, "due")
@@ -325,17 +383,35 @@ def map_linear_csv(content: str) -> JiraMapResult:
                 due = date.fromisoformat(raw_due).isoformat()
             except ValueError:
                 result.rows.append(
-                    (row_number, None, f"Due Date: 지원하지 않는 형식 '{raw_due}'", raw)
+                    MappedImportRow(
+                        row_number,
+                        None,
+                        f"Due Date: 지원하지 않는 형식 '{raw_due}'",
+                        raw,
+                    )
                 )
                 continue
 
         raw_priority = cell(row, "priority")
         if raw_priority and raw_priority.lower() not in LINEAR_PRIORITY_MAP:
             unknown_priorities += 1
-        for i in people_cols:
-            if i < len(row) and row[i].strip():
-                people_values += 1
-                break
+        assignee_source = (
+            row[assignee_col].strip()
+            if assignee_col is not None and assignee_col < len(row)
+            else ""
+        )
+        if len(assignee_source) > 255:
+            result.rows.append(
+                MappedImportRow(
+                    row_number,
+                    None,
+                    "Assignee: 값은 255자 이하여야 합니다",
+                    raw,
+                )
+            )
+            continue
+        if creator_col is not None and creator_col < len(row) and row[creator_col].strip():
+            creator_values += 1
         if estimate_col is not None and estimate_col < len(row) and row[estimate_col].strip():
             estimates_skipped += 1  # point scale ≠ hours — never injected (R1-⑥)
 
@@ -355,11 +431,19 @@ def map_linear_csv(content: str) -> JiraMapResult:
             "due_date": due,
             "estimated_hours": None,
         }
-        result.rows.append((row_number, payload, None, raw))
+        result.rows.append(
+            MappedImportRow(
+                row_number,
+                payload,
+                None,
+                raw,
+                assignee_source=assignee_source or None,
+            )
+        )
 
-    if people_values:
+    if creator_values:
         result.notes.append(
-            f"Assignee/Creator 값 {people_values}건은 매핑되지 않았습니다(계정 매칭 불가)."
+            f"Creator 값 {creator_values}건은 담당자가 아니므로 가져오지 않았습니다."
         )
     if unknown_priorities:
         result.notes.append(

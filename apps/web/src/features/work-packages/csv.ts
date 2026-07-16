@@ -13,10 +13,18 @@ export function useExportCsv(projectId: string) {
 
 export type ImportSource = 'oneflow' | 'jira' | 'linear'
 
+export type CsvImportInput = {
+  content: string
+  dry_run: boolean
+  source: ImportSource
+  preview_checksum?: string
+  assignee_mappings?: Array<{ source_value: string; user_id: string | null }>
+}
+
 export function useImportCsv(projectId: string) {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: ({ source, ...input }: { content: string; dry_run: boolean; source: ImportSource }) =>
+    mutationFn: ({ source, ...input }: CsvImportInput) =>
       api<CsvImportResult>(
         `/api/v1/projects/${projectId}/work-packages/import${source === 'oneflow' ? '' : `/${source}`}`,
         {

@@ -17,10 +17,33 @@ ABC-3,취소된 항목,Canceled,Low,,,,
 """
 
 
-async def import_linear(client, pid, content, dry_run=False):
+async def import_linear(
+    client,
+    pid,
+    content,
+    dry_run=False,
+    *,
+    mappings=None,
+    preview_checksum=None,
+):
+    if not dry_run and preview_checksum is None:
+        preview = await import_linear(client, pid, content, dry_run=True)
+        if preview.status_code != 200:
+            return preview
+        preview_body = preview.json()
+        preview_checksum = preview_body["preview_checksum"]
+        mappings = [
+            {"source_value": item["source_value"], "user_id": None}
+            for item in preview_body["assignee_identities"]
+        ]
     return await client.post(
         f"/api/v1/projects/{pid}/work-packages/import/linear",
-        json={"content": content, "dry_run": dry_run},
+        json={
+            "content": content,
+            "dry_run": dry_run,
+            **({"preview_checksum": preview_checksum} if preview_checksum else {}),
+            **({"assignee_mappings": mappings} if mappings is not None else {}),
+        },
     )
 
 
@@ -46,7 +69,7 @@ async def test_mapping_and_notes(client, project):
     assert by_subject["[ABC-3] 취소된 항목"]["status"] == "cancelled"
 
     notes = "\n".join(body["notes"])
-    assert "Assignee/Creator 값 2건" in notes
+    assert "담당자 매핑으로 0건을 배정하고 2건의 원본 담당자 값을 미배정" in notes
     assert "Estimate 1건" in notes and "포인트" in notes
     assert "무시된 열" in notes and "Labels" in notes
 

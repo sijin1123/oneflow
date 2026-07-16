@@ -2664,3 +2664,14 @@ Chromium typed mock fixture에서 1440x960과 390x844 viewport를 사용했다. 
 - 첫 4-worker full E2E는 신규 흐름 포함 293 PASS + opt-in visual QA 1 skip이고, 변경과 무관한 webhook 새로고침 timing 1건만 실패했다. 해당 케이스는 single-worker repeat 3/3 PASS로 재현되지 않았고, 최신 테스트 정의를 포함한 최종 2-worker full E2E는 294 PASS + opt-in visual QA 1 skip으로 완료했다. Clean-room frontend 161/backend 45, pip/npm audit 0 vulnerabilities와 OpenAPI/diff gate가 PASS했다.
 - 추가 진단 `alembic check`는 UI-126 때 누락됐던 `dashboard_layouts` metadata drift가 모델 등록으로 해소됐음을 확인했다. 남은 실패는 기존 `data_transfer_jobs` unique/index와 meetings/project-health/time/work-package legacy index 8건의 전역 metadata drift뿐이며 UI-127 migration과 무관하다.
 - Chromium 증적은 `docs/screenshots/redevelopment/shared-dashboard-layouts-ui/{desktop,mobile}.png`에 보존한다. Migration `0099` 적용이 필요하다. 신규 환경변수, dependency, 재기동 또는 별도 Settings UI 변경은 없다. **이연 항목**은 없다.
+
+---
+
+# UI-128 Import Assignee Account Mapping 검증 (2026-07-17)
+
+- **UI 변경**: Jira/Linear CSV dry-run 뒤 distinct `Assignee` 원본 값, 사용 건수, 정확한 이메일 제안과 현재 활성 project owner/member 선택 목록을 Import drawer에 표시한다. 각 원본 값은 사용자가 직접 멤버 또는 미배정으로 결정해야 실행 버튼이 활성화된다. 제안 적용, 결정 진행률, pending/error/409 retry, desktop/mobile no-overflow를 실제 mutation과 연결했다.
+- **기능/API 반영**: Adapter row가 Assignee 원본 값을 보존하고 Reporter/Creator는 담당자와 다른 의미이므로 advisory note로만 남긴다. 응답은 원본 identity와 assignable roster를 current project scope로 반환한다. Commit은 exact upload-text SHA-256, complete/unique mapping keys, active owner/member role을 기존 import lock 아래에서 재검증하고 selected `assignee_id`를 Work Package 생성 transaction에 포함한다. Viewer·비활성·외부 사용자, stale content, incomplete/unknown mappings와 255자 초과 identity는 거부한다.
+- 기존 scalar reconciliation checksum, row-level validation/isolation, disabled type rejection, Jira/Linear status/type/priority/date mapping, duplicate subject guard, concurrent same-file convergence와 Data Transfer job audit/notes를 유지한다. Exact-email은 화면 제안일 뿐 서버가 암묵 적용하지 않으며 display-name/fuzzy matching은 없다.
+- 집중 검증: Jira/Linear/OneFlow CSV와 Data Transfer API 38 PASS, full API 782 PASS(기존 Alembic deprecation warning 1건), Ruff/format PASS, OpenAPI generation/drift PASS. Web typecheck PASS, lint PASS(기존 Fast Refresh 경고 4건), production build PASS(기존 chunk-size 경고), unit 96 PASS, focused Import E2E 2 PASS, 최종 full E2E 294 PASS + opt-in visual QA 1 skip이다. API는 exact-email suggestion, explicit mapping, stale checksum 409, missing mapping, viewer/inactive rejection, explicit unassigned, duplicate re-upload와 concurrent 200/200 단일 생성을 검증한다.
+- Clean-room frontend 161/backend 45, pip/npm audit 0 vulnerabilities와 diff check가 PASS했다.
+- Chromium 증적은 `docs/screenshots/redevelopment/import-assignee-mapping-ui/{desktop,mobile}.png`에 보존한다. 신규 migration, environment variable, dependency, permission registry 또는 별도 Settings UI 변경은 없다. **이연 항목**은 GitHub/Asana/Notion의 외부 형식/credential 기반 adapter뿐이며 UI-128 내부 기능에는 이연이 없다.
