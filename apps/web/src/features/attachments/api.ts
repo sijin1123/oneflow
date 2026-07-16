@@ -12,11 +12,27 @@ export type Attachment = {
   size_bytes: number | null
   url: string
   has_file: boolean
+  search_index_status:
+    | 'not_applicable'
+    | 'pending'
+    | 'indexed'
+    | 'unsupported'
+    | 'too_large'
+    | 'invalid_text'
+    | 'missing_blob'
+  search_indexed_at: string | null
   uploaded_by: string | null
   created_at: string
 }
 
 export type AttachmentList = { items: Attachment[]; total: number }
+
+export type AttachmentSearchReindexResult = {
+  processed: number
+  indexed: number
+  remaining: number
+  statuses: Record<string, number>
+}
 
 export function useAttachments(projectId: string) {
   return useQuery({
@@ -94,6 +110,22 @@ export function useUploadAttachment(projectId: string) {
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['attachments', projectId] })
+    },
+  })
+}
+
+export function useRebuildAttachmentSearchIndex(projectId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: () =>
+      api<AttachmentSearchReindexResult>(
+        `/api/v1/projects/${projectId}/attachments/search-index/rebuild`,
+        { method: 'POST' },
+      ),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['attachments', projectId] })
+      void queryClient.removeQueries({ queryKey: ['unified-search'] })
+      void queryClient.removeQueries({ queryKey: ['command-palette-search'] })
     },
   })
 }

@@ -187,12 +187,25 @@ export type SearchNamedItem = {
 
 export type SearchInitiativeItem = { id: string; name: string; state: string }
 
+export type SearchFileItem = {
+  id: string
+  project_id: string
+  project_key: string
+  project_name: string
+  filename: string
+  content_type: string | null
+  size_bytes: number | null
+  matched_in: 'primary' | 'content'
+  snippet: string | null
+}
+
 type Group<T> = { items: T[]; returned: number; truncated: boolean }
 
 export type UnifiedSearchResults = {
   query: string
   work_packages: Group<SearchResultItem>
   documents: Group<SearchDocumentItem>
+  files: Group<SearchFileItem>
   meetings: Group<SearchMeetingItem>
   cycles: Group<SearchNamedItem>
   modules: Group<SearchNamedItem>

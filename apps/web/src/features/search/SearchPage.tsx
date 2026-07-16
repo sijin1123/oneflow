@@ -4,6 +4,7 @@ import {
   CalendarDays,
   Compass,
   FileText,
+  Paperclip,
   ListChecks,
   RefreshCw,
   Search,
@@ -89,7 +90,7 @@ export function SearchPage() {
             <p className="text-[11px] font-medium uppercase text-of-muted">Workspace search</p>
             <h1 className="mt-1 text-base font-semibold">전체 검색</h1>
             <p className="mt-1 max-w-3xl text-xs leading-5 text-of-muted">
-              권한이 있는 작업, 문서, 회의, 사이클, 모듈, 이니셔티브를 한 화면에서 찾습니다.
+              권한이 있는 작업, 문서, 파일, 회의, 사이클, 모듈, 이니셔티브를 한 화면에서 찾습니다.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -148,7 +149,7 @@ export function SearchPage() {
       </section>
 
       {summaries.length > 0 ? (
-        <section aria-label="검색 결과 요약" className="grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-6">
+        <section aria-label="검색 결과 요약" className="grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-7">
           {summaries.map((group) => (
             <SummaryCard
               key={group.key}
@@ -219,6 +220,27 @@ export function SearchPage() {
               ))}
             </GroupSection>
           ) : null}
+
+          <GroupSection
+            icon={Paperclip}
+            title="파일"
+            returned={data.files.returned}
+            truncated={data.files.truncated}
+          >
+            {data.files.items.map((item) => (
+              <ResultRow
+                key={item.id}
+                icon={Paperclip}
+                projectKey={item.project_key}
+                projectName={item.project_name}
+                title={item.filename}
+                meta={item.content_type ?? undefined}
+                onClick={() => navigate(`/projects/${item.project_id}/files?file=${item.id}`)}
+              >
+                <ContentMatch item={item} className="mt-2" />
+              </ResultRow>
+            ))}
+          </GroupSection>
 
           <GroupSection
             icon={CalendarClock}
@@ -315,6 +337,7 @@ function groupSummaries(
     ...(includeDocuments
       ? [{ key: 'docs', label: '문서', returned: data.documents.returned, icon: FileText }]
       : []),
+    { key: 'files', label: '파일', returned: data.files.returned, icon: Paperclip },
     { key: 'meetings', label: '회의', returned: data.meetings.returned, icon: CalendarClock },
     { key: 'cycles', label: '사이클', returned: data.cycles.returned, icon: CalendarDays },
     { key: 'modules', label: '모듈', returned: data.modules.returned, icon: Boxes },

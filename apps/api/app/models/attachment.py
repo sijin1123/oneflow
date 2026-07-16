@@ -50,6 +50,29 @@ class Attachment(Base):
         Index("ix_attachments_wp", "work_package_id"),
         Index("ix_attachments_document", "document_id"),
         Index("ix_attachments_project_created", "project_id", "created_at"),
+        Index(
+            "ix_attachments_project_search_status_created",
+            "project_id",
+            "search_index_status",
+            "created_at",
+        ),
+        CheckConstraint(
+            "search_index_status IN "
+            "('not_applicable','pending','indexed','unsupported','too_large',"
+            "'invalid_text','missing_blob')",
+            name="search_index_status_allowed",
+        ),
+        CheckConstraint(
+            "COALESCE(char_length(search_text), 0) <= 524288 AND ("
+            "(search_index_status = 'indexed' AND search_text IS NOT NULL "
+            "AND search_indexed_at IS NOT NULL) OR "
+            "(search_index_status IN "
+            "('unsupported','too_large','invalid_text','missing_blob') "
+            "AND search_text IS NULL AND search_indexed_at IS NOT NULL) OR "
+            "(search_index_status IN ('pending','not_applicable') "
+            "AND search_text IS NULL AND search_indexed_at IS NULL))",
+            name="search_text_shape",
+        ),
         UniqueConstraint("id", "project_id", name="uq_attachments_id_project_id"),
     )
 
@@ -69,6 +92,17 @@ class Attachment(Base):
     # Server-generated blob key ("{project_id}/{attachment_id}"); UNIQUE so two
     # rows can never share (and cross-delete) one blob. NULL = URL-only row.
     storage_key: Mapped[str | None] = mapped_column(Text, unique=True, nullable=True)
+    search_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    search_index_status: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False,
+        default="not_applicable",
+        server_default="not_applicable",
+    )
+    search_indexed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
     uploaded_by: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )

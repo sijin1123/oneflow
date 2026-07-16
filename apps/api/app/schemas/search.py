@@ -104,6 +104,18 @@ class SearchInitiativeItem(BaseModel):
     state: str
 
 
+class SearchFileItem(BaseModel):
+    id: uuid.UUID
+    project_id: uuid.UUID
+    project_key: str
+    project_name: str
+    filename: str
+    content_type: str | None
+    size_bytes: int | None
+    matched_in: str = "primary"
+    snippet: str | None = None
+
+
 class WpGroup(BaseModel):
     items: list[SearchResultItem]
     returned: int
@@ -134,6 +146,12 @@ class InitiativeGroup(BaseModel):
     truncated: bool
 
 
+class FileGroup(BaseModel):
+    items: list[SearchFileItem]
+    returned: int
+    truncated: bool
+
+
 class UnifiedSearchResults(BaseModel):
     """Grouped workspace search (Pass 14, v14.1). `returned` is the RETURNED
     count; `truncated` means more hits exist beyond the per-group cap (computed
@@ -142,6 +160,7 @@ class UnifiedSearchResults(BaseModel):
     query: str
     work_packages: WpGroup
     documents: DocumentGroup
+    files: FileGroup
     meetings: MeetingGroup
     cycles: NamedGroup
     modules: NamedGroup

@@ -4,6 +4,7 @@ import asyncio
 
 from sqlalchemy import text
 
+from app.models.attachment import Attachment
 from tests.conftest import create_project, create_wp
 
 
@@ -213,7 +214,10 @@ async def test_disabled_wiki_blocks_document_routes_and_preserves_data(client):
     assert fetched.json()["body"] == "<p>Keep me</p>"
 
 
-async def test_disabled_wiki_omits_search_and_blocks_only_document_attachment_writes(client):
+async def test_disabled_wiki_omits_search_and_blocks_only_document_attachment_writes(
+    client,
+    app,
+):
     project = await create_project(client, key="WSEA", name="Wiki search")
     pid = project["id"]
     await create_wp(client, pid, subject="Shared policy token")
@@ -232,12 +236,33 @@ async def test_disabled_wiki_omits_search_and_blocks_only_document_attachment_wr
             },
         )
     ).json()
+    uploaded = await client.post(
+        f"/api/v1/projects/{pid}/attachments/upload"
+        f"?filename=existing-upload.txt&document_id={document['id']}",
+        content=b"wiki-file-search-token",
+        headers={"content-type": "text/plain", "content-length": "22"},
+    )
+    assert uploaded.status_code == 201, uploaded.text
+    async with app.state.sessionmaker() as session, session.begin():
+        row = await session.get(Attachment, uploaded.json()["id"])
+        assert row is not None
+        row.search_text = None
+        row.search_index_status = "pending"
+        row.search_indexed_at = None
 
     assert (await set_wiki(client, False)).status_code == 200
     search = await client.get("/api/v1/search?q=Shared%20policy%20token")
     assert search.status_code == 200
     assert search.json()["work_packages"]["returned"] == 1
     assert search.json()["documents"] == {"items": [], "returned": 0, "truncated": False}
+    assert search.json()["files"] == {"items": [], "returned": 0, "truncated": False}
+    reindex = await client.post(f"/api/v1/projects/{pid}/attachments/search-index/rebuild")
+    assert reindex.json()["processed"] == 0
+    assert reindex.json()["remaining"] == 0
+    listed = await client.get(f"/api/v1/projects/{pid}/attachments")
+    assert all(item["document_id"] is None for item in listed.json()["items"])
+    direct = await client.get(f"/api/v1/projects/{pid}/attachments?document_id={document['id']}")
+    assert direct.json() == {"items": [], "total": 0}
 
     blocked = await client.post(
         f"/api/v1/projects/{pid}/attachments",

@@ -1,5 +1,6 @@
 import uuid
 from datetime import datetime
+from typing import Literal
 from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict, field_validator
@@ -63,6 +64,16 @@ class AttachmentRead(BaseModel):
     # True for uploaded rows — the client renders a /download link instead of
     # the sentinel url (URL-only rows keep the external link).
     has_file: bool = False
+    search_index_status: Literal[
+        "not_applicable",
+        "pending",
+        "indexed",
+        "unsupported",
+        "too_large",
+        "invalid_text",
+        "missing_blob",
+    ]
+    search_indexed_at: datetime | None
     uploaded_by: uuid.UUID | None
     created_at: datetime
 
@@ -80,3 +91,10 @@ class StorageRead(BaseModel):
     quota_bytes: int
     attachment_count: int
     link_count: int
+
+
+class AttachmentSearchReindexResult(BaseModel):
+    processed: int
+    indexed: int
+    remaining: int
+    statuses: dict[str, int]
