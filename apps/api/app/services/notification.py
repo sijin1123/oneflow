@@ -11,6 +11,7 @@ from sqlalchemy import and_, exists, false, func, insert, literal, or_, select, 
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.document import ProjectDocument
 from app.models.initiative import Initiative, InitiativeProject, InitiativeSubscriber
 from app.models.member import ProjectMember
 from app.models.notification import Notification
@@ -252,6 +253,81 @@ async def notify_mentions(
                 sel,
             )
         )
+    return accepted
+
+
+async def notify_document_mentions(
+    session: AsyncSession,
+    *,
+    document_id: uuid.UUID,
+    project_id: uuid.UUID,
+    actor_id: uuid.UUID,
+    candidate_ids: Iterable[uuid.UUID],
+) -> list[uuid.UUID]:
+    """Persist the canonical accepted set and create Document-targeted inbox rows.
+
+    Current active membership and Document visibility are checked inside the
+    caller's transaction. Preference suppression affects delivery only; the
+    accepted member set remains visible on the comment.
+    """
+    candidates = [uid for uid in dict.fromkeys(candidate_ids) if uid != actor_id]
+    if not candidates:
+        return []
+    visible_member_ids = (
+        select(ProjectMember.user_id)
+        .join(User, User.id == ProjectMember.user_id)
+        .join(
+            ProjectDocument,
+            and_(
+                ProjectDocument.id == literal(document_id, type_=PGUUID(as_uuid=True)),
+                ProjectDocument.project_id == ProjectMember.project_id,
+            ),
+        )
+        .where(
+            ProjectMember.project_id == project_id,
+            ProjectMember.user_id.in_(candidates),
+            User.is_active.is_(True),
+            or_(
+                ProjectDocument.visibility == "shared",
+                ProjectDocument.author_id == ProjectMember.user_id,
+            ),
+        )
+    )
+    accepted_set = set((await session.execute(visible_member_ids)).scalars().all())
+    accepted = [uid for uid in candidates if uid in accepted_set]
+    if not accepted:
+        return []
+
+    uid_t = PGUUID(as_uuid=True)
+    recipients = (
+        select(
+            func.gen_random_uuid(),
+            ProjectMember.user_id,
+            literal(project_id, type_=uid_t),
+            literal(document_id, type_=uid_t),
+            literal(actor_id, type_=uid_t),
+            literal("document_mention"),
+            false(),
+        )
+        .select_from(ProjectMember)
+        .join(User, User.id == ProjectMember.user_id)
+        .outerjoin(
+            UserNotificationSettings,
+            UserNotificationSettings.user_id == ProjectMember.user_id,
+        )
+        .where(
+            ProjectMember.project_id == project_id,
+            ProjectMember.user_id.in_(accepted),
+            User.is_active.is_(True),
+            func.coalesce(UserNotificationSettings.mention, true()),
+        )
+    )
+    await session.execute(
+        insert(Notification).from_select(
+            ["id", "user_id", "project_id", "document_id", "actor_id", "kind", "read"],
+            recipients,
+        )
+    )
     return accepted
 
 

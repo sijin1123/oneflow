@@ -7,10 +7,12 @@ export type Notification = {
   kind: string
   project_id: string | null
   initiative_id?: string | null
+  document_id?: string | null
   work_package_id: string | null
   intake_item_id?: string | null
   work_package_subject: string | null
   initiative_name?: string | null
+  document_title?: string | null
   actor_name: string | null
   read: boolean
   created_at: string

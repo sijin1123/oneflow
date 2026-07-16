@@ -3,7 +3,7 @@ from datetime import date, timedelta
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
-from sqlalchemy import func, or_, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy import update as sa_update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import IntegrityError
@@ -13,6 +13,7 @@ from app.core.auth import get_current_user
 from app.core.dates import utc_today
 from app.db.session import get_session
 from app.models.activity import Activity
+from app.models.document import ProjectDocument
 from app.models.initiative import Initiative, InitiativeProject
 from app.models.member import ProjectMember
 from app.models.notification import Notification
@@ -47,6 +48,7 @@ from app.schemas.project_directory_preferences import (
     ProjectDirectoryPreferencesRead,
 )
 from app.schemas.user import UserRead
+from app.services.document_access import document_visible_clause
 
 router = APIRouter()
 
@@ -498,20 +500,39 @@ async def list_notifications(
             Initiative.id.in_(visible_project_initiatives),
         )
     )
+    visible_documents = (
+        select(ProjectDocument.id)
+        .join(ProjectMember, ProjectMember.project_id == ProjectDocument.project_id)
+        .where(
+            ProjectMember.user_id == user.id,
+            document_visible_clause(user.id),
+        )
+    )
     notification_is_visible = or_(
-        Notification.initiative_id.is_(None),
-        Notification.initiative_id.in_(visible_initiatives),
+        and_(
+            Notification.document_id.is_not(None),
+            Notification.document_id.in_(visible_documents),
+        ),
+        and_(
+            Notification.document_id.is_(None),
+            or_(
+                Notification.initiative_id.is_(None),
+                Notification.initiative_id.in_(visible_initiatives),
+            ),
+        ),
     )
     stmt = (
         select(
             Notification,
             WorkPackage.subject.label("wp_subject"),
             Initiative.name.label("initiative_name"),
+            ProjectDocument.title.label("document_title"),
             actor.c.display_name.label("actor_name"),
         )
         .select_from(Notification)
         .outerjoin(WorkPackage, Notification.work_package_id == WorkPackage.id)
         .outerjoin(Initiative, Notification.initiative_id == Initiative.id)
+        .outerjoin(ProjectDocument, Notification.document_id == ProjectDocument.id)
         .outerjoin(actor, Notification.actor_id == actor.c.id)
         .where(Notification.user_id == user.id, notification_is_visible)
     )
@@ -526,15 +547,17 @@ async def list_notifications(
             kind=n.kind,
             project_id=n.project_id,
             initiative_id=n.initiative_id,
+            document_id=n.document_id,
             work_package_id=n.work_package_id,
             intake_item_id=n.intake_item_id,
             work_package_subject=wp_subject,
             initiative_name=initiative_name,
+            document_title=document_title,
             actor_name=actor_name,
             read=n.read,
             created_at=n.created_at,
         )
-        for n, wp_subject, initiative_name, actor_name in rows
+        for n, wp_subject, initiative_name, document_title, actor_name in rows
     ]
     unread = (
         await session.execute(

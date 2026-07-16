@@ -206,6 +206,7 @@ export type DocumentComment = {
   project_id: string
   author_id: string | null
   body: string
+  mentions: string[] | null
   anchor_id: string | null
   anchor_quote: string | null
   reactions: DocumentCommentReaction[]
@@ -230,10 +231,10 @@ export function useDocumentComments(docId: string) {
 export function useCreateDocumentComment(docId: string) {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (body: string) =>
+    mutationFn: (input: { body: string; mentioned_user_ids: string[] }) =>
       api<DocumentComment>(`/api/v1/documents/${docId}/comments`, {
         method: 'POST',
-        body: JSON.stringify({ body }),
+        body: JSON.stringify(input),
       }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['document-comments', docId] })
@@ -243,6 +244,7 @@ export function useCreateDocumentComment(docId: string) {
 
 export type InlineDocumentCommentInput = {
   body: string
+  mentioned_user_ids?: string[]
   anchor_id: string
   anchor_quote: string
   expected_document_version?: number

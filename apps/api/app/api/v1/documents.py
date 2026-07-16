@@ -61,6 +61,7 @@ from app.schemas.document_comment import (
 )
 from app.services.document_access import document_is_visible, document_visible_clause
 from app.services.emoji import is_single_emoji, normalize_emoji
+from app.services.notification import notify_document_mentions
 from app.services.sanitize import (
     document_comment_anchor_quote,
     normalize_anchor_quote,
@@ -785,6 +786,15 @@ async def create_document_comment(
     try:
         session.add(comment)
         await session.flush()
+        accepted = await notify_document_mentions(
+            session,
+            document_id=doc.id,
+            project_id=doc.project_id,
+            actor_id=user.id,
+            candidate_ids=body.mentioned_user_ids,
+        )
+        comment.mentions = [str(user_id) for user_id in accepted] or None
+        await session.flush()
         await session.commit()
     except IntegrityError as exc:
         # The document vanished between the scope check and the INSERT — the
@@ -868,6 +878,15 @@ async def create_inline_document_comment(
     )
     try:
         session.add(comment)
+        await session.flush()
+        accepted = await notify_document_mentions(
+            session,
+            document_id=doc.id,
+            project_id=doc.project_id,
+            actor_id=user.id,
+            candidate_ids=body.mentioned_user_ids,
+        )
+        comment.mentions = [str(user_id) for user_id in accepted] or None
         await session.flush()
         await session.commit()
     except IntegrityError as exc:

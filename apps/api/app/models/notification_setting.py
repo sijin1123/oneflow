@@ -16,7 +16,7 @@ class UserNotificationSettings(Base):
     already-created ones are never retro-hidden and unread counts keep their
     existing definition. Toggle→kind mapping: `assigned` → 'assigned',
     `watched` → 'watch_status'+'watch_assigned', `commented` → 'watch_comment',
-    `mention` → 'mention'."""
+    `mention` → 'mention'+'document_mention'."""
 
     __tablename__ = "user_notification_settings"
 

@@ -11,7 +11,16 @@ import {
   Send,
   Trash2,
 } from 'lucide-react'
-import { Suspense, lazy, useEffect, useMemo, useState } from 'react'
+import {
+  Suspense,
+  lazy,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type Dispatch,
+  type SetStateAction,
+} from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 
 import { ReadOnlyNotice } from '@/components/shell/ReadOnlyNotice'
@@ -79,6 +88,12 @@ export function DocumentEditorPage() {
   const members = useMembers(projectId)
   const comments = useDocumentComments(docId)
   const createInlineComment = useCreateInlineDocumentComment(docId, projectId)
+  const mentionOptions =
+    doc?.visibility === 'shared'
+      ? (members.data?.items ?? [])
+          .filter((member) => member.user_id !== me.data?.id)
+          .map((member) => ({ id: member.user_id, label: member.display_name }))
+      : []
 
   const [title, setTitle] = useState('')
   const [body, setBody] = useState('')
@@ -292,9 +307,16 @@ export function DocumentEditorPage() {
                 onCommentAnchorActivate={activateThread}
                 onCreateInlineComment={
                   editable
-                    ? async ({ anchorId, anchorQuote, commentBody, documentBody }) => {
+                    ? async ({
+                        anchorId,
+                        anchorQuote,
+                        commentBody,
+                        mentionedUserIds,
+                        documentBody,
+                      }) => {
                         await createInlineComment.mutateAsync({
                           body: commentBody,
+                          mentioned_user_ids: mentionedUserIds,
                           anchor_id: anchorId,
                           anchor_quote: anchorQuote,
                           expected_document_version:
@@ -305,6 +327,7 @@ export function DocumentEditorPage() {
                       }
                     : undefined
                 }
+                mentionOptions={mentionOptions}
                 onImageUpload={
                   editable
                     ? async (file) => {
@@ -419,8 +442,12 @@ function DocumentComments({
   const del = useDeleteDocumentComment(doc.id)
   const toggleReaction = useToggleDocumentCommentReaction(doc.id)
   const [draft, setDraft] = useState('')
+  const [mentioned, setMentioned] = useState<string[]>([])
+  const mentionedRef = useRef<string[]>([])
   const [replyAnchorId, setReplyAnchorId] = useState<string | null>(null)
   const [replyDraft, setReplyDraft] = useState('')
+  const [replyMentioned, setReplyMentioned] = useState<string[]>([])
+  const replyMentionedRef = useRef<string[]>([])
 
   const anchoredThreads = useMemo(() => {
     const threads = new Map<
@@ -451,22 +478,86 @@ function DocumentComments({
     if (members.data?.items.some((m) => m.user_id === authorId)) return memberName(authorId)
     return '이전 구성원'
   }
+  const mentionOptions =
+    doc.visibility === 'shared'
+      ? (members.data?.items ?? []).filter((member) => member.user_id !== me.data?.id)
+      : []
+  const toggleMention = (
+    userId: string,
+    selected: string[],
+    setSelected: Dispatch<SetStateAction<string[]>>,
+    selectedRef: { current: string[] },
+  ) => {
+    const next = selected.includes(userId)
+      ? selected.filter((selectedId) => selectedId !== userId)
+      : [...selected, userId]
+    selectedRef.current = next
+    setSelected(next)
+  }
+  const mentionPicker = (
+    selected: string[],
+    setSelected: Dispatch<SetStateAction<string[]>>,
+    selectedRef: { current: string[] },
+    label: string,
+  ) =>
+    mentionOptions.length > 0 ? (
+      <fieldset className="flex flex-wrap items-center gap-1.5">
+        <legend className="sr-only">{label}</legend>
+        <span className="text-[11px] text-of-muted">멘션</span>
+        {mentionOptions.map((member) => (
+          <label
+            key={member.user_id}
+            className={`flex items-center gap-1 rounded-of border bg-of-surface px-2 py-1 text-[11px] ${
+              selected.includes(member.user_id)
+                ? 'border-of-accent text-of-accent'
+                : 'border-of-border'
+            }`}
+          >
+            <input
+              type="checkbox"
+              checked={selected.includes(member.user_id)}
+              disabled={create.isPending || createInline.isPending}
+              onChange={() => toggleMention(member.user_id, selected, setSelected, selectedRef)}
+              aria-label={`${member.display_name} 문서 멘션`}
+              className="h-3 w-3 accent-of-accent"
+            />
+            {member.display_name}
+          </label>
+        ))}
+      </fieldset>
+    ) : null
 
   const submit = () => {
     const body = draft.trim()
     if (!body) return
-    create.mutate(body, { onSuccess: () => setDraft('') })
+    create.mutate(
+      { body, mentioned_user_ids: mentionedRef.current },
+      {
+        onSuccess: () => {
+          setDraft('')
+          mentionedRef.current = []
+          setMentioned([])
+        },
+      },
+    )
   }
 
   const submitReply = (anchorId: string, quote: string) => {
     const body = replyDraft.trim()
     if (!body || createInline.isPending) return
     createInline.mutate(
-      { body, anchor_id: anchorId, anchor_quote: quote },
+      {
+        body,
+        mentioned_user_ids: replyMentionedRef.current,
+        anchor_id: anchorId,
+        anchor_quote: quote,
+      },
       {
         onSuccess: () => {
           setReplyAnchorId(null)
           setReplyDraft('')
+          replyMentionedRef.current = []
+          setReplyMentioned([])
         },
       },
     )
@@ -496,6 +587,15 @@ function DocumentComments({
           </button>
         ) : null}
       </div>
+      {comment.mentions && comment.mentions.length > 0 ? (
+        <div className="mt-1 flex flex-wrap gap-1">
+          {comment.mentions.map((userId) => (
+            <Badge key={userId} variant="accent" className="text-[10px]">
+              @{authorLabel(userId)}
+            </Badge>
+          ))}
+        </div>
+      ) : null}
       <CommentReactionBar
         reactions={comment.reactions ?? []}
         canReact={canWrite}
@@ -560,7 +660,7 @@ function DocumentComments({
                 <ul className="mt-2">{thread.comments.map(commentLine)}</ul>
                 {canWrite && exists ? (
                   replyAnchorId === thread.anchorId ? (
-                    <div className="mt-2 grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
+                    <div className="mt-2 grid gap-2">
                       <Input
                         value={replyDraft}
                         onChange={(event) => setReplyDraft(event.target.value)}
@@ -575,8 +675,15 @@ function DocumentComments({
                         className="h-8 min-w-0 text-xs"
                         autoFocus
                       />
+                      {mentionPicker(
+                        replyMentioned,
+                        setReplyMentioned,
+                        replyMentionedRef,
+                        '인라인 답글에서 멘션할 멤버',
+                      )}
                       <Button
                         size="sm"
+                        className="justify-self-start"
                         disabled={!replyDraft.trim() || createInline.isPending}
                         onClick={() => submitReply(thread.anchorId, thread.quote)}
                       >
@@ -590,6 +697,8 @@ function DocumentComments({
                       onClick={() => {
                         setReplyAnchorId(thread.anchorId)
                         setReplyDraft('')
+                        replyMentionedRef.current = []
+                        setReplyMentioned([])
                       }}
                     >
                       답글 남기기
@@ -635,6 +744,12 @@ function DocumentComments({
               등록
             </Button>
           </div>
+          {mentionPicker(
+            mentioned,
+            setMentioned,
+            mentionedRef,
+            '일반 코멘트에서 멘션할 멤버',
+          )}
           {create.isError ? (
             <p role="alert" className="text-xs text-of-danger">
               코멘트를 등록하지 못했습니다.
