@@ -53,6 +53,7 @@ from app.schemas.work_package import (
 )
 from app.services.activity import record_created, record_field_changes
 from app.services.automation import bump_fired, change_candidates, record_applied
+from app.services.cycle_scope import record_cycle_scope_change
 from app.services.notification import notify_watchers, record_assignment
 from app.services.sanitize import sanitize_html
 from app.services.webhooks import dispatch_event, enqueue_work_package_event
@@ -542,6 +543,14 @@ async def stage_work_package_create(
     session.add(wp)
     await session.flush()  # assigns wp.id for the activity FK
     record_created(session, wp.id, user.id)
+    record_cycle_scope_change(
+        session,
+        project_id=project_id,
+        work_package_id=wp.id,
+        actor_id=user.id,
+        old_cycle_id=None,
+        new_cycle_id=body.cycle_id,
+    )
     if body.assignee_id is not None:
         await record_assignment(
             session,
@@ -788,6 +797,14 @@ async def duplicate_work_package(
     session.add(dup)
     await session.flush()
     record_created(session, dup.id, user.id)
+    record_cycle_scope_change(
+        session,
+        project_id=src.project_id,
+        work_package_id=dup.id,
+        actor_id=user.id,
+        old_cycle_id=None,
+        new_cycle_id=dup.cycle_id,
+    )
     if assignee is not None:
         await record_assignment(
             session,
@@ -1031,6 +1048,15 @@ async def patch_work_package(
             # Record field changes in the same transaction as the update.
             disp_old, disp_new = await _display_values(session, old_values, changes)
             record_field_changes(session, wp_id, user.id, disp_old, disp_new)
+            if "cycle_id" in changes:
+                record_cycle_scope_change(
+                    session,
+                    project_id=wp.project_id,
+                    work_package_id=wp_id,
+                    actor_id=user.id,
+                    old_cycle_id=old_values.get("cycle_id"),
+                    new_cycle_id=changes["cycle_id"],
+                )
             # Automation accounting (v16.1: fired = run = ACTUALLY APPLIED) —
             # only candidates that survived the setdefault merge, really
             # changed the value, and rode the successful conditional UPDATE.
@@ -1529,6 +1555,7 @@ async def move_work_package(
 
     # ---- apply (one transaction) --------------------------------------------
     old_project_id = wp.project_id
+    old_cycle_id = wp.cycle_id
     names = dict(
         (
             await session.execute(
@@ -1596,6 +1623,14 @@ async def move_work_package(
         wp.assignee_id = None
     wp.project_id = body.target_project_id
     wp.version += 1
+    record_cycle_scope_change(
+        session,
+        project_id=old_project_id,
+        work_package_id=wp_id,
+        actor_id=user.id,
+        old_cycle_id=old_cycle_id,
+        new_cycle_id=None,
+    )
     await session.flush()  # WP row moves before attachments re-anchor
     move_changed_fields = ["project_id"]
     for changed, field in (

@@ -15,6 +15,7 @@ from sqlalchemy import select
 
 from app.models import (
     Attachment,
+    CycleScopeEvent,
     Notification,
     ProjectMember,
     User,
@@ -55,10 +56,22 @@ async def _move(client, wp_id, target, version=0, dry=False):
 
 async def test_move_transfers_and_clears_scoped_references(app, client, move_ctx):
     src, dst = move_ctx["src"], move_ctx["dst"]
+    cycle = (
+        await client.post(
+            f"/api/v1/projects/{src}/cycles",
+            json={"name": "출발 사이클", "start_date": "2026-07-01", "end_date": "2026-07-31"},
+        )
+    ).json()
     # Rich source WP: parent, child, milestone, relation, comment, time entry,
     # watchers (Alex source-only, Bora both), assignee Bora.
     parent = await create_wp(client, src, subject="부모")
-    wp = await create_wp(client, src, subject="이동 대상", assignee_id=move_ctx["bora"])
+    wp = await create_wp(
+        client,
+        src,
+        subject="이동 대상",
+        assignee_id=move_ctx["bora"],
+        cycle_id=cycle["id"],
+    )
     child = await create_wp(client, src, subject="자식")
     other = await create_wp(client, src, subject="관계 상대")
     for pid, body in (
@@ -100,6 +113,7 @@ async def test_move_transfers_and_clears_scoped_references(app, client, move_ctx
     assert body["cleared"]["parent"] is True
     assert body["cleared"]["children"] == {"count": 1, "names": ["자식"], "overflow": 0}
     assert body["cleared"]["relations"]["names"] == ["관계 상대"]
+    assert body["cleared"]["cycle"] is True
     assert body["cleared"]["watchers_removed"]["names"] == ["Alex"]  # source-only
     assert body["cleared"]["assignee_cleared"] is False  # Bora is in both
     still = (await client.get(f"/api/v1/work-packages/{wp['id']}")).json()
@@ -129,6 +143,21 @@ async def test_move_transfers_and_clears_scoped_references(app, client, move_ctx
             .all()
         )
         assert rels == []
+        scope_events = (
+            (
+                await session.execute(
+                    select(CycleScopeEvent)
+                    .where(CycleScopeEvent.work_package_id == uuid.UUID(wp["id"]))
+                    .order_by(CycleScopeEvent.occurred_at, CycleScopeEvent.id)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assert [(event.cycle_id, event.event_type) for event in scope_events] == [
+            (uuid.UUID(cycle["id"]), "added"),
+            (uuid.UUID(cycle["id"]), "removed"),
+        ]
     # Visibility transfer: comments and time entries went along (readable in
     # the target scope by the caller, an owner of both).
     comments = (await client.get(f"/api/v1/work-packages/{wp['id']}/comments")).json()

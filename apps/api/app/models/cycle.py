@@ -2,10 +2,12 @@ import uuid
 from datetime import date, datetime
 
 from sqlalchemy import (
+    Boolean,
     CheckConstraint,
     Date,
     DateTime,
     ForeignKey,
+    ForeignKeyConstraint,
     Index,
     String,
     Text,
@@ -47,9 +49,65 @@ class Cycle(Base):
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     start_date: Mapped[date] = mapped_column(Date, nullable=False)
     end_date: Mapped[date] = mapped_column(Date, nullable=False)
+    scope_tracking_started_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.clock_timestamp()
+    )
+    scope_tracking_complete: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="true"
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+
+class CycleScopeEvent(Base):
+    """Stable-ID scope membership event used for cycle analytics.
+
+    `baseline` marks assignments that existed when tracking was introduced;
+    it is a coverage boundary, not a fabricated historical add event.
+    """
+
+    __tablename__ = "cycle_scope_events"
+    __table_args__ = (
+        CheckConstraint(
+            "event_type IN ('baseline', 'added', 'removed')",
+            name="event_type_allowed",
+        ),
+        ForeignKeyConstraint(
+            ["cycle_id", "project_id"],
+            ["cycles.id", "cycles.project_id"],
+            name="fk_cycle_scope_events_cycle_project",
+            ondelete="CASCADE",
+        ),
+        Index(
+            "ix_cycle_scope_events_cycle_occurred",
+            "cycle_id",
+            "occurred_at",
+            "id",
+        ),
+        Index(
+            "ix_cycle_scope_events_wp_occurred",
+            "work_package_id",
+            "occurred_at",
+            "id",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    project_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    cycle_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    work_package_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("work_packages.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    event_type: Mapped[str] = mapped_column(String(16), nullable=False)
+    actor_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    occurred_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.clock_timestamp()
     )

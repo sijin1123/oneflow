@@ -13,7 +13,7 @@ from tests.conftest import create_project, create_wp
 
 async def _mk(client, pid, kind, name):
     if kind == "cycle":
-        today = dt.date(2026, 7, 1)
+        today = dt.datetime.now(dt.UTC).date() - dt.timedelta(days=3)
         res = await client.post(
             f"/api/v1/projects/{pid}/cycles",
             json={
@@ -119,6 +119,10 @@ async def test_rollover_records_per_wp_snapshot_activities(client):
     # create_wp with cycle set records nothing (created action) — rollover adds one.
     assert [(a["old_value"], a["new_value"]) for a in rows] == [("이번 스프린트", "다음 스프린트")]
     assert await _activities(client, done_wp["id"], field="cycle_id") == []
+    source_scope = (await client.get(f"/api/v1/projects/{pid}/cycles/{c1['id']}/burndown")).json()
+    target_scope = (await client.get(f"/api/v1/projects/{pid}/cycles/{c2['id']}/burndown")).json()
+    assert (source_scope["added_count"], source_scope["removed_count"]) == (2, 1)
+    assert (target_scope["added_count"], target_scope["removed_count"]) == (1, 0)
 
 
 async def test_existing_field_history_regression(client):
