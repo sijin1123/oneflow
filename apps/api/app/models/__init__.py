@@ -11,7 +11,7 @@ from app.models.customer import Customer
 from app.models.cycle import Cycle, CycleScopeEvent
 from app.models.data_transfer_job import DataTransferJob
 from app.models.document import DocumentWorkPackageLink, ProjectDocument
-from app.models.document_comment import ProjectDocumentComment
+from app.models.document_comment import ProjectDocumentComment, ProjectDocumentCommentReaction
 from app.models.initiative import (
     Initiative,
     InitiativeProject,
@@ -89,6 +89,7 @@ __all__ = [
     "DocumentWorkPackageLink",
     "ProjectDocument",
     "ProjectDocumentComment",
+    "ProjectDocumentCommentReaction",
     "Meeting",
     "MeetingActionItem",
     "MeetingAgendaTemplate",

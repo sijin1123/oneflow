@@ -15,12 +15,13 @@ import uuid
 from datetime import UTC, datetime
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, Response
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
 from sqlalchemy import delete as sa_delete
 from sqlalchemy import func, select, text
 from sqlalchemy import update as sa_update
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -29,11 +30,16 @@ from app.core.auth import get_current_user
 from app.core.authz import is_member, require_active_project, require_member, require_writer
 from app.db.session import get_session
 from app.models.attachment import Attachment
+from app.models.comment import LEGACY_REACTION_KEYS
 from app.models.document import MAX_DOCUMENT_DEPTH, DocumentWorkPackageLink, ProjectDocument
-from app.models.document_comment import ProjectDocumentComment
+from app.models.document_comment import (
+    ProjectDocumentComment,
+    ProjectDocumentCommentReaction,
+)
 from app.models.member import ProjectMember
 from app.models.user import User
 from app.models.work_package import WorkPackage
+from app.schemas.comment import ReactionAgg, ReactionList
 from app.schemas.document import (
     DocumentConflict,
     DocumentCreate,
@@ -54,6 +60,7 @@ from app.schemas.document_comment import (
     InlineDocumentCommentResult,
 )
 from app.services.document_access import document_is_visible, document_visible_clause
+from app.services.emoji import is_single_emoji, normalize_emoji
 from app.services.sanitize import (
     document_comment_anchor_quote,
     normalize_anchor_quote,
@@ -71,6 +78,15 @@ router = APIRouter(dependencies=[Depends(_require_wiki_enabled)])
 # Serializes document parent changes and deletes per project (WP parent-move
 # 427001 pattern). Exactly one advisory lock per transaction.
 DOC_PARENT_LOCK_CLASSID = 427004
+
+
+def _normalize_document_comment_reaction(emoji: str) -> str:
+    if emoji in LEGACY_REACTION_KEYS:
+        return LEGACY_REACTION_KEYS[emoji]
+    normalized = normalize_emoji(emoji)
+    if not is_single_emoji(normalized):
+        raise HTTPException(status_code=422, detail="emoji must be a single emoji character")
+    return normalized
 
 
 async def _lock_project_documents(session: AsyncSession, project_id: uuid.UUID) -> None:
@@ -746,9 +762,13 @@ async def list_document_comments(
         .scalars()
         .all()
     )
-    return DocumentCommentList(
-        items=[DocumentCommentRead.model_validate(r) for r in rows], total=total
+    items = [DocumentCommentRead.model_validate(r) for r in rows]
+    reactions = await _document_comment_reaction_aggregates(
+        session, [comment.id for comment in rows], user.id
     )
+    for item in items:
+        item.reactions = reactions[item.id]
+    return DocumentCommentList(items=items, total=total)
 
 
 @router.post("/documents/{doc_id}/comments", response_model=DocumentCommentRead, status_code=201)
@@ -858,6 +878,104 @@ async def create_inline_document_comment(
         comment=DocumentCommentRead.model_validate(comment),
         document=DocumentRead.model_validate(doc),
     )
+
+
+async def _document_comment_reaction_aggregates(
+    session: AsyncSession,
+    comment_ids: list[uuid.UUID],
+    user_id: uuid.UUID,
+) -> dict[uuid.UUID, list[ReactionAgg]]:
+    aggregates: dict[uuid.UUID, list[ReactionAgg]] = {comment_id: [] for comment_id in comment_ids}
+    if not comment_ids:
+        return aggregates
+    rows = (
+        await session.execute(
+            select(
+                ProjectDocumentCommentReaction.comment_id,
+                ProjectDocumentCommentReaction.emoji,
+                func.count().label("count"),
+                func.bool_or(ProjectDocumentCommentReaction.user_id == user_id).label("me"),
+            )
+            .where(ProjectDocumentCommentReaction.comment_id.in_(comment_ids))
+            .group_by(
+                ProjectDocumentCommentReaction.comment_id,
+                ProjectDocumentCommentReaction.emoji,
+            )
+        )
+    ).all()
+    for comment_id, emoji, count, me in rows:
+        aggregates[comment_id].append(ReactionAgg(key=emoji, count=count, me=bool(me)))
+    for items in aggregates.values():
+        items.sort(key=lambda item: (-item.count, item.key))
+    return aggregates
+
+
+async def _get_document_comment_scoped(
+    session: AsyncSession,
+    comment_id: uuid.UUID,
+    user: User,
+    *,
+    write: bool = False,
+) -> ProjectDocumentComment:
+    comment = (
+        await session.execute(
+            select(ProjectDocumentComment).where(ProjectDocumentComment.id == comment_id)
+        )
+    ).scalar_one_or_none()
+    if comment is None:
+        raise HTTPException(status_code=404, detail="not found")
+    await _get_doc_scoped(session, comment.document_id, user, write=write)
+    return comment
+
+
+@router.put(
+    "/document-comments/{comment_id}/reactions/{emoji}",
+    response_model=ReactionList,
+)
+async def put_document_comment_reaction(
+    comment_id: uuid.UUID,
+    emoji: str = Path(min_length=1, max_length=64),
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+) -> ReactionList:
+    emoji = _normalize_document_comment_reaction(emoji)
+    comment = await _get_document_comment_scoped(session, comment_id, user, write=True)
+    try:
+        await session.execute(
+            pg_insert(ProjectDocumentCommentReaction)
+            .values(id=uuid.uuid4(), comment_id=comment.id, user_id=user.id, emoji=emoji)
+            .on_conflict_do_nothing(constraint="uq_document_comment_reactions_comment_user_emoji")
+        )
+        await session.commit()
+    except IntegrityError as exc:
+        await session.rollback()
+        raise HTTPException(status_code=404, detail="not found") from exc
+    aggregates = await _document_comment_reaction_aggregates(session, [comment.id], user.id)
+    return ReactionList(items=aggregates[comment.id])
+
+
+@router.delete(
+    "/document-comments/{comment_id}/reactions/{emoji}",
+    response_model=ReactionList,
+)
+async def delete_document_comment_reaction(
+    comment_id: uuid.UUID,
+    emoji: str = Path(min_length=1, max_length=64),
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+) -> ReactionList:
+    emoji = _normalize_document_comment_reaction(emoji)
+    comment = await _get_document_comment_scoped(session, comment_id, user, write=True)
+    await session.execute(
+        sa_delete(ProjectDocumentCommentReaction).where(
+            ProjectDocumentCommentReaction.comment_id == comment.id,
+            ProjectDocumentCommentReaction.user_id == user.id,
+            ProjectDocumentCommentReaction.emoji == emoji,
+        )
+    )
+    await session.commit()
+    aggregates = await _document_comment_reaction_aggregates(session, [comment.id], user.id)
+    return ReactionList(items=aggregates[comment.id])
 
 
 @router.delete("/document-comments/{comment_id}", status_code=204)

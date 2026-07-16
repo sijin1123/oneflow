@@ -16,7 +16,16 @@ import pytest
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 
-from app.models import Meeting, MeetingActionItem, ProjectDocument, ProjectMember, User, WorkPackage
+from app.models import (
+    Meeting,
+    MeetingActionItem,
+    ProjectDocument,
+    ProjectDocumentComment,
+    ProjectDocumentCommentReaction,
+    ProjectMember,
+    User,
+    WorkPackage,
+)
 from tests.conftest import create_project, create_wp
 
 
@@ -45,12 +54,28 @@ async def viewer_project(app, _clean_tables):
         meeting = Meeting(project_id=project.id, title="읽기 회의")
         session.add_all([wp, doc, meeting])
         await session.flush()
+        document_comment = ProjectDocumentComment(
+            document_id=doc.id,
+            project_id=project.id,
+            author_id=owner.id,
+            body="읽기 전용 코멘트",
+        )
+        session.add(document_comment)
+        await session.flush()
+        session.add(
+            ProjectDocumentCommentReaction(
+                comment_id=document_comment.id,
+                user_id=owner.id,
+                emoji="👍",
+            )
+        )
         return {
             "project_id": project.id,
             "owner_id": owner.id,
             "dev_id": dev.id,
             "wp_id": wp.id,
             "doc_id": doc.id,
+            "document_comment_id": document_comment.id,
             "meeting_id": meeting.id,
         }
 
@@ -88,6 +113,7 @@ async def test_viewer_reads_match_member_reads(client, viewer_project):
         f"/api/v1/work-packages/{wp_id}/watchers",
         f"/api/v1/projects/{pid}/documents",
         f"/api/v1/documents/{viewer_project['doc_id']}",
+        f"/api/v1/documents/{viewer_project['doc_id']}/comments",
         f"/api/v1/projects/{pid}/meetings",
         f"/api/v1/meetings/{viewer_project['meeting_id']}",
         f"/api/v1/projects/{pid}/members",
@@ -104,6 +130,8 @@ async def test_viewer_reads_match_member_reads(client, viewer_project):
     for url in reads:
         res = await client.get(url)
         assert res.status_code == 200, f"{url}: {res.status_code} {res.text}"
+        if url == f"/api/v1/documents/{viewer_project['doc_id']}/comments":
+            assert res.json()["items"][0]["reactions"] == [{"key": "👍", "count": 1, "me": False}]
 
 
 # --------------------------------------------------------------- writes: 403
@@ -134,6 +162,16 @@ async def test_viewer_write_matrix_403(client, viewer_project):
             {"expected_version": 0, "title": "수정"},
         ),
         ("delete", f"/api/v1/documents/{viewer_project['doc_id']}", None),
+        (
+            "put",
+            f"/api/v1/document-comments/{viewer_project['document_comment_id']}/reactions/👍",
+            None,
+        ),
+        (
+            "delete",
+            f"/api/v1/document-comments/{viewer_project['document_comment_id']}/reactions/👍",
+            None,
+        ),
         ("post", f"/api/v1/projects/{pid}/meetings", {"title": "회의 시도"}),
         ("delete", f"/api/v1/meetings/{viewer_project['meeting_id']}", None),
         ("post", f"/api/v1/projects/{pid}/saved-filters", {"name": "뷰 시도"}),

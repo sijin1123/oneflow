@@ -639,6 +639,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/document-comments/{comment_id}/reactions/{emoji}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Put Document Comment Reaction */
+        put: operations["put_document_comment_reaction_api_v1_document_comments__comment_id__reactions__emoji__put"];
+        post?: never;
+        /** Delete Document Comment Reaction */
+        delete: operations["delete_document_comment_reaction_api_v1_document_comments__comment_id__reactions__emoji__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/documents": {
         parameters: {
             query?: never;
@@ -4762,6 +4780,11 @@ export interface components {
              * Format: uuid
              */
             project_id: string;
+            /**
+             * Reactions
+             * @default []
+             */
+            reactions: components["schemas"]["ReactionAgg"][];
         };
         /** DocumentConflict */
         DocumentConflict: {
@@ -10075,6 +10098,78 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_document_comment_reaction_api_v1_document_comments__comment_id__reactions__emoji__put: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                comment_id: string;
+                emoji: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReactionList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_document_comment_reaction_api_v1_document_comments__comment_id__reactions__emoji__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                comment_id: string;
+                emoji: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReactionList"];
+                };
             };
             /** @description Validation Error */
             422: {

@@ -3,6 +3,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
+from app.schemas.comment import ReactionAgg
 from app.schemas.document import MAX_BODY, DocumentRead
 
 MAX_COMMENT = 4000
@@ -34,6 +35,7 @@ class DocumentCommentRead(BaseModel):
     body: str
     anchor_id: uuid.UUID | None
     anchor_quote: str | None
+    reactions: list[ReactionAgg] = []
     created_at: datetime
 
 
