@@ -8,6 +8,7 @@ class NotificationSettingsRead(BaseModel):
     mention: bool
     due_alerts: bool
     intake: bool
+    initiatives: bool
 
 
 class NotificationSettingsUpdate(BaseModel):
@@ -19,3 +20,4 @@ class NotificationSettingsUpdate(BaseModel):
     mention: bool | None = None
     due_alerts: bool | None = None
     intake: bool | None = None
+    initiatives: bool | None = None

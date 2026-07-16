@@ -420,6 +420,12 @@ ENDPOINT_ALLOWLIST: dict[str, str] = {
     "DELETE /api/v1/initiatives/{initiative_id}/work-items/{work_package_id}": (
         "워크스페이스 이니셔티브 전략 범위 — owner-only 연결 해제"
     ),
+    "POST /api/v1/initiatives/{initiative_id}/subscription": (
+        "워크스페이스 이니셔티브 — visible 사용자 self 구독"
+    ),
+    "DELETE /api/v1/initiatives/{initiative_id}/subscription": (
+        "워크스페이스 이니셔티브 — visible 사용자 self 구독 해제"
+    ),
     "POST /api/v1/work-packages/{wp_id}/summary": (
         "읽기 전용 계산(AI 요약) — 데이터 무변경, 멤버 read 스코프(뷰어 포함)"
     ),

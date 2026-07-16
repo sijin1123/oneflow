@@ -72,6 +72,8 @@ async def test_disabled_initiatives_hide_all_surfaces_and_preserve_data(client, 
             json={"project_id": project["id"]},
         ),
         client.delete(f"/api/v1/initiatives/{initiative['id']}/projects/{project['id']}"),
+        client.post(f"/api/v1/initiatives/{initiative['id']}/subscription"),
+        client.delete(f"/api/v1/initiatives/{initiative['id']}/subscription"),
     )
     assert {response.status_code for response in blocked} == {404}
     assert {response.json()["detail"] for response in blocked} == {"not found"}

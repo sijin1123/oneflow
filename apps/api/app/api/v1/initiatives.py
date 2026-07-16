@@ -1,14 +1,20 @@
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
-from sqlalchemy import and_, func, or_, select
+from sqlalchemy import and_, delete, exists, func, or_, select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import get_current_user
 from app.core.authz import require_member
 from app.db.session import get_session
-from app.models.initiative import Initiative, InitiativeProject, InitiativeWorkPackage
+from app.models.initiative import (
+    Initiative,
+    InitiativeProject,
+    InitiativeSubscriber,
+    InitiativeWorkPackage,
+)
 from app.models.member import ProjectMember
 from app.models.project import Project
 from app.models.user import User
@@ -22,6 +28,7 @@ from app.schemas.initiative import (
     InitiativeOwnerTransfer,
     InitiativeProjectRead,
     InitiativeRead,
+    InitiativeSubscriptionRead,
     InitiativeUpdate,
     InitiativeWorkItemCandidateList,
     InitiativeWorkItemConnect,
@@ -29,6 +36,7 @@ from app.schemas.initiative import (
     InitiativeWorkItemRead,
 )
 from app.services.health import apply_health_patch
+from app.services.notification import notify_initiative_subscribers
 from app.services.workspace_features import INITIATIVES_FEATURE, feature_enabled
 
 
@@ -229,6 +237,42 @@ async def _read_one(session: AsyncSession, ini: Initiative, user: User) -> Initi
             .where(InitiativeWorkPackage.initiative_id == ini.id)
         )
     ).scalar_one()
+    currently_visible_subscription = or_(
+        InitiativeSubscriber.user_id == ini.owner_id,
+        exists(
+            select(ProjectMember.id)
+            .join(
+                InitiativeProject,
+                InitiativeProject.project_id == ProjectMember.project_id,
+            )
+            .where(
+                InitiativeProject.initiative_id == ini.id,
+                ProjectMember.user_id == InitiativeSubscriber.user_id,
+            )
+        ),
+    )
+    follower_count = (
+        await session.execute(
+            select(func.count())
+            .select_from(InitiativeSubscriber)
+            .join(User, User.id == InitiativeSubscriber.user_id)
+            .where(
+                InitiativeSubscriber.initiative_id == ini.id,
+                User.is_active.is_(True),
+                currently_visible_subscription,
+            )
+        )
+    ).scalar_one()
+    is_following = (
+        await session.execute(
+            select(func.count())
+            .select_from(InitiativeSubscriber)
+            .where(
+                InitiativeSubscriber.initiative_id == ini.id,
+                InitiativeSubscriber.user_id == user.id,
+            )
+        )
+    ).scalar_one() > 0
     done = func.count().filter(WorkPackage.status.in_(WP_CLOSED_STATUSES))
     rows = (
         await session.execute(
@@ -274,6 +318,8 @@ async def _read_one(session: AsyncSession, ini: Initiative, user: User) -> Initi
         can_claim_ownership=can_claim_ownership,
         connected_project_count=total_connected,
         connected_work_item_count=total_connected_work_items,
+        follower_count=follower_count,
+        is_following=is_following,
         projects=[
             InitiativeProjectRead(
                 project_id=pid,
@@ -363,6 +409,12 @@ async def transfer_ownership(
     if not await _lock_eligible_owner_candidate(session, initiative_id, user, body.owner_id):
         raise HTTPException(status_code=422, detail="owner is not an eligible active member")
     ini.owner_id = body.owner_id
+    await notify_initiative_subscribers(
+        session,
+        initiative_id=initiative_id,
+        actor_id=user.id,
+        kind="initiative_owner",
+    )
     await session.commit()
     await session.refresh(ini)
     return await _read_one(session, ini, user)
@@ -391,6 +443,12 @@ async def claim_ownership(
     if owner_active:
         raise HTTPException(status_code=409, detail="initiative already has an active owner")
     ini.owner_id = user.id
+    await notify_initiative_subscribers(
+        session,
+        initiative_id=initiative_id,
+        actor_id=user.id,
+        kind="initiative_owner",
+    )
     await session.commit()
     await session.refresh(ini)
     return await _read_one(session, ini, user)
@@ -541,6 +599,12 @@ async def connect_initiative_work_item(
                 work_package_id=wp.id,
             )
         )
+        await notify_initiative_subscribers(
+            session,
+            initiative_id=initiative_id,
+            actor_id=user.id,
+            kind="initiative_scope",
+        )
         await session.commit()
     except IntegrityError as exc:
         await session.rollback()
@@ -574,6 +638,12 @@ async def disconnect_initiative_work_item(
     if link is None:
         raise HTTPException(status_code=404, detail="not found")
     await session.delete(link)
+    await notify_initiative_subscribers(
+        session,
+        initiative_id=initiative_id,
+        actor_id=user.id,
+        kind="initiative_scope",
+    )
     await session.commit()
     return Response(status_code=204)
 
@@ -587,6 +657,18 @@ async def update_initiative(
 ) -> InitiativeRead:
     ini = await _require_creator(session, initiative_id, user)
     fields = body.model_dump(exclude_unset=True)
+    before = {
+        key: getattr(ini, key)
+        for key in (
+            "name",
+            "description",
+            "state",
+            "start_date",
+            "target_date",
+            "health",
+            "health_note",
+        )
+    }
     for key in ("name", "state"):
         if key in fields and fields[key] is None:
             raise HTTPException(status_code=422, detail=f"{key} cannot be null")
@@ -599,6 +681,21 @@ async def update_initiative(
     apply_health_patch(ini, fields, user.id)
     for key, value in fields.items():
         setattr(ini, key, value)
+    changed = {key for key, old in before.items() if getattr(ini, key) != old}
+    kind = None
+    if changed & {"health", "health_note"}:
+        kind = "initiative_health"
+    elif "state" in changed:
+        kind = "initiative_state"
+    elif changed:
+        kind = "initiative_updated"
+    if kind is not None:
+        await notify_initiative_subscribers(
+            session,
+            initiative_id=initiative_id,
+            actor_id=user.id,
+            kind=kind,
+        )
     await session.commit()
     await session.refresh(ini)  # onupdate updated_at is server-computed
     return await _read_one(session, ini, user)
@@ -629,6 +726,12 @@ async def connect_project(
     await require_member(session, body.project_id, user)
     try:
         session.add(InitiativeProject(initiative_id=ini.id, project_id=body.project_id))
+        await notify_initiative_subscribers(
+            session,
+            initiative_id=initiative_id,
+            actor_id=user.id,
+            kind="initiative_scope",
+        )
         await session.commit()
     except IntegrityError as exc:
         await session.rollback()
@@ -650,7 +753,71 @@ async def disconnect_project(
             InitiativeProject.project_id == project_id,
         )
     )
-    await session.commit()
     if result.rowcount == 0:
+        await session.rollback()
         raise HTTPException(status_code=404, detail="not found")
+    await notify_initiative_subscribers(
+        session,
+        initiative_id=initiative_id,
+        actor_id=user.id,
+        kind="initiative_scope",
+    )
+    await session.commit()
     return await _read_one(session, ini, user)
+
+
+async def _subscription_read(
+    session: AsyncSession,
+    initiative_id: uuid.UUID,
+    user: User,
+) -> InitiativeSubscriptionRead:
+    row = await _read_one(
+        session,
+        await _visible_initiative(session, initiative_id, user),
+        user,
+    )
+    return InitiativeSubscriptionRead(
+        is_following=row.is_following,
+        follower_count=row.follower_count,
+    )
+
+
+@router.post(
+    "/initiatives/{initiative_id}/subscription",
+    response_model=InitiativeSubscriptionRead,
+)
+async def follow_initiative(
+    initiative_id: uuid.UUID,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+) -> InitiativeSubscriptionRead:
+    await _visible_initiative(session, initiative_id, user)
+    await session.execute(
+        pg_insert(InitiativeSubscriber)
+        .values(initiative_id=initiative_id, user_id=user.id)
+        .on_conflict_do_nothing(
+            constraint="uq_initiative_subscribers_pair",
+        )
+    )
+    await session.commit()
+    return await _subscription_read(session, initiative_id, user)
+
+
+@router.delete(
+    "/initiatives/{initiative_id}/subscription",
+    response_model=InitiativeSubscriptionRead,
+)
+async def unfollow_initiative(
+    initiative_id: uuid.UUID,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+) -> InitiativeSubscriptionRead:
+    await _visible_initiative(session, initiative_id, user)
+    await session.execute(
+        delete(InitiativeSubscriber).where(
+            InitiativeSubscriber.initiative_id == initiative_id,
+            InitiativeSubscriber.user_id == user.id,
+        )
+    )
+    await session.commit()
+    return await _subscription_read(session, initiative_id, user)

@@ -111,6 +111,8 @@ class InitiativeRead(BaseModel):
     # "N개 프로젝트 (내가 볼 수 있는 M개)" when they differ.
     connected_project_count: int
     connected_work_item_count: int
+    follower_count: int
+    is_following: bool
     projects: list[InitiativeProjectRead]
     created_at: datetime
     updated_at: datetime
@@ -163,3 +165,8 @@ class InitiativeOwnerCandidateList(BaseModel):
 
 class InitiativeOwnerTransfer(BaseModel):
     owner_id: uuid.UUID
+
+
+class InitiativeSubscriptionRead(BaseModel):
+    is_following: bool
+    follower_count: int

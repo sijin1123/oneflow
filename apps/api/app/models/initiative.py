@@ -134,3 +134,28 @@ class InitiativeWorkPackage(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
+
+
+class InitiativeSubscriber(Base):
+    """A user's durable request for eligible in-app initiative updates."""
+
+    __tablename__ = "initiative_subscribers"
+    __table_args__ = (
+        UniqueConstraint(
+            "initiative_id",
+            "user_id",
+            name="uq_initiative_subscribers_pair",
+        ),
+        Index("ix_initiative_subscribers_user", "user_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    initiative_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("initiatives.id", ondelete="CASCADE"), nullable=False
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
