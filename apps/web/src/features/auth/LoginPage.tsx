@@ -283,8 +283,8 @@ function StoryPanel() {
         <ProgressCard />
         <div className="of-login-collaboration">
           <svg className="of-login-collaboration-route" viewBox="0 0 184 171" aria-hidden="true">
-            <path className="of-login-collaboration-route-base" d="M151 18C177 34 181 61 162 82C145 101 116 103 91 116C66 129 57 148 28 153" />
-            <path className="of-login-collaboration-route-flow" d="M151 18C177 34 181 61 162 82C145 101 116 103 91 116C66 129 57 148 28 153" />
+            <path className="of-login-collaboration-route-base" d="M166 18C188 42 185 68 164 86C145 102 118 101 95 114C69 129 57 151 22 153" />
+            <path className="of-login-collaboration-route-flow" d="M166 18C188 42 185 68 164 86C145 102 118 101 95 114C69 129 57 151 22 153" />
           </svg>
           <span className="is-s">S</span>
           <span className="is-m">M</span>
