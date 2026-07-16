@@ -2587,3 +2587,14 @@ Chromium typed mock fixture에서 1440x960과 390x844 viewport를 사용했다. 
 - 실제 Chromium 렌더는 `docs/screenshots/redevelopment/login-fidelity-closure-ui/`의 6개 목표 viewport, desktop/mobile, `comparison-desktop.png`, `comparison-mobile.png`에 보존했다. 기준과 현재 구현을 같은 캔버스에서 대조해 compact panel 비율, 리본 연결감, Kanban 선명도, 하단 여백과 mobile overflow 0을 확인했다.
 - 검증: typecheck PASS, lint PASS(기존 Fast Refresh 경고 4건), production build PASS(기존 chunk 경고), unit 95, component 8, focused login 3 PASS와 최종 precision 1 PASS. Full E2E는 로그인 관련 전부 포함 287 PASS + opt-in visual QA 1 skip이며 unrelated 자동화 안내 timing 1건이 병렬에서 1회 실패했지만 단일 worker repeat 3/3 PASS로 재현되지 않았다. Clean-room frontend 161/backend 45, npm/pip audit 0 vulnerabilities와 diff check가 PASS했다.
 - **이연 항목**: 이 surface 안에는 없다. 외부 IdP·SMTP의 운영 자격증명 검증은 기존 배포 경계이며 이번 시각 보정에서 기능을 축소하거나 dead control을 추가하지 않았다.
+
+---
+
+# UI-121 Intake Decision History 검증 (2026-07-16)
+
+- **UI 변경**: 판정된 Intake 항목에 실제 이력 disclosure를 추가했다. 펼칠 때만 항목별 API를 조회하고 최신순 이전/다음 상태, 보류 기한, 사유, 판정자와 시각을 표시한다. Loading skeleton, 오류/재시도, migration 이전 기록의 명시적 empty 안내, bounded-count 안내, 접기 focus 상태와 390px 모바일 줄바꿈을 제공하며 장식용 control은 없다.
+- **기능/API 반영**: migration `0093`은 성공한 판정마다 `intake_decision_history`에 이전/다음 상태, plain-text note, 보류 기한, actor와 시각을 append-only로 저장한다. 기존 조건부 triage UPDATE가 성공한 뒤 같은 transaction에 추가하므로 동시 accept 패자는 Work Package·알림·이력을 모두 rollback하고, 최종 상태 409도 이력을 남기지 않는다. 기존 API가 허용하는 반복 snooze는 각각 별도 판정 이벤트로 보존한다.
+- **권한/정보 경계**: 신규 bounded `GET /api/v1/projects/{project_id}/intake/{item_id}/history`는 owner에게 프로젝트 queue 전체, 일반 member에게 자기 제출 항목만 보여준다. 다른 제출자·다른 프로젝트 항목은 404로 숨기고 actor email은 응답하지 않는다. Actor 삭제는 FK `SET NULL`과 `이전 구성원` fallback, 항목 삭제는 cascade로 처리한다.
+- **검증**: API Ruff/format PASS, focused Intake 16 및 full API 763 PASS(기존 Alembic 경고 1건), migration `0093 -> 0092 -> 0093` PASS, OpenAPI generation/drift PASS. Web typecheck PASS, lint PASS(기존 Fast Refresh 경고 4건), production build PASS(기존 chunk 경고), unit 95, component 8, focused Intake E2E 4 PASS, 최종 full E2E 289 PASS + opt-in visual QA 1 skip. 첫 4-worker full E2E의 unrelated 병렬 timeout 5건은 단일 worker repeat 10/10 PASS 후 2-worker full E2E 전체 green으로 재검증했다.
+- Clean-room frontend 161/backend 45, npm/pip audit 0 vulnerabilities와 diff check가 PASS했다. Chromium 증적은 `docs/screenshots/redevelopment/intake-decision-history-ui/{desktop,mobile}.png`에 보존한다.
+- Migration `0093` 적용이 필요하다. 환경변수, dependency와 설정 UI 변경은 없다. Migration 이전의 단일 current audit 필드에서 알 수 없는 과거 전이를 추정해 backfill하지 않으며 UI가 현재 판정만 존재함을 명시한다. 구현 가능한 기능 이연 항목은 없다.
