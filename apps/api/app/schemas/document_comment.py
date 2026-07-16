@@ -3,7 +3,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
-from app.schemas.comment import ReactionAgg
+from app.schemas.comment import MAX_MENTIONS, ReactionAgg
 from app.schemas.document import MAX_BODY, DocumentRead
 
 MAX_COMMENT = 4000
@@ -15,6 +15,7 @@ class DocumentCommentCreate(BaseModel):
     the web renders comments as text nodes, never as HTML."""
 
     body: str
+    mentioned_user_ids: list[uuid.UUID] = []
 
     @field_validator("body")
     @classmethod
@@ -23,6 +24,14 @@ class DocumentCommentCreate(BaseModel):
         if not 1 <= len(v) <= MAX_COMMENT:
             raise ValueError(f"body must be 1-{MAX_COMMENT} chars after trim")
         return v
+
+    @field_validator("mentioned_user_ids")
+    @classmethod
+    def _mentions(cls, v: list[uuid.UUID]) -> list[uuid.UUID]:
+        deduped = list(dict.fromkeys(v))
+        if len(deduped) > MAX_MENTIONS:
+            raise ValueError(f"at most {MAX_MENTIONS} mentions per comment")
+        return deduped
 
 
 class DocumentCommentRead(BaseModel):
@@ -33,6 +42,7 @@ class DocumentCommentRead(BaseModel):
     project_id: uuid.UUID
     author_id: uuid.UUID | None
     body: str
+    mentions: list[uuid.UUID] | None
     anchor_id: uuid.UUID | None
     anchor_quote: str | None
     reactions: list[ReactionAgg] = []

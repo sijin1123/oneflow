@@ -2630,3 +2630,13 @@ Chromium typed mock fixture에서 1440x960과 390x844 viewport를 사용했다. 
 - **검증**: API Ruff/format PASS, focused Document reaction/viewer 18 및 full API 770 PASS(기존 Alembic 경고 1건), 전용 `oneflow_ui124_migration_test` DB에서 0001→0096→base→0096 PASS, OpenAPI generation/drift PASS. Web typecheck, lint, production build PASS(기존 Fast Refresh 4·chunk 경고), unit 95, component 8, focused reaction/viewer E2E 2 PASS. 첫 full E2E의 unrelated 병렬 timing 실패 2건은 단일 worker repeat 6/6 PASS로 격리했고, API 부하를 분리한 최종 full E2E는 292 PASS + opt-in visual QA 1 skip으로 완료했다.
 - Clean-room frontend 161/backend 45, pip/npm audit 0 vulnerabilities와 diff check가 PASS했다. Chromium 증적은 `docs/screenshots/redevelopment/document-comment-reactions-ui/{desktop,mobile}.png`에 보존한다. Migration `0096` 적용이 필요하고 환경변수, dependency와 설정 UI 변경은 없다.
 - **이연 항목**: Document mention notification은 Inbox에 first-class document target과 deep link를 먼저 설계해야 한다. 이번 PR에는 dead mention selector를 추가하지 않았다.
+
+---
+
+# UI-125 Document Comment Mentions 검증 (2026-07-16)
+
+- **UI 변경**: 공유 Document의 첫 인라인 코멘트, 본문 스레드 답글, 일반 코멘트에 현재 프로젝트 멤버를 선택하는 compact 구조화 mention picker를 연결했다. 저장된 accepted mention은 코멘트 아래 badge로 표시하며 viewer·private Document·archived project에는 쓰기 control을 노출하지 않는다. Inbox는 Document 제목과 `문서` target을 표시하고 `/projects/{project_id}/documents/{document_id}`로 직접 이동한다.
+- **기능/API 반영**: migration `0097`은 기존 Document comment에 nullable JSONB accepted mention set과 Notification의 first-class `document_id`/`document_mention` target을 추가한다. 일반·인라인 코멘트는 self, 중복, 비멤버, 비활성 사용자와 현재 Document를 볼 수 없는 대상을 제거하고, accepted set 저장과 preference-aware in-app notification fan-out을 코멘트 write와 같은 transaction에서 수행한다. `mention` 개인 설정은 delivery만 억제하며 accepted set은 그대로 보존된다.
+- **권한/정보 경계**: Inbox list와 unread count는 조회 시점의 현재 프로젝트 membership과 Document visibility를 다시 적용한다. 멤버십 상실 또는 Document 삭제 뒤에는 알림이 보이지 않고, Document 삭제는 target notification을 cascade한다. Private Document는 작성자만 볼 수 있으므로 actor exclusion 뒤 다른 수신자를 만들지 않는다. 외부 email delivery는 이 in-app surface 밖에 둔다.
+- **검증**: API Ruff/format PASS, focused Document mention/reaction/viewer 25 및 full API 772 PASS(기존 Alembic 경고 1건), 전용 `oneflow_ui125_migration_test` DB에서 0001→0097→base→0097 PASS, OpenAPI generation/drift PASS. Web typecheck PASS, lint PASS(기존 Fast Refresh 경고 4건), production build PASS(기존 chunk 경고), unit 96, component 8, focused Document E2E 3개 경로와 reply repeat 4 PASS, 최종 full E2E 293 PASS + opt-in visual QA 1 skip.
+- Clean-room frontend 161/backend 45, npm/uv audit 0 vulnerabilities와 diff check가 PASS했다. Chromium 증적은 `docs/screenshots/redevelopment/document-mentions-ui/{desktop,mobile}.png`에 보존한다. Migration `0097` 적용이 필요하며 환경변수, dependency와 신규 설정 UI 변경은 없다.

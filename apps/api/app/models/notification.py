@@ -15,6 +15,7 @@ NOTIFICATION_KINDS = (
     "watch_comment",
     "watch_assigned",
     "mention",
+    "document_mention",
     "due_soon",
     "overdue",
     "intake_accepted",
@@ -37,15 +38,19 @@ class Notification(Base):
     __table_args__ = (
         CheckConstraint(
             "kind IN ('assigned', 'watch_status', 'watch_comment', 'watch_assigned', 'mention',"
-            " 'due_soon', 'overdue', 'intake_accepted', 'intake_declined',"
+            " 'document_mention', 'due_soon', 'overdue', 'intake_accepted', 'intake_declined',"
             " 'initiative_updated', 'initiative_state', 'initiative_health',"
             " 'initiative_owner', 'initiative_scope')",
             name="notification_kind_allowed",
         ),
         CheckConstraint(
             "(kind LIKE 'initiative_%' AND initiative_id IS NOT NULL AND project_id IS NULL"
-            " AND work_package_id IS NULL AND intake_item_id IS NULL) OR"
-            " (kind NOT LIKE 'initiative_%' AND initiative_id IS NULL AND project_id IS NOT NULL)",
+            " AND work_package_id IS NULL AND intake_item_id IS NULL AND document_id IS NULL) OR"
+            " (kind = 'document_mention' AND initiative_id IS NULL AND project_id IS NOT NULL"
+            " AND work_package_id IS NULL AND intake_item_id IS NULL"
+            " AND document_id IS NOT NULL) OR"
+            " (kind NOT LIKE 'initiative_%' AND kind <> 'document_mention'"
+            " AND initiative_id IS NULL AND project_id IS NOT NULL AND document_id IS NULL)",
             name="notification_target_shape",
         ),
         # Feed query: a user's notifications newest-first.
@@ -77,6 +82,9 @@ class Notification(Base):
     )
     initiative_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("initiatives.id", ondelete="CASCADE"), nullable=True
+    )
+    document_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("project_documents.id", ondelete="CASCADE"), nullable=True
     )
     read: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     created_at: Mapped[datetime] = mapped_column(

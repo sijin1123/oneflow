@@ -4742,6 +4742,11 @@ export interface components {
         DocumentCommentCreate: {
             /** Body */
             body: string;
+            /**
+             * Mentioned User Ids
+             * @default []
+             */
+            mentioned_user_ids: string[];
         };
         /** DocumentCommentList */
         DocumentCommentList: {
@@ -4775,6 +4780,8 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            /** Mentions */
+            mentions: string[] | null;
             /**
              * Project Id
              * Format: uuid
@@ -5208,6 +5215,11 @@ export interface components {
             document_body?: string | null;
             /** Expected Document Version */
             expected_document_version?: number | null;
+            /**
+             * Mentioned User Ids
+             * @default []
+             */
+            mentioned_user_ids: string[];
         };
         /** InlineDocumentCommentResult */
         InlineDocumentCommentResult: {
@@ -6026,6 +6038,10 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+            /** Document Id */
+            document_id?: string | null;
+            /** Document Title */
+            document_title?: string | null;
             /**
              * Id
              * Format: uuid

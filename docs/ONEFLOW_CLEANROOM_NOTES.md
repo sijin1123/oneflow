@@ -377,3 +377,9 @@ Plane source, API, database schema, package, asset, CSS, DOM hierarchy, exact di
 `docs/plane-poc-reverse-spec/`의 document collaboration 관찰에서 사용한 입력은 코멘트 행에 compact reaction aggregate와 빠른 피드백을 배치하고, 읽기 전용 사용자는 기존 집계만 확인한다는 제품 행동뿐이다. OneFlow 구현은 기존 자체 Work Item free-emoji grammar의 제품 계약을 재사용하되 Document comment 전용 관계, 문서 visibility와 writer/archive gate, React Query cache와 OneFlow token/lucide component로 독립 설계했다.
 
 Plane source, API, database schema, package, asset, CSS, DOM hierarchy, exact dimensions/colors, wording, reaction implementation, icons 또는 branding은 복사하지 않았다. OneFlow 고유 migration `0096`, comment/user cascade, idempotent writer toggle, member-scoped deterministic aggregate와 inline/general 공통 reaction bar를 추가했다. 신규 환경변수, dependency 또는 설정 UI 변경은 없다. Document mention notification은 first-class Inbox document target이 필요한 별도 기능이며 이번 surface에 장식용 control로 추가하지 않았다. — attested-independent-derivation
+
+## UI-125 Document Comment Mentions
+
+`docs/plane-poc-reverse-spec/`의 document collaboration 및 Inbox 관찰에서 사용한 입력은 코멘트 작성 중 현재 협업자를 구조화해 지목하고, 알림이 일반 프로젝트 항목이 아니라 실제 Document로 돌아와야 한다는 제품 행동뿐이다. OneFlow 구현은 기존 자체 Project Document visibility, project membership, personal mention preference, notification inbox와 React Query surface를 사용해 독립 설계했다.
+
+Plane source, API, database schema, package, asset, CSS, DOM hierarchy, exact dimensions/colors, wording, mention picker, notification fan-out, target model, icons 또는 branding은 복사하지 않았다. OneFlow 고유 migration `0097`, accepted-member persistence, same-transaction preference-aware delivery, current visibility filtering, Document title/target와 direct deep link를 추가했다. 신규 환경변수, dependency 또는 설정 UI 변경은 없고 외부 email transport는 별도 인프라 경계다. — attested-independent-derivation

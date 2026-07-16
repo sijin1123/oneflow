@@ -45,3 +45,20 @@ test('malformed project notifications do not invent a project route', () => {
     null,
   )
 })
+
+test('document mention notifications render and route to the exact document', () => {
+  const documentNotification: Notification = {
+    ...initiativeNotification,
+    kind: 'document_mention',
+    project_id: 'project / 1',
+    initiative_id: null,
+    document_id: 'document / 1',
+    document_title: '제품 결정 기록',
+  }
+  assert.equal(getNotificationKindLabel(documentNotification), '멘션')
+  assert.match(getNotificationMessage(documentNotification), /'제품 결정 기록' 문서 코멘트/)
+  assert.equal(
+    getNotificationTargetPath(documentNotification),
+    '/projects/project%20%2F%201/documents/document%20%2F%201',
+  )
+})

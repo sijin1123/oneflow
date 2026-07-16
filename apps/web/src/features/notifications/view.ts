@@ -4,11 +4,14 @@ export function getNotificationMessage(n: Notification): string {
   const who = n.actor_name ?? '누군가'
   const subject = n.work_package_subject ?? '삭제된 작업'
   const initiative = n.initiative_name ?? '삭제된 이니셔티브'
+  const document = n.document_title ?? '삭제된 문서'
   if (n.kind === 'assigned') return `${who}님이 '${subject}' 작업에 회원님을 배정했습니다.`
   if (n.kind === 'watch_status') return `${who}님이 워치 중인 '${subject}' 상태를 변경했습니다.`
   if (n.kind === 'watch_comment') return `${who}님이 워치 중인 '${subject}'에 댓글을 남겼습니다.`
   if (n.kind === 'watch_assigned') return `${who}님이 워치 중인 '${subject}' 담당자를 변경했습니다.`
   if (n.kind === 'mention') return `${who}님이 '${subject}' 댓글에서 회원님을 멘션했습니다.`
+  if (n.kind === 'document_mention')
+    return `${who}님이 '${document}' 문서 코멘트에서 회원님을 멘션했습니다.`
   if (n.kind === 'due_soon') return `'${subject}' 작업 기한이 내일입니다.`
   if (n.kind === 'overdue') return `'${subject}' 작업 기한이 지났습니다.`
   if (n.kind === 'intake_accepted') return `접수 항목이 '${subject}' 작업으로 전환되었습니다.`
@@ -24,7 +27,7 @@ export function getNotificationMessage(n: Notification): string {
 export function getNotificationKindLabel(n: Notification): string {
   if (n.kind === 'assigned') return '배정'
   if (n.kind.startsWith('watch_')) return '워치'
-  if (n.kind === 'mention') return '멘션'
+  if (n.kind === 'mention' || n.kind === 'document_mention') return '멘션'
   if (n.kind === 'due_soon' || n.kind === 'overdue') return '기한'
   if (n.kind.startsWith('intake_')) return '인테이크'
   if (n.kind.startsWith('initiative_')) return '이니셔티브'
@@ -34,6 +37,10 @@ export function getNotificationKindLabel(n: Notification): string {
 export function getNotificationTargetPath(n: Notification): string | null {
   if (n.initiative_id) {
     return `/initiatives?initiative=${encodeURIComponent(n.initiative_id)}`
+  }
+  if (n.document_id) {
+    if (!n.project_id) return null
+    return `/projects/${encodeURIComponent(n.project_id)}/documents/${encodeURIComponent(n.document_id)}`
   }
   if (n.work_package_id) {
     if (!n.project_id) return null

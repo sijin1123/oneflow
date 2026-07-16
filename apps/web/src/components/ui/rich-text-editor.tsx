@@ -36,12 +36,14 @@ type Props = {
   activeCommentAnchorId?: string | null
   onCommentAnchorActivate?: (anchorId: string) => void
   onCreateInlineComment?: (input: InlineCommentRequest) => Promise<void>
+  mentionOptions?: Array<{ id: string; label: string }>
 }
 
 export type InlineCommentRequest = {
   anchorId: string
   anchorQuote: string
   commentBody: string
+  mentionedUserIds: string[]
   documentBody: string
 }
 
@@ -84,6 +86,7 @@ export function RichTextEditor({
   activeCommentAnchorId = null,
   onCommentAnchorActivate,
   onCreateInlineComment,
+  mentionOptions = [],
 }: Props) {
   const fileRef = useRef<HTMLInputElement>(null)
   const activeAnchorIdsRef = useRef(new Set<string>())
@@ -91,6 +94,8 @@ export function RichTextEditor({
   const [selectedRange, setSelectedRange] = useState<SelectedRange | null>(null)
   const [commentRange, setCommentRange] = useState<SelectedRange | null>(null)
   const [commentBody, setCommentBody] = useState('')
+  const [commentMentioned, setCommentMentioned] = useState<string[]>([])
+  const commentMentionedRef = useRef<string[]>([])
   const [commentPending, setCommentPending] = useState(false)
   const [commentError, setCommentError] = useState<string | null>(null)
 
@@ -195,6 +200,8 @@ export function RichTextEditor({
     if (!selectedRange || !onCreateInlineComment || commentPending) return
     setCommentRange(selectedRange)
     setCommentBody('')
+    commentMentionedRef.current = []
+    setCommentMentioned([])
     setCommentError(null)
     editor.setEditable(false)
   }
@@ -204,6 +211,8 @@ export function RichTextEditor({
     const restore = commentRange
     setCommentRange(null)
     setCommentBody('')
+    commentMentionedRef.current = []
+    setCommentMentioned([])
     setCommentError(null)
     editor.setEditable(editable)
     if (restore) {
@@ -229,11 +238,14 @@ export function RichTextEditor({
         anchorId,
         anchorQuote: commentRange.quote,
         commentBody: body,
+        mentionedUserIds: commentMentionedRef.current,
         documentBody,
       })
       onSave(documentBody)
       setCommentRange(null)
       setCommentBody('')
+      commentMentionedRef.current = []
+      setCommentMentioned([])
       setSelectedRange(null)
     } catch {
       editor.commands.setContent(previousBody, false)
@@ -374,6 +386,39 @@ export function RichTextEditor({
             autoFocus
             className="min-h-16 w-full resize-y rounded-of border border-of-border bg-of-surface px-2 py-1.5 text-xs outline-none focus:border-of-focus"
           />
+          {mentionOptions.length > 0 ? (
+            <fieldset className="flex flex-wrap items-center gap-1.5">
+              <legend className="sr-only">인라인 코멘트에서 멘션할 멤버</legend>
+              <span className="text-[11px] text-of-muted">멘션</span>
+              {mentionOptions.map((option) => (
+                <label
+                  key={option.id}
+                  className={cn(
+                    'flex items-center gap-1 rounded-of border border-of-border bg-of-surface px-2 py-1 text-[11px]',
+                    commentMentioned.includes(option.id)
+                      ? 'border-of-accent text-of-accent'
+                      : '',
+                  )}
+                >
+                  <input
+                    type="checkbox"
+                    checked={commentMentioned.includes(option.id)}
+                    disabled={commentPending}
+                    onChange={() => {
+                      const next = commentMentioned.includes(option.id)
+                        ? commentMentioned.filter((id) => id !== option.id)
+                        : [...commentMentioned, option.id]
+                      commentMentionedRef.current = next
+                      setCommentMentioned(next)
+                    }}
+                    aria-label={`${option.label} 인라인 멘션`}
+                    className="h-3 w-3 accent-of-accent"
+                  />
+                  {option.label}
+                </label>
+              ))}
+            </fieldset>
+          ) : null}
           <div className="flex min-w-0 items-center justify-between gap-2">
             <span className="text-[11px] text-of-muted">⌘/Ctrl + Enter</span>
             <button
