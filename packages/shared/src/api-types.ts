@@ -1917,18 +1917,13 @@ export interface paths {
         };
         /**
          * Cycle Burndown
-         * @description Current-scope burndown-lite (Pass 21, v21.1) — derived from the status
-         *     activity history, no snapshots. Per WP the timeline is exact: before the
-         *     first status activity the status was that activity's old_value; after each
-         *     activity it is its new_value; with no activities it never changed. A day's
-         *     `remaining` counts scoped WPs created by that day whose end-of-day status
-         *     is outside the FIXED closed vocabulary (WP_CLOSED_STATUSES — label/enable
-         *     config never rewrites history, R1-④). All dates are UTC date-only; the
-         *     series stops at min(end_date, today) — the future is not fabricated.
-         *     Member read; archived projects stay readable (read-open); a foreign or
-         *     missing cycle is 404 (existence hiding). The two reads are sequential —
-         *     a mid-flight status change converges to the current state next fetch
-         *     (read-only visualization, R1-②).
+         * @description Stable-ID scope, remaining and delivered series.
+         *
+         *     New cycles are exact from creation. Cycles that predate migration expose
+         *     an explicit coverage boundary; cycles completed before that boundary keep
+         *     the old current-assignment visualization under a truthful legacy mode.
+         *     Dates are UTC date-only and stop at min(end_date, today). Member read;
+         *     archived projects stay readable and foreign cycles remain hidden.
          */
         get: operations["cycle_burndown_api_v1_projects__project_id__cycles__cycle_id__burndown_get"];
         put?: never;
@@ -4067,22 +4062,41 @@ export interface components {
              * Format: date
              */
             date: string;
+            /** Delivered */
+            delivered: number;
             /** Remaining */
             remaining: number;
+            /** Scope */
+            scope: number;
         };
         /**
          * BurndownRead
-         * @description Current-scope burndown (v21.1 R1-①): the day series covers WPs assigned
-         *     to the cycle NOW — items moved out mid-cycle are absent (documented; a
-         *     cycle-assignment history rebuild is a follow-up).
+         * @description Cycle scope analytics with an explicit historical coverage contract.
          */
         BurndownRead: {
+            /** Added Count */
+            added_count: number;
+            /** Coverage Complete */
+            coverage_complete: boolean;
+            /** Coverage Start */
+            coverage_start: string | null;
+            /** Current Scope */
+            current_scope: number;
             /** Days */
             days: components["schemas"]["BurndownDay"][];
+            /** Delivered */
+            delivered: number;
+            /** Removed Count */
+            removed_count: number;
             /** Scope */
             scope: string;
             /** Total Scope */
             total_scope: number;
+            /**
+             * Tracking Started At
+             * Format: date-time
+             */
+            tracking_started_at: string;
         };
         /** CommentCreate */
         CommentCreate: {

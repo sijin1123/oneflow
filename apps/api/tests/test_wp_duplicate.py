@@ -6,9 +6,13 @@ only while still a member (R1-⑤); custom values re-run the write fan-in —
 inactive/unbound/invalid values are counted in skipped_custom_values, not
 smuggled (R1-④); duplicating a disabled type is new usage → 422."""
 
+import uuid
+
 import pytest
 from sqlalchemy import delete as sa_delete
+from sqlalchemy import select
 
+from app.models.cycle import CycleScopeEvent
 from app.models.member import ProjectMember
 from tests.conftest import create_project, create_wp
 
@@ -22,9 +26,15 @@ async def project(client):
     return await create_project(client, key="DUP", name="복제 프로젝트")
 
 
-async def test_duplicate_copies_core_fields_and_resets_status(client, project):
+async def test_duplicate_copies_core_fields_and_resets_status(client, app, project):
     pid = project["id"]
     me = (await client.get("/api/v1/me")).json()["id"]
+    cycle = (
+        await client.post(
+            f"/api/v1/projects/{pid}/cycles",
+            json={"name": "복제 사이클", "start_date": "2026-07-01", "end_date": "2026-07-31"},
+        )
+    ).json()
     parent = await create_wp(client, pid, subject="부모")
     src = await create_wp(
         client,
@@ -38,6 +48,7 @@ async def test_duplicate_copies_core_fields_and_resets_status(client, project):
         start_date="2026-07-01",
         due_date="2026-07-20",
         estimated_hours=8,
+        cycle_id=cycle["id"],
     )
 
     res = await dup(client, src["id"])
@@ -51,12 +62,28 @@ async def test_duplicate_copies_core_fields_and_resets_status(client, project):
     assert copy["assignee_id"] == me
     assert (copy["start_date"], copy["due_date"]) == ("2026-07-01", "2026-07-20")
     assert copy["created_by"] == me
+    assert copy["cycle_id"] == cycle["id"]
     assert copy["version"] == 0
     assert body["skipped_custom_values"] == 0
 
     # Relations/comments never copy (none exist here — the list stays empty).
     rel = (await client.get(f"/api/v1/work-packages/{copy['id']}/relations")).json()
     assert rel["total"] == 0
+    async with app.state.sessionmaker() as session:
+        events = (
+            (
+                await session.execute(
+                    select(CycleScopeEvent).where(
+                        CycleScopeEvent.work_package_id == uuid.UUID(copy["id"])
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assert [(event.cycle_id, event.event_type) for event in events] == [
+            (uuid.UUID(cycle["id"]), "added")
+        ]
 
 
 async def test_duplicate_custom_values_filtered_by_current_rules(client, project):

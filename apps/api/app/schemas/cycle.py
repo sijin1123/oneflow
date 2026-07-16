@@ -67,14 +67,21 @@ class CycleList(BaseModel):
 
 class BurndownDay(BaseModel):
     date: date
+    scope: int
     remaining: int
+    delivered: int
 
 
 class BurndownRead(BaseModel):
-    """Current-scope burndown (v21.1 R1-①): the day series covers WPs assigned
-    to the cycle NOW — items moved out mid-cycle are absent (documented; a
-    cycle-assignment history rebuild is a follow-up)."""
+    """Cycle scope analytics with an explicit historical coverage contract."""
 
-    scope: str  # always "current_assignment"
+    scope: str  # tracked_assignment | legacy_current_assignment
+    tracking_started_at: datetime
+    coverage_start: date | None
+    coverage_complete: bool
     total_scope: int
+    current_scope: int
+    added_count: int
+    removed_count: int
+    delivered: int
     days: list[BurndownDay]
