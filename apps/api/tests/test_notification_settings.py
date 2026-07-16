@@ -6,6 +6,7 @@ watch_status/watch_assigned, `commented` gates watch_comment."""
 
 import pytest
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 
 from app.models import Notification, UserNotificationSettings, WpWatcher
 from tests.conftest import create_project, create_wp
@@ -40,6 +41,7 @@ async def test_defaults_and_roundtrip(client):
         "commented": True,
         "mention": True,
         "due_alerts": True,
+        "overdue_reminder_days": 0,
         "intake": True,
         "initiatives": True,
     }
@@ -52,6 +54,7 @@ async def test_defaults_and_roundtrip(client):
         "commented": True,
         "mention": True,
         "due_alerts": True,
+        "overdue_reminder_days": 0,
         "intake": True,
         "initiatives": True,
     }
@@ -64,9 +67,36 @@ async def test_defaults_and_roundtrip(client):
         "commented": False,
         "mention": True,
         "due_alerts": True,
+        "overdue_reminder_days": 0,
         "intake": True,
         "initiatives": True,
     }
+
+    res = await client.put(
+        "/api/v1/me/notification-settings",
+        json={"overdue_reminder_days": 7},
+    )
+    assert res.status_code == 200
+    assert res.json()["overdue_reminder_days"] == 7
+
+
+async def test_overdue_reminder_cadence_is_closed_in_api_and_database(client, app):
+    res = await client.put(
+        "/api/v1/me/notification-settings",
+        json={"overdue_reminder_days": 5},
+    )
+    assert res.status_code == 422
+
+    me = (await client.get("/api/v1/me")).json()
+    async with app.state.sessionmaker() as session:
+        session.add(
+            UserNotificationSettings(
+                user_id=me["id"],
+                overdue_reminder_days=5,
+            )
+        )
+        with pytest.raises(IntegrityError):
+            await session.flush()
 
 
 async def test_assigned_off_suppresses_new_assignment_notifications(client, app, member_project):

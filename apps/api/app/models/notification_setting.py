@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, func
+from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKey, SmallInteger, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -16,9 +16,17 @@ class UserNotificationSettings(Base):
     already-created ones are never retro-hidden and unread counts keep their
     existing definition. Toggle→kind mapping: `assigned` → 'assigned',
     `watched` → 'watch_status'+'watch_assigned', `commented` → 'watch_comment',
-    `mention` → 'mention'+'document_mention'."""
+    `mention` → 'mention'+'document_mention'. `overdue_reminder_days` is a
+    closed cadence: 0 means the first overdue alert only; 3/7/14 repeat from
+    that first-overdue day."""
 
     __tablename__ = "user_notification_settings"
+    __table_args__ = (
+        CheckConstraint(
+            "overdue_reminder_days IN (0, 3, 7, 14)",
+            name="overdue_reminder_days_allowed",
+        ),
+    )
 
     user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
@@ -31,6 +39,12 @@ class UserNotificationSettings(Base):
     mention: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     # Gates due_soon + overdue creation (Pass 40) — creation-only, like the rest.
     due_alerts: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    overdue_reminder_days: Mapped[int] = mapped_column(
+        SmallInteger,
+        nullable=False,
+        default=0,
+        server_default="0",
+    )
     # Gates intake_accepted/intake_declined creation (Pass 49).
     intake: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     # Gates all initiative_* creation; durable subscriptions stay unchanged.

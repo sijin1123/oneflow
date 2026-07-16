@@ -1122,7 +1122,8 @@ export interface paths {
         };
         /**
          * Get Notification Settings
-         * @description The caller's own toggles; an absent row means all defaults (True).
+         * @description The caller's own toggles; an absent row means boolean defaults are True
+         *     and overdue reminders fire once.
          *     Preferences apply at notification CREATION time only — existing inbox rows
          *     and unread counts are never retro-affected.
          */
@@ -6078,6 +6079,11 @@ export interface components {
             intake: boolean;
             /** Mention */
             mention: boolean;
+            /**
+             * Overdue Reminder Days
+             * @enum {integer}
+             */
+            overdue_reminder_days: 0 | 3 | 7 | 14;
             /** Watched */
             watched: boolean;
         };
@@ -6098,6 +6104,8 @@ export interface components {
             intake?: boolean | null;
             /** Mention */
             mention?: boolean | null;
+            /** Overdue Reminder Days */
+            overdue_reminder_days?: (0 | 3 | 7 | 14) | null;
             /** Watched */
             watched?: boolean | null;
         };

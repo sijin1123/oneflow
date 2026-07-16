@@ -1,10 +1,11 @@
 """Due-date alert generator (expansion PLAN Pass 40 PR-BF).
 
-Contract (v40.1): UTC boundaries; due_soon = due tomorrow, overdue = due
-YESTERDAY only (no backfill — first-run flood impossible); recipient =
-assignee while a current ACTIVE member with due_alerts on (absent row =
-true); single INSERT..SELECT with same-day NOT EXISTS dedupe; concurrent
-runs no-op via try-lock; actor is null (system event)."""
+Contract (UI-126): UTC boundaries; due_soon = due tomorrow. Every user gets
+the first overdue alert the day after a task slips. The default cadence 0
+stops there (no deployment backfill), while explicit 3/7/14-day cadences
+repeat from that first-overdue day. Recipient = assignee while a current
+ACTIVE member with due_alerts on (absent row = true); same-day NOT EXISTS
+dedupe; concurrent runs no-op via try-lock; actor is null (system event)."""
 
 from datetime import UTC, datetime, timedelta
 
@@ -81,6 +82,7 @@ async def test_selection_dedupe_and_shape(client, app, project):
 async def test_gates_membership_activity_and_toggle(client, app, project):
     pid = project["id"]
     await assign_me(client, pid, "토글 오프 대상", 1)
+    await assign_me(client, pid, "반복 토글 오프 대상", -4)
 
     # due_alerts=false gates creation (explicit row).
     assert (
@@ -114,3 +116,33 @@ async def test_archived_projects_are_skipped(client, app, project):
     await assign_me(client, pid, "보관 대상", 1)
     assert (await client.post(f"/api/v1/projects/{pid}/archive")).status_code == 200
     assert await run_alerts(app) == {"due_soon": 0, "overdue": 0}
+
+
+async def test_explicit_overdue_cadence_repeats_only_on_exact_days(client, app, project):
+    pid = project["id"]
+    expected = {
+        "첫 초과": await assign_me(client, pid, "첫 초과", -1),
+        "3일 주기 첫 반복": await assign_me(client, pid, "3일 주기 첫 반복", -4),
+        "3일 주기 둘째 반복": await assign_me(client, pid, "3일 주기 둘째 반복", -7),
+    }
+    for subject, offset in (
+        ("이틀 초과 제외", -2),
+        ("사흘 초과 제외", -3),
+        ("닷새 초과 제외", -5),
+    ):
+        await assign_me(client, pid, subject, offset)
+
+    res = await client.put(
+        "/api/v1/me/notification-settings",
+        json={"overdue_reminder_days": 3},
+    )
+    assert res.status_code == 200
+    assert res.json()["overdue_reminder_days"] == 3
+
+    assert await run_alerts(app, create=False) == {"due_soon": 0, "overdue": 3}
+    assert await run_alerts(app) == {"due_soon": 0, "overdue": 3}
+    assert await run_alerts(app) == {"due_soon": 0, "overdue": 0}
+
+    inbox = (await client.get("/api/v1/me/notifications")).json()
+    overdue_ids = {item["work_package_id"] for item in inbox["items"] if item["kind"] == "overdue"}
+    assert overdue_ids == {wp["id"] for wp in expected.values()}

@@ -420,7 +420,8 @@ async def get_notification_settings(
     session: AsyncSession = Depends(get_session),
     user: User = Depends(get_current_user),
 ) -> NotificationSettingsRead:
-    """The caller's own toggles; an absent row means all defaults (True).
+    """The caller's own toggles; an absent row means boolean defaults are True
+    and overdue reminders fire once.
     Preferences apply at notification CREATION time only — existing inbox rows
     and unread counts are never retro-affected."""
     row = (
@@ -435,6 +436,7 @@ async def get_notification_settings(
             commented=True,
             mention=True,
             due_alerts=True,
+            overdue_reminder_days=0,
             intake=True,
             initiatives=True,
         )
@@ -444,6 +446,7 @@ async def get_notification_settings(
         commented=row.commented,
         mention=row.mention,
         due_alerts=row.due_alerts,
+        overdue_reminder_days=row.overdue_reminder_days,
         intake=row.intake,
         initiatives=row.initiatives,
     )
@@ -473,6 +476,7 @@ async def update_notification_settings(
         commented=row.commented,
         mention=row.mention,
         due_alerts=row.due_alerts,
+        overdue_reminder_days=row.overdue_reminder_days,
         intake=row.intake,
         initiatives=row.initiatives,
     )
