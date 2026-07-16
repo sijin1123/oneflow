@@ -2577,3 +2577,13 @@ Chromium typed mock fixture에서 1440x960과 390x844 viewport를 사용했다. 
 - 독립 reviewer가 발견한 inbox 조회 시 현재 visibility 재검증 누락, E2E의 initiative 이동 뒤 inbox control 사용, mixed project/initiative target 제약 회귀 검증 누락을 수정했다. Inbox list와 unread count에 동일한 owner-or-connected-project membership 필터를 적용하고, E2E lifecycle을 실제 화면 순서로 고쳤으며 잘못된 mixed target row가 DB constraint로 거부됨을 고정했다.
 - 검증: API Ruff/format PASS, focused API 28 및 clean full API 758 PASS(기존 Alembic 경고 1건), migration `0092 -> 0091 -> 0092` PASS, OpenAPI shared types drift PASS, web unit 95·component 8, typecheck PASS, lint PASS(기존 Fast Refresh 경고 4건), production build PASS(기존 chunk 경고), focused E2E 4 및 clean full E2E 288 PASS + opt-in visual QA 1 skip, clean-room frontend 161/backend 45, npm/pip audit 0 vulnerabilities와 diff check PASS.
 - Chromium 증적은 `docs/screenshots/redevelopment/initiative-notifications-ui/{desktop,mobile}.png`에 보존한다. Migration `0092` 적용이 필요하고 환경변수·dependency 변경은 없다. 설정 UI 변경은 개인 이니셔티브 알림 토글이며 재기동은 필요 없다. **이연 항목**은 외부 SMTP/email delivery로, 현재 in-app surface에는 dead mail control을 추가하지 않았다.
+
+---
+
+# UI-110F Login Fidelity Closure 검증 (2026-07-16)
+
+- **UI 변경**: 사용자 재검수 기준에 맞춰 로그인 좌측 하단의 과밀한 색면을 밝은 수채화 여백으로 정리하고, 공용 OneFlow 마크를 한 몸체의 청록-파랑-보라 리본으로 다시 그렸다. Kanban은 변형·필터·부유 애니메이션을 제거하고 글자 렌더링을 고정했으며, S-M 협업 경로는 긴 대시와 짧은 박자가 이어지는 곡선 흐름으로 조정했다.
+- **기능/API 반영**: 기존 dev login, OIDC provider, assistance request, safe-next, identity cache purge, keyboard/focus, responsive와 reduced-motion 계약을 그대로 보존했다. 협업 경로는 실제 CSS animation 시간이 전진하는지 E2E에서 확인하고, reduced-motion에서는 animation이 제거되는지 함께 고정했다. 신규 API, DB, migration, 권한, 환경변수, dependency와 설정 UI 변경은 없다.
+- 실제 Chromium 렌더는 `docs/screenshots/redevelopment/login-fidelity-closure-ui/`의 6개 목표 viewport, desktop/mobile, `comparison-desktop.png`, `comparison-mobile.png`에 보존했다. 기준과 현재 구현을 같은 캔버스에서 대조해 compact panel 비율, 리본 연결감, Kanban 선명도, 하단 여백과 mobile overflow 0을 확인했다.
+- 검증: typecheck PASS, lint PASS(기존 Fast Refresh 경고 4건), production build PASS(기존 chunk 경고), unit 95, component 8, focused login 3 PASS와 최종 precision 1 PASS. Full E2E는 로그인 관련 전부 포함 287 PASS + opt-in visual QA 1 skip이며 unrelated 자동화 안내 timing 1건이 병렬에서 1회 실패했지만 단일 worker repeat 3/3 PASS로 재현되지 않았다. Clean-room frontend 161/backend 45, npm/pip audit 0 vulnerabilities와 diff check가 PASS했다.
+- **이연 항목**: 이 surface 안에는 없다. 외부 IdP·SMTP의 운영 자격증명 검증은 기존 배포 경계이며 이번 시각 보정에서 기능을 축소하거나 dead control을 추가하지 않았다.
