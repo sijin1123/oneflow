@@ -11125,6 +11125,7 @@ test('뷰어 문서 에디터는 제목·본문이 읽기 전용이고 저장·�
             body: '원래 문구에 남긴 메모',
             anchor_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
             anchor_quote: '원래 문구',
+            reactions: [{ key: '👍', count: 2, me: false }],
             created_at: '2026-07-03T00:00:00Z',
           },
         ],
@@ -11148,6 +11149,8 @@ test('뷰어 문서 에디터는 제목·본문이 읽기 전용이고 저장·�
   await expect(page.getByLabel('새 코멘트')).toHaveCount(0)
   await expect(page.getByText('본문 변경됨')).toBeVisible()
   await expect(page.locator('.of-document-comment-anchor')).toHaveCount(0)
+  await expect(page.getByLabel('👍 리액션 2개')).toBeVisible()
+  await expect(page.getByRole('button', { name: '👍 리액션' })).toHaveCount(0)
 })
 
 test('뷰어 회의 상세는 저장·후속·삭제가 없고 안건이 비편집이다', async ({ page }) => {
@@ -11544,6 +11547,154 @@ test('인라인 코멘트 stale 충돌은 임시 앵커를 되돌리고 모바�
     () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
   )
   expect(overflow).toBeLessThanOrEqual(1)
+})
+
+test('문서 인라인·일반 코멘트 리액션은 quick/custom toggle과 읽기 상태를 반영한다', async ({
+  page,
+}) => {
+  await mockApi(page)
+  const anchorId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
+  const doc = {
+    id: 'd1',
+    project_id: project.id,
+    parent_id: null,
+    title: '리액션 검토 문서',
+    body: `<p><span data-comment-anchor="${anchorId}">검토 문구</span>입니다.</p>`,
+    author_id: 'me-1',
+    visibility: 'shared',
+    archived_at: null,
+    archived_by_user_id: null,
+    archived_by_name: null,
+    version: 1,
+    created_at: '2026-07-01T00:00:00Z',
+    updated_at: '2026-07-03T00:00:00Z',
+  }
+  const comments = [
+    {
+      id: 'inline-reaction',
+      document_id: 'd1',
+      project_id: project.id,
+      author_id: 'me-1',
+      body: '인라인 검토',
+      anchor_id: anchorId,
+      anchor_quote: '검토 문구',
+      reactions: [{ key: '👍', count: 2, me: false }],
+      created_at: '2026-07-03T00:00:00Z',
+    },
+    {
+      id: 'general-reaction',
+      document_id: 'd1',
+      project_id: project.id,
+      author_id: 'me-1',
+      body: '일반 검토',
+      anchor_id: null,
+      anchor_quote: null,
+      reactions: [],
+      created_at: '2026-07-04T00:00:00Z',
+    },
+  ]
+  await page.route(`**/api/v1/projects/${project.id}/documents**`, (route) =>
+    route.fulfill({ json: { items: [doc], total: 1 } }),
+  )
+  await page.route('**/api/v1/documents/d1', (route) => route.fulfill({ json: doc }))
+  await page.route('**/api/v1/documents/d1/comments', (route) =>
+    route.fulfill({ json: { items: comments, total: comments.length } }),
+  )
+  await page.route('**/api/v1/documents/d1/work-package-links', (route) =>
+    route.fulfill({ json: { items: [], total: 0 } }),
+  )
+  await page.route(`**/api/v1/projects/${project.id}/attachments**`, (route) =>
+    route.fulfill({ json: { items: [], total: 0 } }),
+  )
+
+  const reactionRequests: Array<{ method: string; commentId: string; emoji: string }> = []
+  let failNextReaction = false
+  const reactionsByComment = new Map(
+    comments.map((comment) => [comment.id, [...comment.reactions]]),
+  )
+  await page.route('**/api/v1/document-comments/*/reactions/*', async (route) => {
+    const parts = new URL(route.request().url()).pathname.split('/')
+    const commentId = parts.at(-3) ?? ''
+    const emoji = decodeURIComponent(parts.at(-1) ?? '')
+    const method = route.request().method()
+    reactionRequests.push({ method, commentId, emoji })
+    if (failNextReaction) {
+      failNextReaction = false
+      await route.fulfill({ status: 500, json: { detail: 'temporary failure' } })
+      return
+    }
+    const current = reactionsByComment.get(commentId) ?? []
+    const existing = current.find((reaction) => reaction.key === emoji)
+    let next = current
+    if (method === 'PUT') {
+      next = existing
+        ? current.map((reaction) =>
+            reaction.key === emoji
+              ? {
+                  ...reaction,
+                  count: reaction.me ? reaction.count : reaction.count + 1,
+                  me: true,
+                }
+              : reaction,
+          )
+        : [...current, { key: emoji, count: 1, me: true }]
+    } else if (existing?.me) {
+      next = current
+        .map((reaction) =>
+          reaction.key === emoji
+            ? { ...reaction, count: reaction.count - 1, me: false }
+            : reaction,
+        )
+        .filter((reaction) => reaction.count > 0)
+    }
+    reactionsByComment.set(commentId, next)
+    await route.fulfill({ json: { items: next } })
+  })
+
+  await page.goto(`/projects/${project.id}/documents/d1`)
+  const inlineThread = page.locator(`[id="document-comment-thread-${anchorId}"]`)
+  const inlineUp = inlineThread.getByRole('button', { name: '👍 리액션' })
+  await expect(inlineUp).toContainText('2')
+  await inlineUp.click()
+  await expect(inlineUp).toHaveAttribute('aria-pressed', 'true')
+  await expect(inlineUp).toContainText('3')
+  expect(reactionRequests.at(-1)).toEqual({
+    method: 'PUT',
+    commentId: 'inline-reaction',
+    emoji: '👍',
+  })
+
+  const generalComment = page.locator('li').filter({ hasText: '일반 검토' })
+  await generalComment.getByRole('button', { name: '이모지 추가' }).click()
+  await generalComment.getByLabel('자유 이모지 입력').fill('✨')
+  await generalComment.getByRole('button', { name: '이모지 등록' }).click()
+  const sparkle = generalComment.getByRole('button', { name: '✨ 리액션' })
+  await expect(sparkle).toHaveAttribute('aria-pressed', 'true')
+  await expect(sparkle).toContainText('1')
+  await sparkle.click()
+  await expect(generalComment.getByRole('button', { name: '✨ 리액션' })).toHaveCount(0)
+  expect(reactionRequests.slice(-2)).toEqual([
+    { method: 'PUT', commentId: 'general-reaction', emoji: '✨' },
+    { method: 'DELETE', commentId: 'general-reaction', emoji: '✨' },
+  ])
+
+  failNextReaction = true
+  await generalComment.getByRole('button', { name: '🎉 리액션' }).click()
+  await expect(page.getByText('리액션을 저장하지 못했습니다', { exact: false })).toBeVisible()
+
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/document-comment-reactions-ui/desktop.png',
+    fullPage: true,
+  })
+  await page.setViewportSize({ width: 390, height: 844 })
+  const overflow = await page.evaluate(
+    () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+  )
+  expect(overflow).toBeLessThanOrEqual(1)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/document-comment-reactions-ui/mobile.png',
+    fullPage: true,
+  })
 })
 
 test('문서 편집기에서 이미지를 업로드하면 본문에 img가 삽입되어 저장된다', async ({ page }) => {

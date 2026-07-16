@@ -111,8 +111,6 @@ export type ReactionAgg = { key: string; count: number; me: boolean }
 /** Quick-pick glyphs (Pass 35: the API stores glyphs — the set is OPEN and
     the aggregate returns whatever exists; this list is only the web's
     one-click shortcut row). */
-export const QUICK_REACTIONS = ['👍', '👎', '🎉', '❤️', '😄', '😕'] as const
-
 export type CommentList = {
   items: Comment[]
   total: number
