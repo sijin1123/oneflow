@@ -4564,16 +4564,73 @@ test('대시보드가 집계 타일과 분포를 보여준다', async ({ page })
     )
     return route.fulfill({ json: { items, total: items.length, truncated: false } })
   })
-  let savedWidgets: string[] | null = null
-  await page.route(`**/api/v1/projects/${project.id}/dashboard/layout`, async (route) => {
+  const defaultWidgets = [
+    'summary',
+    'budget',
+    'progress',
+    'status_distribution',
+    'priority_distribution',
+    'type_distribution',
+    'recent_activity',
+  ]
+  let personalWidgets: string[] | null = null
+  let sharedWidgets: string[] | null = null
+  let sharedVersion = 0
+  let failSharedUpdateOnce = false
+  const layoutPayload = () => {
+    const source = personalWidgets ? 'personal' : sharedWidgets ? 'shared' : 'builtin'
+    return {
+      widgets: personalWidgets ?? sharedWidgets ?? defaultWidgets,
+      updated_at: source === 'builtin' ? null : '2026-07-07T00:00:00Z',
+      is_default: source === 'builtin',
+      source,
+      shared_layout: sharedWidgets
+        ? {
+            widgets: sharedWidgets,
+            version: sharedVersion,
+            updated_at: '2026-07-07T00:00:00Z',
+            updated_by_name: 'Dev User',
+          }
+        : null,
+      can_manage_shared: true,
+    }
+  }
+  await page.route(`**/api/v1/projects/${project.id}/dashboard/shared-layout**`, async (route) => {
     if (route.request().method() === 'PUT') {
-      savedWidgets = (route.request().postDataJSON() as { widgets: string[] }).widgets
-      await route.fulfill({
-        json: { widgets: savedWidgets, updated_at: '2026-07-07T00:00:00Z', is_default: false },
-      })
+      const body = route.request().postDataJSON() as {
+        widgets: string[]
+        expected_version: number
+      }
+      expect(body.expected_version).toBe(sharedVersion)
+      if (failSharedUpdateOnce) {
+        failSharedUpdateOnce = false
+        await route.fulfill({
+          status: 409,
+          json: { detail: 'shared dashboard layout version conflict' },
+        })
+        return
+      }
+      sharedWidgets = body.widgets
+      sharedVersion += 1
+      await route.fulfill({ json: layoutPayload() })
       return
     }
-    await route.fulfill({ json: { widgets: null, updated_at: null, is_default: true } })
+    sharedWidgets = null
+    sharedVersion = 0
+    await route.fulfill({ json: layoutPayload() })
+  })
+  await page.route(`**/api/v1/projects/${project.id}/dashboard/layout`, async (route) => {
+    if (route.request().method() === 'PUT') {
+      personalWidgets = (route.request().postDataJSON() as { widgets: string[] }).widgets
+      await route.fulfill({ json: layoutPayload() })
+      return
+    }
+    if (route.request().method() === 'DELETE') {
+      personalWidgets = null
+      await route.fulfill({ json: layoutPayload() })
+      return
+    }
+    await route.fulfill({ json: layoutPayload() })
   })
 
   await page.goto(`/projects/${project.id}/dashboard`)
@@ -4588,6 +4645,7 @@ test('대시보드가 집계 타일과 분포를 보여준다', async ({ page })
   await expect(main.getByText('기한 초과')).toBeVisible()
   await expect(main.getByText('10.5 / 40h')).toBeVisible()
   await expect(main.getByText('상태별')).toBeVisible()
+  await expect(main.getByText('기본 레이아웃', { exact: true })).toBeVisible()
   // Type distribution widget (Pass 58): renders from the existing payload.
   await expect(main.getByText('타입별')).toBeVisible()
   const recentWork = main.getByRole('region', { name: '최근 작업' })
@@ -4621,19 +4679,70 @@ test('대시보드가 집계 타일과 분포를 보여준다', async ({ page })
   await page.getByLabel('활동 멤버').selectOption('')
   await expect(page.getByText('todo → in_progress', { exact: false })).toBeVisible()
 
-  // widget layout edit: hide the budget tiles, save → PUT carries the order
+  // Publish a shared layout, keep a private override, then return to shared.
   await page.getByRole('button', { name: '위젯 편집' }).click()
   await page.getByLabel('비용/예산 타일 표시').uncheck()
-  await page.getByRole('button', { name: '레이아웃 저장' }).click()
+  await page.getByRole('button', { name: '프로젝트 공유로 게시' }).click()
+  await expect(main.getByText('프로젝트 공유', { exact: true })).toBeVisible()
   await expect(page.getByText('비용 합계')).toBeHidden()
-  expect(savedWidgets).toEqual([
+  expect(sharedWidgets).toEqual([
     'summary',
     'progress',
     'status_distribution',
     'priority_distribution',
-    'type_distribution', // Pass 58: the default set grew by one
+    'type_distribution',
     'recent_activity',
   ])
+  await page.setViewportSize({ width: 1440, height: 1000 })
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/shared-dashboard-layouts-ui/desktop.png',
+    fullPage: true,
+  })
+  await page.setViewportSize({ width: 390, height: 844 })
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/shared-dashboard-layouts-ui/mobile.png',
+    fullPage: true,
+  })
+
+  // A stale owner tab keeps its draft and can refresh/retry the shared revision.
+  failSharedUpdateOnce = true
+  await page.getByRole('button', { name: '위젯 편집' }).click()
+  await page.getByLabel('우선순위별 분포 표시').uncheck()
+  await page.getByRole('button', { name: '프로젝트 공유 업데이트' }).click()
+  await expect(page.getByRole('alert')).toContainText('편집 초안은 유지됩니다')
+  await expect(page.getByLabel('우선순위별 분포 표시')).not.toBeChecked()
+  await page.getByRole('button', { name: '최신 공유 버전 불러오기' }).click()
+  await page.getByRole('button', { name: '프로젝트 공유 업데이트' }).click()
+  await expect(main.getByText('프로젝트 공유', { exact: true })).toBeVisible()
+  expect(sharedWidgets).toEqual([
+    'summary',
+    'progress',
+    'status_distribution',
+    'type_distribution',
+    'recent_activity',
+  ])
+
+  await page.getByRole('button', { name: '위젯 편집' }).click()
+  await page.getByLabel('상태별 분포 표시').uncheck()
+  await page.getByRole('button', { name: '개인 레이아웃 저장' }).click()
+  await expect(main.getByText('개인 레이아웃', { exact: true })).toBeVisible()
+  expect(personalWidgets).toEqual([
+    'summary',
+    'progress',
+    'type_distribution',
+    'recent_activity',
+  ])
+  await page.getByRole('button', { name: '공유 레이아웃으로 돌아가기' }).click()
+  await expect(main.getByText('프로젝트 공유', { exact: true })).toBeVisible()
+  await expect(main.getByText('상태별')).toBeVisible()
+  await expect(main.getByText('우선순위별')).toBeHidden()
+
+  await page.getByRole('button', { name: '공유 레이아웃 삭제' }).click()
+  await page.getByRole('button', { name: '삭제 확인' }).click()
+  await expect(main.getByText('기본 레이아웃', { exact: true })).toBeVisible()
+  await expect(page.getByText('비용 합계')).toBeVisible()
 
   await recentWork.getByRole('button', { name: wpA.subject }).click()
   await expect(page).toHaveURL(new RegExp(`/projects/${project.id}/work-packages\\?wp=${wpA.id}`))
@@ -4670,11 +4779,29 @@ test('보관된 빈 프로젝트 개요가 읽기 상태와 empty state를 표�
     }),
   )
   await page.route(`**/api/v1/projects/${project.id}/dashboard/layout`, (route) =>
-    route.fulfill({ json: { widgets: ['summary'], updated_at: null, is_default: true } }),
+    route.fulfill({
+      json: {
+        widgets: ['summary'],
+        updated_at: '2026-07-10T00:00:00Z',
+        is_default: false,
+        source: 'shared',
+        shared_layout: {
+          widgets: ['summary'],
+          version: 1,
+          updated_at: '2026-07-10T00:00:00Z',
+          updated_by_name: 'Dev User',
+        },
+        can_manage_shared: false,
+      },
+    }),
   )
 
   await page.goto(`/projects/${project.id}/dashboard`)
   await expect(page.getByText('보관됨')).toBeVisible()
+  await expect(page.getByText('프로젝트 공유', { exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: '공유 레이아웃 삭제' })).toHaveCount(0)
+  await page.getByRole('button', { name: '위젯 편집' }).click()
+  await expect(page.getByRole('button', { name: /프로젝트 공유/ })).toHaveCount(0)
   await expect(page.getByText('아직 작업이 없습니다.')).toBeVisible()
   await expect(page.getByText('0%')).toBeVisible()
 })

@@ -2051,9 +2051,8 @@ export interface paths {
         };
         /**
          * Get Dashboard Layout
-         * @description The caller's OWN layout; absent row = the built-in default. Unknown keys
-         *     (a widget retired by a later migration) are filtered out; if nothing
-         *     survives, the default backfills (v18.1 R1-⑥).
+         * @description Resolve the caller's personal override, then the project shared layout,
+         *     then the built-in layout. Retired keys are ignored safely.
          */
         get: operations["get_dashboard_layout_api_v1_projects__project_id__dashboard_layout_get"];
         /**
@@ -2066,7 +2065,38 @@ export interface paths {
          */
         put: operations["put_dashboard_layout_api_v1_projects__project_id__dashboard_layout_put"];
         post?: never;
-        delete?: never;
+        /**
+         * Delete Dashboard Layout
+         * @description Remove only the caller's personal preference and re-resolve inheritance.
+         *
+         *     This remains archive-exempt and available to viewers for the same reason as
+         *     the personal PUT: it changes no project-owned data.
+         */
+        delete: operations["delete_dashboard_layout_api_v1_projects__project_id__dashboard_layout_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/dashboard/shared-layout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Put Shared Dashboard Layout
+         * @description Publish or revise the active project's shared layout as its owner.
+         */
+        put: operations["put_shared_dashboard_layout_api_v1_projects__project_id__dashboard_shared_layout_put"];
+        post?: never;
+        /**
+         * Delete Shared Dashboard Layout
+         * @description Delete the project-owned layout without deleting anyone's override.
+         */
+        delete: operations["delete_shared_dashboard_layout_api_v1_projects__project_id__dashboard_shared_layout_delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -4595,12 +4625,19 @@ export interface components {
         };
         /**
          * DashboardLayoutRead
-         * @description v18.1 R1-⑤: is_default marks the built-in layout (no row persisted);
-         *     updated_at is null in that case. PUT echoes the NORMALIZED array.
+         * @description The effective layout and the inheritance source behind it.
          */
         DashboardLayoutRead: {
+            /** Can Manage Shared */
+            can_manage_shared: boolean;
             /** Is Default */
             is_default: boolean;
+            shared_layout: components["schemas"]["DashboardSharedLayoutRead"] | null;
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "personal" | "shared" | "builtin";
             /** Updated At */
             updated_at: string | null;
             /** Widgets */
@@ -4649,6 +4686,27 @@ export interface components {
             total_work_packages: number;
             /** Type Counts */
             type_counts: components["schemas"]["Bucket"][];
+        };
+        /** DashboardSharedLayoutPut */
+        DashboardSharedLayoutPut: {
+            /** Expected Version */
+            expected_version: number;
+            /** Widgets */
+            widgets: string[];
+        };
+        /** DashboardSharedLayoutRead */
+        DashboardSharedLayoutRead: {
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Updated By Name */
+            updated_by_name: string;
+            /** Version */
+            version: number;
+            /** Widgets */
+            widgets: string[];
         };
         /** DataTransferExportCreated */
         DataTransferExportCreated: {
@@ -14000,6 +14058,117 @@ export interface operations {
                 "application/json": components["schemas"]["DashboardLayoutPut"];
             };
         };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DashboardLayoutRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_dashboard_layout_api_v1_projects__project_id__dashboard_layout_delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DashboardLayoutRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_shared_dashboard_layout_api_v1_projects__project_id__dashboard_shared_layout_put: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DashboardSharedLayoutPut"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DashboardLayoutRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_shared_dashboard_layout_api_v1_projects__project_id__dashboard_shared_layout_delete: {
+        parameters: {
+            query: {
+                expected_version: number;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             200: {

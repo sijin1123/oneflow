@@ -1,4 +1,13 @@
-import { ArrowDown, ArrowUp, FileDown, Settings2 } from 'lucide-react'
+import {
+  ArrowDown,
+  ArrowUp,
+  FileDown,
+  Loader2,
+  RotateCcw,
+  Settings2,
+  Share2,
+  Trash2,
+} from 'lucide-react'
 import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 
@@ -7,7 +16,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { HEALTH_LABELS, HEALTH_STYLES } from '@/features/projects/types'
 import { PriorityChip, StatusChip } from '@/features/work-packages/chips'
-import { BASE_URL } from '@/lib/api'
+import { ApiError, BASE_URL } from '@/lib/api'
 import { formatDateTime } from '@/lib/datetime'
 import { cn } from '@/lib/utils'
 import { PRIORITY_LABELS, WP_STATUSES, WP_TYPES } from '@/features/work-packages/types'
@@ -17,7 +26,15 @@ import { useTypeLabels } from '@/features/work-packages/useTypeLabels'
 import { ReportingMetricCard, ReportingSurface } from '@/features/reports/ReportingSurface'
 
 import { RecentActivity } from './RecentActivity'
-import { useDashboard, useDashboardLayout, useSaveDashboardLayout, type Bucket } from './api'
+import {
+  useDashboard,
+  useDashboardLayout,
+  useDeleteSharedDashboardLayout,
+  useResetDashboardLayout,
+  useSaveDashboardLayout,
+  useSaveSharedDashboardLayout,
+  type Bucket,
+} from './api'
 
 const TYPE_COLOR: Record<string, string> = {
   task: 'bg-sky-400',
@@ -102,8 +119,12 @@ export function DashboardPage() {
   const { data, isPending, isError, error, refetch } = useDashboard(projectId)
   const layout = useDashboardLayout(projectId)
   const saveLayout = useSaveDashboardLayout(projectId)
+  const resetLayout = useResetDashboardLayout(projectId)
+  const saveSharedLayout = useSaveSharedDashboardLayout(projectId)
+  const deleteSharedLayout = useDeleteSharedDashboardLayout(projectId)
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState<string[]>([])
+  const [confirmSharedDelete, setConfirmSharedDelete] = useState(false)
   const statusLabel = useStatusLabels(projectId)
   const statusLabels = Object.fromEntries(WP_STATUSES.map((s) => [s, statusLabel(s)])) as Record<
     WpStatus,
@@ -117,10 +138,28 @@ export function DashboardPage() {
 
   if (isPending) return <ListSkeleton />
   if (isError) return <ErrorState error={error} onRetry={() => refetch()} />
+  if (layout.isPending) return <ListSkeleton />
+  if (layout.isError)
+    return <ErrorState error={layout.error} onRetry={() => layout.refetch()} />
 
-  const widgets = layout.data?.widgets ?? Object.keys(WIDGET_LABELS)
+  const widgets = layout.data.widgets ?? Object.keys(WIDGET_LABELS)
+  const source =
+    layout.data.source ?? (layout.data.is_default ? 'builtin' : 'personal')
+  const sharedLayout = layout.data.shared_layout ?? null
+  const canManageShared = layout.data.can_manage_shared ?? false
+  const sourceLabel =
+    source === 'personal' ? '개인 레이아웃' : source === 'shared' ? '프로젝트 공유' : '기본 레이아웃'
+  const sourceDescription =
+    source === 'personal'
+      ? '내 위젯 구성이 이 프로젝트의 공유 설정보다 우선 적용됩니다.'
+      : source === 'shared'
+        ? '프로젝트 소유자가 게시한 위젯 구성을 사용하고 있습니다.'
+        : 'OneFlow의 기본 위젯 구성을 사용하고 있습니다.'
 
   const startEdit = () => {
+    saveLayout.reset()
+    saveSharedLayout.reset()
+    deleteSharedLayout.reset()
     setDraft(widgets)
     setEditing(true)
   }
@@ -142,6 +181,34 @@ export function DashboardPage() {
     if (draft.length === 0) return
     saveLayout.mutate(draft, { onSuccess: () => setEditing(false) })
   }
+  const publishShared = () => {
+    if (draft.length === 0) return
+    deleteSharedLayout.reset()
+    saveSharedLayout.mutate(
+      { widgets: draft, expectedVersion: sharedLayout?.version ?? 0 },
+      { onSuccess: () => setEditing(false) },
+    )
+  }
+  const resetPersonal = () => {
+    saveSharedLayout.reset()
+    deleteSharedLayout.reset()
+    resetLayout.mutate(undefined, { onSuccess: () => setConfirmSharedDelete(false) })
+  }
+  const deleteShared = () => {
+    if (!sharedLayout) return
+    saveSharedLayout.reset()
+    deleteSharedLayout.mutate(sharedLayout.version, {
+      onSuccess: () => setConfirmSharedDelete(false),
+    })
+  }
+  const sharedMutationError = saveSharedLayout.error ?? deleteSharedLayout.error
+  const sharedConflict =
+    sharedMutationError instanceof ApiError && sharedMutationError.status === 409
+  const anyLayoutMutationPending =
+    saveLayout.isPending ||
+    resetLayout.isPending ||
+    saveSharedLayout.isPending ||
+    deleteSharedLayout.isPending
 
   const progress =
     data.total_estimated_hours > 0
@@ -171,9 +238,14 @@ export function DashboardPage() {
             variant="outline"
             size="sm"
             onClick={editing ? save : startEdit}
-            disabled={saveLayout.isPending || (editing && draft.length === 0)}
+            disabled={anyLayoutMutationPending || (editing && draft.length === 0)}
           >
-            <Settings2 size={13} /> {editing ? '레이아웃 저장' : '위젯 편집'}
+            {saveLayout.isPending ? (
+              <Loader2 size={13} className="animate-spin" />
+            ) : (
+              <Settings2 size={13} />
+            )}{' '}
+            {editing ? '개인 레이아웃 저장' : '위젯 편집'}
           </Button>
           <a
             href={`${BASE_URL}/api/v1/projects/${projectId}/dashboard/export.csv`}
@@ -190,9 +262,143 @@ export function DashboardPage() {
         </p>
       ) : null}
 
+      <section
+        aria-label="대시보드 레이아웃 적용 상태"
+        className="flex min-w-0 flex-col gap-3 border-y border-of-border py-3 sm:flex-row sm:items-center sm:justify-between"
+      >
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge variant={source === 'personal' ? 'neutral' : 'outline'}>{sourceLabel}</Badge>
+            {sharedLayout ? (
+              <span className="text-[11px] text-of-muted">
+                공유 v{sharedLayout.version} · {sharedLayout.updated_by_name} ·{' '}
+                {formatDateTime(sharedLayout.updated_at)}
+              </span>
+            ) : null}
+          </div>
+          <p className="mt-1 text-xs leading-5 text-of-muted">{sourceDescription}</p>
+        </div>
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          {source === 'personal' ? (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={anyLayoutMutationPending}
+              onClick={resetPersonal}
+            >
+              {resetLayout.isPending ? (
+                <Loader2 size={13} className="animate-spin" />
+              ) : (
+                <RotateCcw size={13} />
+              )}
+              {sharedLayout ? '공유 레이아웃으로 돌아가기' : '기본 레이아웃으로 돌아가기'}
+            </Button>
+          ) : null}
+          {canManageShared && sharedLayout && !confirmSharedDelete ? (
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              disabled={anyLayoutMutationPending}
+              onClick={() => setConfirmSharedDelete(true)}
+            >
+              <Trash2 size={13} /> 공유 레이아웃 삭제
+            </Button>
+          ) : null}
+          {canManageShared && sharedLayout && confirmSharedDelete ? (
+            <div
+              role="group"
+              aria-label="공유 레이아웃 삭제 확인"
+              className="flex flex-wrap items-center gap-2"
+            >
+              <span className="text-xs text-of-muted">모든 상속 사용자가 기본 구성으로 전환됩니다.</span>
+              <Button
+                type="button"
+                size="sm"
+                variant="danger"
+                disabled={anyLayoutMutationPending}
+                onClick={deleteShared}
+              >
+                {deleteSharedLayout.isPending ? (
+                  <Loader2 size={13} className="animate-spin" />
+                ) : (
+                  <Trash2 size={13} />
+                )}
+                삭제 확인
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                disabled={anyLayoutMutationPending}
+                onClick={() => setConfirmSharedDelete(false)}
+              >
+                취소
+              </Button>
+            </div>
+          ) : null}
+        </div>
+      </section>
+      {sharedMutationError ? (
+        <div
+          role="alert"
+          className="flex flex-wrap items-center gap-2 border-b border-of-border pb-3 text-xs text-of-danger"
+        >
+          <span>
+            {sharedConflict
+              ? '다른 변경이 먼저 저장되었습니다. 편집 초안은 유지됩니다.'
+              : '프로젝트 공유 레이아웃을 변경하지 못했습니다.'}
+          </span>
+          {sharedConflict ? (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                saveSharedLayout.reset()
+                deleteSharedLayout.reset()
+                void layout.refetch()
+              }}
+            >
+              최신 공유 버전 불러오기
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
+      {resetLayout.isError ? (
+        <p role="alert" className="border-b border-of-border pb-3 text-xs text-of-danger">
+          개인 레이아웃을 초기화하지 못했습니다.
+        </p>
+      ) : null}
+
       {editing ? (
         <div className="space-y-2 rounded-of border border-of-border bg-of-surface p-3">
-          <p className="text-xs font-medium">표시할 위젯과 순서 (최소 1개)</p>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <p className="text-xs font-medium">표시할 위젯과 순서 (최소 1개)</p>
+              <p className="mt-1 text-[11px] leading-4 text-of-muted">
+                개인 저장은 내 화면에만 적용됩니다. 프로젝트 공유는 개인 설정이 없는 구성원에게
+                적용됩니다.
+              </p>
+            </div>
+            {canManageShared ? (
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                disabled={anyLayoutMutationPending || draft.length === 0}
+                onClick={publishShared}
+              >
+                {saveSharedLayout.isPending ? (
+                  <Loader2 size={13} className="animate-spin" />
+                ) : (
+                  <Share2 size={13} />
+                )}
+                {sharedLayout ? '프로젝트 공유 업데이트' : '프로젝트 공유로 게시'}
+              </Button>
+            ) : null}
+          </div>
           <ul className="space-y-1">
             {[...draft, ...Object.keys(WIDGET_LABELS).filter((k) => !draft.includes(k))].map(
               (key) => {
@@ -235,7 +441,9 @@ export function DashboardPage() {
             )}
           </ul>
           {saveLayout.isError ? (
-            <p role="alert" className="text-xs text-of-danger">저장하지 못했습니다.</p>
+            <p role="alert" className="text-xs text-of-danger">
+              개인 레이아웃을 저장하지 못했습니다.
+            </p>
           ) : null}
         </div>
       ) : null}
