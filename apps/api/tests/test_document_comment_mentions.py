@@ -2,8 +2,10 @@
 
 import uuid
 
+import pytest
 from sqlalchemy import delete as sa_delete
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 
 from app.models.document import ProjectDocument
 from app.models.member import ProjectMember
@@ -156,3 +158,33 @@ async def test_document_notification_read_visibility_and_delete_cascade(
         await session.delete(document_row)
 
     assert await notifications_for(app, dev_id) == []
+
+
+async def test_document_notification_target_must_match_its_project(
+    app,
+    member_project,
+    foreign_project,
+):
+    async with app.state.sessionmaker() as session, session.begin():
+        foreign_document = ProjectDocument(
+            project_id=foreign_project["project_id"],
+            author_id=foreign_project["user_id"],
+            title="남의 문서",
+            visibility="shared",
+        )
+        session.add(foreign_document)
+        await session.flush()
+        foreign_document_id = foreign_document.id
+
+    with pytest.raises(IntegrityError):
+        async with app.state.sessionmaker() as session, session.begin():
+            session.add(
+                Notification(
+                    user_id=member_project["dev_id"],
+                    actor_id=member_project["owner_id"],
+                    project_id=member_project["project_id"],
+                    document_id=foreign_document_id,
+                    kind="document_mention",
+                )
+            )
+            await session.flush()

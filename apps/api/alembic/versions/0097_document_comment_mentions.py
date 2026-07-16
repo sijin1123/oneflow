@@ -43,11 +43,11 @@ def upgrade() -> None:
         sa.Column("document_id", postgresql.UUID(as_uuid=True), nullable=True),
     )
     op.create_foreign_key(
-        "fk_notifications_document_id_project_documents",
+        "fk_notifications_document_same_project",
         "notifications",
         "project_documents",
-        ["document_id"],
-        ["id"],
+        ["document_id", "project_id"],
+        ["id", "project_id"],
         ondelete="CASCADE",
     )
     op.execute(
@@ -73,7 +73,7 @@ def downgrade() -> None:
         f"ALTER TABLE notifications ADD CONSTRAINT {_KIND_CONSTRAINT} CHECK (kind IN {_OLD_KINDS})"
     )
     op.drop_constraint(
-        "fk_notifications_document_id_project_documents",
+        "fk_notifications_document_same_project",
         "notifications",
         type_="foreignkey",
     )

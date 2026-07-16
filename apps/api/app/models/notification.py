@@ -1,7 +1,16 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKey, Index, String, func
+from sqlalchemy import (
+    Boolean,
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    ForeignKeyConstraint,
+    Index,
+    String,
+    func,
+)
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -53,6 +62,12 @@ class Notification(Base):
             " AND initiative_id IS NULL AND project_id IS NOT NULL AND document_id IS NULL)",
             name="notification_target_shape",
         ),
+        ForeignKeyConstraint(
+            ["document_id", "project_id"],
+            ["project_documents.id", "project_documents.project_id"],
+            name="fk_notifications_document_same_project",
+            ondelete="CASCADE",
+        ),
         # Feed query: a user's notifications newest-first.
         Index("ix_notifications_user_created", "user_id", "created_at"),
         # Unread-count query.
@@ -83,9 +98,7 @@ class Notification(Base):
     initiative_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("initiatives.id", ondelete="CASCADE"), nullable=True
     )
-    document_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("project_documents.id", ondelete="CASCADE"), nullable=True
-    )
+    document_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     read: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
