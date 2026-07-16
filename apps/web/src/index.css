@@ -157,6 +157,23 @@ textarea {
   color: var(--of-text);
 }
 
+.of-document-comment-anchor {
+  cursor: pointer;
+  border-radius: 2px;
+  background: color-mix(in oklab, var(--of-warning-soft) 82%, transparent);
+  box-shadow: inset 0 -1px 0 color-mix(in oklab, var(--of-warning) 55%, transparent);
+  transition:
+    background-color 120ms ease,
+    box-shadow 120ms ease;
+}
+
+.of-document-comment-anchor-active {
+  background: color-mix(in oklab, var(--of-accent-soft) 92%, transparent);
+  box-shadow:
+    inset 0 -2px 0 var(--of-focus),
+    0 0 0 2px color-mix(in oklab, var(--of-focus) 18%, transparent);
+}
+
 .of-shell {
   min-height: 100%;
   background: var(--of-bg);

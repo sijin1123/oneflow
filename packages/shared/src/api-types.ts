@@ -718,6 +718,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/documents/{doc_id}/inline-comments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Inline Document Comment
+         * @description Atomically persist a sanitized body anchor and its next thread message.
+         *
+         *     The first message normally changes the document body by adding the inert
+         *     span marker; replies submit the unchanged body and therefore do not bump
+         *     the document version. Either way, stale versions create neither half.
+         */
+        post: operations["create_inline_document_comment_api_v1_documents__doc_id__inline_comments_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/documents/{doc_id}/restore": {
         parameters: {
             query?: never;
@@ -4710,6 +4734,10 @@ export interface components {
         };
         /** DocumentCommentRead */
         DocumentCommentRead: {
+            /** Anchor Id */
+            anchor_id: string | null;
+            /** Anchor Quote */
+            anchor_quote: string | null;
             /** Author Id */
             author_id: string | null;
             /** Body */
@@ -5141,6 +5169,27 @@ export interface components {
             status: string;
             /** Subject */
             subject: string;
+        };
+        /** InlineDocumentCommentCreate */
+        InlineDocumentCommentCreate: {
+            /**
+             * Anchor Id
+             * Format: uuid
+             */
+            anchor_id: string;
+            /** Anchor Quote */
+            anchor_quote: string;
+            /** Body */
+            body: string;
+            /** Document Body */
+            document_body?: string | null;
+            /** Expected Document Version */
+            expected_document_version?: number | null;
+        };
+        /** InlineDocumentCommentResult */
+        InlineDocumentCommentResult: {
+            comment: components["schemas"]["DocumentCommentRead"];
+            document: components["schemas"]["DocumentRead"];
         };
         /** IntakeCreate */
         IntakeCreate: {
@@ -10301,6 +10350,54 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DocumentCommentRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_inline_document_comment_api_v1_documents__doc_id__inline_comments_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                doc_id: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InlineDocumentCommentCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InlineDocumentCommentResult"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentConflict"];
                 };
             };
             /** @description Validation Error */

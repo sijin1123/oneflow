@@ -1,5 +1,17 @@
-import { Archive, ArrowLeft, Clock3, FileText, FolderTree, RotateCcw, Save, Trash2 } from 'lucide-react'
-import { Suspense, lazy, useEffect, useState } from 'react'
+import {
+  Archive,
+  ArrowLeft,
+  Clock3,
+  FileText,
+  FolderTree,
+  MessageSquareText,
+  Quote,
+  RotateCcw,
+  Save,
+  Send,
+  Trash2,
+} from 'lucide-react'
+import { Suspense, lazy, useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 
 import { ReadOnlyNotice } from '@/components/shell/ReadOnlyNotice'
@@ -17,8 +29,12 @@ import { formatDateTime } from '@/lib/datetime'
 import { confirmDestructive, useUnsavedChangesPrompt } from '@/lib/guards'
 
 import {
+  type DocumentComment,
+  type DocumentCommentList,
+  type ProjectDocument,
   conflictOf,
   useCreateDocumentComment,
+  useCreateInlineDocumentComment,
   useDeleteDocument,
   useDeleteDocumentComment,
   useDocument,
@@ -35,6 +51,18 @@ const RichTextEditor = lazy(() =>
   import('@/components/ui/rich-text-editor').then((m) => ({ default: m.RichTextEditor })),
 )
 
+const normalizeAnchorQuote = (value: string) => value.replace(/\s+/g, ' ').trim()
+
+function bodyAnchorQuote(body: string | null | undefined, anchorId: string): string | null {
+  if (!body || typeof DOMParser === 'undefined') return null
+  const parsed = new DOMParser().parseFromString(body, 'text/html')
+  const nodes = parsed.querySelectorAll<HTMLElement>(
+    `[data-comment-anchor="${anchorId}"]`,
+  )
+  if (nodes.length === 0) return null
+  return normalizeAnchorQuote(Array.from(nodes).map((node) => node.textContent ?? '').join(''))
+}
+
 export function DocumentEditorPage() {
   const { projectId, docId } = useParams() as { projectId: string; docId: string }
   const navigate = useNavigate()
@@ -47,13 +75,32 @@ export function DocumentEditorPage() {
   const lifecycle = useDocumentLifecycle(projectId)
   const me = useMe()
   const members = useMembers(projectId)
+  const comments = useDocumentComments(docId)
+  const createInlineComment = useCreateInlineDocumentComment(docId, projectId)
 
   const [title, setTitle] = useState('')
   const [body, setBody] = useState('')
   const [parentId, setParentId] = useState<string | null>(null)
   const [visibility, setVisibility] = useState<'shared' | 'private'>('shared')
+  const [activeCommentAnchorId, setActiveCommentAnchorId] = useState<string | null>(null)
   const upload = useUploadAttachment(projectId)
   const canWrite = useCanWrite(projectId)
+  const activeCommentAnchorIds = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          (comments.data?.items ?? [])
+            .filter(
+              (comment) =>
+                comment.anchor_id !== null &&
+                comment.anchor_quote !== null &&
+                bodyAnchorQuote(doc?.body, comment.anchor_id) === comment.anchor_quote,
+            )
+            .map((comment) => comment.anchor_id as string),
+        ),
+      ),
+    [comments.data?.items, doc?.body],
+  )
 
   useEffect(() => {
     if (doc) {
@@ -79,6 +126,7 @@ export function DocumentEditorPage() {
 
   const conflict = conflictOf(update.error)
   const lifecycleConflict = conflictOf(lifecycle.error)
+  const inlineCommentConflict = conflictOf(createInlineComment.error)
 
   const save = () => {
     const trimmed = title.trim()
@@ -115,6 +163,23 @@ export function DocumentEditorPage() {
 
   const otherError =
     update.error instanceof ApiError && update.error.status !== 409 ? update.error.message : null
+  const activateThread = (anchorId: string) => {
+    setActiveCommentAnchorId(anchorId)
+    requestAnimationFrame(() => {
+      document.getElementById(`document-comment-thread-${anchorId}`)?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'nearest',
+      })
+    })
+  }
+  const activateBodyAnchor = (anchorId: string) => {
+    setActiveCommentAnchorId(anchorId)
+    requestAnimationFrame(() => {
+      document
+        .querySelector<HTMLElement>(`[data-comment-anchor="${anchorId}"]`)
+        ?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    })
+  }
 
   return (
     <div className="mx-auto flex w-full max-w-6xl min-w-0 flex-col gap-4 px-4 py-5 sm:px-6">
@@ -220,6 +285,24 @@ export function DocumentEditorPage() {
                 ariaLabel="문서 본문"
                 editable={editable}
                 onSave={setBody}
+                activeCommentAnchorIds={activeCommentAnchorIds}
+                activeCommentAnchorId={activeCommentAnchorId}
+                onCommentAnchorActivate={activateThread}
+                onCreateInlineComment={
+                  editable
+                    ? async ({ anchorId, anchorQuote, commentBody, documentBody }) => {
+                        await createInlineComment.mutateAsync({
+                          body: commentBody,
+                          anchor_id: anchorId,
+                          anchor_quote: anchorQuote,
+                          expected_document_version:
+                            inlineCommentConflict?.current.version ?? doc.version,
+                          document_body: documentBody,
+                        })
+                        setActiveCommentAnchorId(anchorId)
+                      }
+                    : undefined
+                }
                 onImageUpload={
                   editable
                     ? async (file) => {
@@ -232,7 +315,17 @@ export function DocumentEditorPage() {
             </Suspense>
           </section>
 
-          <DocumentComments docId={doc.id} projectId={projectId} canWrite={editable} />
+          <DocumentComments
+            doc={doc}
+            projectId={projectId}
+            canWrite={editable}
+            data={comments.data}
+            isPending={comments.isPending}
+            isError={comments.isError}
+            onRetry={() => comments.refetch()}
+            activeAnchorId={activeCommentAnchorId}
+            onActivateAnchor={activateBodyAnchor}
+          />
         </main>
 
         <aside aria-label="문서 속성" className="grid min-w-0 gap-3 self-start">
@@ -295,25 +388,60 @@ export function DocumentEditorPage() {
   )
 }
 
-/* Flat plain-text margin notes (Pass 43): bodies render as TEXT NODES only —
-   never as HTML. Delete shows for my own comments (the server also lets the
-   project owner clean up; a failed delete just surfaces the error). */
 function DocumentComments({
-  docId,
+  doc,
   projectId,
   canWrite,
+  data,
+  isPending,
+  isError,
+  onRetry,
+  activeAnchorId,
+  onActivateAnchor,
 }: {
-  docId: string
+  doc: ProjectDocument
   projectId: string
   canWrite: boolean
+  data: DocumentCommentList | undefined
+  isPending: boolean
+  isError: boolean
+  onRetry: () => unknown
+  activeAnchorId: string | null
+  onActivateAnchor: (anchorId: string) => void
 }) {
   const me = useMe()
   const memberName = useMemberNames(projectId)
   const members = useMembers(projectId)
-  const { data } = useDocumentComments(docId)
-  const create = useCreateDocumentComment(docId)
-  const del = useDeleteDocumentComment(docId)
+  const create = useCreateDocumentComment(doc.id)
+  const createInline = useCreateInlineDocumentComment(doc.id, projectId)
+  const del = useDeleteDocumentComment(doc.id)
   const [draft, setDraft] = useState('')
+  const [replyAnchorId, setReplyAnchorId] = useState<string | null>(null)
+  const [replyDraft, setReplyDraft] = useState('')
+
+  const anchoredThreads = useMemo(() => {
+    const threads = new Map<
+      string,
+      { anchorId: string; quote: string; comments: DocumentComment[] }
+    >()
+    for (const comment of data?.items ?? []) {
+      if (!comment.anchor_id || !comment.anchor_quote) continue
+      const existing = threads.get(comment.anchor_id)
+      if (existing) existing.comments.push(comment)
+      else {
+        threads.set(comment.anchor_id, {
+          anchorId: comment.anchor_id,
+          quote: comment.anchor_quote,
+          comments: [comment],
+        })
+      }
+    }
+    return Array.from(threads.values())
+  }, [data?.items])
+  const generalComments = useMemo(
+    () => (data?.items ?? []).filter((comment) => comment.anchor_id === null),
+    [data?.items],
+  )
 
   const authorLabel = (authorId: string | null) => {
     if (authorId === null) return '삭제된 사용자'
@@ -327,42 +455,157 @@ function DocumentComments({
     create.mutate(body, { onSuccess: () => setDraft('') })
   }
 
+  const submitReply = (anchorId: string, quote: string) => {
+    const body = replyDraft.trim()
+    if (!body || createInline.isPending) return
+    createInline.mutate(
+      { body, anchor_id: anchorId, anchor_quote: quote },
+      {
+        onSuccess: () => {
+          setReplyAnchorId(null)
+          setReplyDraft('')
+        },
+      },
+    )
+  }
+
+  const anchorExists = (anchorId: string, quote: string) =>
+    bodyAnchorQuote(doc.body, anchorId) === quote
+
+  const commentLine = (comment: DocumentComment) => (
+    <li
+      key={comment.id}
+      className="grid min-w-0 gap-1 border-t border-of-border-subtle py-2 text-xs first:border-t-0 sm:grid-cols-[auto_minmax(0,1fr)_auto_auto] sm:items-baseline"
+    >
+      <span className="font-medium text-of-muted">{authorLabel(comment.author_id)}</span>
+      <span className="min-w-0 whitespace-pre-wrap break-words">{comment.body}</span>
+      <span className="text-[11px] text-of-muted">{comment.created_at.slice(0, 10)}</span>
+      {canWrite && comment.author_id === me.data?.id ? (
+        <button
+          type="button"
+          aria-label="코멘트 삭제"
+          className="justify-self-start rounded-of p-1 text-of-muted hover:bg-of-surface-2 hover:text-of-danger sm:justify-self-auto"
+          disabled={del.isPending}
+          onClick={() => del.mutate(comment.id)}
+        >
+          <Trash2 size={12} />
+        </button>
+      ) : null}
+    </li>
+  )
+
   return (
-    <section aria-label="문서 코멘트" className="space-y-3 rounded-of border border-of-border bg-of-surface p-3">
+    <section
+      aria-label="문서 코멘트"
+      className="space-y-4 border-t border-of-border pb-16 pt-4 lg:pb-0"
+    >
       <div className="flex min-w-0 items-center justify-between gap-2">
-        <h2 className="text-sm font-semibold">코멘트{data ? ` ${data.total}건` : ''}</h2>
-        <Badge variant="outline">plain text</Badge>
+        <div className="flex min-w-0 items-center gap-2">
+          <MessageSquareText size={15} className="text-of-muted" aria-hidden="true" />
+          <h2 className="text-sm font-semibold">코멘트{data ? ` ${data.total}건` : ''}</h2>
+        </div>
+        <Badge variant="outline">본문 앵커 + 일반</Badge>
       </div>
-      {data && data.items.length > 0 ? (
-        <ul className="space-y-2">
-          {data.items.map((c) => (
-            <li
-              key={c.id}
-              className="grid min-w-0 gap-1 rounded-of border border-of-border px-3 py-2 text-xs sm:grid-cols-[auto_minmax(0,1fr)_auto_auto] sm:items-baseline"
-            >
-              <span className="font-medium text-of-muted">{authorLabel(c.author_id)}</span>
-              <span className="min-w-0 whitespace-pre-wrap break-words">{c.body}</span>
-              <span className="text-[11px] text-of-muted">{c.created_at.slice(0, 10)}</span>
-              {canWrite && c.author_id === me.data?.id ? (
+
+      {isPending ? <div className="h-20 animate-pulse rounded-of bg-of-surface-2/60" /> : null}
+      {isError ? (
+        <div className="flex items-center justify-between gap-2 text-xs text-of-danger">
+          <span>코멘트를 불러오지 못했습니다.</span>
+          <Button size="sm" variant="outline" onClick={() => void onRetry()}>
+            다시 시도
+          </Button>
+        </div>
+      ) : null}
+
+      {anchoredThreads.length > 0 ? (
+        <div className="grid gap-3">
+          <h3 className="text-xs font-semibold text-of-muted">본문 스레드</h3>
+          {anchoredThreads.map((thread) => {
+            const exists = anchorExists(thread.anchorId, thread.quote)
+            const active = activeAnchorId === thread.anchorId
+            return (
+              <article
+                id={`document-comment-thread-${thread.anchorId}`}
+                key={thread.anchorId}
+                className={`border-l-2 pl-3 ${active ? 'border-of-focus' : 'border-of-border'}`}
+              >
                 <button
                   type="button"
-                  aria-label="코멘트 삭제"
-                  className="justify-self-start rounded-of p-1 text-of-muted hover:bg-of-surface-2 hover:text-of-danger sm:justify-self-auto"
-                  disabled={del.isPending}
-                  onClick={() => del.mutate(c.id)}
+                  className="flex w-full min-w-0 items-start gap-2 text-left disabled:cursor-default"
+                  disabled={!exists}
+                  onClick={() => onActivateAnchor(thread.anchorId)}
                 >
-                  <Trash2 size={12} />
+                  <Quote size={13} className="mt-0.5 shrink-0 text-of-muted" aria-hidden="true" />
+                  <span className="line-clamp-2 min-w-0 flex-1 text-xs font-medium">
+                    {thread.quote}
+                  </span>
+                  <Badge variant={exists ? 'accent' : 'outline'}>
+                    {exists ? `${thread.comments.length}건` : '본문 변경됨'}
+                  </Badge>
                 </button>
-              ) : null}
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <p className="text-xs text-of-muted">아직 코멘트가 없습니다.</p>
-      )}
+                <ul className="mt-2">{thread.comments.map(commentLine)}</ul>
+                {canWrite && exists ? (
+                  replyAnchorId === thread.anchorId ? (
+                    <div className="mt-2 grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
+                      <Input
+                        value={replyDraft}
+                        onChange={(event) => setReplyDraft(event.target.value)}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter') {
+                            submitReply(thread.anchorId, thread.quote)
+                          }
+                        }}
+                        aria-label="인라인 답글"
+                        placeholder="이 문구에 답글"
+                        maxLength={4000}
+                        className="h-8 min-w-0 text-xs"
+                        autoFocus
+                      />
+                      <Button
+                        size="sm"
+                        disabled={!replyDraft.trim() || createInline.isPending}
+                        onClick={() => submitReply(thread.anchorId, thread.quote)}
+                      >
+                        <Send size={12} /> 답글
+                      </Button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      className="mt-1 text-xs font-medium text-of-accent hover:underline"
+                      onClick={() => {
+                        setReplyAnchorId(thread.anchorId)
+                        setReplyDraft('')
+                      }}
+                    >
+                      답글 남기기
+                    </button>
+                  )
+                ) : null}
+              </article>
+            )
+          })}
+          {createInline.isError ? (
+            <p role="alert" className="text-xs text-of-danger">
+              답글을 등록하지 못했습니다. 본문 앵커가 변경되었는지 확인해 주세요.
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+
+      <div className="grid gap-2">
+        <h3 className="text-xs font-semibold text-of-muted">일반 코멘트</h3>
+        {generalComments.length > 0 ? (
+          <ul>{generalComments.map(commentLine)}</ul>
+        ) : !isPending && !isError ? (
+          <p className="text-xs text-of-muted">
+            일반 코멘트가 없습니다. 본문을 선택하면 위치가 연결된 스레드를 만들 수 있습니다.
+          </p>
+        ) : null}
+      </div>
       {canWrite ? (
         <>
-          <div className="grid min-w-0 gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
+          <div className="grid min-w-0 gap-2 pr-12 sm:grid-cols-[minmax(0,1fr)_auto] sm:pr-0">
             <Input
               value={draft}
               onChange={(e) => setDraft(e.target.value)}

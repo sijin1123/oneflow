@@ -287,6 +287,7 @@ ENDPOINT_VERBS: dict[str, str] = {
     "POST /api/v1/documents/{doc_id}/restore": "document.write",
     "DELETE /api/v1/documents/{doc_id}": "document.write",
     "POST /api/v1/documents/{doc_id}/comments": "document.write",
+    "POST /api/v1/documents/{doc_id}/inline-comments": "document.write",
     "POST /api/v1/documents/{doc_id}/work-package-links": "document.write",
     "DELETE /api/v1/documents/{doc_id}/work-package-links/{link_id}": "document.write",
     # intake.submit
