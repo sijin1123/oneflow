@@ -29,6 +29,8 @@ export type Initiative = {
   can_claim_ownership: boolean
   connected_project_count: number
   connected_work_item_count: number
+  follower_count: number
+  is_following: boolean
   projects: InitiativeProject[]
   created_at: string
   updated_at: string
@@ -59,6 +61,11 @@ export type InitiativeWorkItemList = {
 export type InitiativeWorkItemCandidateList = {
   items: InitiativeWorkItem[]
   total: number
+}
+
+export type InitiativeSubscription = {
+  is_following: boolean
+  follower_count: number
 }
 
 export const INITIATIVE_STATE_LABELS: Record<InitiativeState, string> = {
@@ -178,6 +185,17 @@ export function useDisconnectInitiativeWorkItem(initiativeId: string) {
         method: 'DELETE',
       }),
     onSuccess: () => invalidateWorkItemScope(queryClient, initiativeId),
+  })
+}
+
+export function useUpdateInitiativeSubscription(initiativeId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (following: boolean) =>
+      api<InitiativeSubscription>(`/api/v1/initiatives/${initiativeId}/subscription`, {
+        method: following ? 'POST' : 'DELETE',
+      }),
+    onSuccess: () => invalidate(queryClient),
   })
 }
 

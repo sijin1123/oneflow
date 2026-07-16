@@ -5,10 +5,12 @@ import { api } from '@/lib/api'
 export type Notification = {
   id: string
   kind: string
-  project_id: string
+  project_id: string | null
+  initiative_id?: string | null
   work_package_id: string | null
   intake_item_id?: string | null
   work_package_subject: string | null
+  initiative_name?: string | null
   actor_name: string | null
   read: boolean
   created_at: string
@@ -57,6 +59,7 @@ export type NotificationSettings = {
   mention: boolean
   due_alerts: boolean
   intake: boolean
+  initiatives: boolean
 }
 
 export function useNotificationSettings() {
