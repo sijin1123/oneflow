@@ -6,9 +6,13 @@ FULL total (nothing unreachable); delete = author OR project owner (admin
 never bypasses project scopes); archive write-gate 409/read open; author
 display is the web's three-state policy."""
 
-import pytest
-from sqlalchemy import text
+import uuid
 
+import pytest
+from sqlalchemy import func, select, text
+
+from app.models.document import ProjectDocument
+from app.models.document_comment import ProjectDocumentComment
 from tests.conftest import create_project
 
 
@@ -111,10 +115,40 @@ async def test_scope_archive_and_cascade(client, app, doc, foreign_project):
         foreign_id = foreign_doc.id
     assert (await client.get(f"/api/v1/documents/{foreign_id}/comments")).status_code == 404
     assert (await comment(client, foreign_id, "누출 시도")).status_code == 404
+    foreign_anchor = uuid.uuid4()
+    assert (
+        await client.post(
+            f"/api/v1/documents/{foreign_id}/inline-comments",
+            json={
+                "body": "누출 시도",
+                "anchor_id": str(foreign_anchor),
+                "anchor_quote": "남의",
+                "expected_document_version": 0,
+                "document_body": (
+                    f'<p><span data-comment-anchor="{foreign_anchor}">남의</span></p>'
+                ),
+            },
+        )
+    ).status_code == 404
 
     # Archive: write 409, read open.
     assert (await client.post(f"/api/v1/projects/{pid}/archive")).status_code == 200
     assert (await comment(client, doc_id, "차단됨")).status_code == 409
+    archived_anchor = uuid.uuid4()
+    assert (
+        await client.post(
+            f"/api/v1/documents/{doc_id}/inline-comments",
+            json={
+                "body": "차단됨",
+                "anchor_id": str(archived_anchor),
+                "anchor_quote": "본문",
+                "expected_document_version": 0,
+                "document_body": (
+                    f'<p><span data-comment-anchor="{archived_anchor}">본문</span></p>'
+                ),
+            },
+        )
+    ).status_code == 409
     assert (await client.get(f"/api/v1/documents/{doc_id}/comments")).status_code == 200
     await client.post(f"/api/v1/projects/{pid}/unarchive")
 
@@ -125,3 +159,138 @@ async def test_scope_archive_and_cascade(client, app, doc, foreign_project):
             await session.execute(text("SELECT count(*) FROM project_document_comments"))
         ).scalar_one()
     assert remaining == 0
+
+
+async def test_inline_anchor_atomic_create_reply_and_stale_rollback(client, app, doc):
+    doc_id = doc["doc"]["id"]
+    anchor_id = uuid.uuid4()
+    anchored_body = (
+        f'<p><span data-comment-anchor="{anchor_id}" onclick="alert(1)">'
+        "<strong>본문</strong><br>계속</span></p>"
+    )
+
+    created = await client.post(
+        f"/api/v1/documents/{doc_id}/inline-comments",
+        json={
+            "body": "첫 인라인 메모",
+            "anchor_id": str(anchor_id),
+            "anchor_quote": "본문 계속",
+            "expected_document_version": 0,
+            "document_body": anchored_body,
+        },
+    )
+    assert created.status_code == 201, created.text
+    payload = created.json()
+    assert payload["comment"]["anchor_id"] == str(anchor_id)
+    assert payload["comment"]["anchor_quote"] == "본문 계속"
+    assert payload["document"]["version"] == 1
+    assert f'data-comment-anchor="{anchor_id}"' in payload["document"]["body"]
+    assert "onclick" not in payload["document"]["body"]
+
+    # A reply validates the existing marker but leaves the document/version
+    # untouched because the submitted sanitized body is identical.
+    reply = await client.post(
+        f"/api/v1/documents/{doc_id}/inline-comments",
+        json={
+            "body": "답글",
+            "anchor_id": str(anchor_id),
+            "anchor_quote": "본문 계속",
+        },
+    )
+    assert reply.status_code == 201, reply.text
+    assert reply.json()["document"]["version"] == 1
+
+    before_count = None
+    before_body = None
+    async with app.state.sessionmaker() as session:
+        before_count = await session.scalar(
+            select(func.count())
+            .select_from(ProjectDocumentComment)
+            .where(ProjectDocumentComment.document_id == uuid.UUID(doc_id))
+        )
+        before_body = await session.scalar(
+            select(ProjectDocument.body).where(ProjectDocument.id == uuid.UUID(doc_id))
+        )
+
+    stale_anchor = uuid.uuid4()
+    stale = await client.post(
+        f"/api/v1/documents/{doc_id}/inline-comments",
+        json={
+            "body": "저장되면 안 됨",
+            "anchor_id": str(stale_anchor),
+            "anchor_quote": "본문",
+            "expected_document_version": 0,
+            "document_body": (f'<p><span data-comment-anchor="{stale_anchor}">본문</span></p>'),
+        },
+    )
+    assert stale.status_code == 409
+    assert stale.json()["current"]["version"] == 1
+
+    async with app.state.sessionmaker() as session:
+        assert (
+            await session.scalar(
+                select(func.count())
+                .select_from(ProjectDocumentComment)
+                .where(ProjectDocumentComment.document_id == uuid.UUID(doc_id))
+            )
+            == before_count
+        )
+        assert (
+            await session.scalar(
+                select(ProjectDocument.body).where(ProjectDocument.id == uuid.UUID(doc_id))
+            )
+            == before_body
+        )
+
+
+async def test_inline_anchor_rejects_missing_mismatched_or_reused_quote(client, doc):
+    doc_id = doc["doc"]["id"]
+    anchor_id = uuid.uuid4()
+
+    missing = await client.post(
+        f"/api/v1/documents/{doc_id}/inline-comments",
+        json={
+            "body": "메모",
+            "anchor_id": str(anchor_id),
+            "anchor_quote": "본문",
+            "expected_document_version": 0,
+            "document_body": "<p>본문</p>",
+        },
+    )
+    assert missing.status_code == 422
+
+    mismatched = await client.post(
+        f"/api/v1/documents/{doc_id}/inline-comments",
+        json={
+            "body": "메모",
+            "anchor_id": str(anchor_id),
+            "anchor_quote": "다른 문구",
+            "expected_document_version": 0,
+            "document_body": (f'<p><span data-comment-anchor="{anchor_id}">본문</span></p>'),
+        },
+    )
+    assert mismatched.status_code == 422
+
+    first = await client.post(
+        f"/api/v1/documents/{doc_id}/inline-comments",
+        json={
+            "body": "첫 메모",
+            "anchor_id": str(anchor_id),
+            "anchor_quote": "본문",
+            "expected_document_version": 0,
+            "document_body": (f'<p><span data-comment-anchor="{anchor_id}">본문</span></p>'),
+        },
+    )
+    assert first.status_code == 201
+
+    reused = await client.post(
+        f"/api/v1/documents/{doc_id}/inline-comments",
+        json={
+            "body": "위조 답글",
+            "anchor_id": str(anchor_id),
+            "anchor_quote": "본문 변조",
+            "expected_document_version": 1,
+            "document_body": (f'<p><span data-comment-anchor="{anchor_id}">본문 변조</span></p>'),
+        },
+    )
+    assert reused.status_code == 422

@@ -50,9 +50,15 @@ from app.schemas.document_comment import (
     DocumentCommentCreate,
     DocumentCommentList,
     DocumentCommentRead,
+    InlineDocumentCommentCreate,
+    InlineDocumentCommentResult,
 )
 from app.services.document_access import document_is_visible, document_visible_clause
-from app.services.sanitize import sanitize_document_html
+from app.services.sanitize import (
+    document_comment_anchor_quote,
+    normalize_anchor_quote,
+    sanitize_document_html,
+)
 from app.services.workspace_features import require_feature_enabled
 
 
@@ -766,6 +772,92 @@ async def create_document_comment(
         await session.rollback()
         raise HTTPException(status_code=404, detail="not found") from exc
     return DocumentCommentRead.model_validate(comment)
+
+
+@router.post(
+    "/documents/{doc_id}/inline-comments",
+    response_model=InlineDocumentCommentResult,
+    status_code=201,
+    responses={409: {"model": DocumentConflict}},
+)
+async def create_inline_document_comment(
+    doc_id: uuid.UUID,
+    body: InlineDocumentCommentCreate,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+):
+    """Atomically persist a sanitized body anchor and its next thread message.
+
+    The first message normally changes the document body by adding the inert
+    span marker; replies submit the unchanged body and therefore do not bump
+    the document version. Either way, stale versions create neither half.
+    """
+    await _get_doc_scoped(session, doc_id, user, write=True)
+    doc = (
+        await session.execute(
+            select(ProjectDocument).where(ProjectDocument.id == doc_id).with_for_update()
+        )
+    ).scalar_one_or_none()
+    if doc is None or not document_is_visible(doc, user.id):
+        raise HTTPException(status_code=404, detail="not found")
+    if body.expected_document_version is not None:
+        if doc.version != body.expected_document_version:
+            return _conflict(doc)
+        sanitized = await _validate_inline_images(
+            session,
+            doc.project_id,
+            doc.id,
+            sanitize_document_html(body.document_body),
+        )
+        sanitized = sanitized or ""
+    else:
+        sanitized = doc.body or ""
+    actual_quote = document_comment_anchor_quote(sanitized, body.anchor_id)
+    if actual_quote is None or actual_quote != normalize_anchor_quote(body.anchor_quote):
+        raise HTTPException(
+            status_code=422,
+            detail="comment anchor must exist in the submitted document body and match its quote",
+        )
+
+    existing_quote = await session.scalar(
+        select(ProjectDocumentComment.anchor_quote)
+        .where(
+            ProjectDocumentComment.document_id == doc.id,
+            ProjectDocumentComment.anchor_id == body.anchor_id,
+        )
+        .limit(1)
+    )
+    if existing_quote is not None and existing_quote != body.anchor_quote:
+        raise HTTPException(
+            status_code=422,
+            detail="comment anchor quote does not match its thread",
+        )
+
+    if body.document_body is not None and sanitized != (doc.body or ""):
+        doc.body = sanitized or None
+        doc.version += 1
+        doc.updated_at = datetime.now(UTC)
+
+    comment = ProjectDocumentComment(
+        document_id=doc.id,
+        project_id=doc.project_id,
+        author_id=user.id,
+        body=body.body,
+        anchor_id=body.anchor_id,
+        anchor_quote=body.anchor_quote,
+    )
+    try:
+        session.add(comment)
+        await session.flush()
+        await session.commit()
+    except IntegrityError as exc:
+        await session.rollback()
+        raise HTTPException(status_code=404, detail="not found") from exc
+
+    return InlineDocumentCommentResult(
+        comment=DocumentCommentRead.model_validate(comment),
+        document=DocumentRead.model_validate(doc),
+    )
 
 
 @router.delete("/document-comments/{comment_id}", status_code=204)
