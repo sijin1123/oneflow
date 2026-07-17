@@ -24,6 +24,7 @@ import type { ProjectTemplate } from '../src/features/project-templates/api'
 import type { SearchResults, SearchWorkPackageAnalytics } from '../src/features/search/api'
 import type { WorkspaceProjectPhaseDefinitions } from '../src/features/workspace-profile/api'
 import type { MyActivityList, MyWorkItemList } from '../src/features/my-work/api'
+import type { WorkspaceQuickLink } from '../src/features/my-work/quickLinksApi'
 import type {
   WorkItemDraft,
   WorkItemDraftContent,
@@ -250,6 +251,7 @@ async function mockApi(page: Page, opts: { conflictOnPatch?: boolean } = {}) {
   // Default mutable personal-note store lets all notes routes exercise real
   // request wiring without relying on a backend fixture.
   let personalNotes: PersonalNoteFixture[] = []
+  let workspaceQuickLinks: WorkspaceQuickLink[] = []
   let workspaceViews: WorkspaceSavedView[] = []
   let workspaceWorkItems = allWorkItems.items.map((item) => ({ ...item }))
   let currentWorkPackage = { ...wpA }
@@ -333,6 +335,76 @@ async function mockApi(page: Page, opts: { conflictOnPatch?: boolean } = {}) {
         limit: Number(url.searchParams.get('limit') ?? 50),
         offset: Number(url.searchParams.get('offset') ?? 0),
       },
+    })
+  })
+  await page.route('**/api/v1/me/quick-links**', async (route) => {
+    const request = route.request()
+    const url = new URL(request.url())
+    if (request.method() === 'POST') {
+      const body = request.postDataJSON() as Pick<WorkspaceQuickLink, 'title' | 'destination'>
+      const link: WorkspaceQuickLink = {
+        id: `00000000-0000-4000-8000-${String(workspaceQuickLinks.length + 1).padStart(12, '0')}`,
+        title: body.title,
+        destination: body.destination,
+        position: workspaceQuickLinks.length,
+        version: 0,
+        created_at: '2026-07-17T00:00:00Z',
+        updated_at: '2026-07-17T00:00:00Z',
+      }
+      workspaceQuickLinks = [...workspaceQuickLinks, link]
+      await route.fulfill({ status: 201, json: link })
+      return
+    }
+    if (request.method() === 'PUT') {
+      const body = request.postDataJSON() as {
+        items: Array<{ id: string; expected_version: number }>
+      }
+      workspaceQuickLinks = body.items.map((item, position) => {
+        const link = workspaceQuickLinks.find((candidate) => candidate.id === item.id)!
+        return { ...link, position, version: item.expected_version + 1 }
+      })
+      await route.fulfill({
+        json: { items: workspaceQuickLinks, total: workspaceQuickLinks.length },
+      })
+      return
+    }
+    const id = url.pathname.split('/').at(-1)!
+    const current = workspaceQuickLinks.find((link) => link.id === id)
+    if (request.method() === 'PATCH') {
+      const body = request.postDataJSON() as {
+        expected_version: number
+        title: string
+        destination: string
+      }
+      if (!current || current.version !== body.expected_version) {
+        await route.fulfill({
+          status: current ? 409 : 404,
+          json: current
+            ? { detail: 'quick link was changed elsewhere', current }
+            : { detail: 'not found' },
+        })
+        return
+      }
+      const updated: WorkspaceQuickLink = {
+        ...current,
+        title: body.title,
+        destination: body.destination,
+        version: current.version + 1,
+        updated_at: '2026-07-17T00:01:00Z',
+      }
+      workspaceQuickLinks = workspaceQuickLinks.map((link) =>
+        link.id === id ? updated : link,
+      )
+      await route.fulfill({ json: updated })
+      return
+    }
+    if (request.method() === 'DELETE') {
+      workspaceQuickLinks = workspaceQuickLinks.filter((link) => link.id !== id)
+      await route.fulfill({ status: 204, body: '' })
+      return
+    }
+    await route.fulfill({
+      json: { items: workspaceQuickLinks, total: workspaceQuickLinks.length },
     })
   })
   await page.route('**/api/v1/me/workspace-views**', async (route) => {
@@ -5648,6 +5720,83 @@ test('내 작업 홈 위젯 관리는 표시 상태를 저장하고 복원한다
   await page.reload()
   await expect(page.getByRole('region', { name: 'AI workspace' })).toBeVisible()
   await expect(page.getByRole('region', { name: '개인 메모' })).toBeVisible()
+})
+
+test('Workspace Home 빠른 링크가 개인 CRUD와 순서를 실제 요청에 연결한다', async ({
+  page,
+}) => {
+  await mockApi(page)
+  await page.route('**/api/v1/me/work', (route) =>
+    route.fulfill({
+      json: { assigned_to_me: [], due_soon: [], created_by_me: [], recent_activity: [] },
+    }),
+  )
+  await page.route('**/api/v1/me/time-entries**', (route) =>
+    route.fulfill({ json: { items: [], total: 0, total_hours: 0, by_project: [] } }),
+  )
+
+  await page.goto('/my')
+  const region = page.getByRole('region', { name: '빠른 이동' })
+  await expect(region.getByText('내 링크 0/8')).toBeVisible()
+
+  const firstCreate = page.waitForRequest(
+    (request) =>
+      request.method() === 'POST' && request.url().endsWith('/api/v1/me/quick-links'),
+  )
+  await region.getByRole('button', { name: '빠른 링크 추가' }).click()
+  await page.getByLabel('이름').fill('팀 핸드북')
+  await page.getByLabel('주소').fill('/wiki?section=team')
+  await page.getByRole('button', { name: '저장' }).click()
+  expect((await firstCreate).postDataJSON()).toEqual({
+    title: '팀 핸드북',
+    destination: '/wiki?section=team',
+  })
+  await expect(region.getByRole('link', { name: /팀 핸드북/ })).toHaveAttribute(
+    'href',
+    '/wiki?section=team',
+  )
+
+  await region.getByRole('button', { name: '빠른 링크 추가' }).click()
+  await page.getByLabel('이름').fill('제품 문서')
+  await page.getByLabel('주소').fill('https://docs.example.com/guide')
+  await page.getByRole('button', { name: '저장' }).click()
+  const external = region.getByRole('link', { name: /제품 문서/ })
+  await expect(external).toHaveAttribute('target', '_blank')
+  await expect(external).toHaveAttribute('rel', 'noopener noreferrer')
+
+  await region.getByRole('button', { name: '팀 핸드북 빠른 링크 관리' }).click()
+  await page.getByRole('menuitem', { name: '편집' }).click()
+  await page.getByLabel('이름').fill('협업 핸드북')
+  await page.getByRole('button', { name: '저장' }).click()
+  await expect(region.getByRole('link', { name: /협업 핸드북/ })).toBeVisible()
+
+  const orderRequest = page.waitForRequest(
+    (request) =>
+      request.method() === 'PUT' && request.url().endsWith('/api/v1/me/quick-links/order'),
+  )
+  await region.getByRole('button', { name: '제품 문서 빠른 링크 관리' }).click()
+  await page.getByRole('menuitem', { name: '앞으로 이동' }).click()
+  const orderBody = (await orderRequest).postDataJSON() as { items: Array<{ id: string }> }
+  expect(orderBody.items[0].id).toBe('00000000-0000-4000-8000-000000000002')
+
+  await region.getByRole('button', { name: '협업 핸드북 빠른 링크 관리' }).click()
+  await page.getByRole('menuitem', { name: '삭제' }).click()
+  await expect(page.getByRole('heading', { name: '빠른 링크 삭제' })).toBeVisible()
+  await page.getByRole('button', { name: '삭제' }).click()
+  await expect(region.getByRole('link', { name: /협업 핸드북/ })).toHaveCount(0)
+  await expect(region.getByText('내 링크 1/8')).toBeVisible()
+
+  await page.setViewportSize({ width: 1440, height: 960 })
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/workspace-quick-links-ui/desktop.png',
+    fullPage: true,
+  })
+  await page.setViewportSize({ width: 390, height: 844 })
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/workspace-quick-links-ui/mobile.png',
+    fullPage: true,
+  })
 })
 
 test('내 작업 탭이 관계·검색·범위·정렬·페이지 상태를 URL과 API에 연결한다', async ({

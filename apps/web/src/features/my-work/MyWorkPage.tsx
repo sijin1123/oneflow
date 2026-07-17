@@ -57,6 +57,7 @@ import {
   useMyWorkItems,
   useMyTime,
 } from './api'
+import { WorkspaceQuickLinks } from './WorkspaceQuickLinks'
 
 function actionText(a: MyActivity): string {
   if (a.action === 'created') return '생성'
@@ -765,46 +766,40 @@ function MyWorkOverview() {
       ) : null}
 
       {visibleWidgets.quickLinks ? (
-        <section aria-label="빠른 이동" className="min-w-0">
-          <div className="mb-2 flex items-center justify-between gap-2 px-1">
-            <h2 className="text-sm font-semibold">빠른 이동</h2>
-            <span className="text-xs text-of-muted">자주 쓰는 표면</span>
-          </div>
-          <div className="grid min-w-0 gap-2 sm:grid-cols-2 lg:grid-cols-3">
-            <QuickLink
-              to="/work-items"
-              label="전체 작업"
-              detail="프로젝트 전체 작업 검색"
-              icon={ListChecks}
-              accent
-            />
-            <QuickLink
-              to="/inbox"
-              label="인박스"
-              detail={unread > 0 ? `읽지 않음 ${unread}건` : '새 알림 없음'}
-              icon={BellRing}
-              accent={unread > 0}
-            />
-            <QuickLink
-              to="/projects"
-              label="프로젝트"
-              detail={`${projects.data?.total ?? 0}개 프로젝트`}
-              icon={FolderKanban}
-            />
-            <QuickLink
-              to="/operations"
-              label="운영 허브"
-              detail="가져오기·내보내기·상태"
-              icon={SquareActivity}
-            />
-            <QuickLink
-              to="/notes?new=1"
-              label="개인 메모"
-              detail="빠르게 기록하고 정리"
-              icon={StickyNote}
-            />
-          </div>
-        </section>
+        <WorkspaceQuickLinks>
+          <QuickLink
+            to="/work-items"
+            label="전체 작업"
+            detail="프로젝트 전체 작업 검색"
+            icon={ListChecks}
+            accent
+          />
+          <QuickLink
+            to="/inbox"
+            label="인박스"
+            detail={unread > 0 ? `읽지 않음 ${unread}건` : '새 알림 없음'}
+            icon={BellRing}
+            accent={unread > 0}
+          />
+          <QuickLink
+            to="/projects"
+            label="프로젝트"
+            detail={`${projects.data?.total ?? 0}개 프로젝트`}
+            icon={FolderKanban}
+          />
+          <QuickLink
+            to="/operations"
+            label="운영 허브"
+            detail="가져오기·내보내기·상태"
+            icon={SquareActivity}
+          />
+          <QuickLink
+            to="/notes?new=1"
+            label="개인 메모"
+            detail="빠르게 기록하고 정리"
+            icon={StickyNote}
+          />
+        </WorkspaceQuickLinks>
       ) : null}
 
       {visibleWidgets.projectShortcuts ? (
