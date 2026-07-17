@@ -33,6 +33,10 @@ from app.models.project import Project
 from app.models.project_directory_preferences import UserProjectDirectoryPreferences
 from app.models.project_health_history import ProjectHealthHistory
 from app.models.project_phase import ProjectPhase
+from app.models.project_schedule_baseline import (
+    ProjectScheduleBaseline,
+    ProjectScheduleBaselineItem,
+)
 from app.models.project_status import ProjectStatus
 from app.models.project_template import (
     ProjectTemplate,
@@ -62,6 +66,8 @@ __all__ = [
     "UserProjectDirectoryPreferences",
     "ProjectHealthHistory",
     "ProjectPhase",
+    "ProjectScheduleBaseline",
+    "ProjectScheduleBaselineItem",
     "Customer",
     "ProjectMember",
     "WorkPackage",

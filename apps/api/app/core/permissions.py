@@ -226,6 +226,8 @@ ENDPOINT_VERBS: dict[str, str] = {
     "POST /api/v1/projects/{project_id}/archive": "project.manage",
     "POST /api/v1/projects/{project_id}/unarchive": "project.manage",
     "PATCH /api/v1/projects/{project_id}/phases/{phase_key}": "project.manage",
+    "PUT /api/v1/projects/{project_id}/schedule-baseline": "project.manage",
+    "DELETE /api/v1/projects/{project_id}/schedule-baseline": "project.manage",
     # member.manage
     "POST /api/v1/projects/{project_id}/members": "member.manage",
     "PATCH /api/v1/projects/{project_id}/members/{user_id}": "member.manage",
