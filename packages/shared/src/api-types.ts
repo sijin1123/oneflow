@@ -2573,6 +2573,25 @@ export interface paths {
         patch: operations["update_saved_filter_api_v1_projects__project_id__saved_filters__filter_id__patch"];
         trace?: never;
     };
+    "/api/v1/projects/{project_id}/schedule-baseline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Project Schedule Baseline */
+        get: operations["get_project_schedule_baseline_api_v1_projects__project_id__schedule_baseline_get"];
+        /** Capture Project Schedule Baseline */
+        put: operations["capture_project_schedule_baseline_api_v1_projects__project_id__schedule_baseline_put"];
+        post?: never;
+        /** Delete Project Schedule Baseline */
+        delete: operations["delete_project_schedule_baseline_api_v1_projects__project_id__schedule_baseline_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{project_id}/statuses": {
         parameters: {
             query?: never;
@@ -7233,6 +7252,81 @@ export interface components {
              * Format: uuid
              */
             target_id: string;
+        };
+        /** ProjectScheduleBaselineMutation */
+        ProjectScheduleBaselineMutation: {
+            /** Expected Version */
+            expected_version?: number | null;
+        };
+        /** ProjectScheduleBaselineRead */
+        ProjectScheduleBaselineRead: {
+            /**
+             * Captured At
+             * Format: date-time
+             */
+            captured_at: string;
+            /** Captured By User Id */
+            captured_by_user_id: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Version */
+            version: number;
+        };
+        /** ProjectScheduleBaselineSummary */
+        ProjectScheduleBaselineSummary: {
+            /** Added */
+            added: number;
+            baseline: components["schemas"]["ProjectScheduleBaselineRead"] | null;
+            /** Changed Total */
+            changed_total: number;
+            /** Current Total */
+            current_total: number;
+            /** Earlier */
+            earlier: number;
+            /** Items */
+            items: components["schemas"]["ProjectScheduleVarianceItem"][];
+            /** Items Truncated */
+            items_truncated: boolean;
+            /** Later */
+            later: number;
+            /** Removed */
+            removed: number;
+            /** Rescheduled */
+            rescheduled: number;
+            /** Total Snapshot */
+            total_snapshot: number;
+            /** Unchanged */
+            unchanged: number;
+            /** Unscheduled */
+            unscheduled: number;
+        };
+        /** ProjectScheduleVarianceItem */
+        ProjectScheduleVarianceItem: {
+            /** Baseline Due Date */
+            baseline_due_date: string | null;
+            /** Baseline Start Date */
+            baseline_start_date: string | null;
+            /** Current Due Date */
+            current_due_date: string | null;
+            /** Current Start Date */
+            current_start_date: string | null;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "unchanged" | "later" | "earlier" | "unscheduled" | "rescheduled" | "added" | "removed";
+            /** Subject */
+            subject: string;
+            /** Variance Days */
+            variance_days: number | null;
+            /**
+             * Work Package Id
+             * Format: uuid
+             */
+            work_package_id: string;
         };
         /** ProjectStatusList */
         ProjectStatusList: {
@@ -16259,6 +16353,150 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["SavedFilterRead"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_project_schedule_baseline_api_v1_projects__project_id__schedule_baseline_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectScheduleBaselineSummary"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    capture_project_schedule_baseline_api_v1_projects__project_id__schedule_baseline_put: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProjectScheduleBaselineMutation"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectScheduleBaselineSummary"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_project_schedule_baseline_api_v1_projects__project_id__schedule_baseline_delete: {
+        parameters: {
+            query: {
+                expected_version: number;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

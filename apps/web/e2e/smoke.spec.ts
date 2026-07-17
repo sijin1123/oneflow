@@ -20,6 +20,7 @@ import type {
   ProjectPhase,
   ProjectPhaseList,
 } from '../src/features/projects/types'
+import type { ProjectScheduleBaselineSummary } from '../src/features/projects/scheduleBaselineApi'
 import type { ProjectTemplate } from '../src/features/project-templates/api'
 import type { SearchResults, SearchWorkPackageAnalytics } from '../src/features/search/api'
 import type { WorkspaceProjectPhaseDefinitions } from '../src/features/workspace-profile/api'
@@ -578,6 +579,25 @@ async function mockApi(page: Page, opts: { conflictOnPatch?: boolean } = {}) {
   )
   await page.route('**/api/v1/projects/*/phases**', (route) =>
     route.fulfill({ json: inactiveProjectPhases }),
+  )
+  await page.route('**/api/v1/projects/*/schedule-baseline**', (route) =>
+    route.fulfill({
+      json: {
+        baseline: null,
+        total_snapshot: 0,
+        current_total: 2,
+        unchanged: 0,
+        later: 0,
+        earlier: 0,
+        unscheduled: 0,
+        rescheduled: 0,
+        added: 0,
+        removed: 0,
+        changed_total: 0,
+        items: [],
+        items_truncated: false,
+      } satisfies ProjectScheduleBaselineSummary,
+    }),
   )
   // The Topbar bell polls this on every page — default to an empty inbox.
   await page.route('**/api/v1/me/notifications', (route) =>
@@ -15439,6 +15459,171 @@ test('프로젝트 cover는 디렉터리와 Overview를 공유하고 owner가 �
   await expect(page.getByRole('dialog', { name: '프로젝트 표지' })).toHaveCount(0)
   await expect(page.getByAltText(`${project.name} 표지`)).toHaveAttribute('src', /cover-new\/download$/)
   expect(cleanupCount).toBe(1)
+})
+
+test('프로젝트 일정 기준선은 저장·변동 비교·갱신·삭제까지 실제 요청으로 이어진다', async ({ page }) => {
+  test.setTimeout(60_000)
+  await mockApi(page)
+  await mockProjectOverview(page)
+
+  const empty: ProjectScheduleBaselineSummary = {
+    baseline: null,
+    total_snapshot: 0,
+    current_total: 4,
+    unchanged: 0,
+    later: 0,
+    earlier: 0,
+    unscheduled: 0,
+    rescheduled: 0,
+    added: 0,
+    removed: 0,
+    changed_total: 0,
+    items: [],
+    items_truncated: false,
+  }
+  const unchanged: ProjectScheduleBaselineSummary = {
+    ...empty,
+    baseline: {
+      id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+      version: 0,
+      captured_at: '2026-07-17T04:00:00Z',
+      captured_by_user_id: 'me-1',
+    },
+    total_snapshot: 4,
+    unchanged: 4,
+  }
+  const changed: ProjectScheduleBaselineSummary = {
+    ...unchanged,
+    current_total: 5,
+    unchanged: 1,
+    later: 1,
+    earlier: 1,
+    unscheduled: 1,
+    added: 1,
+    changed_total: 4,
+    items: [
+      {
+        work_package_id: wpA.id,
+        subject: '배포 일정 조정',
+        state: 'later',
+        variance_days: 3,
+        baseline_start_date: '2026-07-01',
+        baseline_due_date: '2026-07-15',
+        current_start_date: '2026-07-01',
+        current_due_date: '2026-07-18',
+      },
+      {
+        work_package_id: wpB.id,
+        subject: '디자인 검토',
+        state: 'earlier',
+        variance_days: -2,
+        baseline_start_date: '2026-07-08',
+        baseline_due_date: '2026-07-20',
+        current_start_date: '2026-07-08',
+        current_due_date: '2026-07-18',
+      },
+      {
+        work_package_id: '44444444-4444-4444-8444-444444444444',
+        subject: '범위 재검토',
+        state: 'unscheduled',
+        variance_days: null,
+        baseline_start_date: '2026-07-10',
+        baseline_due_date: '2026-07-25',
+        current_start_date: null,
+        current_due_date: null,
+      },
+      {
+        work_package_id: '55555555-5555-4555-8555-555555555555',
+        subject: '신규 운영 점검',
+        state: 'added',
+        variance_days: null,
+        baseline_start_date: null,
+        baseline_due_date: null,
+        current_start_date: '2026-07-22',
+        current_due_date: '2026-07-24',
+      },
+    ],
+  }
+  let current = empty
+  let rejectDeleteOnce = true
+  const writes: Array<{ method: string; expectedVersion: number | null }> = []
+
+  await page.route(`**/api/v1/projects/${project.id}/schedule-baseline**`, async (route) => {
+    const request = route.request()
+    if (request.method() === 'PUT') {
+      const body = request.postDataJSON() as { expected_version: number | null }
+      writes.push({ method: 'PUT', expectedVersion: body.expected_version })
+      current = body.expected_version === null
+        ? unchanged
+        : {
+            ...unchanged,
+            baseline: { ...unchanged.baseline!, version: body.expected_version + 1 },
+          }
+      await route.fulfill({ json: current })
+      return
+    }
+    if (request.method() === 'DELETE') {
+      const expectedVersion = Number(new URL(request.url()).searchParams.get('expected_version'))
+      writes.push({ method: 'DELETE', expectedVersion })
+      if (rejectDeleteOnce) {
+        rejectDeleteOnce = false
+        await route.fulfill({ status: 409, json: { detail: 'schedule baseline version conflict' } })
+        return
+      }
+      current = empty
+      await route.fulfill({ status: 204, body: '' })
+      return
+    }
+    await route.fulfill({ json: current })
+  })
+
+  await page.goto(`/projects/${project.id}/overview`)
+  const panel = page.getByRole('region', { name: '프로젝트 일정 기준선' })
+  await expect(panel).toContainText('현재 4개 작업')
+  await panel.getByRole('button', { name: '현재 일정 저장' }).click()
+  await expect(panel).toContainText('기준선 이후 일정 변경이 없습니다.')
+  expect(writes.at(-1)).toEqual({ method: 'PUT', expectedVersion: null })
+
+  current = changed
+  await page.reload()
+  await expect(panel).toContainText('전체 변동')
+  await expect(panel).toContainText('4')
+  await expect(panel.getByRole('link', { name: '배포 일정 조정' })).toHaveAttribute(
+    'href',
+    `/projects/${project.id}/work-packages?wp=${wpA.id}`,
+  )
+  await expect(panel).toContainText('지연 +3일')
+  await expect(panel).toContainText('앞당김 -2일')
+  await expect(panel).toContainText('일정 제거')
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/project-schedule-baseline-ui/desktop.png',
+    fullPage: true,
+  })
+
+  await panel.getByRole('button', { name: '현재 일정으로 갱신' }).click()
+  await expect(panel).toContainText('기준선 이후 일정 변경이 없습니다.')
+  expect(writes.at(-1)).toEqual({ method: 'PUT', expectedVersion: 0 })
+
+  await panel.getByRole('button', { name: '일정 기준선 삭제' }).click()
+  const dialog = page.getByRole('dialog', { name: '일정 기준선 삭제' })
+  await expect(dialog).toContainText('현재 작업 일정은 바뀌지 않습니다.')
+  await dialog.getByRole('button', { name: '기준선 삭제' }).click()
+  await expect(dialog.getByRole('alert')).toContainText('다른 변경이 먼저 저장되었습니다')
+  await dialog.getByRole('button', { name: '기준선 삭제' }).click()
+  await expect(panel).toContainText('아직 저장된 기준 일정이 없습니다.')
+  expect(writes.at(-1)).toEqual({ method: 'DELETE', expectedVersion: 1 })
+
+  current = changed
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.reload()
+  const mobilePanel = page.getByRole('region', { name: '프로젝트 일정 기준선' })
+  await expect(mobilePanel).toContainText('지연 +3일')
+  await expectNoHorizontalOverflow(page)
+  await mobilePanel.scrollIntoViewIfNeeded()
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/project-schedule-baseline-ui/mobile.png',
+    fullPage: true,
+  })
 })
 
 test('프로젝트 Overview 상태 보고 이력은 전환과 작성자를 최신순으로 표시한다', async ({ page }) => {

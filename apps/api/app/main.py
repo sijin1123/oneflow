@@ -35,6 +35,7 @@ from app.api.v1 import (
     permissions,
     personal_notes,
     project_phases,
+    project_schedule_baselines,
     project_statuses,
     project_templates,
     project_types,
@@ -157,6 +158,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(webhooks.router, prefix="/api/v1", tags=["webhooks"])
     app.include_router(projects.router, prefix="/api/v1/projects", tags=["projects"])
     app.include_router(project_phases.router, prefix="/api/v1", tags=["project-phases"])
+    app.include_router(
+        project_schedule_baselines.router,
+        prefix="/api/v1",
+        tags=["project-schedule-baselines"],
+    )
     app.include_router(
         project_templates.router,
         prefix="/api/v1/project-templates",
