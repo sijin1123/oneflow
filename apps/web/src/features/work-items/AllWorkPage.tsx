@@ -1,4 +1,5 @@
 import {
+  AlertCircle,
   CalendarDays,
   ChartGantt,
   ChevronLeft,
@@ -7,11 +8,12 @@ import {
   Filter,
   ListChecks,
   RefreshCw,
+  RotateCcw,
   Search,
   Table2,
   X,
 } from 'lucide-react'
-import { type FormEvent, type ReactNode, useEffect, useState } from 'react'
+import { type DragEvent, type FormEvent, type ReactNode, useEffect, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 
 import { EmptyState, ErrorState, ListSkeleton } from '@/components/shell/states'
@@ -24,10 +26,11 @@ import {
   type SearchResultItem,
   type WorkspaceWorkItemSort,
   type WorkspaceWorkItemScope,
+  usePatchWorkspaceWorkItem,
   useWorkspaceWorkItems,
 } from '@/features/search/api'
 import { PriorityChip, StatusChip, TypeChip } from '@/features/work-packages/chips'
-import type { WpPriority } from '@/features/work-packages/types'
+import type { WpPriority, WpStatus } from '@/features/work-packages/types'
 import { cn } from '@/lib/utils'
 
 import { WorkspaceCalendarView } from './WorkspaceCalendarView'
@@ -44,6 +47,8 @@ import {
   parseWorkspaceColumns,
   serializeWorkspaceColumns,
   shortWorkspaceItemId,
+  workspaceBoardGroupKey,
+  workspaceBoardTarget,
   type WorkspaceColumn,
   type WorkspaceGroupBy,
 } from './workspaceDisplay'
@@ -53,6 +58,19 @@ import {
 } from './workspaceSavedViewsApi'
 
 const PAGE_SIZE = 50
+const WORKSPACE_DRAG_TYPE = 'application/x-oneflow-work-item'
+
+type PendingBoardMove = {
+  itemId: string
+  property: 'status' | 'priority'
+  value: WpStatus | WpPriority
+}
+
+type BoardMoveRequest = {
+  itemId: string
+  groupBy: Extract<WorkspaceGroupBy, 'state' | 'priority'>
+  targetKey: string
+}
 const SCOPES: Array<{ value: WorkspaceWorkItemScope; label: string }> = [
   { value: 'all', label: 'All work items' },
   { value: 'assigned', label: 'Assigned' },
@@ -104,6 +122,9 @@ export function AllWorkPage() {
   const [filtersOpen, setFiltersOpen] = useState(
     state !== 'all' || priority !== 'all' || filterMode === 'pql',
   )
+  const [pendingBoardMove, setPendingBoardMove] = useState<PendingBoardMove | null>(null)
+  const [lastBoardMove, setLastBoardMove] = useState<BoardMoveRequest | null>(null)
+  const boardPatch = usePatchWorkspaceWorkItem()
   const offset = (page - 1) * PAGE_SIZE
   const query = useWorkspaceWorkItems({
     q,
@@ -183,6 +204,12 @@ export function AllWorkPage() {
   }
 
   const data = query.data
+  const boardItems = data?.items.map((item) => {
+    if (!pendingBoardMove || item.id !== pendingBoardMove.itemId) return item
+    return pendingBoardMove.property === 'status'
+      ? { ...item, status: pendingBoardMove.value as WpStatus }
+      : { ...item, priority: pendingBoardMove.value as WpPriority }
+  })
   const totalPages = data ? Math.max(1, Math.ceil(data.total / PAGE_SIZE)) : 1
   const returnedFrom = data && data.items.length > 0 ? offset + 1 : 0
   const returnedTo = data ? offset + data.items.length : 0
@@ -211,6 +238,34 @@ export function AllWorkPage() {
   const switchLayout = (nextLayout: 'board' | 'calendar' | 'table' | 'timeline') => {
     updateParams({ layout: nextLayout, page: String(page) })
   }
+  const moveBoardItem = (
+    item: SearchResultItem,
+    targetKey: string,
+    moveGroupBy: WorkspaceGroupBy = groupBy,
+  ) => {
+    if (boardPatch.isPending || item.current_user_can_write !== true || typeof item.version !== 'number') return
+    if (moveGroupBy !== 'state' && moveGroupBy !== 'priority') return
+    const target = workspaceBoardTarget(moveGroupBy, targetKey)
+    if (!target || workspaceBoardGroupKey(item, moveGroupBy) === targetKey) return
+    const move: PendingBoardMove = { itemId: item.id, property: target.property, value: target.value }
+    setPendingBoardMove(move)
+    setLastBoardMove({ itemId: item.id, groupBy: moveGroupBy, targetKey })
+    boardPatch.reset()
+    const patch = target.property === 'status'
+      ? { expected_version: item.version, status: target.value }
+      : { expected_version: item.version, priority: target.value }
+    boardPatch.mutate({ item, patch }, {
+      onSettled: () => setPendingBoardMove(null),
+    })
+  }
+  const retryBoardMove = () => {
+    if (!lastBoardMove || !data) return
+    const current = data.items.find((item) => item.id === lastBoardMove.itemId)
+    if (current) moveBoardItem(current, lastBoardMove.targetKey, lastBoardMove.groupBy)
+  }
+  const boardMoveError = boardPatch.isError
+    ? boardPatch.error instanceof Error ? boardPatch.error.message : '작업을 이동하지 못했습니다.'
+    : null
   const applySavedView = (view: WorkspaceSavedView) => {
     setSearchParams((previous) => {
       const next = new URLSearchParams(previous)
@@ -440,11 +495,19 @@ export function AllWorkPage() {
           />
         ) : layout === 'board' ? (
           <WorkspaceBoard
-            items={data.items}
+            items={boardItems ?? data.items}
             density={density}
             groupBy={groupBy}
             showEmptyGroups={showEmptyGroups}
             showIds={showIds}
+            pendingItemId={pendingBoardMove?.itemId ?? null}
+            moveError={boardMoveError}
+            onMove={moveBoardItem}
+            onRetry={retryBoardMove}
+            onDismissError={() => {
+              boardPatch.reset()
+              setLastBoardMove(null)
+            }}
             onOpen={(item) => navigate(workItemPath(item))}
           />
         ) : layout === 'calendar' ? (
@@ -531,6 +594,11 @@ function WorkspaceBoard({
   groupBy,
   showEmptyGroups,
   showIds,
+  pendingItemId,
+  moveError,
+  onMove,
+  onRetry,
+  onDismissError,
   onOpen,
 }: {
   items: SearchResultItem[]
@@ -538,20 +606,80 @@ function WorkspaceBoard({
   groupBy: WorkspaceGroupBy
   showEmptyGroups: boolean
   showIds: boolean
+  pendingItemId: string | null
+  moveError: string | null
+  onMove: (item: SearchResultItem, targetKey: string) => void
+  onRetry: () => void
+  onDismissError: () => void
   onOpen: (item: SearchResultItem) => void
 }) {
   const groups = buildWorkspaceGroups(items, groupBy, showEmptyGroups)
+  const [draggingId, setDraggingId] = useState<string | null>(null)
+  const [dropTarget, setDropTarget] = useState<string | null>(null)
+  const draggingIdRef = useRef<string | null>(null)
+  const movableGrouping = groupBy === 'state' || groupBy === 'priority'
+  const draggingItem = draggingId ? items.find((item) => item.id === draggingId) : null
+
+  const startDrag = (event: DragEvent<HTMLButtonElement>, item: SearchResultItem) => {
+    if (draggingIdRef.current && draggingIdRef.current !== item.id) {
+      event.preventDefault()
+      return
+    }
+    draggingIdRef.current = item.id
+    event.dataTransfer.effectAllowed = 'move'
+    event.dataTransfer.setData(WORKSPACE_DRAG_TYPE, item.id)
+    setDraggingId(item.id)
+  }
+
+  const finishDrag = () => {
+    draggingIdRef.current = null
+    setDraggingId(null)
+    setDropTarget(null)
+  }
+
   return (
-    <div className="of-scrollbar flex h-full min-h-0 gap-3 overflow-x-auto p-3" aria-label="전체 작업 Board">
-      {groups.map((group) => {
+    <div className="flex h-full min-h-0 flex-col" aria-label="전체 작업 Board">
+      {moveError ? (
+        <div role="alert" className="flex min-h-10 shrink-0 items-center gap-2 border-b border-of-danger/25 bg-of-danger/5 px-3 text-xs text-of-danger">
+          <AlertCircle size={14} aria-hidden />
+          <span className="min-w-0 flex-1 truncate">이동 실패: {moveError}</span>
+          <Button type="button" variant="outline" size="sm" onClick={onRetry}><RotateCcw size={13} />재시도</Button>
+          <button type="button" className="grid size-7 place-items-center rounded-of hover:bg-of-danger/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus" aria-label="이동 오류 닫기" onClick={onDismissError}><X size={13} /></button>
+        </div>
+      ) : null}
+      <div className="of-scrollbar flex min-h-0 flex-1 gap-3 overflow-x-auto p-3">
+        {groups.map((group) => {
+        const acceptsDrop = Boolean(
+          movableGrouping
+          && draggingItem
+          && draggingItem.current_user_can_write
+          && workspaceBoardGroupKey(draggingItem, groupBy) !== group.key,
+        )
         return (
           <section
             key={group.key}
             aria-label={`${group.label} 컬럼`}
             data-density={density}
+            data-drop-active={dropTarget === group.key ? 'true' : 'false'}
+            onDragOver={acceptsDrop ? (event) => {
+              event.preventDefault()
+              event.dataTransfer.dropEffect = 'move'
+              setDropTarget(group.key)
+            } : undefined}
+            onDragLeave={acceptsDrop ? (event) => {
+              if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDropTarget(null)
+            } : undefined}
+            onDrop={movableGrouping ? (event) => {
+              event.preventDefault()
+              const itemId = draggingIdRef.current || event.dataTransfer.getData(WORKSPACE_DRAG_TYPE) || draggingId
+              const item = items.find((candidate) => candidate.id === itemId)
+              finishDrag()
+              if (item) onMove(item, group.key)
+            } : undefined}
             className={cn(
-              'flex flex-1 flex-col rounded-of bg-of-surface-2',
+              'flex flex-1 flex-col rounded-of bg-of-surface-2 transition-[box-shadow,background-color] duration-150',
               density === 'compact' ? 'min-w-[15rem]' : 'min-w-[17rem]',
+              dropTarget === group.key && 'bg-of-accent-soft ring-2 ring-of-accent ring-inset',
             )}
           >
             <header className="flex h-10 shrink-0 items-center gap-2 border-b border-of-border-subtle px-3 text-xs font-semibold">
@@ -560,13 +688,27 @@ function WorkspaceBoard({
               <Badge variant="neutral">{group.items.length}</Badge>
             </header>
             <div className="of-scrollbar min-h-0 flex-1 space-y-2 overflow-y-auto p-2">
-              {group.items.map((item) => (
+              {group.items.map((item) => {
+                const pending = pendingItemId === item.id
+                const draggable = movableGrouping
+                  && item.current_user_can_write === true
+                  && !pending
+                  && (!draggingId || draggingId === item.id)
+                return (
                 <button
                   key={item.id}
                   type="button"
+                  draggable={draggable}
+                  aria-busy={pending}
+                  title={draggable ? `${groupBy === 'state' ? '상태' : '우선순위'} 그룹으로 이동` : undefined}
+                  onDragStart={draggable ? (event) => startDrag(event, item) : undefined}
+                  onDragEnd={draggable ? finishDrag : undefined}
                   className={cn(
-                    'block w-full rounded-of border border-of-border bg-of-surface text-left shadow-[var(--of-shadow-xs)] transition-colors hover:border-of-border-strong hover:bg-of-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus',
+                    'block w-full rounded-of border border-of-border bg-of-surface text-left shadow-[var(--of-shadow-xs)] transition-[border-color,background-color,opacity,transform] hover:border-of-border-strong hover:bg-of-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus',
                     density === 'compact' ? 'p-2' : 'p-3',
+                    draggable && 'cursor-grab active:cursor-grabbing',
+                    draggingId === item.id && 'scale-[0.99] opacity-45',
+                    pending && 'pointer-events-none opacity-55',
                   )}
                   onClick={() => onOpen(item)}
                 >
@@ -586,12 +728,14 @@ function WorkspaceBoard({
                     <span className="shrink-0">{dateOnly(item.due_date)}</span>
                   </span>
                 </button>
-              ))}
+                )
+              })}
               {group.items.length === 0 ? <p className="px-2 py-4 text-center text-xs text-of-muted">작업 없음</p> : null}
             </div>
           </section>
         )
-      })}
+        })}
+      </div>
     </div>
   )
 }

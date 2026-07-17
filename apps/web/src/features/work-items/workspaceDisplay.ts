@@ -22,6 +22,10 @@ export type WorkspaceItemGroup = {
   items: SearchResultItem[]
 }
 
+export type WorkspaceBoardTarget =
+  | { property: 'status'; value: SearchResultItem['status'] }
+  | { property: 'priority'; value: SearchResultItem['priority'] }
+
 const STATE_GROUPS: Array<{ key: string; label: string; values: SearchResultItem['status'][] }> = [
   { key: 'backlog', label: 'Backlog', values: ['backlog'] },
   { key: 'unstarted', label: 'Unstarted', values: ['todo'] },
@@ -91,6 +95,37 @@ export function buildWorkspaceGroups(
     grouped.set(key, current)
   }
   return [...grouped.values()].sort((left, right) => left.label.localeCompare(right.label, 'ko'))
+}
+
+export function workspaceBoardGroupKey(
+  item: SearchResultItem,
+  groupBy: WorkspaceGroupBy,
+): string | null {
+  if (groupBy === 'state') {
+    return STATE_GROUPS.find((group) => group.values.includes(item.status))?.key ?? null
+  }
+  if (groupBy === 'priority') return item.priority
+  return null
+}
+
+export function workspaceBoardTarget(
+  groupBy: WorkspaceGroupBy,
+  targetKey: string,
+): WorkspaceBoardTarget | null {
+  if (groupBy === 'state') {
+    const status = {
+      backlog: 'backlog',
+      unstarted: 'todo',
+      started: 'in_progress',
+      completed: 'done',
+    }[targetKey] as SearchResultItem['status'] | undefined
+    return status ? { property: 'status', value: status } : null
+  }
+  if (groupBy === 'priority') {
+    const priority = PRIORITY_GROUPS.find((group) => group.key === targetKey)?.key
+    return priority ? { property: 'priority', value: priority } : null
+  }
+  return null
 }
 
 export function shortWorkspaceItemId(item: SearchResultItem) {
