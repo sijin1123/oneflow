@@ -1227,6 +1227,42 @@
     height: calc(100dvh - 24px);
     min-height: 0;
   }
+  .of-login-story-copy {
+    top: 6%;
+    left: 8%;
+    width: 260px;
+  }
+  .of-login-story-copy .of-login-brand-mark { width: 42px; height: 33px; }
+  .of-login-story-copy .of-login-brand strong { font-size: 21px; }
+  .of-login-story-copy .of-login-brand small { font-size: 9px; }
+  .of-login-story-copy h1 { margin-top: 24px; font-size: 34px; }
+  .of-login-story-copy h1 .of-login-story-line { font-size: 25px; }
+  .of-login-story-copy > p {
+    width: 240px;
+    margin-top: 12px;
+    font-size: 10.5px;
+    line-height: 1.45;
+  }
+  .of-login-kanban { top: 9%; right: 1.5%; width: 250px; }
+  .of-login-kanban > header { font-size: 11px; }
+  .of-login-kanban-column > p,
+  .of-login-kanban-column article strong { font-size: 8px; }
+  .of-login-kanban-column article { padding: 6px 5px; }
+  .of-login-calendar {
+    bottom: 36%;
+    left: 5%;
+    width: 142px;
+    transform: perspective(800px) rotateY(1.5deg) rotateZ(-2.6deg);
+  }
+  .of-login-activity {
+    bottom: 15%;
+    left: 33%;
+    width: 150px;
+    min-height: 174px;
+  }
+  .of-login-project-progress { bottom: 14%; left: 60%; width: 104px; }
+  .of-login-collaboration { right: 2.5%; bottom: 29%; width: 160px; height: 154px; }
+  .of-login-story-widgets blockquote { bottom: 3.5%; left: 34%; width: 194px; }
   .of-login-auth { align-content: start; padding-top: 12px; padding-bottom: 10px; }
   .of-login-auth-card { padding-top: 22px; padding-bottom: 20px; }
   .of-login-heading { margin: 15px 0 18px; }
@@ -1234,6 +1270,23 @@
   .of-login-input { height: 43px; }
   .of-login-provider-button { min-height: 39px; }
   .of-login-footer { min-height: 30px; }
+}
+
+@media (max-width: 1050px) and (min-width: 881px) and (max-height: 800px) {
+  .of-login-story-copy { top: 5%; left: 6.5%; width: 220px; }
+  .of-login-story-copy .of-login-brand-mark { width: 37px; height: 29px; }
+  .of-login-story-copy .of-login-brand strong { font-size: 19px; }
+  .of-login-story-copy h1 { margin-top: 20px; font-size: 29px; }
+  .of-login-story-copy h1 .of-login-story-line { font-size: 21px; }
+  .of-login-story-copy > p { width: 205px; margin-top: 9px; font-size: 9.5px; }
+  .of-login-kanban { top: 11%; right: 1%; width: 205px; }
+  .of-login-kanban > header { padding: 7px 8px; font-size: 10px; }
+  .of-login-kanban-column > p,
+  .of-login-kanban-column article strong { font-size: 7px; }
+  .of-login-kanban-column article { min-height: 44px; padding: 5px 4px; }
+  .of-login-calendar { bottom: 34%; left: 3%; width: 122px; }
+  .of-login-activity { bottom: 12%; left: 31%; width: 132px; min-height: 164px; }
+  .of-login-project-progress { bottom: 11%; left: 66%; width: 90px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
