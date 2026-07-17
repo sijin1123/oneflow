@@ -12,11 +12,24 @@ class ProjectTypeRead(BaseModel):
     name: str
     position: int
     is_active: bool
+    is_builtin: bool
 
 
 class ProjectTypeList(BaseModel):
     items: list[ProjectTypeRead]
     total: int
+
+
+class ProjectTypeCreate(BaseModel):
+    name: str
+
+    @field_validator("name")
+    @classmethod
+    def _name(cls, v: str) -> str:
+        v = v.strip()
+        if not 1 <= len(v) <= 40:
+            raise ValueError("name must be 1-40 chars after trim")
+        return v
 
 
 class ProjectTypeUpdate(BaseModel):

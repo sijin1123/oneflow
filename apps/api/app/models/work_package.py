@@ -21,6 +21,7 @@ from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
+from app.models.project_type import TYPE_KEY_SQL
 
 WP_TYPES = ("task", "bug", "feature", "milestone")
 WP_STATUSES = ("backlog", "todo", "in_progress", "in_review", "done", "cancelled")
@@ -44,7 +45,7 @@ class WorkPackage(Base):
 
     __tablename__ = "work_packages"
     __table_args__ = (
-        CheckConstraint(_in_clause("type", WP_TYPES), name="type_allowed"),
+        CheckConstraint(TYPE_KEY_SQL.replace("key", "type"), name="type_allowed"),
         CheckConstraint(_in_clause("status", WP_STATUSES), name="status_allowed"),
         CheckConstraint(_in_clause("priority", WP_PRIORITIES), name="priority_allowed"),
         # Self-parenting blocked at DB level.

@@ -8,6 +8,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.v1.project_types import require_type_enabled
 from app.api.v1.work_packages import require_wp_member
 from app.core.auth import get_current_user
 from app.core.authz import require_member, require_role
@@ -27,6 +28,14 @@ from app.schemas.custom_field import (
 )
 
 router = APIRouter()
+
+
+async def _require_active_bindings(
+    session: AsyncSession, project_id: uuid.UUID, applies_to: list[str] | None
+) -> None:
+    for type_key in applies_to or []:
+        await require_type_enabled(session, project_id, type_key)
+
 
 MAX_TEXT_LEN = 2000
 MAX_URL_LEN = 2000
@@ -81,6 +90,7 @@ async def create_custom_field(
     user: User = Depends(get_current_user),
 ) -> CustomFieldRead:
     await require_role(session, project_id, user, {"owner"}, write=True)
+    await _require_active_bindings(session, project_id, body.applies_to)
     # Deterministic append position in the same transaction; a concurrent-create
     # tie is tolerated — ordering stays stable via (position, created_at, id).
     next_pos = (
@@ -132,6 +142,8 @@ async def update_custom_field(
     await require_role(session, project_id, user, {"owner"}, write=True)
     f = await _get_scoped(session, project_id, field_id)
     fields = body.model_dump(exclude_unset=True)
+    if fields.get("applies_to") is not None:
+        await _require_active_bindings(session, project_id, fields["applies_to"])
     for key in ("name", "is_active"):
         if key in fields and fields[key] is None:
             raise HTTPException(status_code=422, detail=f"{key} cannot be null")

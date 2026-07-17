@@ -17,11 +17,11 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { useMembers } from '@/features/members/api'
+import { useProjectTypeOptions } from '@/features/project-types/useProjectTypeOptions'
 import {
   PRIORITY_LABELS,
   WP_PRIORITIES,
   WP_STATUSES,
-  WP_TYPES,
   type WpPriority,
 } from '@/features/work-packages/types'
 import { useStatusLabels } from '@/features/work-packages/useStatusLabels'
@@ -65,6 +65,7 @@ export function AutomationManager({ projectId, isOwner }: { projectId: string; i
   const del = useDeleteAutomationRule(projectId)
   const statusLabel = useStatusLabels(projectId)
   const typeLabel = useTypeLabels(projectId)
+  const projectTypes = useProjectTypeOptions(projectId)
   const members = useMembers(projectId)
   const runs = useAutomationRuleRuns(projectId)
 
@@ -72,7 +73,9 @@ export function AutomationManager({ projectId, isOwner }: { projectId: string; i
     members.data?.items.find((m) => m.user_id === id)?.display_name ?? '알 수 없음'
 
   const triggerOptions = (triggerType: string): readonly (readonly [string, string])[] => {
-    if (triggerType === 'type_changed_to') return WP_TYPES.map((t) => [t, typeLabel(t)] as const)
+    if (triggerType === 'type_changed_to') {
+      return projectTypes.options.map((type) => [type.key, type.label] as const)
+    }
     if (triggerType === 'priority_changed_to') {
       return WP_PRIORITIES.map((p) => [p, PRIORITY_LABELS[p]] as const)
     }
@@ -116,9 +119,21 @@ export function AutomationManager({ projectId, isOwner }: { projectId: string; i
   // Optional AND secondary condition (Pass 81) — '' = none.
   const [conditionField, setConditionField] = useState<ConditionField>('')
   const [conditionValue, setConditionValue] = useState<string>('')
+  useEffect(() => {
+    if (triggerType !== 'type_changed_to' || projectTypes.options.length === 0) return
+    if (!projectTypes.options.some((type) => type.key === triggerValue)) {
+      setTriggerValue(projectTypes.options[0].key)
+    }
+  }, [projectTypes.options, triggerType, triggerValue])
+  useEffect(() => {
+    if (conditionField !== 'type' || projectTypes.options.length === 0) return
+    if (!projectTypes.options.some((type) => type.key === conditionValue)) {
+      setConditionValue(projectTypes.options[0].key)
+    }
+  }, [conditionField, conditionValue, projectTypes.options])
   const conditionValueOptions =
     conditionField === 'type'
-      ? WP_TYPES.map((t) => [t, typeLabel(t)] as const)
+      ? projectTypes.options.map((type) => [type.key, type.label] as const)
       : conditionField === 'priority'
         ? WP_PRIORITIES.map((p) => [p, PRIORITY_LABELS[p]] as const)
         : WP_STATUSES.map((s) => [s, statusLabel(s)] as const)
@@ -135,7 +150,7 @@ export function AutomationManager({ projectId, isOwner }: { projectId: string; i
   }
 
   const add = () => {
-    if (!actionValue) return
+    if (!triggerValue || !actionValue || (conditionField !== '' && !conditionValue)) return
     const target =
       actionType === 'set_priority'
         ? PRIORITY_LABELS[actionValue as WpPriority]
@@ -245,7 +260,7 @@ export function AutomationManager({ projectId, isOwner }: { projectId: string; i
                 // editing an existing rule never changes its trigger type).
                 setTriggerValue(
                   next === 'type_changed_to'
-                    ? 'bug'
+                    ? (projectTypes.options[0]?.key ?? '')
                     : next === 'priority_changed_to'
                       ? 'high'
                       : 'in_review',
@@ -320,7 +335,13 @@ export function AutomationManager({ projectId, isOwner }: { projectId: string; i
               setConditionField(next)
               // Reset the value to the first option of the new field's vocabulary.
               setConditionValue(
-                next === '' ? '' : next === 'type' ? 'bug' : next === 'priority' ? 'high' : 'in_review',
+                next === ''
+                  ? ''
+                  : next === 'type'
+                    ? (projectTypes.options[0]?.key ?? '')
+                    : next === 'priority'
+                      ? 'high'
+                      : 'in_review',
               )
             }}
           >
@@ -343,7 +364,16 @@ export function AutomationManager({ projectId, isOwner }: { projectId: string; i
               ))}
             </Select>
           ) : null}
-            <Button size="sm" disabled={create.isPending} onClick={add}>
+            <Button
+              size="sm"
+              disabled={
+                create.isPending ||
+                !triggerValue ||
+                !actionValue ||
+                (conditionField !== '' && !conditionValue)
+              }
+              onClick={add}
+            >
               규칙 추가
             </Button>
           </div>

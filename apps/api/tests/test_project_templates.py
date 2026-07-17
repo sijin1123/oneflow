@@ -18,16 +18,23 @@ async def _make_template(client) -> dict:
     types = (await client.get(f"/api/v1/projects/{pid}/types")).json()["items"]
     bug = next(t for t in types if t["key"] == "bug")
     await client.patch(f"/api/v1/projects/{pid}/types/{bug['id']}", json={"is_active": False})
+    custom_type = (
+        await client.post(f"/api/v1/projects/{pid}/types", json={"name": "사용자 스토리"})
+    ).json()
     await client.post(
         f"/api/v1/projects/{pid}/custom-fields",
-        json={"name": "고객사", "field_type": "text", "applies_to": ["task"]},
+        json={
+            "name": "고객사",
+            "field_type": "text",
+            "applies_to": [custom_type["key"]],
+        },
     )
     await client.post(
         f"/api/v1/projects/{pid}/automation-rules",
         json={
             "name": "완료 시 긴급",
-            "trigger_type": "status_changed_to",
-            "trigger_value": "done",
+            "trigger_type": "type_changed_to",
+            "trigger_value": custom_type["key"],
             "action_type": "set_priority",
             "action_value": "urgent",
             "is_active": True,
@@ -46,7 +53,7 @@ async def test_template_copies_settings_not_content(client):
     assert res.status_code == 201, res.text
     body = res.json()
     applied = body["template_applied"]
-    assert applied == {"statuses": 6, "types": 4, "custom_fields": 1, "automation_rules": 1}
+    assert applied == {"statuses": 6, "types": 5, "custom_fields": 1, "automation_rules": 1}
     new_pid = body["id"]
 
     # Statuses carry the template's labels (seed was skipped, not doubled).
@@ -57,8 +64,9 @@ async def test_template_copies_settings_not_content(client):
     # Types carry enablement; fields carry bindings.
     types = (await client.get(f"/api/v1/projects/{new_pid}/types")).json()["items"]
     assert next(t for t in types if t["key"] == "bug")["is_active"] is False
+    custom_type = next(t for t in types if not t["is_builtin"])
     fields = (await client.get(f"/api/v1/projects/{new_pid}/custom-fields")).json()["items"]
-    assert [(f["name"], f["applies_to"]) for f in fields] == [("고객사", ["task"])]
+    assert [(f["name"], f["applies_to"]) for f in fields] == [("고객사", [custom_type["key"]])]
 
     # Automation copies DISABLED with fresh counters (R1-④).
     rules = (await client.get(f"/api/v1/projects/{new_pid}/automation-rules")).json()["items"]

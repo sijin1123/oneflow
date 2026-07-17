@@ -11,6 +11,7 @@ from sqlalchemy import func, select, text, update
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.v1.project_types import require_type_enabled
 from app.api.v1.work_packages import (
     _schedule_webhook,
     _work_package_read,
@@ -157,6 +158,7 @@ async def create_work_item_draft(
     user: User = Depends(get_current_user),
 ) -> WorkItemDraftRead:
     await require_member(session, project_id, user, write=True)
+    await require_type_enabled(session, project_id, body.content.type)
     await _lock_owner_drafts(session, user.id)
     count = (
         await session.execute(
@@ -203,6 +205,8 @@ async def replace_work_item_draft(
 ) -> WorkItemDraftRead | JSONResponse:
     current = await _owned_active_or_404(session, draft_id, user.id)
     await require_member(session, current.project_id, user, write=True)
+    if body.content.type != current.content.get("type", "task"):
+        await require_type_enabled(session, current.project_id, body.content.type)
     result = await session.execute(
         update(WorkItemDraft)
         .where(

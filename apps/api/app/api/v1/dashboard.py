@@ -17,6 +17,7 @@ from app.models.activity import ACTIVITY_ACTIONS, Activity
 from app.models.cost_entry import CostEntry
 from app.models.dashboard_layout import WIDGET_KEYS, DashboardLayout, DashboardSharedLayout
 from app.models.project import Project
+from app.models.project_type import ProjectType
 from app.models.time_entry import TimeEntry
 from app.models.user import User
 from app.models.work_package import (
@@ -121,8 +122,10 @@ async def _effective_layout(
     )
 
 
-def _ordered_buckets(counts: dict[str, int], order: tuple[str, ...]) -> list[Bucket]:
-    return [Bucket(key=k, count=counts.get(k, 0)) for k in order]
+def _ordered_buckets(counts: dict[str, int], order: tuple[str, ...] | list[str]) -> list[Bucket]:
+    keys = list(order)
+    keys.extend(sorted(set(counts) - set(keys)))
+    return [Bucket(key=k, count=counts.get(k, 0)) for k in keys]
 
 
 @router.get("/projects/{project_id}/dashboard", response_model=DashboardRead)
@@ -146,6 +149,15 @@ async def project_dashboard(
     status_counts = await group(WorkPackage.status)
     priority_counts = await group(WorkPackage.priority)
     type_counts = await group(WorkPackage.type)
+    type_order = list(
+        (
+            await session.execute(
+                select(ProjectType.key)
+                .where(ProjectType.project_id == project_id)
+                .order_by(ProjectType.position.asc(), ProjectType.key.asc())
+            )
+        ).scalars()
+    ) or list(WP_TYPES)
 
     total = sum(status_counts.values())
     open_count = sum(n for k, n in status_counts.items() if k not in CLOSED_STATUSES)
@@ -213,7 +225,7 @@ async def project_dashboard(
         overdue_count=overdue,
         status_counts=_ordered_buckets(status_counts, WP_STATUSES),
         priority_counts=_ordered_buckets(priority_counts, WP_PRIORITIES),
-        type_counts=_ordered_buckets(type_counts, WP_TYPES),
+        type_counts=_ordered_buckets(type_counts, type_order),
         total_estimated_hours=round(float(estimated), 2),
         total_spent_hours=round(float(spent), 2),
         budget=round(float(project.budget), 2) if project.budget is not None else None,

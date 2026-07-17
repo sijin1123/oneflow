@@ -5,6 +5,7 @@ import {
   ChevronUp,
   ListChecks,
   Pencil,
+  Plus,
   Save,
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
@@ -18,20 +19,22 @@ import { cn } from '@/lib/utils'
 
 import {
   type ProjectType,
+  useCreateProjectType,
   useProjectTypes,
   useReorderProjectTypes,
   useUpdateProjectType,
 } from './api'
 
-/* Work-item type configuration (Pass 7 PR-R): owners rename, reorder, and
-   enable/disable the fixed type keys. Disabling blocks NEW usage only —
-   existing work packages keep their type. */
 export function TypeManager({ projectId, isOwner }: { projectId: string; isOwner: boolean }) {
-  const { data } = useProjectTypes(projectId)
+  const types = useProjectTypes(projectId)
+  const create = useCreateProjectType(projectId)
   const update = useUpdateProjectType(projectId)
   const reorder = useReorderProjectTypes(projectId)
+  const [newName, setNewName] = useState('')
 
-  const sorted = data ? [...data.items].sort((a, b) => a.position - b.position) : []
+  const sorted = types.data
+    ? [...types.data.items].sort((a, b) => a.position - b.position)
+    : []
 
   const move = (index: number, dir: -1 | 1) => {
     const j = index + dir
@@ -46,12 +49,26 @@ export function TypeManager({ projectId, isOwner }: { projectId: string; isOwner
       ? '최소 1개의 타입은 활성 상태여야 합니다.'
       : null
 
-  if (sorted.length === 0) return null
+  const createError =
+    create.error instanceof ApiError && create.error.status === 409
+      ? create.error.message.includes('active work-item type limit')
+        ? '활성 타입은 최대 12개까지 사용할 수 있습니다.'
+        : create.error.message.includes('work-item type limit')
+          ? '타입은 프로젝트당 최대 32개까지 만들 수 있습니다.'
+          : '같은 이름의 타입이 이미 있습니다.'
+      : create.isError
+        ? '타입을 추가하지 못했습니다.'
+        : null
+  const addType = () => {
+    const name = newName.trim()
+    if (!name || create.isPending) return
+    create.mutate(name, { onSuccess: () => setNewName('') })
+  }
 
   return (
     <section
       aria-label="워크 아이템 타입"
-      className="space-y-3 rounded-of border border-of-border bg-of-surface p-4"
+      className="space-y-3 rounded-of border border-of-border bg-of-surface p-4 pb-16 sm:pb-4"
     >
       <div className="flex min-w-0 items-start gap-3">
         <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-of bg-of-accent-soft text-of-accent">
@@ -65,26 +82,73 @@ export function TypeManager({ projectId, isOwner }: { projectId: string; isOwner
             </Badge>
           </div>
           <p className="mt-1 text-xs leading-5 text-of-muted">
-            타입 이름과 순서를 조정하고, 쓰지 않는 타입은 비활성화합니다(기존 작업은 유지)
+            프로젝트 고유 타입을 만들고 순서를 조정합니다. 비활성화해도 기존 작업은 유지됩니다
             {isOwner ? '' : ' (소유자만 편집 가능)'}.
           </p>
         </div>
       </div>
-      <ul className="grid gap-2">
-        {sorted.map((t, i) => (
-          <TypeRow
-            key={t.id}
-            type={t}
-            isOwner={isOwner}
-            onRename={(name) => update.mutate({ typeId: t.id, name })}
-            onToggle={(active) => update.mutate({ typeId: t.id, is_active: active })}
-            isFirst={i === 0}
-            isLast={i === sorted.length - 1}
-            onMoveUp={() => move(i, -1)}
-            onMoveDown={() => move(i, 1)}
-          />
-        ))}
-      </ul>
+      {isOwner ? (
+        <form
+          className="flex min-w-0 flex-col gap-2 rounded-of border border-dashed border-of-border bg-of-surface-2 p-3 sm:flex-row sm:items-end"
+          onSubmit={(event) => {
+            event.preventDefault()
+            addType()
+          }}
+        >
+          <label className="min-w-0 flex-1 space-y-1">
+            <span className="text-xs font-medium text-of-muted">새 타입 이름</span>
+            <Input
+              value={newName}
+              onChange={(event) => setNewName(event.target.value)}
+              placeholder="예: 사용자 스토리"
+              maxLength={40}
+              aria-label="새 작업 타입 이름"
+            />
+          </label>
+          <Button
+            type="submit"
+            disabled={!newName.trim() || create.isPending}
+          >
+            <Plus size={14} aria-hidden="true" />
+            {create.isPending ? '추가 중' : '타입 추가'}
+          </Button>
+        </form>
+      ) : null}
+      {createError ? (
+        <p role="alert" className="text-xs text-of-danger">
+          {createError}
+        </p>
+      ) : null}
+      {types.isPending ? (
+        <div role="status" className="h-16 animate-pulse rounded-of bg-of-surface-2" />
+      ) : types.isError ? (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-of border border-of-border p-3">
+          <p role="alert" className="text-xs text-of-danger">타입 목록을 불러오지 못했습니다.</p>
+          <Button size="sm" variant="outline" onClick={() => void types.refetch()}>
+            다시 시도
+          </Button>
+        </div>
+      ) : sorted.length === 0 ? (
+        <p className="rounded-of border border-of-border p-3 text-xs text-of-muted">
+          정의된 타입이 없습니다. 첫 타입을 추가해 작업 분류를 시작하세요.
+        </p>
+      ) : (
+        <ul className="grid gap-2">
+          {sorted.map((t, i) => (
+            <TypeRow
+              key={t.id}
+              type={t}
+              isOwner={isOwner}
+              onRename={(name) => update.mutate({ typeId: t.id, name })}
+              onToggle={(active) => update.mutate({ typeId: t.id, is_active: active })}
+              isFirst={i === 0}
+              isLast={i === sorted.length - 1}
+              onMoveUp={() => move(i, -1)}
+              onMoveDown={() => move(i, 1)}
+            />
+          ))}
+        </ul>
+      )}
       {lastActive ? (
         <p role="alert" className="text-xs text-of-danger">
           {lastActive}
@@ -124,8 +188,12 @@ function TypeRow({
   if (editing) {
     return (
       <li className="grid min-w-0 gap-2 rounded-of border border-of-border bg-of-surface-2 px-3 py-2 sm:grid-cols-[5rem_minmax(0,1fr)_auto] sm:items-center">
-        <Badge variant="neutral" className="max-w-full truncate font-mono uppercase">
-          {type.key}
+        <Badge
+          variant="neutral"
+          title={type.key}
+          className="max-w-full truncate font-mono uppercase"
+        >
+          {type.is_builtin ? type.key : 'custom'}
         </Badge>
         <Input
           value={name}
@@ -165,20 +233,21 @@ function TypeRow({
   return (
     <li
       className={cn(
-        'grid min-w-0 gap-2 rounded-of border border-of-border bg-of-surface-2 px-3 py-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center',
+        'grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded-of border border-of-border bg-of-surface-2 px-3 py-2',
         !type.is_active && 'text-of-muted',
       )}
     >
       <span className="flex min-w-0 items-center gap-2">
-        <Badge variant="neutral" className="shrink-0 font-mono uppercase">
-          {type.key}
+        <Badge variant="neutral" title={type.key} className="shrink-0 font-mono uppercase">
+          {type.is_builtin ? type.key : 'custom'}
         </Badge>
         <span className="min-w-0">
           <span className={`block truncate text-sm font-medium ${type.is_active ? '' : 'line-through'}`}>
             {type.name}
           </span>
           <span className="text-[11px] text-of-muted">
-            {type.is_active ? '활성' : '비활성'} · 위치 {type.position + 1}
+            {type.is_builtin ? '기본' : '사용자 정의'} · {type.is_active ? '활성' : '비활성'} · 위치{' '}
+            {type.position + 1}
           </span>
         </span>
       </span>

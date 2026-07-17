@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { useMembers } from '@/features/members/api'
+import { useProjectTypeOptions } from '@/features/project-types/useProjectTypeOptions'
 import {
   type WorkItemDraft,
   type WorkItemDraftContent,
@@ -23,13 +24,11 @@ import {
   PRIORITY_LABELS,
   WP_PRIORITIES,
   WP_STATUSES,
-  WP_TYPES,
   type WpPriority,
   type WpStatus,
   type WpType,
 } from './types'
 import { useStatusLabels } from './useStatusLabels'
-import { useTypeLabels } from './useTypeLabels'
 
 export function NewWorkPackageInline({
   projectId,
@@ -60,7 +59,9 @@ export function NewWorkPackageInline({
   const deleteDraft = useDeleteWorkItemDraft()
   const members = useMembers(projectId)
   const statusLabel = useStatusLabels(projectId)
-  const typeLabel = useTypeLabels(projectId)
+  const projectTypes = useProjectTypeOptions(projectId, {
+    currentKey: draft.data ? type : undefined,
+  })
   const open = searchParams.get('new') === '1'
   const sessionKey = open ? `${projectId}:${draftId ?? 'new'}` : null
 
@@ -81,6 +82,13 @@ export function NewWorkPackageInline({
     setDueDate(draft.data.content.due_date ?? '')
     setTouched(false)
   }, [draft.data])
+
+  useEffect(() => {
+    if (draft.data || projectTypes.options.length === 0) return
+    if (!projectTypes.options.some((option) => option.key === type)) {
+      setType(projectTypes.options[0].key)
+    }
+  }, [draft.data, projectTypes.options, type])
 
   const content = (): WorkItemDraftContent => ({
     subject,
@@ -331,9 +339,10 @@ export function NewWorkPackageInline({
               value={type}
               onChange={(event) => setType(event.target.value as WpType)}
             >
-              {WP_TYPES.map((value) => (
-                <option key={value} value={value}>
-                  {typeLabel(value)}
+              {projectTypes.options.map((option) => (
+                <option key={option.key} value={option.key}>
+                  {option.label}
+                  {option.isActive ? '' : ' (비활성)'}
                 </option>
               ))}
             </Select>

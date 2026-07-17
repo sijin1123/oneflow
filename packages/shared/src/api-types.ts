@@ -2607,7 +2607,8 @@ export interface paths {
         /** List Project Types */
         get: operations["list_project_types_api_v1_projects__project_id__types_get"];
         put?: never;
-        post?: never;
+        /** Create Project Type */
+        post: operations["create_project_type_api_v1_projects__project_id__types_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -7253,6 +7254,11 @@ export interface components {
             /** Version */
             version: number;
         };
+        /** ProjectTypeCreate */
+        ProjectTypeCreate: {
+            /** Name */
+            name: string;
+        };
         /** ProjectTypeList */
         ProjectTypeList: {
             /** Items */
@@ -7269,6 +7275,8 @@ export interface components {
             id: string;
             /** Is Active */
             is_active: boolean;
+            /** Is Builtin */
+            is_builtin: boolean;
             /** Key */
             key: string;
             /** Name */
@@ -15856,6 +15864,45 @@ export interface operations {
             };
         };
     };
+    create_project_type_api_v1_projects__project_id__types_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProjectTypeCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectTypeRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     reorder_project_types_api_v1_projects__project_id__types_order_put: {
         parameters: {
             query?: never;
@@ -16032,7 +16079,7 @@ export interface operations {
             query?: {
                 status?: ("backlog" | "todo" | "in_progress" | "in_review" | "done" | "cancelled") | null;
                 priority?: ("none" | "low" | "medium" | "high" | "urgent") | null;
-                type?: ("task" | "bug" | "feature" | "milestone") | null;
+                type?: string | null;
                 assignee_id?: string | null;
                 milestone_id?: string | null;
                 customer_id?: string | null;

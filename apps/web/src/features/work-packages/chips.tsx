@@ -53,7 +53,7 @@ export function TypeChip({ type, label }: { type: WpType; label?: string }) {
   // cross-project surfaces (search, my-work) keep the built-in default.
   return (
     <Badge variant="outline" className="whitespace-nowrap">
-      {label ?? TYPE_LABELS[type]}
+      {label ?? TYPE_LABELS[type] ?? type}
     </Badge>
   )
 }

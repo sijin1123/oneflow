@@ -1,3 +1,4 @@
+import re
 import uuid
 
 from sqlalchemy import (
@@ -14,15 +15,24 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
 
-# Per-project work-item type configuration (expansion Pass 7 PR-R). The KEYS
-# stay the fixed WP_TYPES set — this is the same presentation/config layer as
-# project_statuses, plus enablement: a disabled type blocks NEW usage only.
+# Built-in keys remain stable for compatibility. Custom keys are opaque,
+# server-generated identifiers so a rename never rewrites work-item history.
 DEFAULT_TYPES: tuple[tuple[str, str, int], ...] = (
     ("task", "작업", 0),
     ("bug", "버그", 1),
     ("feature", "기능", 2),
     ("milestone", "마일스톤", 3),
 )
+BUILTIN_TYPE_KEYS = tuple(key for key, _name, _position in DEFAULT_TYPES)
+CUSTOM_TYPE_KEY_PATTERN = r"custom_[0-9a-f]{12}"
+TYPE_KEY_PATTERN = rf"^(?:{'|'.join(BUILTIN_TYPE_KEYS)}|{CUSTOM_TYPE_KEY_PATTERN})$"
+TYPE_KEY_SQL = "key IN ('task', 'bug', 'feature', 'milestone') OR key ~ '^custom_[0-9a-f]{12}$'"
+MAX_PROJECT_TYPES = 32
+MAX_ACTIVE_PROJECT_TYPES = 12
+
+
+def is_valid_type_key(value: str) -> bool:
+    return re.fullmatch(TYPE_KEY_PATTERN, value) is not None
 
 
 class ProjectType(Base):
@@ -35,7 +45,7 @@ class ProjectType(Base):
     __tablename__ = "project_types"
     __table_args__ = (
         UniqueConstraint("project_id", "key", name="uq_project_types_project_key"),
-        CheckConstraint("key IN ('task', 'bug', 'feature', 'milestone')", name="key_allowed"),
+        CheckConstraint(TYPE_KEY_SQL, name="key_allowed"),
         Index("ix_project_types_project", "project_id", "position"),
     )
 
@@ -47,3 +57,7 @@ class ProjectType(Base):
     name: Mapped[str] = mapped_column(String(40), nullable=False)
     position: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+    @property
+    def is_builtin(self) -> bool:
+        return self.key in BUILTIN_TYPE_KEYS

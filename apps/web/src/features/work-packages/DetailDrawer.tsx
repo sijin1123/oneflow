@@ -17,7 +17,7 @@ import { useCycles } from '@/features/cycles/api'
 import { useCustomers } from '@/features/customers/api'
 import { useMilestones } from '@/features/milestones/api'
 import { useModules } from '@/features/modules/api'
-import { useProjectTypes } from '@/features/project-types/api'
+import { useProjectTypeOptions } from '@/features/project-types/useProjectTypeOptions'
 import { useWorkspaceCapabilities } from '@/features/workspace-features/api'
 
 import { CustomFieldsSection } from './CustomFieldsSection'
@@ -226,7 +226,7 @@ export function WorkPackageDetailPanel({
   const customers = useCustomers({ includeArchived: true, enabled: customersEnabled })
   const cycles = useCycles(projectId)
   const modules = useModules(projectId)
-  const projectTypes = useProjectTypes(projectId)
+  const projectTypes = useProjectTypeOptions(projectId, { currentKey: wp.type })
   const members = useMembers(projectId)
   const statusLabel = useStatusLabels(projectId)
   const duplicate = useDuplicateWorkPackage(projectId)
@@ -759,18 +759,12 @@ export function WorkPackageDetailPanel({
                   disabled={!canWrite || patch.isPending}
                   onChange={(e) => send({ type: e.target.value })}
                 >
-                  {(projectTypes.data?.items ?? [])
-                    .sort((a, b) => a.position - b.position)
-                    .filter((t) => t.is_active || t.key === wp.type)
-                    .map((t) => (
-                      <option key={t.key} value={t.key}>
-                        {t.name}
-                        {t.is_active ? '' : ' (비활성)'}
+                  {projectTypes.options.map((type) => (
+                      <option key={type.key} value={type.key}>
+                        {type.label}
+                        {type.isActive ? '' : ' (비활성)'}
                       </option>
                     ))}
-                  {projectTypes.data && projectTypes.data.total > 0 ? null : (
-                    <option value={wp.type}>{wp.type}</option>
-                  )}
                 </Select>
               </div>
               {releasesEnabled ? <div className={propertyRowClass}>

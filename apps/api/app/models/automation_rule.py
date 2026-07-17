@@ -16,7 +16,8 @@ from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
-from app.models.work_package import WP_PRIORITIES, WP_STATUSES, WP_TYPES
+from app.models.project_type import TYPE_KEY_SQL
+from app.models.work_package import WP_PRIORITIES, WP_STATUSES
 
 
 def _sql_in(values: tuple[str, ...]) -> str:
@@ -29,8 +30,16 @@ def _sql_in(values: tuple[str, ...]) -> str:
 _CONDITION_CHECK = (
     "condition_field IS NULL"
     f" OR (condition_field = 'status' AND condition_value IN ({_sql_in(WP_STATUSES)}))"
-    f" OR (condition_field = 'type' AND condition_value IN ({_sql_in(WP_TYPES)}))"
+    " OR (condition_field = 'type' AND ("
+    f"{TYPE_KEY_SQL.replace('key', 'condition_value')}))"
     f" OR (condition_field = 'priority' AND condition_value IN ({_sql_in(WP_PRIORITIES)}))"
+)
+
+_TRIGGER_VALUE_CHECK = (
+    f"(trigger_type = 'status_changed_to' AND trigger_value IN ({_sql_in(WP_STATUSES)}))"
+    " OR (trigger_type = 'type_changed_to' AND ("
+    f"{TYPE_KEY_SQL.replace('key', 'trigger_value')}))"
+    f" OR (trigger_type = 'priority_changed_to' AND trigger_value IN ({_sql_in(WP_PRIORITIES)}))"
 )
 
 # Supported trigger/action vocabulary. Kept a closed CHECK-constrained set; the
@@ -64,6 +73,7 @@ class AutomationRule(Base):
         CheckConstraint(
             "action_type IN ('set_priority', 'set_assignee')", name="automation_action_allowed"
         ),
+        CheckConstraint(_TRIGGER_VALUE_CHECK, name="automation_trigger_value_allowed"),
         CheckConstraint(_CONDITION_CHECK, name="automation_condition_allowed"),
         Index("ix_automation_rules_project", "project_id"),
     )

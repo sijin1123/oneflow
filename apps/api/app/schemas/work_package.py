@@ -3,7 +3,8 @@ from datetime import date, datetime
 
 from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
-from app.models.work_package import WP_PRIORITIES, WP_STATUSES, WP_TYPES
+from app.models.project_type import is_valid_type_key
+from app.models.work_package import WP_PRIORITIES, WP_STATUSES
 from app.schemas.custom_field import CustomValueRead
 
 MAX_DESCRIPTION = 20_000
@@ -59,8 +60,8 @@ class WorkPackageCreate(BaseModel):
     @field_validator("type")
     @classmethod
     def _type(cls, v: str) -> str:
-        if v not in WP_TYPES:
-            raise ValueError(f"type must be one of {WP_TYPES}")
+        if not is_valid_type_key(v):
+            raise ValueError("type must be a supported work-item type key")
         return v
 
     @field_validator("status")
@@ -138,8 +139,8 @@ class WorkPackagePatch(BaseModel):
     @field_validator("type")
     @classmethod
     def _type(cls, v: str | None) -> str | None:
-        if v is not None and v not in WP_TYPES:
-            raise ValueError(f"type must be one of {WP_TYPES}")
+        if v is not None and not is_valid_type_key(v):
+            raise ValueError("type must be a supported work-item type key")
         return v
 
     @field_validator("status")

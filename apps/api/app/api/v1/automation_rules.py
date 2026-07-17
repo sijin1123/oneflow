@@ -11,6 +11,7 @@ from pydantic import ValidationError
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.v1.project_types import require_type_enabled
 from app.core.auth import get_current_user
 from app.core.authz import member_role, require_member, require_role
 from app.db.session import get_session
@@ -61,6 +62,15 @@ async def _require_assignee_value_member(
         raise HTTPException(status_code=422, detail="action_value must be a project member")
     if role == "viewer":
         raise HTTPException(status_code=422, detail="action_value must not have a read-only role")
+
+
+async def _require_active_rule_types(
+    session: AsyncSession, project_id: uuid.UUID, body_like: AutomationRuleCreate
+) -> None:
+    if body_like.trigger_type == "type_changed_to":
+        await require_type_enabled(session, project_id, body_like.trigger_value)
+    if body_like.condition_field == "type" and body_like.condition_value is not None:
+        await require_type_enabled(session, project_id, body_like.condition_value)
 
 
 @router.get("/projects/{project_id}/automation-rules", response_model=AutomationRuleList)
@@ -130,6 +140,7 @@ async def create_automation_rule(
 ) -> AutomationRuleRead:
     await require_role(session, project_id, user, {"owner"}, write=True)
     await _require_assignee_value_member(session, project_id, body)
+    await _require_active_rule_types(session, project_id, body)
     # Serialize with reorder so positions stay a total order (R1-①); new rules
     # append at MAX(position)+1.
     await session.execute(
@@ -257,6 +268,13 @@ async def update_automation_rule(
     except ValidationError as exc:
         raise HTTPException(status_code=422, detail=exc.errors()[0]["msg"]) from exc
     await _require_assignee_value_member(session, project_id, merged_rule)
+    type_binding_changed = (
+        (rule.trigger_type == "type_changed_to" and "trigger_value" in provided)
+        or bool(cond_keys & dumped.keys())
+        or (provided.get("is_active") is True and not rule.is_active)
+    )
+    if type_binding_changed:
+        await _require_active_rule_types(session, project_id, merged_rule)
     for key, value in provided.items():
         setattr(rule, key, value)
     await session.commit()

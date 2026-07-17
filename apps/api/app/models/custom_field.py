@@ -18,6 +18,15 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.db.base import Base
 
 CUSTOM_FIELD_TYPES = ("text", "number", "boolean", "date", "dropdown", "member", "url")
+APPLIES_TO_CHECK = (
+    "applies_to IS NULL OR ("
+    "jsonb_typeof(applies_to) = 'array' "
+    "AND jsonb_array_length(applies_to) BETWEEN 1 AND 32 "
+    "AND applies_to::text ~ "
+    '\'^\\s*\\[\\s*"(task|bug|feature|milestone|custom_[0-9a-f]{12})"'
+    '(\\s*,\\s*"(task|bug|feature|milestone|custom_[0-9a-f]{12})")*'
+    "\\s*\\]\\s*$')"
+)
 
 
 class CustomField(Base):
@@ -34,6 +43,7 @@ class CustomField(Base):
             "field_type IN ('text', 'number', 'boolean', 'date', 'dropdown', 'member', 'url')",
             name="field_type_allowed",
         ),
+        CheckConstraint(APPLIES_TO_CHECK, name="applies_to_valid"),
         UniqueConstraint("project_id", "name", name="uq_custom_fields_project_name"),
         Index("ix_custom_fields_project", "project_id", "position"),
     )

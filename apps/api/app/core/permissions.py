@@ -233,6 +233,7 @@ ENDPOINT_VERBS: dict[str, str] = {
     # status.manage / project_type.manage / field.manage
     "PATCH /api/v1/projects/{project_id}/statuses/{status_id}": "status.manage",
     "PUT /api/v1/projects/{project_id}/statuses/order": "status.manage",
+    "POST /api/v1/projects/{project_id}/types": "project_type.manage",
     "PATCH /api/v1/projects/{project_id}/types/{type_id}": "project_type.manage",
     "PUT /api/v1/projects/{project_id}/types/order": "project_type.manage",
     "POST /api/v1/projects/{project_id}/custom-fields": "field.manage",

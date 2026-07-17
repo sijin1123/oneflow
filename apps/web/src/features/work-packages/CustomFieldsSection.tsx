@@ -27,7 +27,7 @@ import { useMembers } from '@/features/members/api'
 import { ApiError } from '@/lib/api'
 import { cn } from '@/lib/utils'
 
-import { TYPE_LABELS, type WpType } from './types'
+import { useTypeLabels } from './useTypeLabels'
 
 const FIELD_TYPE_ICONS: Record<CustomField['field_type'], LucideIcon> = {
   text: TextCursorInput,
@@ -72,9 +72,9 @@ function hasCustomValue(value: unknown) {
   return value !== undefined && value !== null && value !== ''
 }
 
-function scopeLabel(field: CustomField) {
+function scopeLabel(field: CustomField, typeLabel: (key: string) => string) {
   return field.applies_to
-    ? field.applies_to.map((k) => TYPE_LABELS[k as WpType] ?? k).join(' · ')
+    ? field.applies_to.map((key) => typeLabel(key)).join(' · ')
     : '모든 타입'
 }
 
@@ -246,6 +246,7 @@ export function CustomFieldsSection({
 }) {
   const fields = useCustomFields(projectId, true)
   const values = useCustomValues(wpId)
+  const typeLabel = useTypeLabels(projectId)
 
   if (!fields.data || fields.data.total === 0) return null
   const valueMap = new Map((values.data?.items ?? []).map((v) => [v.field_id, v.value]))
@@ -291,7 +292,9 @@ export function CustomFieldsSection({
             <div className="mb-3 flex min-w-0 items-start justify-between gap-3">
               <div className="min-w-0">
                 <label className="block truncate text-xs font-semibold">{f.name}</label>
-                <p className="mt-1 truncate text-[11px] text-of-muted">{scopeLabel(f)}</p>
+                <p className="mt-1 truncate text-[11px] text-of-muted">
+                  {scopeLabel(f, typeLabel)}
+                </p>
               </div>
               <div className="flex shrink-0 flex-wrap justify-end gap-1">
                 <Badge variant="neutral">

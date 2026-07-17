@@ -13,7 +13,7 @@ from sqlalchemy import update as sa_update
 from sqlalchemy.exc import DBAPIError, IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.v1.project_types import require_type_enabled
+from app.api.v1.project_types import require_type_enabled, require_type_known
 from app.core.auth import get_current_user
 from app.core.authz import (
     is_member,
@@ -76,7 +76,6 @@ PARENT_LOCK_CLASSID = 427001
 
 StatusFilter = Literal["backlog", "todo", "in_progress", "in_review", "done", "cancelled"]
 PriorityFilter = Literal["none", "low", "medium", "high", "urgent"]
-TypeFilter = Literal["task", "bug", "feature", "milestone"]
 SortField = Literal["created", "subject"]
 
 NON_NULLABLE_PATCH_FIELDS = {"subject", "type", "status", "priority"}
@@ -416,7 +415,7 @@ async def list_work_packages(
     project_id: uuid.UUID,
     status: StatusFilter | None = Query(default=None),
     priority: PriorityFilter | None = Query(default=None),
-    type: TypeFilter | None = Query(default=None),
+    type: str | None = Query(default=None, max_length=20),
     assignee_id: uuid.UUID | None = Query(default=None),
     milestone_id: uuid.UUID | None = Query(default=None),
     customer_id: uuid.UUID | None = Query(default=None),
@@ -439,6 +438,8 @@ async def list_work_packages(
     user: User = Depends(get_current_user),
 ) -> WorkPackageList:
     await require_member(session, project_id, user)
+    if type is not None:
+        await require_type_known(session, project_id, type)
     releases_enabled = await feature_enabled(session, RELEASES_FEATURE)
     customers_enabled = await feature_enabled(session, CUSTOMERS_FEATURE)
     if milestone_id is not None and not releases_enabled:
