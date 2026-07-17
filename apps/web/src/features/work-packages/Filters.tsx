@@ -8,17 +8,17 @@ import { useCustomers } from '@/features/customers/api'
 import { useMilestones } from '@/features/milestones/api'
 import { useModules } from '@/features/modules/api'
 import { useMembers } from '@/features/members/api'
+import { useProjectTypeOptions } from '@/features/project-types/useProjectTypeOptions'
 import { useWorkspaceCapabilities } from '@/features/workspace-features/api'
 
-import { PRIORITY_LABELS, WP_PRIORITIES, WP_STATUSES, WP_TYPES } from './types'
+import { PRIORITY_LABELS, WP_PRIORITIES, WP_STATUSES } from './types'
 import { useStatusLabels } from './useStatusLabels'
-import { useTypeLabels } from './useTypeLabels'
 
 /* URL-backed filters (client state lives in search params — PLAN §8). */
 export function Filters({ projectId }: { projectId: string }) {
   const [searchParams, setSearchParams] = useSearchParams()
   const statusLabel = useStatusLabels(projectId)
-  const typeLabel = useTypeLabels(projectId)
+  const projectTypes = useProjectTypeOptions(projectId, { includeInactive: true })
   const members = useMembers(projectId)
   const capabilities = useWorkspaceCapabilities()
   const releasesEnabled = capabilities.data?.releases.enabled === true
@@ -130,9 +130,10 @@ export function Filters({ projectId }: { projectId: string }) {
           onChange={(e) => set('type', e.target.value)}
         >
           <option value="">전체</option>
-          {WP_TYPES.map((t) => (
-            <option key={t} value={t}>
-              {typeLabel(t)}
+          {projectTypes.options.map((type) => (
+            <option key={type.key} value={type.key}>
+              {type.label}
+              {type.isActive ? '' : ' (비활성)'}
             </option>
           ))}
         </Select>

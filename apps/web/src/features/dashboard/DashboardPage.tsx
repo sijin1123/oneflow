@@ -19,7 +19,7 @@ import { PriorityChip, StatusChip } from '@/features/work-packages/chips'
 import { ApiError, BASE_URL } from '@/lib/api'
 import { formatDateTime } from '@/lib/datetime'
 import { cn } from '@/lib/utils'
-import { PRIORITY_LABELS, WP_STATUSES, WP_TYPES } from '@/features/work-packages/types'
+import { PRIORITY_LABELS, WP_STATUSES } from '@/features/work-packages/types'
 import type { WpPriority, WpStatus } from '@/features/work-packages/types'
 import { useStatusLabels } from '@/features/work-packages/useStatusLabels'
 import { useTypeLabels } from '@/features/work-packages/useTypeLabels'
@@ -131,10 +131,9 @@ export function DashboardPage() {
     string
   >
   const typeLabel = useTypeLabels(projectId)
-  const typeLabels = Object.fromEntries(WP_TYPES.map((t) => [t, typeLabel(t)])) as Record<
-    string,
-    string
-  >
+  const typeLabels = Object.fromEntries(
+    (data?.type_counts ?? []).map((bucket) => [bucket.key, typeLabel(bucket.key)]),
+  ) as Record<string, string>
 
   if (isPending) return <ListSkeleton />
   if (isError) return <ErrorState error={error} onRetry={() => refetch()} />

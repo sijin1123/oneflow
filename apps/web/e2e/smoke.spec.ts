@@ -8710,12 +8710,43 @@ test('타입 관리 액션 메뉴에서 라벨을 바꾸고 비활성화하면 P
     route.fulfill({ json: project }),
   )
   const types = [
-    { id: 'pt-1', project_id: project.id, key: 'task', name: '작업', position: 0, is_active: true },
-    { id: 'pt-2', project_id: project.id, key: 'bug', name: '버그', position: 1, is_active: true },
+    {
+      id: 'pt-1',
+      project_id: project.id,
+      key: 'task',
+      name: '작업',
+      position: 0,
+      is_active: true,
+      is_builtin: true,
+    },
+    {
+      id: 'pt-2',
+      project_id: project.id,
+      key: 'bug',
+      name: '버그',
+      position: 1,
+      is_active: true,
+      is_builtin: true,
+    },
   ]
-  await page.route(`**/api/v1/projects/${project.id}/types`, (route) =>
-    route.fulfill({ json: { items: types, total: 2 } }),
-  )
+  await page.route(`**/api/v1/projects/${project.id}/types`, async (route) => {
+    if (route.request().method() === 'POST') {
+      const body = route.request().postDataJSON() as { name: string }
+      const custom = {
+        id: 'pt-3',
+        project_id: project.id,
+        key: 'custom_0123456789ab',
+        name: body.name,
+        position: types.length,
+        is_active: true,
+        is_builtin: false,
+      }
+      types.push(custom)
+      await route.fulfill({ status: 201, json: custom })
+      return
+    }
+    await route.fulfill({ json: { items: types, total: types.length } })
+  })
   await page.route(`**/api/v1/projects/${project.id}/types/pt-2`, async (route) => {
     const sent = route.request().postDataJSON() as { name?: string; is_active?: boolean }
     if (sent.name !== undefined) types[1].name = sent.name
@@ -8725,6 +8756,22 @@ test('타입 관리 액션 메뉴에서 라벨을 바꾸고 비활성화하면 P
 
   await page.goto(`/projects/${project.id}/settings?tab=workflow`)
   await expect(page.getByText('워크 아이템 타입')).toBeVisible()
+
+  const created = page.waitForRequest(
+    (request) => request.method() === 'POST' && request.url().includes(`/types`),
+  )
+  await page.getByLabel('새 작업 타입 이름').fill('사용자 스토리')
+  await page.getByRole('button', { name: '타입 추가' }).click()
+  expect(((await created).postDataJSON() as { name: string }).name).toBe('사용자 스토리')
+  await expect(page.getByText('사용자 스토리', { exact: true })).toBeVisible()
+  await expect(page.getByText(/사용자 정의 · 활성/)).toBeVisible()
+
+  await page.getByRole('tab', { name: '필드' }).click()
+  await expect(page.getByLabel('사용자 스토리 타입에 적용')).toBeVisible()
+  await page.getByRole('tab', { name: '자동화' }).click()
+  await page.getByLabel('트리거 종류').selectOption('type_changed_to')
+  await expect(page.getByLabel('트리거 값').locator('option', { hasText: '사용자 스토리' })).toHaveCount(1)
+  await page.getByRole('tab', { name: '워크플로우' }).click()
 
   await page.getByLabel('bug 타입 작업').click()
   await page.getByLabel('bug 타입 편집').click()
@@ -8741,6 +8788,18 @@ test('타입 관리 액션 메뉴에서 라벨을 바꾸고 비활성화하면 P
   )
   await page.getByLabel('bug 타입 비활성화').click()
   expect(((await toggle).postDataJSON() as { is_active: boolean }).is_active).toBe(false)
+
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/custom-work-item-types-ui/desktop.png',
+    fullPage: true,
+  })
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.getByRole('region', { name: '워크 아이템 타입' }).scrollIntoViewIfNeeded()
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/custom-work-item-types-ui/mobile.png',
+    fullPage: true,
+  })
 })
 
 test('모바일 워크플로우 액션 메뉴는 읽기 전용 상태를 안전하게 보여준다', async ({ page }) => {

@@ -22,9 +22,10 @@ import { FIELD_LABELS } from './activityLabels'
 import { useActivities, useComments, useCreateComment, useToggleReaction } from './api'
 import type { CommentThread } from './comments'
 import { groupThreads } from './comments'
-import { PRIORITY_LABELS, TYPE_LABELS } from './types'
+import { PRIORITY_LABELS } from './types'
 import type { Activity, Comment } from './types'
 import { useStatusLabels } from './useStatusLabels'
+import { useTypeLabels } from './useTypeLabels'
 
 /** Merge activities and comment THREADS into one chronological feed — a thread
     sorts by its root, replies stay beneath it (PLAN v10.1 R1-⑦). */
@@ -87,6 +88,7 @@ export function HistorySection({ wpId, projectId }: { wpId: string; projectId: s
   const createComment = useCreateComment(wpId)
   const toggleReaction = useToggleReaction(wpId)
   const statusLabel = useStatusLabels(projectId)
+  const typeLabel = useTypeLabels(projectId)
   const members = useMembers(projectId)
   const canWrite = useCanWrite(projectId)
   const memberName = useMemberNames(projectId)
@@ -99,7 +101,7 @@ export function HistorySection({ wpId, projectId }: { wpId: string; projectId: s
     if (value === null) return '없음'
     if (field === 'status') return statusLabel(value)
     if (field === 'priority') return PRIORITY_LABELS[value as keyof typeof PRIORITY_LABELS] ?? value
-    if (field === 'type') return TYPE_LABELS[value as keyof typeof TYPE_LABELS] ?? value
+    if (field === 'type') return typeLabel(value)
     // Members stay uuids in the log (the existing contract) — resolve here.
     // cycle/module/milestone records store NAME snapshots since Pass 71.
     if (field === 'assignee_id') return memberName(value)

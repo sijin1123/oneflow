@@ -9,6 +9,7 @@ export type ProjectType = {
   name: string
   position: number
   is_active: boolean
+  is_builtin: boolean
 }
 
 export type ProjectTypeList = { items: ProjectType[]; total: number }
@@ -17,6 +18,21 @@ export function useProjectTypes(projectId: string) {
   return useQuery({
     queryKey: ['project-types', projectId],
     queryFn: () => api<ProjectTypeList>(`/api/v1/projects/${projectId}/types`),
+  })
+}
+
+export function useCreateProjectType(projectId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (name: string) =>
+      api<ProjectType>(`/api/v1/projects/${projectId}/types`, {
+        method: 'POST',
+        body: JSON.stringify({ name }),
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['project-types', projectId] })
+      void queryClient.invalidateQueries({ queryKey: ['dashboard', projectId] })
+    },
   })
 }
 

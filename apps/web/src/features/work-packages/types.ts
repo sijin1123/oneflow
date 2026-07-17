@@ -16,7 +16,7 @@ export const WP_PRIORITIES = ['none', 'low', 'medium', 'high', 'urgent'] as cons
 export type WpPriority = (typeof WP_PRIORITIES)[number]
 
 export const WP_TYPES = ['task', 'bug', 'feature', 'milestone'] as const
-export type WpType = (typeof WP_TYPES)[number]
+export type WpType = string
 
 export type WorkPackage = {
   id: string
@@ -224,7 +224,7 @@ export const PRIORITY_LABELS: Record<WpPriority, string> = {
   urgent: '긴급',
 }
 
-export const TYPE_LABELS: Record<WpType, string> = {
+export const TYPE_LABELS: Record<string, string> = {
   task: '작업',
   bug: '버그',
   feature: '기능',
