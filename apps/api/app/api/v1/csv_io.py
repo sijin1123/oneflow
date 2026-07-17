@@ -23,7 +23,7 @@ from app.core.authz import require_member
 from app.core.config import Settings, get_settings
 from app.db.session import get_session
 from app.models.member import ProjectMember
-from app.models.project_type import ProjectType
+from app.models.project_type import BUILTIN_TYPE_KEYS, ProjectType
 from app.models.user import User
 from app.models.work_package import WorkPackage
 from app.schemas.csv_io import (
@@ -50,6 +50,22 @@ router = APIRouter()
 # Advisory-lock classid serializing import WRITES per project (Pass 42 PR-BH;
 # 427003 belongs to project_types).
 IMPORT_LOCK_CLASSID = 427008
+
+
+async def _project_type_sets(
+    session: AsyncSession, project_id: uuid.UUID
+) -> tuple[set[str], set[str]]:
+    rows = (
+        await session.execute(
+            select(ProjectType.key, ProjectType.is_active).where(
+                ProjectType.project_id == project_id
+            )
+        )
+    ).all()
+    if not rows:
+        return set(BUILTIN_TYPE_KEYS), set()
+    return {key for key, _active in rows}, {key for key, active in rows if not active}
+
 
 # Excel/LibreOffice read a leading U+FEFF as a BOM and open UTF-8 correctly; without
 # it, Korean text opens mojibake'd on Windows Excel (the tool a real migration uses).
@@ -269,15 +285,7 @@ async def import_work_packages_csv(
     await require_member(session, project_id, user, write=True)
     # Disabled work-item types are invalid for NEW rows (Pass 7 PR-R) — fetch
     # once, then judge per row so a bad type isolates that row, not the import.
-    disabled_types = set(
-        (
-            await session.execute(
-                select(ProjectType.key).where(
-                    ProjectType.project_id == project_id, ProjectType.is_active.is_(False)
-                )
-            )
-        ).scalars()
-    )
+    known_types, disabled_types = await _project_type_sets(session, project_id)
 
     reader = csv.reader(io.StringIO(body.content))
     try:
@@ -309,6 +317,15 @@ async def import_work_packages_csv(
             loc = ".".join(str(p) for p in first.get("loc", ())) or "row"
             errors.append(
                 CsvRowError(row=total, message=f"{loc}: {first['msg']}", raw=_reserialize(row))
+            )
+            continue
+        if model.type not in known_types:
+            errors.append(
+                CsvRowError(
+                    row=total,
+                    message=f"type: unknown type '{model.type}' in this project",
+                    raw=_reserialize(row),
+                )
             )
             continue
         if model.type in disabled_types:
@@ -379,15 +396,7 @@ async def _run_mapped_import(
     """Shared adapter-import pipeline (Jira #77 / Linear Pass 25): row
     isolation, duplicate guard, disabled-type rejection, dry-run — the
     response shape is identical for every adapter (v25.1 R1-②)."""
-    disabled_types = set(
-        (
-            await session.execute(
-                select(ProjectType.key).where(
-                    ProjectType.project_id == project_id, ProjectType.is_active.is_(False)
-                )
-            )
-        ).scalars()
-    )
+    known_types, disabled_types = await _project_type_sets(session, project_id)
 
     if mapped.header_error:
         raise HTTPException(status_code=422, detail=mapped.header_error)
@@ -449,6 +458,15 @@ async def _run_mapped_import(
             first = exc.errors()[0]
             loc = ".".join(str(p) for p in first.get("loc", ())) or "row"
             errors.append(CsvRowError(row=row_number, message=f"{loc}: {first['msg']}", raw=raw))
+            continue
+        if model.type not in known_types:
+            errors.append(
+                CsvRowError(
+                    row=row_number,
+                    message=f"type: unknown type '{model.type}' in this project",
+                    raw=raw,
+                )
+            )
             continue
         if model.type in disabled_types:
             errors.append(

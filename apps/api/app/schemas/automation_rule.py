@@ -4,10 +4,11 @@ from datetime import datetime
 from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
 from app.models.automation_rule import ACTION_TYPES, CONDITION_FIELDS, TRIGGER_TYPES
-from app.models.work_package import WP_PRIORITIES, WP_STATUSES, WP_TYPES
+from app.models.project_type import is_valid_type_key
+from app.models.work_package import WP_PRIORITIES, WP_STATUSES
 
 # Value vocabulary per condition field (v81.1 R1-④) — mirrors the DB CHECK.
-_CONDITION_VOCAB = {"status": WP_STATUSES, "type": WP_TYPES, "priority": WP_PRIORITIES}
+_CONDITION_VOCAB = {"status": WP_STATUSES, "priority": WP_PRIORITIES}
 
 
 class AutomationRuleCreate(BaseModel):
@@ -46,13 +47,16 @@ class AutomationRuleCreate(BaseModel):
     @model_validator(mode="after")
     def _values(self) -> "AutomationRuleCreate":
         # Validate each value against the vocabulary its type implies.
-        trigger_vocab = {
-            "status_changed_to": WP_STATUSES,
-            "type_changed_to": WP_TYPES,
-            "priority_changed_to": WP_PRIORITIES,
-        }[self.trigger_type]
-        if self.trigger_value not in trigger_vocab:
-            raise ValueError(f"trigger_value must be one of {trigger_vocab}")
+        if self.trigger_type == "type_changed_to":
+            if not is_valid_type_key(self.trigger_value):
+                raise ValueError("trigger_value must be a supported work-item type key")
+        else:
+            trigger_vocab = {
+                "status_changed_to": WP_STATUSES,
+                "priority_changed_to": WP_PRIORITIES,
+            }[self.trigger_type]
+            if self.trigger_value not in trigger_vocab:
+                raise ValueError(f"trigger_value must be one of {trigger_vocab}")
         if self.action_type == "set_priority" and self.action_value not in WP_PRIORITIES:
             raise ValueError(f"action_value must be one of {WP_PRIORITIES}")
         if self.action_type == "set_assignee":
@@ -66,9 +70,13 @@ class AutomationRuleCreate(BaseModel):
         if self.condition_field is not None:
             if self.condition_field not in CONDITION_FIELDS:
                 raise ValueError(f"condition_field must be one of {CONDITION_FIELDS}")
-            vocab = _CONDITION_VOCAB[self.condition_field]
-            if self.condition_value not in vocab:
-                raise ValueError(f"condition_value must be one of {vocab}")
+            if self.condition_field == "type":
+                if not is_valid_type_key(self.condition_value):
+                    raise ValueError("condition_value must be a supported work-item type key")
+            else:
+                vocab = _CONDITION_VOCAB[self.condition_field]
+                if self.condition_value not in vocab:
+                    raise ValueError(f"condition_value must be one of {vocab}")
         return self
 
 

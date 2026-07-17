@@ -5,7 +5,7 @@ from typing import Any
 from pydantic import BaseModel, field_validator, model_validator
 
 from app.models.custom_field import CUSTOM_FIELD_TYPES
-from app.models.work_package import WP_TYPES
+from app.models.project_type import MAX_PROJECT_TYPES, is_valid_type_key
 
 MAX_OPTIONS = 50
 
@@ -18,9 +18,11 @@ def _clean_applies_to(v: list[str] | None) -> list[str] | None:
         # "all types" and a non-empty subset otherwise (validator R1 ④).
         raise ValueError("applies_to must be null (all types) or a non-empty list")
     cleaned = list(dict.fromkeys(v))  # de-dupe, keep order
+    if len(cleaned) > MAX_PROJECT_TYPES:
+        raise ValueError(f"applies_to must contain at most {MAX_PROJECT_TYPES} entries")
     for key in cleaned:
-        if key not in WP_TYPES:
-            raise ValueError(f"applies_to entries must be one of {WP_TYPES}")
+        if not is_valid_type_key(key):
+            raise ValueError("applies_to entries must be supported work-item type keys")
     return cleaned
 
 

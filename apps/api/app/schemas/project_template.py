@@ -6,7 +6,8 @@ from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
 from app.models.automation_rule import ACTION_TYPES, CONDITION_FIELDS, TRIGGER_TYPES
 from app.models.custom_field import CUSTOM_FIELD_TYPES
-from app.models.work_package import WP_PRIORITIES, WP_STATUSES, WP_TYPES
+from app.models.project_type import MAX_PROJECT_TYPES, is_valid_type_key
+from app.models.work_package import WP_PRIORITIES, WP_STATUSES
 
 SNAPSHOT_VERSION = 1
 MAX_TEMPLATE_CUSTOM_FIELDS = 100
@@ -63,8 +64,8 @@ class TemplateTypeSnapshot(BaseModel):
     @field_validator("key")
     @classmethod
     def _key(cls, value: str) -> str:
-        if value not in WP_TYPES:
-            raise ValueError(f"key must be one of {WP_TYPES}")
+        if not is_valid_type_key(value):
+            raise ValueError("key must be a supported work-item type key")
         return value
 
     @field_validator("name")
@@ -124,8 +125,10 @@ class TemplateCustomFieldSnapshot(BaseModel):
             return None
         if not value:
             raise ValueError("applies_to must be null or a non-empty list")
-        if len(value) != len(set(value)) or any(item not in WP_TYPES for item in value):
-            raise ValueError(f"applies_to must be unique entries from {WP_TYPES}")
+        if len(value) > MAX_PROJECT_TYPES or len(value) != len(set(value)):
+            raise ValueError("applies_to must contain unique supported type keys")
+        if any(not is_valid_type_key(item) for item in value):
+            raise ValueError("applies_to must contain unique supported type keys")
         return value
 
     @model_validator(mode="after")
@@ -175,13 +178,16 @@ class TemplateAutomationRuleSnapshot(BaseModel):
 
     @model_validator(mode="after")
     def _rule_values(self) -> "TemplateAutomationRuleSnapshot":
-        trigger_vocab = {
-            "status_changed_to": WP_STATUSES,
-            "type_changed_to": WP_TYPES,
-            "priority_changed_to": WP_PRIORITIES,
-        }[self.trigger_type]
-        if self.trigger_value not in trigger_vocab:
-            raise ValueError(f"trigger_value must be one of {trigger_vocab}")
+        if self.trigger_type == "type_changed_to":
+            if not is_valid_type_key(self.trigger_value):
+                raise ValueError("trigger_value must be a supported work-item type key")
+        else:
+            trigger_vocab = {
+                "status_changed_to": WP_STATUSES,
+                "priority_changed_to": WP_PRIORITIES,
+            }[self.trigger_type]
+            if self.trigger_value not in trigger_vocab:
+                raise ValueError(f"trigger_value must be one of {trigger_vocab}")
         if self.action_type == "set_priority" and self.action_value not in WP_PRIORITIES:
             raise ValueError(f"action_value must be one of {WP_PRIORITIES}")
         if self.action_type == "set_assignee":
@@ -194,13 +200,16 @@ class TemplateAutomationRuleSnapshot(BaseModel):
         if self.condition_field is not None:
             if self.condition_field not in CONDITION_FIELDS:
                 raise ValueError(f"condition_field must be one of {CONDITION_FIELDS}")
-            condition_vocab = {
-                "status": WP_STATUSES,
-                "type": WP_TYPES,
-                "priority": WP_PRIORITIES,
-            }[self.condition_field]
-            if self.condition_value not in condition_vocab:
-                raise ValueError(f"condition_value must be one of {condition_vocab}")
+            if self.condition_field == "type":
+                if not is_valid_type_key(self.condition_value):
+                    raise ValueError("condition_value must be a supported work-item type key")
+            else:
+                condition_vocab = {
+                    "status": WP_STATUSES,
+                    "priority": WP_PRIORITIES,
+                }[self.condition_field]
+                if self.condition_value not in condition_vocab:
+                    raise ValueError(f"condition_value must be one of {condition_vocab}")
         return self
 
 
@@ -228,10 +237,22 @@ class ProjectTemplateSnapshot(BaseModel):
             {item.key for item in self.statuses}
         ) != len(self.statuses):
             raise ValueError("statuses must use unique supported keys")
-        if len(self.types) > len(WP_TYPES) or len({item.key for item in self.types}) != len(
+        if len(self.types) > MAX_PROJECT_TYPES or len({item.key for item in self.types}) != len(
             self.types
         ):
             raise ValueError("types must use unique supported keys")
+        type_keys = {item.key for item in self.types}
+        for field in self.custom_fields:
+            if field.applies_to is not None and not set(field.applies_to) <= type_keys:
+                raise ValueError("custom field applies_to keys must exist in snapshot types")
+        for rule in self.automation_rules:
+            referenced = []
+            if rule.trigger_type == "type_changed_to":
+                referenced.append(rule.trigger_value)
+            if rule.condition_field == "type" and rule.condition_value is not None:
+                referenced.append(rule.condition_value)
+            if not set(referenced) <= type_keys:
+                raise ValueError("automation type keys must exist in snapshot types")
         if len(self.custom_fields) > MAX_TEMPLATE_CUSTOM_FIELDS:
             raise ValueError(
                 f"custom_fields must contain at most {MAX_TEMPLATE_CUSTOM_FIELDS} entries"

@@ -4,7 +4,8 @@ from datetime import date, datetime
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from app.models.work_package import WP_PRIORITIES, WP_STATUSES, WP_TYPES
+from app.models.project_type import is_valid_type_key
+from app.models.work_package import WP_PRIORITIES, WP_STATUSES
 
 MAX_INT4 = 2_147_483_647
 MAX_DRAFT_BYTES = 256 * 1024
@@ -23,8 +24,8 @@ class WorkItemDraftContent(BaseModel):
     @field_validator("type")
     @classmethod
     def _type(cls, value: str) -> str:
-        if value not in WP_TYPES:
-            raise ValueError(f"type must be one of {WP_TYPES}")
+        if not is_valid_type_key(value):
+            raise ValueError("type must be a supported work-item type key")
         return value
 
     @field_validator("status")

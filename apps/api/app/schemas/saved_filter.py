@@ -3,7 +3,8 @@ from datetime import datetime
 
 from pydantic import BaseModel, field_validator
 
-from app.models.work_package import WP_PRIORITIES, WP_STATUSES, WP_TYPES
+from app.models.project_type import is_valid_type_key
+from app.models.work_package import WP_PRIORITIES, WP_STATUSES
 
 # Canonical order of configurable list columns. Subject and the selection
 # checkbox are always shown and never appear here. Display-only: the list
@@ -70,8 +71,8 @@ class SavedFilterParams(BaseModel):
     @field_validator("type")
     @classmethod
     def _type(cls, v: str | None) -> str | None:
-        if v is not None and v not in WP_TYPES:
-            raise ValueError(f"type must be one of {WP_TYPES}")
+        if v is not None and not is_valid_type_key(v):
+            raise ValueError("type must be a supported work-item type key")
         return v
 
     @field_validator("q")

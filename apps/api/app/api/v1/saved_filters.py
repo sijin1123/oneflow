@@ -12,6 +12,7 @@ from sqlalchemy import and_, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.v1.project_types import require_type_known
 from app.core.auth import get_current_user
 from app.core.authz import require_member
 from app.db.session import get_session
@@ -63,6 +64,12 @@ async def _require_optional_features(session: AsyncSession, params: dict) -> Non
             raise HTTPException(status_code=404, detail="not found")
 
 
+async def _require_filter_type(session: AsyncSession, project_id: uuid.UUID, params: dict) -> None:
+    type_key = params.get("type")
+    if type_key is not None:
+        await require_type_known(session, project_id, type_key)
+
+
 @router.get("/projects/{project_id}/saved-filters", response_model=SavedFilterList)
 async def list_saved_filters(
     project_id: uuid.UUID,
@@ -110,7 +117,9 @@ async def create_saved_filter(
     user: User = Depends(get_current_user),
 ) -> SavedFilterRead:
     await require_member(session, project_id, user, write=True)
-    await _require_optional_features(session, body.params.model_dump())
+    params = body.params.model_dump()
+    await _require_optional_features(session, params)
+    await _require_filter_type(session, project_id, params)
     row = SavedFilter(
         project_id=project_id,
         user_id=user.id,
@@ -163,6 +172,7 @@ async def update_saved_filter(
     fields = body.model_dump(exclude_unset=True)
     if fields.get("params") is not None:
         await _require_optional_features(session, fields["params"])
+        await _require_filter_type(session, project_id, fields["params"])
     for key in ("name", "layout", "is_shared", "is_locked"):
         if key in fields and fields[key] is None:
             raise HTTPException(status_code=422, detail=f"{key} cannot be null")
