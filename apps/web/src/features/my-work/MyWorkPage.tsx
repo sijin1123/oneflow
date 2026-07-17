@@ -58,6 +58,7 @@ import {
   useMyTime,
 } from './api'
 import { WorkspaceQuickLinks } from './WorkspaceQuickLinks'
+import { WorkspaceRiskSummary } from './WorkspaceRiskSummary'
 
 function actionText(a: MyActivity): string {
   if (a.action === 'created') return '생성'
@@ -104,6 +105,7 @@ const WORKSPACE_HOME_WIDGETS_STORAGE_KEY = 'oneflow.workspace-home.widgets.v1'
 
 const WORKSPACE_HOME_WIDGETS = [
   { key: 'ai', label: 'AI workspace' },
+  { key: 'riskSummary', label: '프로젝트 위험' },
   { key: 'quickLinks', label: '빠른 이동' },
   { key: 'projectShortcuts', label: '프로젝트 바로가기' },
   { key: 'recents', label: '최근 항목' },
@@ -115,6 +117,7 @@ type WorkspaceHomeWidgets = Record<WorkspaceHomeWidgetKey, boolean>
 
 const DEFAULT_WORKSPACE_HOME_WIDGETS: WorkspaceHomeWidgets = {
   ai: true,
+  riskSummary: true,
   quickLinks: true,
   projectShortcuts: true,
   recents: true,
@@ -763,6 +766,17 @@ function MyWorkOverview() {
 
       {visibleWidgets.ai ? (
         <AiWorkspacePanel assigned={assigned_to_me} dueSoon={due_soon} created={created_by_me} />
+      ) : null}
+
+      {visibleWidgets.riskSummary ? (
+        <WorkspaceRiskSummary
+          projects={projectItems}
+          isPending={projects.isPending}
+          isError={projects.isError}
+          onRetry={() => {
+            void projects.refetch()
+          }}
+        />
       ) : null}
 
       {visibleWidgets.quickLinks ? (
