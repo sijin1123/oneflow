@@ -9,6 +9,7 @@ import {
   UsersRound,
 } from 'lucide-react'
 import { Fragment, useEffect, useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 
 import { EmptyState, ErrorState, ListSkeleton } from '@/components/shell/states'
 import { Badge } from '@/components/ui/badge'
@@ -26,6 +27,7 @@ import {
   useUserMemberships,
   useUsers,
 } from './api'
+import { WorkspaceInvitationsPanel } from './WorkspaceInvitationsPanel'
 
 const ROLE_LABELS: Record<string, string> = {
   owner: '소유자',
@@ -215,6 +217,8 @@ function DirectoryActions({
    mirror the API contract: no self-deactivation, and the last ACTIVE admin
    can neither lose the flag nor be deactivated. */
 export function UsersPage() {
+  const [searchParams, setSearchParams] = useSearchParams()
+  const initialInviteComposer = searchParams.get('new') === '1'
   const me = useMe()
   const { data, isPending, isError, error, refetch } = useUsers()
   const create = useCreateUser()
@@ -226,6 +230,23 @@ export function UsersPage() {
   const [query, setQuery] = useState('')
   const [filter, setFilter] = useState<DirectoryFilter>('all')
   const mobileLayout = useMobileDirectoryLayout()
+  const view = searchParams.get('view') === 'invites' ? 'invites' : 'directory'
+
+  useEffect(() => {
+    if (searchParams.get('new') !== '1') return
+    const next = new URLSearchParams(searchParams)
+    next.delete('new')
+    setSearchParams(next, { replace: true })
+  }, [searchParams, setSearchParams])
+
+  const setView = (nextView: 'directory' | 'invites') => {
+    const next = new URLSearchParams(searchParams)
+    if (nextView === 'invites') next.set('view', 'invites')
+    else next.delete('view')
+    next.delete('new')
+    setSearchParams(next)
+    setAdding(false)
+  }
 
   const users = useMemo(() => data?.items ?? [], [data?.items])
   const totalUsers = data?.total ?? users.length
@@ -278,17 +299,34 @@ export function UsersPage() {
   return (
     <SettingsFrame
       eyebrow="Workspace administration"
-      title="사용자 관리"
-      description="워크스페이스 계정, 관리자 권한, 비활성화 상태와 프로젝트 멤버십을 관리합니다."
-      meta={`${totalUsers}명`}
+      title={view === 'invites' ? '멤버 초대' : '사용자 관리'}
+      description={
+        view === 'invites'
+          ? '일회성 초대 링크를 발급하고 대기·수락·만료 상태를 관리합니다.'
+          : '워크스페이스 계정, 관리자 권한, 비활성화 상태와 프로젝트 멤버십을 관리합니다.'
+      }
+      meta={view === 'invites' ? `${totalUsers}명 참여` : `${totalUsers}명`}
       actions={
-        !adding ? (
+        view === 'directory' && !adding ? (
           <Button size="sm" onClick={() => setAdding(true)}>
             <UserPlus size={14} /> 새 사용자
           </Button>
         ) : null
       }
     >
+      <div role="tablist" aria-label="사용자 관리 보기" className="mb-4 flex min-w-0 items-center gap-1 border-b border-of-border pb-2">
+        <Button role="tab" aria-selected={view === 'directory'} variant={view === 'directory' ? 'default' : 'ghost'} size="sm" onClick={() => setView('directory')}>
+          <UsersRound size={14} /> 계정 디렉터리
+        </Button>
+        <Button role="tab" aria-selected={view === 'invites'} variant={view === 'invites' ? 'default' : 'ghost'} size="sm" onClick={() => setView('invites')}>
+          <Mail size={14} /> 워크스페이스 초대
+        </Button>
+      </div>
+
+      {view === 'invites' ? (
+        <WorkspaceInvitationsPanel initialComposer={initialInviteComposer} />
+      ) : (
+        <>
       <div className="grid min-w-0 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <DirectoryMetric icon={UsersRound} label="전체 계정" value={totalUsers} />
         <DirectoryMetric
@@ -503,6 +541,8 @@ export function UsersPage() {
         비활성화는 로그인과 API 접근만 차단합니다. 기존 프로젝트 멤버십·담당 배정·작성 이력은
         유지되며, 새 프로젝트 멤버로는 추가할 수 없습니다.
       </p>
+        </>
+      )}
     </SettingsFrame>
   )
 }

@@ -395,6 +395,21 @@ ENDPOINT_ALLOWLIST: dict[str, str] = {
     "DELETE /api/v1/admin/auth-assistance-requests/{request_id}": (
         "워크스페이스 admin 인증 지원 요청 연락처 비식별화 — is_admin 전용"
     ),
+    "POST /api/v1/workspace-invitations": (
+        "워크스페이스 초대 생성 — 활성 is_admin 전용, 프로젝트 역할과 별개"
+    ),
+    "POST /api/v1/workspace-invitations/{invitation_id}/rotate": (
+        "워크스페이스 초대 비밀 회전 — 활성 is_admin 전용"
+    ),
+    "DELETE /api/v1/workspace-invitations/{invitation_id}": (
+        "워크스페이스 초대 취소 — 활성 is_admin 전용"
+    ),
+    "POST /api/v1/workspace-invitations/preview": (
+        "인증 전 초대 확인 — 토큰 소지자에게 최소 마스킹 정보만 공개"
+    ),
+    "POST /api/v1/workspace-invitations/accept": (
+        "인증 전 초대 수락 — 만료되는 일회성 토큰으로 비관리 사용자만 생성·재활성화"
+    ),
     "DELETE /api/v1/me/sessions/{session_id}": "개인 브라우저 세션 폐기 — 쿠키 사용자 스코프",
     "POST /api/v1/users": "워크스페이스 admin 축 (is_admin — 프로젝트 역할과 별개)",
     "PATCH /api/v1/users/{user_id}": "워크스페이스 admin 축 (is_admin — 프로젝트 역할과 별개)",

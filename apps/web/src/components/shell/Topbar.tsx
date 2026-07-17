@@ -1,4 +1,4 @@
-import { Check, ChevronDown, LogOut, Menu, Rocket, Settings, SlidersHorizontal, Users } from 'lucide-react'
+import { Check, ChevronDown, LogOut, MailPlus, Menu, Rocket, Settings, SlidersHorizontal, Users } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 
@@ -96,7 +96,16 @@ function WorkspaceMenu({
             <button type="button" role="menuitem" className="flex w-full items-center gap-2 rounded px-2.5 py-1.5 text-xs hover:bg-of-surface-2" onClick={() => go(isAdmin ? '/admin/general' : '/settings')}>
               <Settings size={13} /> {isAdmin ? '워크스페이스 설정' : '개인 설정'}
             </button>
-            {isAdmin ? <button type="button" role="menuitem" className="flex w-full items-center gap-2 rounded px-2.5 py-1.5 text-xs hover:bg-of-surface-2" onClick={() => go('/admin/users')}><Users size={13} /> 멤버 초대 및 관리</button> : null}
+            {isAdmin ? (
+              <>
+                <button type="button" role="menuitem" className="flex w-full items-center gap-2 rounded px-2.5 py-1.5 text-xs hover:bg-of-surface-2" onClick={() => go('/admin/users?view=invites&new=1')}>
+                  <MailPlus size={13} /> 멤버 초대
+                </button>
+                <button type="button" role="menuitem" className="flex w-full items-center gap-2 rounded px-2.5 py-1.5 text-xs hover:bg-of-surface-2" onClick={() => go('/admin/users?view=invites')}>
+                  <Users size={13} /> 워크스페이스 초대 관리
+                </button>
+              </>
+            ) : null}
             <button
               type="button"
               role="menuitem"
