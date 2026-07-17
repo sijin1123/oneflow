@@ -8,6 +8,8 @@ import {
   buildWorkspaceGroups,
   parseWorkspaceColumns,
   serializeWorkspaceColumns,
+  workspaceBoardGroupKey,
+  workspaceBoardTarget,
 } from './workspaceDisplay.ts'
 
 function item(overrides: Partial<SearchResultItem>): SearchResultItem {
@@ -58,4 +60,19 @@ test('every workspace grouping preserves each authorized result exactly once', (
       .sort()
     assert.deepEqual(ids, ['1', '2', '3'])
   }
+})
+
+test('workspace board maps only truthful state and priority drop targets', () => {
+  const review = item({ status: 'in_review', priority: 'high' })
+  assert.equal(workspaceBoardGroupKey(review, 'state'), 'started')
+  assert.equal(workspaceBoardGroupKey(review, 'priority'), 'high')
+  assert.equal(workspaceBoardGroupKey(review, 'project'), null)
+
+  assert.deepEqual(workspaceBoardTarget('state', 'backlog'), { property: 'status', value: 'backlog' })
+  assert.deepEqual(workspaceBoardTarget('state', 'started'), { property: 'status', value: 'in_progress' })
+  assert.deepEqual(workspaceBoardTarget('state', 'completed'), { property: 'status', value: 'done' })
+  assert.deepEqual(workspaceBoardTarget('priority', 'low'), { property: 'priority', value: 'low' })
+  assert.equal(workspaceBoardTarget('state', 'unknown'), null)
+  assert.equal(workspaceBoardTarget('project', 'project-1'), null)
+  assert.equal(workspaceBoardTarget('assignee', 'user-1'), null)
 })

@@ -1,7 +1,15 @@
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
-import { api } from '@/lib/api'
-import type { WpPriority, WpStatus, WpType } from '@/features/work-packages/types'
+import { ApiError, api } from '@/lib/api'
+import { decideOnPatchError } from '@/lib/conflict'
+import type {
+  ConflictBody,
+  WorkPackage,
+  WorkPackagePatch,
+  WpPriority,
+  WpStatus,
+  WpType,
+} from '@/features/work-packages/types'
 
 export type SearchResultItem = {
   id: string
@@ -129,6 +137,67 @@ export function useWorkspaceWorkItems({
       if (priority) params.set('priority', priority)
       if (pql) params.set('pql', pql)
       return api<SearchResults>(`/api/v1/search/work-packages?${params.toString()}`)
+    },
+  })
+}
+
+function replaceWorkspaceWorkItem(
+  results: SearchResults | undefined,
+  updated: WorkPackage,
+): SearchResults | undefined {
+  if (!results) return results
+  return {
+    ...results,
+    items: results.items.map((item) => item.id === updated.id
+      ? {
+        ...item,
+        status: updated.status,
+        priority: updated.priority,
+        assignee_id: updated.assignee_id,
+        start_date: updated.start_date,
+        due_date: updated.due_date,
+        updated_at: updated.updated_at,
+        version: updated.version,
+      }
+      : item),
+  }
+}
+
+export function usePatchWorkspaceWorkItem() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ item, patch }: { item: SearchResultItem; patch: WorkPackagePatch }) =>
+      api<WorkPackage>(`/api/v1/work-packages/${item.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify(patch),
+      }),
+    onSuccess: (updated, { item }) => {
+      queryClient.setQueriesData<SearchResults>(
+        { queryKey: ['workspace-work-items'] },
+        (current) => replaceWorkspaceWorkItem(current, updated),
+      )
+      queryClient.setQueryData(['work-package', updated.id], updated)
+      void queryClient.invalidateQueries({ queryKey: ['workspace-work-items'] })
+      void queryClient.invalidateQueries({ queryKey: ['workspace-work-item-analytics'] })
+      void queryClient.invalidateQueries({ queryKey: ['work-packages', item.project_id] })
+      void queryClient.invalidateQueries({ queryKey: ['dashboard', item.project_id] })
+      void queryClient.invalidateQueries({ queryKey: ['project-activities', item.project_id] })
+      void queryClient.invalidateQueries({ queryKey: ['work-package-activities', item.id] })
+    },
+    onError: (error, { item }) => {
+      if (!(error instanceof ApiError)) return
+      const decision = decideOnPatchError(error.status)
+      if (!decision.invalidate) return
+      const conflict = error.payload as ConflictBody | null
+      if (conflict?.current) {
+        queryClient.setQueriesData<SearchResults>(
+          { queryKey: ['workspace-work-items'] },
+          (current) => replaceWorkspaceWorkItem(current, conflict.current!),
+        )
+        queryClient.setQueryData(['work-package', item.id], conflict.current)
+      }
+      void queryClient.invalidateQueries({ queryKey: ['workspace-work-items'] })
+      void queryClient.invalidateQueries({ queryKey: ['work-packages', item.project_id] })
     },
   })
 }
