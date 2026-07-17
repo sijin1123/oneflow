@@ -94,6 +94,7 @@ const copy = {
     configLoading: 'Checking sign-in options...',
     configError: 'Sign-in options could not be loaded.',
     retry: 'Retry',
+    inviteAccepted: 'Your invitation has been accepted. Continue with your company sign-in method.',
     language: 'English',
   },
   ko: {
@@ -139,6 +140,7 @@ const copy = {
     configLoading: '로그인 방법을 확인하고 있어요...',
     configError: '로그인 방법을 불러오지 못했습니다.',
     retry: '다시 시도',
+    inviteAccepted: '초대 수락이 완료되었습니다. 회사 로그인 방식으로 계속하세요.',
     language: '한국어',
   },
 } as const
@@ -479,7 +481,10 @@ export function LoginPage() {
   const login = useLogin()
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
-  const [email, setEmail] = useState('')
+  const [email, setEmail] = useState(() => {
+    const invitedEmail = searchParams.get('email')?.trim().toLowerCase() ?? ''
+    return EMAIL_RE.test(invitedEmail) ? invitedEmail : ''
+  })
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [rememberMe, setRememberMe] = useState(true)
@@ -576,6 +581,9 @@ export function LoginPage() {
             </div>
           ) : null}
           {authMode === 'oidc' ? <p className="of-login-mode-note"><ShieldCheck aria-hidden="true" />{oidcReady ? text.oidcAvailable : text.oidcUnavailable}</p> : null}
+          {searchParams.get('invited') === '1' ? (
+            <p className="of-login-mode-note" role="status"><CheckCircle2 aria-hidden="true" />{text.inviteAccepted}</p>
+          ) : null}
           {authMode && authMode !== 'dev' && authMode !== 'oidc' ? <p className="of-login-mode-note is-error" role="alert">{text.unsupported}</p> : null}
 
           <form className="of-login-form" onSubmit={(event) => { event.preventDefault(); submit() }} noValidate>

@@ -111,6 +111,16 @@ export function getShellContext(
     }
   }
 
+  if (pathname === '/admin/users' && new URLSearchParams(search).get('view') === 'invites') {
+    return {
+      parent: '워크스페이스 설정',
+      parentHref: '/admin/general',
+      scope: workspaceName,
+      scopeHref: '/my',
+      title: '멤버 초대',
+    }
+  }
+
   const workspaceRoute = workspaceRouteLabels.find((item) => pathname === item.path)
   const parent = workspaceRoute?.parent ?? '워크스페이스'
   return {
