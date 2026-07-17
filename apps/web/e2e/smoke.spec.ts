@@ -17,6 +17,7 @@ import type {
   Project,
   ProjectHealthHistoryList,
   ProjectList,
+  ProjectListItem,
   ProjectPhase,
   ProjectPhaseList,
 } from '../src/features/projects/types'
@@ -103,6 +104,21 @@ const projectRollups = {
   initiative_overflow: 0,
 }
 const projects: ProjectList = { items: [{ ...project, ...projectRollups }], total: 1 }
+
+function projectListItem(
+  id: string,
+  name: string,
+  extra: Partial<ProjectListItem> = {},
+): ProjectListItem {
+  return {
+    ...project,
+    ...projectRollups,
+    id,
+    key: name.replace(/[^A-Za-z가-힣]/g, '').slice(0, 3).toUpperCase(),
+    name,
+    ...extra,
+  }
+}
 const inactiveProjectPhases: ProjectPhaseList = {
   items: [
     { key: 'discover', name: '발견', color: 'sky', position: 0, active: false, start_date: null, end_date: null, start_gate: { kind: 'start', name: '발견 시작 게이트', active: false, date: null }, finish_gate: { kind: 'finish', name: '발견 완료 게이트', active: false, date: null }, version: 0, retired: false, built_in: true },
@@ -5691,6 +5707,20 @@ test('내 작업 홈이 배정·기한임박·활동을 모아 보여주고 딥�
 
 test('내 작업 홈 위젯 관리는 표시 상태를 저장하고 복원한다', async ({ page }) => {
   await mockApi(page)
+  await page.addInitScript(() => {
+    if (window.sessionStorage.getItem('oneflow.workspace-home.legacy-seeded')) return
+    window.localStorage.setItem(
+      'oneflow.workspace-home.widgets.v1',
+      JSON.stringify({
+        ai: true,
+        quickLinks: true,
+        projectShortcuts: true,
+        recents: true,
+        personalNotes: true,
+      }),
+    )
+    window.sessionStorage.setItem('oneflow.workspace-home.legacy-seeded', 'true')
+  })
   await page.route('**/api/v1/me/work', (route) =>
     route.fulfill({
       json: {
@@ -5707,16 +5737,24 @@ test('내 작업 홈 위젯 관리는 표시 상태를 저장하고 복원한다
 
   await page.goto('/my')
   await expect(page.getByRole('region', { name: 'AI workspace' })).toBeVisible()
+  const riskSummary = page.getByRole('region', { name: '프로젝트 위험 요약' })
+  await expect(riskSummary).toBeVisible()
+  await expect(riskSummary.getByText('현재 주의가 필요한 활성 프로젝트가 없습니다.')).toBeVisible()
   await page.getByRole('button', { name: '위젯 관리' }).click()
   const widgetsMenu = page.getByRole('menu')
   await expect(widgetsMenu.getByRole('menuitemcheckbox', { name: 'AI workspace' })).toHaveAttribute(
     'data-state',
     'checked',
   )
+  await expect(
+    widgetsMenu.getByRole('menuitemcheckbox', { name: '프로젝트 위험' }),
+  ).toHaveAttribute('data-state', 'checked')
   await widgetsMenu.getByRole('menuitemcheckbox', { name: 'AI workspace' }).click()
+  await widgetsMenu.getByRole('menuitemcheckbox', { name: '프로젝트 위험' }).click()
   await widgetsMenu.getByRole('menuitemcheckbox', { name: '개인 메모' }).click()
   await page.keyboard.press('Escape')
   await expect(page.getByRole('region', { name: 'AI workspace' })).toHaveCount(0)
+  await expect(page.getByRole('region', { name: '프로젝트 위험 요약' })).toHaveCount(0)
   await expect(page.getByRole('region', { name: '개인 메모' })).toHaveCount(0)
   await expect(page.getByRole('region', { name: '빠른 이동' })).toBeVisible()
   await page.screenshot({
@@ -5726,6 +5764,7 @@ test('내 작업 홈 위젯 관리는 표시 상태를 저장하고 복원한다
 
   await page.reload()
   await expect(page.getByRole('region', { name: 'AI workspace' })).toHaveCount(0)
+  await expect(page.getByRole('region', { name: '프로젝트 위험 요약' })).toHaveCount(0)
   await expect(page.getByRole('region', { name: '개인 메모' })).toHaveCount(0)
   await page.setViewportSize({ width: 390, height: 844 })
   await page.getByRole('button', { name: '위젯 관리' }).click()
@@ -5736,10 +5775,134 @@ test('내 작업 홈 위젯 관리는 표시 상태를 저장하고 복원한다
   })
   await page.getByRole('menuitem', { name: '모든 위젯 복원' }).click()
   await expect(page.getByRole('region', { name: 'AI workspace' })).toBeVisible()
+  await expect(page.getByRole('region', { name: '프로젝트 위험 요약' })).toBeVisible()
   await expect(page.getByRole('region', { name: '개인 메모' })).toBeVisible()
   await page.reload()
   await expect(page.getByRole('region', { name: 'AI workspace' })).toBeVisible()
+  await expect(page.getByRole('region', { name: '프로젝트 위험 요약' })).toBeVisible()
   await expect(page.getByRole('region', { name: '개인 메모' })).toBeVisible()
+})
+
+test('워크스페이스 홈 위험 요약은 실제 rollup을 우선순위로 표시하고 Overview로 연결한다', async ({
+  page,
+}) => {
+  await mockApi(page)
+  const offTrack = projectListItem(
+    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    '납기 위험 프로젝트',
+    {
+      health: 'off_track',
+      health_note: '핵심 납기 회복 계획 확인 필요',
+      overdue_count: 0,
+      open_work_package_count: 8,
+    },
+  )
+  const atRisk = projectListItem(
+    'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+    '품질 주의 프로젝트',
+    { health: 'at_risk', overdue_count: 2, open_work_package_count: 5 },
+  )
+  const overdueOnly = projectListItem(
+    'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+    '기한 초과 프로젝트',
+    { health: 'on_track', overdue_count: 4, open_work_package_count: 11 },
+  )
+  const archived = projectListItem(
+    'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
+    '보관된 위험 프로젝트',
+    {
+      archived_at: '2026-07-16T00:00:00Z',
+      health: 'off_track',
+      overdue_count: 99,
+      open_work_package_count: 99,
+    },
+  )
+  let releaseProjectResponse = () => {}
+  const projectResponseGate = new Promise<void>((resolve) => {
+    releaseProjectResponse = resolve
+  })
+  await page.unroute('**/api/v1/projects')
+  await page.route('**/api/v1/projects', async (route) => {
+    await projectResponseGate
+    await route.fulfill({
+      json: { items: [overdueOnly, archived, atRisk, offTrack], total: 4 } satisfies ProjectList,
+    })
+  })
+  await page.route('**/api/v1/me/work', (route) =>
+    route.fulfill({
+      json: { assigned_to_me: [], due_soon: [], created_by_me: [], recent_activity: [] },
+    }),
+  )
+  await page.route('**/api/v1/me/time-entries**', (route) =>
+    route.fulfill({ json: { items: [], total: 0, total_hours: 0, by_project: [] } }),
+  )
+
+  await page.setViewportSize({ width: 1440, height: 960 })
+  await page.goto('/my')
+  const region = page.getByRole('region', { name: '프로젝트 위험 요약' })
+  await expect(region.getByText('프로젝트 위험 정보를 불러오는 중입니다.')).toBeVisible()
+  releaseProjectResponse()
+  await expect(region.getByText('주의 필요 3')).toBeVisible()
+  await expect(region.getByText('기한 초과 작업 6')).toBeVisible()
+  const riskLinks = region.getByRole('link', { name: /프로젝트 개요$/ })
+  await expect(riskLinks).toHaveCount(3)
+  await expect(riskLinks.nth(0)).toHaveAccessibleName('납기 위험 프로젝트 프로젝트 개요')
+  await expect(riskLinks.nth(1)).toHaveAccessibleName('품질 주의 프로젝트 프로젝트 개요')
+  await expect(riskLinks.nth(2)).toHaveAccessibleName('기한 초과 프로젝트 프로젝트 개요')
+  await expect(riskLinks.nth(0)).toHaveAttribute('href', `/projects/${offTrack.id}/overview`)
+  await expect(riskLinks.nth(1)).toContainText('기한 초과 2')
+  await expect(riskLinks.nth(2)).toContainText('정상')
+  await expect(region.getByText(archived.name)).toHaveCount(0)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/workspace-risk-summary-ui/desktop.png',
+    fullPage: true,
+  })
+
+  await page.setViewportSize({ width: 390, height: 844 })
+  await expectNoHorizontalOverflow(page)
+  await expect(riskLinks.nth(0)).toBeVisible()
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/workspace-risk-summary-ui/mobile.png',
+    fullPage: true,
+  })
+})
+
+test('워크스페이스 홈 위험 요약 오류는 명시적 재시도로 복구한다', async ({ page }) => {
+  await mockApi(page)
+  const recoveredProject = projectListItem(
+    'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
+    '복구 확인 프로젝트',
+    { health: 'at_risk', overdue_count: 1, open_work_package_count: 3 },
+  )
+  let attempts = 0
+  await page.unroute('**/api/v1/projects')
+  await page.route('**/api/v1/projects', async (route) => {
+    attempts += 1
+    if (attempts === 1) {
+      await route.fulfill({ status: 403, json: { detail: 'project directory unavailable' } })
+      return
+    }
+    await route.fulfill({
+      json: { items: [recoveredProject], total: 1 } satisfies ProjectList,
+    })
+  })
+  await page.route('**/api/v1/me/work', (route) =>
+    route.fulfill({
+      json: { assigned_to_me: [], due_soon: [], created_by_me: [], recent_activity: [] },
+    }),
+  )
+  await page.route('**/api/v1/me/time-entries**', (route) =>
+    route.fulfill({ json: { items: [], total: 0, total_hours: 0, by_project: [] } }),
+  )
+
+  await page.goto('/my')
+  const region = page.getByRole('region', { name: '프로젝트 위험 요약' })
+  await expect(region.getByRole('alert')).toContainText(
+    '프로젝트 위험 정보를 불러오지 못했습니다.',
+  )
+  await region.getByRole('button', { name: '다시 시도' }).click()
+  await expect(region.getByRole('link', { name: '복구 확인 프로젝트 프로젝트 개요' })).toBeVisible()
+  expect(attempts).toBe(2)
 })
 
 test('Workspace Home 빠른 링크가 개인 CRUD와 순서를 실제 요청에 연결한다', async ({
@@ -12281,8 +12444,8 @@ test('인라인 코멘트 stale 충돌은 임시 앵커를 되돌리고 모바�
   await expect(page.getByText('인라인 코멘트를 저장하지 못했습니다', { exact: false })).toBeVisible()
   await expect(page.locator('[data-comment-anchor]')).toHaveCount(0)
   await page.getByRole('button', { name: '코멘트', exact: true }).click()
-  expect(retryVersion).toBe(2)
   await expect(page.locator('[data-comment-anchor]')).toHaveCount(1)
+  expect(retryVersion).toBe(2)
   await expect(page.getByText('충돌 확인', { exact: true })).toBeVisible()
   const overflow = await page.evaluate(
     () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
