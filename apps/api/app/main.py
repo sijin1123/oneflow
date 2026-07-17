@@ -49,6 +49,7 @@ from app.api.v1 import (
     work_item_drafts,
     work_packages,
     workspace_features,
+    workspace_quick_links,
     workspace_saved_views,
 )
 from app.core.config import Settings, get_settings
@@ -169,6 +170,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(reports.router, prefix="/api/v1", tags=["reports"])
     app.include_router(me.router, prefix="/api/v1", tags=["me"])
     app.include_router(personal_notes.router, prefix="/api/v1", tags=["personal-notes"])
+    app.include_router(
+        workspace_quick_links.router,
+        prefix="/api/v1",
+        tags=["workspace-quick-links"],
+    )
     app.include_router(
         workspace_saved_views.router,
         prefix="/api/v1",

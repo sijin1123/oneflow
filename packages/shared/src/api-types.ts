@@ -1267,6 +1267,59 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/me/quick-links": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Workspace Quick Links */
+        get: operations["list_workspace_quick_links_api_v1_me_quick_links_get"];
+        put?: never;
+        /** Create Workspace Quick Link */
+        post: operations["create_workspace_quick_link_api_v1_me_quick_links_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/me/quick-links/order": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Order Workspace Quick Links */
+        put: operations["order_workspace_quick_links_api_v1_me_quick_links_order_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/me/quick-links/{link_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Workspace Quick Link */
+        delete: operations["delete_workspace_quick_link_api_v1_me_quick_links__link_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Workspace Quick Link */
+        patch: operations["update_workspace_quick_link_api_v1_me_quick_links__link_id__patch"];
+        trace?: never;
+    };
     "/api/v1/me/sessions": {
         parameters: {
             query?: never;
@@ -8588,6 +8641,84 @@ export interface components {
             /** Items */
             items: components["schemas"]["WorkspaceProjectPhaseDefinitionUpdate"][];
         };
+        /** WorkspaceQuickLinkConflict */
+        WorkspaceQuickLinkConflict: {
+            current: components["schemas"]["WorkspaceQuickLinkRead"];
+            /**
+             * Detail
+             * @default quick link was changed elsewhere
+             */
+            detail: string;
+        };
+        /** WorkspaceQuickLinkCreate */
+        WorkspaceQuickLinkCreate: {
+            /** Destination */
+            destination: string;
+            /** Title */
+            title: string;
+        };
+        /** WorkspaceQuickLinkError */
+        WorkspaceQuickLinkError: {
+            /** Detail */
+            detail: string;
+        };
+        /** WorkspaceQuickLinkList */
+        WorkspaceQuickLinkList: {
+            /** Items */
+            items: components["schemas"]["WorkspaceQuickLinkRead"][];
+            /** Total */
+            total: number;
+        };
+        /** WorkspaceQuickLinkOrder */
+        WorkspaceQuickLinkOrder: {
+            /** Items */
+            items: components["schemas"]["WorkspaceQuickLinkOrderItem"][];
+        };
+        /** WorkspaceQuickLinkOrderItem */
+        WorkspaceQuickLinkOrderItem: {
+            /** Expected Version */
+            expected_version: number;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+        };
+        /** WorkspaceQuickLinkRead */
+        WorkspaceQuickLinkRead: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Destination */
+            destination: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Position */
+            position: number;
+            /** Title */
+            title: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Version */
+            version: number;
+        };
+        /** WorkspaceQuickLinkUpdate */
+        WorkspaceQuickLinkUpdate: {
+            /** Destination */
+            destination?: string | null;
+            /** Expected Version */
+            expected_version: number;
+            /** Title */
+            title?: string | null;
+        };
         /** WorkspaceSavedViewConflict */
         WorkspaceSavedViewConflict: {
             current: components["schemas"]["WorkspaceSavedViewRead"];
@@ -12186,6 +12317,259 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_workspace_quick_links_api_v1_me_quick_links_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceQuickLinkList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_workspace_quick_link_api_v1_me_quick_links_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkspaceQuickLinkCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceQuickLinkRead"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceQuickLinkError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceQuickLinkError"];
+                };
+            };
+        };
+    };
+    order_workspace_quick_links_api_v1_me_quick_links_order_put: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkspaceQuickLinkOrder"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceQuickLinkList"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceQuickLinkConflict"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceQuickLinkError"];
+                };
+            };
+        };
+    };
+    delete_workspace_quick_link_api_v1_me_quick_links__link_id__delete: {
+        parameters: {
+            query: {
+                expected_version: number;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                link_id: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceQuickLinkConflict"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceQuickLinkError"];
+                };
+            };
+        };
+    };
+    update_workspace_quick_link_api_v1_me_quick_links__link_id__patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                link_id: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkspaceQuickLinkUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceQuickLinkRead"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceQuickLinkConflict"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceQuickLinkError"];
                 };
             };
         };
