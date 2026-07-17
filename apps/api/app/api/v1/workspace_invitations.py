@@ -98,9 +98,7 @@ def _require_pending(row: WorkspaceInvitation, expected_version: int) -> None:
         raise HTTPException(status_code=409, detail=f"invitation is {status}")
 
 
-async def _by_id_for_update(
-    session: AsyncSession, invitation_id: uuid.UUID
-) -> WorkspaceInvitation:
+async def _by_id_for_update(session: AsyncSession, invitation_id: uuid.UUID) -> WorkspaceInvitation:
     row = (
         await session.execute(
             select(WorkspaceInvitation)
@@ -127,9 +125,7 @@ async def list_workspace_invitations(
         (
             await session.execute(
                 select(WorkspaceInvitation)
-                .order_by(
-                    WorkspaceInvitation.created_at.desc(), WorkspaceInvitation.id.desc()
-                )
+                .order_by(WorkspaceInvitation.created_at.desc(), WorkspaceInvitation.id.desc())
                 .limit(limit)
             )
         )
@@ -234,9 +230,7 @@ async def revoke_workspace_invitation(
 async def _invitation_from_token(
     session: AsyncSession, token: str, *, lock: bool
 ) -> WorkspaceInvitation:
-    statement = select(WorkspaceInvitation).where(
-        WorkspaceInvitation.token_hash == _digest(token)
-    )
+    statement = select(WorkspaceInvitation).where(WorkspaceInvitation.token_hash == _digest(token))
     if lock:
         statement = statement.with_for_update()
     row = (await session.execute(statement)).scalar_one_or_none()

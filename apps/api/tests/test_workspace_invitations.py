@@ -24,9 +24,7 @@ async def test_workspace_invitation_create_preview_accept_and_list(client, app):
     async with app.state.sessionmaker() as session:
         stored = (
             await session.execute(
-                select(WorkspaceInvitation).where(
-                    WorkspaceInvitation.id == invitation["id"]
-                )
+                select(WorkspaceInvitation).where(WorkspaceInvitation.id == invitation["id"])
             )
         ).scalar_one()
         assert stored.token_hash != invitation["token"]
@@ -137,9 +135,7 @@ async def test_workspace_invitation_expiry_and_inactive_reactivation(client, app
     async with app.state.sessionmaker() as session, session.begin():
         row = (
             await session.execute(
-                select(WorkspaceInvitation).where(
-                    WorkspaceInvitation.id == invitation["id"]
-                )
+                select(WorkspaceInvitation).where(WorkspaceInvitation.id == invitation["id"])
             )
         ).scalar_one()
         row.expires_at = datetime.now(UTC) - timedelta(seconds=1)
@@ -217,9 +213,7 @@ async def test_workspace_invitation_validation_and_openapi(client, app):
     ):
         assert (await client.post("/api/v1/workspace-invitations", json=body)).status_code == 422
     assert (
-        await client.post(
-            "/api/v1/workspace-invitations/preview", json={"token": "too-short"}
-        )
+        await client.post("/api/v1/workspace-invitations/preview", json={"token": "too-short"})
     ).status_code == 422
     paths = app.openapi()["paths"]
     assert set(paths["/api/v1/workspace-invitations"]["post"]["responses"]) >= {

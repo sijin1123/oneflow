@@ -12,9 +12,7 @@ class WorkspaceInvitation(Base):
     __tablename__ = "workspace_invitations"
     __table_args__ = (
         CheckConstraint("char_length(email) BETWEEN 3 AND 255", name="email_length"),
-        CheckConstraint(
-            "char_length(display_name) BETWEEN 1 AND 120", name="display_name_length"
-        ),
+        CheckConstraint("char_length(display_name) BETWEEN 1 AND 120", name="display_name_length"),
         CheckConstraint("char_length(token_hash) = 64", name="token_hash_length"),
         CheckConstraint("version >= 0", name="version_nonnegative"),
         CheckConstraint(
@@ -29,9 +27,7 @@ class WorkspaceInvitation(Base):
         Index("ix_workspace_invitations_created", "created_at"),
     )
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     email: Mapped[str] = mapped_column(String(255), nullable=False)
     display_name: Mapped[str] = mapped_column(String(120), nullable=False)
     token_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
