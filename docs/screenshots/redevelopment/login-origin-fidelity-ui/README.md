@@ -31,3 +31,8 @@ Authentication-mode state, validation, provider availability, help requests, loc
 visibility, focus, and safe navigation continue to follow the live API contract instead of being
 baked into the reference bitmap. At `390x844`, the page switches to a single-column auth surface with
 reachable footer content and no horizontal overflow.
+
+UI-155 re-audited the same reference with the latest main baseline and reduced full-panel MAE from
+`2.260` to `2.188`, functional-auth MAE from `3.504` to `3.344`, heading MAE from `9.571` to `6.652`,
+password-row MAE from `5.018` to `4.950`, and divider MAE from `4.440` to `3.782`. The detailed
+in-app Browser capture and region report are stored in `../login-pixel-audit-ui/`.

@@ -5,7 +5,6 @@ import {
   CheckCircle2,
   ChevronDown,
   Eye,
-  EyeOff,
   Globe2,
   Loader2,
   LockKeyhole,
@@ -520,7 +519,13 @@ export function LoginPage() {
                   disabled={!formEnabled || !passwordRequired || login.isPending}
                   aria-label={showPassword ? 'Hide password' : 'Show password'}
                 >
-                  {showPassword ? <Eye aria-hidden="true" /> : <EyeOff aria-hidden="true" />}
+                  {showPassword ? (
+                    <Eye aria-hidden="true" />
+                  ) : (
+                    <span className="of-login-password-hidden-icon" aria-hidden="true">
+                      <Eye />
+                    </span>
+                  )}
                 </button>
               </span>
             </div>

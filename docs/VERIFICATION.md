@@ -2734,3 +2734,11 @@ Chromium typed mock fixture에서 1440x960과 390x844 viewport를 사용했다. 
 - **이연 항목**: 없음. API, DB, permission registry, migration, 환경변수, dependency, Settings UI 변경도 없다.
 - **검증**: unit **107 PASS**, component **8 PASS**, typecheck PASS, lint PASS(기존 Fast Refresh 경고 4건), production build PASS(기존 chunk-size 경고), focused Document version E2E **1 PASS**, 격리 포트 2-worker full E2E **315 PASS + opt-in visual QA 1 skip**, clean-room frontend161/backend45, npm/pip audit 0 vulnerabilities, diff check PASS다.
 - Chromium 증적은 `docs/screenshots/redevelopment/document-version-compare-ui/{inline-desktop,desktop,mobile}.png`에 보존한다. 첫 focused 실행은 보존 중인 사용자용 `5173` 로그인 서버를 재사용해 이전 worktree 화면을 읽었으므로 제품 실패가 아니며, 이후 모든 focused/full 검증은 전용 `5190`/`5191` 포트에서 실행해 PASS했다.
+
+# UI-155 Login Pixel Audit 검증 (2026-07-18)
+
+- **UI 변경**: 사용자 승인 `1448x1086` 원본과 실제 기능형 로그인 DOM을 영역별로 다시 대조했다. 기준보다 아래에 있던 제목과 `or` 구분선을 각각 1 CSS 픽셀 올리고, 숨김 상태를 기준 이미지의 눈과 짧은 우하향 선 형태로 보정했다. 로컬 비밀번호 불필요 설정에서도 아이콘 농도를 유지하지만 버튼의 disabled 계약은 그대로다.
+- **보존한 시각 자산**: 좌측 수채화, 상·하단 장식, S자 강, 칸반/달력/활동/진행 카드, 협업 경로와 좌·우 브랜드는 승인 원본과 런타임 자산의 동일 SHA-256 `62fafe9e44df9d189e8fe2f38fc25147d11b8459569be13ee0424ba06c0c4c76`을 계속 사용한다. 재생성·대체·필터 변경이 없다.
+- **픽셀 실사**: `1448x1086` Chromium의 중앙 `1220x915` 패널을 원본 크기로 정규화했다. baseline→final MAE는 전체 `2.260→2.188`, 좌측 `1.231→1.231`, 인증 `3.504→3.344`, 브랜드 `1.284→1.284`, 제목 `9.571→6.652`, 비밀번호 행 `5.018→4.950`, 구분선 `4.440→3.782`다. 실제 인앱 Browser `1455x1259`, DPR 2 캡처도 같은 서버에서 확보했다.
+- **기능/API 반영**: dev/OIDC, validation, password visibility, assistance request, locale, policy dialog, safe-next, loading/error/disabled와 reduced-motion을 유지했다. 신규 API, DB/schema, migration, permission, environment, dependency 또는 Settings UI 변경은 없다.
+- **검증**: 로그인 기능·지원·오류 복구·모바일·8개 viewport·원본/모션 focused E2E 6 PASS, 최종 증적 재촬영 2 PASS, typecheck PASS, lint PASS(기존 Fast Refresh 경고 4건), production build PASS(기존 chunk-size 경고), unit 107, component 8, 격리 포트 2-worker full E2E **315 PASS + opt-in visual QA 1 skip**이다. Clean-room frontend 161/backend 45, npm/pip audit 0 vulnerabilities와 diff check도 PASS했다. 증적은 `docs/screenshots/redevelopment/login-pixel-audit-ui/`에 보존한다. **이연 항목**은 없다.
