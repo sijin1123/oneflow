@@ -92,6 +92,48 @@ async def test_customers_permissions_and_lifecycle(customer_client, app):
     ).status_code == 403
 
 
+async def test_customer_tags_are_normalized_updated_and_filtered(customer_client, app):
+    await _enable(app)
+    created = await customer_client.post(
+        "/api/v1/customers",
+        json={
+            "name": "Tagged account",
+            "tags": [" Enterprise ", "Priority", "enterprise"],
+        },
+    )
+    assert created.status_code == 201, created.text
+    customer = created.json()
+    assert customer["tags"] == ["enterprise", "priority"]
+
+    filtered = await customer_client.get("/api/v1/customers", params={"tag": " ENTERPRISE "})
+    assert filtered.status_code == 200
+    assert [item["id"] for item in filtered.json()["items"]] == [customer["id"]]
+    assert (await customer_client.get("/api/v1/customers", params={"tag": "missing"})).json()[
+        "total"
+    ] == 0
+
+    changed = await customer_client.patch(
+        f"/api/v1/customers/{customer['id']}",
+        json={"tags": ["renewal", "Strategic"]},
+    )
+    assert changed.status_code == 200
+    assert changed.json()["tags"] == ["renewal", "strategic"]
+
+    assert (
+        await customer_client.patch(f"/api/v1/customers/{customer['id']}", json={"tags": None})
+    ).status_code == 422
+    assert (
+        await customer_client.post(
+            "/api/v1/customers",
+            json={"name": "Too many tags", "tags": [f"tag-{index}" for index in range(13)]},
+        )
+    ).status_code == 422
+    assert (
+        await customer_client.post("/api/v1/customers", json={"name": "Blank tag", "tags": [" "]})
+    ).status_code == 422
+    assert (await customer_client.get("/api/v1/customers", params={"tag": " "})).status_code == 422
+
+
 async def test_customer_rollup_excludes_invisible_projects(customer_client, app, foreign_project):
     await _enable(app)
     customer = await _create(customer_client)

@@ -7,6 +7,7 @@ import type { Customer, CustomerInput, CustomerList } from './types'
 export type CustomerListOptions = {
   query?: string
   includeArchived?: boolean
+  tag?: string
   enabled?: boolean
 }
 
@@ -15,14 +16,16 @@ const PAGE_SIZE = 500
 export function useCustomers({
   query,
   includeArchived = false,
+  tag,
   enabled = true,
 }: CustomerListOptions = {}) {
   return useQuery({
-    queryKey: ['customers', { query: query?.trim() ?? '', includeArchived }],
+    queryKey: ['customers', { query: query?.trim() ?? '', includeArchived, tag: tag ?? '' }],
     queryFn: async () => {
       const params = new URLSearchParams()
       if (query?.trim()) params.set('query', query.trim())
       if (includeArchived) params.set('include_archived', 'true')
+      if (tag) params.set('tag', tag)
       params.set('limit', String(PAGE_SIZE))
       const items: Customer[] = []
       let total = 0

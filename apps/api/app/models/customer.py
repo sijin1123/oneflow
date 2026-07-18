@@ -1,8 +1,8 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, Index, String, Text, UniqueConstraint, func
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import CheckConstraint, DateTime, Index, String, Text, UniqueConstraint, func, text
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -15,6 +15,11 @@ class Customer(Base):
     __table_args__ = (
         UniqueConstraint("name", name="uq_customers_name"),
         Index("ix_customers_archived_name", "archived_at", "name"),
+        Index("ix_customers_tags", "tags", postgresql_using="gin"),
+        CheckConstraint(
+            "jsonb_typeof(tags) = 'array' AND jsonb_array_length(tags) <= 12",
+            name="customer_tags_array",
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -22,6 +27,9 @@ class Customer(Base):
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     email: Mapped[str | None] = mapped_column(String(320), nullable=True)
     url: Mapped[str | None] = mapped_column(String(2048), nullable=True)
+    tags: Mapped[list[str]] = mapped_column(
+        JSONB, nullable=False, default=list, server_default=text("'[]'::jsonb")
+    )
     archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
