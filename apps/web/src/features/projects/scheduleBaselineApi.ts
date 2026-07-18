@@ -64,6 +64,9 @@ export function useCreateProjectScheduleBaseline(projectId: string) {
                   {
                     ...summary.baseline!,
                     total_snapshot: summary.total_snapshot,
+                    comparison_total: summary.total_snapshot + summary.added,
+                    changed_total: summary.changed_total,
+                    risk_total: summary.later + summary.unscheduled + summary.removed,
                   },
                   ...current.items,
                 ],

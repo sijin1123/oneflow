@@ -92,6 +92,18 @@ async def test_snapshot_reports_all_schedule_variance_states(client, app):
     assert by_subject["새 작업"]["work_package_id"] == added["id"]
     assert unchanged["id"] not in {item["work_package_id"] for item in body["items"]}
 
+    trend = await client.get(f"/api/v1/projects/{project_id}/schedule-baselines")
+    assert trend.status_code == 200, trend.text
+    assert trend.json()["items"] == [
+        {
+            **body["baseline"],
+            "total_snapshot": 6,
+            "comparison_total": 7,
+            "changed_total": 6,
+            "risk_total": 3,
+        }
+    ]
+
 
 async def test_capture_refresh_delete_and_optimistic_version(client):
     project = await create_project(client)
@@ -178,6 +190,9 @@ async def test_named_history_lists_compares_and_deletes_independent_snapshots(cl
         "착수 기준",
     ]
     assert [entry["total_snapshot"] for entry in history.json()["items"]] == [1, 1]
+    assert [entry["comparison_total"] for entry in history.json()["items"]] == [1, 1]
+    assert [entry["changed_total"] for entry in history.json()["items"]] == [1, 1]
+    assert [entry["risk_total"] for entry in history.json()["items"]] == [1, 1]
 
     first_detail = await client.get(f"/api/v1/projects/{project_id}/schedule-baselines/{first_id}")
     assert first_detail.status_code == 200, first_detail.text
