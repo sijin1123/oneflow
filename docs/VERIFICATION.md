@@ -2687,3 +2687,13 @@ Chromium typed mock fixture에서 1440x960과 390x844 viewport를 사용했다. 
 - **검증**: API Ruff/format PASS, focused attachment/search/wiki/private/viewer/permission 62 PASS, full API 789 PASS(기존 Alembic deprecation warning 1건), migration `0099 -> 0100 -> 0099 -> 0100` PASS, OpenAPI generation/drift PASS. Web typecheck/lint/build PASS(기존 Fast Refresh 4건·chunk-size 경고), unit 96, component 8, focused file search/reindex/command palette E2E 4 PASS, 최종 full E2E 296 PASS + opt-in visual QA 1 skip.
 - Clean-room frontend 161/backend 45, pip/npm audit 0 vulnerabilities와 diff check가 PASS했다. Chromium 증적은 `docs/screenshots/redevelopment/file-content-search-ui/{search-mobile,files-mobile}.png`에 보존한다. Migration `0100` 적용이 필요하며 신규 환경변수, dependency 또는 별도 Settings UI 변경은 없다.
 - **이연 항목**: OCR, PDF와 외부 object-store 본문 추출은 별도 parser/storage capability와 운영 비용·보안 정책이 필요해 명시적으로 제외한다. 지원 text-family LocalStorage 파일의 검색 흐름에는 장식용 control이나 내부 기능 이연이 없다.
+
+---
+
+# UI-151 Login Origin Pixel Reinspection 검증 (2026-07-18)
+
+- **UI 변경**: 사용자 승인 `1448x1086` OneFlow 원본을 런타임 기준 자산과 동일 바이트로 교체하고, 좌측 수채화·두 브랜드 lockup을 같은 원본에서 렌더링한다. 기능형 인증 DOM은 브랜드 1px, 제목/부제, 입력 높이, 폼 간격, provider/create/footer 위치와 숨김 비밀번호 아이콘을 기준 이미지에 맞춰 보정했다.
+- **기능/API 반영**: dev/OIDC 인증, validation, assistance request, locale, password visibility, reduced-motion, safe-next와 identity cache reset 계약을 유지했다. 신규 API, DB/schema, migration, permission, environment, dependency 또는 Settings UI 변경은 없다.
+- **픽셀 실사**: `1448x1086` Chromium에서 중앙 `1220x915` 패널을 기준 원본과 정규화 비교했다. 전체 MAE `2.016`, 좌측 `0.907`, 인증 surface `3.413`, auth 브랜드 `0.993`이며, max-channel 차이 `<=12` 비율은 각각 `97.02%`, `98.83%`, `94.75%`, `97.61%`다. 비교·증폭 diff와 8개 viewport 캡처는 `docs/screenshots/redevelopment/login-origin-fidelity-ui/`에 보존한다.
+- **인앱 실사**: DPR 2 인앱 Browser에서 원본 natural size `1448x1086`, 패널 `1220x915`, card/footer 내부 배치와 문서/canvas 수평 overflow `0`을 확인했다. `390x844` 모바일은 단일 열과 내부 세로 스크롤을 유지한다.
+- **검증**: typecheck PASS, lint PASS(기존 Fast Refresh 경고 4건), production build PASS(기존 chunk-size 경고), unit 103 PASS, component 8 PASS, focused login E2E 12 PASS, 최종 full E2E 312 PASS + opt-in visual QA 1 skip이다. Clean-room은 frontend 161/backend 45 license와 소스·파일명 격리를 통과했고 `npm audit --audit-level=high`는 취약점 0건이다. **이연 항목은 없다.**
