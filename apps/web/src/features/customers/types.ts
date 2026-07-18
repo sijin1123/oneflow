@@ -12,6 +12,7 @@ export type Customer = {
   description: string | null
   email: string | null
   url: string | null
+  tags: string[]
   archived_at: string | null
   created_at: string
   updated_at: string
@@ -28,4 +29,5 @@ export type CustomerInput = {
   description?: string | null
   email?: string | null
   url?: string | null
+  tags?: string[]
 }

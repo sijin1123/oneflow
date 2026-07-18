@@ -3,12 +3,33 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+MAX_CUSTOMER_TAGS = 12
+MAX_CUSTOMER_TAG_LENGTH = 32
+
+
+def normalize_customer_tags(values: list[str]) -> list[str]:
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for raw in values:
+        value = raw.strip().casefold()
+        if not value:
+            raise ValueError("tags cannot contain blank values")
+        if len(value) > MAX_CUSTOMER_TAG_LENGTH:
+            raise ValueError(f"each tag must be <= {MAX_CUSTOMER_TAG_LENGTH} chars")
+        if value not in seen:
+            normalized.append(value)
+            seen.add(value)
+    if len(normalized) > MAX_CUSTOMER_TAGS:
+        raise ValueError(f"tags must contain at most {MAX_CUSTOMER_TAGS} values")
+    return normalized
+
 
 class _CustomerFields(BaseModel):
     name: str | None = None
     description: str | None = None
     email: str | None = None
     url: str | None = None
+    tags: list[str] | None = None
 
     @field_validator("name")
     @classmethod
@@ -52,9 +73,15 @@ class _CustomerFields(BaseModel):
             raise ValueError("url must be an http(s) URL")
         return value
 
+    @field_validator("tags")
+    @classmethod
+    def _tags(cls, value: list[str] | None) -> list[str] | None:
+        return None if value is None else normalize_customer_tags(value)
+
 
 class CustomerCreate(_CustomerFields):
     name: str
+    tags: list[str] = Field(default_factory=list)
 
 
 class CustomerUpdate(_CustomerFields):
@@ -77,6 +104,7 @@ class CustomerRead(BaseModel):
     description: str | None
     email: str | None
     url: str | None
+    tags: list[str]
     archived_at: datetime | None
     created_at: datetime
     updated_at: datetime

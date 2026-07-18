@@ -18849,6 +18849,7 @@ async function mockCustomersSurface(page: Page) {
       description: '모바일 전환 프로젝트',
       email: 'team@hanbit.test',
       url: 'https://example.com',
+      tags: ['enterprise', 'mobile'],
       archived_at: null,
       created_at: '2026-07-11T00:00:00Z',
       updated_at: '2026-07-11T00:00:00Z',
@@ -18885,7 +18886,7 @@ async function mockCustomersSurface(page: Page) {
     const request = route.request()
     const url = new URL(request.url())
     if (request.method() === 'POST' && url.pathname === '/api/v1/customers') {
-      const body = request.postDataJSON() as { name: string; email?: string | null }
+      const body = request.postDataJSON() as { name: string; email?: string | null; tags?: string[] }
       customers = [
         ...customers,
         {
@@ -18894,6 +18895,7 @@ async function mockCustomersSurface(page: Page) {
           description: null,
           email: body.email ?? null,
           url: null,
+          tags: body.tags ?? [],
           archived_at: null,
           created_at: '2026-07-11T01:00:00Z',
           updated_at: '2026-07-11T01:00:00Z',
@@ -18903,7 +18905,17 @@ async function mockCustomersSurface(page: Page) {
       await route.fulfill({ status: 201, json: customers.at(-1) })
       return
     }
-    await route.fulfill({ json: { items: customers, total: customers.length } })
+    if (request.method() === 'PATCH' && url.pathname.startsWith('/api/v1/customers/')) {
+      const id = url.pathname.split('/').at(-1)
+      const body = request.postDataJSON() as Partial<Customer>
+      customers = customers.map((customer) => customer.id === id ? { ...customer, ...body, updated_at: '2026-07-11T02:00:00Z' } : customer)
+      await route.fulfill({ json: customers.find((customer) => customer.id === id) })
+      return
+    }
+    const query = url.searchParams.get('query')?.toLocaleLowerCase() ?? ''
+    const tag = url.searchParams.get('tag')
+    const filtered = customers.filter((customer) => (!query || customer.name.toLocaleLowerCase().includes(query)) && (!tag || customer.tags.includes(tag)))
+    await route.fulfill({ json: { items: filtered, total: filtered.length } })
   })
   return { customerId, isEnabled: () => enabled }
 }
@@ -18915,11 +18927,21 @@ test('Customers surface는 고객 관리와 작업 연결을 기능적으로 제
   await page.goto('/customers')
   await expect(page.getByRole('heading', { name: '고객', exact: true })).toBeVisible()
   await expect(page.getByText('한빛 고객사')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'enterprise' })).toBeVisible()
   await expect(page.getByText('8', { exact: true })).toBeVisible()
   await page.getByRole('button', { name: '고객 만들기' }).first().click()
   await page.getByRole('textbox', { name: /^이름/ }).fill('새 고객사')
   await page.getByRole('textbox', { name: /이메일/ }).fill('new@example.com')
+  await page.getByRole('textbox', { name: '태그 (선택)' }).fill('Strategic')
+  await page.getByRole('form', { name: '새 고객 생성' }).getByRole('button', { name: '추가' }).click()
   await page.getByRole('button', { name: '고객 만들기' }).last().click()
+  await expect(page.getByText('새 고객사')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'strategic' })).toBeVisible()
+
+  await page.getByLabel('고객 태그 필터').selectOption('enterprise')
+  await expect(page.getByText('한빛 고객사')).toBeVisible()
+  await expect(page.getByText('새 고객사')).toHaveCount(0)
+  await page.getByRole('button', { name: 'enterprise' }).click()
   await expect(page.getByText('새 고객사')).toBeVisible()
 
   await page.goto(`/projects/${project.id}/work-packages?customer_id=${customers.customerId}`)

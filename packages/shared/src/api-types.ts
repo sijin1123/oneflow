@@ -4706,6 +4706,8 @@ export interface components {
             email?: string | null;
             /** Name */
             name: string;
+            /** Tags */
+            tags?: string[];
             /** Url */
             url?: string | null;
         };
@@ -4765,6 +4767,8 @@ export interface components {
             /** Name */
             name: string;
             progress?: components["schemas"]["CustomerProgress"];
+            /** Tags */
+            tags: string[];
             /**
              * Updated At
              * Format: date-time
@@ -4781,6 +4785,8 @@ export interface components {
             email?: string | null;
             /** Name */
             name?: string | null;
+            /** Tags */
+            tags?: string[] | null;
             /** Url */
             url?: string | null;
         };
@@ -10492,6 +10498,7 @@ export interface operations {
         parameters: {
             query?: {
                 query?: string | null;
+                tag?: string | null;
                 include_archived?: boolean;
                 limit?: number;
                 offset?: number;

@@ -18,6 +18,7 @@ from app.schemas.customer import (
     CustomerProgress,
     CustomerRead,
     CustomerUpdate,
+    normalize_customer_tags,
 )
 from app.services.workspace_features import CUSTOMERS_FEATURE, feature_enabled, feature_policy
 
@@ -94,6 +95,7 @@ router = APIRouter(dependencies=[Depends(_require_customers_enabled)])
 @router.get("/customers", response_model=CustomerList)
 async def list_customers(
     query: str | None = Query(default=None, max_length=160),
+    tag: str | None = Query(default=None, max_length=32),
     include_archived: bool = False,
     limit: int = Query(default=200, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
@@ -105,6 +107,12 @@ async def list_customers(
         stmt = stmt.where(Customer.archived_at.is_(None))
     if query and (needle := query.strip()):
         stmt = stmt.where(Customer.name.icontains(needle, autoescape=True))
+    if tag is not None:
+        try:
+            normalized_tag = normalize_customer_tags([tag])[0]
+        except ValueError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
+        stmt = stmt.where(Customer.tags.contains([normalized_tag]))
     total = (await session.execute(select(func.count()).select_from(stmt.subquery()))).scalar_one()
     rows = (
         (
@@ -165,6 +173,8 @@ async def update_customer(
     fields = body.model_dump(exclude_unset=True)
     if fields.get("name") is None and "name" in fields:
         raise HTTPException(status_code=422, detail="name cannot be null")
+    if fields.get("tags") is None and "tags" in fields:
+        raise HTTPException(status_code=422, detail="tags cannot be null")
     for key, value in fields.items():
         setattr(customer, key, value)
     try:
