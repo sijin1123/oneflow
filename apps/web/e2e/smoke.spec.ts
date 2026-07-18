@@ -5259,7 +5259,12 @@ test('뷰어에게는 타임라인 드래그가 비활성이다', async ({ page 
   const bar = page.getByTestId('gantt-container').locator(`[data-task-id="${wpA.id}"].gantt_task_line`)
   await expect(bar).toBeVisible()
   await expect(page.getByText('막대를 드래그해 일정을 조정할 수 있습니다')).toBeHidden()
-  const box = (await bar.boundingBox())!
+  let box = await bar.boundingBox()
+  await expect.poll(async () => {
+    box = await bar.boundingBox()
+    return box
+  }, { message: '읽기 전용 타임라인 막대의 안정된 좌표를 기다립니다.' }).not.toBeNull()
+  if (!box) throw new Error('읽기 전용 타임라인 막대 좌표를 확인할 수 없습니다.')
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
   await page.mouse.down()
   await page.mouse.move(box.x + box.width / 2 + 60, box.y + box.height / 2, { steps: 6 })
@@ -9053,6 +9058,120 @@ test('이니셔티브 생성은 전체 전략 범위와 날짜 검증 및 실패
   await expect(page).toHaveURL(/initiative=ini-created/)
   await expect(page.getByRole('heading', { name: '2027 플랫폼 전략' })).toBeVisible()
   await expectNoHorizontalOverflow(page)
+})
+
+test('이니셔티브 탐색은 URL 조합 필터와 정렬 및 초기화를 왕복한다', async ({ page }) => {
+  await mockApi(page)
+  const base: Initiative = {
+    id: 'ini-base',
+    name: '기본 전략',
+    description: null,
+    owner_id: 'owner-1',
+    owner_name: 'Mina',
+    owner_active: true,
+    state: 'planned',
+    start_date: null,
+    target_date: null,
+    health: null,
+    health_note: null,
+    health_updated_by: null,
+    health_updated_at: null,
+    is_mine: false,
+    can_claim_ownership: false,
+    connected_project_count: 0,
+    connected_work_item_count: 0,
+    follower_count: 0,
+    is_following: false,
+    labels: [],
+    projects: [],
+    created_at: '2026-07-01T00:00:00Z',
+    updated_at: '2026-07-01T00:00:00Z',
+  }
+  const items: Initiative[] = [
+    {
+      ...base,
+      id: 'ini-platform',
+      name: '플랫폼 전환',
+      description: '클라우드 기반 전략',
+      owner_id: 'me-1',
+      owner_name: 'Dev User',
+      state: 'in_progress',
+      health: 'at_risk',
+      is_mine: true,
+      target_date: '2027-09-30',
+      updated_at: '2026-07-03T00:00:00Z',
+    },
+    {
+      ...base,
+      id: 'ini-customer',
+      name: '고객 경험',
+      health: 'on_track',
+      target_date: '2027-04-01',
+      projects: [{
+        project_id: 'p-customer',
+        project_name: '고객 포털',
+        work_package_count: 4,
+        done_work_package_count: 2,
+      }],
+      connected_project_count: 1,
+    },
+    { ...base, id: 'ini-ops', name: '운영 자동화', owner_id: null, owner_name: null },
+  ]
+  await page.route('**/api/v1/initiatives', (route) =>
+    route.fulfill({ json: { items, total: items.length } }),
+  )
+
+  await page.goto(
+    '/initiatives?q=%ED%81%B4%EB%9D%BC%EC%9A%B0%EB%93%9C&state=in_progress&health=at_risk&owner=mine&sort=name_asc',
+  )
+  await expect(page.getByRole('button', { name: '플랫폼 전환', exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: '고객 경험', exact: true })).toHaveCount(0)
+  await expect(page.getByText('1 / 3개 표시 · 조건 5개')).toBeVisible()
+
+  await page.getByRole('button', { name: '탐색 초기화' }).first().click()
+  await expect(page).toHaveURL('/initiatives')
+  await expect(page.getByRole('button', { name: '플랫폼 전환', exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: '고객 경험', exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: '운영 자동화', exact: true })).toBeVisible()
+
+  await page.getByLabel('이니셔티브 상태 필터').selectOption('planned')
+  await expect(page).toHaveURL(/state=planned/)
+  await page.getByLabel('이니셔티브 헬스 필터').selectOption('unreported')
+  await expect(page).toHaveURL(/health=unreported/)
+  await page.getByLabel('이니셔티브 소유 범위 필터').selectOption('unowned')
+  await expect(page.getByRole('button', { name: '운영 자동화', exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: '고객 경험', exact: true })).toHaveCount(0)
+  await expect(page).toHaveURL(/owner=unowned/)
+
+  await page.getByRole('button', { name: '탐색 초기화' }).first().click()
+  await expect(page).toHaveURL('/initiatives')
+  await expect(page.getByLabel('이니셔티브 상태 필터')).toHaveValue('all')
+  await expect(page.getByLabel('이니셔티브 헬스 필터')).toHaveValue('all')
+  await expect(page.getByLabel('이니셔티브 소유 범위 필터')).toHaveValue('all')
+  await page.getByLabel('이니셔티브 정렬').selectOption('target_asc')
+  const planned = page.getByRole('region', { name: '계획됨' })
+  await expect(planned.getByRole('button', { name: /전략 범위 열기/ })).toHaveCount(2)
+  const plannedNames = await planned.locator('li').evaluateAll((rows) =>
+    rows.map((row) => row.querySelector('button')?.textContent?.trim()),
+  )
+  expect(plannedNames).toEqual(['고객 경험', '운영 자동화'])
+
+  await page.getByLabel('이니셔티브 검색').fill('존재하지 않는 전략')
+  await expect(page.getByText('조건에 맞는 이니셔티브가 없습니다')).toBeVisible()
+  await page.getByRole('button', { name: '탐색 초기화' }).last().click()
+  await expect(page.getByRole('button', { name: '플랫폼 전환', exact: true })).toBeVisible()
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/initiative-discovery-ui/desktop.png',
+    fullPage: true,
+  })
+
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.getByLabel('이니셔티브 헬스 필터').selectOption('at_risk')
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/initiative-discovery-ui/mobile.png',
+    fullPage: true,
+  })
 })
 
 test('파일 업로드가 raw body POST로 나가고 다운로드 링크가 생긴다', async ({ page }) => {
@@ -19321,6 +19440,7 @@ test('Initiative 상세는 상태와 헬스 수명주기를 소유자 저장과 
   await expect(initiativeRow.getByLabel('수명주기 전략 상태 사유')).toHaveCount(0)
 
   await page.getByRole('button', { name: '수명주기 전략', exact: true }).click()
+  const drawer = page.getByRole('dialog', { name: '이니셔티브 상세' })
   await expect(page.getByRole('heading', { name: '상태 및 헬스' })).toBeVisible()
   await expect(page.getByText('일정 의존성 확인 필요', { exact: true })).toBeVisible()
   await page.getByRole('button', { name: '수명주기 편집' }).click()
@@ -19334,7 +19454,7 @@ test('Initiative 상세는 상태와 헬스 수명주기를 소유자 저장과 
   )
   await lifecycle.getByRole('button', { name: '상태 저장' }).click()
   expect((await statePatch).postDataJSON()).toEqual({ state: 'in_progress' })
-  await expect(page.getByText('진행 중', { exact: true }).first()).toBeVisible()
+  await expect(drawer.locator('header').getByText('진행 중', { exact: true })).toBeVisible()
 
   await lifecycle.getByLabel('이니셔티브 헬스').selectOption('off_track')
   await lifecycle.getByLabel('이니셔티브 상태 사유').fill('핵심 경로 차단 해소 필요')
@@ -19348,7 +19468,7 @@ test('Initiative 상세는 상태와 헬스 수명주기를 소유자 저장과 
     health: 'off_track',
     health_note: '핵심 경로 차단 해소 필요',
   })
-  await expect(page.getByText('위험', { exact: true }).first()).toBeVisible()
+  await expect(drawer.locator('header').getByText('위험', { exact: true })).toBeVisible()
   await page.screenshot({
     path: '../../docs/screenshots/redevelopment/initiative-lifecycle-ui/desktop-detail.png',
     fullPage: true,
@@ -19373,11 +19493,11 @@ test('Initiative 상세는 상태와 헬스 수명주기를 소유자 저장과 
 
   initiative = { ...initiative, is_mine: false }
   await page.reload()
-  await expect(page.getByRole('heading', { name: '수명주기 전략' })).toBeVisible()
+  await expect(drawer.getByRole('heading', { name: '수명주기 전략' })).toBeVisible()
   await expect(page.getByRole('button', { name: '수명주기 편집' })).toHaveCount(0)
   await expect(page.getByRole('heading', { name: '상태 및 헬스' })).toBeVisible()
-  await expect(page.getByText('진행 중', { exact: true }).first()).toBeVisible()
-  await expect(page.getByText('미설정', { exact: true }).first()).toBeVisible()
+  await expect(drawer.locator('header').getByText('진행 중', { exact: true })).toBeVisible()
+  await expect(drawer.getByText('미설정', { exact: true }).first()).toBeVisible()
 })
 
 async function mockReleasesPolicy(

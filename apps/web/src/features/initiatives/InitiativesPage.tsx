@@ -1,9 +1,11 @@
-import { ListChecks, Tag } from 'lucide-react'
+import { ListChecks, Search, SlidersHorizontal, X } from 'lucide-react'
+import { type ChangeEvent, useRef } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 
 import { EmptyState, ErrorState, ListSkeleton } from '@/components/shell/states'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { HEALTH_LABELS, HEALTH_STYLES } from '@/features/projects/types'
 import { Select } from '@/components/ui/select'
 import {
@@ -21,6 +23,11 @@ import {
 } from './api'
 import { InitiativeCreateDialog } from './InitiativeCreateDialog'
 import { InitiativeDetailDrawer } from './InitiativeDetailDrawer'
+import {
+  countActiveInitiativeDiscovery,
+  discoverInitiatives,
+  readInitiativeDiscovery,
+} from './discovery'
 
 const STATE_ORDER: InitiativeState[] = ['in_progress', 'planned', 'paused', 'completed', 'cancelled']
 
@@ -138,10 +145,12 @@ function InitiativeCard({
    progress roll-ups limited to the caller's member projects. */
 export function InitiativesPage() {
   const [searchParams, setSearchParams] = useSearchParams()
+  const discoveryFormRef = useRef<HTMLFormElement>(null)
   // Project-list chip deep link (Pass 51): highlight the target card;
   // an unknown/invisible id silently degrades to the plain page.
   const highlightId = searchParams.get('highlight')
   const selectedLabelId = searchParams.get('label') ?? ''
+  const discovery = readInitiativeDiscovery(searchParams)
   const initiatives = useInitiatives(selectedLabelId)
   const labels = useInitiativeLabels()
 
@@ -152,6 +161,8 @@ export function InitiativesPage() {
   if (labels.isError) return <ErrorState error={labels.error} onRetry={() => labels.refetch()} />
 
   const items = initiatives.data.items
+  const visibleItems = discoverInitiatives(items, discovery)
+  const activeDiscoveryCount = countActiveInitiativeDiscovery(discovery, selectedLabelId)
   const selectedInitiative =
     items.find((initiative) => initiative.id === searchParams.get('initiative')) ?? null
   const openDetails = (initiativeId: string) => {
@@ -177,10 +188,37 @@ export function InitiativesPage() {
       return next
     })
   }
-  const activeCount = items.filter((i) => i.state === 'in_progress').length
-  const riskCount = items.filter((i) => i.health === 'at_risk' || i.health === 'off_track').length
-  const visibleProjectCount = items.reduce((sum, i) => sum + i.projects.length, 0)
-  const hiddenProjectCount = items.reduce(
+  const syncDiscoveryForm = (event: ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    const form = discoveryFormRef.current
+    if (!form) return
+    const data = new FormData(form)
+    data.set(event.currentTarget.name, event.currentTarget.value)
+    const next = new URLSearchParams(window.location.search)
+    const values = [
+      ['q', String(data.get('q') ?? ''), ''],
+      ['label', String(data.get('label') ?? ''), ''],
+      ['state', String(data.get('state') ?? 'all'), 'all'],
+      ['health', String(data.get('health') ?? 'all'), 'all'],
+      ['owner', String(data.get('owner') ?? 'all'), 'all'],
+      ['sort', String(data.get('sort') ?? 'updated_desc'), 'updated_desc'],
+    ] as const
+    for (const [key, value, defaultValue] of values) {
+      if (value && value !== defaultValue) next.set(key, value)
+      else next.delete(key)
+    }
+    setSearchParams(next, { replace: true })
+  }
+  const clearDiscovery = () => {
+    const next = new URLSearchParams(window.location.search)
+    for (const key of ['q', 'state', 'health', 'owner', 'sort', 'label']) next.delete(key)
+    setSearchParams(next, { replace: true })
+  }
+  const activeCount = visibleItems.filter((i) => i.state === 'in_progress').length
+  const riskCount = visibleItems.filter(
+    (i) => i.health === 'at_risk' || i.health === 'off_track',
+  ).length
+  const visibleProjectCount = visibleItems.reduce((sum, i) => sum + i.projects.length, 0)
+  const hiddenProjectCount = visibleItems.reduce(
     (sum, i) => sum + Math.max(0, i.connected_project_count - i.projects.length),
     0,
   )
@@ -191,33 +229,110 @@ export function InitiativesPage() {
         title="이니셔티브"
         description="여러 프로젝트를 하나의 전략 묶음으로 연결해 진행률과 헬스 상태를 봅니다."
       >
-        <div className="flex min-w-0 flex-col gap-2 border-b border-of-border-subtle pb-4 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex min-w-0 items-center gap-2 text-xs text-of-muted">
-            <Tag size={14} aria-hidden="true" />
-            <span>라벨로 전략 범위를 좁힙니다.</span>
-          </div>
+        <form
+          ref={discoveryFormRef}
+          aria-label="이니셔티브 탐색"
+          className="min-w-0 space-y-2 border-b border-of-border-subtle pb-4"
+          onSubmit={(event) => event.preventDefault()}
+        >
           <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center">
+            <label className="relative min-w-0 flex-1">
+              <span className="sr-only">이니셔티브 검색</span>
+              <Search
+                size={14}
+                className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-of-muted"
+                aria-hidden="true"
+              />
+              <Input
+                name="q"
+                aria-label="이니셔티브 검색"
+                className="pl-8"
+                placeholder="이름, 설명, 소유자, 라벨 또는 프로젝트 검색"
+                value={discovery.query}
+                onChange={syncDiscoveryForm}
+              />
+            </label>
+            <InitiativeCreateDialog onCreated={openCreated} />
+          </div>
+          <div className="grid min-w-0 grid-cols-2 gap-2 xl:grid-cols-5">
             <Select
+              name="label"
               aria-label="이니셔티브 라벨 필터"
-              className="h-8 min-w-0 sm:w-48"
+              className="h-8 min-w-0 w-full"
               value={selectedLabelId}
-              onChange={(event) => {
-                setSearchParams((previous) => {
-                  const next = new URLSearchParams(previous)
-                  if (event.target.value) next.set('label', event.target.value)
-                  else next.delete('label')
-                  return next
-                })
-              }}
+              onChange={syncDiscoveryForm}
             >
               <option value="">모든 라벨</option>
               {labels.data.items.map((label) => <option key={label.id} value={label.id}>{label.name}</option>)}
             </Select>
-            <InitiativeCreateDialog onCreated={openCreated} />
+            <Select
+              name="state"
+              aria-label="이니셔티브 상태 필터"
+              className="h-8 min-w-0 w-full"
+              value={discovery.state}
+              onChange={syncDiscoveryForm}
+            >
+              <option value="all">모든 상태</option>
+              {STATE_ORDER.map((state) => (
+                <option key={state} value={state}>{INITIATIVE_STATE_LABELS[state]}</option>
+              ))}
+            </Select>
+            <Select
+              name="health"
+              aria-label="이니셔티브 헬스 필터"
+              className="h-8 min-w-0 w-full"
+              value={discovery.health}
+              onChange={syncDiscoveryForm}
+            >
+              <option value="all">모든 헬스</option>
+              <option value="on_track">정상</option>
+              <option value="at_risk">주의</option>
+              <option value="off_track">위험</option>
+              <option value="unreported">미보고</option>
+            </Select>
+            <Select
+              name="owner"
+              aria-label="이니셔티브 소유 범위 필터"
+              className="h-8 min-w-0 w-full"
+              value={discovery.ownership}
+              onChange={syncDiscoveryForm}
+            >
+              <option value="all">모든 소유 범위</option>
+              <option value="mine">내가 소유</option>
+              <option value="shared">프로젝트로 공유</option>
+              <option value="unowned">소유자 없음</option>
+            </Select>
+            <Select
+              name="sort"
+              aria-label="이니셔티브 정렬"
+              className="col-span-2 h-8 min-w-0 w-full xl:col-span-1"
+              value={discovery.sort}
+              onChange={syncDiscoveryForm}
+            >
+              <option value="updated_desc">최근 업데이트순</option>
+              <option value="target_asc">목표일 빠른순</option>
+              <option value="name_asc">이름순</option>
+            </Select>
           </div>
-        </div>
-        <ReportingSummaryGrid>
-          <ReportingMetricCard label="전체" value={`${items.length}개`} detail="전략 묶음" />
+          <div className="flex min-w-0 flex-wrap items-center justify-between gap-2 text-xs text-of-muted">
+            <span className="inline-flex min-w-0 items-center gap-1.5" aria-live="polite">
+              <SlidersHorizontal size={13} aria-hidden="true" />
+              {visibleItems.length} / {items.length}개 표시
+              {activeDiscoveryCount > 0 ? ` · 조건 ${activeDiscoveryCount}개` : ''}
+            </span>
+            {activeDiscoveryCount > 0 ? (
+              <Button size="sm" variant="ghost" onClick={clearDiscovery}>
+                <X size={13} /> 탐색 초기화
+              </Button>
+            ) : null}
+          </div>
+        </form>
+        <ReportingSummaryGrid className="grid-cols-2 gap-2 sm:gap-3">
+          <ReportingMetricCard
+            label="표시 중"
+            value={`${visibleItems.length}개`}
+            detail={visibleItems.length === items.length ? '전체 전략 묶음' : `전체 ${items.length}개 중`}
+          />
           <ReportingMetricCard label="진행 중" value={activeCount} tone="accent" />
           <ReportingMetricCard
             label="주의 필요"
@@ -232,15 +347,33 @@ export function InitiativesPage() {
           />
         </ReportingSummaryGrid>
 
-        {items.length === 0 ? (
+        {visibleItems.length === 0 ? (
           <EmptyState
-            title={selectedLabelId ? '이 라벨의 이니셔티브가 없습니다' : '이니셔티브가 없습니다'}
-            hint={selectedLabelId ? '다른 라벨을 선택하거나 이니셔티브에 라벨을 배정하세요.' : '상단의 새 이니셔티브 버튼에서 첫 전략 묶음을 만드세요.'}
-          />
+            title={
+              items.length === 0 && selectedLabelId && activeDiscoveryCount === 1
+                ? '이 라벨의 이니셔티브가 없습니다'
+                : activeDiscoveryCount > 0
+                  ? '조건에 맞는 이니셔티브가 없습니다'
+                  : '이니셔티브가 없습니다'
+            }
+            hint={
+              items.length === 0 && selectedLabelId && activeDiscoveryCount === 1
+                ? '다른 라벨을 선택하거나 이니셔티브에 라벨을 배정하세요.'
+                : activeDiscoveryCount > 0
+                  ? '검색어나 탐색 조건을 초기화하고 다시 확인하세요.'
+                  : '상단의 새 이니셔티브 버튼에서 첫 전략 묶음을 만드세요.'
+            }
+          >
+            {activeDiscoveryCount > 0 ? (
+              <Button size="sm" variant="outline" onClick={clearDiscovery}>
+                <X size={13} /> 탐색 초기화
+              </Button>
+            ) : null}
+          </EmptyState>
         ) : (
           <div className="space-y-5">
             {STATE_ORDER.map((state) => {
-              const group = items.filter((i) => i.state === state)
+              const group = visibleItems.filter((i) => i.state === state)
               if (group.length === 0) return null
               return (
                 <section key={state} aria-label={INITIATIVE_STATE_LABELS[state]} className="min-w-0">
