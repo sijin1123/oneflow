@@ -6,52 +6,104 @@ import { api } from '@/lib/api'
 
 type Schemas = components['schemas']
 
+export type ProjectScheduleBaselineList = Schemas['ProjectScheduleBaselineList']
+export type ProjectScheduleBaselineListItem = Schemas['ProjectScheduleBaselineListItem']
 export type ProjectScheduleBaselineSummary = Schemas['ProjectScheduleBaselineSummary']
 export type ProjectScheduleVarianceItem = Schemas['ProjectScheduleVarianceItem']
 export type ScheduleVarianceState = ProjectScheduleVarianceItem['state']
 
-const queryKey = (projectId: string) => ['project-schedule-baseline', projectId] as const
+const historyKey = (projectId: string) => ['project-schedule-baselines', projectId] as const
+const detailKey = (projectId: string, baselineId: string) =>
+  ['project-schedule-baselines', projectId, baselineId] as const
 
-export function useProjectScheduleBaseline(projectId: string) {
+export function useProjectScheduleBaselines(projectId: string) {
   return useQuery({
-    queryKey: queryKey(projectId),
+    queryKey: historyKey(projectId),
     queryFn: () =>
-      api<ProjectScheduleBaselineSummary>(
-        `/api/v1/projects/${projectId}/schedule-baseline`,
+      api<ProjectScheduleBaselineList>(
+        `/api/v1/projects/${projectId}/schedule-baselines`,
       ),
     enabled: Boolean(projectId),
   })
 }
 
-export function useCaptureProjectScheduleBaseline(projectId: string) {
+export function useProjectScheduleBaseline(projectId: string, baselineId: string) {
+  return useQuery({
+    queryKey: detailKey(projectId, baselineId),
+    queryFn: () =>
+      api<ProjectScheduleBaselineSummary>(
+        `/api/v1/projects/${projectId}/schedule-baselines/${baselineId}`,
+      ),
+    enabled: Boolean(projectId && baselineId),
+  })
+}
+
+export function useCreateProjectScheduleBaseline(projectId: string) {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (expectedVersion: number | null) =>
+    mutationFn: (name: string) =>
       api<ProjectScheduleBaselineSummary>(
-        `/api/v1/projects/${projectId}/schedule-baseline`,
+        `/api/v1/projects/${projectId}/schedule-baselines`,
         {
-          method: 'PUT',
-          body: JSON.stringify({ expected_version: expectedVersion }),
+          method: 'POST',
+          body: JSON.stringify({ name }),
         },
       ),
     onSuccess: (summary) => {
-      queryClient.setQueryData(queryKey(projectId), summary)
+      if (summary.baseline) {
+        queryClient.setQueryData(
+          detailKey(projectId, summary.baseline.id),
+          summary,
+        )
+        queryClient.setQueryData<ProjectScheduleBaselineList>(
+          historyKey(projectId),
+          (current) => current
+            ? {
+                ...current,
+                items: [
+                  {
+                    ...summary.baseline!,
+                    total_snapshot: summary.total_snapshot,
+                  },
+                  ...current.items,
+                ],
+                total: current.total + 1,
+                current_total: summary.current_total,
+              }
+            : current,
+        )
+      }
     },
-    onSettled: () =>
-      queryClient.invalidateQueries({ queryKey: queryKey(projectId) }),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: historyKey(projectId) }),
   })
 }
 
 export function useDeleteProjectScheduleBaseline(projectId: string) {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (expectedVersion: number) => {
+    mutationFn: ({ baselineId, expectedVersion }: { baselineId: string; expectedVersion: number }) => {
       const params = new URLSearchParams({ expected_version: String(expectedVersion) })
       return api<void>(
-        `/api/v1/projects/${projectId}/schedule-baseline?${params.toString()}`,
+        `/api/v1/projects/${projectId}/schedule-baselines/${baselineId}?${params.toString()}`,
         { method: 'DELETE' },
       )
     },
-    onSettled: () => queryClient.invalidateQueries({ queryKey: queryKey(projectId) }),
+    onSuccess: (_, variables) => {
+      queryClient.removeQueries({ queryKey: detailKey(projectId, variables.baselineId) })
+      queryClient.setQueryData<ProjectScheduleBaselineList>(
+        historyKey(projectId),
+        (current) => {
+          if (!current) return current
+          const items = current.items.filter((item) => item.id !== variables.baselineId)
+          return items.length === current.items.length
+            ? current
+            : { ...current, items, total: Math.max(0, current.total - 1) }
+        },
+      )
+    },
+    onError: (_error, variables) => queryClient.invalidateQueries({
+      queryKey: detailKey(projectId, variables.baselineId),
+    }),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: historyKey(projectId) }),
   })
 }

@@ -1,7 +1,17 @@
 import uuid
 from datetime import date, datetime
 
-from sqlalchemy import CheckConstraint, Date, DateTime, ForeignKey, Integer, String, func
+from sqlalchemy import (
+    CheckConstraint,
+    Date,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    UniqueConstraint,
+    func,
+)
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -10,15 +20,19 @@ from app.db.base import Base
 
 class ProjectScheduleBaseline(Base):
     __tablename__ = "project_schedule_baselines"
-    __table_args__ = (CheckConstraint("version >= 0", name="version_nonnegative"),)
+    __table_args__ = (
+        CheckConstraint("version >= 0", name="version_nonnegative"),
+        UniqueConstraint("project_id", "name", name="uq_project_schedule_baselines_project_name"),
+        Index("ix_project_schedule_baselines_project_captured", "project_id", "captured_at"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     project_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("projects.id", ondelete="CASCADE"),
         nullable=False,
-        unique=True,
     )
+    name: Mapped[str] = mapped_column(String(80), nullable=False, default="기준선 1")
     captured_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
