@@ -409,3 +409,9 @@ Plane/OpenProject source, API, database schema, package, asset, CSS, DOM hierarc
 `docs/plane-poc-reverse-spec/`의 workspace search와 파일 탐색 관찰에서 사용한 입력은 사용자가 현재 접근 가능한 업로드를 이름과 지원 본문으로 찾고 실제 파일 표면으로 이동한다는 제품 행동뿐이다. OneFlow 구현은 기존 자체 Attachment/LocalStorage, Document visibility, Workspace Wiki policy, unified search, React Query와 Files surface를 사용해 독립 설계했다.
 
 Plane/OpenProject source, API, database schema, package, asset, CSS, DOM hierarchy, exact dimensions/colors, wording, file parser/indexer, search UI, icons 또는 branding은 복사하지 않았다. OneFlow 고유 migration `0100`, 512 KiB closed text-family extractor, inline upload indexing, bounded legacy reindex, explicit terminal states와 private Document/Wiki-safe result and count boundary를 추가했다. 신규 dependency, environment 또는 별도 Settings UI 변경은 없으며 OCR/PDF/object-store parser는 지원 capability 없이 구현하지 않았다. — attested-independent-derivation
+
+## UI-149 Initiative Discovery Controls
+
+`docs/plane-poc-reverse-spec/`의 compact view control과 filter 정보구조에서 사용한 입력은 전략 목록을 검색·수명주기·헬스·소유 범위로 좁히고 결정적으로 정렬하며 현재 조건을 URL로 공유한다는 제품 행동뿐이다. OneFlow 구현은 기존 자체 Initiative visibility, exact label API, React Router query state, React Query와 local reporting primitives를 사용해 독립 설계했다.
+
+Plane/OpenProject source, API, database schema, package, asset, CSS, DOM hierarchy, exact dimensions/colors, wording, filter implementation, icons 또는 branding은 복사하지 않았다. 검색과 조합 필터는 이미 권한 필터링된 전체 응답만 사용하고, label과 hidden-project 경계는 서버 권한 계약을 그대로 유지한다. 신규 API, migration, dependency, environment, permission 또는 Settings UI 변경은 없다. — attested-independent-derivation

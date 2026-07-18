@@ -124,8 +124,18 @@ export function ReportingMetricCard({
   )
 }
 
-export function ReportingSummaryGrid({ children }: { children: React.ReactNode }) {
-  return <div className="grid min-w-0 gap-3 sm:grid-cols-2 xl:grid-cols-4">{children}</div>
+export function ReportingSummaryGrid({
+  children,
+  className,
+}: {
+  children: React.ReactNode
+  className?: string
+}) {
+  return (
+    <div className={cn('grid min-w-0 gap-3 sm:grid-cols-2 xl:grid-cols-4', className)}>
+      {children}
+    </div>
+  )
 }
 
 export function ReportingSection({
