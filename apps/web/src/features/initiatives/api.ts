@@ -287,7 +287,10 @@ export function useUpdateInitiative() {
     }: {
       id: string
       name?: string
+      description?: string | null
       state?: InitiativeState
+      start_date?: string | null
+      target_date?: string | null
       health?: string | null
       health_note?: string | null
     }) =>

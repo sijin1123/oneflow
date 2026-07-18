@@ -18779,7 +18779,6 @@ test('Initiative labels는 설정 CRUD와 소유자 배정 및 목록 필터를 
     created_at: '2026-07-18T00:00:00Z',
     updated_at: '2026-07-18T00:00:00Z',
   }
-
   await page.route('**/api/v1/initiatives**', async (route) => {
     const request = route.request()
     const url = new URL(request.url())
@@ -18865,6 +18864,122 @@ test('Initiative labels는 설정 CRUD와 소유자 배정 및 목록 필터를 
     path: '../../docs/screenshots/redevelopment/initiative-labels-ui/mobile-filter.png',
     fullPage: true,
   })
+})
+
+test('Initiative 상세는 기본 정보와 전략 일정을 실제 저장한다', async ({ page }) => {
+  await mockApi(page)
+  let initiative: Initiative = {
+    id: '11111111-1111-4111-8111-111111111144',
+    name: '플랫폼 전략',
+    description: '기존 설명',
+    owner_id: 'me-1',
+    owner_name: 'Dev User',
+    owner_active: true,
+    state: 'in_progress',
+    start_date: null,
+    target_date: null,
+    health: 'on_track',
+    health_note: null,
+    health_updated_by: null,
+    health_updated_at: null,
+    is_mine: true,
+    can_claim_ownership: false,
+    connected_project_count: 0,
+    connected_work_item_count: 0,
+    follower_count: 0,
+    is_following: false,
+    labels: [],
+    projects: [],
+    created_at: '2026-07-18T00:00:00Z',
+    updated_at: '2026-07-18T00:00:00Z',
+  }
+  let failNextPatch = true
+
+  await page.route('**/api/v1/initiatives**', async (route) => {
+    const request = route.request()
+    const path = new URL(request.url()).pathname
+    if (path === '/api/v1/initiatives/labels') {
+      await route.fulfill({ json: { items: [], total: 0 } })
+      return
+    }
+    if (path === `/api/v1/initiatives/${initiative.id}/work-items`) {
+      await route.fulfill({
+        json: { items: [], total: 0, connected_work_item_count: 0 },
+      })
+      return
+    }
+    if (path === `/api/v1/initiatives/${initiative.id}` && request.method() === 'PATCH') {
+      if (failNextPatch) {
+        failNextPatch = false
+        await route.fulfill({ status: 500, json: { detail: 'temporary failure' } })
+        return
+      }
+      const input = request.postDataJSON() as Partial<Initiative>
+      initiative = { ...initiative, ...input, updated_at: '2026-07-18T02:00:00Z' }
+      await route.fulfill({ json: initiative })
+      return
+    }
+    if (path === '/api/v1/initiatives') {
+      await route.fulfill({ json: { items: [initiative], total: 1 } })
+      return
+    }
+    await route.fallback()
+  })
+
+  await page.goto('/initiatives')
+  await page.getByRole('button', { name: '플랫폼 전략', exact: true }).click()
+  await page.getByRole('button', { name: '기본 정보 편집' }).click()
+  const form = page.getByRole('form', { name: '이니셔티브 기본 정보 편집' })
+  await form.getByLabel('이니셔티브 이름').fill('2027 플랫폼 전략')
+  await form.getByLabel('이니셔티브 설명').fill('프로젝트 간 전략 목표와 성공 기준')
+  await form.getByLabel('이니셔티브 시작일').fill('2027-04-30')
+  await form.getByLabel('이니셔티브 목표일').fill('2027-04-01')
+  await expect(form.getByRole('alert')).toContainText('목표일은 시작일보다 빠를 수 없습니다')
+  await expect(form.getByRole('button', { name: '저장' })).toBeDisabled()
+
+  await form.getByLabel('이니셔티브 목표일').fill('2027-09-30')
+  await form.getByRole('button', { name: '저장' }).click()
+  await expect(form.getByRole('alert')).toContainText('temporary failure')
+  await expect(form).toBeVisible()
+
+  const saved = page.waitForRequest((request) =>
+    request.method() === 'PATCH' && request.url().endsWith(`/initiatives/${initiative.id}`),
+  )
+  await form.getByRole('button', { name: '저장' }).click()
+  const payload = (await saved).postDataJSON()
+  expect(payload).toEqual({
+    name: '2027 플랫폼 전략',
+    description: '프로젝트 간 전략 목표와 성공 기준',
+    start_date: '2027-04-30',
+    target_date: '2027-09-30',
+  })
+  await expect(page.getByRole('heading', { name: '2027 플랫폼 전략' })).toBeVisible()
+  await expect(page.getByText('2027-04-30', { exact: true })).toBeVisible()
+  await expect(page.getByText('2027-09-30', { exact: true })).toBeVisible()
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/initiative-properties-ui/desktop-detail.png',
+    fullPage: true,
+  })
+
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.getByRole('button', { name: '기본 정보 편집' }).click()
+  await expect(form).toBeVisible()
+  await form.getByLabel('이니셔티브 이름').fill('저장하지 않을 이름')
+  await form.getByRole('button', { name: '취소' }).click()
+  await expect(form).toBeHidden()
+  await page.getByRole('button', { name: '기본 정보 편집' }).click()
+  await expect(form.getByLabel('이니셔티브 이름')).toHaveValue('2027 플랫폼 전략')
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/initiative-properties-ui/mobile-edit.png',
+    fullPage: true,
+  })
+
+  initiative = { ...initiative, is_mine: false }
+  await page.reload()
+  await expect(page.getByRole('heading', { name: '2027 플랫폼 전략' })).toBeVisible()
+  await expect(page.getByRole('button', { name: '기본 정보 편집' })).toHaveCount(0)
+  await expect(page.getByText('2027-09-30', { exact: true })).toBeVisible()
 })
 
 async function mockReleasesPolicy(

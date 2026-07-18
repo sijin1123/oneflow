@@ -5,10 +5,13 @@ import {
   CalendarDays,
   Link2,
   Loader2,
+  Pencil,
   Plus,
   RefreshCw,
+  Save,
   Search,
   Unlink,
+  X,
 } from 'lucide-react'
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
@@ -18,6 +21,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Sheet, SheetContent } from '@/components/ui/sheet'
+import { Textarea } from '@/components/ui/textarea'
 import {
   PRIORITY_LABELS,
   type WpPriority,
@@ -32,6 +36,7 @@ import {
   useDisconnectInitiativeWorkItem,
   useInitiativeWorkItemCandidates,
   useInitiativeWorkItems,
+  useUpdateInitiative,
   useUpdateInitiativeSubscription,
 } from './api'
 
@@ -139,6 +144,7 @@ export function InitiativeDetailDrawer({
 
 function InitiativeDetailBody({ initiative }: { initiative: Initiative }) {
   const navigate = useNavigate()
+  const update = useUpdateInitiative()
   const scope = useInitiativeWorkItems(initiative.id, true)
   const connect = useConnectInitiativeWorkItem(initiative.id)
   const disconnect = useDisconnectInitiativeWorkItem(initiative.id)
@@ -146,6 +152,11 @@ function InitiativeDetailBody({ initiative }: { initiative: Initiative }) {
   const [pickerOpen, setPickerOpen] = useState(false)
   const [draftQuery, setDraftQuery] = useState('')
   const [query, setQuery] = useState('')
+  const [editingDetails, setEditingDetails] = useState(false)
+  const [name, setName] = useState(initiative.name)
+  const [description, setDescription] = useState(initiative.description ?? '')
+  const [startDate, setStartDate] = useState(initiative.start_date ?? '')
+  const [targetDate, setTargetDate] = useState(initiative.target_date ?? '')
   const candidates = useInitiativeWorkItemCandidates(
     initiative.id,
     query,
@@ -160,6 +171,14 @@ function InitiativeDetailBody({ initiative }: { initiative: Initiative }) {
   const visibleOverflow = scope.data
     ? Math.max(0, scope.data.total - scope.data.items.length)
     : 0
+  const invalidDateRange = Boolean(startDate && targetDate && startDate > targetDate)
+  const resetDetails = () => {
+    setName(initiative.name)
+    setDescription(initiative.description ?? '')
+    setStartDate(initiative.start_date ?? '')
+    setTargetDate(initiative.target_date ?? '')
+    update.reset()
+  }
 
   return (
     <SheetContent title="이니셔티브 상세" className="max-w-2xl">
@@ -167,6 +186,20 @@ function InitiativeDetailBody({ initiative }: { initiative: Initiative }) {
         <div className="flex min-w-0 flex-wrap items-center gap-2">
           <h2 className="min-w-0 flex-1 truncate text-base font-semibold">{initiative.name}</h2>
           <Badge variant="accent">{INITIATIVE_STATE_LABELS[initiative.state]}</Badge>
+          {initiative.is_mine ? (
+            <Button
+              size="sm"
+              variant={editingDetails ? 'secondary' : 'outline'}
+              aria-expanded={editingDetails}
+              onClick={() => {
+                if (!editingDetails) resetDetails()
+                setEditingDetails((editing) => !editing)
+              }}
+            >
+              {editingDetails ? <X /> : <Pencil />}
+              {editingDetails ? '편집 닫기' : '기본 정보 편집'}
+            </Button>
+          ) : null}
           <Button
             size="sm"
             variant={initiative.is_following ? 'secondary' : 'outline'}
@@ -181,12 +214,111 @@ function InitiativeDetailBody({ initiative }: { initiative: Initiative }) {
         <p className="mt-1 text-xs text-of-muted">
           {initiative.description ?? '연결된 작업으로 이니셔티브의 실제 전략 범위를 구성합니다.'}
         </p>
+        {editingDetails && initiative.is_mine ? (
+          <form
+            aria-label="이니셔티브 기본 정보 편집"
+            className="mt-3 grid min-w-0 gap-3 border-y border-of-border-subtle bg-of-surface-2 px-3 py-3"
+            onSubmit={(event) => {
+              event.preventDefault()
+              if (!name.trim() || invalidDateRange || update.isPending) return
+              update.mutate(
+                {
+                  id: initiative.id,
+                  name: name.trim(),
+                  description: description.trim() || null,
+                  start_date: startDate || null,
+                  target_date: targetDate || null,
+                },
+                { onSuccess: () => setEditingDetails(false) },
+              )
+            }}
+          >
+            <label className="min-w-0 space-y-1 text-xs font-medium text-of-muted">
+              이름
+              <Input
+                autoFocus
+                aria-label="이니셔티브 이름"
+                className="h-8 min-w-0 bg-of-surface text-xs"
+                maxLength={120}
+                value={name}
+                onChange={(event) => setName(event.target.value)}
+              />
+            </label>
+            <label className="min-w-0 space-y-1 text-xs font-medium text-of-muted">
+              설명
+              <Textarea
+                aria-label="이니셔티브 설명"
+                className="min-h-20 bg-of-surface text-xs"
+                maxLength={10_000}
+                value={description}
+                onChange={(event) => setDescription(event.target.value)}
+                placeholder="전략 목표와 성공 기준을 기록하세요."
+              />
+            </label>
+            <div className="grid min-w-0 grid-cols-1 gap-2 sm:grid-cols-2">
+              <label className="min-w-0 space-y-1 text-xs font-medium text-of-muted">
+                시작일
+                <Input
+                  type="date"
+                  aria-label="이니셔티브 시작일"
+                  className="h-8 min-w-0 bg-of-surface text-xs"
+                  value={startDate}
+                  onChange={(event) => setStartDate(event.target.value)}
+                />
+              </label>
+              <label className="min-w-0 space-y-1 text-xs font-medium text-of-muted">
+                목표일
+                <Input
+                  type="date"
+                  aria-label="이니셔티브 목표일"
+                  className="h-8 min-w-0 bg-of-surface text-xs"
+                  value={targetDate}
+                  onChange={(event) => setTargetDate(event.target.value)}
+                />
+              </label>
+            </div>
+            {invalidDateRange ? (
+              <p role="alert" className="text-xs text-of-danger">
+                목표일은 시작일보다 빠를 수 없습니다.
+              </p>
+            ) : null}
+            {update.isError ? (
+              <p role="alert" className="text-xs text-of-danger">
+                {update.error instanceof Error
+                  ? update.error.message
+                  : '기본 정보를 저장하지 못했습니다.'}
+              </p>
+            ) : null}
+            <div className="flex flex-wrap justify-end gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                disabled={update.isPending}
+                onClick={() => {
+                  resetDetails()
+                  setEditingDetails(false)
+                }}
+              >
+                취소
+              </Button>
+              <Button
+                type="submit"
+                size="sm"
+                disabled={!name.trim() || invalidDateRange || update.isPending}
+              >
+                {update.isPending ? <Loader2 className="animate-spin" /> : <Save />}
+                저장
+              </Button>
+            </div>
+          </form>
+        ) : null}
         {subscription.isError ? (
           <p role="alert" className="mt-2 text-xs text-of-danger">
             구독 상태를 저장하지 못했습니다. 다시 시도해 주세요.
           </p>
         ) : null}
-        <dl className="mt-3 grid grid-cols-2 gap-px overflow-hidden rounded-of border border-of-border-subtle bg-of-border-subtle sm:grid-cols-4">
+        <dl className="mt-3 grid grid-cols-2 gap-px overflow-hidden rounded-of border border-of-border-subtle bg-of-border-subtle sm:grid-cols-3">
           <div className="bg-of-surface px-3 py-2">
             <dt className="text-[10px] text-of-muted">소유자</dt>
             <dd className="mt-0.5 truncate text-xs font-medium">
@@ -197,6 +329,18 @@ function InitiativeDetailBody({ initiative }: { initiative: Initiative }) {
             <dt className="text-[10px] text-of-muted">연결 프로젝트</dt>
             <dd className="mt-0.5 text-xs font-medium tabular-nums">
               {initiative.connected_project_count}개
+            </dd>
+          </div>
+          <div className="bg-of-surface px-3 py-2">
+            <dt className="text-[10px] text-of-muted">시작일</dt>
+            <dd className="mt-0.5 text-xs font-medium tabular-nums">
+              {initiative.start_date ?? '미정'}
+            </dd>
+          </div>
+          <div className="bg-of-surface px-3 py-2">
+            <dt className="text-[10px] text-of-muted">목표일</dt>
+            <dd className="mt-0.5 text-xs font-medium tabular-nums">
+              {initiative.target_date ?? '미정'}
             </dd>
           </div>
           <div className="bg-of-surface px-3 py-2">
