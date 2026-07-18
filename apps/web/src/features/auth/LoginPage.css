@@ -970,11 +970,11 @@
 
 .of-login-origin-route-accent path {
   fill: none;
-  stroke: rgb(255 255 255 / 0.62);
+  stroke: rgb(255 255 255 / 0.34);
   stroke-width: 2.6;
   stroke-linecap: round;
   stroke-dasharray: 24 360;
-  filter: drop-shadow(0 0 4px rgb(93 112 245 / 0.2));
+  filter: drop-shadow(0 0 3px rgb(93 112 245 / 0.14));
   animation: of-login-origin-route-flow 3.8s linear infinite;
 }
 
@@ -1181,6 +1181,12 @@
 .of-login-language {
   min-height: 30px;
   font-size: clamp(8px, 0.83cqw, 10px);
+}
+
+@media (min-width: 881px) {
+  .of-login-heading h2 {
+    transform: translateX(-4px);
+  }
 }
 
 @media (max-height: 960px) and (min-width: 881px) {
