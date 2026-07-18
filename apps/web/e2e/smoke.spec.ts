@@ -8401,9 +8401,38 @@ test('이니셔티브에서 프로젝트를 연결하면 POST가 간다', async 
   await page.route('**/api/v1/initiatives', (route) =>
     route.fulfill({ json: { items: [currentIni], total: 1 } }),
   )
-  await page.route('**/api/v1/initiatives/ini-1/projects', (route) =>
-    route.fulfill({ json: ini }),
-  )
+  await page.route('**/api/v1/initiatives/ini-1/projects**', async (route) => {
+    const request = route.request()
+    if (request.method() === 'POST') {
+      const input = request.postDataJSON() as { project_id: string }
+      currentIni = {
+        ...currentIni,
+        connected_project_count: 2,
+        projects: [
+          ...currentIni.projects,
+          {
+            project_id: input.project_id,
+            project_name: '두번째 프로젝트',
+            work_package_count: 0,
+            done_work_package_count: 0,
+          },
+        ],
+      }
+      await route.fulfill({ json: currentIni })
+      return
+    }
+    if (request.method() === 'DELETE') {
+      const id = request.url().split('/').at(-1)
+      currentIni = {
+        ...currentIni,
+        connected_project_count: Math.max(0, currentIni.connected_project_count - 1),
+        projects: currentIni.projects.filter((item) => item.project_id !== id),
+      }
+      await route.fulfill({ json: currentIni })
+      return
+    }
+    await route.fallback()
+  })
   let candidateAttempts = 0
   await page.route('**/api/v1/initiatives/ini-1/owner-candidates', (route) => {
     candidateAttempts += 1
@@ -8440,6 +8469,10 @@ test('이니셔티브에서 프로젝트를 연결하면 POST가 간다', async 
   const active = page.getByRole('region', { name: '진행 중' })
   await expect(active.getByText('플랫폼 개편')).toBeVisible()
   await expect(active.getByText('1/4 (25%)')).toBeVisible()
+  await expect(active.getByRole('button', { name: '소유권 이전' })).toHaveCount(0)
+  await expect(active.getByLabel('이니셔티브 연결 프로젝트')).toHaveCount(0)
+  await expect(active.getByLabel('이니셔티브 라벨 배정')).toHaveCount(0)
+  await expect(active.getByRole('button', { name: '이니셔티브 삭제' })).toHaveCount(0)
 
   // Health remains scannable in the list; edits live in the detail information architecture.
   await expect(active.getByTitle('일정 검토 필요')).toHaveText('주의')
@@ -8460,34 +8493,125 @@ test('이니셔티브에서 프로젝트를 연결하면 POST가 간다', async 
     health_note: string
   }
   expect(healthSent).toEqual({ health: 'off_track', health_note: '차단 발생' })
-  await page.keyboard.press('Escape')
-  await expect(page.getByRole('heading', { name: '이니셔티브 상세' })).toHaveCount(0)
-
+  const organization = page.getByRole('region', { name: '조직과 연결' })
   const post = page.waitForRequest(
     (r) => r.method() === 'POST' && r.url().includes('/initiatives/ini-1/projects'),
   )
-  await page.getByLabel('플랫폼 개편에 프로젝트 연결').selectOption('p-2')
+  await organization.getByLabel('이니셔티브 연결 프로젝트').selectOption('p-2')
+  await organization.getByRole('button', { name: '연결', exact: true }).click()
   const sent = (await post).postDataJSON() as { project_id: string }
   expect(sent.project_id).toBe('p-2')
+  await expect(organization.getByText('두번째 프로젝트', { exact: true })).toBeVisible()
 
-  await page.getByRole('button', { name: '플랫폼 개편 소유권 관리' }).click()
-  await expect(page.getByRole('group', { name: '플랫폼 개편 소유권 이전' })).toBeVisible()
+  page.once('dialog', (dialog) => dialog.accept())
+  const disconnectResponse = page.waitForResponse(
+    (response) =>
+      response.request().method() === 'DELETE' &&
+      response.url().endsWith(`/initiatives/ini-1/projects/${project.id}`),
+  )
+  const disconnectRefresh = page.waitForResponse(
+    (response) =>
+      response.request().method() === 'GET' &&
+      response.url().endsWith('/api/v1/initiatives'),
+  )
+  await organization.getByRole('button', { name: `${project.name} 연결 해제` }).click()
+  expect((await disconnectResponse).status()).toBe(200)
+  const refreshedInitiatives = await disconnectRefresh
+  expect(refreshedInitiatives.status()).toBe(200)
+  const refreshedBody = (await refreshedInitiatives.json()) as { items: Initiative[] }
+  expect(refreshedBody.items[0].projects.some((item) => item.project_id === project.id)).toBe(false)
+  await expect(
+    organization.getByRole('button', { name: `${project.name} 대시보드 열기` }),
+  ).toHaveCount(0)
+
+  await organization.getByRole('button', { name: '소유권 이전' }).click()
+  await expect(page.getByRole('group', { name: '이니셔티브 소유권 이전' })).toBeVisible()
   await expect(page.getByText('소유권 후보를 불러오지 못했습니다.')).toBeVisible()
-  await page.getByRole('button', { name: '재시도' }).click()
-  await expect(page.getByLabel('플랫폼 개편 새 소유자')).toBeVisible()
+  await page.getByRole('group', { name: '이니셔티브 소유권 이전' }).getByRole('button', { name: '재시도' }).click()
+  await expect(page.getByLabel('이니셔티브 새 소유자')).toBeVisible()
   await page.screenshot({
-    path: '../../docs/screenshots/redevelopment/initiative-ownership-ui/desktop.png',
+    path: '../../docs/screenshots/redevelopment/initiative-organization-ui/desktop.png',
     fullPage: true,
   })
-  await page.getByLabel('플랫폼 개편 새 소유자').selectOption('u-next')
+  await page.getByLabel('이니셔티브 새 소유자').selectOption('u-next')
   page.once('dialog', (dialog) => dialog.accept())
   const ownershipPost = page.waitForRequest(
     (request) =>
       request.method() === 'POST' && request.url().endsWith('/initiatives/ini-1/owner'),
   )
-  await page.getByRole('button', { name: '이전', exact: true }).click()
+  await page.getByRole('group', { name: '이니셔티브 소유권 이전' }).getByRole('button', { name: '이전', exact: true }).click()
   expect((await ownershipPost).postDataJSON()).toEqual({ owner_id: 'u-next' })
-  await expect(page.getByRole('button', { name: '플랫폼 개편 소유권 관리' })).toHaveCount(0)
+  await expect(organization.getByRole('button', { name: '소유권 이전' })).toHaveCount(0)
+})
+
+test('이니셔티브 상세 삭제는 실패를 복구하고 성공 뒤 drawer를 닫는다', async ({ page }) => {
+  await mockApi(page)
+  const initiative: Initiative = {
+    id: 'ini-delete',
+    name: '삭제할 전략',
+    description: null,
+    owner_id: 'me-1',
+    owner_name: 'Dev User',
+    owner_active: true,
+    state: 'planned',
+    start_date: null,
+    target_date: null,
+    health: null,
+    health_note: null,
+    health_updated_by: null,
+    health_updated_at: null,
+    is_mine: true,
+    can_claim_ownership: false,
+    connected_project_count: 0,
+    connected_work_item_count: 0,
+    follower_count: 0,
+    is_following: false,
+    labels: [],
+    projects: [],
+    created_at: '2026-07-18T00:00:00Z',
+    updated_at: '2026-07-18T00:00:00Z',
+  }
+  let deleted = false
+  let deleteAttempts = 0
+  await page.route('**/api/v1/initiatives/ini-delete/work-items', (route) =>
+    route.fulfill({ json: { items: [], total: 0, connected_work_item_count: 0 } }),
+  )
+  await page.route('**/api/v1/initiatives/ini-delete', async (route) => {
+    if (route.request().method() !== 'DELETE') return route.fallback()
+    deleteAttempts += 1
+    if (deleteAttempts === 1) {
+      await route.fulfill({ status: 503, json: { detail: 'temporary delete failure' } })
+      return
+    }
+    deleted = true
+    await route.fulfill({ status: 204 })
+  })
+  await page.route('**/api/v1/initiatives', (route) =>
+    route.fulfill({ json: { items: deleted ? [] : [initiative], total: deleted ? 0 : 1 } }),
+  )
+
+  await page.goto('/initiatives?initiative=ini-delete')
+  const organization = page.getByRole('region', { name: '조직과 연결' })
+  page.once('dialog', (dialog) => dialog.accept())
+  const failedDelete = page.waitForResponse(
+    (response) =>
+      response.request().method() === 'DELETE' &&
+      response.url().endsWith('/initiatives/ini-delete'),
+  )
+  await organization.getByRole('button', { name: '이니셔티브 삭제' }).click()
+  expect((await failedDelete).status()).toBe(503)
+  await expect(organization.getByRole('alert')).toContainText('temporary delete failure')
+
+  const successfulDelete = page.waitForResponse(
+    (response) =>
+      response.request().method() === 'DELETE' &&
+      response.url().endsWith('/initiatives/ini-delete'),
+  )
+  await organization.getByRole('button', { name: '재시도' }).click()
+  expect((await successfulDelete).status()).toBe(204)
+  await expect(page).not.toHaveURL(/initiative=/)
+  await expect(page.getByRole('heading', { name: '이니셔티브 상세' })).toHaveCount(0)
+  await expect(page.getByText('이니셔티브가 없습니다')).toBeVisible()
 })
 
 test('이니셔티브 상세에서 전략 범위 작업을 검색해 연결하고 해제한다', async ({ page }) => {
@@ -8722,6 +8846,11 @@ test('모바일 이니셔티브 상세는 숨은 전략 작업 수를 누수 없
   await expect(page.getByText('권한이 없는 프로젝트의 연결 작업 1개')).toBeVisible()
   await expect(page.getByRole('button', { name: '작업 연결' })).toHaveCount(0)
   await expect(page.getByRole('button', { name: /이니셔티브 연결 해제/ })).toHaveCount(0)
+  const organization = page.getByRole('region', { name: '조직과 연결' })
+  await expect(organization.getByRole('button', { name: '소유권 이전' })).toHaveCount(0)
+  await expect(organization.getByLabel('이니셔티브 연결 프로젝트')).toHaveCount(0)
+  await expect(organization.getByLabel('이니셔티브 라벨 배정')).toHaveCount(0)
+  await expect(organization.getByRole('button', { name: '이니셔티브 삭제' })).toHaveCount(0)
   await expectNoHorizontalOverflow(page)
   await page.screenshot({
     path: '../../docs/screenshots/redevelopment/initiative-notifications-ui/mobile.png',
@@ -8729,7 +8858,7 @@ test('모바일 이니셔티브 상세는 숨은 전략 작업 수를 누수 없
   })
 })
 
-test('모바일 이니셔티브 카드에서 고아 소유권을 claim한다', async ({ page }) => {
+test('모바일 이니셔티브 상세에서 고아 소유권을 claim한다', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 })
   await mockApi(page)
   const orphan: Initiative = {
@@ -8789,28 +8918,29 @@ test('모바일 이니셔티브 카드에서 고아 소유권을 claim한다', a
   const card = page.locator('li', { hasText: '복구할 전략' })
   await expect(card.getByText('소유자 없음')).toBeVisible()
   await expect(card.getByText('복구 필요')).toBeVisible()
+  await card.getByRole('button', { name: '복구할 전략', exact: true }).click()
+  const organization = page.getByRole('region', { name: '조직과 연결' })
   page.once('dialog', (dialog) => dialog.accept())
   const failedClaim = page.waitForResponse(
     (request) =>
       request.request().method() === 'POST' &&
       request.url().endsWith('/initiatives/ini-orphan/owner/claim'),
   )
-  await card.getByRole('button', { name: '소유권 가져오기' }).click()
+  await organization.getByRole('button', { name: '소유권 가져오기' }).click()
   expect((await failedClaim).status()).toBe(409)
-  await expect(card.getByRole('alert')).toBeVisible()
+  await expect(organization.getByRole('alert')).toBeVisible()
 
-  page.once('dialog', (dialog) => dialog.accept())
   const claimPost = page.waitForRequest(
     (request) =>
       request.method() === 'POST' && request.url().endsWith('/initiatives/ini-orphan/owner/claim'),
   )
-  await card.getByRole('button', { name: '소유권 가져오기' }).click()
+  await organization.getByRole('button', { name: '재시도' }).click()
   await claimPost
-  await expect(card.getByText('Dev User')).toBeVisible()
-  await expect(card.getByRole('button', { name: '소유권 가져오기' })).toHaveCount(0)
+  await expect(organization.getByText('Dev User')).toBeVisible()
+  await expect(organization.getByRole('button', { name: '소유권 가져오기' })).toHaveCount(0)
   await expectNoHorizontalOverflow(page)
   await page.screenshot({
-    path: '../../docs/screenshots/redevelopment/initiative-ownership-ui/mobile.png',
+    path: '../../docs/screenshots/redevelopment/initiative-organization-ui/mobile.png',
     fullPage: true,
   })
 })
@@ -18862,7 +18992,16 @@ test('Initiative labels는 설정 CRUD와 소유자 배정 및 목록 필터를 
   const initiativeRow = page.getByRole('listitem').filter({
     has: page.getByRole('button', { name: '라벨 전략', exact: true }),
   })
-  await page.getByLabel('라벨 전략에 라벨 배정').selectOption(labels[0].id)
+  await initiativeRow.getByRole('button', { name: '라벨 전략', exact: true }).click()
+  const assignResponse = page.waitForResponse(
+    (response) =>
+      response.request().method() === 'PUT' &&
+      response.url().endsWith(`/initiatives/${initiative.id}/labels`),
+  )
+  await page.getByRole('region', { name: '조직과 연결' }).getByLabel('이니셔티브 라벨 배정').selectOption(labels[0].id)
+  expect((await assignResponse).status()).toBe(200)
+  await expect(page.getByRole('region', { name: '조직과 연결' }).getByText('Strategic', { exact: true })).toBeVisible()
+  await page.keyboard.press('Escape')
   await expect(initiativeRow.getByText('Strategic', { exact: true })).toBeVisible()
   await page.getByLabel('이니셔티브 라벨 필터').selectOption(labels[0].id)
   await expect(page).toHaveURL(new RegExp(`label=${labels[0].id}`))

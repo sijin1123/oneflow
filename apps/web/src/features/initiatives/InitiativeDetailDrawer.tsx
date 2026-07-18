@@ -32,6 +32,7 @@ import { useStatusLabels } from '@/features/work-packages/useStatusLabels'
 import {
   INITIATIVE_STATE_LABELS,
   type Initiative,
+  type InitiativeLabel,
   type InitiativeWorkItem,
   useConnectInitiativeWorkItem,
   useDisconnectInitiativeWorkItem,
@@ -41,6 +42,7 @@ import {
   useUpdateInitiativeSubscription,
 } from './api'
 import { InitiativeLifecyclePanel } from './InitiativeLifecyclePanel'
+import { InitiativeOrganizationPanel } from './InitiativeOrganizationPanel'
 
 function WorkItemMeta({ item }: { item: InitiativeWorkItem }) {
   const statusLabel = useStatusLabels(item.project_id)
@@ -130,21 +132,36 @@ function CandidateRow({
 
 export function InitiativeDetailDrawer({
   initiative,
+  availableLabels,
   onClose,
 }: {
   initiative: Initiative | null
+  availableLabels: InitiativeLabel[]
   onClose: () => void
 }) {
   return (
     <Sheet open={initiative !== null} onOpenChange={(open) => !open && onClose()}>
       {initiative ? (
-        <InitiativeDetailBody key={initiative.id} initiative={initiative} />
+        <InitiativeDetailBody
+          key={initiative.id}
+          initiative={initiative}
+          availableLabels={availableLabels}
+          onClose={onClose}
+        />
       ) : null}
     </Sheet>
   )
 }
 
-function InitiativeDetailBody({ initiative }: { initiative: Initiative }) {
+function InitiativeDetailBody({
+  initiative,
+  availableLabels,
+  onClose,
+}: {
+  initiative: Initiative
+  availableLabels: InitiativeLabel[]
+  onClose: () => void
+}) {
   const navigate = useNavigate()
   const update = useUpdateInitiative()
   const scope = useInitiativeWorkItems(initiative.id, true)
@@ -366,6 +383,12 @@ function InitiativeDetailBody({ initiative }: { initiative: Initiative }) {
       </header>
 
       <InitiativeLifecyclePanel initiative={initiative} />
+
+      <InitiativeOrganizationPanel
+        initiative={initiative}
+        availableLabels={availableLabels}
+        onDeleted={onClose}
+      />
 
       <section className="pt-4" aria-labelledby="initiative-scope-heading">
         <div className="flex min-w-0 items-center justify-between gap-2">
