@@ -864,6 +864,42 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/initiatives/labels": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Initiative Labels */
+        get: operations["list_initiative_labels_api_v1_initiatives_labels_get"];
+        put?: never;
+        /** Create Initiative Label */
+        post: operations["create_initiative_label_api_v1_initiatives_labels_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/initiatives/labels/{label_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Initiative Label */
+        delete: operations["delete_initiative_label_api_v1_initiatives_labels__label_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Initiative Label */
+        patch: operations["update_initiative_label_api_v1_initiatives_labels__label_id__patch"];
+        trace?: never;
+    };
     "/api/v1/initiatives/{initiative_id}": {
         parameters: {
             query?: never;
@@ -880,6 +916,23 @@ export interface paths {
         head?: never;
         /** Update Initiative */
         patch: operations["update_initiative_api_v1_initiatives__initiative_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/initiatives/{initiative_id}/labels": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Replace Initiative Labels */
+        put: operations["replace_initiative_labels_api_v1_initiatives__initiative_id__labels_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/initiatives/{initiative_id}/owner": {
@@ -5344,6 +5397,57 @@ export interface components {
             /** Truncated */
             truncated: boolean;
         };
+        /** InitiativeLabelAssignmentUpdate */
+        InitiativeLabelAssignmentUpdate: {
+            /** Label Ids */
+            label_ids: string[];
+        };
+        /** InitiativeLabelCreate */
+        InitiativeLabelCreate: {
+            /**
+             * Color
+             * @default #64748b
+             */
+            color: string;
+            /** Name */
+            name: string;
+        };
+        /** InitiativeLabelList */
+        InitiativeLabelList: {
+            /** Items */
+            items: components["schemas"]["InitiativeLabelRead"][];
+            /** Total */
+            total: number;
+        };
+        /** InitiativeLabelRead */
+        InitiativeLabelRead: {
+            /** Color */
+            color: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** InitiativeLabelUpdate */
+        InitiativeLabelUpdate: {
+            /** Color */
+            color?: string | null;
+            /** Name */
+            name?: string | null;
+        };
         /** InitiativeList */
         InitiativeList: {
             /** Items */
@@ -5427,6 +5531,8 @@ export interface components {
             is_following: boolean;
             /** Is Mine */
             is_mine: boolean;
+            /** Labels */
+            labels: components["schemas"]["InitiativeLabelRead"][];
             /** Name */
             name: string;
             /** Owner Active */
@@ -11415,7 +11521,9 @@ export interface operations {
     };
     list_initiatives_api_v1_initiatives_get: {
         parameters: {
-            query?: never;
+            query?: {
+                label_id?: string | null;
+            };
             header?: {
                 authorization?: string | null;
             };
@@ -11483,6 +11591,148 @@ export interface operations {
             };
         };
     };
+    list_initiative_labels_api_v1_initiatives_labels_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InitiativeLabelList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_initiative_label_api_v1_initiatives_labels_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InitiativeLabelCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InitiativeLabelRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_initiative_label_api_v1_initiatives_labels__label_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                label_id: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_initiative_label_api_v1_initiatives_labels__label_id__patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                label_id: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InitiativeLabelUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InitiativeLabelRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     delete_initiative_api_v1_initiatives__initiative_id__delete: {
         parameters: {
             query?: never;
@@ -11532,6 +11782,45 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["InitiativeUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InitiativeRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    replace_initiative_labels_api_v1_initiatives__initiative_id__labels_put: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                initiative_id: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InitiativeLabelAssignmentUpdate"];
             };
         };
         responses: {
