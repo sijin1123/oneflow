@@ -301,6 +301,7 @@ ENDPOINT_VERBS: dict[str, str] = {
     "PATCH /api/v1/documents/{doc_id}": "document.write",
     "POST /api/v1/documents/{doc_id}/archive": "document.write",
     "POST /api/v1/documents/{doc_id}/restore": "document.write",
+    "POST /api/v1/documents/{doc_id}/revisions/{revision_id}/restore": "document.write",
     "DELETE /api/v1/documents/{doc_id}": "document.write",
     "POST /api/v1/documents/{doc_id}/comments": "document.write",
     "POST /api/v1/documents/{doc_id}/inline-comments": "document.write",

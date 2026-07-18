@@ -794,6 +794,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/documents/{doc_id}/revisions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Document Revisions */
+        get: operations["list_document_revisions_api_v1_documents__doc_id__revisions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/documents/{doc_id}/revisions/{revision_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Document Revision */
+        get: operations["get_document_revision_api_v1_documents__doc_id__revisions__revision_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/documents/{doc_id}/revisions/{revision_id}/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Restore Document Revision */
+        post: operations["restore_document_revision_api_v1_documents__doc_id__revisions__revision_id__restore_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/documents/{doc_id}/work-package-links": {
         parameters: {
             query?: never;
@@ -5163,7 +5214,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "document_created" | "document_updated" | "document_archived" | "document_restored";
+            kind: "document_created" | "document_updated" | "document_archived" | "document_restored" | "document_version_restored";
         };
         /**
          * DocumentCommentCreate
@@ -5397,6 +5448,72 @@ export interface components {
              * @enum {string}
              */
             visibility: "shared" | "private";
+        };
+        /** DocumentRevisionList */
+        DocumentRevisionList: {
+            /** Current Revision Id */
+            current_revision_id: string | null;
+            /** Items */
+            items: components["schemas"]["DocumentRevisionSummary"][];
+            /** Total */
+            total: number;
+        };
+        /** DocumentRevisionRead */
+        DocumentRevisionRead: {
+            /** Actor Id */
+            actor_id: string | null;
+            /** Actor Name */
+            actor_name: string | null;
+            /** Body */
+            body: string | null;
+            /** Changed Fields */
+            changed_fields: ("title" | "body")[];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Document Version */
+            document_version: number;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Restored From Revision Id */
+            restored_from_revision_id: string | null;
+            /** Title */
+            title: string;
+        };
+        /** DocumentRevisionRestoreRequest */
+        DocumentRevisionRestoreRequest: {
+            /** Expected Version */
+            expected_version: number;
+        };
+        /** DocumentRevisionSummary */
+        DocumentRevisionSummary: {
+            /** Actor Id */
+            actor_id: string | null;
+            /** Actor Name */
+            actor_name: string | null;
+            /** Changed Fields */
+            changed_fields: ("title" | "body")[];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Document Version */
+            document_version: number;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Restored From Revision Id */
+            restored_from_revision_id: string | null;
+            /** Title */
+            title: string;
         };
         /**
          * DocumentUpdate
@@ -11468,6 +11585,129 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["DocumentLifecycleRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentRead"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentConflict"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_document_revisions_api_v1_documents__doc_id__revisions_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                doc_id: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentRevisionList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_document_revision_api_v1_documents__doc_id__revisions__revision_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                doc_id: string;
+                revision_id: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentRevisionRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    restore_document_revision_api_v1_documents__doc_id__revisions__revision_id__restore_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                doc_id: string;
+                revision_id: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DocumentRevisionRestoreRequest"];
             };
         };
         responses: {

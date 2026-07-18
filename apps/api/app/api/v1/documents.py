@@ -34,6 +34,7 @@ from app.models.comment import LEGACY_REACTION_KEYS
 from app.models.document import (
     MAX_DOCUMENT_DEPTH,
     DocumentActivity,
+    DocumentRevision,
     DocumentWorkPackageLink,
     ProjectDocument,
 )
@@ -57,6 +58,10 @@ from app.schemas.document import (
     DocumentList,
     DocumentListItem,
     DocumentRead,
+    DocumentRevisionList,
+    DocumentRevisionRead,
+    DocumentRevisionRestoreRequest,
+    DocumentRevisionSummary,
     DocumentUpdate,
 )
 from app.schemas.document_comment import (
@@ -68,6 +73,7 @@ from app.schemas.document_comment import (
 )
 from app.services.document_access import document_is_visible, document_visible_clause
 from app.services.document_activity import record_document_activity
+from app.services.document_revision import record_document_revision
 from app.services.emoji import is_single_emoji, normalize_emoji
 from app.services.notification import notify_document_mentions
 from app.services.sanitize import (
@@ -346,6 +352,12 @@ async def create_document(
         kind="document_created",
         changed_fields=initial_fields,
     )
+    record_document_revision(
+        session,
+        document=doc,
+        actor_id=user.id,
+        changed_fields={"title", *(("body",) if doc.body is not None else ())},
+    )
     await session.commit()
     return DocumentRead.model_validate(doc)
 
@@ -453,6 +465,174 @@ async def list_document_activities(
     )
 
 
+@router.get("/documents/{doc_id}/revisions", response_model=DocumentRevisionList)
+async def list_document_revisions(
+    doc_id: uuid.UUID,
+    limit: int = Query(default=20, ge=1, le=50),
+    offset: int = Query(default=0, ge=0),
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+) -> DocumentRevisionList:
+    await _get_doc_scoped(session, doc_id, user)
+    total = (
+        await session.execute(
+            select(func.count())
+            .select_from(DocumentRevision)
+            .where(DocumentRevision.document_id == doc_id)
+        )
+    ).scalar_one()
+    current_revision_id = await session.scalar(
+        select(DocumentRevision.id)
+        .where(DocumentRevision.document_id == doc_id)
+        .order_by(DocumentRevision.document_version.desc(), DocumentRevision.id.desc())
+        .limit(1)
+    )
+    rows = (
+        await session.execute(
+            select(DocumentRevision, User.display_name)
+            .outerjoin(User, User.id == DocumentRevision.actor_id)
+            .where(DocumentRevision.document_id == doc_id)
+            .order_by(DocumentRevision.document_version.desc(), DocumentRevision.id.desc())
+            .limit(limit)
+            .offset(offset)
+        )
+    ).all()
+    return DocumentRevisionList(
+        items=[
+            DocumentRevisionSummary(
+                id=revision.id,
+                document_version=revision.document_version,
+                actor_id=revision.actor_id,
+                actor_name=actor_name,
+                title=revision.title,
+                changed_fields=revision.changed_fields,
+                restored_from_revision_id=revision.restored_from_revision_id,
+                created_at=revision.created_at,
+            )
+            for revision, actor_name in rows
+        ],
+        total=total,
+        current_revision_id=current_revision_id,
+    )
+
+
+@router.get(
+    "/documents/{doc_id}/revisions/{revision_id}",
+    response_model=DocumentRevisionRead,
+)
+async def get_document_revision(
+    doc_id: uuid.UUID,
+    revision_id: uuid.UUID,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+) -> DocumentRevisionRead:
+    await _get_doc_scoped(session, doc_id, user)
+    row = (
+        await session.execute(
+            select(DocumentRevision, User.display_name)
+            .outerjoin(User, User.id == DocumentRevision.actor_id)
+            .where(
+                DocumentRevision.id == revision_id,
+                DocumentRevision.document_id == doc_id,
+            )
+        )
+    ).one_or_none()
+    if row is None:
+        raise HTTPException(status_code=404, detail="not found")
+    revision, actor_name = row
+    return DocumentRevisionRead(
+        id=revision.id,
+        document_version=revision.document_version,
+        actor_id=revision.actor_id,
+        actor_name=actor_name,
+        title=revision.title,
+        body=revision.body,
+        changed_fields=revision.changed_fields,
+        restored_from_revision_id=revision.restored_from_revision_id,
+        created_at=revision.created_at,
+    )
+
+
+@router.post(
+    "/documents/{doc_id}/revisions/{revision_id}/restore",
+    response_model=DocumentRead,
+    responses={409: {"model": DocumentConflict}},
+)
+async def restore_document_revision(
+    doc_id: uuid.UUID,
+    revision_id: uuid.UUID,
+    body: DocumentRevisionRestoreRequest,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+):
+    doc = await _get_doc_scoped(session, doc_id, user, write=True)
+    revision = await session.scalar(
+        select(DocumentRevision).where(
+            DocumentRevision.id == revision_id,
+            DocumentRevision.document_id == doc_id,
+        )
+    )
+    if revision is None:
+        raise HTTPException(status_code=404, detail="not found")
+
+    restored_body = await _validate_inline_images(
+        session,
+        doc.project_id,
+        doc.id,
+        revision.body,
+    )
+    changed_fields = {
+        field
+        for field, value in {"title": revision.title, "body": restored_body}.items()
+        if getattr(doc, field) != value
+    }
+    if not changed_fields:
+        if doc.version != body.expected_version:
+            return _conflict(doc)
+        return DocumentRead.model_validate(doc)
+
+    updated = (
+        await session.execute(
+            sa_update(ProjectDocument)
+            .where(
+                ProjectDocument.id == doc_id,
+                ProjectDocument.version == body.expected_version,
+            )
+            .values(
+                title=revision.title,
+                body=restored_body,
+                version=ProjectDocument.version + 1,
+                updated_at=func.now(),
+            )
+            .returning(ProjectDocument)
+            .execution_options(synchronize_session=False, populate_existing=True)
+        )
+    ).scalar_one_or_none()
+    if updated is not None:
+        record_document_revision(
+            session,
+            document=updated,
+            actor_id=user.id,
+            changed_fields=changed_fields,
+            restored_from_revision_id=revision.id,
+        )
+        record_document_activity(
+            session,
+            document_id=doc_id,
+            actor_id=user.id,
+            kind="document_version_restored",
+            changed_fields=changed_fields,
+        )
+    await session.commit()
+    if updated is not None:
+        return DocumentRead.model_validate(updated)
+
+    fresh = await _reselect(session, doc_id)
+    if fresh is None or not document_is_visible(fresh, user.id):
+        raise HTTPException(status_code=404, detail="not found")
+    return _conflict(fresh)
+
+
 @router.patch(
     "/documents/{doc_id}",
     response_model=DocumentRead,
@@ -542,6 +722,14 @@ async def update_document(
             kind="document_updated",
             changed_fields=actual_changed_fields,
         )
+        content_changed_fields = actual_changed_fields & {"title", "body"}
+        if content_changed_fields:
+            record_document_revision(
+                session,
+                document=updated,
+                actor_id=user.id,
+                changed_fields=content_changed_fields,
+            )
     await session.commit()
     if updated is not None:
         return DocumentRead.model_validate(updated)
@@ -977,6 +1165,12 @@ async def create_inline_document_comment(
                 document_id=doc.id,
                 actor_id=user.id,
                 kind="document_updated",
+                changed_fields={"body"},
+            )
+            record_document_revision(
+                session,
+                document=doc,
+                actor_id=user.id,
                 changed_fields={"body"},
             )
         await session.flush()

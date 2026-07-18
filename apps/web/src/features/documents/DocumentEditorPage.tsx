@@ -57,6 +57,7 @@ import {
 } from './api'
 import { DocumentAttachments } from './DocumentAttachments'
 import { DocumentActivityPanel } from './DocumentActivityPanel'
+import { DocumentVersionPanel } from './DocumentVersionPanel'
 import { LinkedWorkPackagesSection } from './LinkedWorkPackagesSection'
 import { subtreeIds } from './tree'
 
@@ -101,7 +102,7 @@ export function DocumentEditorPage() {
   const [body, setBody] = useState('')
   const [parentId, setParentId] = useState<string | null>(null)
   const [visibility, setVisibility] = useState<'shared' | 'private'>('shared')
-  const [detailTab, setDetailTab] = useState<'comments' | 'activity'>('comments')
+  const [detailTab, setDetailTab] = useState<'comments' | 'activity' | 'versions'>('comments')
   const [activeCommentAnchorId, setActiveCommentAnchorId] = useState<string | null>(null)
   const upload = useUploadAttachment(projectId)
   const canWrite = useCanWrite(projectId)
@@ -374,6 +375,19 @@ export function DocumentEditorPage() {
             >
               <History size={13} aria-hidden="true" /> 활동
             </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={detailTab === 'versions'}
+              className={`flex h-7 items-center gap-1.5 rounded-of px-2.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus ${
+                detailTab === 'versions'
+                  ? 'bg-of-surface-2 text-of-text shadow-sm'
+                  : 'text-of-muted hover:bg-of-surface-hover hover:text-of-text'
+              }`}
+              onClick={() => setDetailTab('versions')}
+            >
+              <RotateCcw size={13} aria-hidden="true" /> 버전
+            </button>
           </div>
 
           {detailTab === 'comments' ? (
@@ -388,8 +402,10 @@ export function DocumentEditorPage() {
               activeAnchorId={activeCommentAnchorId}
               onActivateAnchor={activateBodyAnchor}
             />
-          ) : (
+          ) : detailTab === 'activity' ? (
             <DocumentActivityPanel docId={doc.id} />
+          ) : (
+            <DocumentVersionPanel doc={doc} projectId={projectId} canRestore={editable} />
           )}
         </main>
 

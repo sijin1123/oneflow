@@ -112,6 +112,7 @@ DocumentActivityKind = Literal[
     "document_updated",
     "document_archived",
     "document_restored",
+    "document_version_restored",
 ]
 DocumentActivityField = Literal["title", "body", "parent", "visibility", "archive_state"]
 
@@ -128,6 +129,41 @@ class DocumentActivityRead(BaseModel):
 class DocumentActivityList(BaseModel):
     items: list[DocumentActivityRead]
     total: int
+
+
+DocumentRevisionField = Literal["title", "body"]
+
+
+class DocumentRevisionSummary(BaseModel):
+    id: uuid.UUID
+    document_version: int
+    actor_id: uuid.UUID | None
+    actor_name: str | None
+    title: str
+    changed_fields: list[DocumentRevisionField]
+    restored_from_revision_id: uuid.UUID | None
+    created_at: datetime
+
+
+class DocumentRevisionRead(DocumentRevisionSummary):
+    body: str | None
+
+
+class DocumentRevisionList(BaseModel):
+    items: list[DocumentRevisionSummary]
+    total: int
+    current_revision_id: uuid.UUID | None
+
+
+class DocumentRevisionRestoreRequest(BaseModel):
+    expected_version: int
+
+    @field_validator("expected_version")
+    @classmethod
+    def _version(cls, v: int) -> int:
+        if not 0 <= v <= 2_147_483_647:
+            raise ValueError("expected_version must be between 0 and 2147483647")
+        return v
 
 
 class DocumentConflict(BaseModel):

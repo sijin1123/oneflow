@@ -26,6 +26,7 @@ export type DocumentActivityKind =
   | 'document_updated'
   | 'document_archived'
   | 'document_restored'
+  | 'document_version_restored'
 
 export type DocumentActivity = {
   id: string
@@ -54,6 +55,74 @@ export function useDocumentActivities(docId: string, enabled = true) {
     },
     enabled,
     retry: false,
+  })
+}
+
+export type DocumentRevisionField = 'title' | 'body'
+
+export type DocumentRevisionSummary = {
+  id: string
+  document_version: number
+  actor_id: string | null
+  actor_name: string | null
+  title: string
+  changed_fields: DocumentRevisionField[]
+  restored_from_revision_id: string | null
+  created_at: string
+}
+
+export type DocumentRevision = DocumentRevisionSummary & { body: string | null }
+
+export type DocumentRevisionList = {
+  items: DocumentRevisionSummary[]
+  total: number
+  current_revision_id: string | null
+}
+
+const DOCUMENT_REVISION_PAGE_SIZE = 10
+
+export function useDocumentRevisions(docId: string, enabled = true) {
+  return useInfiniteQuery({
+    queryKey: ['document-revisions', docId],
+    initialPageParam: 0,
+    queryFn: ({ pageParam }) =>
+      api<DocumentRevisionList>(
+        `/api/v1/documents/${docId}/revisions?limit=${DOCUMENT_REVISION_PAGE_SIZE}&offset=${pageParam}`,
+      ),
+    getNextPageParam: (lastPage, pages) => {
+      const loaded = pages.reduce((total, page) => total + page.items.length, 0)
+      return loaded < lastPage.total ? loaded : undefined
+    },
+    enabled,
+    retry: false,
+  })
+}
+
+export function useDocumentRevision(docId: string, revisionId: string | null) {
+  return useQuery({
+    queryKey: ['document-revision', docId, revisionId],
+    queryFn: () =>
+      api<DocumentRevision>(`/api/v1/documents/${docId}/revisions/${revisionId}`),
+    enabled: revisionId !== null,
+    retry: false,
+  })
+}
+
+export function useRestoreDocumentRevision(projectId: string, docId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ revisionId, expectedVersion }: { revisionId: string; expectedVersion: number }) =>
+      api<ProjectDocument>(`/api/v1/documents/${docId}/revisions/${revisionId}/restore`, {
+        method: 'POST',
+        body: JSON.stringify({ expected_version: expectedVersion }),
+      }),
+    onSuccess: (document) => {
+      queryClient.setQueryData(['document', document.id], document)
+      void queryClient.invalidateQueries({ queryKey: ['documents', projectId] })
+      void queryClient.invalidateQueries({ queryKey: ['work-package-documents'] })
+      void queryClient.invalidateQueries({ queryKey: ['document-activities', document.id] })
+      void queryClient.invalidateQueries({ queryKey: ['document-revisions', document.id] })
+    },
   })
 }
 
