@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { api } from '@/lib/api'
 
@@ -48,6 +48,30 @@ export type Initiative = {
 }
 
 export type InitiativeList = { items: Initiative[]; total: number }
+
+export type InitiativeActivityKind =
+  | 'initiative_created'
+  | 'properties_updated'
+  | 'lifecycle_updated'
+  | 'health_updated'
+  | 'owner_transferred'
+  | 'owner_claimed'
+  | 'labels_updated'
+  | 'project_connected'
+  | 'project_disconnected'
+  | 'work_item_connected'
+  | 'work_item_disconnected'
+
+export type InitiativeActivity = {
+  id: string
+  actor_id: string | null
+  actor_name: string | null
+  kind: InitiativeActivityKind
+  changed_fields: string[]
+  created_at: string
+}
+
+export type InitiativeActivityList = { items: InitiativeActivity[]; total: number }
 
 export type InitiativeCreateInput = {
   name: string
@@ -115,6 +139,31 @@ function invalidate(queryClient: ReturnType<typeof useQueryClient>) {
   void queryClient.invalidateQueries({ queryKey: ['initiatives'] })
 }
 
+function invalidateActivity(
+  queryClient: ReturnType<typeof useQueryClient>,
+  initiativeId: string,
+) {
+  void queryClient.invalidateQueries({ queryKey: ['initiative-activities', initiativeId] })
+}
+
+export function useInitiativeActivities(initiativeId: string, enabled = true) {
+  const pageSize = 10
+  return useInfiniteQuery({
+    queryKey: ['initiative-activities', initiativeId],
+    queryFn: ({ pageParam }) =>
+      api<InitiativeActivityList>(
+        `/api/v1/initiatives/${initiativeId}/activities?limit=${pageSize}&offset=${pageParam}`,
+      ),
+    initialPageParam: 0,
+    getNextPageParam: (lastPage, pages) => {
+      const loaded = pages.reduce((total, page) => total + page.items.length, 0)
+      return loaded < lastPage.total ? loaded : undefined
+    },
+    enabled,
+    retry: false,
+  })
+}
+
 function invalidateLabels(queryClient: ReturnType<typeof useQueryClient>) {
   void queryClient.invalidateQueries({ queryKey: ['initiative-labels'] })
   invalidate(queryClient)
@@ -161,7 +210,10 @@ export function useReplaceInitiativeLabels() {
         method: 'PUT',
         body: JSON.stringify({ label_ids: labelIds }),
       }),
-    onSuccess: () => invalidate(queryClient),
+    onSuccess: (_data, variables) => {
+      invalidate(queryClient)
+      invalidateActivity(queryClient, variables.id)
+    },
   })
 }
 
@@ -190,6 +242,7 @@ export function useTransferInitiativeOwnership() {
       void queryClient.invalidateQueries({
         queryKey: ['initiative-owner-candidates', variables.id],
       })
+      invalidateActivity(queryClient, variables.id)
     },
   })
 }
@@ -199,7 +252,10 @@ export function useClaimInitiativeOwnership() {
   return useMutation({
     mutationFn: (id: string) =>
       api<Initiative>(`/api/v1/initiatives/${id}/owner/claim`, { method: 'POST' }),
-    onSuccess: () => invalidate(queryClient),
+    onSuccess: (_data, id) => {
+      invalidate(queryClient)
+      invalidateActivity(queryClient, id)
+    },
   })
 }
 
@@ -241,6 +297,7 @@ function invalidateWorkItemScope(
   void queryClient.invalidateQueries({
     queryKey: ['initiative-work-item-candidates', initiativeId],
   })
+  invalidateActivity(queryClient, initiativeId)
 }
 
 export function useConnectInitiativeWorkItem(initiativeId: string) {
@@ -306,7 +363,10 @@ export function useUpdateInitiative() {
         method: 'PATCH',
         body: JSON.stringify(input),
       }),
-    onSuccess: () => invalidate(queryClient),
+    onSuccess: (_data, variables) => {
+      invalidate(queryClient)
+      invalidateActivity(queryClient, variables.id)
+    },
   })
 }
 
@@ -326,7 +386,10 @@ export function useConnectProject(initiativeId: string) {
         method: 'POST',
         body: JSON.stringify({ project_id: projectId }),
       }),
-    onSuccess: () => invalidate(queryClient),
+    onSuccess: () => {
+      invalidate(queryClient)
+      invalidateActivity(queryClient, initiativeId)
+    },
   })
 }
 
@@ -337,6 +400,9 @@ export function useDisconnectProject(initiativeId: string) {
       api<Initiative>(`/api/v1/initiatives/${initiativeId}/projects/${projectId}`, {
         method: 'DELETE',
       }),
-    onSuccess: () => invalidate(queryClient),
+    onSuccess: () => {
+      invalidate(queryClient)
+      invalidateActivity(queryClient, initiativeId)
+    },
   })
 }

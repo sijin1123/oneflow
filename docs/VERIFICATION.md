@@ -2697,3 +2697,12 @@ Chromium typed mock fixture에서 1440x960과 390x844 viewport를 사용했다. 
 - **픽셀 실사**: `1448x1086` Chromium에서 중앙 `1220x915` 패널을 기준 원본과 정규화 비교했다. 전체 MAE `2.016`, 좌측 `0.907`, 인증 surface `3.413`, auth 브랜드 `0.993`이며, max-channel 차이 `<=12` 비율은 각각 `97.02%`, `98.83%`, `94.75%`, `97.61%`다. 비교·증폭 diff와 8개 viewport 캡처는 `docs/screenshots/redevelopment/login-origin-fidelity-ui/`에 보존한다.
 - **인앱 실사**: DPR 2 인앱 Browser에서 원본 natural size `1448x1086`, 패널 `1220x915`, card/footer 내부 배치와 문서/canvas 수평 overflow `0`을 확인했다. `390x844` 모바일은 단일 열과 내부 세로 스크롤을 유지한다.
 - **검증**: typecheck PASS, lint PASS(기존 Fast Refresh 경고 4건), production build PASS(기존 chunk-size 경고), unit 103 PASS, component 8 PASS, focused login E2E 12 PASS, 최종 full E2E 312 PASS + opt-in visual QA 1 skip이다. Clean-room은 frontend 161/backend 45 license와 소스·파일명 격리를 통과했고 `npm audit --audit-level=high`는 취약점 0건이다. **이연 항목은 없다.**
+
+---
+
+# UI-150 Initiative Activity Detail 검증 (2026-07-18)
+
+- **UI 변경**: Initiative 상세 drawer에 실제 변경 이력을 actor, 안전한 event 요약, 변경 field badge, 시각으로 표시한다. loading skeleton, initial error/retry, empty, next-page error/retry, load-more와 desktop/mobile no-overflow 상태를 제공한다.
+- **기능/API 반영**: migration `0107`은 Initiative별 append-only activity relation과 닫힌 kind/field vocabulary, actor `SET NULL`, Initiative cascade를 추가한다. 생성·기본 속성·수명주기·헬스·소유권·라벨·프로젝트 범위·작업 범위 mutation은 실제 변경이 있을 때 같은 transaction에 활동을 기록한다. GET은 current Initiative visibility를 다시 검사하고 bounded newest-first 페이지를 반환한다.
+- **정보/권한 경계**: payload에는 연결 프로젝트·작업의 이름, ID, 이전/새 값이 없고 변경 field 이름만 있다. actor 삭제 뒤에도 `이전 구성원`으로 이력을 보존하며 현재 Initiative 가시성을 잃으면 endpoint도 404다. mock/dead control이나 장식용 activity row는 없다.
+- **검증**: focused Initiative API 20 PASS(기존 Alembic deprecation warning 1건), migration `0001 -> 0107 -> 0106 -> 0107` PASS, OpenAPI generation PASS, web typecheck PASS, focused Initiative activity E2E 1 PASS, desktop/mobile Chromium 실사와 diff check PASS. 전체 API/web/E2E, lint/build/unit/component, OpenAPI drift, clean-room/audit 결과는 PR 최종 검증에서 갱신한다. **이연 항목은 없다.**

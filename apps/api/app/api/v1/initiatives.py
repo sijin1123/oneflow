@@ -11,6 +11,7 @@ from app.core.authz import require_member
 from app.db.session import get_session
 from app.models.initiative import (
     Initiative,
+    InitiativeActivity,
     InitiativeLabel,
     InitiativeLabelAssignment,
     InitiativeProject,
@@ -22,6 +23,8 @@ from app.models.project import Project
 from app.models.user import User
 from app.models.work_package import WP_CLOSED_STATUSES, WorkPackage
 from app.schemas.initiative import (
+    InitiativeActivityList,
+    InitiativeActivityRead,
     InitiativeConnect,
     InitiativeCreate,
     InitiativeLabelAssignmentUpdate,
@@ -43,6 +46,7 @@ from app.schemas.initiative import (
     InitiativeWorkItemRead,
 )
 from app.services.health import apply_health_patch
+from app.services.initiative_activity import record_initiative_activity
 from app.services.notification import notify_initiative_subscribers
 from app.services.workspace_features import INITIATIVES_FEATURE, feature_enabled
 
@@ -520,6 +524,19 @@ async def replace_initiative_labels(
     )
     if len(labels) != len(body.label_ids):
         raise HTTPException(status_code=422, detail="label_ids contain an unknown label")
+    current_label_ids = set(
+        (
+            await session.execute(
+                select(InitiativeLabelAssignment.label_id).where(
+                    InitiativeLabelAssignment.initiative_id == initiative_id
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    if current_label_ids == set(body.label_ids):
+        return await _read_one(session, ini, user)
     await session.execute(
         delete(InitiativeLabelAssignment).where(
             InitiativeLabelAssignment.initiative_id == initiative_id
@@ -536,6 +553,13 @@ async def replace_initiative_labels(
         initiative_id=initiative_id,
         actor_id=user.id,
         kind="initiative_updated",
+    )
+    record_initiative_activity(
+        session,
+        initiative_id=initiative_id,
+        actor_id=user.id,
+        kind="labels_updated",
+        changed_fields={"labels"},
     )
     await session.commit()
     await session.refresh(ini)
@@ -559,8 +583,68 @@ async def create_initiative(
         target_date=body.target_date,
     )
     session.add(ini)
+    await session.flush()
+    initial_fields = {"name", "state"}
+    if body.description is not None:
+        initial_fields.add("description")
+    if body.start_date is not None:
+        initial_fields.add("start_date")
+    if body.target_date is not None:
+        initial_fields.add("target_date")
+    record_initiative_activity(
+        session,
+        initiative_id=ini.id,
+        actor_id=user.id,
+        kind="initiative_created",
+        changed_fields=initial_fields,
+    )
     await session.commit()
     return await _read_one(session, ini, user)
+
+
+@router.get(
+    "/initiatives/{initiative_id}/activities",
+    response_model=InitiativeActivityList,
+)
+async def list_initiative_activities(
+    initiative_id: uuid.UUID,
+    limit: int = Query(default=20, ge=1, le=50),
+    offset: int = Query(default=0, ge=0),
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+) -> InitiativeActivityList:
+    await _visible_initiative(session, initiative_id, user)
+    total = (
+        await session.execute(
+            select(func.count())
+            .select_from(InitiativeActivity)
+            .where(InitiativeActivity.initiative_id == initiative_id)
+        )
+    ).scalar_one()
+    rows = (
+        await session.execute(
+            select(InitiativeActivity, User.display_name)
+            .outerjoin(User, User.id == InitiativeActivity.actor_id)
+            .where(InitiativeActivity.initiative_id == initiative_id)
+            .order_by(InitiativeActivity.created_at.desc(), InitiativeActivity.id.desc())
+            .limit(limit)
+            .offset(offset)
+        )
+    ).all()
+    return InitiativeActivityList(
+        items=[
+            InitiativeActivityRead(
+                id=activity.id,
+                actor_id=activity.actor_id,
+                actor_name=actor_name,
+                kind=activity.kind,
+                changed_fields=activity.changed_fields,
+                created_at=activity.created_at,
+            )
+            for activity, actor_name in rows
+        ],
+        total=total,
+    )
 
 
 @router.get(
@@ -600,6 +684,13 @@ async def transfer_ownership(
         actor_id=user.id,
         kind="initiative_owner",
     )
+    record_initiative_activity(
+        session,
+        initiative_id=initiative_id,
+        actor_id=user.id,
+        kind="owner_transferred",
+        changed_fields={"owner"},
+    )
     await session.commit()
     await session.refresh(ini)
     return await _read_one(session, ini, user)
@@ -633,6 +724,13 @@ async def claim_ownership(
         initiative_id=initiative_id,
         actor_id=user.id,
         kind="initiative_owner",
+    )
+    record_initiative_activity(
+        session,
+        initiative_id=initiative_id,
+        actor_id=user.id,
+        kind="owner_claimed",
+        changed_fields={"owner"},
     )
     await session.commit()
     await session.refresh(ini)
@@ -790,6 +888,13 @@ async def connect_initiative_work_item(
             actor_id=user.id,
             kind="initiative_scope",
         )
+        record_initiative_activity(
+            session,
+            initiative_id=initiative_id,
+            actor_id=user.id,
+            kind="work_item_connected",
+            changed_fields={"work_items"},
+        )
         await session.commit()
     except IntegrityError as exc:
         await session.rollback()
@@ -828,6 +933,13 @@ async def disconnect_initiative_work_item(
         initiative_id=initiative_id,
         actor_id=user.id,
         kind="initiative_scope",
+    )
+    record_initiative_activity(
+        session,
+        initiative_id=initiative_id,
+        actor_id=user.id,
+        kind="work_item_disconnected",
+        changed_fields={"work_items"},
     )
     await session.commit()
     return Response(status_code=204)
@@ -881,6 +993,33 @@ async def update_initiative(
             actor_id=user.id,
             kind=kind,
         )
+    health_fields = changed & {"health", "health_note"}
+    lifecycle_fields = changed & {"state"}
+    property_fields = changed & {"name", "description", "start_date", "target_date"}
+    if health_fields:
+        record_initiative_activity(
+            session,
+            initiative_id=initiative_id,
+            actor_id=user.id,
+            kind="health_updated",
+            changed_fields=health_fields,
+        )
+    if lifecycle_fields:
+        record_initiative_activity(
+            session,
+            initiative_id=initiative_id,
+            actor_id=user.id,
+            kind="lifecycle_updated",
+            changed_fields=lifecycle_fields,
+        )
+    if property_fields:
+        record_initiative_activity(
+            session,
+            initiative_id=initiative_id,
+            actor_id=user.id,
+            kind="properties_updated",
+            changed_fields=property_fields,
+        )
     await session.commit()
     await session.refresh(ini)  # onupdate updated_at is server-computed
     return await _read_one(session, ini, user)
@@ -917,6 +1056,13 @@ async def connect_project(
             actor_id=user.id,
             kind="initiative_scope",
         )
+        record_initiative_activity(
+            session,
+            initiative_id=initiative_id,
+            actor_id=user.id,
+            kind="project_connected",
+            changed_fields={"projects"},
+        )
         await session.commit()
     except IntegrityError as exc:
         await session.rollback()
@@ -946,6 +1092,13 @@ async def disconnect_project(
         initiative_id=initiative_id,
         actor_id=user.id,
         kind="initiative_scope",
+    )
+    record_initiative_activity(
+        session,
+        initiative_id=initiative_id,
+        actor_id=user.id,
+        kind="project_disconnected",
+        changed_fields={"projects"},
     )
     await session.commit()
     return await _read_one(session, ini, user)

@@ -11,6 +11,7 @@ from sqlalchemy import func, select, update
 
 from app.models import (
     Initiative,
+    InitiativeActivity,
     InitiativeProject,
     InitiativeSubscriber,
     InitiativeWorkPackage,
@@ -28,6 +29,164 @@ async def create_initiative(client, name="플랫폼 개편", **extra) -> dict:
     res = await client.post("/api/v1/initiatives", json={"name": name, **extra})
     assert res.status_code == 201, res.text
     return res.json()
+
+
+async def test_initiative_activity_records_real_mutations_and_paginates(client):
+    project = await create_project(client, key="INIA", name="활동 프로젝트")
+    work_item = await create_wp(client, project["id"], subject="활동 작업")
+    initiative = await create_initiative(
+        client,
+        name="활동 전략",
+        description="초기 설명",
+        start_date="2026-07-01",
+        target_date="2026-09-30",
+    )
+    label = (
+        await client.post(
+            "/api/v1/initiatives/labels",
+            json={"name": "History", "color": "#2563eb"},
+        )
+    ).json()
+
+    assert (await connect(client, initiative["id"], project["id"])).status_code == 200
+    assert (
+        await client.post(
+            f"/api/v1/initiatives/{initiative['id']}/work-items",
+            json={"work_package_id": work_item["id"]},
+        )
+    ).status_code == 201
+    updated = await client.patch(
+        f"/api/v1/initiatives/{initiative['id']}",
+        json={
+            "name": "활동 전략 갱신",
+            "state": "in_progress",
+            "health": "at_risk",
+            "health_note": "일정 확인",
+        },
+    )
+    assert updated.status_code == 200
+    assert (
+        await client.put(
+            f"/api/v1/initiatives/{initiative['id']}/labels",
+            json={"label_ids": [label["id"]]},
+        )
+    ).status_code == 200
+    assert (
+        await client.delete(f"/api/v1/initiatives/{initiative['id']}/work-items/{work_item['id']}")
+    ).status_code == 204
+    assert (
+        await client.delete(f"/api/v1/initiatives/{initiative['id']}/projects/{project['id']}")
+    ).status_code == 200
+
+    history = await client.get(
+        f"/api/v1/initiatives/{initiative['id']}/activities",
+        params={"limit": 3},
+    )
+    assert history.status_code == 200, history.text
+    payload = history.json()
+    assert payload["total"] == 9
+    assert [row["kind"] for row in payload["items"]] == [
+        "project_disconnected",
+        "work_item_disconnected",
+        "labels_updated",
+    ]
+    assert all(row["actor_name"] == "Dev User" for row in payload["items"])
+    assert set(payload["items"][0]) == {
+        "id",
+        "actor_id",
+        "actor_name",
+        "kind",
+        "changed_fields",
+        "created_at",
+    }
+
+    older = await client.get(
+        f"/api/v1/initiatives/{initiative['id']}/activities",
+        params={"limit": 6, "offset": 3},
+    )
+    assert older.status_code == 200
+    assert [row["kind"] for row in older.json()["items"]] == [
+        "properties_updated",
+        "lifecycle_updated",
+        "health_updated",
+        "work_item_connected",
+        "project_connected",
+        "initiative_created",
+    ]
+    created = older.json()["items"][-1]
+    assert created["changed_fields"] == [
+        "description",
+        "name",
+        "start_date",
+        "state",
+        "target_date",
+    ]
+
+    assert (
+        await client.patch(
+            f"/api/v1/initiatives/{initiative['id']}",
+            json={"name": "활동 전략 갱신"},
+        )
+    ).status_code == 200
+    assert (
+        await client.put(
+            f"/api/v1/initiatives/{initiative['id']}/labels",
+            json={"label_ids": [label["id"]]},
+        )
+    ).status_code == 200
+    unchanged = await client.get(f"/api/v1/initiatives/{initiative['id']}/activities")
+    assert unchanged.json()["total"] == 9
+
+
+async def test_initiative_activity_rechecks_visibility_and_preserves_deleted_actor(
+    client, app, member_project
+):
+    async with app.state.sessionmaker() as session, session.begin():
+        initiative = Initiative(
+            name="공유 이력",
+            owner_id=member_project["owner_id"],
+        )
+        session.add(initiative)
+        await session.flush()
+        session.add(
+            InitiativeProject(
+                initiative_id=initiative.id,
+                project_id=member_project["project_id"],
+            )
+        )
+        session.add(
+            InitiativeActivity(
+                initiative_id=initiative.id,
+                actor_id=member_project["owner_id"],
+                kind="initiative_created",
+                changed_fields=["name", "state"],
+            )
+        )
+        initiative_id = str(initiative.id)
+
+    visible = await client.get(f"/api/v1/initiatives/{initiative_id}/activities")
+    assert visible.status_code == 200
+    assert visible.json()["items"][0]["actor_name"] == "Owner"
+
+    async with app.state.sessionmaker() as session, session.begin():
+        owner = await session.get(User, member_project["owner_id"])
+        await session.delete(owner)
+
+    retained = await client.get(f"/api/v1/initiatives/{initiative_id}/activities")
+    assert retained.status_code == 200
+    assert retained.json()["items"][0]["actor_id"] is None
+    assert retained.json()["items"][0]["actor_name"] is None
+
+    async with app.state.sessionmaker() as session, session.begin():
+        await session.execute(
+            ProjectMember.__table__.delete().where(
+                ProjectMember.project_id == member_project["project_id"],
+                ProjectMember.user_id == member_project["dev_id"],
+            )
+        )
+
+    hidden = await client.get(f"/api/v1/initiatives/{initiative_id}/activities")
+    assert hidden.status_code == 404
 
 
 async def connect(client, initiative_id, project_id):

@@ -193,6 +193,20 @@ class InitiativeList(BaseModel):
     total: int
 
 
+class InitiativeActivityRead(BaseModel):
+    id: uuid.UUID
+    actor_id: uuid.UUID | None
+    actor_name: str | None
+    kind: str
+    changed_fields: list[str]
+    created_at: datetime
+
+
+class InitiativeActivityList(BaseModel):
+    items: list[InitiativeActivityRead]
+    total: int
+
+
 class InitiativeConnect(BaseModel):
     project_id: uuid.UUID
 

@@ -14,12 +14,25 @@ from sqlalchemy import (
     func,
     text,
 )
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import ARRAY, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
 
 INITIATIVE_STATES = ("planned", "in_progress", "paused", "completed", "cancelled")
+INITIATIVE_ACTIVITY_KINDS = (
+    "initiative_created",
+    "properties_updated",
+    "lifecycle_updated",
+    "health_updated",
+    "owner_transferred",
+    "owner_claimed",
+    "labels_updated",
+    "project_connected",
+    "project_disconnected",
+    "work_item_connected",
+    "work_item_disconnected",
+)
 
 
 class Initiative(Base):
@@ -200,4 +213,55 @@ class InitiativeLabelAssignment(Base):
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class InitiativeActivity(Base):
+    """Append-only, display-safe history for one Initiative.
+
+    `changed_fields` contains only a closed property vocabulary. Resource names,
+    values and identifiers are deliberately absent so historical rows cannot
+    bypass the Initiative's current visibility boundary.
+    """
+
+    __tablename__ = "initiative_activities"
+    __table_args__ = (
+        CheckConstraint(
+            "kind IN ('initiative_created', 'properties_updated', 'lifecycle_updated', "
+            "'health_updated', 'owner_transferred', 'owner_claimed', 'labels_updated', "
+            "'project_connected', 'project_disconnected', 'work_item_connected', "
+            "'work_item_disconnected')",
+            name="kind_allowed",
+        ),
+        CheckConstraint(
+            "changed_fields <@ ARRAY['name', 'description', 'state', 'start_date', "
+            "'target_date', 'health', 'health_note', 'owner', 'labels', 'projects', "
+            "'work_items']::varchar[]",
+            name="changed_fields_allowed",
+        ),
+        CheckConstraint(
+            "cardinality(changed_fields) <= 7",
+            name="changed_fields_bounded",
+        ),
+        Index(
+            "ix_initiative_activities_initiative_created",
+            "initiative_id",
+            "created_at",
+            "id",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    initiative_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("initiatives.id", ondelete="CASCADE"), nullable=False
+    )
+    actor_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    kind: Mapped[str] = mapped_column(String(32), nullable=False)
+    changed_fields: Mapped[list[str]] = mapped_column(
+        ARRAY(String(24)), nullable=False, default=list, server_default="{}"
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("clock_timestamp()")
     )

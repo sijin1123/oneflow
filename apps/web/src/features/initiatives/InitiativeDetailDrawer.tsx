@@ -41,6 +41,7 @@ import {
   useUpdateInitiative,
   useUpdateInitiativeSubscription,
 } from './api'
+import { InitiativeActivityPanel } from './InitiativeActivityPanel'
 import { InitiativeLifecyclePanel } from './InitiativeLifecyclePanel'
 import { InitiativeOrganizationPanel } from './InitiativeOrganizationPanel'
 
@@ -531,6 +532,8 @@ function InitiativeDetailBody({
           </p>
         ) : null}
       </section>
+
+      <InitiativeActivityPanel initiativeId={initiative.id} />
     </SheetContent>
   )
 }

@@ -12,7 +12,12 @@ import type { Customer } from '../src/features/customers/types'
 import type { DataTransferJob } from '../src/features/ops/dataTransfersApi'
 import type { AuthAssistanceRequest } from '../src/features/admin/authAssistanceApi'
 import type { DocumentList } from '../src/features/documents/api'
-import type { Initiative, InitiativeLabel, InitiativeWorkItem } from '../src/features/initiatives/api'
+import type {
+  Initiative,
+  InitiativeActivity,
+  InitiativeLabel,
+  InitiativeWorkItem,
+} from '../src/features/initiatives/api'
 import type {
   Project,
   ProjectHealthHistoryList,
@@ -733,6 +738,9 @@ async function mockApi(page: Page, opts: { conflictOnPatch?: boolean } = {}) {
     route.fulfill({ json: { items: [], total: 0 } }),
   )
   await page.route('**/api/v1/initiatives/labels', (route) =>
+    route.fulfill({ json: { items: [], total: 0 } }),
+  )
+  await page.route('**/api/v1/initiatives/*/activities**', (route) =>
     route.fulfill({ json: { items: [], total: 0 } }),
   )
   // Type config: default empty → built-in labels everywhere (fallback path).
@@ -19502,6 +19510,135 @@ test('Initiative 상세는 상태와 헬스 수명주기를 소유자 저장과 
   await expect(page.getByRole('heading', { name: '상태 및 헬스' })).toBeVisible()
   await expect(drawer.locator('header').getByText('진행 중', { exact: true })).toBeVisible()
   await expect(drawer.getByText('미설정', { exact: true }).first()).toBeVisible()
+})
+
+test('Initiative 상세 활동은 실제 이력을 페이지 단위로 복구해 표시한다', async ({ page }) => {
+  await mockApi(page)
+  const initiative: Initiative = {
+    id: '11111111-1111-4111-8111-111111111150',
+    name: '활동 전략',
+    description: '전략 변경을 시간순으로 확인합니다.',
+    owner_id: 'me-1',
+    owner_name: 'Dev User',
+    owner_active: true,
+    state: 'in_progress',
+    start_date: '2026-07-01',
+    target_date: '2026-12-31',
+    health: 'on_track',
+    health_note: '정상 진행',
+    health_updated_by: 'me-1',
+    health_updated_at: '2026-07-18T04:00:00Z',
+    is_mine: true,
+    can_claim_ownership: false,
+    connected_project_count: 0,
+    connected_work_item_count: 0,
+    follower_count: 1,
+    is_following: true,
+    labels: [],
+    projects: [],
+    created_at: '2026-07-18T00:00:00Z',
+    updated_at: '2026-07-18T04:00:00Z',
+  }
+  const kinds: InitiativeActivity['kind'][] = [
+    'properties_updated',
+    'health_updated',
+    'lifecycle_updated',
+    'labels_updated',
+    'project_connected',
+    'work_item_connected',
+    'owner_transferred',
+    'project_disconnected',
+    'work_item_disconnected',
+    'owner_claimed',
+    'properties_updated',
+    'health_updated',
+    'initiative_created',
+  ]
+  const activities: InitiativeActivity[] = kinds.map((kind, index) => ({
+    id: `22222222-2222-4222-8222-${String(index + 1).padStart(12, '0')}`,
+    actor_id: index === 11 ? null : 'me-1',
+    actor_name: index === 11 ? null : 'Dev User',
+    kind,
+    changed_fields:
+      kind === 'properties_updated'
+        ? ['name', 'description']
+        : kind === 'health_updated'
+          ? ['health', 'health_note']
+          : kind === 'lifecycle_updated'
+            ? ['state']
+            : [],
+    created_at: `2026-07-18T${String(12 - Math.min(index, 12)).padStart(2, '0')}:00:00Z`,
+  }))
+  let failInitial = true
+  let failNextPage = true
+
+  await page.route('**/api/v1/initiatives**', async (route) => {
+    const request = route.request()
+    const url = new URL(request.url())
+    if (url.pathname === '/api/v1/initiatives/labels') {
+      await route.fulfill({ json: { items: [], total: 0 } })
+      return
+    }
+    if (url.pathname === `/api/v1/initiatives/${initiative.id}/work-items`) {
+      await route.fulfill({ json: { items: [], total: 0, connected_work_item_count: 0 } })
+      return
+    }
+    if (url.pathname === `/api/v1/initiatives/${initiative.id}/activities`) {
+      const offset = Number(url.searchParams.get('offset') ?? 0)
+      const limit = Number(url.searchParams.get('limit') ?? 10)
+      if (offset === 0 && failInitial) {
+        failInitial = false
+        await route.fulfill({ status: 500, json: { detail: 'activity temporarily unavailable' } })
+        return
+      }
+      if (offset === 10 && failNextPage) {
+        failNextPage = false
+        await route.fulfill({ status: 500, json: { detail: 'next page unavailable' } })
+        return
+      }
+      await route.fulfill({
+        json: { items: activities.slice(offset, offset + limit), total: activities.length },
+      })
+      return
+    }
+    if (url.pathname === '/api/v1/initiatives') {
+      await route.fulfill({ json: { items: [initiative], total: 1 } })
+      return
+    }
+    await route.fallback()
+  })
+
+  await page.goto('/initiatives')
+  await page.getByRole('button', { name: '활동 전략', exact: true }).click()
+  const activitySection = page.getByRole('region', { name: '활동' })
+  await expect(activitySection.getByRole('alert')).toContainText('활동을 불러오지 못했습니다')
+  await activitySection.getByRole('button', { name: '재시도' }).click()
+  await expect(activitySection.getByText('기본 정보를 수정했습니다.', { exact: true })).toBeVisible()
+  await expect(activitySection.getByText('13건', { exact: true })).toBeVisible()
+  await expect(activitySection.getByLabel('변경 필드').first()).toContainText('이름')
+
+  await activitySection.getByRole('button', { name: '활동 더 보기' }).click()
+  await expect(activitySection.getByRole('alert')).toContainText('다음 활동을 불러오지 못했습니다')
+  await expect(activitySection.getByText('기본 정보를 수정했습니다.', { exact: true })).toBeVisible()
+  await activitySection.getByRole('button', { name: '재시도' }).click()
+  await expect(activitySection.getByText('이전 구성원', { exact: true })).toBeVisible()
+  await expect(activitySection.getByText('이니셔티브를 만들었습니다.', { exact: true })).toBeVisible()
+  await expect(activitySection.getByRole('button', { name: '활동 더 보기' })).toHaveCount(0)
+  await activitySection.getByRole('heading', { name: '활동', exact: true }).scrollIntoViewIfNeeded()
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/initiative-activity-ui/desktop-detail.png',
+    fullPage: true,
+  })
+
+  await page.setViewportSize({ width: 390, height: 844 })
+  await activitySection.getByRole('heading', { name: '활동', exact: true }).scrollIntoViewIfNeeded()
+  await expect(activitySection).toBeVisible()
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/initiative-activity-ui/mobile-detail.png',
+    fullPage: true,
+  })
 })
 
 async function mockReleasesPolicy(
