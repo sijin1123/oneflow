@@ -107,6 +107,29 @@ class DocumentList(BaseModel):
     total: int
 
 
+DocumentActivityKind = Literal[
+    "document_created",
+    "document_updated",
+    "document_archived",
+    "document_restored",
+]
+DocumentActivityField = Literal["title", "body", "parent", "visibility", "archive_state"]
+
+
+class DocumentActivityRead(BaseModel):
+    id: uuid.UUID
+    actor_id: uuid.UUID | None
+    actor_name: str | None
+    kind: DocumentActivityKind
+    changed_fields: list[DocumentActivityField]
+    created_at: datetime
+
+
+class DocumentActivityList(BaseModel):
+    items: list[DocumentActivityRead]
+    total: int
+
+
 class DocumentConflict(BaseModel):
     detail: str
     current: DocumentRead

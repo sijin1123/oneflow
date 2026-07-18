@@ -31,7 +31,12 @@ from app.core.authz import is_member, require_active_project, require_member, re
 from app.db.session import get_session
 from app.models.attachment import Attachment
 from app.models.comment import LEGACY_REACTION_KEYS
-from app.models.document import MAX_DOCUMENT_DEPTH, DocumentWorkPackageLink, ProjectDocument
+from app.models.document import (
+    MAX_DOCUMENT_DEPTH,
+    DocumentActivity,
+    DocumentWorkPackageLink,
+    ProjectDocument,
+)
 from app.models.document_comment import (
     ProjectDocumentComment,
     ProjectDocumentCommentReaction,
@@ -41,6 +46,8 @@ from app.models.user import User
 from app.models.work_package import WorkPackage
 from app.schemas.comment import ReactionAgg, ReactionList
 from app.schemas.document import (
+    DocumentActivityList,
+    DocumentActivityRead,
     DocumentConflict,
     DocumentCreate,
     DocumentLifecycleRequest,
@@ -60,6 +67,7 @@ from app.schemas.document_comment import (
     InlineDocumentCommentResult,
 )
 from app.services.document_access import document_is_visible, document_visible_clause
+from app.services.document_activity import record_document_activity
 from app.services.emoji import is_single_emoji, normalize_emoji
 from app.services.notification import notify_document_mentions
 from app.services.sanitize import (
@@ -326,6 +334,18 @@ async def create_document(
     )
     session.add(doc)
     await session.flush()
+    initial_fields = {"title", "visibility"}
+    if doc.body is not None:
+        initial_fields.add("body")
+    if doc.parent_id is not None:
+        initial_fields.add("parent")
+    record_document_activity(
+        session,
+        document_id=doc.id,
+        actor_id=user.id,
+        kind="document_created",
+        changed_fields=initial_fields,
+    )
     await session.commit()
     return DocumentRead.model_validate(doc)
 
@@ -389,6 +409,48 @@ async def get_document(
     user: User = Depends(get_current_user),
 ) -> DocumentRead:
     return DocumentRead.model_validate(await _get_doc_scoped(session, doc_id, user))
+
+
+@router.get("/documents/{doc_id}/activities", response_model=DocumentActivityList)
+async def list_document_activities(
+    doc_id: uuid.UUID,
+    limit: int = Query(default=20, ge=1, le=50),
+    offset: int = Query(default=0, ge=0),
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+) -> DocumentActivityList:
+    await _get_doc_scoped(session, doc_id, user)
+    total = (
+        await session.execute(
+            select(func.count())
+            .select_from(DocumentActivity)
+            .where(DocumentActivity.document_id == doc_id)
+        )
+    ).scalar_one()
+    rows = (
+        await session.execute(
+            select(DocumentActivity, User.display_name)
+            .outerjoin(User, User.id == DocumentActivity.actor_id)
+            .where(DocumentActivity.document_id == doc_id)
+            .order_by(DocumentActivity.created_at.desc(), DocumentActivity.id.desc())
+            .limit(limit)
+            .offset(offset)
+        )
+    ).all()
+    return DocumentActivityList(
+        items=[
+            DocumentActivityRead(
+                id=activity.id,
+                actor_id=activity.actor_id,
+                actor_name=actor_name,
+                kind=activity.kind,
+                changed_fields=activity.changed_fields,
+                created_at=activity.created_at,
+            )
+            for activity, actor_name in rows
+        ],
+        total=total,
+    )
 
 
 @router.patch(
@@ -466,7 +528,20 @@ async def update_document(
         .returning(ProjectDocument)
         .execution_options(synchronize_session=False, populate_existing=True)
     )
+    actual_changed_fields = {
+        "parent" if field == "parent_id" else field
+        for field, value in changes.items()
+        if getattr(doc, field) != value
+    }
     updated = (await session.execute(stmt)).scalar_one_or_none()
+    if updated is not None and actual_changed_fields:
+        record_document_activity(
+            session,
+            document_id=doc_id,
+            actor_id=user.id,
+            kind="document_updated",
+            changed_fields=actual_changed_fields,
+        )
     await session.commit()
     if updated is not None:
         return DocumentRead.model_validate(updated)
@@ -514,6 +589,14 @@ async def _set_archive_state(
             .execution_options(synchronize_session=False, populate_existing=True)
         )
     ).scalar_one_or_none()
+    if updated is not None:
+        record_document_activity(
+            session,
+            document_id=doc.id,
+            actor_id=user.id,
+            kind="document_archived" if archived else "document_restored",
+            changed_fields={"archive_state"},
+        )
     await session.commit()
     if updated is not None:
         return DocumentRead.model_validate(updated)
@@ -863,7 +946,8 @@ async def create_inline_document_comment(
             detail="comment anchor quote does not match its thread",
         )
 
-    if body.document_body is not None and sanitized != (doc.body or ""):
+    document_body_changed = body.document_body is not None and sanitized != (doc.body or "")
+    if document_body_changed:
         doc.body = sanitized or None
         doc.version += 1
         doc.updated_at = datetime.now(UTC)
@@ -887,6 +971,14 @@ async def create_inline_document_comment(
             candidate_ids=body.mentioned_user_ids,
         )
         comment.mentions = [str(user_id) for user_id in accepted] or None
+        if document_body_changed:
+            record_document_activity(
+                session,
+                document_id=doc.id,
+                actor_id=user.id,
+                kind="document_updated",
+                changed_fields={"body"},
+            )
         await session.flush()
         await session.commit()
     except IntegrityError as exc:

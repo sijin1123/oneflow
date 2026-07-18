@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { ApiError, api } from '@/lib/api'
 
@@ -20,6 +20,42 @@ export type DocumentListItem = {
 export type ProjectDocument = DocumentListItem & { body: string | null }
 
 export type DocumentList = { items: DocumentListItem[]; total: number }
+
+export type DocumentActivityKind =
+  | 'document_created'
+  | 'document_updated'
+  | 'document_archived'
+  | 'document_restored'
+
+export type DocumentActivity = {
+  id: string
+  actor_id: string | null
+  actor_name: string | null
+  kind: DocumentActivityKind
+  changed_fields: string[]
+  created_at: string
+}
+
+export type DocumentActivityList = { items: DocumentActivity[]; total: number }
+
+const DOCUMENT_ACTIVITY_PAGE_SIZE = 10
+
+export function useDocumentActivities(docId: string, enabled = true) {
+  return useInfiniteQuery({
+    queryKey: ['document-activities', docId],
+    initialPageParam: 0,
+    queryFn: ({ pageParam }) =>
+      api<DocumentActivityList>(
+        `/api/v1/documents/${docId}/activities?limit=${DOCUMENT_ACTIVITY_PAGE_SIZE}&offset=${pageParam}`,
+      ),
+    getNextPageParam: (lastPage, pages) => {
+      const loaded = pages.reduce((total, page) => total + page.items.length, 0)
+      return loaded < lastPage.total ? loaded : undefined
+    },
+    enabled,
+    retry: false,
+  })
+}
 
 export type DocumentBucket = 'shared' | 'private' | 'archived'
 
@@ -92,6 +128,7 @@ export function useUpdateDocument(projectId: string) {
     onSuccess: (doc) => {
       queryClient.setQueryData(['document', doc.id], doc)
       void queryClient.invalidateQueries({ queryKey: ['documents', projectId] })
+      void queryClient.invalidateQueries({ queryKey: ['document-activities', doc.id] })
     },
     // On a 409 we deliberately do NOT overwrite the cached document: that would
     // trip the editor's resync effect and destroy the user's unsaved draft. The
@@ -195,6 +232,7 @@ export function useDocumentLifecycle(projectId: string) {
       queryClient.setQueryData(['document', document.id], document)
       void queryClient.invalidateQueries({ queryKey: ['documents', projectId] })
       void queryClient.invalidateQueries({ queryKey: ['work-package-documents'] })
+      void queryClient.invalidateQueries({ queryKey: ['document-activities', document.id] })
     },
   })
 }
@@ -274,6 +312,7 @@ export function useCreateInlineDocumentComment(docId: string, projectId: string)
             : { items: [comment], total: 1 },
       )
       void queryClient.invalidateQueries({ queryKey: ['documents', projectId] })
+      void queryClient.invalidateQueries({ queryKey: ['document-activities', document.id] })
     },
   })
 }

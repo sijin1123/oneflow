@@ -4,6 +4,7 @@ import {
   Clock3,
   FileText,
   FolderTree,
+  History,
   MessageSquareText,
   Quote,
   RotateCcw,
@@ -55,6 +56,7 @@ import {
   useUpdateDocument,
 } from './api'
 import { DocumentAttachments } from './DocumentAttachments'
+import { DocumentActivityPanel } from './DocumentActivityPanel'
 import { LinkedWorkPackagesSection } from './LinkedWorkPackagesSection'
 import { subtreeIds } from './tree'
 
@@ -99,6 +101,7 @@ export function DocumentEditorPage() {
   const [body, setBody] = useState('')
   const [parentId, setParentId] = useState<string | null>(null)
   const [visibility, setVisibility] = useState<'shared' | 'private'>('shared')
+  const [detailTab, setDetailTab] = useState<'comments' | 'activity'>('comments')
   const [activeCommentAnchorId, setActiveCommentAnchorId] = useState<string | null>(null)
   const upload = useUploadAttachment(projectId)
   const canWrite = useCanWrite(projectId)
@@ -340,17 +343,54 @@ export function DocumentEditorPage() {
             </Suspense>
           </section>
 
-          <DocumentComments
-            doc={doc}
-            projectId={projectId}
-            canWrite={editable}
-            data={comments.data}
-            isPending={comments.isPending}
-            isError={comments.isError}
-            onRetry={() => comments.refetch()}
-            activeAnchorId={activeCommentAnchorId}
-            onActivateAnchor={activateBodyAnchor}
-          />
+          <div
+            role="tablist"
+            aria-label="문서 상세 보기"
+            className="inline-flex h-8 w-fit items-center gap-0.5 rounded-of border border-of-border bg-of-surface p-0.5"
+          >
+            <button
+              type="button"
+              role="tab"
+              aria-selected={detailTab === 'comments'}
+              className={`flex h-7 items-center gap-1.5 rounded-of px-2.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus ${
+                detailTab === 'comments'
+                  ? 'bg-of-surface-2 text-of-text shadow-sm'
+                  : 'text-of-muted hover:bg-of-surface-hover hover:text-of-text'
+              }`}
+              onClick={() => setDetailTab('comments')}
+            >
+              <MessageSquareText size={13} aria-hidden="true" /> 댓글
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={detailTab === 'activity'}
+              className={`flex h-7 items-center gap-1.5 rounded-of px-2.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus ${
+                detailTab === 'activity'
+                  ? 'bg-of-surface-2 text-of-text shadow-sm'
+                  : 'text-of-muted hover:bg-of-surface-hover hover:text-of-text'
+              }`}
+              onClick={() => setDetailTab('activity')}
+            >
+              <History size={13} aria-hidden="true" /> 활동
+            </button>
+          </div>
+
+          {detailTab === 'comments' ? (
+            <DocumentComments
+              doc={doc}
+              projectId={projectId}
+              canWrite={editable}
+              data={comments.data}
+              isPending={comments.isPending}
+              isError={comments.isError}
+              onRetry={() => comments.refetch()}
+              activeAnchorId={activeCommentAnchorId}
+              onActivateAnchor={activateBodyAnchor}
+            />
+          ) : (
+            <DocumentActivityPanel docId={doc.id} />
+          )}
         </main>
 
         <aside aria-label="문서 속성" className="grid min-w-0 gap-3 self-start">
