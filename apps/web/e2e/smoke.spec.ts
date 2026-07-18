@@ -18744,6 +18744,7 @@ test('Initiatives 정책은 비관리자와 모바일 상태를 안전하게 처
 test('Initiative labels는 설정 CRUD와 소유자 배정 및 목록 필터를 연결한다', async ({ page }) => {
   await mockApi(page)
   await mockInitiativesPolicy(page)
+  await page.unroute('**/api/v1/initiatives/labels')
   let labels: InitiativeLabel[] = [
     {
       id: '11111111-1111-4111-8111-111111111141',
@@ -18839,8 +18840,8 @@ test('Initiative labels는 설정 CRUD와 소유자 배정 및 목록 필터를 
   const complianceRow = labelSettings.getByRole('listitem').filter({ hasText: 'Compliance' })
   await expect(complianceRow).toBeVisible()
   await complianceRow.getByRole('button', { name: '수정' }).click()
-  await complianceRow.getByLabel('Compliance 이름').fill('Regulated')
-  await complianceRow.getByRole('button', { name: '저장' }).click()
+  await labelSettings.getByLabel('Compliance 이름').fill('Regulated')
+  await labelSettings.getByRole('button', { name: '저장' }).click()
   await expect(labelSettings.getByText('Regulated', { exact: true })).toBeVisible()
   await page.screenshot({
     path: '../../docs/screenshots/redevelopment/initiative-labels-ui/desktop-settings.png',
@@ -18849,8 +18850,11 @@ test('Initiative labels는 설정 CRUD와 소유자 배정 및 목록 필터를 
 
   await page.setViewportSize({ width: 390, height: 844 })
   await page.goto('/initiatives')
+  const initiativeRow = page.getByRole('listitem').filter({
+    has: page.getByRole('button', { name: '라벨 전략', exact: true }),
+  })
   await page.getByLabel('라벨 전략에 라벨 배정').selectOption(labels[0].id)
-  await expect(page.getByText('Strategic', { exact: true })).toBeVisible()
+  await expect(initiativeRow.getByText('Strategic', { exact: true })).toBeVisible()
   await page.getByLabel('이니셔티브 라벨 필터').selectOption(labels[0].id)
   await expect(page).toHaveURL(new RegExp(`label=${labels[0].id}`))
   await expect(page.getByText('라벨 전략', { exact: true })).toBeVisible()
