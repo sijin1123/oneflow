@@ -696,6 +696,23 @@ export interface paths {
         patch: operations["update_document_api_v1_documents__doc_id__patch"];
         trace?: never;
     };
+    "/api/v1/documents/{doc_id}/activities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Document Activities */
+        get: operations["list_document_activities_api_v1_documents__doc_id__activities_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/documents/{doc_id}/archive": {
         parameters: {
             query?: never;
@@ -5116,6 +5133,37 @@ export interface components {
             total_rows: number;
             /** Valid Rows */
             valid_rows: number;
+        };
+        /** DocumentActivityList */
+        DocumentActivityList: {
+            /** Items */
+            items: components["schemas"]["DocumentActivityRead"][];
+            /** Total */
+            total: number;
+        };
+        /** DocumentActivityRead */
+        DocumentActivityRead: {
+            /** Actor Id */
+            actor_id: string | null;
+            /** Actor Name */
+            actor_name: string | null;
+            /** Changed Fields */
+            changed_fields: ("title" | "body" | "parent" | "visibility" | "archive_state")[];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "document_created" | "document_updated" | "document_archived" | "document_restored";
         };
         /**
          * DocumentCommentCreate
@@ -11180,6 +11228,44 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DocumentConflict"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_document_activities_api_v1_documents__doc_id__activities_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                doc_id: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentActivityList"];
                 };
             };
             /** @description Validation Error */

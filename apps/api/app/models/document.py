@@ -12,8 +12,9 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     func,
+    text,
 )
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import ARRAY, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -80,6 +81,51 @@ class ProjectDocument(Base):
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+
+class DocumentActivity(Base):
+    """Append-only, display-safe mutation history for one visible Document."""
+
+    __tablename__ = "document_activities"
+    __table_args__ = (
+        CheckConstraint(
+            "kind IN ('document_created', 'document_updated', "
+            "'document_archived', 'document_restored')",
+            name="kind_allowed",
+        ),
+        CheckConstraint(
+            "changed_fields <@ ARRAY['title', 'body', 'parent', 'visibility', "
+            "'archive_state']::varchar[]",
+            name="changed_fields_allowed",
+        ),
+        CheckConstraint(
+            "cardinality(changed_fields) <= 5",
+            name="changed_fields_bounded",
+        ),
+        Index(
+            "ix_document_activities_document_created",
+            "document_id",
+            "created_at",
+            "id",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    document_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("project_documents.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    actor_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    kind: Mapped[str] = mapped_column(String(32), nullable=False)
+    changed_fields: Mapped[list[str]] = mapped_column(
+        ARRAY(String(24)), nullable=False, default=list, server_default="{}"
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("clock_timestamp()")
     )
 
 

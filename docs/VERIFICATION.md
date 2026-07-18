@@ -2706,3 +2706,13 @@ Chromium typed mock fixture에서 1440x960과 390x844 viewport를 사용했다. 
 - **기능/API 반영**: migration `0107`은 Initiative별 append-only activity relation과 닫힌 kind/field vocabulary, actor `SET NULL`, Initiative cascade를 추가한다. 생성·기본 속성·수명주기·헬스·소유권·라벨·프로젝트 범위·작업 범위 mutation은 실제 변경이 있을 때 같은 transaction에 활동을 기록한다. GET은 current Initiative visibility를 다시 검사하고 bounded newest-first 페이지를 반환한다.
 - **정보/권한 경계**: payload에는 연결 프로젝트·작업의 이름, ID, 이전/새 값이 없고 변경 field 이름만 있다. actor 삭제 뒤에도 `이전 구성원`으로 이력을 보존하며 현재 Initiative 가시성을 잃으면 endpoint도 404다. mock/dead control이나 장식용 activity row는 없다.
 - **검증**: focused Initiative API 20 PASS(기존 Alembic deprecation warning 1건), migration `0001 -> 0107 -> 0106 -> 0107` PASS, API Ruff/format, OpenAPI generation/drift, web typecheck/lint/build, unit 103, component 8, focused Initiative activity E2E 1, desktop/mobile Chromium 실사, clean-room frontend 161/backend 45, npm audit high 0, diff check PASS. PR #337 CI run `29646989026`과 main integration run `29647272446`도 모두 green이다. **이연 항목은 없다.**
+
+---
+
+# UI-152 Document Activity Tabs 검증 (2026-07-18)
+
+- **UI 변경**: Document 상세의 기존 본문 앵커/일반 코멘트 기능을 유지하면서 `댓글`/`활동` 탭을 추가했다. 활동은 actor, 안전한 사건 요약, 변경 필드 badge와 시각을 최신순으로 표시하며 loading skeleton, initial error/retry, empty, next-page error/retry, load-more와 390px 모바일 no-overflow 상태를 실제 API에 연결한다.
+- **기능/API 반영**: migration `0108`은 Document별 append-only activity relation, 닫힌 kind/changed-field vocabulary, actor `SET NULL`, Document cascade를 추가한다. 생성·제목/본문/상위 페이지/공개 범위 수정·보관·복원과 인라인 코멘트 앵커의 실제 본문 변경만 mutation과 같은 transaction에서 기록한다. 동일 값 저장, stale conflict, 중복 보관/복원과 본문을 바꾸지 않는 답글은 새 활동을 만들지 않는다.
+- **정보/권한 경계**: payload는 과거 제목·본문 값이나 프로젝트/문서 식별 정보를 저장하지 않고 변경 필드 이름만 반환한다. GET은 현재 project membership, private author visibility, archived Document read와 Wiki policy를 다시 적용하며 bounded newest-first pagination을 제공한다. actor 삭제 뒤 기록은 `이전 구성원`으로 남고 membership 상실 뒤 endpoint는 404다.
+- **검증**: API Ruff/format PASS, focused Document activity/lifecycle/comment 25 및 full API 818 PASS(기존 Alembic deprecation warning 1건), migration `0108 -> 0107 -> 0108`, OpenAPI generation/drift PASS. Web typecheck/lint/build PASS(기존 Fast Refresh 경고 4건·chunk-size 경고), unit 103, component 8, focused activity E2E 1 PASS다. 전체 E2E는 313 PASS + opt-in visual QA 1 skip이며 unrelated project-health retry timing 1건이 병렬 첫 시도에서 flaky였지만 single-worker repeat 3/3 PASS로 격리했다. Clean-room frontend 161/backend 45와 diff check가 통과했다.
+- Chromium 증적은 `docs/screenshots/redevelopment/document-activity-tabs-ui/{desktop,mobile}.png`에 보존한다. Migration `0108` 적용이 필요하다. 환경변수, dependency, permission registry 또는 별도 Settings UI 변경은 없다. **이연 항목은 없다.**
