@@ -15,6 +15,8 @@ from app.models import (
     CostEntry,
     Project,
     ProjectMember,
+    ProjectScheduleBaseline,
+    ProjectScheduleBaselineItem,
     TimeEntry,
     User,
     WorkPackage,
@@ -38,6 +40,11 @@ async def _seed(app, client, dev_user):
             [
                 ProjectMember(project_id=rich["id"], user_id=mate.id, role="viewer"),
                 ProjectMember(project_id=foreign.id, user_id=stranger.id, role="owner"),
+                ProjectScheduleBaseline(
+                    project_id=foreign.id,
+                    name="비공개 기준선",
+                    captured_by_user_id=stranger.id,
+                ),
             ]
         )
         # 3 WPs: open+overdue / open / done — plus 2 cost rows and 3 time rows
@@ -111,6 +118,10 @@ async def test_portfolio_scope_aggregates_and_totals(app, client, dev_user):
     t = body["totals"]
     assert (t["projects"], t["work_packages"], t["open"], t["overdue"]) == (1, 3, 2, 1)
     assert (t["budget"], t["cost_total"], t["hours_total"]) == (1000, 350.0, 6.5)
+    assert t["schedule_baseline_projects"] == 0
+    assert t["schedule_changed_projects"] == 0
+    assert t["schedule_at_risk_projects"] == 0
+    assert t["schedule_risk_items"] == 0
     assert body["total"] == 1
 
 
@@ -142,6 +153,10 @@ async def test_portfolio_pagination_and_empty(client, dev_user):
             "budget": 0,
             "cost_total": 0,
             "hours_total": 0,
+            "schedule_baseline_projects": 0,
+            "schedule_changed_projects": 0,
+            "schedule_at_risk_projects": 0,
+            "schedule_risk_items": 0,
         },
         "total": 0,
     }
@@ -171,6 +186,78 @@ async def test_portfolio_viewer_membership_included(app, client, dev_user):
         )
     res = await client.get("/api/v1/reports/portfolio")
     assert [i["key"] for i in res.json()["items"]] == ["VW"]
+
+
+async def test_portfolio_latest_schedule_baseline_variance_is_bounded_and_aggregated(
+    app, client, dev_user
+):
+    project = await create_project(client, key="BL", name="기준선 프로젝트")
+    async with app.state.sessionmaker() as session, session.begin():
+        later = WorkPackage(
+            project_id=project["id"],
+            subject="지연 작업",
+            start_date=dt.date(2026, 7, 1),
+            due_date=dt.date(2026, 7, 10),
+        )
+        removed = WorkPackage(
+            project_id=project["id"],
+            subject="삭제 작업",
+            due_date=dt.date(2026, 7, 12),
+        )
+        session.add_all([later, removed])
+        await session.flush()
+        old = ProjectScheduleBaseline(
+            project_id=project["id"],
+            name="이전 기준선",
+            captured_by_user_id=dev_user.id,
+            captured_at=dt.datetime(2026, 6, 1, tzinfo=dt.UTC),
+        )
+        latest = ProjectScheduleBaseline(
+            project_id=project["id"],
+            name="출시 기준선",
+            captured_by_user_id=dev_user.id,
+            captured_at=dt.datetime(2026, 7, 1, tzinfo=dt.UTC),
+        )
+        session.add_all([old, latest])
+        await session.flush()
+        session.add_all(
+            [
+                ProjectScheduleBaselineItem(
+                    baseline_id=latest.id,
+                    work_package_id=later.id,
+                    subject=later.subject,
+                    start_date=later.start_date,
+                    due_date=later.due_date,
+                ),
+                ProjectScheduleBaselineItem(
+                    baseline_id=latest.id,
+                    work_package_id=removed.id,
+                    subject=removed.subject,
+                    start_date=removed.start_date,
+                    due_date=removed.due_date,
+                ),
+            ]
+        )
+        later.due_date = dt.date(2026, 7, 15)
+        await session.delete(removed)
+        session.add(WorkPackage(project_id=project["id"], subject="새 작업"))
+
+    res = await client.get("/api/v1/reports/portfolio")
+    assert res.status_code == 200, res.text
+    body = res.json()
+    row = body["items"][0]
+    assert row["schedule_baseline_name"] == "출시 기준선"
+    assert row["schedule_baseline_captured_at"] == "2026-07-01T00:00:00Z"
+    assert row["schedule_baseline_snapshot_count"] == 2
+    assert row["schedule_changed_count"] == 3  # later + removed + added
+    assert row["schedule_risk_count"] == 2  # later + removed
+    totals = body["totals"]
+    assert (
+        totals["schedule_baseline_projects"],
+        totals["schedule_changed_projects"],
+        totals["schedule_at_risk_projects"],
+        totals["schedule_risk_items"],
+    ) == (1, 1, 1, 2)
 
 
 async def test_portfolio_csv_matches_json_and_headers(app, client, dev_user):

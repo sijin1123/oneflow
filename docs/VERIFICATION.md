@@ -2754,3 +2754,14 @@ Chromium typed mock fixture에서 1440x960과 390x844 viewport를 사용했다. 
 - **픽셀 실사**: `1448x1086` Chromium의 중앙 `1220x915` 패널을 원본 크기로 정규화했다. baseline→final MAE는 전체 `2.260→2.188`, 좌측 `1.231→1.231`, 인증 `3.504→3.344`, 브랜드 `1.284→1.284`, 제목 `9.571→6.652`, 비밀번호 행 `5.018→4.950`, 구분선 `4.440→3.782`다. 실제 인앱 Browser `1455x1259`, DPR 2 캡처도 같은 서버에서 확보했다.
 - **기능/API 반영**: dev/OIDC, validation, password visibility, assistance request, locale, policy dialog, safe-next, loading/error/disabled와 reduced-motion을 유지했다. 신규 API, DB/schema, migration, permission, environment, dependency 또는 Settings UI 변경은 없다.
 - **검증**: 로그인 기능·지원·오류 복구·모바일·8개 viewport·원본/모션 focused E2E 6 PASS, 최종 증적 재촬영 2 PASS, typecheck PASS, lint PASS(기존 Fast Refresh 경고 4건), production build PASS(기존 chunk-size 경고), unit 107, component 8, 격리 포트 2-worker full E2E **315 PASS + opt-in visual QA 1 skip**이다. Clean-room frontend 161/backend 45, npm/pip audit 0 vulnerabilities와 diff check도 PASS했다. 증적은 `docs/screenshots/redevelopment/login-pixel-audit-ui/`에 보존한다. **이연 항목**은 없다.
+
+---
+
+# UI-157 Portfolio Schedule Baseline Analytics 검증 (2026-07-19)
+
+- **UI 변경**: 기존 Portfolio report에 최신 일정 기준선 적용률과 일정 주의 프로젝트/작업 합계를 추가했다. 프로젝트 비교는 `전체/주의/변경/미설정` 실제 필터, 최신 기준선 이름·저장일·snapshot 수, 변동/주의 상태를 제공한다. 데스크톱은 compact table, 390px 모바일은 별도 project summary list를 사용하며 프로젝트·기준선 action은 Project Overview의 실제 기준선 섹션으로 이동한다. Timeline loading/error/retry/empty도 같은 surface에서 완결했다.
+- **기능/API 반영**: `GET /api/v1/reports/portfolio`와 CSV는 반환된 최대 200개 authorized project ID만 대상으로 최신 기준선을 결정하고, snapshot/current Work Package를 PostgreSQL full outer comparison으로 배치 집계한다. `changed`는 추가·삭제·일정 변동 전체, `risk`는 지연·일정 해제·삭제만 포함한다. 응답은 기준선 metadata·snapshot/changed/risk count와 page totals를 제공하며 Work Package subject나 hidden project history는 반환하지 않는다.
+- **권한/경계**: 기존 current-user ProjectMember scope, archive toggle, deterministic project order/pagination을 유지한다. 기준선 비교 쿼리는 이미 반환이 승인된 project ID만 받고 한 aggregate row/project만 반환한다. foreign project에 실제 기준선이 있어도 row와 totals에 포함되지 않는 fixture를 검증했다. DB migration, 환경변수, dependency, permission registry와 Settings UI 변경은 없다.
+- **검증**: API portfolio/baseline/timeline/permission focused **24 PASS**, full API **824 PASS**(기존 Alembic path separator 경고 1건), Ruff/format과 OpenAPI generation/drift PASS. Web typecheck PASS, lint PASS(기존 Fast Refresh 경고 4건), production build PASS(기존 chunk-size 경고), unit **107**, component **8**, focused Portfolio desktop/mobile E2E **2 PASS**, 2-worker full E2E **315 PASS + opt-in visual QA 1 skip**다.
+- Clean-room frontend 161/backend 45, npm/pip audit 0 vulnerabilities와 diff check가 PASS했다. Chromium 증적은 `docs/screenshots/redevelopment/portfolio-schedule-baseline-ui/{desktop,mobile}.png`에 보존한다.
+- **이연 항목**: 여러 과거 기준선 사이의 cross-project trend chart는 timestamp series contract와 큰 이력 집계 비용을 별도 설계해야 하므로 후속 Portfolio analytics PR로 추적한다. 이번 최신 기준선 상태/필터/딥링크 surface에는 mock, dead control 또는 미배선 UI가 없다.
