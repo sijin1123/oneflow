@@ -2765,3 +2765,13 @@ Chromium typed mock fixture에서 1440x960과 390x844 viewport를 사용했다. 
 - **검증**: API portfolio/baseline/timeline/permission focused **24 PASS**, full API **824 PASS**(기존 Alembic path separator 경고 1건), Ruff/format과 OpenAPI generation/drift PASS. Web typecheck PASS, lint PASS(기존 Fast Refresh 경고 4건), production build PASS(기존 chunk-size 경고), unit **107**, component **8**, focused Portfolio desktop/mobile E2E **2 PASS**, 2-worker full E2E **315 PASS + opt-in visual QA 1 skip**다.
 - Clean-room frontend 161/backend 45, npm/pip audit 0 vulnerabilities와 diff check가 PASS했다. Chromium 증적은 `docs/screenshots/redevelopment/portfolio-schedule-baseline-ui/{desktop,mobile}.png`에 보존한다.
 - **이연 항목**: 여러 과거 기준선 사이의 cross-project trend chart는 timestamp series contract와 큰 이력 집계 비용을 별도 설계해야 하므로 후속 Portfolio analytics PR로 추적한다. 이번 최신 기준선 상태/필터/딥링크 surface에는 mock, dead control 또는 미배선 UI가 없다.
+
+---
+
+# UI-158 Project Schedule Baseline Trend 검증 (2026-07-19)
+
+- **UI 변경**: Project Overview의 일정 기준선 이력 위에 오래된 기준선부터 최신 기준선까지 시간순 추세를 추가했다. 각 행은 저장일·비교 작업 수·현재 일정 대비 변동/위험 수와 중첩 막대를 표시하는 실제 버튼이며, 선택하면 기존 권한 검사를 거치는 상세 기준선 selector와 편차 목록이 함께 전환된다. loading/error/retry/empty는 기존 이력 query와 공유하고 390px 모바일에서도 두 기준선 행과 상세가 가로 넘침 없이 유지된다.
+- **기능/API 반영**: 기준선 목록은 프로젝트당 최대 20개 history ID만 대상으로 snapshot/current Work Package를 한 번의 bounded aggregate로 비교해 `comparison_total`, `changed_total`, `risk_total`을 반환한다. 비교 분모는 snapshot과 이후 추가 작업의 합집합이며 `changed`는 추가·삭제·일정 변동 전체, `risk`는 지연·일정 해제·삭제만 포함한다. Work Package subject나 과거 상세 payload는 목록에 포함하지 않는다.
+- **권한/경계**: 기존 current project membership, owner-only active-project write, archived read와 기준선당 5,000개 current-item 상한을 그대로 적용한다. 추세는 각 과거 시점끼리의 복원된 상태를 주장하지 않고 모든 저장 기준선을 현재 일정과 비교한다는 설명을 화면에 명시했다. 신규 migration, environment variable, dependency, permission registry 또는 Settings UI 변경은 없다.
+- **검증**: API 기준선 focused **6 PASS**, full API **824 PASS**(기존 Alembic path separator 경고 1건), Ruff와 OpenAPI generation/drift PASS. Web typecheck PASS, lint PASS(기존 Fast Refresh 경고 4건), production build PASS(기존 chunk-size 경고), unit **107**, component **8**, focused 추세 E2E **1 PASS**, 2-worker full E2E **315 PASS + opt-in visual QA 1 skip**다.
+- Chromium 증적은 `docs/screenshots/redevelopment/project-schedule-baseline-trend-ui/{desktop,mobile}.png`에 보존한다. **이연 항목**은 여러 프로젝트의 임의 과거 기준선 범위를 서로 비교하는 organization-wide trend/report builder이며, 현재 Project Overview 추세에는 mock, dead control 또는 미배선 UI가 없다.

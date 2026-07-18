@@ -6,6 +6,7 @@ import {
   Plus,
   RotateCcw,
   Save,
+  TrendingUp,
   Trash2,
   X,
 } from 'lucide-react'
@@ -18,6 +19,7 @@ import { ApiError } from '@/lib/api'
 import { formatDateTime } from '@/lib/datetime'
 
 import {
+  type ProjectScheduleBaselineListItem,
   type ScheduleVarianceState,
   useCreateProjectScheduleBaseline,
   useDeleteProjectScheduleBaseline,
@@ -51,6 +53,75 @@ const STATE_VARIANTS: Record<
 function dateRange(start: string | null, due: string | null) {
   if (!start && !due) return '일정 없음'
   return `${start ?? '미정'} → ${due ?? '미정'}`
+}
+
+function BaselineTrend({
+  entries,
+  selectedId,
+  onSelect,
+}: {
+  entries: ProjectScheduleBaselineListItem[]
+  selectedId: string
+  onSelect: (baselineId: string) => void
+}) {
+  const chronological = [...entries].reverse()
+
+  return (
+    <section aria-label="기준선 일정 추세" className="mb-3 border-y border-of-border">
+      <div className="flex min-w-0 flex-col gap-2 bg-of-surface-raised px-3 py-2.5 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
+          <h4 className="flex items-center gap-1.5 text-xs font-semibold">
+            <TrendingUp size={13} aria-hidden="true" /> 기준선 추세
+          </h4>
+          <p className="mt-0.5 text-[10px] leading-4 text-of-muted">
+            각 저장 시점의 기준선을 현재 일정과 비교합니다. 과거 상태를 재구성한 값은 아닙니다.
+          </p>
+        </div>
+        <div className="flex shrink-0 items-center gap-3 text-[10px] text-of-muted" aria-label="추세 범례">
+          <span className="flex items-center gap-1"><span className="h-1.5 w-4 bg-of-accent" />변동</span>
+          <span className="flex items-center gap-1"><span className="h-1.5 w-4 bg-of-danger" />위험</span>
+        </div>
+      </div>
+      <div role="list" className="divide-y divide-of-border-subtle">
+        {chronological.map((entry, index) => {
+          const denominator = Math.max(1, entry.comparison_total)
+          const changedWidth = Math.min(100, (entry.changed_total / denominator) * 100)
+          const riskWidth = Math.min(100, (entry.risk_total / denominator) * 100)
+          const selected = entry.id === selectedId
+          return (
+            <div role="listitem" key={entry.id}>
+              <button
+                type="button"
+                aria-pressed={selected}
+                aria-label={`${entry.name} 기준선 선택, 변동 ${entry.changed_total}개, 위험 ${entry.risk_total}개`}
+                onClick={() => onSelect(entry.id)}
+                className={`grid w-full min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2 px-3 py-2.5 text-left transition-colors hover:bg-of-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-of-focus sm:grid-cols-[minmax(8rem,0.8fr)_minmax(12rem,1.2fr)_auto] ${selected ? 'bg-of-accent-soft/45' : ''}`}
+              >
+                <span className="min-w-0">
+                  <span className="flex min-w-0 items-center gap-1.5">
+                    <span className="truncate text-xs font-medium">{entry.name}</span>
+                    {index === chronological.length - 1 ? <Badge variant="neutral">최신</Badge> : null}
+                  </span>
+                  <span className="mt-0.5 block truncate text-[10px] tabular-nums text-of-muted">
+                    {formatDateTime(entry.captured_at)}
+                  </span>
+                </span>
+                <span className="relative col-span-2 block h-1.5 w-full min-w-0 overflow-hidden bg-of-surface-hover sm:col-span-1" aria-hidden="true">
+                  <span className="absolute inset-y-0 left-0 bg-of-accent transition-[width] duration-300 motion-reduce:transition-none" style={{ width: `${changedWidth}%` }} />
+                  <span className="absolute inset-y-0 left-0 bg-of-danger transition-[width] duration-300 motion-reduce:transition-none" style={{ width: `${riskWidth}%` }} />
+                </span>
+                <span className="row-start-1 whitespace-nowrap text-right text-[10px] tabular-nums text-of-muted sm:row-auto">
+                  <strong className="font-semibold text-of-text">{entry.changed_total}</strong> 변동
+                  {' · '}
+                  <strong className={entry.risk_total > 0 ? 'font-semibold text-of-danger' : 'font-semibold text-of-text'}>{entry.risk_total}</strong> 위험
+                </span>
+              </button>
+            </div>
+          )
+        })}
+      </div>
+    </section>
+  )
 }
 
 function mutationMessage(error: unknown, fallback: string) {
@@ -359,6 +430,12 @@ export function ProjectScheduleBaselinePanel({
           ) : null}
         </div>
       </div>
+
+      <BaselineTrend
+        entries={entries}
+        selectedId={selectedEntry?.id ?? ''}
+        onSelect={setSelectedId}
+      />
 
       {selected.isError ? (
         <div role="alert" className="flex min-h-28 flex-col items-center justify-center gap-2 border-y border-of-border px-4 text-center">

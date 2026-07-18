@@ -4,8 +4,9 @@ import uuid
 from datetime import UTC, date, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
-from sqlalchemy import delete, func, select, text
+from sqlalchemy import and_, case, delete, func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 
 from app.core.auth import get_current_user
 from app.core.authz import require_member, require_role
@@ -269,6 +270,101 @@ async def _name_exists(
     ).scalar_one_or_none() is not None
 
 
+async def _baseline_trend_counts(
+    session: AsyncSession,
+    project_id: uuid.UUID,
+    baseline_ids: list[uuid.UUID],
+) -> dict[uuid.UUID, dict[str, int]]:
+    """Compare each bounded baseline with the current project schedule in SQL."""
+    if not baseline_ids:
+        return {}
+
+    snapshot = aliased(ProjectScheduleBaselineItem)
+    current = aliased(WorkPackage)
+    added_current = aliased(WorkPackage)
+    added_snapshot = aliased(ProjectScheduleBaselineItem)
+
+    baseline_scheduled = or_(snapshot.start_date.is_not(None), snapshot.due_date.is_not(None))
+    current_scheduled = or_(current.start_date.is_not(None), current.due_date.is_not(None))
+    same_dates = and_(
+        snapshot.start_date.is_not_distinct_from(current.start_date),
+        snapshot.due_date.is_not_distinct_from(current.due_date),
+    )
+    variance_days = case(
+        (
+            and_(snapshot.due_date.is_not(None), current.due_date.is_not(None)),
+            current.due_date - snapshot.due_date,
+        ),
+        (
+            and_(snapshot.start_date.is_not(None), current.start_date.is_not(None)),
+            current.start_date - snapshot.start_date,
+        ),
+        else_=None,
+    )
+    state = case(
+        (current.id.is_(None), "removed"),
+        (same_dates, "unchanged"),
+        (and_(baseline_scheduled, ~current_scheduled), "unscheduled"),
+        (and_(~baseline_scheduled, current_scheduled), "rescheduled"),
+        (variance_days > 0, "later"),
+        (variance_days < 0, "earlier"),
+        else_="rescheduled",
+    )
+    added_count = (
+        select(func.count(added_current.id))
+        .where(
+            added_current.project_id == ProjectScheduleBaseline.project_id,
+            ~select(added_snapshot.work_package_id)
+            .where(
+                added_snapshot.baseline_id == ProjectScheduleBaseline.id,
+                added_snapshot.work_package_id == added_current.id,
+            )
+            .exists(),
+        )
+        .correlate(ProjectScheduleBaseline)
+        .scalar_subquery()
+    )
+    snapshot_count = func.count(snapshot.work_package_id)
+    snapshot_changed = func.count(snapshot.work_package_id).filter(state != "unchanged")
+    risk_count = func.count(snapshot.work_package_id).filter(
+        state.in_(("later", "unscheduled", "removed"))
+    )
+    rows = (
+        await session.execute(
+            select(
+                ProjectScheduleBaseline.id,
+                snapshot_count.label("snapshot_count"),
+                (snapshot_count + added_count).label("comparison_total"),
+                (snapshot_changed + added_count).label("changed_total"),
+                risk_count.label("risk_total"),
+            )
+            .select_from(ProjectScheduleBaseline)
+            .outerjoin(snapshot, snapshot.baseline_id == ProjectScheduleBaseline.id)
+            .outerjoin(
+                current,
+                and_(
+                    current.project_id == ProjectScheduleBaseline.project_id,
+                    current.id == snapshot.work_package_id,
+                ),
+            )
+            .where(
+                ProjectScheduleBaseline.project_id == project_id,
+                ProjectScheduleBaseline.id.in_(baseline_ids),
+            )
+            .group_by(ProjectScheduleBaseline.id, ProjectScheduleBaseline.project_id)
+        )
+    ).all()
+    return {
+        baseline_id: {
+            "total_snapshot": int(total_snapshot),
+            "comparison_total": int(comparison_total),
+            "changed_total": int(changed_total),
+            "risk_total": int(risk_total),
+        }
+        for baseline_id, total_snapshot, comparison_total, changed_total, risk_total in rows
+    }
+
+
 @router.get(
     "/projects/{project_id}/schedule-baseline",
     response_model=ProjectScheduleBaselineSummary,
@@ -317,20 +413,12 @@ async def list_project_schedule_baselines(
             )
         ).scalar_one()
     )
-    item_counts = dict(
-        (
-            await session.execute(
-                select(
-                    ProjectScheduleBaselineItem.baseline_id,
-                    func.count(ProjectScheduleBaselineItem.work_package_id),
-                )
-                .join(ProjectScheduleBaseline)
-                .where(ProjectScheduleBaseline.project_id == project_id)
-                .group_by(ProjectScheduleBaselineItem.baseline_id)
-            )
-        ).all()
-    )
     current_total = len(await _current_items(session, project_id))
+    trend_counts = await _baseline_trend_counts(
+        session,
+        project_id,
+        [baseline.id for baseline in baselines],
+    )
     return ProjectScheduleBaselineList(
         items=[
             ProjectScheduleBaselineListItem(
@@ -339,7 +427,15 @@ async def list_project_schedule_baselines(
                 version=baseline.version,
                 captured_at=baseline.captured_at,
                 captured_by_user_id=baseline.captured_by_user_id,
-                total_snapshot=item_counts.get(baseline.id, 0),
+                **trend_counts.get(
+                    baseline.id,
+                    {
+                        "total_snapshot": 0,
+                        "comparison_total": current_total,
+                        "changed_total": current_total,
+                        "risk_total": 0,
+                    },
+                ),
             )
             for baseline in baselines
         ],

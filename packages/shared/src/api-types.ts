@@ -7656,6 +7656,10 @@ export interface components {
             captured_at: string;
             /** Captured By User Id */
             captured_by_user_id: string | null;
+            /** Changed Total */
+            changed_total: number;
+            /** Comparison Total */
+            comparison_total: number;
             /**
              * Id
              * Format: uuid
@@ -7663,6 +7667,8 @@ export interface components {
             id: string;
             /** Name */
             name: string;
+            /** Risk Total */
+            risk_total: number;
             /** Total Snapshot */
             total_snapshot: number;
             /** Version */

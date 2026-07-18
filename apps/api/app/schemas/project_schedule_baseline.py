@@ -68,6 +68,9 @@ class ProjectScheduleBaselineSummary(BaseModel):
 
 class ProjectScheduleBaselineListItem(ProjectScheduleBaselineRead):
     total_snapshot: int
+    comparison_total: int
+    changed_total: int
+    risk_total: int
 
 
 class ProjectScheduleBaselineList(BaseModel):
