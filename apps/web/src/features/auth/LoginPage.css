@@ -189,9 +189,10 @@
   border-color: #d95858;
 }
 .of-login-input:disabled {
-  border-color: #e4e8f1;
-  background: #f7f8fb;
-  color: #8c95a8;
+  border-color: #dfe4ed;
+  background: #fff;
+  color: #74819a;
+  opacity: 1;
 }
 
 .of-login-password-toggle {
@@ -923,6 +924,7 @@
 
 .of-login-page {
   container-type: size;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   width: min(1220px, calc(100vw - 48px));
   height: auto;
   min-height: 0;
@@ -968,8 +970,8 @@
 
 .of-login-origin-route-accent path {
   fill: none;
-  stroke: rgb(255 255 255 / 0.88);
-  stroke-width: 4;
+  stroke: rgb(255 255 255 / 0.62);
+  stroke-width: 2.6;
   stroke-linecap: round;
   stroke-dasharray: 24 360;
   filter: drop-shadow(0 0 4px rgb(93 112 245 / 0.2));
@@ -990,11 +992,11 @@
 
 .of-login-brand-reference img {
   position: absolute;
-  top: -142.858%;
-  left: -492.683%;
-  width: 706.342%;
+  top: -142.64%;
+  left: -493.23%;
+  width: 706.39%;
   max-width: none;
-  height: 1551.429%;
+  height: 1551.64%;
   object-fit: fill;
 }
 
@@ -1021,10 +1023,10 @@
   border-radius: clamp(15px, 1.31cqw, 19px);
   padding: clamp(19px, 1.84cqw, 23px) clamp(28px, 3.2cqw, 39px)
     clamp(20px, 2.55cqw, 31px);
-  background: rgb(255 255 255 / 0.94);
+  background: rgb(254 254 254 / 0.98);
   box-shadow:
-    0 20px 55px rgb(54 73 125 / 0.11),
-    0 2px 9px rgb(54 73 125 / 0.04);
+    0 18px 50px rgb(54 73 125 / 0.03),
+    0 2px 9px rgb(54 73 125 / 0.018);
   backdrop-filter: blur(10px);
   animation: of-login-auth-enter 420ms 50ms ease-out both;
   scrollbar-width: thin;
@@ -1036,11 +1038,12 @@
 }
 
 .of-login-heading {
-  margin: clamp(17px, 1.76cqw, 22px) 0 clamp(22px, 2.38cqw, 29px);
+  margin: clamp(13px, 1.23cqw, 15px) 0 clamp(28px, 2.87cqw, 35px);
 }
 
 .of-login-heading h2 {
-  font-size: clamp(23px, 2.21cqw, 27px);
+  font-size: clamp(22px, 2.12cqw, 26px);
+  font-weight: 720;
   line-height: 1.18;
 }
 
@@ -1078,9 +1081,10 @@
 .of-login-input {
   height: clamp(42px, 3.73cqw, 46px);
   padding-left: clamp(37px, 3.45cqw, 42px);
-  border-color: #d8deea;
+  border-color: #dfe4ed;
   border-radius: clamp(7px, 0.69cqw, 9px);
   font-size: clamp(11px, 1.05cqw, 13px);
+  font-weight: 400;
   box-shadow: 0 4px 12px rgb(48 64 111 / 0.035);
 }
 
@@ -1100,14 +1104,21 @@
 }
 
 .of-login-checkbox > span {
-  width: clamp(15px, 1.45cqw, 18px);
-  height: clamp(15px, 1.45cqw, 18px);
+  width: clamp(15px, 1.31cqw, 16px);
+  height: clamp(15px, 1.31cqw, 16px);
+  border-radius: 2px;
 }
 
 .of-login-submit {
   min-height: clamp(42px, 3.59cqw, 44px);
   border-radius: clamp(7px, 0.69cqw, 9px);
+  background: #5964f2;
+  box-shadow: 0 8px 18px rgb(83 103 245 / 0.12);
   font-size: clamp(11px, 1.04cqw, 13px);
+}
+
+.of-login-submit:hover {
+  background: #505ce8;
 }
 
 .of-login-divider {
@@ -1121,13 +1132,35 @@
 }
 
 .of-login-provider-button {
+  display: flex;
   min-height: clamp(40px, 3.59cqw, 44px);
+  align-items: center;
+  justify-content: center;
+  gap: clamp(9px, 0.9cqw, 11px);
+  padding-right: 29px;
+  padding-left: 13px;
+  border-color: #dfe3ec;
   border-radius: clamp(7px, 0.69cqw, 9px);
   font-size: clamp(10.5px, 1.04cqw, 12.5px);
 }
 
+.of-login-provider-button::after {
+  position: absolute;
+  right: 13px;
+}
+
+.of-login-google {
+  width: 18px;
+  height: 18px;
+  flex: none;
+  background: none;
+  color: inherit;
+  font-size: initial;
+  font-weight: normal;
+}
+
 .of-login-create {
-  margin-top: clamp(13px, 1.64cqw, 20px);
+  margin-top: 5px;
   font-size: clamp(9.5px, 0.97cqw, 11.5px);
 }
 
@@ -1137,7 +1170,7 @@
 
 .of-login-footer {
   position: absolute;
-  bottom: 2.8%;
+  bottom: 4.3%;
   left: 9.15%;
   width: 79.73%;
   min-height: clamp(30px, 2.75cqw, 34px);
@@ -1240,7 +1273,8 @@
 @media (max-width: 880px) {
   .of-login-canvas {
     display: block;
-    min-height: 100dvh;
+    height: 100dvh;
+    min-height: 0;
     overflow-x: hidden;
     overflow-y: auto;
     padding: 0;
@@ -1253,6 +1287,7 @@
     height: auto;
     min-height: 100dvh;
     aspect-ratio: auto;
+    overflow: visible;
     border-radius: 0;
     box-shadow: none;
   }

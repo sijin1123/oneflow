@@ -65,7 +65,7 @@ const copy = {
     microsoft: 'Continue with Microsoft',
     sso: 'Continue with SSO',
     newTo: 'New to Oneflow?',
-    request: 'Request access',
+    request: 'Create account',
     terms: 'Terms',
     privacy: 'Privacy',
     security: 'Security',
@@ -111,7 +111,7 @@ const copy = {
     microsoft: 'Microsoft로 계속',
     sso: '회사 SSO로 계속',
     newTo: 'Oneflow가 처음인가요?',
-    request: '접근 요청',
+    request: '계정 만들기',
     terms: '이용약관',
     privacy: '개인정보',
     security: '보안',
@@ -176,7 +176,16 @@ function StoryPanel() {
 }
 
 function ProviderGlyph({ provider }: { provider: OidcProvider }) {
-  if (provider === 'google') return <span className="of-login-google" aria-hidden="true">G</span>
+  if (provider === 'google') {
+    return (
+      <svg className="of-login-google" viewBox="0 0 18 18" aria-hidden="true">
+        <path fill="#4285f4" d="M17.64 9.205c0-.638-.057-1.252-.164-1.841H9v3.482h4.844a4.14 4.14 0 0 1-1.797 2.716v2.259h2.909c1.703-1.568 2.684-3.88 2.684-6.616Z" />
+        <path fill="#34a853" d="M9 18c2.43 0 4.468-.806 5.956-2.179l-2.909-2.259c-.806.54-1.835.859-3.047.859-2.344 0-4.328-1.585-5.037-3.714H.956v2.332A9 9 0 0 0 9 18Z" />
+        <path fill="#fbbc05" d="M3.963 10.707A5.41 5.41 0 0 1 3.682 9c0-.592.102-1.167.281-1.707V4.961H.956A9 9 0 0 0 0 9c0 1.452.347 2.827.956 4.039l3.007-2.332Z" />
+        <path fill="#ea4335" d="M9 3.579c1.321 0 2.507.454 3.44 1.345l2.582-2.582C13.464.891 11.426 0 9 0A9 9 0 0 0 .956 4.961l3.007 2.332C4.672 5.164 6.656 3.579 9 3.579Z" />
+      </svg>
+    )
+  }
   if (provider === 'microsoft') return <span className="of-login-microsoft" aria-hidden="true"><i /><i /><i /><i /></span>
   return <Building2 aria-hidden="true" />
 }
@@ -500,7 +509,7 @@ export function LoginPage() {
                   autoComplete="current-password"
                   value={password}
                   onChange={(event) => { setPassword(event.target.value); setValidationError(null); login.reset() }}
-                  placeholder={authMode === 'oidc' ? text.passwordProvider : passwordRequired ? text.passwordPlaceholder : text.passwordNotRequired}
+                  placeholder={authMode === 'oidc' ? text.passwordProvider : text.passwordPlaceholder}
                   disabled={!formEnabled || !passwordRequired || login.isPending}
                   aria-invalid={Boolean(errorText && passwordRequired && !password)}
                 />
