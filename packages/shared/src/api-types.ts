@@ -918,6 +918,23 @@ export interface paths {
         patch: operations["update_initiative_api_v1_initiatives__initiative_id__patch"];
         trace?: never;
     };
+    "/api/v1/initiatives/{initiative_id}/activities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Initiative Activities */
+        get: operations["list_initiative_activities_api_v1_initiatives__initiative_id__activities_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/initiatives/{initiative_id}/labels": {
         parameters: {
             query?: never;
@@ -5363,6 +5380,34 @@ export interface components {
         HTTPValidationError: {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
+        };
+        /** InitiativeActivityList */
+        InitiativeActivityList: {
+            /** Items */
+            items: components["schemas"]["InitiativeActivityRead"][];
+            /** Total */
+            total: number;
+        };
+        /** InitiativeActivityRead */
+        InitiativeActivityRead: {
+            /** Actor Id */
+            actor_id: string | null;
+            /** Actor Name */
+            actor_name: string | null;
+            /** Changed Fields */
+            changed_fields: string[];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Kind */
+            kind: string;
         };
         /** InitiativeConnect */
         InitiativeConnect: {
@@ -11792,6 +11837,44 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["InitiativeRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_initiative_activities_api_v1_initiatives__initiative_id__activities_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                initiative_id: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InitiativeActivityList"];
                 };
             };
             /** @description Validation Error */

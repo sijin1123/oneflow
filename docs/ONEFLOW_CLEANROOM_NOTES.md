@@ -421,3 +421,9 @@ Plane/OpenProject source, API, database schema, package, asset, CSS, DOM hierarc
 이번 보정의 유일한 시각 기준은 사용자가 직접 제공하고 OneFlow 제품 기준으로 승인한 `docs/oneflow-login-origin.png`다. 같은 바이트를 런타임 자산으로 사용해 수채화 배경과 OneFlow 브랜드 lockup을 보존하고, 인증 영역은 기존 OneFlow `auth/config`, dev/OIDC 로그인, assistance request, locale, focus, validation과 safe-next 계약을 수행하는 semantic DOM으로 유지했다. 따라서 UI-110F 당시의 “비교 PNG는 런타임에 사용하지 않는다”는 과거 상태는 UI-151부터 대체된다.
 
 Plane/OpenProject source, package, asset, logo, CSS, DOM, wording 또는 branding은 입력·복사하지 않았다. 기준 자산과 런타임 자산의 SHA-256은 모두 `62fafe9e44df9d189e8fe2f38fc25147d11b8459569be13ee0424ba06c0c4c76`이며, 신규 API, DB/schema, migration, permission, environment, dependency 또는 Settings UI 변경은 없다. — attested-user-owned-oneflow-asset
+
+## UI-150 Initiative Activity Detail
+
+`docs/plane-poc-reverse-spec/`에서 사용한 입력은 상세 surface가 실제 변경 이력을 actor·요약·시각과 함께 newest-first로 보여주고 추가 이력을 단계적으로 불러온다는 제품 행동뿐이다. OneFlow 구현은 자체 Initiative 모델, 현행 Initiative visibility resolver, FastAPI/SQLAlchemy transaction, React Query infinite query와 기존 detail drawer primitives로 독립 설계했다.
+
+활동 row는 닫힌 event kind와 변경된 field 이름만 저장한다. 연결 프로젝트·작업의 이름, ID, 이전/새 값은 기록하지 않아 현재 권한을 우회하는 과거 payload가 생기지 않는다. 읽을 때마다 현재 Initiative visibility를 다시 적용하며 actor 삭제는 nullable FK로 보존한다. Plane/OpenProject source, API, schema, package, asset, CSS, DOM, wording, icons 또는 branding은 복사하지 않았다. — attested-independent-derivation
