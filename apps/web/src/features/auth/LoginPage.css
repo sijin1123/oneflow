@@ -220,10 +220,31 @@
   outline-offset: -2px;
 }
 .of-login-password-toggle:disabled {
-  opacity: 0.4;
+  opacity: 1;
 }
 .of-login-password-toggle svg {
   width: 18px;
+}
+
+.of-login-password-hidden-icon {
+  position: relative;
+  display: grid;
+  width: 18px;
+  height: 18px;
+  place-items: center;
+}
+
+.of-login-password-hidden-icon::after {
+  position: absolute;
+  top: 9px;
+  left: 9px;
+  width: 7px;
+  height: 1.5px;
+  border-radius: 999px;
+  background: currentcolor;
+  content: "";
+  transform: rotate(45deg);
+  transform-origin: left center;
 }
 
 .of-login-form-options {
@@ -1040,6 +1061,7 @@
 
 .of-login-heading {
   margin: clamp(15px, 1.39cqw, 17px) 0 clamp(28px, 2.87cqw, 35px);
+  transform: translateY(-1px);
 }
 
 .of-login-heading h2 {
@@ -1134,6 +1156,7 @@
 .of-login-divider {
   margin: clamp(6px, 0.74cqw, 9px) 0 0;
   font-size: clamp(10px, 0.9cqw, 11px);
+  transform: translateY(-1px);
 }
 
 .of-login-providers {
