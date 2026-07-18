@@ -2,7 +2,7 @@ import uuid
 from datetime import date, datetime
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 ScheduleVarianceState = Literal[
     "unchanged",
@@ -19,8 +19,21 @@ class ProjectScheduleBaselineMutation(BaseModel):
     expected_version: int | None = Field(default=None, ge=0)
 
 
+class ProjectScheduleBaselineCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=80)
+
+    @field_validator("name")
+    @classmethod
+    def normalize_name(cls, value: str) -> str:
+        normalized = " ".join(value.split())
+        if not normalized:
+            raise ValueError("baseline name must not be blank")
+        return normalized
+
+
 class ProjectScheduleBaselineRead(BaseModel):
     id: uuid.UUID
+    name: str
     version: int
     captured_at: datetime
     captured_by_user_id: uuid.UUID | None
@@ -51,3 +64,14 @@ class ProjectScheduleBaselineSummary(BaseModel):
     changed_total: int
     items: list[ProjectScheduleVarianceItem]
     items_truncated: bool
+
+
+class ProjectScheduleBaselineListItem(ProjectScheduleBaselineRead):
+    total_snapshot: int
+
+
+class ProjectScheduleBaselineList(BaseModel):
+    items: list[ProjectScheduleBaselineListItem]
+    total: int
+    current_total: int
+    limit: int

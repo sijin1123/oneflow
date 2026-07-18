@@ -2709,6 +2709,18 @@ Chromium typed mock fixture에서 1440x960과 390x844 viewport를 사용했다. 
 
 ---
 
+# UI-156 Project Schedule Baseline History 검증 (2026-07-19)
+
+- **UI 변경**: Project Overview의 단일 교체형 기준선 표면을 이름 있는 이력 selector, 현재 일정 저장 dialog, 선택 기준선의 변동 요약·상세, 개별 삭제 확인과 quota/empty/loading/error/conflict/member/mobile 상태로 확장했다. 생성 성공 응답은 이력·상세 cache를 함께 갱신하고, 삭제 성공은 해당 상세를 제거한 뒤 다음 최신 기준선을 자동 선택한다. 모든 visible control은 실제 API 요청에 연결된다.
+- **기능/API 반영**: migration `0110`은 기존 snapshot을 `기준선 1`로 무손실 승격하고 project/name unique와 project/captured index를 추가한다. newest-first list, named create, selected detail과 optimistic delete를 프로젝트당 20개, 기준선당 5,000개 작업으로 제한한다. 기존 `/schedule-baseline` GET/PUT/DELETE는 최신 기준선 호환 경로로 유지한다.
+- **권한/무결성**: owner만 active project에서 생성·삭제할 수 있고 member는 목록·상세·편차를 읽는다. foreign project는 숨기고 archived write는 409다. 프로젝트 advisory lock 아래 quota·중복 이름을 검사하고 삭제 expected version 충돌은 409로 복구한다. Permission registry에도 복수 생성·삭제 경로를 `project.manage`로 등록했다.
+- **DB/API 검증**: migration 빈 DB `0109 -> 0110 -> 0109 -> 0110`과 기존 version 3/item 1개 데이터의 `0109 -> 0110 -> 0109 -> 0110` 보존 검증이 PASS했다. API Ruff/format, OpenAPI generation/drift와 기준선·권한 리포트 15 PASS다. 장시간 시작된 full API는 수정 전 import된 permission registry 때문에 coverage 1건이 실패했지만 나머지 822건은 PASS했고, 현재 파일 기준 재실행에서 해당 coverage와 새 기준선 계약이 모두 PASS했다. 기존 Alembic path separator 경고 1건만 유지한다.
+- **Web 검증**: typecheck PASS, lint PASS(기존 Fast Refresh 경고 4건), production build PASS(기존 chunk-size 경고), unit 107, component 8, focused 기준선 E2E 1 PASS다. 4-worker full E2E는 신규 시나리오 포함 309 PASS + visual manifest 1 skip이고 변경 밖 timing 6건이 실패했으나, 새 서버 single-worker 반복에서 해당 6건이 18/18 PASS해 부하성 변동으로 격리됐다.
+- Clean-room frontend 161/backend 45, npm/uv audit 0 vulnerabilities와 diff check가 PASS했다. Chromium 증적은 `docs/screenshots/redevelopment/project-schedule-baseline-history-ui/{desktop,mobile}.png`에 보존한다. Migration `0110` 적용이 필요하며 신규 환경변수, dependency, 재기동 또는 Settings UI 변경은 없다.
+- **이연 항목**: portfolio 전체에서 여러 프로젝트의 기준선 이력을 집계·분석하는 reporting surface는 별도 PR로 추적한다. 프로젝트 Overview 안의 기준선 이력 기능에는 장식용 control이나 내부 미배선 이연이 없다.
+
+---
+
 # UI-152 Document Activity Tabs 검증 (2026-07-18)
 
 - **UI 변경**: Document 상세의 기존 본문 앵커/일반 코멘트 기능을 유지하면서 `댓글`/`활동` 탭을 추가했다. 활동은 actor, 안전한 사건 요약, 변경 필드 badge와 시각을 최신순으로 표시하며 loading skeleton, initial error/retry, empty, next-page error/retry, load-more와 390px 모바일 no-overflow 상태를 실제 API에 연결한다.

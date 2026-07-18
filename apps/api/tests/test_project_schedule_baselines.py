@@ -109,6 +109,7 @@ async def test_capture_refresh_delete_and_optimistic_version(client):
     )
     assert created.status_code == 200
     assert created.json()["baseline"]["version"] == 0
+    assert created.json()["baseline"]["name"] == "기준선 1"
 
     refreshed = await client.put(
         f"/api/v1/projects/{project_id}/schedule-baseline",
@@ -138,6 +139,98 @@ async def test_capture_refresh_delete_and_optimistic_version(client):
     ] is None
 
 
+async def test_named_history_lists_compares_and_deletes_independent_snapshots(client):
+    project = await create_project(client)
+    project_id = project["id"]
+    item = await create_wp(
+        client,
+        project_id,
+        "릴리스 준비",
+        start_date="2026-07-01",
+        due_date="2026-07-10",
+    )
+
+    first = await client.post(
+        f"/api/v1/projects/{project_id}/schedule-baselines",
+        json={"name": "착수 기준"},
+    )
+    assert first.status_code == 201, first.text
+    assert first.json()["baseline"]["name"] == "착수 기준"
+    first_id = first.json()["baseline"]["id"]
+
+    item = await _patch_dates(client, item, due_date="2026-07-13")
+    second = await client.post(
+        f"/api/v1/projects/{project_id}/schedule-baselines",
+        json={"name": "Release 기준"},
+    )
+    assert second.status_code == 201, second.text
+    second_id = second.json()["baseline"]["id"]
+    assert second_id != first_id
+
+    item = await _patch_dates(client, item, due_date="2026-07-15")
+    history = await client.get(f"/api/v1/projects/{project_id}/schedule-baselines")
+    assert history.status_code == 200, history.text
+    assert history.json()["total"] == 2
+    assert history.json()["current_total"] == 1
+    assert history.json()["limit"] == 20
+    assert [entry["name"] for entry in history.json()["items"]] == [
+        "Release 기준",
+        "착수 기준",
+    ]
+    assert [entry["total_snapshot"] for entry in history.json()["items"]] == [1, 1]
+
+    first_detail = await client.get(f"/api/v1/projects/{project_id}/schedule-baselines/{first_id}")
+    assert first_detail.status_code == 200, first_detail.text
+    assert first_detail.json()["items"][0]["variance_days"] == 5
+    second_detail = await client.get(
+        f"/api/v1/projects/{project_id}/schedule-baselines/{second_id}"
+    )
+    assert second_detail.json()["items"][0]["variance_days"] == 2
+
+    duplicate = await client.post(
+        f"/api/v1/projects/{project_id}/schedule-baselines",
+        json={"name": "  release   기준  "},
+    )
+    assert duplicate.status_code == 409
+    assert duplicate.json()["detail"] == "schedule baseline name already exists"
+
+    stale_delete = await client.delete(
+        f"/api/v1/projects/{project_id}/schedule-baselines/{first_id}",
+        params={"expected_version": 1},
+    )
+    assert stale_delete.status_code == 409
+
+    deleted = await client.delete(
+        f"/api/v1/projects/{project_id}/schedule-baselines/{first_id}",
+        params={"expected_version": 0},
+    )
+    assert deleted.status_code == 204
+    assert (
+        await client.get(f"/api/v1/projects/{project_id}/schedule-baselines/{first_id}")
+    ).status_code == 404
+    assert (
+        await client.get(f"/api/v1/projects/{project_id}/schedule-baselines/{second_id}")
+    ).status_code == 200
+
+
+async def test_history_member_read_owner_write_and_bounded_count(
+    client, member_project, monkeypatch
+):
+    project_id = member_project["project_id"]
+    root = f"/api/v1/projects/{project_id}/schedule-baselines"
+    assert (await client.get(root)).status_code == 200
+    assert (await client.post(root, json={"name": "멤버 기준"})).status_code == 403
+
+    project = await create_project(client)
+    own_root = f"/api/v1/projects/{project['id']}/schedule-baselines"
+    created = await client.post(own_root, json={"name": "첫 기준"})
+    assert created.status_code == 201
+    monkeypatch.setattr(baseline_api, "BASELINE_HISTORY_LIMIT", 1)
+    bounded = await client.post(own_root, json={"name": "둘째 기준"})
+    assert bounded.status_code == 409
+    assert "at most 1 entries" in bounded.json()["detail"]
+
+
 async def test_member_read_owner_write_foreign_hiding_and_archive_guard(
     client, member_project, foreign_project
 ):
@@ -155,6 +248,12 @@ async def test_member_read_owner_write_foreign_hiding_and_archive_guard(
     archived_write = await client.put(own_url, json={"expected_version": None})
     assert archived_write.status_code == 409
     assert archived_write.json()["detail"] == "project is archived"
+    archived_history_write = await client.post(
+        f"/api/v1/projects/{project['id']}/schedule-baselines",
+        json={"name": "보관 후 기준"},
+    )
+    assert archived_history_write.status_code == 409
+    assert archived_history_write.json()["detail"] == "project is archived"
 
 
 async def test_baseline_item_limit_is_bounded(client, monkeypatch):

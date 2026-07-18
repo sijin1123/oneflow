@@ -26,7 +26,10 @@ import type {
   ProjectPhase,
   ProjectPhaseList,
 } from '../src/features/projects/types'
-import type { ProjectScheduleBaselineSummary } from '../src/features/projects/scheduleBaselineApi'
+import type {
+  ProjectScheduleBaselineList,
+  ProjectScheduleBaselineSummary,
+} from '../src/features/projects/scheduleBaselineApi'
 import type { ProjectTemplate } from '../src/features/project-templates/api'
 import type { SearchResults, SearchWorkPackageAnalytics } from '../src/features/search/api'
 import type { WorkspaceProjectPhaseDefinitions } from '../src/features/workspace-profile/api'
@@ -601,8 +604,14 @@ async function mockApi(page: Page, opts: { conflictOnPatch?: boolean } = {}) {
   await page.route('**/api/v1/projects/*/phases**', (route) =>
     route.fulfill({ json: inactiveProjectPhases }),
   )
-  await page.route('**/api/v1/projects/*/schedule-baseline**', (route) =>
-    route.fulfill({
+  await page.route('**/api/v1/projects/*/schedule-baseline**', (route) => {
+    const pathname = new URL(route.request().url()).pathname
+    if (pathname.endsWith('/schedule-baselines')) {
+      return route.fulfill({
+        json: { items: [], total: 0, current_total: 2, limit: 20 } satisfies ProjectScheduleBaselineList,
+      })
+    }
+    return route.fulfill({
       json: {
         baseline: null,
         total_snapshot: 0,
@@ -618,8 +627,8 @@ async function mockApi(page: Page, opts: { conflictOnPatch?: boolean } = {}) {
         items: [],
         items_truncated: false,
       } satisfies ProjectScheduleBaselineSummary,
-    }),
-  )
+    })
+  })
   // The Topbar bell polls this on every page — default to an empty inbox.
   await page.route('**/api/v1/me/notifications', (route) =>
     route.fulfill({ json: { items: [], total: 0, unread: 0 } }),
@@ -16491,16 +16500,22 @@ test('프로젝트 cover는 디렉터리와 Overview를 공유하고 owner가 �
   expect(cleanupCount).toBe(1)
 })
 
-test('프로젝트 일정 기준선은 저장·변동 비교·갱신·삭제까지 실제 요청으로 이어진다', async ({ page }) => {
+test('프로젝트 일정 기준선 이력은 이름 저장·선택 비교·개별 삭제까지 실제 요청으로 이어진다', async ({ page }) => {
   test.setTimeout(60_000)
   await mockApi(page)
   await mockProjectOverview(page)
 
-  const empty: ProjectScheduleBaselineSummary = {
-    baseline: null,
-    total_snapshot: 0,
+  const unchanged: ProjectScheduleBaselineSummary = {
+    baseline: {
+      id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+      name: '착수 승인',
+      version: 0,
+      captured_at: '2026-07-17T04:00:00Z',
+      captured_by_user_id: 'me-1',
+    },
+    total_snapshot: 4,
     current_total: 4,
-    unchanged: 0,
+    unchanged: 4,
     later: 0,
     earlier: 0,
     unscheduled: 0,
@@ -16510,17 +16525,6 @@ test('프로젝트 일정 기준선은 저장·변동 비교·갱신·삭제까�
     changed_total: 0,
     items: [],
     items_truncated: false,
-  }
-  const unchanged: ProjectScheduleBaselineSummary = {
-    ...empty,
-    baseline: {
-      id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
-      version: 0,
-      captured_at: '2026-07-17T04:00:00Z',
-      captured_by_user_id: 'me-1',
-    },
-    total_snapshot: 4,
-    unchanged: 4,
   }
   const changed: ProjectScheduleBaselineSummary = {
     ...unchanged,
@@ -16574,48 +16578,95 @@ test('프로젝트 일정 기준선은 저장·변동 비교·갱신·삭제까�
       },
     ],
   }
-  let current = empty
+  const second: ProjectScheduleBaselineSummary = {
+    ...unchanged,
+    baseline: {
+      id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+      name: '실행 승인',
+      version: 0,
+      captured_at: '2026-07-18T04:00:00Z',
+      captured_by_user_id: 'me-1',
+    },
+  }
+  const history: ProjectScheduleBaselineList = {
+    items: [],
+    total: 0,
+    current_total: 4,
+    limit: 20,
+  }
+  const details = new Map<string, ProjectScheduleBaselineSummary>()
   let rejectDeleteOnce = true
-  const writes: Array<{ method: string; expectedVersion: number | null }> = []
+  const writes: Array<{ method: string; name?: string; id?: string; expectedVersion?: number }> = []
 
-  await page.route(`**/api/v1/projects/${project.id}/schedule-baseline**`, async (route) => {
+  await page.route(`**/api/v1/projects/${project.id}/schedule-baselines**`, async (route) => {
     const request = route.request()
-    if (request.method() === 'PUT') {
-      const body = request.postDataJSON() as { expected_version: number | null }
-      writes.push({ method: 'PUT', expectedVersion: body.expected_version })
-      current = body.expected_version === null
-        ? unchanged
-        : {
-            ...unchanged,
-            baseline: { ...unchanged.baseline!, version: body.expected_version + 1 },
-          }
-      await route.fulfill({ json: current })
+    const url = new URL(request.url())
+    const suffix = url.pathname.split('/schedule-baselines')[1]
+    if (!suffix && request.method() === 'GET') {
+      await route.fulfill({ json: history })
       return
     }
-    if (request.method() === 'DELETE') {
+    if (!suffix && request.method() === 'POST') {
+      const body = request.postDataJSON() as { name: string }
+      const summary = history.total === 0 ? unchanged : second
+      const baseline = { ...summary.baseline!, name: body.name }
+      const created = { ...summary, baseline }
+      writes.push({ method: 'POST', name: body.name })
+      details.set(baseline.id, created)
+      history.items.unshift({ ...baseline, total_snapshot: created.total_snapshot })
+      history.total = history.items.length
+      await route.fulfill({ status: 201, json: created })
+      return
+    }
+    const baselineId = suffix?.replace(/^\//, '')
+    if (baselineId && request.method() === 'GET') {
+      const detail = details.get(baselineId)
+      await route.fulfill(detail ? { json: detail } : { status: 404, json: { detail: 'not found' } })
+      return
+    }
+    if (baselineId && request.method() === 'DELETE') {
       const expectedVersion = Number(new URL(request.url()).searchParams.get('expected_version'))
-      writes.push({ method: 'DELETE', expectedVersion })
+      writes.push({ method: 'DELETE', id: baselineId, expectedVersion })
       if (rejectDeleteOnce) {
         rejectDeleteOnce = false
+        const current = details.get(baselineId)
+        if (current?.baseline) {
+          details.set(baselineId, {
+            ...current,
+            baseline: { ...current.baseline, version: 1 },
+          })
+        }
         await route.fulfill({ status: 409, json: { detail: 'schedule baseline version conflict' } })
         return
       }
-      current = empty
+      details.delete(baselineId)
+      history.items = history.items.filter((entry) => entry.id !== baselineId)
+      history.total = history.items.length
       await route.fulfill({ status: 204, body: '' })
       return
     }
-    await route.fulfill({ json: current })
+    await route.fulfill({ status: 405, json: { detail: 'method not allowed' } })
   })
 
   await page.goto(`/projects/${project.id}/overview`)
   const panel = page.getByRole('region', { name: '프로젝트 일정 기준선' })
   await expect(panel).toContainText('현재 4개 작업')
-  await panel.getByRole('button', { name: '현재 일정 저장' }).click()
-  await expect(panel).toContainText('기준선 이후 일정 변경이 없습니다.')
-  expect(writes.at(-1)).toEqual({ method: 'PUT', expectedVersion: null })
+  await panel.getByRole('button', { name: '첫 기준선 저장' }).click()
+  const createDialog = page.getByRole('dialog', { name: '새 일정 기준선' })
+  await createDialog.getByLabel('기준선 이름').fill('착수 승인')
+  await createDialog.getByRole('button', { name: '현재 일정 저장' }).click()
+  await expect(panel).toContainText('이 기준선 이후 일정 변경이 없습니다.')
+  expect(writes.at(-1)).toEqual({ method: 'POST', name: '착수 승인' })
 
-  current = changed
+  details.set(unchanged.baseline!.id, changed)
   await page.reload()
+  await panel.getByRole('button', { name: '새 기준선' }).click()
+  await createDialog.getByLabel('기준선 이름').fill('실행 승인')
+  await createDialog.getByRole('button', { name: '현재 일정 저장' }).click()
+  await expect(panel.getByLabel('비교할 기준선')).toHaveValue(second.baseline!.id)
+  await expect(panel).toContainText('2/20')
+
+  await panel.getByLabel('비교할 기준선').selectOption({ label: '착수 승인' })
   await expect(panel).toContainText('전체 변동')
   await expect(panel).toContainText('4')
   await expect(panel.getByRole('link', { name: '배포 일정 조정' })).toHaveAttribute(
@@ -16626,32 +16677,32 @@ test('프로젝트 일정 기준선은 저장·변동 비교·갱신·삭제까�
   await expect(panel).toContainText('앞당김 -2일')
   await expect(panel).toContainText('일정 제거')
   await page.screenshot({
-    path: '../../docs/screenshots/redevelopment/project-schedule-baseline-ui/desktop.png',
+    path: '../../docs/screenshots/redevelopment/project-schedule-baseline-history-ui/desktop.png',
     fullPage: true,
   })
 
-  await panel.getByRole('button', { name: '현재 일정으로 갱신' }).click()
-  await expect(panel).toContainText('기준선 이후 일정 변경이 없습니다.')
-  expect(writes.at(-1)).toEqual({ method: 'PUT', expectedVersion: 0 })
-
-  await panel.getByRole('button', { name: '일정 기준선 삭제' }).click()
+  await panel.getByRole('button', { name: '선택한 일정 기준선 삭제' }).click()
   const dialog = page.getByRole('dialog', { name: '일정 기준선 삭제' })
-  await expect(dialog).toContainText('현재 작업 일정은 바뀌지 않습니다.')
+  await expect(dialog).toContainText('착수 승인')
+  await expect(dialog).toContainText('다른 기준선은 바뀌지 않습니다.')
   await dialog.getByRole('button', { name: '기준선 삭제' }).click()
   await expect(dialog.getByRole('alert')).toContainText('다른 변경이 먼저 저장되었습니다')
   await dialog.getByRole('button', { name: '기준선 삭제' }).click()
-  await expect(panel).toContainText('아직 저장된 기준 일정이 없습니다.')
-  expect(writes.at(-1)).toEqual({ method: 'DELETE', expectedVersion: 1 })
+  await expect(panel.getByLabel('비교할 기준선')).toHaveValue(second.baseline!.id)
+  await expect(panel).toContainText('1/20')
+  expect(writes.at(-1)).toEqual({
+    method: 'DELETE',
+    id: unchanged.baseline!.id,
+    expectedVersion: 1,
+  })
 
-  current = changed
   await page.setViewportSize({ width: 390, height: 844 })
-  await page.reload()
   const mobilePanel = page.getByRole('region', { name: '프로젝트 일정 기준선' })
-  await expect(mobilePanel).toContainText('지연 +3일')
+  await expect(mobilePanel).toContainText('실행 승인')
   await expectNoHorizontalOverflow(page)
   await mobilePanel.scrollIntoViewIfNeeded()
   await page.screenshot({
-    path: '../../docs/screenshots/redevelopment/project-schedule-baseline-ui/mobile.png',
+    path: '../../docs/screenshots/redevelopment/project-schedule-baseline-history-ui/mobile.png',
     fullPage: true,
   })
 })

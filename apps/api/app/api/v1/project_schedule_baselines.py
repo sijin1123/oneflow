@@ -1,10 +1,10 @@
-"""Bounded project schedule baseline and variance lifecycle (UI-134)."""
+"""Bounded project schedule baseline history and variance lifecycle."""
 
 import uuid
 from datetime import UTC, date, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
-from sqlalchemy import delete, select, text
+from sqlalchemy import delete, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import get_current_user
@@ -17,6 +17,9 @@ from app.models.project_schedule_baseline import (
 from app.models.user import User
 from app.models.work_package import WorkPackage
 from app.schemas.project_schedule_baseline import (
+    ProjectScheduleBaselineCreate,
+    ProjectScheduleBaselineList,
+    ProjectScheduleBaselineListItem,
     ProjectScheduleBaselineMutation,
     ProjectScheduleBaselineRead,
     ProjectScheduleBaselineSummary,
@@ -26,6 +29,7 @@ from app.schemas.project_schedule_baseline import (
 
 router = APIRouter()
 BASELINE_ITEM_LIMIT = 5_000
+BASELINE_HISTORY_LIMIT = 20
 VARIANCE_DETAIL_LIMIT = 50
 SCHEDULE_BASELINE_LOCK_CLASSID = 427022
 VARIANCE_STATES = (
@@ -182,6 +186,7 @@ async def _summary(
     return ProjectScheduleBaselineSummary(
         baseline=ProjectScheduleBaselineRead(
             id=baseline.id,
+            name=baseline.name,
             version=baseline.version,
             captured_at=baseline.captured_at,
             captured_by_user_id=baseline.captured_by_user_id,
@@ -196,15 +201,72 @@ async def _summary(
 
 
 async def _baseline_for_update(
+    session: AsyncSession,
+    project_id: uuid.UUID,
+    baseline_id: uuid.UUID | None = None,
+) -> ProjectScheduleBaseline | None:
+    query = select(ProjectScheduleBaseline).where(ProjectScheduleBaseline.project_id == project_id)
+    if baseline_id is not None:
+        query = query.where(ProjectScheduleBaseline.id == baseline_id)
+    else:
+        query = query.order_by(
+            ProjectScheduleBaseline.captured_at.desc(),
+            ProjectScheduleBaseline.id.desc(),
+        ).limit(1)
+    return (await session.execute(query.with_for_update())).scalar_one_or_none()
+
+
+async def _latest_baseline(
     session: AsyncSession, project_id: uuid.UUID
 ) -> ProjectScheduleBaseline | None:
     return (
         await session.execute(
             select(ProjectScheduleBaseline)
             .where(ProjectScheduleBaseline.project_id == project_id)
-            .with_for_update()
+            .order_by(
+                ProjectScheduleBaseline.captured_at.desc(),
+                ProjectScheduleBaseline.id.desc(),
+            )
+            .limit(1)
         )
     ).scalar_one_or_none()
+
+
+async def _capture_items(
+    session: AsyncSession,
+    project_id: uuid.UUID,
+    baseline: ProjectScheduleBaseline,
+) -> None:
+    rows = await _current_items(session, project_id)
+    session.add_all(
+        [
+            ProjectScheduleBaselineItem(
+                baseline_id=baseline.id,
+                work_package_id=row.id,
+                subject=row.subject,
+                start_date=row.start_date,
+                due_date=row.due_date,
+            )
+            for row in rows
+        ]
+    )
+
+
+async def _name_exists(
+    session: AsyncSession,
+    project_id: uuid.UUID,
+    name: str,
+) -> bool:
+    return (
+        await session.execute(
+            select(ProjectScheduleBaseline.id)
+            .where(
+                ProjectScheduleBaseline.project_id == project_id,
+                func.lower(ProjectScheduleBaseline.name) == func.lower(name),
+            )
+            .limit(1)
+        )
+    ).scalar_one_or_none() is not None
 
 
 @router.get(
@@ -217,12 +279,165 @@ async def get_project_schedule_baseline(
     user: User = Depends(get_current_user),
 ) -> ProjectScheduleBaselineSummary:
     await require_member(session, project_id, user)
+    baseline = await _latest_baseline(session, project_id)
+    return await _summary(session, project_id, baseline)
+
+
+@router.get(
+    "/projects/{project_id}/schedule-baselines",
+    response_model=ProjectScheduleBaselineList,
+)
+async def list_project_schedule_baselines(
+    project_id: uuid.UUID,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+) -> ProjectScheduleBaselineList:
+    await require_member(session, project_id, user)
+    baselines = (
+        (
+            await session.execute(
+                select(ProjectScheduleBaseline)
+                .where(ProjectScheduleBaseline.project_id == project_id)
+                .order_by(
+                    ProjectScheduleBaseline.captured_at.desc(),
+                    ProjectScheduleBaseline.id.desc(),
+                )
+                .limit(BASELINE_HISTORY_LIMIT)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    total = int(
+        (
+            await session.execute(
+                select(func.count(ProjectScheduleBaseline.id)).where(
+                    ProjectScheduleBaseline.project_id == project_id
+                )
+            )
+        ).scalar_one()
+    )
+    item_counts = dict(
+        (
+            await session.execute(
+                select(
+                    ProjectScheduleBaselineItem.baseline_id,
+                    func.count(ProjectScheduleBaselineItem.work_package_id),
+                )
+                .join(ProjectScheduleBaseline)
+                .where(ProjectScheduleBaseline.project_id == project_id)
+                .group_by(ProjectScheduleBaselineItem.baseline_id)
+            )
+        ).all()
+    )
+    current_total = len(await _current_items(session, project_id))
+    return ProjectScheduleBaselineList(
+        items=[
+            ProjectScheduleBaselineListItem(
+                id=baseline.id,
+                name=baseline.name,
+                version=baseline.version,
+                captured_at=baseline.captured_at,
+                captured_by_user_id=baseline.captured_by_user_id,
+                total_snapshot=item_counts.get(baseline.id, 0),
+            )
+            for baseline in baselines
+        ],
+        total=total,
+        current_total=current_total,
+        limit=BASELINE_HISTORY_LIMIT,
+    )
+
+
+@router.post(
+    "/projects/{project_id}/schedule-baselines",
+    response_model=ProjectScheduleBaselineSummary,
+    status_code=201,
+    responses={403: {}, 409: {}},
+)
+async def create_project_schedule_baseline(
+    project_id: uuid.UUID,
+    body: ProjectScheduleBaselineCreate,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+) -> ProjectScheduleBaselineSummary:
+    await require_role(session, project_id, user, {"owner"}, write=True)
+    await _lock_project(session, project_id)
+    count = int(
+        (
+            await session.execute(
+                select(func.count(ProjectScheduleBaseline.id)).where(
+                    ProjectScheduleBaseline.project_id == project_id
+                )
+            )
+        ).scalar_one()
+    )
+    if count >= BASELINE_HISTORY_LIMIT:
+        raise HTTPException(
+            status_code=409,
+            detail=f"schedule baseline history supports at most {BASELINE_HISTORY_LIMIT} entries",
+        )
+    if await _name_exists(session, project_id, body.name):
+        raise HTTPException(status_code=409, detail="schedule baseline name already exists")
+    baseline = ProjectScheduleBaseline(
+        project_id=project_id,
+        name=body.name,
+        captured_by_user_id=user.id,
+    )
+    session.add(baseline)
+    await session.flush()
+    await _capture_items(session, project_id, baseline)
+    await session.commit()
+    await session.refresh(baseline)
+    return await _summary(session, project_id, baseline)
+
+
+@router.get(
+    "/projects/{project_id}/schedule-baselines/{baseline_id}",
+    response_model=ProjectScheduleBaselineSummary,
+)
+async def get_project_schedule_baseline_history_entry(
+    project_id: uuid.UUID,
+    baseline_id: uuid.UUID,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+) -> ProjectScheduleBaselineSummary:
+    await require_member(session, project_id, user)
     baseline = (
         await session.execute(
-            select(ProjectScheduleBaseline).where(ProjectScheduleBaseline.project_id == project_id)
+            select(ProjectScheduleBaseline).where(
+                ProjectScheduleBaseline.project_id == project_id,
+                ProjectScheduleBaseline.id == baseline_id,
+            )
         )
     ).scalar_one_or_none()
+    if baseline is None:
+        raise HTTPException(status_code=404, detail="schedule baseline not found")
     return await _summary(session, project_id, baseline)
+
+
+@router.delete(
+    "/projects/{project_id}/schedule-baselines/{baseline_id}",
+    status_code=204,
+    responses={403: {}, 404: {}, 409: {}},
+)
+async def delete_project_schedule_baseline_history_entry(
+    project_id: uuid.UUID,
+    baseline_id: uuid.UUID,
+    expected_version: int = Query(ge=0),
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+) -> Response:
+    await require_role(session, project_id, user, {"owner"}, write=True)
+    await _lock_project(session, project_id)
+    baseline = await _baseline_for_update(session, project_id, baseline_id)
+    if baseline is None:
+        raise HTTPException(status_code=404, detail="schedule baseline not found")
+    if baseline.version != expected_version:
+        raise HTTPException(status_code=409, detail="schedule baseline version conflict")
+    await session.delete(baseline)
+    await session.commit()
+    return Response(status_code=204)
 
 
 @router.put(
@@ -244,6 +459,7 @@ async def capture_project_schedule_baseline(
             raise HTTPException(status_code=409, detail="schedule baseline does not exist")
         baseline = ProjectScheduleBaseline(
             project_id=project_id,
+            name="기준선 1",
             captured_by_user_id=user.id,
         )
         session.add(baseline)
@@ -259,19 +475,7 @@ async def capture_project_schedule_baseline(
         baseline.version += 1
         baseline.captured_by_user_id = user.id
         baseline.captured_at = datetime.now(UTC)
-    rows = await _current_items(session, project_id)
-    session.add_all(
-        [
-            ProjectScheduleBaselineItem(
-                baseline_id=baseline.id,
-                work_package_id=row.id,
-                subject=row.subject,
-                start_date=row.start_date,
-                due_date=row.due_date,
-            )
-            for row in rows
-        ]
-    )
+    await _capture_items(session, project_id, baseline)
     await session.commit()
     await session.refresh(baseline)
     return await _summary(session, project_id, baseline)
