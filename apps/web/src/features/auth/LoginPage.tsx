@@ -10,17 +10,14 @@ import {
   Loader2,
   LockKeyhole,
   Mail,
-  MoreHorizontal,
   RefreshCw,
-  Rocket,
   ShieldCheck,
   X,
 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 
-import oneflowRibbonMark from '@/assets/brand/oneflow-ribbon-mark.svg'
-import loginJourney from '@/assets/generated/oneflow-login-watercolor-compact-v3.jpg'
+import loginOriginReference from '@/assets/generated/oneflow-login-origin-reference.png'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -159,141 +156,21 @@ function safeNextLocation(next: string | null) {
 function BrandLockup({ compact = false }: { compact?: boolean }) {
   return (
     <div className="of-login-brand" data-compact={compact || undefined} aria-label="oneflow">
-      <img className="of-login-brand-mark" src={oneflowRibbonMark} alt="" aria-hidden="true" />
-      <span>
-        <strong>oneflow</strong>
-        {!compact ? <small>project management system</small> : null}
+      <span className="of-login-brand-reference" aria-hidden="true">
+        <img src={loginOriginReference} alt="" />
       </span>
     </div>
-  )
-}
-
-const kanbanColumns = [
-  { name: 'To do', count: 3, tasks: [['Design new landing page', 'UI/UX', '1']] },
-  {
-    name: 'In Progress',
-    count: 2,
-    tasks: [
-      ['Implement OAuth flow', 'Backend', '2'],
-      ['Create dashboard charts', 'Data', '3'],
-    ],
-  },
-  {
-    name: 'Review',
-    count: 2,
-    tasks: [
-      ['Review PR #124', '', '4'],
-      ['Fix mobile layout issue', 'Bug', '5'],
-    ],
-  },
-] as const
-
-function KanbanCard() {
-  return (
-    <section className="of-login-kanban" aria-label="Kanban Board preview">
-      <header>
-        <strong>Kanban Board</strong>
-        <MoreHorizontal aria-hidden="true" />
-      </header>
-      <div className="of-login-kanban-grid">
-        {kanbanColumns.map((column) => (
-          <div className="of-login-kanban-column" key={column.name}>
-            <p>
-              {column.name} <span>{column.count}</span>
-            </p>
-            {column.tasks.map(([title, tag, avatar]) => (
-              <article key={title}>
-                <strong>{title}</strong>
-                <footer>
-                  <span className="of-login-mini-avatar" data-avatar={avatar} />
-                  {tag ? <small data-tag={tag.toLowerCase()}>{tag}</small> : null}
-                </footer>
-              </article>
-            ))}
-          </div>
-        ))}
-      </div>
-      <p className="of-login-add-card">+ Add card</p>
-    </section>
-  )
-}
-
-function CalendarCard() {
-  const days = [28, 29, 30, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31]
-  return (
-    <section className="of-login-calendar" aria-label="Upcoming calendar preview">
-      <header>
-        <strong>Upcoming</strong>
-        <ChevronDown aria-hidden="true" />
-      </header>
-      <p>May 2025</p>
-      <div className="of-login-weekdays" aria-hidden="true">
-        {'MTWTFSS'.split('').map((day, index) => <span key={`${day}-${index}`}>{day}</span>)}
-      </div>
-      <div className="of-login-days" aria-hidden="true">
-        {days.map((day, index) => (
-          <span className={day === 15 && index > 6 ? 'is-selected' : index < 3 ? 'is-muted' : ''} key={`${day}-${index}`}>
-            {day}
-          </span>
-        ))}
-      </div>
-    </section>
-  )
-}
-
-function ActivityCard() {
-  return (
-    <section className="of-login-activity" aria-label="Team activity preview">
-      <strong>Team activity</strong>
-      <ul>
-        <li><span className="of-login-mini-avatar" data-avatar="1" /><p><b>Sarah updated task</b><small>Design system v2</small></p><time>2m ago</time></li>
-        <li><CheckCircle2 aria-hidden="true" /><p><b>Mike completed</b><small>API rate limiting</small></p><time>15m ago</time></li>
-        <li><span className="of-login-mini-avatar" data-avatar="5" /><p><b>Priya commented on</b><small>Project roadmap</small></p><time>1h ago</time></li>
-      </ul>
-      <p className="of-login-activity-link">View all activity <span aria-hidden="true">→</span></p>
-    </section>
-  )
-}
-
-function ProgressCard() {
-  return (
-    <section className="of-login-project-progress" aria-label="Project progress preview">
-      <strong>Project progress</strong>
-      <div className="of-login-progress-ring"><span>68%</span></div>
-      <p><span /> On track</p>
-    </section>
   )
 }
 
 function StoryPanel() {
   return (
     <section className="of-login-story" aria-labelledby="login-story-title">
-      <img className="of-login-story-art" src={loginJourney} alt="Layered hills and a river connecting team milestones" />
-      <div className="of-login-story-wash" aria-hidden="true" />
-      <div className="of-login-story-copy">
-        <BrandLockup />
-        <h1 id="login-story-title">
-          <span className="of-login-story-line">Plan. Flow. Deliver.</span>
-          <span>Together.</span>
-        </h1>
-        <p>Oneflow helps teams plan, collaborate,<br />and ship great work—seamlessly.</p>
-      </div>
-      <div className="of-login-story-widgets" aria-hidden="true">
-        <KanbanCard />
-        <CalendarCard />
-        <ActivityCard />
-        <ProgressCard />
-        <div className="of-login-collaboration">
-          <svg className="of-login-collaboration-route" viewBox="0 0 184 171" aria-hidden="true">
-            <path className="of-login-collaboration-route-base" d="M166 18C188 42 185 68 164 86C145 102 118 101 95 114C69 129 57 151 22 153" />
-            <path className="of-login-collaboration-route-flow" d="M166 18C188 42 185 68 164 86C145 102 118 101 95 114C69 129 57 151 22 153" />
-          </svg>
-          <span className="is-s">S</span>
-          <span className="is-m">M</span>
-          <p>Great work! <Rocket aria-hidden="true" /></p>
-        </div>
-        <blockquote><span className="of-login-quote-mark">∿</span><p>Oneflow keeps our projects<br />organized and our team in sync.</p><cite>— Product Team</cite></blockquote>
-      </div>
+      <h1 id="login-story-title" className="of-login-assistive">Plan. Flow. Deliver. Together.</h1>
+      <img className="of-login-story-art" src={loginOriginReference} alt="" aria-hidden="true" />
+      <svg className="of-login-origin-route-accent" viewBox="0 0 792 1086" aria-hidden="true">
+        <path d="M684 543C744 551 770 583 744 615C723 640 682 632 641 645C602 657 573 673 558 675C523 682 516 725 496 758" />
+      </svg>
     </section>
   )
 }
@@ -515,16 +392,18 @@ export function LoginPage() {
   const passwordRequired = devEnabled && Boolean(config.data?.password_required)
   const formEnabled = devEnabled && !config.isPending && !config.isError
 
-  useEffect(() => {
-    if (!formEnabled) return
-    if (document.activeElement && document.activeElement !== document.body) return
-    emailInputRef.current?.focus({ preventScroll: true })
-  }, [formEnabled])
-
   const submit = () => {
     const value = email.trim().toLowerCase()
-    if (!value) { setValidationError(text.emailRequired); return }
-    if (!EMAIL_RE.test(value)) { setValidationError(text.emailInvalid); return }
+    if (!value) {
+      setValidationError(text.emailRequired)
+      window.requestAnimationFrame(() => emailInputRef.current?.focus({ preventScroll: true }))
+      return
+    }
+    if (!EMAIL_RE.test(value)) {
+      setValidationError(text.emailInvalid)
+      window.requestAnimationFrame(() => emailInputRef.current?.focus({ preventScroll: true }))
+      return
+    }
     if (passwordRequired && !password) { setValidationError(text.passwordRequired); return }
     if (!formEnabled || login.isPending) return
     setValidationError(null)
@@ -647,7 +526,7 @@ export function LoginPage() {
 
             {oauthError ? <p className="of-login-oauth-error" role="alert"><ShieldCheck aria-hidden="true" />{oauthError}</p> : null}
             {errorText ? <p id="login-auth-error" className="of-login-error" role="alert">{errorText}</p> : null}
-            <Button type="submit" className="of-login-submit" disabled={!formEnabled || !email.trim() || (passwordRequired && !password) || login.isPending} aria-busy={login.isPending}>
+            <Button type="submit" className="of-login-submit" disabled={!formEnabled || login.isPending} aria-busy={login.isPending}>
               {login.isPending ? <Loader2 className="of-login-spinner" aria-hidden="true" /> : null}
               {login.isPending ? text.signingIn : text.signIn}
             </Button>
