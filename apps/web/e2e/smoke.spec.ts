@@ -8441,22 +8441,27 @@ test('이니셔티브에서 프로젝트를 연결하면 POST가 간다', async 
   await expect(active.getByText('플랫폼 개편')).toBeVisible()
   await expect(active.getByText('1/4 (25%)')).toBeVisible()
 
-  // Health (Pass 44): chip renders; the creator report row PATCHes the pair.
+  // Health remains scannable in the list; edits live in the detail information architecture.
   await expect(active.getByTitle('일정 검토 필요')).toHaveText('주의')
+  await active.getByRole('button', { name: '플랫폼 개편', exact: true }).click()
+  await page.getByRole('button', { name: '수명주기 편집' }).click()
   const healthPatch = page.waitForRequest(
     (r) => r.method() === 'PATCH' && r.url().includes('/initiatives/ini-1'),
   )
   await page.route('**/api/v1/initiatives/ini-1', (route) =>
-    route.fulfill({ json: { ...ini, health: 'off_track' } }),
+    route.fulfill({ json: { ...ini, health: 'off_track', health_note: '차단 발생' } }),
   )
-  await page.getByLabel('플랫폼 개편 헬스').selectOption('off_track')
-  await page.getByLabel('플랫폼 개편 상태 사유').fill('차단 발생')
-  await page.getByRole('button', { name: '상태 보고' }).click()
+  const lifecycle = page.getByRole('group', { name: '이니셔티브 수명주기 편집' })
+  await lifecycle.getByLabel('이니셔티브 헬스').selectOption('off_track')
+  await lifecycle.getByLabel('이니셔티브 상태 사유').fill('차단 발생')
+  await lifecycle.getByRole('button', { name: '헬스 저장' }).click()
   const healthSent = (await healthPatch).postDataJSON() as {
     health: string
     health_note: string
   }
   expect(healthSent).toEqual({ health: 'off_track', health_note: '차단 발생' })
+  await page.keyboard.press('Escape')
+  await expect(page.getByRole('heading', { name: '이니셔티브 상세' })).toHaveCount(0)
 
   const post = page.waitForRequest(
     (r) => r.method() === 'POST' && r.url().includes('/initiatives/ini-1/projects'),
@@ -18985,6 +18990,145 @@ test('Initiative 상세는 기본 정보와 전략 일정을 실제 저장한다
   await expect(page.getByRole('heading', { name: '2027 플랫폼 전략' })).toBeVisible()
   await expect(page.getByRole('button', { name: '기본 정보 편집' })).toHaveCount(0)
   await expect(page.getByText('2027-09-30', { exact: true })).toBeVisible()
+})
+
+test('Initiative 상세는 상태와 헬스 수명주기를 소유자 저장과 멤버 읽기로 통합한다', async ({ page }) => {
+  await mockApi(page)
+  let initiative: Initiative = {
+    id: '11111111-1111-4111-8111-111111111145',
+    name: '수명주기 전략',
+    description: '전략 상태를 상세에서 관리합니다.',
+    owner_id: 'me-1',
+    owner_name: 'Dev User',
+    owner_active: true,
+    state: 'planned',
+    start_date: '2027-01-01',
+    target_date: '2027-12-31',
+    health: 'at_risk',
+    health_note: '일정 의존성 확인 필요',
+    health_updated_by: 'me-1',
+    health_updated_at: '2026-07-18T03:00:00Z',
+    is_mine: true,
+    can_claim_ownership: false,
+    connected_project_count: 0,
+    connected_work_item_count: 0,
+    follower_count: 0,
+    is_following: false,
+    labels: [],
+    projects: [],
+    created_at: '2026-07-18T00:00:00Z',
+    updated_at: '2026-07-18T00:00:00Z',
+  }
+  let failStatePatch = true
+  let failHealthPatch = true
+
+  await page.route('**/api/v1/initiatives**', async (route) => {
+    const request = route.request()
+    const path = new URL(request.url()).pathname
+    if (path === '/api/v1/initiatives/labels') {
+      await route.fulfill({ json: { items: [], total: 0 } })
+      return
+    }
+    if (path === `/api/v1/initiatives/${initiative.id}/work-items`) {
+      await route.fulfill({ json: { items: [], total: 0, connected_work_item_count: 0 } })
+      return
+    }
+    if (path === `/api/v1/initiatives/${initiative.id}` && request.method() === 'PATCH') {
+      const input = request.postDataJSON() as Partial<Initiative>
+      if ('state' in input && failStatePatch) {
+        failStatePatch = false
+        await route.fulfill({ status: 500, json: { detail: 'state temporarily unavailable' } })
+        return
+      }
+      if ('health' in input && failHealthPatch) {
+        failHealthPatch = false
+        await route.fulfill({ status: 500, json: { detail: 'health temporarily unavailable' } })
+        return
+      }
+      initiative = {
+        ...initiative,
+        ...input,
+        health_note: input.health === null ? null : (input.health_note ?? initiative.health_note),
+        health_updated_at: 'health' in input
+          ? (input.health === null ? null : '2026-07-18T04:00:00Z')
+          : initiative.health_updated_at,
+        updated_at: '2026-07-18T04:00:00Z',
+      }
+      await route.fulfill({ json: initiative })
+      return
+    }
+    if (path === '/api/v1/initiatives') {
+      await route.fulfill({ json: { items: [initiative], total: 1 } })
+      return
+    }
+    await route.fallback()
+  })
+
+  await page.goto('/initiatives')
+  const initiativeRow = page.getByRole('listitem').filter({ hasText: '수명주기 전략' })
+  await expect(initiativeRow.locator('span').filter({ hasText: /^계획됨$/ }).first()).toBeVisible()
+  await expect(initiativeRow.locator('span').filter({ hasText: /^주의$/ }).first()).toBeVisible()
+  await expect(initiativeRow.getByLabel('수명주기 전략 상태')).toHaveCount(0)
+  await expect(initiativeRow.getByLabel('수명주기 전략 상태 사유')).toHaveCount(0)
+
+  await page.getByRole('button', { name: '수명주기 전략', exact: true }).click()
+  await expect(page.getByRole('heading', { name: '상태 및 헬스' })).toBeVisible()
+  await expect(page.getByText('일정 의존성 확인 필요', { exact: true })).toBeVisible()
+  await page.getByRole('button', { name: '수명주기 편집' }).click()
+  const lifecycle = page.getByRole('group', { name: '이니셔티브 수명주기 편집' })
+
+  await lifecycle.getByLabel('이니셔티브 실행 상태').selectOption('in_progress')
+  await lifecycle.getByRole('button', { name: '상태 저장' }).click()
+  await expect(lifecycle.getByRole('alert')).toContainText('state temporarily unavailable')
+  const statePatch = page.waitForRequest((request) =>
+    request.method() === 'PATCH' && request.url().endsWith(`/initiatives/${initiative.id}`),
+  )
+  await lifecycle.getByRole('button', { name: '상태 저장' }).click()
+  expect((await statePatch).postDataJSON()).toEqual({ state: 'in_progress' })
+  await expect(page.getByText('진행 중', { exact: true }).first()).toBeVisible()
+
+  await lifecycle.getByLabel('이니셔티브 헬스').selectOption('off_track')
+  await lifecycle.getByLabel('이니셔티브 상태 사유').fill('핵심 경로 차단 해소 필요')
+  await lifecycle.getByRole('button', { name: '헬스 저장' }).click()
+  await expect(lifecycle.getByRole('alert')).toContainText('health temporarily unavailable')
+  const healthPatch = page.waitForRequest((request) =>
+    request.method() === 'PATCH' && request.url().endsWith(`/initiatives/${initiative.id}`),
+  )
+  await lifecycle.getByRole('button', { name: '헬스 저장' }).click()
+  expect((await healthPatch).postDataJSON()).toEqual({
+    health: 'off_track',
+    health_note: '핵심 경로 차단 해소 필요',
+  })
+  await expect(page.getByText('위험', { exact: true }).first()).toBeVisible()
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/initiative-lifecycle-ui/desktop-detail.png',
+    fullPage: true,
+  })
+
+  await page.setViewportSize({ width: 390, height: 844 })
+  const clearPatch = page.waitForRequest((request) =>
+    request.method() === 'PATCH' && request.url().endsWith(`/initiatives/${initiative.id}`),
+  )
+  await lifecycle.getByRole('button', { name: '헬스 초기화' }).click()
+  expect((await clearPatch).postDataJSON()).toEqual({ health: null })
+  await lifecycle.getByLabel('이니셔티브 실행 상태').selectOption('paused')
+  await lifecycle.getByRole('button', { name: '취소' }).click()
+  await page.getByRole('button', { name: '수명주기 편집' }).click()
+  await expect(lifecycle.getByLabel('이니셔티브 실행 상태')).toHaveValue('in_progress')
+  await expect(lifecycle.getByLabel('이니셔티브 헬스')).toHaveValue('')
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/initiative-lifecycle-ui/mobile-detail.png',
+    fullPage: true,
+  })
+
+  initiative = { ...initiative, is_mine: false }
+  await page.reload()
+  await expect(page.getByRole('heading', { name: '수명주기 전략' })).toBeVisible()
+  await expect(page.getByRole('button', { name: '수명주기 편집' })).toHaveCount(0)
+  await expect(page.getByRole('heading', { name: '상태 및 헬스' })).toBeVisible()
+  await expect(page.getByText('진행 중', { exact: true }).first()).toBeVisible()
+  await expect(page.getByText('미설정', { exact: true }).first()).toBeVisible()
 })
 
 async function mockReleasesPolicy(
