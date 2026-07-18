@@ -7095,6 +7095,18 @@ export interface components {
              * Format: uuid
              */
             project_id: string;
+            /** Schedule Baseline Captured At */
+            schedule_baseline_captured_at: string | null;
+            /** Schedule Baseline Id */
+            schedule_baseline_id: string | null;
+            /** Schedule Baseline Name */
+            schedule_baseline_name: string | null;
+            /** Schedule Baseline Snapshot Count */
+            schedule_baseline_snapshot_count: number;
+            /** Schedule Changed Count */
+            schedule_changed_count: number;
+            /** Schedule Risk Count */
+            schedule_risk_count: number;
             /** Work Package Count */
             work_package_count: number;
         };
@@ -7173,6 +7185,14 @@ export interface components {
             overdue: number;
             /** Projects */
             projects: number;
+            /** Schedule At Risk Projects */
+            schedule_at_risk_projects: number;
+            /** Schedule Baseline Projects */
+            schedule_baseline_projects: number;
+            /** Schedule Changed Projects */
+            schedule_changed_projects: number;
+            /** Schedule Risk Items */
+            schedule_risk_items: number;
             /** Work Packages */
             work_packages: number;
         };

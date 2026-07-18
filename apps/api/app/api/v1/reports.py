@@ -3,17 +3,18 @@
 One fixed cross-project comparison surface for the caller's member projects
 (viewer included — a read surface). Each aggregate source is an independent
 per-project GROUP BY subquery LEFT JOINed 1:1 onto projects (R1-① — join
-multiplication is unrepresentable), and the whole page is ONE statement;
-totals are the server-side sum of the returned rows (R1-② — items and totals
-share a snapshot by construction). The CSV shares the same query function so
-the two exports cannot drift (R1-⑥)."""
+multiplication is unrepresentable). Core project rows are one statement; the
+latest schedule-baseline extension is one additional batch statement scoped
+to the authorized page (at most 200 project ids). Totals are the server-side
+sum of the materialized rows, so rows and totals cannot disagree. The CSV
+shares the same query function so the two exports cannot drift (R1-⑥)."""
 
 import csv
 import io
 import uuid
 
 from fastapi import APIRouter, Depends, Query, Response
-from sqlalchemy import func, select
+from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.csv_io import BOM, _guard_formula
@@ -25,6 +26,10 @@ from app.models.cost_entry import CostEntry
 from app.models.member import ProjectMember
 from app.models.milestone import Milestone
 from app.models.project import Project
+from app.models.project_schedule_baseline import (
+    ProjectScheduleBaseline,
+    ProjectScheduleBaselineItem,
+)
 from app.models.time_entry import TimeEntry
 from app.models.user import User
 from app.models.work_package import WorkPackage
@@ -39,6 +44,165 @@ from app.schemas.report import (
 from app.services.workspace_features import RELEASES_FEATURE, feature_enabled
 
 router = APIRouter()
+
+
+async def _portfolio_baseline_summaries(
+    session: AsyncSession,
+    project_ids: list[uuid.UUID],
+) -> dict[uuid.UUID, dict[str, object]]:
+    """Aggregate latest-baseline variance for one bounded portfolio page.
+
+    The caller supplies at most 200 already-authorized project ids. Snapshot
+    and current rows are compared in SQL and only one aggregate row per
+    project is returned; work-item subjects and hidden projects never leave
+    the database.
+    """
+    if not project_ids:
+        return {}
+
+    ranked = (
+        select(
+            ProjectScheduleBaseline.id.label("baseline_id"),
+            ProjectScheduleBaseline.project_id,
+            ProjectScheduleBaseline.name,
+            ProjectScheduleBaseline.captured_at,
+            func.row_number()
+            .over(
+                partition_by=ProjectScheduleBaseline.project_id,
+                order_by=(
+                    ProjectScheduleBaseline.captured_at.desc(),
+                    ProjectScheduleBaseline.id.desc(),
+                ),
+            )
+            .label("position"),
+        )
+        .where(ProjectScheduleBaseline.project_id.in_(project_ids))
+        .subquery()
+    )
+    latest = (
+        select(
+            ranked.c.baseline_id,
+            ranked.c.project_id,
+            ranked.c.name,
+            ranked.c.captured_at,
+        )
+        .where(ranked.c.position == 1)
+        .subquery()
+    )
+    snapshots = (
+        select(
+            latest.c.project_id,
+            ProjectScheduleBaselineItem.work_package_id.label("snapshot_id"),
+            ProjectScheduleBaselineItem.start_date.label("baseline_start"),
+            ProjectScheduleBaselineItem.due_date.label("baseline_due"),
+        )
+        .join(
+            ProjectScheduleBaselineItem,
+            ProjectScheduleBaselineItem.baseline_id == latest.c.baseline_id,
+        )
+        .subquery()
+    )
+    current = (
+        select(
+            WorkPackage.project_id,
+            WorkPackage.id.label("current_id"),
+            WorkPackage.start_date.label("current_start"),
+            WorkPackage.due_date.label("current_due"),
+        )
+        .where(WorkPackage.project_id.in_(project_ids))
+        .subquery()
+    )
+    pair_project_id = func.coalesce(snapshots.c.project_id, current.c.project_id)
+    pairs = (
+        select(
+            pair_project_id.label("project_id"),
+            snapshots.c.snapshot_id,
+            current.c.current_id,
+            snapshots.c.baseline_start,
+            snapshots.c.baseline_due,
+            current.c.current_start,
+            current.c.current_due,
+        )
+        .select_from(
+            snapshots.join(
+                current,
+                and_(
+                    snapshots.c.project_id == current.c.project_id,
+                    snapshots.c.snapshot_id == current.c.current_id,
+                ),
+                full=True,
+            )
+        )
+        .join(latest, latest.c.project_id == pair_project_id)
+        .subquery()
+    )
+    baseline_scheduled = or_(pairs.c.baseline_start.is_not(None), pairs.c.baseline_due.is_not(None))
+    current_scheduled = or_(pairs.c.current_start.is_not(None), pairs.c.current_due.is_not(None))
+    same_dates = and_(
+        pairs.c.baseline_start.is_not_distinct_from(pairs.c.current_start),
+        pairs.c.baseline_due.is_not_distinct_from(pairs.c.current_due),
+    )
+    variance_days = case(
+        (
+            and_(pairs.c.baseline_due.is_not(None), pairs.c.current_due.is_not(None)),
+            pairs.c.current_due - pairs.c.baseline_due,
+        ),
+        (
+            and_(pairs.c.baseline_start.is_not(None), pairs.c.current_start.is_not(None)),
+            pairs.c.current_start - pairs.c.baseline_start,
+        ),
+        else_=None,
+    )
+    state = case(
+        (pairs.c.snapshot_id.is_(None), "added"),
+        (pairs.c.current_id.is_(None), "removed"),
+        (same_dates, "unchanged"),
+        (and_(baseline_scheduled, ~current_scheduled), "unscheduled"),
+        (and_(~baseline_scheduled, current_scheduled), "rescheduled"),
+        (variance_days > 0, "later"),
+        (variance_days < 0, "earlier"),
+        else_="rescheduled",
+    )
+    has_pair = pairs.c.project_id.is_not(None)
+    aggregate_rows = (
+        await session.execute(
+            select(
+                latest.c.project_id,
+                latest.c.baseline_id,
+                latest.c.name,
+                latest.c.captured_at,
+                func.count().filter(has_pair, pairs.c.snapshot_id.is_not(None)),
+                func.count().filter(has_pair, state != "unchanged"),
+                func.count().filter(has_pair, state.in_(("later", "unscheduled", "removed"))),
+            )
+            .select_from(latest.outerjoin(pairs, pairs.c.project_id == latest.c.project_id))
+            .group_by(
+                latest.c.project_id,
+                latest.c.baseline_id,
+                latest.c.name,
+                latest.c.captured_at,
+            )
+        )
+    ).all()
+    return {
+        project_id: {
+            "id": baseline_id,
+            "name": name,
+            "captured_at": captured_at,
+            "snapshot_count": snapshot_count,
+            "changed_count": changed_count,
+            "risk_count": risk_count,
+        }
+        for (
+            project_id,
+            baseline_id,
+            name,
+            captured_at,
+            snapshot_count,
+            changed_count,
+            risk_count,
+        ) in aggregate_rows
+    }
 
 
 async def portfolio_query(
@@ -115,6 +279,7 @@ async def portfolio_query(
         )
     ).all()
 
+    baseline_by_project = await _portfolio_baseline_summaries(session, [row[0] for row in rows])
     items = [
         PortfolioItem(
             project_id=pid,
@@ -129,6 +294,12 @@ async def portfolio_query(
             budget=budget,
             cost_total=float(cost_total),
             hours_total=float(hours_total),
+            schedule_baseline_id=(baseline := baseline_by_project.get(pid)) and baseline["id"],
+            schedule_baseline_name=baseline and str(baseline["name"]),
+            schedule_baseline_captured_at=baseline and baseline["captured_at"],
+            schedule_baseline_snapshot_count=int(baseline["snapshot_count"]) if baseline else 0,
+            schedule_changed_count=int(baseline["changed_count"]) if baseline else 0,
+            schedule_risk_count=int(baseline["risk_count"]) if baseline else 0,
         )
         for (
             pid,
@@ -153,6 +324,10 @@ async def portfolio_query(
         budget=sum(i.budget for i in items if i.budget is not None),
         cost_total=sum(i.cost_total for i in items),
         hours_total=sum(i.hours_total for i in items),
+        schedule_baseline_projects=sum(i.schedule_baseline_id is not None for i in items),
+        schedule_changed_projects=sum(i.schedule_changed_count > 0 for i in items),
+        schedule_at_risk_projects=sum(i.schedule_risk_count > 0 for i in items),
+        schedule_risk_items=sum(i.schedule_risk_count for i in items),
     )
     return PortfolioReportRead(items=items, totals=totals, total=total)
 
@@ -195,6 +370,11 @@ async def export_portfolio_csv(
             "budget",
             "cost_total",
             "hours_total",
+            "schedule_baseline",
+            "schedule_baseline_captured_at",
+            "schedule_snapshot",
+            "schedule_changed",
+            "schedule_risk",
         ]
     )
     for i in data.items:
@@ -211,6 +391,13 @@ async def export_portfolio_csv(
                 i.budget if i.budget is not None else "",
                 i.cost_total,
                 i.hours_total,
+                _guard_formula(i.schedule_baseline_name or ""),
+                i.schedule_baseline_captured_at.isoformat()
+                if i.schedule_baseline_captured_at
+                else "",
+                i.schedule_baseline_snapshot_count,
+                i.schedule_changed_count,
+                i.schedule_risk_count,
             ]
         )
     t = data.totals
@@ -227,6 +414,11 @@ async def export_portfolio_csv(
             t.budget,
             t.cost_total,
             t.hours_total,
+            t.schedule_baseline_projects,
+            "",
+            "",
+            t.schedule_changed_projects,
+            t.schedule_risk_items,
         ]
     )
     return Response(

@@ -1,5 +1,5 @@
 import uuid
-from datetime import date
+from datetime import date, datetime
 
 from pydantic import BaseModel
 
@@ -24,6 +24,12 @@ class PortfolioItem(BaseModel):
     budget: float | None
     cost_total: float
     hours_total: float
+    schedule_baseline_id: uuid.UUID | None
+    schedule_baseline_name: str | None
+    schedule_baseline_captured_at: datetime | None
+    schedule_baseline_snapshot_count: int
+    schedule_changed_count: int
+    schedule_risk_count: int
 
 
 class PortfolioTotals(BaseModel):
@@ -38,6 +44,10 @@ class PortfolioTotals(BaseModel):
     budget: float
     cost_total: float
     hours_total: float
+    schedule_baseline_projects: int
+    schedule_changed_projects: int
+    schedule_at_risk_projects: int
+    schedule_risk_items: int
 
 
 class PortfolioReportRead(BaseModel):

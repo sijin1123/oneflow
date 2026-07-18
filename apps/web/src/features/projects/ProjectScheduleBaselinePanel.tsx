@@ -236,11 +236,22 @@ export function ProjectScheduleBaselinePanel({
     }
   }, [history.data?.items, selectedId])
 
+  useEffect(() => {
+    if (history.isPending || window.location.hash !== '#schedule-baseline') return
+    const frame = window.requestAnimationFrame(() => {
+      document.getElementById('schedule-baseline')?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'start',
+      })
+    })
+    return () => window.cancelAnimationFrame(frame)
+  }, [history.isPending])
+
   if (history.isPending) return <BaselineSkeleton />
 
   if (history.isError) {
     return (
-      <section aria-label="프로젝트 일정 기준선" className="min-w-0">
+      <section id="schedule-baseline" aria-label="프로젝트 일정 기준선" className="min-w-0 scroll-mt-24">
         <h3 className="mb-2 flex items-center gap-2 text-sm font-semibold">
           <CalendarRange size={14} /> 일정 기준선
         </h3>
@@ -284,7 +295,7 @@ export function ProjectScheduleBaselinePanel({
 
   if (entries.length === 0) {
     return (
-      <section aria-label="프로젝트 일정 기준선" className="min-w-0">
+      <section id="schedule-baseline" aria-label="프로젝트 일정 기준선" className="min-w-0 scroll-mt-24">
         <div className="mb-2 flex min-w-0 items-center justify-between gap-3">
           <h3 className="flex min-w-0 items-center gap-2 text-sm font-semibold">
             <CalendarRange size={14} className="shrink-0" /> 일정 기준선
@@ -313,7 +324,7 @@ export function ProjectScheduleBaselinePanel({
   }
 
   return (
-    <section aria-label="프로젝트 일정 기준선" className="min-w-0">
+    <section id="schedule-baseline" aria-label="프로젝트 일정 기준선" className="min-w-0 scroll-mt-24">
       <div className="mb-3 flex min-w-0 flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
           <h3 className="flex min-w-0 items-center gap-2 text-sm font-semibold">
