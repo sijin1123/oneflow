@@ -9,14 +9,19 @@
 - Reference SHA-256: `62fafe9e44df9d189e8fe2f38fc25147d11b8459569be13ee0424ba06c0c4c76`
 - Bundled 2x preservation asset SHA-256: `ee7b9b972382136e5bab7594bc2793420cbb5bda5b23ddc8c025fa4cade5e8fd`
 
-Pixel comparison after resizing the reference to the measured runtime panel:
+Pixel comparison after resizing the reference to the measured in-app Browser panel on 2026-07-18:
 
 | Region | Mean absolute error | RMSE | Max-channel <= 4 | Max-channel <= 12 |
 |---|---:|---:|---:|---:|
-| Full panel | 2.330 | 13.358 | 93.29% | 97.11% |
-| Left visual | 0.736 | 2.141 | 97.65% | 99.64% |
-| Functional auth surface | 4.259 | 19.719 | 88.01% | 94.05% |
-| Auth brand crop | 0.864 | 2.324 | 94.25% | 98.98% |
+| Full panel | 3.032 | 12.795 | 83.28% | 94.86% |
+| Left visual | 1.917 | 3.619 | 81.36% | 96.36% |
+| Functional auth surface | 4.377 | 18.585 | 85.59% | 93.05% |
+| Auth brand crop | 1.349 | 3.691 | 87.47% | 95.35% |
+
+The title alignment reduced its regional mean absolute error from `19.538` to `7.949`. The animated
+route overlay was also softened so the left route region fell from `2.638` to `2.330` while retaining
+the moving dash contract. Measurements use the visible in-app Browser at `1346x1185`, DPR `2`, with
+the runtime panel cropped at `x=63`, `y=135`, `1220x915`.
 
 The left visual and auth brand use the same approved reference pixels through a 2x preservation
 asset so DPR 2 rendering does not enlarge the original bitmap directly. The right surface remains
