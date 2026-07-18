@@ -1,16 +1,13 @@
-import { ListChecks, Plus, Tag } from 'lucide-react'
-import { useState } from 'react'
+import { ListChecks, Tag } from 'lucide-react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 
 import { EmptyState, ErrorState, ListSkeleton } from '@/components/shell/states'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { HEALTH_LABELS, HEALTH_STYLES } from '@/features/projects/types'
 import { Select } from '@/components/ui/select'
 import {
   ReportingMetricCard,
-  ReportingSection,
   ReportingSummaryGrid,
   ReportingSurface,
 } from '@/features/reports/ReportingSurface'
@@ -19,10 +16,10 @@ import {
   INITIATIVE_STATE_LABELS,
   type Initiative,
   type InitiativeState,
-  useCreateInitiative,
   useInitiativeLabels,
   useInitiatives,
 } from './api'
+import { InitiativeCreateDialog } from './InitiativeCreateDialog'
 import { InitiativeDetailDrawer } from './InitiativeDetailDrawer'
 
 const STATE_ORDER: InitiativeState[] = ['in_progress', 'planned', 'paused', 'completed', 'cancelled']
@@ -147,8 +144,6 @@ export function InitiativesPage() {
   const selectedLabelId = searchParams.get('label') ?? ''
   const initiatives = useInitiatives(selectedLabelId)
   const labels = useInitiativeLabels()
-  const create = useCreateInitiative()
-  const [name, setName] = useState('')
 
   if (initiatives.isPending) return <ListSkeleton />
   if (initiatives.isError)
@@ -173,6 +168,15 @@ export function InitiativesPage() {
       return next
     })
   }
+  const openCreated = (initiative: Initiative) => {
+    setSearchParams((previous) => {
+      const next = new URLSearchParams(previous)
+      next.delete('highlight')
+      next.delete('label')
+      next.set('initiative', initiative.id)
+      return next
+    })
+  }
   const activeCount = items.filter((i) => i.state === 'in_progress').length
   const riskCount = items.filter((i) => i.health === 'at_risk' || i.health === 'off_track').length
   const visibleProjectCount = items.reduce((sum, i) => sum + i.projects.length, 0)
@@ -192,22 +196,25 @@ export function InitiativesPage() {
             <Tag size={14} aria-hidden="true" />
             <span>라벨로 전략 범위를 좁힙니다.</span>
           </div>
-          <Select
-            aria-label="이니셔티브 라벨 필터"
-            className="h-8 min-w-0 sm:w-48"
-            value={selectedLabelId}
-            onChange={(event) => {
-              setSearchParams((previous) => {
-                const next = new URLSearchParams(previous)
-                if (event.target.value) next.set('label', event.target.value)
-                else next.delete('label')
-                return next
-              })
-            }}
-          >
-            <option value="">모든 라벨</option>
-            {labels.data.items.map((label) => <option key={label.id} value={label.id}>{label.name}</option>)}
-          </Select>
+          <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center">
+            <Select
+              aria-label="이니셔티브 라벨 필터"
+              className="h-8 min-w-0 sm:w-48"
+              value={selectedLabelId}
+              onChange={(event) => {
+                setSearchParams((previous) => {
+                  const next = new URLSearchParams(previous)
+                  if (event.target.value) next.set('label', event.target.value)
+                  else next.delete('label')
+                  return next
+                })
+              }}
+            >
+              <option value="">모든 라벨</option>
+              {labels.data.items.map((label) => <option key={label.id} value={label.id}>{label.name}</option>)}
+            </Select>
+            <InitiativeCreateDialog onCreated={openCreated} />
+          </div>
         </div>
         <ReportingSummaryGrid>
           <ReportingMetricCard label="전체" value={`${items.length}개`} detail="전략 묶음" />
@@ -225,29 +232,10 @@ export function InitiativesPage() {
           />
         </ReportingSummaryGrid>
 
-        <ReportingSection title="새 이니셔티브">
-          <div className="grid min-w-0 grid-cols-1 gap-2 rounded-of border border-of-border bg-of-surface p-3 sm:grid-cols-[minmax(0,1fr)_auto]">
-            <Input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="이니셔티브 이름"
-              aria-label="새 이니셔티브 이름"
-              className="h-8 min-w-0 text-xs"
-            />
-            <Button
-              size="sm"
-              disabled={!name.trim() || create.isPending}
-              onClick={() => create.mutate({ name: name.trim() }, { onSuccess: () => setName('') })}
-            >
-              <Plus size={13} /> 이니셔티브 추가
-            </Button>
-          </div>
-        </ReportingSection>
-
         {items.length === 0 ? (
           <EmptyState
             title={selectedLabelId ? '이 라벨의 이니셔티브가 없습니다' : '이니셔티브가 없습니다'}
-            hint={selectedLabelId ? '다른 라벨을 선택하거나 이니셔티브에 라벨을 배정하세요.' : '위에서 첫 이니셔티브를 만들어 보세요.'}
+            hint={selectedLabelId ? '다른 라벨을 선택하거나 이니셔티브에 라벨을 배정하세요.' : '상단의 새 이니셔티브 버튼에서 첫 전략 묶음을 만드세요.'}
           />
         ) : (
           <div className="space-y-5">

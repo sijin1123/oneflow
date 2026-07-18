@@ -49,6 +49,14 @@ export type Initiative = {
 
 export type InitiativeList = { items: Initiative[]; total: number }
 
+export type InitiativeCreateInput = {
+  name: string
+  description: string | null
+  state: InitiativeState
+  start_date: string | null
+  target_date: string | null
+}
+
 export type InitiativeOwnerCandidate = { user_id: string; display_name: string }
 export type InitiativeOwnerCandidateList = { items: InitiativeOwnerCandidate[]; total: number }
 
@@ -272,7 +280,7 @@ export function useUpdateInitiativeSubscription(initiativeId: string) {
 export function useCreateInitiative() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (input: { name: string }) =>
+    mutationFn: (input: InitiativeCreateInput) =>
       api<Initiative>('/api/v1/initiatives', { method: 'POST', body: JSON.stringify(input) }),
     onSuccess: () => invalidate(queryClient),
   })

@@ -8945,6 +8945,116 @@ test('모바일 이니셔티브 상세에서 고아 소유권을 claim한다', a
   })
 })
 
+test('이니셔티브 생성은 전체 전략 범위와 날짜 검증 및 실패 재시도를 보존한다', async ({ page }) => {
+  await mockApi(page)
+  const created: Initiative = {
+    id: 'ini-created',
+    name: '2027 플랫폼 전략',
+    description: '프로젝트 간 전략 목표와 성공 기준',
+    owner_id: 'me-1',
+    owner_name: 'Dev User',
+    owner_active: true,
+    state: 'in_progress',
+    start_date: '2027-04-01',
+    target_date: '2027-09-30',
+    health: null,
+    health_note: null,
+    health_updated_by: null,
+    health_updated_at: null,
+    is_mine: true,
+    can_claim_ownership: false,
+    connected_project_count: 0,
+    connected_work_item_count: 0,
+    follower_count: 0,
+    is_following: false,
+    labels: [],
+    projects: [],
+    created_at: '2026-07-18T05:00:00Z',
+    updated_at: '2026-07-18T05:00:00Z',
+  }
+  let attempts = 0
+  let items: Initiative[] = []
+  let releaseFailure: (() => void) | undefined
+  const failureGate = new Promise<void>((resolve) => { releaseFailure = resolve })
+  await page.route('**/api/v1/initiatives', async (route) => {
+    if (route.request().method() === 'POST') {
+      attempts += 1
+      if (attempts === 1) {
+        await failureGate
+        await route.fulfill({ status: 503, json: { detail: 'temporary create failure' } })
+        return
+      }
+      items = [created]
+      await route.fulfill({ status: 201, json: created })
+      return
+    }
+    await route.fulfill({ json: { items, total: items.length } })
+  })
+  await page.route('**/api/v1/initiatives/ini-created/work-items', (route) =>
+    route.fulfill({ json: { items: [], total: 0, connected_work_item_count: 0 } }),
+  )
+
+  await page.goto('/initiatives')
+  await page.getByRole('button', { name: '새 이니셔티브' }).click()
+  const dialog = page.getByRole('dialog', { name: '이니셔티브 만들기' })
+  await expect(dialog).toBeVisible()
+  await dialog.getByLabel('새 이니셔티브 이름').fill('취소할 전략')
+  await dialog.getByRole('button', { name: '취소' }).click()
+  await expect(dialog).toBeHidden()
+  await page.getByRole('button', { name: '새 이니셔티브' }).click()
+  await expect(dialog.getByLabel('새 이니셔티브 이름')).toHaveValue('')
+  await dialog.getByLabel('새 이니셔티브 이름').fill('2027 플랫폼 전략')
+  await dialog.getByLabel('새 이니셔티브 설명').fill('프로젝트 간 전략 목표와 성공 기준')
+  await dialog.getByLabel('새 이니셔티브 실행 상태').selectOption('in_progress')
+  await dialog.getByLabel('새 이니셔티브 시작일').fill('2027-10-01')
+  await dialog.getByLabel('새 이니셔티브 목표일').fill('2027-09-30')
+  await dialog.getByRole('button', { name: '만들기', exact: true }).click()
+  await expect(dialog.getByRole('alert')).toHaveText('시작일은 목표일보다 늦을 수 없습니다.')
+  expect(attempts).toBe(0)
+
+  await dialog.getByLabel('새 이니셔티브 시작일').fill('2027-04-01')
+  const failed = page.waitForResponse((response) =>
+    response.request().method() === 'POST' && response.url().endsWith('/api/v1/initiatives'),
+  )
+  await dialog.getByRole('button', { name: '만들기', exact: true }).click()
+  await expect(dialog.getByRole('button', { name: '취소' })).toBeDisabled()
+  await expect(dialog.getByRole('button', { name: '만드는 중…' })).toBeVisible()
+  releaseFailure?.()
+  expect((await failed).status()).toBe(503)
+  await expect(dialog.getByRole('alert')).toContainText('temporary create failure')
+  await expect(dialog.getByLabel('새 이니셔티브 이름')).toHaveValue('2027 플랫폼 전략')
+  await expect(dialog.getByLabel('새 이니셔티브 설명')).toHaveValue('프로젝트 간 전략 목표와 성공 기준')
+  await expect(dialog.getByLabel('새 이니셔티브 실행 상태')).toHaveValue('in_progress')
+  await expect(dialog.getByLabel('새 이니셔티브 시작일')).toHaveValue('2027-04-01')
+  await expect(dialog.getByLabel('새 이니셔티브 목표일')).toHaveValue('2027-09-30')
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/initiative-create-ui/desktop.png',
+    fullPage: true,
+  })
+
+  await page.setViewportSize({ width: 390, height: 844 })
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/initiative-create-ui/mobile.png',
+    fullPage: true,
+  })
+  const retry = page.waitForRequest((request) =>
+    request.method() === 'POST' && request.url().endsWith('/api/v1/initiatives'),
+  )
+  await dialog.getByRole('button', { name: '재시도' }).click()
+  expect((await retry).postDataJSON()).toEqual({
+    name: '2027 플랫폼 전략',
+    description: '프로젝트 간 전략 목표와 성공 기준',
+    state: 'in_progress',
+    start_date: '2027-04-01',
+    target_date: '2027-09-30',
+  })
+  await expect(dialog).toBeHidden()
+  await expect(page).toHaveURL(/initiative=ini-created/)
+  await expect(page.getByRole('heading', { name: '2027 플랫폼 전략' })).toBeVisible()
+  await expectNoHorizontalOverflow(page)
+})
+
 test('파일 업로드가 raw body POST로 나가고 다운로드 링크가 생긴다', async ({ page }) => {
   await mockApi(page)
   let uploaded = false
