@@ -26,6 +26,10 @@ const EVENT_META: Record<
   document_updated: { label: "문서 정보를 수정했습니다.", icon: PencilLine },
   document_archived: { label: "문서를 보관했습니다.", icon: Archive },
   document_restored: { label: "문서를 복원했습니다.", icon: RotateCcw },
+  document_version_restored: {
+    label: "이전 콘텐츠 버전을 복원했습니다.",
+    icon: RotateCcw,
+  },
 };
 
 const FIELD_LABELS: Record<string, string> = {
