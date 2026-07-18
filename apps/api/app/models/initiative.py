@@ -12,6 +12,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
@@ -155,6 +156,47 @@ class InitiativeSubscriber(Base):
     )
     user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class InitiativeLabel(Base):
+    """Workspace-managed classification available to every visible initiative."""
+
+    __tablename__ = "initiative_labels"
+    __table_args__ = (
+        CheckConstraint("color ~ '^#[0-9a-f]{6}$'", name="color_hex"),
+        Index("uq_initiative_labels_name_lower", text("lower(name)"), unique=True),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name: Mapped[str] = mapped_column(String(40), nullable=False)
+    color: Mapped[str] = mapped_column(String(7), nullable=False, default="#64748b")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+
+class InitiativeLabelAssignment(Base):
+    """A bounded many-to-many assignment owned through the initiative lifecycle."""
+
+    __tablename__ = "initiative_label_assignments"
+    __table_args__ = (Index("ix_initiative_label_assignments_label", "label_id"),)
+
+    initiative_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("initiatives.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    label_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("initiative_labels.id", ondelete="CASCADE"),
+        primary_key=True,
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()

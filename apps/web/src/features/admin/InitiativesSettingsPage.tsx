@@ -1,7 +1,17 @@
-import { Compass, LoaderCircle } from 'lucide-react'
+import { Compass, LoaderCircle, Pencil, Plus, Tag, Trash2, X } from 'lucide-react'
+import { useState } from 'react'
 
 import { EmptyState, ErrorState, ListSkeleton } from '@/components/shell/states'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import {
+  type InitiativeLabel,
+  useCreateInitiativeLabel,
+  useDeleteInitiativeLabel,
+  useInitiativeLabels,
+  useUpdateInitiativeLabel,
+} from '@/features/initiatives/api'
 import { SettingsFrame, SettingsSection } from '@/features/settings/SettingsShell'
 import {
   useInitiativesPolicy,
@@ -20,6 +30,13 @@ function formatUpdatedAt(value: string) {
 export function InitiativesSettingsPage() {
   const policy = useInitiativesPolicy()
   const update = useUpdateInitiativesPolicy()
+  const labels = useInitiativeLabels(policy.data?.enabled === true)
+  const createLabel = useCreateInitiativeLabel()
+  const updateLabel = useUpdateInitiativeLabel()
+  const deleteLabel = useDeleteInitiativeLabel()
+  const [name, setName] = useState('')
+  const [color, setColor] = useState('#64748b')
+  const [editing, setEditing] = useState<InitiativeLabel | null>(null)
 
   if (policy.isPending) return <ListSkeleton />
   if (policy.isError) {
@@ -98,6 +115,148 @@ export function InitiativesSettingsPage() {
                 : '이니셔티브 정책을 변경하지 못했습니다.'}
           </p>
         ) : null}
+      </SettingsSection>
+
+      <SettingsSection
+        title="라벨"
+        description="이니셔티브를 공통 분류하고 목록에서 정확히 필터링할 워크스페이스 라벨입니다. 최대 50개를 만들 수 있습니다."
+      >
+        {!data.enabled ? (
+          <EmptyState
+            title="이니셔티브가 비활성화되어 있습니다"
+            hint="기능을 켜면 기존 라벨을 유지한 채 다시 관리할 수 있습니다."
+          />
+        ) : labels.isPending ? (
+          <div className="flex items-center gap-2 py-4 text-xs text-of-muted" role="status">
+            <LoaderCircle className="animate-spin" /> 라벨 불러오는 중
+          </div>
+        ) : labels.isError ? (
+          <ErrorState error={labels.error} onRetry={() => labels.refetch()} />
+        ) : (
+          <div className="space-y-4">
+            <form
+              aria-label="이니셔티브 라벨 생성"
+              className="grid min-w-0 gap-2 sm:grid-cols-[44px_minmax(0,1fr)_auto]"
+              onSubmit={(event) => {
+                event.preventDefault()
+                if (!name.trim()) return
+                createLabel.mutate(
+                  { name: name.trim(), color },
+                  { onSuccess: () => { setName(''); setColor('#64748b') } },
+                )
+              }}
+            >
+              <input
+                type="color"
+                value={color}
+                onChange={(event) => setColor(event.target.value)}
+                className="h-8 w-11 cursor-pointer rounded-of border border-of-border bg-of-surface p-1"
+                aria-label="새 라벨 색상"
+              />
+              <Input
+                value={name}
+                onChange={(event) => setName(event.target.value)}
+                placeholder="라벨 이름"
+                maxLength={40}
+                aria-label="새 라벨 이름"
+              />
+              <Button
+                size="sm"
+                type="submit"
+                disabled={!name.trim() || createLabel.isPending || labels.data.total >= 50}
+              >
+                {createLabel.isPending ? <LoaderCircle className="animate-spin" /> : <Plus />}
+                라벨 추가
+              </Button>
+            </form>
+            {labels.data.items.length === 0 ? (
+              <p className="rounded-of border border-dashed border-of-border px-3 py-5 text-center text-xs text-of-muted">
+                아직 라벨이 없습니다.
+              </p>
+            ) : (
+              <ul className="divide-y divide-of-border-subtle rounded-of border border-of-border">
+                {labels.data.items.map((label) => {
+                  const isEditing = editing?.id === label.id
+                  return (
+                    <li key={label.id} className="flex min-w-0 flex-col gap-2 p-3 sm:flex-row sm:items-center">
+                      {isEditing ? (
+                        <>
+                          <input
+                            type="color"
+                            value={editing.color}
+                            onChange={(event) => setEditing({ ...editing, color: event.target.value })}
+                            className="h-8 w-11 cursor-pointer rounded-of border border-of-border bg-of-surface p-1"
+                            aria-label={`${label.name} 색상`}
+                          />
+                          <Input
+                            value={editing.name}
+                            onChange={(event) => setEditing({ ...editing, name: event.target.value })}
+                            maxLength={40}
+                            aria-label={`${label.name} 이름`}
+                            className="min-w-0 flex-1"
+                          />
+                          <div className="flex gap-1.5">
+                            <Button
+                              size="sm"
+                              disabled={!editing.name.trim() || updateLabel.isPending}
+                              onClick={() => updateLabel.mutate(
+                                { id: editing.id, name: editing.name.trim(), color: editing.color },
+                                { onSuccess: () => setEditing(null) },
+                              )}
+                            >
+                              {updateLabel.isPending ? <LoaderCircle className="animate-spin" /> : null}
+                              저장
+                            </Button>
+                            <Button size="sm" variant="ghost" onClick={() => setEditing(null)}>
+                              <X /> 취소
+                            </Button>
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <span
+                            className="h-3 w-3 shrink-0 rounded-full border border-black/10"
+                            style={{ backgroundColor: label.color }}
+                            aria-hidden="true"
+                          />
+                          <span className="min-w-0 flex-1 truncate text-sm">{label.name}</span>
+                          <div className="flex shrink-0 gap-1.5">
+                            <Button size="sm" variant="outline" onClick={() => { setEditing(label); updateLabel.reset() }}>
+                              <Pencil /> 수정
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="subtleDanger"
+                              disabled={deleteLabel.isPending}
+                              onClick={() => {
+                                if (window.confirm(`'${label.name}' 라벨을 삭제할까요?\n이니셔티브 배정에서도 제거됩니다.`)) {
+                                  deleteLabel.mutate(label.id)
+                                }
+                              }}
+                            >
+                              <Trash2 /> 삭제
+                            </Button>
+                          </div>
+                        </>
+                      )}
+                    </li>
+                  )
+                })}
+              </ul>
+            )}
+            <div className="flex items-center justify-between gap-2 text-[11px] text-of-muted">
+              <span className="inline-flex items-center gap-1"><Tag size={12} />{labels.data.total}/50</span>
+              <span>라벨 삭제는 이니셔티브나 프로젝트를 삭제하지 않습니다.</span>
+            </div>
+            {createLabel.isError || updateLabel.isError || deleteLabel.isError ? (
+              <p role="alert" className="text-xs text-of-danger">
+                {(createLabel.error ?? updateLabel.error ?? deleteLabel.error) instanceof Error
+                  ? (createLabel.error ?? updateLabel.error ?? deleteLabel.error as Error).message
+                  : '라벨을 변경하지 못했습니다.'}
+              </p>
+            ) : null}
+          </div>
+        )}
       </SettingsSection>
 
       <SettingsSection title="변경 이력" description="최근 정책 변경 주체와 시간을 확인합니다.">

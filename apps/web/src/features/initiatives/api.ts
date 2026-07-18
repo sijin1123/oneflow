@@ -11,6 +11,16 @@ export type InitiativeProject = {
   done_work_package_count: number
 }
 
+export type InitiativeLabel = {
+  id: string
+  name: string
+  color: string
+  created_at: string
+  updated_at: string
+}
+
+export type InitiativeLabelList = { items: InitiativeLabel[]; total: number }
+
 export type Initiative = {
   id: string
   name: string
@@ -31,6 +41,7 @@ export type Initiative = {
   connected_work_item_count: number
   follower_count: number
   is_following: boolean
+  labels: InitiativeLabel[]
   projects: InitiativeProject[]
   created_at: string
   updated_at: string
@@ -76,15 +87,74 @@ export const INITIATIVE_STATE_LABELS: Record<InitiativeState, string> = {
   cancelled: '취소됨',
 }
 
-export function useInitiatives() {
+export function useInitiatives(labelId = '') {
+  const suffix = labelId ? `?label_id=${encodeURIComponent(labelId)}` : ''
   return useQuery({
-    queryKey: ['initiatives'],
-    queryFn: () => api<InitiativeList>('/api/v1/initiatives'),
+    queryKey: ['initiatives', { labelId }],
+    queryFn: () => api<InitiativeList>(`/api/v1/initiatives${suffix}`),
+  })
+}
+
+export function useInitiativeLabels(enabled = true) {
+  return useQuery({
+    queryKey: ['initiative-labels'],
+    queryFn: () => api<InitiativeLabelList>('/api/v1/initiatives/labels'),
+    enabled,
   })
 }
 
 function invalidate(queryClient: ReturnType<typeof useQueryClient>) {
   void queryClient.invalidateQueries({ queryKey: ['initiatives'] })
+}
+
+function invalidateLabels(queryClient: ReturnType<typeof useQueryClient>) {
+  void queryClient.invalidateQueries({ queryKey: ['initiative-labels'] })
+  invalidate(queryClient)
+}
+
+export function useCreateInitiativeLabel() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (input: { name: string; color: string }) =>
+      api<InitiativeLabel>('/api/v1/initiatives/labels', {
+        method: 'POST',
+        body: JSON.stringify(input),
+      }),
+    onSuccess: () => invalidateLabels(queryClient),
+  })
+}
+
+export function useUpdateInitiativeLabel() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, ...input }: { id: string; name: string; color: string }) =>
+      api<InitiativeLabel>(`/api/v1/initiatives/labels/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify(input),
+      }),
+    onSuccess: () => invalidateLabels(queryClient),
+  })
+}
+
+export function useDeleteInitiativeLabel() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) =>
+      api<void>(`/api/v1/initiatives/labels/${id}`, { method: 'DELETE' }),
+    onSuccess: () => invalidateLabels(queryClient),
+  })
+}
+
+export function useReplaceInitiativeLabels() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, labelIds }: { id: string; labelIds: string[] }) =>
+      api<Initiative>(`/api/v1/initiatives/${id}/labels`, {
+        method: 'PUT',
+        body: JSON.stringify({ label_ids: labelIds }),
+      }),
+    onSuccess: () => invalidate(queryClient),
+  })
 }
 
 export function useInitiativeOwnerCandidates(initiativeId: string, enabled: boolean) {

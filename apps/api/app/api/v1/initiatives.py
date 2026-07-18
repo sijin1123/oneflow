@@ -1,7 +1,7 @@
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
-from sqlalchemy import and_, delete, exists, func, or_, select
+from sqlalchemy import and_, delete, exists, func, or_, select, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -11,6 +11,8 @@ from app.core.authz import require_member
 from app.db.session import get_session
 from app.models.initiative import (
     Initiative,
+    InitiativeLabel,
+    InitiativeLabelAssignment,
     InitiativeProject,
     InitiativeSubscriber,
     InitiativeWorkPackage,
@@ -22,6 +24,11 @@ from app.models.work_package import WP_CLOSED_STATUSES, WorkPackage
 from app.schemas.initiative import (
     InitiativeConnect,
     InitiativeCreate,
+    InitiativeLabelAssignmentUpdate,
+    InitiativeLabelCreate,
+    InitiativeLabelList,
+    InitiativeLabelRead,
+    InitiativeLabelUpdate,
     InitiativeList,
     InitiativeOwnerCandidateList,
     InitiativeOwnerCandidateRead,
@@ -49,6 +56,10 @@ async def _require_initiatives_enabled(
 
 router = APIRouter(dependencies=[Depends(_require_initiatives_enabled)])
 
+INITIATIVE_LABEL_LIMIT = 50
+INITIATIVE_LABEL_ASSIGNMENT_LIMIT = 8
+INITIATIVE_LABEL_LOCK_CLASSID = 427023
+
 # Visibility contract (PLAN P3-3 → PR-L): an initiative is visible if you
 # created it OR you are a member of at least one connected project. Roll-ups
 # only aggregate projects the CALLER is a member of, so a connection to a
@@ -58,6 +69,23 @@ router = APIRouter(dependencies=[Depends(_require_initiatives_enabled)])
 
 def _membership(user: User):
     return select(ProjectMember.project_id).where(ProjectMember.user_id == user.id)
+
+
+def _require_admin(user: User) -> None:
+    if not user.is_admin:
+        raise HTTPException(status_code=403, detail="workspace admin required")
+
+
+def _label_read(label: InitiativeLabel) -> InitiativeLabelRead:
+    return InitiativeLabelRead.model_validate(label, from_attributes=True)
+
+
+async def _lock_label_taxonomy(session: AsyncSession) -> None:
+    await session.execute(
+        text("SELECT pg_advisory_xact_lock(:classid, 0)").bindparams(
+            classid=INITIATIVE_LABEL_LOCK_CLASSID
+        )
+    )
 
 
 async def _visible_initiative(
@@ -300,6 +328,21 @@ async def _read_one(session: AsyncSession, ini: Initiative, user: User) -> Initi
     can_claim_ownership = False
     if not owner_active:
         can_claim_ownership = await _claimable_by(session, ini.id, user)
+    labels = (
+        (
+            await session.execute(
+                select(InitiativeLabel)
+                .join(
+                    InitiativeLabelAssignment,
+                    InitiativeLabelAssignment.label_id == InitiativeLabel.id,
+                )
+                .where(InitiativeLabelAssignment.initiative_id == ini.id)
+                .order_by(func.lower(InitiativeLabel.name).asc(), InitiativeLabel.id.asc())
+            )
+        )
+        .scalars()
+        .all()
+    )
     return InitiativeRead(
         id=ini.id,
         name=ini.name,
@@ -320,6 +363,7 @@ async def _read_one(session: AsyncSession, ini: Initiative, user: User) -> Initi
         connected_work_item_count=total_connected_work_items,
         follower_count=follower_count,
         is_following=is_following,
+        labels=[_label_read(label) for label in labels],
         projects=[
             InitiativeProjectRead(
                 project_id=pid,
@@ -336,18 +380,29 @@ async def _read_one(session: AsyncSession, ini: Initiative, user: User) -> Initi
 
 @router.get("/initiatives", response_model=InitiativeList)
 async def list_initiatives(
+    label_id: uuid.UUID | None = Query(default=None),
     session: AsyncSession = Depends(get_session),
     user: User = Depends(get_current_user),
 ) -> InitiativeList:
     visible_ids = select(InitiativeProject.initiative_id).where(
         InitiativeProject.project_id.in_(_membership(user))
     )
+    statement = select(Initiative).where(
+        or_(Initiative.owner_id == user.id, Initiative.id.in_(visible_ids))
+    )
+    if label_id is not None:
+        statement = statement.where(
+            exists(
+                select(InitiativeLabelAssignment.initiative_id).where(
+                    InitiativeLabelAssignment.initiative_id == Initiative.id,
+                    InitiativeLabelAssignment.label_id == label_id,
+                )
+            )
+        )
     rows = (
         (
             await session.execute(
-                select(Initiative)
-                .where(or_(Initiative.owner_id == user.id, Initiative.id.in_(visible_ids)))
-                .order_by(Initiative.created_at.desc(), Initiative.id.desc())
+                statement.order_by(Initiative.created_at.desc(), Initiative.id.desc())
             )
         )
         .scalars()
@@ -355,6 +410,136 @@ async def list_initiatives(
     )
     items = [await _read_one(session, ini, user) for ini in rows]
     return InitiativeList(items=items, total=len(items))
+
+
+@router.get("/initiatives/labels", response_model=InitiativeLabelList)
+async def list_initiative_labels(
+    session: AsyncSession = Depends(get_session),
+    _user: User = Depends(get_current_user),
+) -> InitiativeLabelList:
+    labels = (
+        (
+            await session.execute(
+                select(InitiativeLabel).order_by(
+                    func.lower(InitiativeLabel.name).asc(), InitiativeLabel.id.asc()
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return InitiativeLabelList(items=[_label_read(label) for label in labels], total=len(labels))
+
+
+@router.post("/initiatives/labels", response_model=InitiativeLabelRead, status_code=201)
+async def create_initiative_label(
+    body: InitiativeLabelCreate,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+) -> InitiativeLabelRead:
+    _require_admin(user)
+    await _lock_label_taxonomy(session)
+    total = await session.scalar(select(func.count()).select_from(InitiativeLabel))
+    if total >= INITIATIVE_LABEL_LIMIT:
+        raise HTTPException(
+            status_code=409,
+            detail=f"initiative labels support at most {INITIATIVE_LABEL_LIMIT} values",
+        )
+    label = InitiativeLabel(name=body.name, color=body.color)
+    session.add(label)
+    try:
+        await session.commit()
+    except IntegrityError as exc:
+        await session.rollback()
+        raise HTTPException(status_code=409, detail="initiative label name already exists") from exc
+    await session.refresh(label)
+    return _label_read(label)
+
+
+@router.patch("/initiatives/labels/{label_id}", response_model=InitiativeLabelRead)
+async def update_initiative_label(
+    label_id: uuid.UUID,
+    body: InitiativeLabelUpdate,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+) -> InitiativeLabelRead:
+    _require_admin(user)
+    label = await session.get(InitiativeLabel, label_id)
+    if label is None:
+        raise HTTPException(status_code=404, detail="not found")
+    fields = body.model_dump(exclude_unset=True)
+    if any(value is None for value in fields.values()):
+        raise HTTPException(status_code=422, detail="label fields cannot be null")
+    for key, value in fields.items():
+        setattr(label, key, value)
+    try:
+        await session.commit()
+    except IntegrityError as exc:
+        await session.rollback()
+        raise HTTPException(status_code=409, detail="initiative label name already exists") from exc
+    await session.refresh(label)
+    return _label_read(label)
+
+
+@router.delete("/initiatives/labels/{label_id}", status_code=204)
+async def delete_initiative_label(
+    label_id: uuid.UUID,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+) -> Response:
+    _require_admin(user)
+    label = await session.get(InitiativeLabel, label_id)
+    if label is None:
+        raise HTTPException(status_code=404, detail="not found")
+    await session.delete(label)
+    await session.commit()
+    return Response(status_code=204)
+
+
+@router.put("/initiatives/{initiative_id}/labels", response_model=InitiativeRead)
+async def replace_initiative_labels(
+    initiative_id: uuid.UUID,
+    body: InitiativeLabelAssignmentUpdate,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+) -> InitiativeRead:
+    ini = await _require_creator_locked(session, initiative_id, user)
+    if len(body.label_ids) > INITIATIVE_LABEL_ASSIGNMENT_LIMIT:
+        raise HTTPException(
+            status_code=422,
+            detail=f"initiative supports at most {INITIATIVE_LABEL_ASSIGNMENT_LIMIT} labels",
+        )
+    labels = (
+        (
+            await session.execute(
+                select(InitiativeLabel).where(InitiativeLabel.id.in_(body.label_ids))
+            )
+        )
+        .scalars()
+        .all()
+    )
+    if len(labels) != len(body.label_ids):
+        raise HTTPException(status_code=422, detail="label_ids contain an unknown label")
+    await session.execute(
+        delete(InitiativeLabelAssignment).where(
+            InitiativeLabelAssignment.initiative_id == initiative_id
+        )
+    )
+    session.add_all(
+        [
+            InitiativeLabelAssignment(initiative_id=initiative_id, label_id=label_id)
+            for label_id in body.label_ids
+        ]
+    )
+    await notify_initiative_subscribers(
+        session,
+        initiative_id=initiative_id,
+        actor_id=user.id,
+        kind="initiative_updated",
+    )
+    await session.commit()
+    await session.refresh(ini)
+    return await _read_one(session, ini, user)
 
 
 @router.post("/initiatives", response_model=InitiativeRead, status_code=201)

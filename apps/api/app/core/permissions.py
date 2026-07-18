@@ -342,6 +342,16 @@ ENDPOINT_ALLOWLIST: dict[str, str] = {
     "PATCH /api/v1/admin/workspace/features/initiatives": (
         "워크스페이스 admin 이니셔티브 정책 — is_admin 전용"
     ),
+    "POST /api/v1/initiatives/labels": "워크스페이스 admin 이니셔티브 라벨 생성 — is_admin 전용",
+    "PATCH /api/v1/initiatives/labels/{label_id}": (
+        "워크스페이스 admin 이니셔티브 라벨 수정 — is_admin 전용"
+    ),
+    "DELETE /api/v1/initiatives/labels/{label_id}": (
+        "워크스페이스 admin 이니셔티브 라벨 삭제 — is_admin 전용"
+    ),
+    "PUT /api/v1/initiatives/{initiative_id}/labels": (
+        "이니셔티브 소유자 전용 taxonomy 배정 — 프로젝트 역할 매트릭스 외 workspace surface"
+    ),
     "PATCH /api/v1/admin/workspace/features/releases": (
         "워크스페이스 admin 릴리스 정책 — is_admin 전용"
     ),

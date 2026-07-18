@@ -7,7 +7,7 @@ connected project; roll-ups aggregate ONLY the caller's member projects
 import asyncio
 import uuid
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 
 from app.models import (
     Initiative,
@@ -62,6 +62,80 @@ async def test_create_connect_and_rollup(client, project_factory=None):
     res = await client.delete(f"/api/v1/initiatives/{ini['id']}/projects/{a['id']}")
     assert res.status_code == 200
     assert res.json()["connected_project_count"] == 1
+
+
+async def test_initiative_label_taxonomy_assignment_filter_and_admin_guard(client, app, dev_user):
+    assert (await client.get("/api/v1/initiatives/labels")).json() == {
+        "items": [],
+        "total": 0,
+    }
+    strategic = await client.post(
+        "/api/v1/initiatives/labels",
+        json={"name": "  Strategic   Bets ", "color": "#6D5DFB"},
+    )
+    assert strategic.status_code == 201, strategic.text
+    strategic_label = strategic.json()
+    assert strategic_label["name"] == "Strategic Bets"
+    assert strategic_label["color"] == "#6d5dfb"
+    assert (
+        await client.post(
+            "/api/v1/initiatives/labels",
+            json={"name": "strategic bets", "color": "#111111"},
+        )
+    ).status_code == 409
+
+    operations = (
+        await client.post(
+            "/api/v1/initiatives/labels",
+            json={"name": "Operations", "color": "#0f766e"},
+        )
+    ).json()
+    initiative = await create_initiative(client, name="라벨 전략")
+    assigned = await client.put(
+        f"/api/v1/initiatives/{initiative['id']}/labels",
+        json={"label_ids": [strategic_label["id"], operations["id"]]},
+    )
+    assert assigned.status_code == 200, assigned.text
+    assert [label["name"] for label in assigned.json()["labels"]] == [
+        "Operations",
+        "Strategic Bets",
+    ]
+    filtered = await client.get("/api/v1/initiatives", params={"label_id": strategic_label["id"]})
+    assert [item["id"] for item in filtered.json()["items"]] == [initiative["id"]]
+    assert (await client.get("/api/v1/initiatives", params={"label_id": str(uuid.uuid4())})).json()[
+        "total"
+    ] == 0
+
+    unknown = await client.put(
+        f"/api/v1/initiatives/{initiative['id']}/labels",
+        json={"label_ids": [str(uuid.uuid4())]},
+    )
+    assert unknown.status_code == 422
+    duplicate = await client.put(
+        f"/api/v1/initiatives/{initiative['id']}/labels",
+        json={"label_ids": [strategic_label["id"], strategic_label["id"]]},
+    )
+    assert duplicate.status_code == 422
+
+    renamed = await client.patch(
+        f"/api/v1/initiatives/labels/{operations['id']}",
+        json={"name": "Operational", "color": "#2563eb"},
+    )
+    assert renamed.status_code == 200
+    assert renamed.json()["name"] == "Operational"
+    assert (
+        await client.delete(f"/api/v1/initiatives/labels/{strategic_label['id']}")
+    ).status_code == 204
+    remaining = (await client.get("/api/v1/initiatives")).json()["items"][0]["labels"]
+    assert [label["name"] for label in remaining] == ["Operational"]
+
+    async with app.state.sessionmaker() as session, session.begin():
+        await session.execute(update(User).where(User.id == dev_user.id).values(is_admin=False))
+    denied = await client.post(
+        "/api/v1/initiatives/labels",
+        json={"name": "Denied", "color": "#334155"},
+    )
+    assert denied.status_code == 403
 
 
 async def test_work_item_scope_candidates_connect_disconnect_and_project_cleanup(client, app):

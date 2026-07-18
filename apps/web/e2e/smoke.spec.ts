@@ -12,7 +12,7 @@ import type { Customer } from '../src/features/customers/types'
 import type { DataTransferJob } from '../src/features/ops/dataTransfersApi'
 import type { AuthAssistanceRequest } from '../src/features/admin/authAssistanceApi'
 import type { DocumentList } from '../src/features/documents/api'
-import type { Initiative, InitiativeWorkItem } from '../src/features/initiatives/api'
+import type { Initiative, InitiativeLabel, InitiativeWorkItem } from '../src/features/initiatives/api'
 import type {
   Project,
   ProjectHealthHistoryList,
@@ -730,6 +730,9 @@ async function mockApi(page: Page, opts: { conflictOnPatch?: boolean } = {}) {
   )
   // The initiatives page reads the workspace list.
   await page.route('**/api/v1/initiatives', (route) =>
+    route.fulfill({ json: { items: [], total: 0 } }),
+  )
+  await page.route('**/api/v1/initiatives/labels', (route) =>
     route.fulfill({ json: { items: [], total: 0 } }),
   )
   // Type config: default empty → built-in labels everywhere (fallback path).
@@ -8382,6 +8385,7 @@ test('이니셔티브에서 프로젝트를 연결하면 POST가 간다', async 
     connected_work_item_count: 0,
     follower_count: 0,
     is_following: false,
+    labels: [],
     projects: [
       {
         project_id: project.id,
@@ -8503,6 +8507,7 @@ test('이니셔티브 상세에서 전략 범위 작업을 검색해 연결하�
     connected_work_item_count: 1,
     follower_count: 0,
     is_following: false,
+    labels: [],
     projects: [
       {
         project_id: project.id,
@@ -8676,6 +8681,7 @@ test('모바일 이니셔티브 상세는 숨은 전략 작업 수를 누수 없
     connected_work_item_count: 2,
     follower_count: 1,
     is_following: true,
+    labels: [],
     projects: [
       {
         project_id: project.id,
@@ -8741,6 +8747,7 @@ test('모바일 이니셔티브 카드에서 고아 소유권을 claim한다', a
     connected_work_item_count: 0,
     follower_count: 0,
     is_following: false,
+    labels: [],
     projects: [
       {
         project_id: project.id,
@@ -15581,6 +15588,7 @@ test('프로젝트 목록 이니셔티브 열을 켜면 칩이 보이고 클릭 
             connected_work_item_count: 0,
             follower_count: 0,
             is_following: false,
+            labels: [],
             projects: [],
             created_at: '2026-07-01T00:00:00Z',
             updated_at: '2026-07-01T00:00:00Z',
@@ -17433,6 +17441,7 @@ test('보고 표면은 모바일에서 포트폴리오와 이니셔티브를 넘
             connected_work_item_count: 0,
             follower_count: 0,
             is_following: false,
+            labels: [],
             projects: [
               {
                 project_id: project.id,
@@ -18730,6 +18739,128 @@ test('Initiatives 정책은 비관리자와 모바일 상태를 안전하게 처
   await page.reload()
   await expect(page.getByText('접근 권한이 없습니다')).toBeVisible()
   await expect(page.getByRole('switch')).toHaveCount(0)
+})
+
+test('Initiative labels는 설정 CRUD와 소유자 배정 및 목록 필터를 연결한다', async ({ page }) => {
+  await mockApi(page)
+  await mockInitiativesPolicy(page)
+  let labels: InitiativeLabel[] = [
+    {
+      id: '11111111-1111-4111-8111-111111111141',
+      name: 'Strategic',
+      color: '#6d5dfb',
+      created_at: '2026-07-18T00:00:00Z',
+      updated_at: '2026-07-18T00:00:00Z',
+    },
+  ]
+  let initiative: Initiative = {
+    id: '11111111-1111-4111-8111-111111111142',
+    name: '라벨 전략',
+    description: '라벨 기반 포트폴리오 분류',
+    owner_id: 'me-1',
+    owner_name: 'Dev User',
+    owner_active: true,
+    state: 'in_progress',
+    start_date: null,
+    target_date: null,
+    health: 'on_track',
+    health_note: null,
+    health_updated_by: null,
+    health_updated_at: null,
+    is_mine: true,
+    can_claim_ownership: false,
+    connected_project_count: 0,
+    connected_work_item_count: 0,
+    follower_count: 0,
+    is_following: false,
+    labels: [],
+    projects: [],
+    created_at: '2026-07-18T00:00:00Z',
+    updated_at: '2026-07-18T00:00:00Z',
+  }
+
+  await page.route('**/api/v1/initiatives**', async (route) => {
+    const request = route.request()
+    const url = new URL(request.url())
+    const path = url.pathname
+    if (path === '/api/v1/initiatives/labels') {
+      if (request.method() === 'POST') {
+        const input = request.postDataJSON() as { name: string; color: string }
+        labels = [...labels, {
+          id: '11111111-1111-4111-8111-111111111143',
+          name: input.name,
+          color: input.color,
+          created_at: '2026-07-18T01:00:00Z',
+          updated_at: '2026-07-18T01:00:00Z',
+        }]
+        await route.fulfill({ status: 201, json: labels.at(-1) })
+        return
+      }
+      await route.fulfill({ json: { items: labels, total: labels.length } })
+      return
+    }
+    if (path.startsWith('/api/v1/initiatives/labels/')) {
+      const id = path.split('/').at(-1)
+      if (request.method() === 'PATCH') {
+        const input = request.postDataJSON() as { name: string; color: string }
+        labels = labels.map((label) => label.id === id ? { ...label, ...input } : label)
+        await route.fulfill({ json: labels.find((label) => label.id === id) })
+        return
+      }
+      labels = labels.filter((label) => label.id !== id)
+      initiative = { ...initiative, labels: initiative.labels.filter((label) => label.id !== id) }
+      await route.fulfill({ status: 204 })
+      return
+    }
+    if (path === `/api/v1/initiatives/${initiative.id}/labels`) {
+      const input = request.postDataJSON() as { label_ids: string[] }
+      initiative = { ...initiative, labels: labels.filter((label) => input.label_ids.includes(label.id)) }
+      await route.fulfill({ json: initiative })
+      return
+    }
+    if (path === '/api/v1/initiatives') {
+      const labelId = url.searchParams.get('label_id')
+      const items = labelId && !initiative.labels.some((label) => label.id === labelId) ? [] : [initiative]
+      await route.fulfill({ json: { items, total: items.length } })
+      return
+    }
+    await route.fallback()
+  })
+
+  await page.goto('/admin/initiatives')
+  const labelSettings = page.getByRole('region', { name: '라벨' })
+  await expect(labelSettings.getByText('Strategic', { exact: true })).toBeVisible()
+  await labelSettings.getByLabel('새 라벨 이름').fill('Compliance')
+  const createRequest = page.waitForRequest((request) =>
+    request.method() === 'POST' && request.url().endsWith('/initiatives/labels'),
+  )
+  await labelSettings.getByRole('button', { name: '라벨 추가' }).click()
+  await createRequest
+  const complianceRow = labelSettings.getByRole('listitem').filter({ hasText: 'Compliance' })
+  await expect(complianceRow).toBeVisible()
+  await complianceRow.getByRole('button', { name: '수정' }).click()
+  await complianceRow.getByLabel('Compliance 이름').fill('Regulated')
+  await complianceRow.getByRole('button', { name: '저장' }).click()
+  await expect(labelSettings.getByText('Regulated', { exact: true })).toBeVisible()
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/initiative-labels-ui/desktop-settings.png',
+    fullPage: true,
+  })
+
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto('/initiatives')
+  await page.getByLabel('라벨 전략에 라벨 배정').selectOption(labels[0].id)
+  await expect(page.getByText('Strategic', { exact: true })).toBeVisible()
+  await page.getByLabel('이니셔티브 라벨 필터').selectOption(labels[0].id)
+  await expect(page).toHaveURL(new RegExp(`label=${labels[0].id}`))
+  await expect(page.getByText('라벨 전략', { exact: true })).toBeVisible()
+  await page.getByLabel('이니셔티브 라벨 필터').selectOption(labels[1].id)
+  await expect(page.getByText('이 라벨의 이니셔티브가 없습니다')).toBeVisible()
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/initiative-labels-ui/mobile-filter.png',
+    fullPage: true,
+  })
 })
 
 async function mockReleasesPolicy(

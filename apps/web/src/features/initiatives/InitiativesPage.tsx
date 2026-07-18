@@ -1,4 +1,4 @@
-import { ListChecks, Loader2, Plus, RefreshCw, Trash2, UserRoundCog, X } from 'lucide-react'
+import { ListChecks, Loader2, Plus, RefreshCw, Tag, Trash2, UserRoundCog, X } from 'lucide-react'
 import { useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 
@@ -20,6 +20,7 @@ import { confirmDestructive } from '@/lib/guards'
 import {
   INITIATIVE_STATE_LABELS,
   type Initiative,
+  type InitiativeLabel,
   type InitiativeState,
   useClaimInitiativeOwnership,
   useConnectProject,
@@ -27,7 +28,9 @@ import {
   useDeleteInitiative,
   useDisconnectProject,
   useInitiativeOwnerCandidates,
+  useInitiativeLabels,
   useInitiatives,
+  useReplaceInitiativeLabels,
   useTransferInitiativeOwnership,
   useUpdateInitiative,
 } from './api'
@@ -46,10 +49,12 @@ function Progress({ done, total }: { done: number; total: number }) {
 
 function InitiativeCard({
   initiative,
+  availableLabels,
   highlighted = false,
   onOpenDetails,
 }: {
   initiative: Initiative
+  availableLabels: InitiativeLabel[]
   highlighted?: boolean
   onOpenDetails: () => void
 }) {
@@ -60,6 +65,7 @@ function InitiativeCard({
   const disconnect = useDisconnectProject(initiative.id)
   const transfer = useTransferInitiativeOwnership()
   const claim = useClaimInitiativeOwnership()
+  const replaceLabels = useReplaceInitiativeLabels()
   const projects = useProjects()
   const [selecting, setSelecting] = useState('')
   const [ownerOpen, setOwnerOpen] = useState(false)
@@ -72,6 +78,8 @@ function InitiativeCard({
   const connectedIds = new Set(initiative.projects.map((p) => p.project_id))
   const candidates = (projects.data?.items ?? []).filter((p) => !connectedIds.has(p.id))
   const hiddenCount = initiative.connected_project_count - initiative.projects.length
+  const assignedLabelIds = new Set(initiative.labels.map((label) => label.id))
+  const labelCandidates = availableLabels.filter((label) => !assignedLabelIds.has(label.id))
 
   return (
     <li
@@ -179,6 +187,63 @@ function InitiativeCard({
           )}
         </div>
       </div>
+
+      <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+        {initiative.labels.map((label) => (
+          <span
+            key={label.id}
+            className="inline-flex h-7 min-w-0 items-center gap-1.5 rounded-of border border-of-border bg-of-surface-2 px-2 text-xs"
+          >
+            <span
+              className="h-2.5 w-2.5 shrink-0 rounded-full border border-black/10"
+              style={{ backgroundColor: label.color }}
+              aria-hidden="true"
+            />
+            <span className="max-w-36 truncate">{label.name}</span>
+            {initiative.is_mine ? (
+              <button
+                type="button"
+                aria-label={`${initiative.name}에서 ${label.name} 라벨 제거`}
+                disabled={replaceLabels.isPending}
+                className="rounded p-0.5 text-of-muted hover:bg-of-hover hover:text-of-danger focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus"
+                onClick={() => replaceLabels.mutate({
+                  id: initiative.id,
+                  labelIds: initiative.labels.filter((item) => item.id !== label.id).map((item) => item.id),
+                })}
+              >
+                <X size={11} aria-hidden="true" />
+              </button>
+            ) : null}
+          </span>
+        ))}
+        {initiative.is_mine ? (
+          <Select
+            aria-label={`${initiative.name}에 라벨 배정`}
+            className="h-7 w-40 text-xs"
+            value=""
+            disabled={replaceLabels.isPending || initiative.labels.length >= 8 || labelCandidates.length === 0}
+            onChange={(event) => {
+              if (event.target.value) {
+                replaceLabels.mutate({
+                  id: initiative.id,
+                  labelIds: [...initiative.labels.map((label) => label.id), event.target.value],
+                })
+              }
+            }}
+          >
+            <option value="">+ 라벨 배정</option>
+            {labelCandidates.map((label) => <option key={label.id} value={label.id}>{label.name}</option>)}
+          </Select>
+        ) : null}
+        {initiative.labels.length === 0 && !initiative.is_mine ? (
+          <span className="text-[11px] text-of-muted">라벨 없음</span>
+        ) : null}
+      </div>
+      {replaceLabels.isError ? (
+        <p role="alert" className="text-xs text-of-danger">
+          {replaceLabels.error instanceof Error ? replaceLabels.error.message : '라벨을 변경하지 못했습니다.'}
+        </p>
+      ) : null}
 
       {ownerOpen && initiative.is_mine ? (
         <div
@@ -391,13 +456,17 @@ export function InitiativesPage() {
   // Project-list chip deep link (Pass 51): highlight the target card;
   // an unknown/invisible id silently degrades to the plain page.
   const highlightId = searchParams.get('highlight')
-  const initiatives = useInitiatives()
+  const selectedLabelId = searchParams.get('label') ?? ''
+  const initiatives = useInitiatives(selectedLabelId)
+  const labels = useInitiativeLabels()
   const create = useCreateInitiative()
   const [name, setName] = useState('')
 
   if (initiatives.isPending) return <ListSkeleton />
   if (initiatives.isError)
     return <ErrorState error={initiatives.error} onRetry={() => initiatives.refetch()} />
+  if (labels.isPending) return <ListSkeleton />
+  if (labels.isError) return <ErrorState error={labels.error} onRetry={() => labels.refetch()} />
 
   const items = initiatives.data.items
   const selectedInitiative =
@@ -430,6 +499,28 @@ export function InitiativesPage() {
         title="이니셔티브"
         description="여러 프로젝트를 하나의 전략 묶음으로 연결해 진행률과 헬스 상태를 봅니다."
       >
+        <div className="flex min-w-0 flex-col gap-2 border-b border-of-border-subtle pb-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex min-w-0 items-center gap-2 text-xs text-of-muted">
+            <Tag size={14} aria-hidden="true" />
+            <span>라벨로 전략 범위를 좁힙니다.</span>
+          </div>
+          <Select
+            aria-label="이니셔티브 라벨 필터"
+            className="h-8 min-w-0 sm:w-48"
+            value={selectedLabelId}
+            onChange={(event) => {
+              setSearchParams((previous) => {
+                const next = new URLSearchParams(previous)
+                if (event.target.value) next.set('label', event.target.value)
+                else next.delete('label')
+                return next
+              })
+            }}
+          >
+            <option value="">모든 라벨</option>
+            {labels.data.items.map((label) => <option key={label.id} value={label.id}>{label.name}</option>)}
+          </Select>
+        </div>
         <ReportingSummaryGrid>
           <ReportingMetricCard label="전체" value={`${items.length}개`} detail="전략 묶음" />
           <ReportingMetricCard label="진행 중" value={activeCount} tone="accent" />
@@ -466,7 +557,10 @@ export function InitiativesPage() {
         </ReportingSection>
 
         {items.length === 0 ? (
-          <EmptyState title="이니셔티브가 없습니다" hint="위에서 첫 이니셔티브를 만들어 보세요." />
+          <EmptyState
+            title={selectedLabelId ? '이 라벨의 이니셔티브가 없습니다' : '이니셔티브가 없습니다'}
+            hint={selectedLabelId ? '다른 라벨을 선택하거나 이니셔티브에 라벨을 배정하세요.' : '위에서 첫 이니셔티브를 만들어 보세요.'}
+          />
         ) : (
           <div className="space-y-5">
             {STATE_ORDER.map((state) => {
@@ -483,6 +577,7 @@ export function InitiativesPage() {
                       <InitiativeCard
                         key={i.id}
                         initiative={i}
+                        availableLabels={labels.data.items}
                         highlighted={i.id === highlightId}
                         onOpenDetails={() => openDetails(i.id)}
                       />

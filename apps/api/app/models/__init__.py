@@ -15,6 +15,8 @@ from app.models.document import DocumentWorkPackageLink, ProjectDocument
 from app.models.document_comment import ProjectDocumentComment, ProjectDocumentCommentReaction
 from app.models.initiative import (
     Initiative,
+    InitiativeLabel,
+    InitiativeLabelAssignment,
     InitiativeProject,
     InitiativeSubscriber,
     InitiativeWorkPackage,
@@ -123,6 +125,8 @@ __all__ = [
     "CustomField",
     "WpCustomValue",
     "Initiative",
+    "InitiativeLabel",
+    "InitiativeLabelAssignment",
     "InitiativeProject",
     "InitiativeSubscriber",
     "InitiativeWorkPackage",

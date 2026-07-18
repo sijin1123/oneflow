@@ -3,7 +3,7 @@
 
 import type { components } from '@shared/api-types'
 
-import type { Initiative, InitiativeList } from './api'
+import type { Initiative, InitiativeLabel, InitiativeLabelList, InitiativeList } from './api'
 
 type Schemas = components['schemas']
 type Assert<T extends true> = T
@@ -11,3 +11,9 @@ type Extends<A, B> = A extends B ? true : false
 
 export type _InitiativeMatches = Assert<Extends<Initiative, Schemas['InitiativeRead']>>
 export type _InitiativeListMatches = Assert<Extends<InitiativeList, Schemas['InitiativeList']>>
+export type _InitiativeLabelMatches = Assert<
+  Extends<InitiativeLabel, Schemas['InitiativeLabelRead']>
+>
+export type _InitiativeLabelListMatches = Assert<
+  Extends<InitiativeLabelList, Schemas['InitiativeLabelList']>
+>
