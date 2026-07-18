@@ -2,6 +2,7 @@ import {
   Check,
   ChevronDown,
   Clock3,
+  GitCompareArrows,
   History,
   Loader2,
   RefreshCw,
@@ -20,6 +21,7 @@ import {
   useDocumentRevisions,
   useRestoreDocumentRevision,
 } from './api'
+import { DocumentVersionCompare } from './DocumentVersionCompare'
 
 const RichTextEditor = lazy(() =>
   import('@/components/ui/rich-text-editor').then((module) => ({
@@ -51,6 +53,10 @@ export function DocumentVersionPanel({ doc, projectId, canRestore }: Props) {
   const total = revisions.data?.pages[0]?.total ?? 0
   const currentRevisionId = revisions.data?.pages[0]?.current_revision_id ?? null
   const [selectedRevisionId, setSelectedRevisionId] = useState<string | null>(null)
+  const [compareSelection, setCompareSelection] = useState<{
+    baseRevisionId: string
+    targetRevisionId: string
+  } | null>(null)
   const [restoredVersion, setRestoredVersion] = useState<number | null>(null)
   const initializedSelection = useRef(false)
   const selected = items.find((item) => item.id === selectedRevisionId) ?? null
@@ -85,13 +91,17 @@ export function DocumentVersionPanel({ doc, projectId, canRestore }: Props) {
   }
 
   const conflict = conflictOf(restore.error)
+  const comparisonBase =
+    (selected?.id !== currentRevisionId ? selected : null) ??
+    items.find((item) => item.id !== currentRevisionId) ??
+    null
 
   return (
     <section
       className="border-t border-of-border pb-16 pt-4 lg:pb-0"
       aria-labelledby="document-version-heading"
     >
-      <div className="flex min-w-0 items-center justify-between gap-3">
+      <div className="flex min-w-0 flex-wrap items-center justify-between gap-3">
         <div className="min-w-0">
           <h2 id="document-version-heading" className="flex items-center gap-1.5 text-sm font-semibold">
             <History size={15} className="text-of-muted" aria-hidden="true" /> 버전
@@ -100,9 +110,32 @@ export function DocumentVersionPanel({ doc, projectId, canRestore }: Props) {
             제목과 본문의 변경 기록을 확인하고 이전 내용으로 복원합니다.
           </p>
         </div>
-        {!revisions.isPending && !revisions.isError ? (
-          <span className="shrink-0 text-[11px] tabular-nums text-of-muted">{total}개</span>
-        ) : null}
+        <div className="flex shrink-0 items-center gap-2">
+          {!revisions.isPending && !revisions.isError ? (
+            <span className="text-[11px] tabular-nums text-of-muted">{total}개</span>
+          ) : null}
+          {comparisonBase && currentRevisionId ? (
+            <Button
+              size="sm"
+              variant={compareSelection ? 'secondary' : 'ghost'}
+              aria-expanded={compareSelection !== null}
+              aria-controls="document-version-compare"
+              onClick={() => {
+                if (compareSelection) {
+                  setCompareSelection(null)
+                  return
+                }
+                setCompareSelection({
+                  baseRevisionId: comparisonBase.id,
+                  targetRevisionId: currentRevisionId,
+                })
+              }}
+            >
+              <GitCompareArrows aria-hidden="true" />
+              {compareSelection ? '비교 닫기' : '버전 비교'}
+            </Button>
+          ) : null}
+        </div>
       </div>
 
       {revisions.isPending ? <VersionSkeleton /> : null}
@@ -270,6 +303,16 @@ export function DocumentVersionPanel({ doc, projectId, canRestore }: Props) {
             ) : null}
           </div>
         </div>
+      ) : null}
+
+      {compareSelection ? (
+        <DocumentVersionCompare
+          docId={doc.id}
+          items={items}
+          initialBaseRevisionId={compareSelection.baseRevisionId}
+          initialTargetRevisionId={compareSelection.targetRevisionId}
+          onClose={() => setCompareSelection(null)}
+        />
       ) : null}
 
       <div className="min-h-5 pt-2" aria-live="polite">
