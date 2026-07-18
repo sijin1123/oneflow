@@ -2700,6 +2700,15 @@ Chromium typed mock fixture에서 1440x960과 390x844 viewport를 사용했다. 
 
 ---
 
+# UI-160 Login In-App Pixel Convergence 검증 (2026-07-19)
+
+- **UI 변경**: 인앱 Chromium `1448x1086` 실사에서 인증 카드 내부 세로 스크롤바가 콘텐츠 폭 11px를 점유해 로고·제목·입력·버튼 전체를 왼쪽으로 이동시키던 회귀를 제거했다. 카드의 세로 스크롤 기능은 유지하면서 scrollbar chrome만 숨겼고, 우측 브랜드 crop은 quarter-pixel 단위로 원본 위치에 재정렬했다. 좌측 수채화·브랜드·플로팅 카드와 우측 브랜드는 사용자 승인 원본과 동일 SHA-256 자산을 계속 사용한다.
+- **픽셀 실사**: 패널 `1220x915` 정규화 비교에서 전체 MAE는 `3.950 -> 3.253`(-17.6%), 인증 surface는 `5.192 -> 3.651`(-29.7%), 우측 브랜드는 `12.336 -> 2.533`(-79.5%)로 감소했다. 좌측 story MAE `2.923`은 변경 전후 동일해 runtime 원본 자산이 바뀌지 않았음을 확인했다. 카드 `clientWidth === scrollWidth === 439`, scrollbar width `none`, 문서 수평 overflow `0`이다.
+- **상호작용/반응형**: dev/OIDC 로그인, assistance request, locale, password visibility, reduced-motion, safe-next와 세로 스크롤 계약을 유지했다. `390x844` 인앱 실사에서 문서 `scrollWidth === clientWidth === 390`, 카드 `clientWidth === scrollWidth === 353`이며 하단 콘텐츠는 페이지 세로 스크롤로 접근 가능하다.
+- **검증**: typecheck, lint, production build, unit 107, component 8, focused login E2E 12가 PASS했다. 병렬 full E2E에서 드러난 기존 Document inline-comment route-handler 경쟁 조건은 요청 수 polling으로 안정화했고 관련 Document/Initiative/Releases 9회 반복이 PASS했다. 최종 single-worker full E2E는 315 PASS + opt-in visual QA 1 skip이다. Clean-room frontend 161/backend 45, OpenAPI drift, npm/pip audit 0 vulnerabilities도 PASS했다. 증적은 `docs/screenshots/redevelopment/login-in-app-convergence-ui/`에 보존한다. 신규 API, DB/schema, migration, permission, environment, dependency 또는 Settings UI 변경은 없고 **이연 항목은 없다.**
+
+---
+
 # UI-150 Initiative Activity Detail 검증 (2026-07-18)
 
 - **UI 변경**: Initiative 상세 drawer에 실제 변경 이력을 actor, 안전한 event 요약, 변경 field badge, 시각으로 표시한다. loading skeleton, initial error/retry, empty, next-page error/retry, load-more와 desktop/mobile no-overflow 상태를 제공한다.

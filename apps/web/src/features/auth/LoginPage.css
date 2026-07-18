@@ -1009,7 +1009,7 @@
   width: min(14.157cqw, 173px);
   aspect-ratio: 205 / 70;
   overflow: hidden;
-  transform: translateY(1px);
+  transform: translate(-0.25px, 0.625px);
 }
 
 .of-login-brand-reference img {
@@ -1051,7 +1051,13 @@
     0 2px 9px rgb(54 73 125 / 0.018);
   backdrop-filter: blur(10px);
   animation: of-login-auth-enter 420ms 50ms ease-out both;
-  scrollbar-width: thin;
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.of-login-auth-card::-webkit-scrollbar {
+  width: 0;
+  height: 0;
 }
 
 .of-login-auth-brand {

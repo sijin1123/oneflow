@@ -426,6 +426,12 @@ Plane/OpenProject source, package, asset, logo, CSS, DOM, wording 또는 brandin
 
 UI-155의 유일한 시각 입력도 사용자가 제공하고 OneFlow 제품 자산으로 승인한 `docs/oneflow-login-origin.png`다. 좌측 비주얼과 브랜드 bitmap은 변경하지 않았고, 기능형 인증 DOM의 위치와 OneFlow 아이콘 표현만 diff 수치로 보정했다. Plane/OpenProject source, package, asset, CSS, DOM, branding 또는 wording을 사용하지 않았다. 신규 API, DB/schema, migration, permission, environment, dependency 또는 Settings UI 변경은 없다. — attested-user-owned-oneflow-asset
 
+## UI-160 Login In-App Pixel Convergence
+
+UI-160의 유일한 시각 입력도 사용자가 제공하고 OneFlow 제품 자산으로 승인한 `docs/oneflow-login-origin.png`다. 기준 파일과 runtime 자산의 SHA-256은 모두 `62fafe9e44df9d189e8fe2f38fc25147d11b8459569be13ee0424ba06c0c4c76`이며, 좌측 수채화·브랜드 bitmap은 수정하거나 새로 생성하지 않았다. 변경은 기능형 인증 카드의 scrollbar chrome 제거, 원본 crop 위치 보정과 반응형 회귀 assertion에 한정된다.
+
+Plane/OpenProject source, package, asset, CSS, DOM, exact dimensions/colors, wording 또는 branding을 입력·복사하지 않았다. 신규 API, DB/schema, migration, permission, environment, dependency 또는 Settings UI 변경은 없다. — attested-user-owned-oneflow-asset
+
 ## UI-150 Initiative Activity Detail
 
 `docs/plane-poc-reverse-spec/`에서 사용한 입력은 상세 surface가 실제 변경 이력을 actor·요약·시각과 함께 newest-first로 보여주고 추가 이력을 단계적으로 불러온다는 제품 행동뿐이다. OneFlow 구현은 자체 Initiative 모델, 현행 Initiative visibility resolver, FastAPI/SQLAlchemy transaction, React Query infinite query와 기존 detail drawer primitives로 독립 설계했다.
