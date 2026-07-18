@@ -11,7 +11,12 @@ from app.models.customer import Customer
 from app.models.cycle import Cycle, CycleScopeEvent
 from app.models.dashboard_layout import DashboardLayout, DashboardSharedLayout
 from app.models.data_transfer_job import DataTransferJob
-from app.models.document import DocumentActivity, DocumentWorkPackageLink, ProjectDocument
+from app.models.document import (
+    DocumentActivity,
+    DocumentRevision,
+    DocumentWorkPackageLink,
+    ProjectDocument,
+)
 from app.models.document_comment import ProjectDocumentComment, ProjectDocumentCommentReaction
 from app.models.initiative import (
     Initiative,
@@ -104,6 +109,7 @@ __all__ = [
     "AutomationRule",
     "DocumentWorkPackageLink",
     "DocumentActivity",
+    "DocumentRevision",
     "ProjectDocument",
     "ProjectDocumentComment",
     "ProjectDocumentCommentReaction",

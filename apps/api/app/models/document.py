@@ -91,7 +91,7 @@ class DocumentActivity(Base):
     __table_args__ = (
         CheckConstraint(
             "kind IN ('document_created', 'document_updated', "
-            "'document_archived', 'document_restored')",
+            "'document_archived', 'document_restored', 'document_version_restored')",
             name="kind_allowed",
         ),
         CheckConstraint(
@@ -123,6 +123,53 @@ class DocumentActivity(Base):
     kind: Mapped[str] = mapped_column(String(32), nullable=False)
     changed_fields: Mapped[list[str]] = mapped_column(
         ARRAY(String(24)), nullable=False, default=list, server_default="{}"
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("clock_timestamp()")
+    )
+
+
+class DocumentRevision(Base):
+    """Immutable title/body snapshot for one successful Document content mutation."""
+
+    __tablename__ = "document_revisions"
+    __table_args__ = (
+        CheckConstraint("document_version >= 0", name="document_version_nonnegative"),
+        CheckConstraint(
+            "changed_fields <@ ARRAY['title', 'body']::varchar[] "
+            "AND cardinality(changed_fields) BETWEEN 1 AND 2",
+            name="changed_fields_allowed",
+        ),
+        UniqueConstraint(
+            "document_id",
+            "document_version",
+            name="uq_document_revisions_document_version",
+        ),
+        Index(
+            "ix_document_revisions_document_version",
+            "document_id",
+            "document_version",
+            "id",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    document_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("project_documents.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    document_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    actor_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    body: Mapped[str | None] = mapped_column(Text, nullable=True)
+    changed_fields: Mapped[list[str]] = mapped_column(ARRAY(String(16)), nullable=False)
+    restored_from_revision_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("document_revisions.id", ondelete="SET NULL"),
+        nullable=True,
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=text("clock_timestamp()")
