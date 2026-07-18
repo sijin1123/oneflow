@@ -32,7 +32,6 @@ import {
   useInitiatives,
   useReplaceInitiativeLabels,
   useTransferInitiativeOwnership,
-  useUpdateInitiative,
 } from './api'
 import { InitiativeDetailDrawer } from './InitiativeDetailDrawer'
 
@@ -59,7 +58,6 @@ function InitiativeCard({
   onOpenDetails: () => void
 }) {
   const navigate = useNavigate()
-  const update = useUpdateInitiative()
   const remove = useDeleteInitiative()
   const connect = useConnectProject(initiative.id)
   const disconnect = useDisconnectProject(initiative.id)
@@ -97,6 +95,7 @@ function InitiativeCard({
             >
               {initiative.name}
             </button>
+            <Badge variant="neutral">{INITIATIVE_STATE_LABELS[initiative.state]}</Badge>
             {initiative.health ? (
               <span
                 title={initiative.health_note ?? undefined}
@@ -122,21 +121,6 @@ function InitiativeCard({
           </Button>
           {initiative.is_mine ? (
             <>
-              <Select
-                aria-label={`${initiative.name} 상태`}
-                className="h-7 w-32 text-xs"
-                value={initiative.state}
-                disabled={update.isPending}
-                onChange={(e) =>
-                  update.mutate({ id: initiative.id, state: e.target.value as InitiativeState })
-                }
-              >
-                {STATE_ORDER.map((s) => (
-                  <option key={s} value={s}>
-                    {INITIATIVE_STATE_LABELS[s]}
-                  </option>
-                ))}
-              </Select>
               <button
                 type="button"
                 aria-label={`${initiative.name} 소유권 관리`}
@@ -182,9 +166,7 @@ function InitiativeCard({
               {claim.isPending ? <Loader2 className="animate-spin" /> : <UserRoundCog />}
               소유권 가져오기
             </Button>
-          ) : (
-            <Badge variant="neutral">{INITIATIVE_STATE_LABELS[initiative.state]}</Badge>
-          )}
+          ) : null}
         </div>
       </div>
 
@@ -386,66 +368,7 @@ function InitiativeCard({
           </Select>
         ) : null}
       </div>
-      {initiative.is_mine ? (
-        <HealthReportRow initiative={initiative} />
-      ) : initiative.health_note ? (
-        <p className="text-[11px] text-of-muted">상태 사유: {initiative.health_note}</p>
-      ) : null}
     </li>
-  )
-}
-
-/* Creator-only health report (Pass 44 — v37.1 table): the note travels with
-   the status and is always replaced on save; '미설정' clears everything. */
-function HealthReportRow({ initiative }: { initiative: Initiative }) {
-  const update = useUpdateInitiative()
-  const [health, setHealth] = useState<'' | NonNullable<Initiative['health']>>(
-    initiative.health ?? '',
-  )
-  const [note, setNote] = useState(initiative.health_note ?? '')
-  return (
-    <div className="grid min-w-0 grid-cols-1 gap-2 sm:grid-cols-[96px_minmax(0,1fr)_auto_auto] sm:items-center">
-      <Select
-        aria-label={`${initiative.name} 헬스`}
-        className="h-7 w-full text-xs"
-        value={health}
-        onChange={(e) => setHealth(e.target.value as '' | NonNullable<Initiative['health']>)}
-      >
-        <option value="">미설정</option>
-        {(Object.keys(HEALTH_LABELS) as Array<NonNullable<Initiative['health']>>).map((h) => (
-          <option key={h} value={h}>
-            {HEALTH_LABELS[h]}
-          </option>
-        ))}
-      </Select>
-      <Input
-        value={note}
-        onChange={(e) => setNote(e.target.value)}
-        placeholder="상태 사유 (선택)"
-        aria-label={`${initiative.name} 상태 사유`}
-        disabled={health === ''}
-        className="h-7 min-w-0 text-xs"
-        maxLength={2000}
-      />
-      <Button
-        size="sm"
-        disabled={update.isPending}
-        onClick={() =>
-          update.mutate(
-            health === ''
-              ? { id: initiative.id, health: null }
-              : { id: initiative.id, health, health_note: note.trim() === '' ? null : note.trim() },
-          )
-        }
-      >
-        상태 보고
-      </Button>
-      {initiative.health_updated_at ? (
-        <span className="text-[10px] text-of-muted sm:text-right">
-          {initiative.health_updated_at.slice(0, 10)}
-        </span>
-      ) : null}
-    </div>
   )
 }
 

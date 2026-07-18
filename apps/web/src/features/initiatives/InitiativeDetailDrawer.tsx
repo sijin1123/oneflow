@@ -22,6 +22,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Sheet, SheetContent } from '@/components/ui/sheet'
 import { Textarea } from '@/components/ui/textarea'
+import { HEALTH_LABELS, HEALTH_STYLES } from '@/features/projects/types'
 import {
   PRIORITY_LABELS,
   type WpPriority,
@@ -39,6 +40,7 @@ import {
   useUpdateInitiative,
   useUpdateInitiativeSubscription,
 } from './api'
+import { InitiativeLifecyclePanel } from './InitiativeLifecyclePanel'
 
 function WorkItemMeta({ item }: { item: InitiativeWorkItem }) {
   const statusLabel = useStatusLabels(item.project_id)
@@ -186,6 +188,11 @@ function InitiativeDetailBody({ initiative }: { initiative: Initiative }) {
         <div className="flex min-w-0 flex-wrap items-center gap-2">
           <h2 className="min-w-0 flex-1 truncate text-base font-semibold">{initiative.name}</h2>
           <Badge variant="accent">{INITIATIVE_STATE_LABELS[initiative.state]}</Badge>
+          {initiative.health ? (
+            <span className={`rounded-of px-1.5 py-0.5 text-[10px] font-medium ${HEALTH_STYLES[initiative.health]}`}>
+              {HEALTH_LABELS[initiative.health]}
+            </span>
+          ) : null}
           {initiative.is_mine ? (
             <Button
               size="sm"
@@ -357,6 +364,8 @@ function InitiativeDetailBody({ initiative }: { initiative: Initiative }) {
           </div>
         </dl>
       </header>
+
+      <InitiativeLifecyclePanel initiative={initiative} />
 
       <section className="pt-4" aria-labelledby="initiative-scope-heading">
         <div className="flex min-w-0 items-center justify-between gap-2">
