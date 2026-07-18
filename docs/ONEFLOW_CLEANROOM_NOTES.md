@@ -415,3 +415,9 @@ Plane/OpenProject source, API, database schema, package, asset, CSS, DOM hierarc
 `docs/plane-poc-reverse-spec/`의 compact view control과 filter 정보구조에서 사용한 입력은 전략 목록을 검색·수명주기·헬스·소유 범위로 좁히고 결정적으로 정렬하며 현재 조건을 URL로 공유한다는 제품 행동뿐이다. OneFlow 구현은 기존 자체 Initiative visibility, exact label API, React Router query state, React Query와 local reporting primitives를 사용해 독립 설계했다.
 
 Plane/OpenProject source, API, database schema, package, asset, CSS, DOM hierarchy, exact dimensions/colors, wording, filter implementation, icons 또는 branding은 복사하지 않았다. 검색과 조합 필터는 이미 권한 필터링된 전체 응답만 사용하고, label과 hidden-project 경계는 서버 권한 계약을 그대로 유지한다. 신규 API, migration, dependency, environment, permission 또는 Settings UI 변경은 없다. — attested-independent-derivation
+
+## UI-151 Login Origin Reinspection
+
+이번 보정의 유일한 시각 기준은 사용자가 직접 제공하고 OneFlow 제품 기준으로 승인한 `docs/oneflow-login-origin.png`다. 같은 바이트를 런타임 자산으로 사용해 수채화 배경과 OneFlow 브랜드 lockup을 보존하고, 인증 영역은 기존 OneFlow `auth/config`, dev/OIDC 로그인, assistance request, locale, focus, validation과 safe-next 계약을 수행하는 semantic DOM으로 유지했다. 따라서 UI-110F 당시의 “비교 PNG는 런타임에 사용하지 않는다”는 과거 상태는 UI-151부터 대체된다.
+
+Plane/OpenProject source, package, asset, logo, CSS, DOM, wording 또는 branding은 입력·복사하지 않았다. 기준 자산과 런타임 자산의 SHA-256은 모두 `62fafe9e44df9d189e8fe2f38fc25147d11b8459569be13ee0424ba06c0c4c76`이며, 신규 API, DB/schema, migration, permission, environment, dependency 또는 Settings UI 변경은 없다. — attested-user-owned-oneflow-asset

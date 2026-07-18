@@ -988,6 +988,7 @@
   width: min(14.157cqw, 173px);
   aspect-ratio: 205 / 70;
   overflow: hidden;
+  transform: translateY(1px);
 }
 
 .of-login-brand-reference img {
@@ -1038,12 +1039,12 @@
 }
 
 .of-login-heading {
-  margin: clamp(13px, 1.23cqw, 15px) 0 clamp(28px, 2.87cqw, 35px);
+  margin: clamp(15px, 1.39cqw, 17px) 0 clamp(28px, 2.87cqw, 35px);
 }
 
 .of-login-heading h2 {
   font-size: clamp(22px, 2.12cqw, 26px);
-  font-weight: 720;
+  font-weight: 700;
   line-height: 1.18;
 }
 
@@ -1055,6 +1056,7 @@
   margin-top: clamp(5px, 0.62cqw, 8px);
   font-size: clamp(11px, 1.1cqw, 13.5px);
   line-height: 1.45;
+  transform: translateY(1px);
 }
 
 .of-login-config-state,
@@ -1071,7 +1073,9 @@
 
 .of-login-field {
   gap: clamp(6px, 0.69cqw, 8px);
+  margin-bottom: -2px;
   font-size: clamp(10px, 0.97cqw, 12px);
+  font-weight: 600;
 }
 
 .of-login-field + .of-login-field {
@@ -1079,13 +1083,17 @@
 }
 
 .of-login-input {
-  height: clamp(42px, 3.73cqw, 46px);
+  height: clamp(44px, 3.9cqw, 48px);
   padding-left: clamp(37px, 3.45cqw, 42px);
   border-color: #dfe4ed;
   border-radius: clamp(7px, 0.69cqw, 9px);
   font-size: clamp(11px, 1.05cqw, 13px);
   font-weight: 400;
   box-shadow: 0 4px 12px rgb(48 64 111 / 0.035);
+}
+
+.of-login-input-wrap {
+  transform: translateY(-1px);
 }
 
 .of-login-input-wrap > svg {
@@ -1096,6 +1104,7 @@
 
 .of-login-form-options {
   min-height: clamp(24px, 2.14cqw, 27px);
+  transform: translateY(-1px);
 }
 
 .of-login-checkbox,
@@ -1115,6 +1124,7 @@
   background: #5964f2;
   box-shadow: 0 8px 18px rgb(83 103 245 / 0.12);
   font-size: clamp(11px, 1.04cqw, 13px);
+  transform: translateY(-1px);
 }
 
 .of-login-submit:hover {
@@ -1128,7 +1138,7 @@
 
 .of-login-providers {
   gap: clamp(7px, 0.66cqw, 8px);
-  margin-top: clamp(6px, 0.66cqw, 8px);
+  margin-top: clamp(7px, 0.74cqw, 9px);
 }
 
 .of-login-provider-button {
@@ -1160,7 +1170,7 @@
 }
 
 .of-login-create {
-  margin-top: 5px;
+  margin-top: 6px;
   font-size: clamp(9.5px, 0.97cqw, 11.5px);
 }
 
@@ -1175,6 +1185,7 @@
   width: 79.73%;
   min-height: clamp(30px, 2.75cqw, 34px);
   padding: 0;
+  transform: translateY(2px);
 }
 
 .of-login-footer nav button,

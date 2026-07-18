@@ -520,7 +520,7 @@ export function LoginPage() {
                   disabled={!formEnabled || !passwordRequired || login.isPending}
                   aria-label={showPassword ? 'Hide password' : 'Show password'}
                 >
-                  {showPassword ? <EyeOff aria-hidden="true" /> : <Eye aria-hidden="true" />}
+                  {showPassword ? <Eye aria-hidden="true" /> : <EyeOff aria-hidden="true" />}
                 </button>
               </span>
             </div>
