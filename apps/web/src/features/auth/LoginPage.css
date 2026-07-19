@@ -950,7 +950,7 @@
   height: auto;
   min-height: 0;
   aspect-ratio: 4 / 3;
-  grid-template-columns: minmax(0, 54.7fr) minmax(0, 45.3fr);
+  grid-template-columns: minmax(0, 792fr) minmax(0, 656fr);
   overflow: hidden;
   border: 0;
   border-radius: clamp(18px, 1.65cqw, 24px);
@@ -970,11 +970,12 @@
 .of-login-story-art {
   top: 0;
   left: 0;
-  width: 182.82%;
+  width: 100cqw;
   max-width: none;
-  height: 100%;
+  height: 100cqh;
   object-fit: fill;
   object-position: left top;
+  image-rendering: -webkit-optimize-contrast;
   filter: none;
   transform: none;
   animation: of-login-reference-enter 420ms ease-out both;
@@ -991,12 +992,12 @@
 
 .of-login-origin-route-accent path {
   fill: none;
-  stroke: rgb(255 255 255 / 0.34);
-  stroke-width: 2.6;
+  stroke: rgb(255 255 255 / 0.42);
+  stroke-width: 2.25;
   stroke-linecap: round;
-  stroke-dasharray: 24 360;
-  filter: drop-shadow(0 0 3px rgb(93 112 245 / 0.14));
-  animation: of-login-origin-route-flow 3.8s linear infinite;
+  stroke-dasharray: 2 20;
+  filter: drop-shadow(0 0 2px rgb(93 112 245 / 0.1));
+  animation: of-login-origin-route-flow 1.7s linear infinite;
 }
 
 .of-login-brand {
@@ -1020,6 +1021,7 @@
   max-width: none;
   height: 1551.64%;
   object-fit: fill;
+  image-rendering: -webkit-optimize-contrast;
 }
 
 .of-login-auth {
@@ -1452,7 +1454,7 @@
 
 @keyframes of-login-origin-route-flow {
   to {
-    stroke-dashoffset: -384;
+    stroke-dashoffset: -22;
   }
 }
 
