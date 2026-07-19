@@ -491,3 +491,9 @@ Plane/OpenProject source, API, database schema, package, asset, CSS, DOM hierarc
 UI-167의 유일한 시각 입력은 사용자가 직접 제공하고 OneFlow 제품 자산으로 승인한 `docs/oneflow-login-origin.png`다. 전체 화면 bitmap을 runtime overlay로 사용하던 중간 구현을 제거하고, 사용자 프롬프트가 허용한 좌측 story 영역과 OneFlow logo lockup만 결정적 crop/resample 자산으로 분리했다. 우측은 기존 OneFlow auth API와 접근 가능한 semantic DOM을 첫 페인트부터 렌더링한다.
 
 Plane/OpenProject source, package, asset, logo, CSS, DOM, wording 또는 branding은 입력·복사하지 않았다. 신규 API, DB/schema, migration, permission, environment, dependency 또는 Settings UI 변경은 없다. - attested-user-owned-oneflow-asset
+
+## UI-169 Login Functional Pixel Regression
+
+UI-169의 유일한 시각 입력은 사용자가 직접 제공하고 OneFlow 제품 자산으로 승인한 `docs/oneflow-login-origin.png`다. 좌측 story와 1x 브랜드 lockup은 승인 원본의 정확한 crop이며, 신규 `oneflow-login-logo-lockup@2x.png`는 기존 OneFlow 소유 2x 원화에서 같은 좌표를 결정적으로 잘라 만든 고밀도 파생 자산이다. 생성형 재해석, 색상 변경, 형태 재구성 또는 제3자 자산 사용은 없다.
+
+Plane/OpenProject source, package, asset, logo, CSS, DOM, wording 또는 branding은 입력·복사하지 않았다. 인증 화면은 기존 OneFlow auth API와 semantic DOM을 유지하며 신규 API, DB/schema, migration, permission, environment, dependency 또는 Settings UI 변경은 없다. - attested-user-owned-oneflow-asset
