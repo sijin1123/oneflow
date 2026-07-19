@@ -144,19 +144,24 @@ function ModuleRow({
   const memberName = useMemberNames(projectId)
   const [editing, setEditing] = useState(false)
   const [showMembers, setShowMembers] = useState(false)
-  const [activeAction, setActiveAction] = useState<{ top: number; left: number } | null>(null)
+  const [activeAction, setActiveAction] = useState<{
+    top: number
+    left: number
+    trigger: HTMLButtonElement
+  } | null>(null)
   const [name, setName] = useState(module.name)
   const [lead, setLead] = useState(module.lead_id ?? '')
   const [state, setState] = useState<ModuleState>(module.state)
 
-  const openActionMenu = (rect: DOMRect) => {
+  const openActionMenu = (trigger: HTMLButtonElement) => {
+    const rect = trigger.getBoundingClientRect()
     const width = 240
     const height = 216
     const maxLeft = Math.max(8, window.innerWidth - width - 8)
     const maxTop = Math.max(8, window.innerHeight - height)
     const left = Math.min(Math.max(8, rect.right - width), maxLeft)
     const top = Math.min(Math.max(8, rect.bottom + 6), maxTop)
-    setActiveAction({ top, left })
+    setActiveAction({ top, left, trigger })
   }
 
   const cancelEdit = () => {
@@ -264,8 +269,14 @@ function ModuleRow({
         <button
           type="button"
           aria-label={`${module.name} 모듈 작업`}
+          aria-haspopup="menu"
+          aria-expanded={activeAction !== null}
+          aria-controls={activeAction ? `module-actions-${module.id}` : undefined}
           className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-of border border-of-border text-of-muted hover:bg-of-surface-2 hover:text-of-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus"
-          onClick={(event) => openActionMenu(event.currentTarget.getBoundingClientRect())}
+          onClick={(event) => {
+            if (activeAction) setActiveAction(null)
+            else openActionMenu(event.currentTarget)
+          }}
         >
           <MoreHorizontal size={14} />
         </button>
@@ -274,6 +285,7 @@ function ModuleRow({
             module={module}
             projectId={projectId}
             isOwner={isOwner}
+            trigger={activeAction.trigger}
             top={activeAction.top}
             left={activeAction.left}
             onOpenWorkItems={(moduleId) =>

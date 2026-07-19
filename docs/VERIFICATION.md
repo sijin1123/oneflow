@@ -2935,3 +2935,12 @@ Chromium typed mock fixture에서 1440x960과 390x844 viewport를 사용했다. 
 - **검증**: typecheck PASS, lint PASS(기존 Fast Refresh warning 4건), production build PASS(기존 chunk-size warning), unit **107 PASS**, component **8 PASS**, 완료 사이클 이월을 포함한 focused Cycle E2E **3 PASS**, 전용 포트 2-worker full E2E **325 PASS + opt-in visual QA 1 skip**다. 실제 Chromium에서 첫 항목 진입, 비활성 cue 건너뛰기, `ArrowUp`/`ArrowDown` 양방향 순환, `Home`/`End`, 외부 클릭, `Escape` trigger focus 복귀와 실제 번다운·이월 동작을 확인했다. Clean-room frontend **161**/backend **45**, npm/pip audit 0 vulnerabilities와 diff check도 PASS했다.
 
 ---
+
+# UI-173 Module Action Menu Lifecycle 검증 (2026-07-19)
+
+- **UI 변경**: viewport-fixed Module 행 메뉴와 Cycle 행 메뉴가 공통 `useFloatingActionMenuLifecycle`을 사용한다. 열기 즉시 첫 enabled action으로 진입하고, 비활성 cue를 건너뛰는 `ArrowUp`/`ArrowDown` 순환, `Home`/`End`, `Tab` 자연 이탈, outside pointer 종료, `Escape`·명시 닫기의 trigger 복귀를 같은 구현으로 제공한다. Trigger의 `aria-haspopup`·`aria-expanded`·`aria-controls`도 실제 메뉴 ID와 연결했다.
+- **기능/API 반영**: Module의 실제 작업 목록 필터 이동, 참여자 패널과 PUT 저장, owner 편집·삭제 및 viewer read-only cue를 유지했다. UI-172 Cycle의 작업 목록·번다운·편집·이월·삭제 회귀도 공통 훅 전환 뒤 함께 확인했다. 신규 API, DB/schema, migration, permission, environment variable, dependency 또는 Settings storage 변경은 없다.
+- **이연 항목**: Timeline과 Backlog 등 서로 다른 item action menu는 현재 고유 기능을 유지하며 후속 UI surface에서 공통 lifecycle 적용 가능성을 검토한다. 이번 Module/Cycle 공통 surface에는 mock/dead control 또는 미배선 동작이 없다.
+- **검증**: typecheck PASS, lint PASS(기존 Fast Refresh warning 4건), production build PASS(기존 chunk-size warning), unit **107 PASS**, component **8 PASS**, Module 실제 참여자/편집과 owner/viewer 및 Cycle 이월 회귀를 포함한 focused E2E **7 PASS**, 전용 포트 2-worker full E2E **325 PASS + opt-in visual QA 1 skip**다. Clean-room frontend **161**/backend **45**, npm/pip audit 0 vulnerabilities와 diff check도 PASS했다.
+
+---
