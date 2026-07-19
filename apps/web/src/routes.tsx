@@ -42,6 +42,7 @@ import { WorkspaceSettingsOverviewPage } from '@/features/admin/WorkspaceSetting
 import { WorkspaceGeneralSettingsPage } from '@/features/admin/WorkspaceGeneralSettingsPage'
 import { WorkspaceCalendarSettingsPage } from '@/features/admin/WorkspaceCalendarSettingsPage'
 import { WorkspacePhaseDefinitionsSettingsPage } from '@/features/admin/WorkspacePhaseDefinitionsSettingsPage'
+import { WorkspaceProjectRolesSettingsPage } from '@/features/admin/WorkspaceProjectRolesSettingsPage'
 import { PersonalSettingsPage } from '@/features/settings/PersonalSettingsPage'
 import { SettingsPage } from '@/features/settings/SettingsPage'
 import { AllWorkPage } from '@/features/work-items/AllWorkPage'
@@ -115,6 +116,7 @@ export const router = createBrowserRouter([
           { path: 'general', element: <WorkspaceGeneralSettingsPage /> },
           { path: 'calendar', element: <WorkspaceCalendarSettingsPage /> },
           { path: 'project-phases', element: <WorkspacePhaseDefinitionsSettingsPage /> },
+          { path: 'project-roles', element: <WorkspaceProjectRolesSettingsPage /> },
           { path: 'users', element: <UsersPage /> },
           { path: 'auth-assistance', element: <AuthAssistancePage /> },
           { path: 'integrations', element: <IntegrationsSettingsPage /> },
