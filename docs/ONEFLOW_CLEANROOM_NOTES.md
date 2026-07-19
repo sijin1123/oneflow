@@ -485,3 +485,9 @@ Plane/OpenProject source, API, database schema, package, asset, CSS, DOM hierarc
 `docs/plane-poc-reverse-spec/`의 설정 정보구조에서 사용한 입력은 워크스페이스 운영자가 핵심 관리 영역의 현재 상태를 한 곳에서 훑고 실제 세부 설정으로 이동하며, 일부 상태 조회 실패가 전체 관리 동선을 막지 않는다는 제품 행동뿐이다. OneFlow 구현은 기존 자체 WorkspaceProfile, User directory, Invitation, Working Calendar, Project Phase Definition, Capability API와 local Settings primitives로 독립 설계했다.
 
 Plane/OpenProject source, API, database schema, package, asset, CSS, DOM hierarchy, exact dimensions/colors, wording, overview 행 구현, icons 또는 branding은 복사하지 않았다. 개요는 이미 권한이 적용된 여섯 OneFlow API의 증명 가능한 값만 표시하고 role/provider 상태를 추정하지 않는다. 신규 API, migration, dependency, environment 또는 permission 변경은 없다. - attested-independent-derivation
+
+## UI-167 Login Interactive Pixel Closure
+
+UI-167의 유일한 시각 입력은 사용자가 직접 제공하고 OneFlow 제품 자산으로 승인한 `docs/oneflow-login-origin.png`다. 전체 화면 bitmap을 runtime overlay로 사용하던 중간 구현을 제거하고, 사용자 프롬프트가 허용한 좌측 story 영역과 OneFlow logo lockup만 결정적 crop/resample 자산으로 분리했다. 우측은 기존 OneFlow auth API와 접근 가능한 semantic DOM을 첫 페인트부터 렌더링한다.
+
+Plane/OpenProject source, package, asset, logo, CSS, DOM, wording 또는 branding은 입력·복사하지 않았다. 신규 API, DB/schema, migration, permission, environment, dependency 또는 Settings UI 변경은 없다. - attested-user-owned-oneflow-asset
