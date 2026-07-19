@@ -2897,3 +2897,14 @@ Chromium typed mock fixture에서 1440x960과 390x844 viewport를 사용했다. 
 - **증적/이연**: `docs/screenshots/redevelopment/login-interactive-pixel-closure-ui/`에 desktop/mobile 실제 캡처와 원본-기능형 runtime-5x diff를 보존한다. 인증 surface 안의 기능 이연은 없으며 외부 공급자 실제 연결은 배포별 자격 증명 구성 경계를 유지한다.
 
 ---
+
+# UI-169 Login Functional Pixel Regression 검증 (2026-07-19)
+
+- **UI 변경**: 승인 원본에서 정확히 분리한 기존 1x 로그인 logo lockup은 유지하고, 동일한 OneFlow 소유 2x 원화에서 같은 좌표를 잘라 만든 `410x140` lockup을 `srcset`에 연결했다. Chromium DPR 2에서 이 자산을 실제 선택하므로 CSS 배치와 비율을 바꾸지 않으면서 고밀도 화면의 브랜드 가장자리 선명도를 높인다.
+- **픽셀 전수 실사**: 승인 원본 `1448x1086`과 실제 Chromium `1455x1259`의 중앙 product panel `(117.5,172) 1220x915`를 원본 좌표로 정규화했다. DPR 1 MAE는 전체 `2.696`, 좌측 story `1.599`, 인증 영역 `4.021`, 칸반 `1.894`, 인증 브랜드 `4.171`, fields `4.976`, providers `7.254`다. max-channel delta `<=12` 비율은 전체 `95.46%`, story `96.90%`, auth `93.73%`다. 좌측 story crop과 1x auth logo crop은 승인 원본 대비 각각 MAE `0`이다.
+- **고밀도 검증**: 새 DPR 2 context에서 `HTMLImageElement.currentSrc`가 `oneflow-login-logo-lockup@2x.png`를 선택함을 확인했다. 물리 픽셀 기준 auth logo edge energy는 DPR 1 `3.907`에서 DPR 2 `4.279`로 `9.54%` 상승했으며 레이아웃 geometry는 유지됐다.
+- **기능/API 반영**: 첫 페인트부터 이메일·비밀번호·remember me·password visibility·지원 요청·OIDC·정책 dialog·언어·safe-next·loading/error/retry를 실제 semantic control과 기존 auth API로 제공한다. 전체 화면 overlay, 투명 hit layer, mock 또는 dead control은 없다. 신규 API, DB/schema, migration, permission, environment variable, dependency 또는 Settings UI 변경은 없다.
+- **검증**: typecheck PASS, lint PASS(기존 Fast Refresh warning 4건), production build PASS(기존 chunk-size warning), unit **107 PASS**, component **8 PASS**, focused login E2E **14 PASS**, 전용 포트 2-worker full E2E **325 PASS + opt-in visual QA 1 skip**다. Clean-room frontend **161**/backend **45**, npm/pip audit 0 vulnerabilities와 diff check도 PASS했다. 새 worktree의 첫 clean-room은 API `.venv` 부재로 backend scan이 fail-closed됐고 동일 잠금환경 `.venv`를 연결한 재검사에서 4단계가 모두 통과했다.
+- **증적/이연**: `docs/screenshots/redevelopment/login-functional-pixel-regression-ui/`에 DPR 1/2 desktop, `390x844` mobile, 정규화 runtime, side-by-side와 5x diff를 보존한다. 외부 공급자 인증은 배포별 자격 증명 설정 경계를 유지하며 이번 surface의 구현 이연은 없다.
+
+---

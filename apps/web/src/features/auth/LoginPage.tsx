@@ -17,6 +17,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 
 import loginLogoLockup from '@/assets/generated/oneflow-login-logo-lockup.png'
+import loginLogoLockup2x from '@/assets/generated/oneflow-login-logo-lockup@2x.png'
 import loginStoryReference from '@/assets/generated/oneflow-login-story-reference.png'
 import loginStoryReference2x from '@/assets/generated/oneflow-login-story-reference@2x.png'
 import { Button } from '@/components/ui/button'
@@ -160,6 +161,7 @@ function BrandLockup({ compact = false }: { compact?: boolean }) {
       <span className="of-login-brand-reference" aria-hidden="true">
         <img
           src={loginLogoLockup}
+          srcSet={`${loginLogoLockup} 1x, ${loginLogoLockup2x} 2x`}
           width="205"
           height="70"
           alt=""
