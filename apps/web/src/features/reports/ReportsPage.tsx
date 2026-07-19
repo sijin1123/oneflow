@@ -1,9 +1,10 @@
-import { ArrowUpRight, Download, Table2, Timeline } from 'lucide-react'
+import { ArrowUpRight, Download, Table2, Timeline, TrendingUp } from 'lucide-react'
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 
 import { EmptyState, ErrorState, ListSkeleton } from '@/components/shell/states'
+import { PortfolioBaselineTrend } from './PortfolioBaselineTrend'
 import { PortfolioTimelineChart, usePortfolioTimeline } from './PortfolioTimeline'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -86,7 +87,7 @@ function ScheduleBadge({ item }: { item: PortfolioItem }) {
    server parameter, so totals always match what is on screen (v63.1 R1-⑤). */
 export function ReportsPage() {
   const [includeArchived, setIncludeArchived] = useState(false)
-  const [view, setView] = useState<'table' | 'timeline'>('table')
+  const [view, setView] = useState<'table' | 'timeline' | 'trend'>('table')
   const [scheduleFilter, setScheduleFilter] = useState<ScheduleFilter>('all')
   const report = usePortfolio(includeArchived)
   // Single shared filter state across both views (v75.1 R1-⑥).
@@ -106,8 +107,10 @@ export function ReportsPage() {
     if (scheduleFilter === 'missing') return !item.schedule_baseline_id
     return true
   })
-  const openBaseline = (projectId: string) =>
-    navigate(`/projects/${projectId}/overview#schedule-baseline`)
+  const openBaseline = (projectId: string, baselineId?: string | null) =>
+    navigate(
+      `/projects/${projectId}/overview${baselineId ? `?baseline=${encodeURIComponent(baselineId)}` : ''}#schedule-baseline`,
+    )
 
   return (
     <ReportingSurface
@@ -122,6 +125,7 @@ export function ReportsPage() {
             options={[
               { value: 'table', label: '요약 표', icon: Table2 },
               { value: 'timeline', label: '타임라인', icon: Timeline },
+              { value: 'trend', label: '기준선 추세', icon: TrendingUp },
             ]}
           />
           <label className="inline-flex h-7 items-center gap-1.5 rounded-of border border-of-border bg-of-surface px-2.5 text-xs font-medium text-of-muted">
@@ -207,7 +211,7 @@ export function ReportsPage() {
         />
       ) : (
         <ReportingSection
-          title="프로젝트 비교"
+          title={view === 'trend' ? '최근 기준선 추세' : '프로젝트 비교'}
           actions={
             <ReportingSegmentedControl
               ariaLabel="일정 기준선 필터"
@@ -228,6 +232,12 @@ export function ReportsPage() {
               전체 프로젝트 보기
             </Button>
           </EmptyState>
+        ) : view === 'trend' ? (
+          <PortfolioBaselineTrend
+            projects={filteredItems}
+            includeArchived={includeArchived}
+            onOpen={openBaseline}
+          />
         ) : (
           <>
           <ul className="divide-y divide-of-border border-y border-of-border md:hidden">
@@ -235,7 +245,7 @@ export function ReportsPage() {
               <li key={item.project_id} className="min-w-0 py-3">
                 <div className="flex min-w-0 items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <button type="button" className="max-w-full truncate text-left text-sm font-medium hover:text-of-accent hover:underline" onClick={() => openBaseline(item.project_id)}>
+                    <button type="button" className="max-w-full truncate text-left text-sm font-medium hover:text-of-accent hover:underline" onClick={() => openBaseline(item.project_id, item.schedule_baseline_id)}>
                       {item.name}
                     </button>
                     <p className="mt-0.5 text-[10px] text-of-muted">{item.key}{item.archived ? ' · 아카이브' : ''}</p>
@@ -248,7 +258,7 @@ export function ReportsPage() {
                   <div><dt className="text-of-muted">작업</dt><dd className="mt-0.5 tabular-nums">{item.open_work_package_count} 미완료 · {item.overdue_count} 지연</dd></div>
                   <div><dt className="text-of-muted">기준선 변화</dt><dd className="mt-0.5 tabular-nums">{item.schedule_changed_count} 변경 · {item.schedule_risk_count} 주의</dd></div>
                 </dl>
-                <Button type="button" size="sm" variant="ghost" className="mt-2" onClick={() => openBaseline(item.project_id)}>
+                <Button type="button" size="sm" variant="ghost" className="mt-2" onClick={() => openBaseline(item.project_id, item.schedule_baseline_id)}>
                   기준선 상세 <ArrowUpRight size={13} />
                 </Button>
               </li>
@@ -281,7 +291,7 @@ export function ReportsPage() {
                       <button
                         type="button"
                         className="font-medium hover:text-of-accent hover:underline"
-                        onClick={() => openBaseline(i.project_id)}
+                        onClick={() => openBaseline(i.project_id, i.schedule_baseline_id)}
                       >
                         {i.name}
                       </button>
@@ -315,7 +325,7 @@ export function ReportsPage() {
                     </td>
                     <td className="px-2 py-2">
                       {i.schedule_baseline_id ? (
-                        <button type="button" className="max-w-[9rem] text-left hover:text-of-accent" onClick={() => openBaseline(i.project_id)}>
+                        <button type="button" className="max-w-[9rem] text-left hover:text-of-accent" onClick={() => openBaseline(i.project_id, i.schedule_baseline_id)}>
                           <span className="block truncate font-medium">{i.schedule_baseline_name}</span>
                           <span className="mt-0.5 block text-[10px] tabular-nums text-of-muted">{capturedDate(i.schedule_baseline_captured_at)} · {i.schedule_baseline_snapshot_count}개</span>
                         </button>

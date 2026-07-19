@@ -3095,6 +3095,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/reports/portfolio/schedule-baseline-trends": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Portfolio Schedule Baseline Trends
+         * @description Recent schedule-baseline trends for the same bounded portfolio page.
+         */
+        get: operations["portfolio_schedule_baseline_trends_api_v1_reports_portfolio_schedule_baseline_trends_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/reports/portfolio/timeline": {
         parameters: {
             query?: never;
@@ -7117,6 +7137,48 @@ export interface components {
             /** Total */
             total: number;
             totals: components["schemas"]["PortfolioTotals"];
+        };
+        /** PortfolioScheduleTrendPoint */
+        PortfolioScheduleTrendPoint: {
+            /**
+             * Baseline Id
+             * Format: uuid
+             */
+            baseline_id: string;
+            /**
+             * Captured At
+             * Format: date-time
+             */
+            captured_at: string;
+            /** Changed Count */
+            changed_count: number;
+            /** Comparison Count */
+            comparison_count: number;
+            /** Name */
+            name: string;
+            /** Risk Count */
+            risk_count: number;
+            /** Snapshot Count */
+            snapshot_count: number;
+        };
+        /** PortfolioScheduleTrendProject */
+        PortfolioScheduleTrendProject: {
+            /** Points */
+            points: components["schemas"]["PortfolioScheduleTrendPoint"][];
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+        };
+        /** PortfolioScheduleTrendRead */
+        PortfolioScheduleTrendRead: {
+            /** History Limit */
+            history_limit: number;
+            /** Items */
+            items: components["schemas"]["PortfolioScheduleTrendProject"][];
+            /** Total */
+            total: number;
         };
         /**
          * PortfolioTimelineItem
@@ -18233,6 +18295,44 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    portfolio_schedule_baseline_trends_api_v1_reports_portfolio_schedule_baseline_trends_get: {
+        parameters: {
+            query?: {
+                include_archived?: boolean;
+                limit?: number;
+                offset?: number;
+                history_limit?: number;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PortfolioScheduleTrendRead"];
                 };
             };
             /** @description Validation Error */

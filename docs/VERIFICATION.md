@@ -2784,3 +2784,13 @@ Chromium typed mock fixture에서 1440x960과 390x844 viewport를 사용했다. 
 - **권한/경계**: 기존 current project membership, owner-only active-project write, archived read와 기준선당 5,000개 current-item 상한을 그대로 적용한다. 추세는 각 과거 시점끼리의 복원된 상태를 주장하지 않고 모든 저장 기준선을 현재 일정과 비교한다는 설명을 화면에 명시했다. 신규 migration, environment variable, dependency, permission registry 또는 Settings UI 변경은 없다.
 - **검증**: API 기준선 focused **6 PASS**, full API **824 PASS**(기존 Alembic path separator 경고 1건), Ruff와 OpenAPI generation/drift PASS. Web typecheck PASS, lint PASS(기존 Fast Refresh 경고 4건), production build PASS(기존 chunk-size 경고), unit **107**, component **8**, focused 추세 E2E **1 PASS**, 2-worker full E2E **315 PASS + opt-in visual QA 1 skip**다.
 - Chromium 증적은 `docs/screenshots/redevelopment/project-schedule-baseline-trend-ui/{desktop,mobile}.png`에 보존한다. **이연 항목**은 여러 프로젝트의 임의 과거 기준선 범위를 서로 비교하는 organization-wide trend/report builder이며, 현재 Project Overview 추세에는 mock, dead control 또는 미배선 UI가 없다.
+
+---
+
+# UI-159 Portfolio Recent Baseline Trend 검증 (2026-07-19)
+
+- **UI 변경**: Portfolio report에 실제 `기준선 추세` 모드를 추가했다. 기존 일정 필터를 공유하면서 프로젝트별 최근 최대 5개 기준선을 오래된 순서로 배치하고, 저장 작업 수·현재 일정 대비 변동/주의 수·최신 기준선을 표시한다. 이력 없음도 프로젝트별로 보존하며 initial loading, summary와 독립된 error/retry, desktop 5열/mobile 1열과 no-overflow를 제공한다.
+- **기능/API 반영**: `GET /api/v1/reports/portfolio/schedule-baseline-trends`는 기존 Portfolio와 같은 current ProjectMember, archive, 이름/ID 정렬, limit/offset 경계를 다시 적용한다. 반환이 승인된 최대 200개 프로젝트와 프로젝트당 최근 1~5개 기준선만 PostgreSQL aggregate로 현재 Work Package 일정과 비교하며, 이력 없는 프로젝트도 빈 `points`로 반환한다. 기존 최신 기준선 Portfolio summary query는 같은 집계의 history limit 1 호환 경로로 유지했다.
+- **권한/정보 경계**: 응답은 기준선 ID·이름·시각과 count만 포함하고 Work Package subject, item ID 또는 hidden-project 이력을 노출하지 않는다. 추세 point는 정확한 `?baseline=<id>#schedule-baseline` Project Overview 딥링크로 연결되고, Overview selector는 현재 membership 검사를 거친 뒤 해당 기준선을 선택하며 존재하지 않는 ID는 최신 허용 기준선으로 정규화한다. mock/dead control 또는 장식용 추세점은 없다.
+- **검증**: Portfolio API focused **8 PASS**, full API **825 PASS**(기존 Alembic path separator warning 1건), API Ruff/format, OpenAPI generation/drift와 shared type check PASS다. Web typecheck PASS, lint PASS(기존 Fast Refresh warning 4건), production build PASS(기존 chunk-size warning), unit **107**, component **8**, focused/related Portfolio·Overview E2E **5 PASS**, single-worker full E2E **316 PASS + opt-in visual QA 1 skip**다. Clean-room frontend **161**/backend **45**, npm/pip audit 0 vulnerabilities와 diff check도 PASS했다.
+- Chromium 증적은 `docs/screenshots/redevelopment/portfolio-baseline-trend-ui/{desktop,mobile}.png`에 보존한다. 신규 migration, environment variable, dependency, permission registry 또는 Settings UI 변경은 없다. **이연 항목**은 임의 기준일·사용자 지정 기간과 차원/pivot report builder이며, 현재 최근 기준선 추세 surface는 기능적으로 완결됐다.

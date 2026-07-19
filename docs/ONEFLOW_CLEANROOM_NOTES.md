@@ -455,3 +455,9 @@ Plane/OpenProject source, API, database schema, package, asset, CSS, DOM hierarc
 OpenProject의 공개 일정 기준선 제품 범주와 `docs/plane-poc-reverse-spec/`의 compact history/selection 정보구조에서 사용한 입력은 저장한 여러 일정 시점을 한 surface에서 훑고 선택한 시점의 편차를 상세 확인한다는 제품 행동뿐이다. OneFlow 구현은 UI-156의 자체 snapshot, current Project membership, PostgreSQL aggregate, FastAPI/SQLAlchemy와 Project Overview React Query surface를 사용해 독립 설계했다.
 
 Plane/OpenProject source, API, database schema, package, asset, CSS, DOM hierarchy, exact dimensions/colors, wording, trend calculation/chart 구현, icons 또는 branding은 복사하지 않았다. 최대 20개 기준선만 한 aggregate로 현재 일정과 비교하고 subject/history payload를 목록에서 제외했으며, 각 추세 행을 기존 authorized detail query에 연결했다. 신규 migration, dependency, environment, permission 또는 Settings UI 변경은 없다. 임의 과거 범위의 organization-wide 추세는 별도 bounded reporting 계약으로 유지한다. — attested-independent-derivation
+
+## UI-159 Portfolio Recent Baseline Trend
+
+OpenProject의 공개 portfolio/baseline 제품 범주와 `docs/plane-poc-reverse-spec/`의 compact report/view-control 정보구조에서 사용한 입력은 권한 있는 여러 프로젝트의 최근 일정 기준선 변화를 같은 surface에서 비교하고 선택 시 상세 시점으로 이동한다는 제품 행동뿐이다. OneFlow 구현은 UI-156~158의 자체 snapshot과 current ProjectMember scope, PostgreSQL aggregate, FastAPI/SQLAlchemy 및 local Reporting primitives로 독립 설계했다.
+
+Plane/OpenProject source, API, database schema, package, asset, CSS, DOM hierarchy, exact dimensions/colors, wording, trend endpoint/chart 구현, icons 또는 branding은 복사하지 않았다. 집계는 반환이 승인된 최대 200개 프로젝트와 프로젝트당 최근 5개 기준선으로 제한하고 Work Package subject나 hidden-project 이력을 응답하지 않는다. 신규 migration, dependency, environment, permission 또는 Settings UI 변경은 없다. 임의 기준일·사용자 지정 기간과 차원/pivot report builder는 별도 bounded 분석 surface로 유지한다. — attested-independent-derivation

@@ -36,6 +36,9 @@ from app.models.work_package import WorkPackage
 from app.schemas.report import (
     PortfolioItem,
     PortfolioReportRead,
+    PortfolioScheduleTrendPoint,
+    PortfolioScheduleTrendProject,
+    PortfolioScheduleTrendRead,
     PortfolioTimelineItem,
     PortfolioTimelineMilestone,
     PortfolioTimelineRead,
@@ -46,16 +49,17 @@ from app.services.workspace_features import RELEASES_FEATURE, feature_enabled
 router = APIRouter()
 
 
-async def _portfolio_baseline_summaries(
+async def _portfolio_baseline_history_summaries(
     session: AsyncSession,
     project_ids: list[uuid.UUID],
-) -> dict[uuid.UUID, dict[str, object]]:
-    """Aggregate latest-baseline variance for one bounded portfolio page.
+    *,
+    history_limit: int,
+) -> dict[uuid.UUID, list[dict[str, object]]]:
+    """Aggregate bounded baseline variance for one authorized portfolio page.
 
-    The caller supplies at most 200 already-authorized project ids. Snapshot
-    and current rows are compared in SQL and only one aggregate row per
-    project is returned; work-item subjects and hidden projects never leave
-    the database.
+    The caller supplies at most 200 already-authorized project ids and a
+    history limit of at most five. Snapshot and current rows are compared in
+    SQL; work-item subjects and hidden projects never leave the database.
     """
     if not project_ids:
         return {}
@@ -79,42 +83,47 @@ async def _portfolio_baseline_summaries(
         .where(ProjectScheduleBaseline.project_id.in_(project_ids))
         .subquery()
     )
-    latest = (
+    selected_baselines = (
         select(
             ranked.c.baseline_id,
             ranked.c.project_id,
             ranked.c.name,
             ranked.c.captured_at,
         )
-        .where(ranked.c.position == 1)
+        .where(ranked.c.position <= history_limit)
         .subquery()
     )
     snapshots = (
         select(
-            latest.c.project_id,
+            selected_baselines.c.baseline_id,
+            selected_baselines.c.project_id,
             ProjectScheduleBaselineItem.work_package_id.label("snapshot_id"),
             ProjectScheduleBaselineItem.start_date.label("baseline_start"),
             ProjectScheduleBaselineItem.due_date.label("baseline_due"),
         )
         .join(
             ProjectScheduleBaselineItem,
-            ProjectScheduleBaselineItem.baseline_id == latest.c.baseline_id,
+            ProjectScheduleBaselineItem.baseline_id == selected_baselines.c.baseline_id,
         )
         .subquery()
     )
     current = (
         select(
-            WorkPackage.project_id,
+            selected_baselines.c.baseline_id,
+            selected_baselines.c.project_id,
             WorkPackage.id.label("current_id"),
             WorkPackage.start_date.label("current_start"),
             WorkPackage.due_date.label("current_due"),
         )
-        .where(WorkPackage.project_id.in_(project_ids))
+        .select_from(selected_baselines)
+        .join(WorkPackage, WorkPackage.project_id == selected_baselines.c.project_id)
         .subquery()
     )
+    pair_baseline_id = func.coalesce(snapshots.c.baseline_id, current.c.baseline_id)
     pair_project_id = func.coalesce(snapshots.c.project_id, current.c.project_id)
     pairs = (
         select(
+            pair_baseline_id.label("baseline_id"),
             pair_project_id.label("project_id"),
             snapshots.c.snapshot_id,
             current.c.current_id,
@@ -127,13 +136,12 @@ async def _portfolio_baseline_summaries(
             snapshots.join(
                 current,
                 and_(
-                    snapshots.c.project_id == current.c.project_id,
+                    snapshots.c.baseline_id == current.c.baseline_id,
                     snapshots.c.snapshot_id == current.c.current_id,
                 ),
                 full=True,
             )
         )
-        .join(latest, latest.c.project_id == pair_project_id)
         .subquery()
     )
     baseline_scheduled = or_(pairs.c.baseline_start.is_not(None), pairs.c.baseline_due.is_not(None))
@@ -167,42 +175,92 @@ async def _portfolio_baseline_summaries(
     aggregate_rows = (
         await session.execute(
             select(
-                latest.c.project_id,
-                latest.c.baseline_id,
-                latest.c.name,
-                latest.c.captured_at,
+                selected_baselines.c.project_id,
+                selected_baselines.c.baseline_id,
+                selected_baselines.c.name,
+                selected_baselines.c.captured_at,
                 func.count().filter(has_pair, pairs.c.snapshot_id.is_not(None)),
+                func.count().filter(has_pair),
                 func.count().filter(has_pair, state != "unchanged"),
                 func.count().filter(has_pair, state.in_(("later", "unscheduled", "removed"))),
             )
-            .select_from(latest.outerjoin(pairs, pairs.c.project_id == latest.c.project_id))
+            .select_from(
+                selected_baselines.outerjoin(
+                    pairs,
+                    pairs.c.baseline_id == selected_baselines.c.baseline_id,
+                )
+            )
             .group_by(
-                latest.c.project_id,
-                latest.c.baseline_id,
-                latest.c.name,
-                latest.c.captured_at,
+                selected_baselines.c.project_id,
+                selected_baselines.c.baseline_id,
+                selected_baselines.c.name,
+                selected_baselines.c.captured_at,
+            )
+            .order_by(
+                selected_baselines.c.project_id,
+                selected_baselines.c.captured_at.desc(),
+                selected_baselines.c.baseline_id.desc(),
             )
         )
     ).all()
-    return {
-        project_id: {
-            "id": baseline_id,
-            "name": name,
-            "captured_at": captured_at,
-            "snapshot_count": snapshot_count,
-            "changed_count": changed_count,
-            "risk_count": risk_count,
-        }
-        for (
-            project_id,
-            baseline_id,
-            name,
-            captured_at,
-            snapshot_count,
-            changed_count,
-            risk_count,
-        ) in aggregate_rows
-    }
+    by_project: dict[uuid.UUID, list[dict[str, object]]] = {}
+    for (
+        project_id,
+        baseline_id,
+        name,
+        captured_at,
+        snapshot_count,
+        comparison_count,
+        changed_count,
+        risk_count,
+    ) in aggregate_rows:
+        by_project.setdefault(project_id, []).append(
+            {
+                "id": baseline_id,
+                "name": name,
+                "captured_at": captured_at,
+                "snapshot_count": snapshot_count,
+                "comparison_count": comparison_count,
+                "changed_count": changed_count,
+                "risk_count": risk_count,
+            }
+        )
+    return by_project
+
+
+async def _portfolio_baseline_summaries(
+    session: AsyncSession,
+    project_ids: list[uuid.UUID],
+) -> dict[uuid.UUID, dict[str, object]]:
+    history = await _portfolio_baseline_history_summaries(
+        session,
+        project_ids,
+        history_limit=1,
+    )
+    return {project_id: points[0] for project_id, points in history.items() if points}
+
+
+async def _portfolio_project_ids(
+    session: AsyncSession,
+    user_id: uuid.UUID,
+    *,
+    include_archived: bool,
+    limit: int,
+    offset: int,
+) -> list[uuid.UUID]:
+    query = select(Project.id).join(
+        ProjectMember,
+        (ProjectMember.project_id == Project.id) & (ProjectMember.user_id == user_id),
+    )
+    if not include_archived:
+        query = query.where(Project.archived_at.is_(None))
+    return list(
+        (
+            await session.execute(
+                query.order_by(Project.name.asc(), Project.id.asc()).limit(limit).offset(offset)
+            )
+        ).scalars()
+    )
 
 
 async def portfolio_query(
@@ -342,6 +400,55 @@ async def portfolio_report(
 ) -> PortfolioReportRead:
     return await portfolio_query(
         session, user.id, include_archived=include_archived, limit=limit, offset=offset
+    )
+
+
+@router.get(
+    "/reports/portfolio/schedule-baseline-trends",
+    response_model=PortfolioScheduleTrendRead,
+)
+async def portfolio_schedule_baseline_trends(
+    include_archived: bool = Query(default=False),
+    limit: int = Query(default=200, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    history_limit: int = Query(default=5, ge=1, le=5),
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+) -> PortfolioScheduleTrendRead:
+    """Recent schedule-baseline trends for the same bounded portfolio page."""
+    project_ids = await _portfolio_project_ids(
+        session,
+        user.id,
+        include_archived=include_archived,
+        limit=limit,
+        offset=offset,
+    )
+    history = await _portfolio_baseline_history_summaries(
+        session,
+        project_ids,
+        history_limit=history_limit,
+    )
+    return PortfolioScheduleTrendRead(
+        items=[
+            PortfolioScheduleTrendProject(
+                project_id=project_id,
+                points=[
+                    PortfolioScheduleTrendPoint(
+                        baseline_id=point["id"],
+                        name=str(point["name"]),
+                        captured_at=point["captured_at"],
+                        snapshot_count=int(point["snapshot_count"]),
+                        comparison_count=int(point["comparison_count"]),
+                        changed_count=int(point["changed_count"]),
+                        risk_count=int(point["risk_count"]),
+                    )
+                    for point in history.get(project_id, [])
+                ],
+            )
+            for project_id in project_ids
+        ],
+        total=len(project_ids),
+        history_limit=history_limit,
     )
 
 
