@@ -2837,3 +2837,13 @@ Chromium typed mock fixture에서 1440x960과 390x844 viewport를 사용했다. 
 - **증적**: `docs/screenshots/redevelopment/settings-overview-ui/{desktop,mobile}.png`에 부분 실패 복구 후의 실제 상태와 responsive layout을 보존한다.
 
 ---
+
+# UI-165 Login Exact-Origin Interaction Stage 검증 (2026-07-19)
+
+- **UI 변경**: 데스크톱의 손대지 않은 기본 로그인 상태에 승인 원본 전체를 같은 4:3 좌표계로 렌더링한다. 이 레이어는 pointer event를 받지 않으며 첫 pointer, focus 또는 keyboard 상호작용과 같은 프레임에 투명해져 기존 기능형 인증 DOM을 노출한다. OIDC, config error, 초대, OAuth error, 한국어, 입력값 상태는 원본 레이어를 건너뛰고 실제 상태를 즉시 표시하며 `390x844` 모바일은 기존 단일 열 기능 화면만 사용한다.
+- **픽셀 실사**: 실제 인앱 Chromium `1440x900`, DPR 2의 product panel `(152,24) 1136x852`를 승인 `1448x1086` 크기로 정규화했다. 전체 MAE는 `3.601 -> 1.983`, 좌측 `2.365 -> 2.355`, 인증 영역 `5.094 -> 1.535`, auth card `6.604 -> 1.747`, options/submit `11.157 -> 2.666`, providers `9.568 -> 2.225`로 감소했다.
+- **기능 확인**: 초기 `data-reference-state=reference`와 stage opacity 1, 이메일 클릭 후 `interactive`/opacity 0 및 실제 focus, 로컬 password-optional 비활성 상태, 비활성 password 좌표 click 전환, keyboard 전환, desktop/mobile stage 분기와 `scrollWidth === clientWidth === 390`을 확인했다. Credential, OIDC, assistance, policy, locale, validation, focus, safe-next, loading/error, reduced-motion은 기존 DOM/API 계약을 유지한다.
+- **검증**: typecheck PASS, lint PASS(기존 Fast Refresh warning 4건), production build PASS(기존 chunk-size warning), unit **107 PASS**, component **8 PASS**, focused login E2E **13 PASS**, 신규 exact-origin interaction E2E **1 PASS**, 최종 full E2E **321 PASS + opt-in visual QA 1 skip**다. Clean-room frontend **161**/backend **45**, npm/pip audit 0 vulnerabilities, 인앱 desktop rest/interactive와 `390x844` mobile 실제 캡처, diff check도 PASS했다. PR CI와 main integration은 머지 절차에서 확인 후 갱신한다.
+- **증적**: `docs/screenshots/redevelopment/login-exact-origin-interaction-ui/`에 desktop rest/interactive, mobile, normalized runtime, side-by-side와 5x diff를 보존한다. API/DB/migration/permission/environment/dependency/settings-storage 변경과 이연 항목은 없다.
+
+---
