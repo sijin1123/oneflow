@@ -1,7 +1,8 @@
-import { CalendarDays, ExternalLink, MoreHorizontal, Pencil, Save, Trash2, X } from 'lucide-react'
+import { CalendarDays, ExternalLink, Lock, Pencil, Save, Trash2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
+import { InlineActionMenu, type InlineActionMenuItem } from '@/components/ui/action-menu'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
@@ -49,95 +50,46 @@ function MilestoneActions({
   onEdit: () => void
   onDelete: () => void
 }) {
-  const [open, setOpen] = useState(false)
-
-  useEffect(() => {
-    if (!open) return
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setOpen(false)
-    }
-    window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
-  }, [open])
-
-  const itemClass =
-    'flex w-full items-center gap-2 rounded-of px-2 py-1.5 text-left text-xs text-of-text hover:bg-of-surface-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-of-accent'
+  const items: InlineActionMenuItem[] = [
+    {
+      label: '작업 목록 열기',
+      ariaLabel: `${milestone.name} 작업 목록 열기`,
+      icon: <ExternalLink size={14} />,
+      onSelect: onOpenWork,
+    },
+    ...(isOwner
+      ? [
+          {
+            label: '편집',
+            ariaLabel: `${milestone.name} 편집`,
+            icon: <Pencil size={14} />,
+            onSelect: onEdit,
+          },
+          {
+            label: '삭제',
+            ariaLabel: `${milestone.name} 삭제`,
+            icon: <Trash2 size={14} />,
+            tone: 'danger' as const,
+            onSelect: onDelete,
+          },
+        ]
+      : [
+          {
+            label: '쓰기 권한 없음',
+            ariaLabel: `${milestone.name} 쓰기 권한 없음`,
+            icon: <Lock size={14} />,
+            disabled: true,
+            onSelect: () => undefined,
+          },
+        ]),
+  ]
 
   return (
-    <div className="relative shrink-0">
-      <button
-        type="button"
-        aria-label={`${milestone.name} 마일스톤 작업`}
-        aria-haspopup="menu"
-        aria-expanded={open}
-        className="inline-flex h-8 w-8 items-center justify-center rounded-of text-of-muted hover:bg-of-surface-2 hover:text-of-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-of-accent"
-        onClick={() => setOpen((value) => !value)}
-      >
-        <MoreHorizontal size={16} />
-      </button>
-      {open ? (
-        <div
-          role="menu"
-          aria-label={`${milestone.name} 마일스톤 작업 메뉴`}
-          className="absolute right-0 top-9 z-30 w-56 max-w-[calc(100vw-2rem)] rounded-of border border-of-border bg-of-surface p-1 shadow-of-lg"
-        >
-          <button
-            type="button"
-            role="menuitem"
-            aria-label={`${milestone.name} 작업 목록 열기`}
-            className={itemClass}
-            onClick={() => {
-              setOpen(false)
-              onOpenWork()
-            }}
-          >
-            <ExternalLink size={14} />
-            작업 목록 열기
-          </button>
-          {isOwner ? (
-            <>
-              <button
-                type="button"
-                role="menuitem"
-                aria-label={`${milestone.name} 편집`}
-                className={itemClass}
-                onClick={() => {
-                  setOpen(false)
-                  onEdit()
-                }}
-              >
-                <Pencil size={14} />
-                편집
-              </button>
-              <button
-                type="button"
-                role="menuitem"
-                aria-label={`${milestone.name} 삭제`}
-                className={`${itemClass} text-of-danger hover:text-of-danger`}
-                onClick={() => {
-                  setOpen(false)
-                  onDelete()
-                }}
-              >
-                <Trash2 size={14} />
-                삭제
-              </button>
-            </>
-          ) : (
-            <div className="rounded-of px-2 py-1.5 text-xs text-of-muted">쓰기 권한 없음</div>
-          )}
-          <button
-            type="button"
-            role="menuitem"
-            className="mt-1 flex w-full items-center gap-2 rounded-of px-2 py-1.5 text-left text-xs text-of-muted hover:bg-of-surface-2"
-            onClick={() => setOpen(false)}
-          >
-            <X size={14} />
-            닫기
-          </button>
-        </div>
-      ) : null}
-    </div>
+    <InlineActionMenu
+      label={`${milestone.name} 마일스톤 작업`}
+      menuLabel={`${milestone.name} 마일스톤 작업 메뉴`}
+      items={items}
+    />
   )
 }
 
