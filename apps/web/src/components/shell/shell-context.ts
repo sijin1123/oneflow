@@ -26,6 +26,7 @@ const workspaceRouteLabels: Array<{ path: string; title: string; parent: string 
   { path: '/admin/initiatives', title: 'Initiatives 설정', parent: '기능 설정' },
   { path: '/admin/releases', title: 'Releases 설정', parent: '기능 설정' },
   { path: '/admin/customers', title: 'Customers 설정', parent: '기능 설정' },
+  { path: '/admin/integrations', title: '연결 및 통합', parent: '개발자 설정' },
   { path: '/admin/webhooks', title: 'Webhooks', parent: '개발자 설정' },
   { path: '/settings', title: '개인 설정', parent: '설정' },
 ]
@@ -63,7 +64,7 @@ const workspaceParentHrefs: Record<string, string> = {
   설정: '/settings',
   '워크스페이스 설정': '/admin/general',
   '기능 설정': '/admin/wiki',
-  '개발자 설정': '/admin/webhooks',
+  '개발자 설정': '/admin/integrations',
 }
 
 export function getShellContext(

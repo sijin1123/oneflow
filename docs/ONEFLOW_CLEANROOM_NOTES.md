@@ -473,3 +473,9 @@ Plane/OpenProject source, package, asset, logo, CSS, DOM, wording 또는 brandin
 `docs/plane-poc-reverse-spec/`와 사용자 캡처에서 사용한 입력은 워크스페이스 identity가 전역 shell과 설정 표면에 일관되게 표시되고 관리자가 로고를 교체한다는 제품 행동뿐이다. OneFlow 구현은 자체 WorkspaceProfile revision, LocalStorage abstraction, FastAPI/SQLAlchemy, React Query cache와 기존 shell primitives로 독립 설계했다.
 
 Plane/OpenProject source, API, database schema, package, asset, CSS, DOM hierarchy, exact dimensions/colors, wording, upload 구현, icons 또는 branding은 복사하지 않았다. OneFlow 고유 migration `0111`, bounded static-image validation, admin CAS, blob replacement rollback, live-reference sweep와 이름 기반 fallback을 추가했다. 외부 object store와 임의 theme 편집은 별도 운영·디자인 정책이 필요한 후속 surface다. - attested-independent-derivation
+
+## UI-163 Workspace Integrations Hub
+
+`docs/plane-poc-reverse-spec/`의 설정 정보구조에서 사용한 입력은 워크스페이스 연결 상태를 한 곳에서 훑고 실제 세부 관리 surface로 이동하며, 각 capability의 준비·오류 상태를 독립적으로 보여준다는 제품 행동뿐이다. OneFlow 구현은 기존 자체 Webhook, Data Transfer audit, AI workspace policy, public auth config, React Query와 local Settings primitives로 독립 설계했다.
+
+Plane/OpenProject source, API, database schema, package, asset, CSS, DOM hierarchy, exact dimensions/colors, wording, integration card 구현, icons 또는 branding은 복사하지 않았다. 허브는 이미 권한이 적용된 네 OneFlow API의 증명 가능한 값만 표시하고 secret이나 외부 provider 연결 상태를 추정하지 않는다. 신규 API, migration, dependency, environment 또는 permission 변경은 없으며, 외부 adapter는 운영 credential과 callback 검증이 확보되기 전까지 control을 노출하지 않는다. - attested-independent-derivation

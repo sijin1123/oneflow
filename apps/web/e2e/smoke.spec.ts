@@ -2248,6 +2248,7 @@ test('Settings rail은 권한별 설정 navigation과 중앙 form을 중복 없�
   const settingsNav = page.getByRole('navigation', { name: '설정 컨텍스트 내비게이션' })
   await expect(settingsNav.getByRole('link', { name: '내 계정' })).toHaveAttribute('href', '/settings')
   await expect(settingsNav.getByRole('link', { name: '사용자' })).toHaveAttribute('aria-current', 'page')
+  await expect(settingsNav.getByRole('link', { name: '연결 및 통합' })).toHaveAttribute('href', '/admin/integrations')
   await expect(settingsNav.getByRole('link', { name: 'Webhooks' })).toHaveAttribute('href', '/admin/webhooks')
   await expect(page.getByRole('button', { name: '새 작업' })).toHaveCount(0)
   await expect(page.getByRole('heading', { name: '사용자 관리' })).toBeVisible()
@@ -18293,6 +18294,132 @@ test('포트폴리오 최근 기준선 추세가 독립 재시도·부분 이력
   await mobileTrend.scrollIntoViewIfNeeded()
   await page.screenshot({
     path: '../../docs/screenshots/redevelopment/portfolio-baseline-trend-ui/mobile.png',
+  })
+})
+
+test('연결 및 통합 허브는 실제 capability 상태와 관리 동선을 독립적으로 제공한다', async ({ page }) => {
+  await mockApi(page)
+  let webhookReads = 0
+  let webhookHealthy = false
+  await page.route('**/api/v1/webhooks', async (route) => {
+    webhookReads += 1
+    if (!webhookHealthy) {
+      await route.fulfill({ status: 500, json: { detail: 'temporary webhook status failure' } })
+      return
+    }
+    await route.fulfill({
+      json: {
+        items: [{
+          id: 'wh-hub',
+          name: 'Delivery automation',
+          url: 'https://hooks.example.com/oneflow',
+          event_types: ['work_package.updated'],
+          is_active: true,
+          secret_version: 2,
+          signing_key_id: '2026-q3',
+          created_at: '2026-07-18T00:00:00Z',
+          updated_at: '2026-07-18T00:00:00Z',
+          deleted_at: null,
+        }],
+        total: 1,
+        enabled: true,
+        active_signing_key_id: '2026-q3',
+        available_signing_key_ids: ['2026-q3'],
+        rotations: [],
+      },
+    })
+  })
+  await page.route('**/api/v1/data-transfer-jobs', (route) => route.fulfill({
+    json: {
+      items: [{
+        id: 'transfer-hub',
+        project_id: project.id,
+        project_key: project.key,
+        project_name: project.name,
+        actor_id: 'me-1',
+        actor_name: 'Dev User',
+        direction: 'import',
+        source: 'jira',
+        dry_run: false,
+        status: 'completed_with_errors',
+        total_rows: 12,
+        valid_rows: 11,
+        invalid_rows: 1,
+        inserted_rows: 11,
+        checksum: 'sha256:fixture',
+        errors_truncated: false,
+        notes: [],
+        artifact_available: false,
+        artifact_filename: null,
+        artifact_size_bytes: null,
+        artifact_sha256: null,
+        created_at: '2026-07-18T01:00:00Z',
+      }],
+      total: 1,
+      limit: 50,
+      offset: 0,
+    },
+  }))
+  await page.route('**/api/v1/admin/workspace/features/ai', (route) => route.fulfill({
+    json: {
+      feature_key: 'ai',
+      enabled: true,
+      revision: 4,
+      deployment_enabled: true,
+      effective_enabled: true,
+      updated_by_user_id: 'me-1',
+      updated_by_name: 'Dev User',
+      updated_at: '2026-07-18T02:00:00Z',
+    },
+  }))
+  await page.route('**/api/v1/auth/config', (route) => route.fulfill({
+    json: {
+      auth_mode: 'oidc',
+      oidc_issuer: null,
+      oidc_client_id: null,
+      oidc_provider: null,
+      oidc_providers: ['google', 'microsoft'],
+      has_client_secret: true,
+      command_palette_enabled: true,
+      session_management_enabled: true,
+      password_required: false,
+      oidc_login_enabled: true,
+    },
+  }))
+
+  await page.goto('/admin/integrations')
+  await expect(page.getByRole('heading', { name: '연결 및 통합' })).toBeVisible()
+  await expect(page.getByRole('navigation', { name: '설정 컨텍스트 내비게이션' }).getByRole('link', { name: '연결 및 통합' })).toHaveAttribute('aria-current', 'page')
+
+  const webhookStatus = page.getByLabel('Webhooks 상태')
+  await expect(webhookStatus.getByText('확인 실패')).toBeVisible()
+  await expect(page.getByLabel('데이터 전송 상태').getByText('이력 있음')).toBeVisible()
+  await expect(page.getByLabel('AI 작업 요약 상태').getByText('활성', { exact: true })).toBeVisible()
+  await expect(page.getByLabel('인증 상태').getByText('OIDC 준비됨')).toBeVisible()
+  await expect(page.getByText('최근 Jira 가져오기')).toBeVisible()
+  await expect(page.getByText('provider 2개')).toBeVisible()
+
+  webhookHealthy = true
+  await page.getByLabel('Webhooks 다시 시도').click()
+  await expect(webhookStatus.getByText('전송 중')).toBeVisible()
+  await expect(webhookStatus.getByText('endpoint 1개')).toBeVisible()
+  expect(webhookReads).toBeGreaterThan(1)
+
+  await expect(page.getByRole('link', { name: 'Webhooks 관리' })).toHaveAttribute('href', '/admin/webhooks')
+  await expect(page.getByRole('link', { name: '데이터 전송 운영 허브' })).toHaveAttribute('href', '/operations')
+  await expect(page.getByRole('link', { name: 'AI 작업 요약 정책 관리' })).toHaveAttribute('href', '/admin/ai')
+  await expect(page.getByRole('link', { name: '인증 시스템 상태' })).toHaveAttribute('href', '/status')
+
+  await page.setViewportSize({ width: 1440, height: 960 })
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/integrations-hub-ui/desktop.png',
+    fullPage: true,
+  })
+  await page.setViewportSize({ width: 390, height: 844 })
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/integrations-hub-ui/mobile.png',
+    fullPage: true,
   })
 })
 

@@ -13,6 +13,7 @@ import {
   CalendarCheck2,
   CalendarDays,
   CalendarRange,
+  Cable,
   ChevronsLeftRight,
   ChevronDown,
   ChevronRight,
@@ -877,7 +878,10 @@ function SidebarContent({
                   </div>
                   <div>
                     <SectionLabel>개발자 도구</SectionLabel>
-                    <NavLink to="/admin/webhooks" className={navLinkClass} onClick={onNavigate}><Webhook /><span>Webhooks</span></NavLink>
+                    <div className="space-y-0.5">
+                      <NavLink to="/admin/integrations" className={navLinkClass} onClick={onNavigate}><Cable /><span>연결 및 통합</span></NavLink>
+                      <NavLink to="/admin/webhooks" className={navLinkClass} onClick={onNavigate}><Webhook /><span>Webhooks</span></NavLink>
+                    </div>
                   </div>
                 </>
               ) : null}
