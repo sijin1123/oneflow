@@ -15,6 +15,7 @@ const workspaceRouteLabels: Array<{ path: string; title: string; parent: string 
   { path: '/reports', title: '리포트', parent: '워크스페이스' },
   { path: '/operations', title: '운영 허브', parent: '운영' },
   { path: '/status', title: '시스템 상태', parent: '운영' },
+  { path: '/admin/overview', title: '관리 개요', parent: '워크스페이스 설정' },
   { path: '/admin/general', title: '일반 설정', parent: '워크스페이스 설정' },
   { path: '/admin/calendar', title: '근무 일정', parent: '워크스페이스 설정' },
   { path: '/admin/project-phases', title: '프로젝트 단계', parent: '워크스페이스 설정' },
@@ -62,7 +63,7 @@ const workspaceParentHrefs: Record<string, string> = {
   'AI workspace': '/ai',
   운영: '/operations',
   설정: '/settings',
-  '워크스페이스 설정': '/admin/general',
+  '워크스페이스 설정': '/admin/overview',
   '기능 설정': '/admin/wiki',
   '개발자 설정': '/admin/integrations',
 }
@@ -115,7 +116,7 @@ export function getShellContext(
   if (pathname === '/admin/users' && new URLSearchParams(search).get('view') === 'invites') {
     return {
       parent: '워크스페이스 설정',
-      parentHref: '/admin/general',
+      parentHref: '/admin/overview',
       scope: workspaceName,
       scopeHref: '/my',
       title: '멤버 초대',

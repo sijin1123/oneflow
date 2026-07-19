@@ -2827,3 +2827,13 @@ Chromium typed mock fixture에서 1440x960과 390x844 viewport를 사용했다. 
 - **증적/이연**: `docs/screenshots/redevelopment/integrations-hub-ui/{desktop,mobile}.png`에 실제 상태, 관리 action과 responsive layout을 보존한다. 실 GitHub/GitLab/Slack/Notion adapter는 외부 운영 자격이 확보될 때까지 명시 이연한다.
 
 ---
+
+# UI-164 Workspace Administration Overview 검증 (2026-07-19)
+
+- **UI 변경**: Workspace Settings의 기본 진입점을 `/admin/overview`로 바꾸고 `개요` navigation을 추가했다. 한 compact surface에서 Identity, 사용자, 초대, 근무 일정, 프로젝트 단계와 선택 기능 상태를 훑고 각 기존 관리 화면으로 이동한다. Desktop은 상태와 action을 한 행에 유지하고 390px mobile은 action을 전체 폭으로 내려 가로 overflow를 방지한다.
+- **기능/API 반영**: 여섯 행은 기존 Workspace profile, 사용자 directory, workspace invitation, working calendar, project phase definition, capability React Query를 독립 호출한다. 실제 활성 사용자·관리자·초대·근무일·단계·effective capability를 계산하고 AI policy가 deployment 상한으로 차단된 경우를 구분한다. 한 query 실패는 해당 행에서만 표시·재시도하며 `모두 새로고침`은 여섯 query를 함께 갱신한다. 모든 manage control은 실제 설정 route로 연결된다.
+- **권한/이연**: 기존 `WorkspaceSettingsShell` 관리자 guard와 각 API 권한 계약을 재사용한다. Custom role 편집과 외부 provider 설정은 별도 capability가 필요하므로 이번 surface에 미배선 control을 만들지 않았다. 신규 API, DB/schema, migration, permission registry, environment variable, dependency 또는 별도 설정 저장은 없다.
+- **검증**: typecheck PASS, lint PASS(기존 Fast Refresh warning 4건), production build PASS(기존 chunk-size warning), unit **107 PASS**, component **8 PASS**, focused settings/overview/global navigation/user directory E2E **4 PASS**다. 최종 2-worker full E2E는 **319 PASS + opt-in visual QA 1 skip + workspace invitation 1 retry PASS**였고, retry 건은 단독 1-worker 재검증에서 **1 PASS (6.9s)**로 통과해 병렬 실행 지연으로 격리했다. Clean-room frontend **161**/backend **45**, npm/pip audit 0 vulnerabilities와 diff check도 PASS했다.
+- **증적**: `docs/screenshots/redevelopment/settings-overview-ui/{desktop,mobile}.png`에 부분 실패 복구 후의 실제 상태와 responsive layout을 보존한다.
+
+---
