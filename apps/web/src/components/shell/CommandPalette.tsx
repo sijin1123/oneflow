@@ -285,7 +285,7 @@ export function CommandPalette({ prominent = false }: { prominent?: boolean }) {
         aria-keyshortcuts={shortcutEnabled ? '/ Meta+K Control+K' : undefined}
         onClick={(event) => openPalette(event.currentTarget)}
         className={cn(
-          'hidden justify-start text-of-muted sm:inline-flex',
+          'of-search-trigger hidden justify-start text-of-muted sm:inline-flex',
           prominent ? 'w-full max-w-[30rem]' : 'w-36',
         )}
       >
