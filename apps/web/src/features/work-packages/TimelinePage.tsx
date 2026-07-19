@@ -119,7 +119,7 @@ function GanttChart({
   zoom: ZoomLevel
   editable: boolean
   onOpen: (id: string) => void
-  onAction: (id: string, rect: DOMRect) => void
+  onAction: (id: string, trigger: HTMLButtonElement) => void
   onReschedule: (
     id: string,
     patch: { start_date: string; due_date: string },
@@ -156,7 +156,7 @@ function GanttChart({
       const text = esc(String(task.text ?? ''))
       if (task.of_kind !== 'wp') return text
       const id = esc(String(task.id))
-      return `<span class="of-gantt-task-inner"><span class="of-gantt-task-title">${text}</span><button type="button" class="of-gantt-action" data-of-gantt-action-id="${id}" aria-label="${text} 타임라인 항목 작업">...</button></span>`
+      return `<span class="of-gantt-task-inner"><span class="of-gantt-task-title">${text}</span><button type="button" class="of-gantt-action" data-of-gantt-action-id="${id}" aria-label="${text} 타임라인 항목 작업" aria-haspopup="menu" aria-expanded="false">...</button></span>`
     }
     gantt.templates.grid_row_class = () => 'of-gantt-row'
     gantt.templates.tooltip_text = () => '' // no HTML tooltip surface
@@ -226,7 +226,7 @@ function GanttChart({
       event.preventDefault()
       event.stopPropagation()
       const id = button.dataset.ofGanttActionId
-      if (id) actionRef.current(id, button.getBoundingClientRect())
+      if (id) actionRef.current(id, button)
     }
     initedContainer.addEventListener('pointerdown', suppressActionDrag, true)
     initedContainer.addEventListener('click', openAction, true)
@@ -317,8 +317,19 @@ export function TimelinePage() {
     wpId: string
     top: number
     left: number
+    trigger: HTMLButtonElement
   } | null>(null)
   const [zoom, setZoom] = useState<ZoomLevel>(loadZoom)
+  useEffect(() => {
+    if (!activeAction) return
+    const { trigger, wpId } = activeAction
+    trigger.setAttribute('aria-expanded', 'true')
+    trigger.setAttribute('aria-controls', `timeline-actions-${wpId}`)
+    return () => {
+      trigger.setAttribute('aria-expanded', 'false')
+      trigger.removeAttribute('aria-controls')
+    }
+  }, [activeAction])
   const changeZoom = (next: ZoomLevel) => {
     setZoom(next)
     saveZoom(next)
@@ -393,11 +404,16 @@ export function TimelinePage() {
     })
   }
 
-  const openActionMenu = (id: string, rect: DOMRect) => {
+  const openActionMenu = (id: string, trigger: HTMLButtonElement) => {
+    if (activeAction?.wpId === id) {
+      setActiveAction(null)
+      return
+    }
+    const rect = trigger.getBoundingClientRect()
     const width = 224
     const left = Math.min(Math.max(8, rect.right - width), window.innerWidth - width - 8)
     const top = Math.min(rect.bottom + 6, window.innerHeight - 216)
-    setActiveAction({ wpId: id, top: Math.max(8, top), left })
+    setActiveAction({ wpId: id, top: Math.max(8, top), left, trigger })
   }
 
   const activeWp = activeAction ? data.items.find((w) => w.id === activeAction.wpId) : null
@@ -476,6 +492,7 @@ export function TimelinePage() {
           wp={activeWp}
           projectId={projectId}
           canWrite={editable}
+          trigger={activeAction.trigger}
           top={activeAction.top}
           left={activeAction.left}
           onOpen={openDrawer}

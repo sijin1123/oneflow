@@ -521,3 +521,9 @@ Plane/OpenProject source, API, database schema, package, asset, CSS, DOM hierarc
 `docs/plane-poc-reverse-spec/`에서 사용한 입력은 viewport 경계 안의 planning-item menu가 pointer와 keyboard에서 같은 진입·탐색·종료 계약을 제공한다는 관찰 가능한 행동뿐이다. OneFlow 구현은 자체 React hook과 local design token을 사용해 Module/Cycle의 first-enabled focus, disabled skip, 방향키 순환, Tab/outside dismissal과 trigger 복귀를 하나의 공통 lifecycle로 독립 설계했다.
 
 Plane/OpenProject source, API, database schema, package, asset, CSS, DOM hierarchy, exact dimensions/colors, wording, menu implementation, icons 또는 branding은 복사하지 않았다. Module의 작업 목록 필터, 참여자 PUT, owner 편집·삭제 및 viewer read-only 경계를 유지하며 신규 API, DB/schema, migration, permission, environment variable, dependency 또는 Settings storage 변경은 없다. - attested-independent-derivation
+
+## UI-174 Planning Work Item Action Menu Convergence
+
+`docs/plane-poc-reverse-spec/`에서 사용한 입력은 서로 다른 planning layout에서도 work-item action menu가 같은 pointer·keyboard 진입, 탐색, 종료와 trigger 상태 계약을 제공한다는 관찰 가능한 행동뿐이다. OneFlow 구현은 UI-173의 자체 `useFloatingActionMenuLifecycle`, 기존 Backlog React row와 DHTMLX Timeline adapter, local design token을 사용해 first-enabled focus, disabled skip, 방향키 순환, Tab/outside dismissal, Escape focus 복귀와 trigger/menu ARIA를 독립 설계했다.
+
+Plane/OpenProject source, API, database schema, package, asset, CSS, DOM hierarchy, exact dimensions/colors, wording, menu implementation, icons 또는 branding은 복사하지 않았다. 기존 상세 drawer, 전체 페이지, 링크 복사, 작업 복제·이동과 viewer read-only 경계를 유지하며 신규 API, DB/schema, migration, permission, environment variable, dependency 또는 Settings storage 변경은 없다. - attested-independent-derivation

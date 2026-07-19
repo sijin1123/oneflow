@@ -42,6 +42,7 @@ export function BacklogPage() {
     wpId: string
     top: number
     left: number
+    trigger: HTMLButtonElement
   } | null>(null)
   const description =
     '사이클에 배정되지 않은 미완료 작업을 정리하고, 다음 반복 계획으로 바로 끌어올립니다.'
@@ -76,11 +77,12 @@ export function BacklogPage() {
     })
   }
 
-  const openActionMenu = (id: string, rect: DOMRect) => {
+  const openActionMenu = (id: string, trigger: HTMLButtonElement) => {
+    const rect = trigger.getBoundingClientRect()
     const width = 224
     const left = Math.min(Math.max(8, rect.right - width), window.innerWidth - width - 8)
     const top = Math.min(rect.bottom + 6, window.innerHeight - 216)
-    setActiveAction({ wpId: id, top: Math.max(8, top), left })
+    setActiveAction({ wpId: id, top: Math.max(8, top), left, trigger })
   }
 
   return (
@@ -146,10 +148,16 @@ export function BacklogPage() {
                   <button
                     type="button"
                     aria-label={`${wp.subject} 백로그 항목 작업`}
-                    className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-of border border-of-border text-of-muted hover:bg-of-surface-2 hover:text-of-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus"
-                    onClick={(event) =>
-                      openActionMenu(wp.id, event.currentTarget.getBoundingClientRect())
+                    aria-haspopup="menu"
+                    aria-expanded={activeAction?.wpId === wp.id}
+                    aria-controls={
+                      activeAction?.wpId === wp.id ? `backlog-actions-${wp.id}` : undefined
                     }
+                    className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-of border border-of-border text-of-muted hover:bg-of-surface-2 hover:text-of-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus"
+                    onClick={(event) => {
+                      if (activeAction?.wpId === wp.id) setActiveAction(null)
+                      else openActionMenu(wp.id, event.currentTarget)
+                    }}
                   >
                     <MoreHorizontal size={14} />
                   </button>
@@ -186,6 +194,7 @@ export function BacklogPage() {
           wp={activeWp}
           projectId={projectId}
           canWrite={canWrite}
+          trigger={activeAction.trigger}
           top={activeAction.top}
           left={activeAction.left}
           onOpen={openDrawer}

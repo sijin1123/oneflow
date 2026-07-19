@@ -7,8 +7,9 @@ import {
   MoveRight,
   X,
 } from 'lucide-react'
-import { useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
+
+import { useFloatingActionMenuLifecycle } from '@/components/ui/floating-action-menu'
 
 import { useDuplicateWorkPackage } from './api'
 import type { WorkPackage } from './types'
@@ -21,6 +22,7 @@ export function TimelineItemActions({
   wp,
   projectId,
   canWrite,
+  trigger,
   top,
   left,
   onOpen,
@@ -31,6 +33,7 @@ export function TimelineItemActions({
   wp: WorkPackage
   projectId: string
   canWrite: boolean
+  trigger: HTMLButtonElement
   top: number
   left: number
   onOpen: (id: string) => void
@@ -41,14 +44,7 @@ export function TimelineItemActions({
   const navigate = useNavigate()
   const duplicate = useDuplicateWorkPackage(projectId)
   const href = detailPath(projectId, wp.id)
-
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose()
-    }
-    window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
-  }, [onClose])
+  const { menuRef, closeMenu } = useFloatingActionMenuLifecycle({ trigger, onClose })
 
   const copyLink = async () => {
     const link = `${window.location.origin}${href}`
@@ -57,14 +53,14 @@ export function TimelineItemActions({
       if (navigator.clipboard?.writeText) {
         await navigator.clipboard.writeText(link)
         onMessage(`'${wp.subject}' 링크를 복사했습니다.`, 'success')
-        onClose()
+        closeMenu(false)
         return
       }
       onMessage(`'${wp.subject}' 링크를 준비했습니다.`, 'info')
     } catch {
       onMessage(`'${wp.subject}' 링크를 준비했습니다.`, 'info')
     }
-    onClose()
+    closeMenu(false)
   }
 
   const duplicateItem = () => {
@@ -74,14 +70,19 @@ export function TimelineItemActions({
           ? ` · 복사되지 않은 커스텀 값 ${result.skipped_custom_values}건`
           : ''
         onMessage(`'${result.work_package.subject}' 생성됨${skipped}`, 'success')
-        onClose()
+        closeMenu(false)
       },
-      onError: () => onMessage('타임라인 항목을 복제하지 못했습니다.', 'error'),
+      onError: () => {
+        onMessage('타임라인 항목을 복제하지 못했습니다.', 'error')
+        closeMenu(false)
+      },
     })
   }
 
   return (
     <div
+      ref={menuRef}
+      id={`timeline-actions-${wp.id}`}
       role="menu"
       aria-label={`${wp.subject} 타임라인 항목 작업`}
       className="fixed z-50 w-56 rounded-of border border-of-border bg-of-surface p-1 text-sm shadow-[var(--of-shadow-popover)]"
@@ -93,15 +94,25 @@ export function TimelineItemActions({
           type="button"
           aria-label="타임라인 항목 작업 닫기"
           className="rounded-[4px] p-0.5 hover:bg-of-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus"
-          onClick={onClose}
+          onClick={() => closeMenu(true)}
         >
           <X size={12} />
         </button>
       </div>
-      <MenuButton onClick={() => { onOpen(wp.id); onClose() }}>
+      <MenuButton
+        onClick={() => {
+          onOpen(wp.id)
+          closeMenu(false)
+        }}
+      >
         <Eye size={13} /> 상세 드로어 열기
       </MenuButton>
-      <MenuButton onClick={() => navigate(href)}>
+      <MenuButton
+        onClick={() => {
+          navigate(href)
+          closeMenu(false)
+        }}
+      >
         <ExternalLink size={13} /> 전체 페이지 열기
       </MenuButton>
       <MenuButton onClick={() => void copyLink()}>
@@ -113,7 +124,12 @@ export function TimelineItemActions({
           <MenuButton disabled={duplicate.isPending} onClick={duplicateItem}>
             <Copy size={13} /> 복제
           </MenuButton>
-          <MenuButton onClick={() => { onOpenMove(wp.id); onClose() }}>
+          <MenuButton
+            onClick={() => {
+              onOpenMove(wp.id)
+              closeMenu(false)
+            }}
+          >
             <MoveRight size={13} /> 이동 패널 열기
           </MenuButton>
         </>
