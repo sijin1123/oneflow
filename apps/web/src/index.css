@@ -329,6 +329,12 @@ textarea {
 .of-search-surface-open { left: var(--of-search-final-left); top: var(--of-search-anchor-top); width: var(--of-search-final-width); max-height: var(--of-search-final-height); }
 .of-search-surface-closing { animation: of-search-surface-closing var(--of-duration-overlay) var(--of-ease-emphasized) both; pointer-events: none; }
 .of-search-header { height: var(--of-search-anchor-height); }
+.of-search-trigger:focus-visible {
+  border-color: var(--of-border);
+  background: var(--of-surface-hover);
+  outline: 0;
+  box-shadow: none;
+}
 .of-search-input,
 .of-search-input:focus-visible { border: 0; outline: 0; box-shadow: none; }
 .of-search-content-opening { animation: of-search-content-opening 120ms 100ms var(--of-ease-standard) both; }

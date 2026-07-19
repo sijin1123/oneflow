@@ -11636,6 +11636,8 @@ test('상단 검색은 flag OFF에서도 overlay를 열고 전역 단축키만 �
   await expect(trigger).not.toBeFocused()
   await expect(dialog).toHaveCount(0)
   await expect(trigger).toBeFocused()
+  await expect(trigger).toHaveCSS('outline-width', '0px')
+  await expect(trigger).toHaveCSS('box-shadow', 'none')
 })
 
 test('상단 검색은 opening 중 Escape에도 현재 geometry에서 역방향으로 닫힌다', async ({ page }) => {
