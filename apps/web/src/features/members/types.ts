@@ -1,13 +1,17 @@
-export type Member = {
-  user_id: string
-  email: string
-  display_name: string
-  role: 'owner' | 'member' | 'viewer'
-}
+import type { components } from '@shared/api-types'
 
-export type MemberList = {
+export type BuiltInProjectRole = 'owner' | 'member' | 'viewer'
+export type Member = Omit<components['schemas']['MemberRead'], 'role'> & {
+  role: BuiltInProjectRole
+}
+export type MemberList = Omit<components['schemas']['MemberList'], 'items'> & {
   items: Member[]
-  total: number
+}
+export type MemberCreate = Omit<components['schemas']['MemberCreate'], 'role'> & {
+  role: BuiltInProjectRole
+}
+export type MemberRoleUpdate = Omit<components['schemas']['MemberRoleUpdate'], 'role'> & {
+  role: BuiltInProjectRole
 }
 
 export type Me = {
@@ -18,19 +22,8 @@ export type Me = {
   is_admin: boolean
 }
 
-export type PermissionAllow = 'always' | 'never' | 'conditional'
-
-export type PermissionVerb = {
-  key: string
-  label: string
-  owner: PermissionAllow
-  member: PermissionAllow
-  viewer: PermissionAllow
-  condition: string | null
-  note: string | null
-}
-
-export type PermissionReport = {
-  my_role: 'owner' | 'member' | 'viewer'
-  verbs: PermissionVerb[]
+export type PermissionAllow = components['schemas']['PermissionVerb']['effective']
+export type PermissionVerb = components['schemas']['PermissionVerb']
+export type PermissionReport = Omit<components['schemas']['PermissionReportRead'], 'my_role'> & {
+  my_role: BuiltInProjectRole
 }

@@ -1,6 +1,8 @@
 import {
   Crown,
   Eye,
+  RotateCw,
+  ShieldCheck,
   Trash2,
   UserPlus,
   UserRoundCheck,
@@ -22,7 +24,14 @@ import {
   useRemoveMember,
   useUpdateMemberRole,
 } from '@/features/members/api'
-import type { Member, PermissionAllow, PermissionVerb } from '@/features/members/types'
+import type {
+  BuiltInProjectRole,
+  Member,
+  PermissionAllow,
+  PermissionVerb,
+} from '@/features/members/types'
+import { useProjectRoleCatalog } from '@/features/project-roles/api'
+import type { ProjectRoleCatalogItem } from '@/features/project-roles/contract'
 import { ApiError } from '@/lib/api'
 import { cn } from '@/lib/utils'
 
@@ -128,13 +137,27 @@ function AllowCell({ value, condition }: { value: PermissionAllow; condition: st
   )
 }
 
-function PermissionCard({ verb, myRole }: { verb: PermissionVerb; myRole: Member['role'] }) {
+function PermissionCard({
+  verb,
+  myRole,
+  showEffective,
+}: {
+  verb: PermissionVerb
+  myRole: Member['role']
+  showEffective: boolean
+}) {
   const rows: Member['role'][] = ['owner', 'member', 'viewer']
   return (
     <li className="rounded-of border border-of-border bg-of-surface p-3">
       <p className="text-sm font-medium">{verb.label}</p>
       {verb.note ? <p className="mt-1 text-xs text-of-muted">{verb.note}</p> : null}
       <div className="mt-3 grid gap-2">
+        {showEffective ? (
+          <div className="flex items-center justify-between rounded-of border border-of-accent/40 bg-of-accent-soft/40 px-2 py-1.5 text-xs font-medium">
+            <span>내 실효 권한</span>
+            <AllowCell value={verb.effective} condition={verb.condition} />
+          </div>
+        ) : null}
         {rows.map((role) => (
           <div
             key={role}
@@ -157,6 +180,7 @@ function PermissionsTable({ projectId }: { projectId: string }) {
   const report = usePermissionReport(projectId)
   if (!report.data) return null
   const myRole = report.data.my_role
+  const myCustomRole = report.data.my_custom_role
   const roleCol = (role: string) => (role === myRole ? 'bg-of-accent-soft/40 font-medium' : '')
 
   return (
@@ -165,13 +189,16 @@ function PermissionsTable({ projectId }: { projectId: string }) {
         <div className="min-w-0">
           <h3 className="text-sm font-semibold">역할별 권한</h3>
           <p className="mt-1 text-xs leading-5 text-of-muted">
-            시스템이 실제로 시행하는 고정 규칙입니다. 내 역할(
-            {ROLE_LABELS[myRole] ?? myRole}) 기준 열이 강조됩니다.
+            시스템이 실제로 시행하는 규칙입니다. 내 역할({ROLE_LABELS[myRole] ?? myRole}
+            {myCustomRole ? ` · ${myCustomRole.name}` : ''}) 기준 권한이 강조됩니다.
           </p>
         </div>
-        <Badge variant="outline" className="self-start">
-          워크스페이스 관리자 권한과 별개
-        </Badge>
+        <div className="flex flex-wrap items-center gap-2">
+          {myCustomRole ? <Badge variant="accent">실효 역할 · {myCustomRole.name}</Badge> : null}
+          <Badge variant="outline" className="self-start">
+            워크스페이스 관리자 권한과 별개
+          </Badge>
+        </div>
       </div>
       {!mobileLayout ? (
         <div className="overflow-x-auto rounded-of border border-of-border">
@@ -188,6 +215,11 @@ function PermissionsTable({ projectId }: { projectId: string }) {
                 <th className={cn('w-20 px-2 py-2 text-center font-medium', roleCol('viewer'))}>
                   뷰어
                 </th>
+                {myCustomRole ? (
+                  <th className="w-24 bg-of-accent-soft/40 px-2 py-2 text-center font-medium">
+                    내 실효 권한
+                  </th>
+                ) : null}
               </tr>
             </thead>
             <tbody className="divide-y divide-of-border">
@@ -206,6 +238,11 @@ function PermissionsTable({ projectId }: { projectId: string }) {
                   <td className={cn('px-2 py-2 text-center', roleCol('viewer'))}>
                     <AllowCell value={v.viewer} condition={v.condition} />
                   </td>
+                  {myCustomRole ? (
+                    <td className="bg-of-accent-soft/40 px-2 py-2 text-center font-medium">
+                      <AllowCell value={v.effective} condition={v.condition} />
+                    </td>
+                  ) : null}
                 </tr>
               ))}
             </tbody>
@@ -214,7 +251,12 @@ function PermissionsTable({ projectId }: { projectId: string }) {
       ) : (
         <ul className="grid gap-2">
           {report.data.verbs.map((verb) => (
-            <PermissionCard key={verb.key} verb={verb} myRole={myRole} />
+            <PermissionCard
+              key={verb.key}
+              verb={verb}
+              myRole={myRole}
+              showEffective={Boolean(myCustomRole)}
+            />
           ))}
         </ul>
       )}
@@ -225,22 +267,48 @@ function PermissionsTable({ projectId }: { projectId: string }) {
 
 function MemberControls({
   member,
+  customRoles,
+  catalogReady,
   isOwner,
   lastOwner,
   updatePending,
   removePending,
   onRoleChange,
+  onCustomRoleChange,
   onRemove,
 }: {
   member: Member
+  customRoles: ProjectRoleCatalogItem[]
+  catalogReady: boolean
   isOwner: boolean
   lastOwner: boolean
   updatePending: boolean
   removePending: boolean
-  onRoleChange: (role: string) => void
+  onRoleChange: (role: BuiltInProjectRole) => void
+  onCustomRoleChange: (customRoleId: string | null) => void
   onRemove: () => void
 }) {
-  if (!isOwner) return <RoleBadge role={member.role} />
+  const assignedRole = member.custom_role_id
+    ? customRoles.find((role) => role.id === member.custom_role_id)
+    : null
+  const unavailableAssignment = Boolean(
+    member.custom_role_id && catalogReady && !assignedRole,
+  )
+  const customRoleLabel = member.custom_role_name ?? assignedRole?.name ?? '이름 없는 역할'
+
+  if (!isOwner) {
+    return (
+      <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+        <RoleBadge role={member.role} />
+        {member.custom_role_id ? (
+          <Badge variant={unavailableAssignment ? 'outline' : 'neutral'}>
+            <ShieldCheck size={12} aria-hidden="true" />
+            {customRoleLabel}{unavailableAssignment ? ' · 보관됨' : ''}
+          </Badge>
+        ) : null}
+      </div>
+    )
+  }
   return (
     <div className="flex min-w-0 flex-wrap items-center gap-2">
       <Select
@@ -248,12 +316,31 @@ function MemberControls({
         className="h-7 w-24 text-xs"
         value={member.role}
         disabled={updatePending || lastOwner}
-        onChange={(e) => onRoleChange(e.target.value)}
+        onChange={(e) => onRoleChange(e.target.value as BuiltInProjectRole)}
       >
         <option value="owner">소유자</option>
         <option value="member">멤버</option>
         <option value="viewer">뷰어</option>
       </Select>
+      {member.role === 'member' ? (
+        <Select
+          aria-label={`${member.display_name} 커스텀 역할`}
+          className="h-7 min-w-[8.5rem] max-w-44 text-xs"
+          value={member.custom_role_id ?? ''}
+          disabled={updatePending || !catalogReady}
+          onChange={(e) => onCustomRoleChange(e.target.value || null)}
+        >
+          <option value="">기본 멤버</option>
+          {unavailableAssignment && member.custom_role_id ? (
+            <option value={member.custom_role_id}>
+              {customRoleLabel} · 보관됨
+            </option>
+          ) : null}
+          {customRoles.map((role) => (
+            <option key={role.id} value={role.id}>{role.name}</option>
+          ))}
+        </Select>
+      ) : null}
       <button
         type="button"
         aria-label={`${member.display_name} 제거`}
@@ -279,20 +366,32 @@ export function MembersPanel({
   const mobileLayout = useMobileMembersLayout()
   const me = useMe()
   const members = useMembers(projectId)
+  const roleCatalog = useProjectRoleCatalog()
   const addMember = useAddMember(projectId)
   const updateRole = useUpdateMemberRole(projectId)
   const removeMember = useRemoveMember(projectId)
 
   const [email, setEmail] = useState('')
   const [role, setRole] = useState<Member['role']>('member')
+  const [customRoleId, setCustomRoleId] = useState('')
 
-  const dirty = email.trim() !== ''
+  const dirty = email.trim() !== '' || role !== 'member' || customRoleId !== ''
   useEffect(() => {
     onDirtyChange(dirty)
   }, [dirty, onDirtyChange])
   useEffect(() => () => onDirtyChange(false), [onDirtyChange])
 
   const items = useMemo(() => members.data?.items ?? [], [members.data?.items])
+  const customRoles = useMemo(() => roleCatalog.data?.items ?? [], [roleCatalog.data?.items])
+  useEffect(() => {
+    if (
+      roleCatalog.isSuccess
+      && customRoleId
+      && !customRoles.some((customRole) => customRole.id === customRoleId)
+    ) {
+      setCustomRoleId('')
+    }
+  }, [customRoleId, customRoles, roleCatalog.isSuccess])
   if (!members.data) return null
 
   const ownerCount = items.filter((m) => m.role === 'owner').length
@@ -300,6 +399,12 @@ export function MembersPanel({
   const viewerCount = items.filter((m) => m.role === 'viewer').length
   const addErr =
     addMember.error instanceof ApiError ? addMember.error.message : addMember.isError ? '실패' : null
+  const memberMutationError = updateRole.error ?? removeMember.error
+  const memberMutationMessage = memberMutationError instanceof ApiError
+    ? memberMutationError.message
+    : memberMutationError
+      ? '멤버 역할을 변경하지 못했습니다.'
+      : null
 
   return (
     <div className="space-y-4">
@@ -326,7 +431,7 @@ export function MembersPanel({
               </p>
             </div>
           </div>
-          <div className="grid min-w-0 gap-2 md:grid-cols-[minmax(0,1fr)_7rem_auto] md:items-center">
+          <div className="grid min-w-0 gap-2 md:grid-cols-[minmax(0,1fr)_7rem_minmax(8.5rem,11rem)_auto] md:items-center">
             <Input
               type="email"
               value={email}
@@ -339,24 +444,70 @@ export function MembersPanel({
               aria-label="추가 역할"
               className="h-8 w-full text-xs"
               value={role}
-              onChange={(e) => setRole(e.target.value as Member['role'])}
+              onChange={(e) => {
+                const nextRole = e.target.value as Member['role']
+                setRole(nextRole)
+                if (nextRole !== 'member') setCustomRoleId('')
+              }}
             >
               <option value="member">멤버</option>
               <option value="owner">소유자</option>
               <option value="viewer">뷰어</option>
             </Select>
+            <Select
+              aria-label="추가 커스텀 역할"
+              className="h-8 w-full min-w-0 text-xs"
+              value={customRoleId}
+              disabled={role !== 'member' || roleCatalog.isPending || roleCatalog.isError}
+              onChange={(e) => setCustomRoleId(e.target.value)}
+            >
+              <option value="">기본 멤버</option>
+              {customRoles.map((customRole) => (
+                <option key={customRole.id} value={customRole.id}>{customRole.name}</option>
+              ))}
+            </Select>
             <Button
               size="sm"
               disabled={!email.trim() || addMember.isPending}
               onClick={() =>
-                addMember.mutate({ email: email.trim(), role }, { onSuccess: () => setEmail('') })
+                addMember.mutate(
+                  {
+                    email: email.trim(),
+                    role,
+                    custom_role_id: role === 'member' && customRoleId ? customRoleId : null,
+                  },
+                  {
+                    onSuccess: () => {
+                      setEmail('')
+                      setRole('member')
+                      setCustomRoleId('')
+                    },
+                  },
+                )
               }
             >
               추가
             </Button>
           </div>
           {addErr ? <p className="mt-2 text-xs text-of-danger">{addErr}</p> : null}
+          {roleCatalog.isPending ? (
+            <p className="mt-2 text-xs text-of-muted">커스텀 역할을 불러오는 중입니다.</p>
+          ) : null}
+          {roleCatalog.isError ? (
+            <div role="alert" className="mt-2 flex flex-wrap items-center gap-2 text-xs text-of-danger">
+              <span>커스텀 역할을 불러오지 못했습니다. 기본 역할은 계속 사용할 수 있습니다.</span>
+              <Button size="sm" variant="outline" onClick={() => roleCatalog.refetch()}>
+                <RotateCw size={13} aria-hidden="true" /> 다시 시도
+              </Button>
+            </div>
+          ) : null}
         </section>
+      ) : null}
+
+      {memberMutationMessage ? (
+        <p role="alert" className="rounded-of border border-of-danger/30 bg-of-danger/5 px-3 py-2 text-xs text-of-danger">
+          {memberMutationMessage}
+        </p>
       ) : null}
 
       <section
@@ -399,11 +550,23 @@ export function MembersPanel({
                   {lastOwner ? <Badge variant="outline">마지막 소유자</Badge> : null}
                   <MemberControls
                     member={m}
+                    customRoles={customRoles}
+                    catalogReady={roleCatalog.isSuccess}
                     isOwner={isOwner}
                     lastOwner={lastOwner}
                     updatePending={updateRole.isPending}
                     removePending={removeMember.isPending}
-                    onRoleChange={(nextRole) => updateRole.mutate({ userId: m.user_id, role: nextRole })}
+                    onRoleChange={(nextRole) => updateRole.mutate({
+                      userId: m.user_id,
+                      input: {
+                        role: nextRole,
+                        custom_role_id: nextRole === 'member' ? (m.custom_role_id ?? null) : null,
+                      },
+                    })}
+                    onCustomRoleChange={(nextCustomRoleId) => updateRole.mutate({
+                      userId: m.user_id,
+                      input: { role: 'member', custom_role_id: nextCustomRoleId },
+                    })}
                     onRemove={() => removeMember.mutate(m.user_id)}
                   />
                 </li>
@@ -427,18 +590,30 @@ export function MembersPanel({
                       </p>
                       <p className="truncate text-xs text-of-muted">{m.email}</p>
                     </div>
-                    <RoleBadge role={m.role} />
+                    {isOwner ? <RoleBadge role={m.role} /> : null}
                   </div>
                   <p className="mt-2 text-xs leading-5 text-of-muted">{ROLE_META[m.role].description}</p>
                   <div className="mt-3 flex min-w-0 flex-wrap items-center gap-2">
                     {lastOwner ? <Badge variant="outline">마지막 소유자</Badge> : null}
                     <MemberControls
                       member={m}
+                      customRoles={customRoles}
+                      catalogReady={roleCatalog.isSuccess}
                       isOwner={isOwner}
                       lastOwner={lastOwner}
                       updatePending={updateRole.isPending}
                       removePending={removeMember.isPending}
-                      onRoleChange={(nextRole) => updateRole.mutate({ userId: m.user_id, role: nextRole })}
+                      onRoleChange={(nextRole) => updateRole.mutate({
+                        userId: m.user_id,
+                        input: {
+                          role: nextRole,
+                          custom_role_id: nextRole === 'member' ? (m.custom_role_id ?? null) : null,
+                        },
+                      })}
+                      onCustomRoleChange={(nextCustomRoleId) => updateRole.mutate({
+                        userId: m.user_id,
+                        input: { role: 'member', custom_role_id: nextCustomRoleId },
+                      })}
                       onRemove={() => removeMember.mutate(m.user_id)}
                     />
                   </div>

@@ -3,7 +3,14 @@ import { useMemo } from 'react'
 
 import { api } from '@/lib/api'
 
-import type { Me, Member, MemberList, PermissionReport } from './types'
+import type {
+  Me,
+  Member,
+  MemberCreate,
+  MemberList,
+  MemberRoleUpdate,
+  PermissionReport,
+} from './types'
 
 export function useMe() {
   return useQuery({
@@ -44,13 +51,15 @@ export function usePermissionReport(projectId: string) {
 export function useAddMember(projectId: string) {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (input: { email: string; role: string }) =>
+    mutationFn: (input: MemberCreate) =>
       api<Member>(`/api/v1/projects/${projectId}/members`, {
         method: 'POST',
         body: JSON.stringify(input),
       }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['members', projectId] })
+      void queryClient.invalidateQueries({ queryKey: ['permissions', projectId] })
+      void queryClient.invalidateQueries({ queryKey: ['admin-project-roles'] })
     },
   })
 }
@@ -58,13 +67,15 @@ export function useAddMember(projectId: string) {
 export function useUpdateMemberRole(projectId: string) {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: ({ userId, role }: { userId: string; role: string }) =>
+    mutationFn: ({ userId, input }: { userId: string; input: MemberRoleUpdate }) =>
       api<Member>(`/api/v1/projects/${projectId}/members/${userId}`, {
         method: 'PATCH',
-        body: JSON.stringify({ role }),
+        body: JSON.stringify(input),
       }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['members', projectId] })
+      void queryClient.invalidateQueries({ queryKey: ['permissions', projectId] })
+      void queryClient.invalidateQueries({ queryKey: ['admin-project-roles'] })
     },
   })
 }
@@ -76,6 +87,8 @@ export function useRemoveMember(projectId: string) {
       api<void>(`/api/v1/projects/${projectId}/members/${userId}`, { method: 'DELETE' }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['members', projectId] })
+      void queryClient.invalidateQueries({ queryKey: ['permissions', projectId] })
+      void queryClient.invalidateQueries({ queryKey: ['admin-project-roles'] })
     },
   })
 }

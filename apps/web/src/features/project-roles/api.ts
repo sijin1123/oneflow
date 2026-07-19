@@ -5,6 +5,7 @@ import { api } from '@/lib/api'
 import type {
   ProjectRole,
   ProjectRoleCapabilityList,
+  ProjectRoleCatalogList,
   ProjectRoleCreate,
   ProjectRoleEventList,
   ProjectRoleList,
@@ -21,6 +22,13 @@ export function useProjectRoleCapabilities() {
     queryFn: () =>
       api<ProjectRoleCapabilityList>('/api/v1/workspace/project-role-capabilities'),
     staleTime: Infinity,
+  })
+}
+
+export function useProjectRoleCatalog() {
+  return useQuery({
+    queryKey: projectRoleCatalogKey,
+    queryFn: () => api<ProjectRoleCatalogList>('/api/v1/workspace/project-roles'),
   })
 }
 

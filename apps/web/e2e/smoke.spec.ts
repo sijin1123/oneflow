@@ -5503,6 +5503,279 @@ test('멤버 패널: 뷰어 옵션을 제공하고 역할 변경 payload를 보�
   expect((patchReq.postDataJSON() as { role: string }).role).toBe('viewer')
 })
 
+test('멤버 패널은 활성 커스텀 역할을 배정하고 보관된 기존 배정을 유지한다', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 })
+  await mockApi(page)
+
+  const deliveryRoleId = '11111111-aaaa-4111-8111-111111111111'
+  const archivedRoleId = '22222222-aaaa-4222-8222-222222222222'
+  let catalogAttempts = 0
+  let alexPatchCount = 0
+  let members: Array<{
+    user_id: string
+    email: string
+    display_name: string
+    role: string
+    custom_role_id: string | null
+    custom_role_name: string | null
+  }> = [
+    {
+      user_id: 'me-1',
+      email: 'dev@oneflow.local',
+      display_name: 'Dev User',
+      role: 'owner',
+      custom_role_id: null,
+      custom_role_name: null,
+    },
+    {
+      user_id: 'u-alex',
+      email: 'alex@oneflow.local',
+      display_name: 'Alex Kim',
+      role: 'member',
+      custom_role_id: null,
+      custom_role_name: null,
+    },
+    {
+      user_id: 'u-bo',
+      email: 'bo@oneflow.local',
+      display_name: 'Bo Lee',
+      role: 'member',
+      custom_role_id: archivedRoleId,
+      custom_role_name: 'Legacy triager',
+    },
+  ]
+
+  await page.route('**/api/v1/workspace/project-roles', async (route) => {
+    catalogAttempts += 1
+    if (catalogAttempts <= 2) {
+      await route.fulfill({ status: 503, json: { detail: 'temporarily unavailable' } })
+      return
+    }
+    await route.fulfill({
+      json: {
+        items: [
+          {
+            id: deliveryRoleId,
+            name: 'Delivery lead',
+            description: '실행 작업을 조율합니다.',
+            permissions: ['work_item.create', 'work_item.update'],
+            revision: 1,
+          },
+        ],
+        total: 1,
+      },
+    })
+  })
+  await page.route(`**/api/v1/projects/${project.id}/members`, async (route) => {
+    if (route.request().method() === 'POST') {
+      const body = route.request().postDataJSON() as {
+        email: string
+        role: string
+        custom_role_id: string | null
+      }
+      expect(body).toEqual({
+        email: 'new.lead@oneflow.local',
+        role: 'member',
+        custom_role_id: deliveryRoleId,
+      })
+      const created = {
+        user_id: 'u-new',
+        email: body.email,
+        display_name: 'New Lead',
+        role: 'member',
+        custom_role_id: deliveryRoleId,
+        custom_role_name: 'Delivery lead',
+      }
+      members = [...members, created]
+      await route.fulfill({ status: 201, json: created })
+      return
+    }
+    await route.fulfill({ json: { items: members, total: members.length } })
+  })
+  await page.route(`**/api/v1/projects/${project.id}/members/u-alex`, async (route) => {
+    const body = route.request().postDataJSON() as {
+      role: string
+      custom_role_id: string | null
+    }
+    alexPatchCount += 1
+    const expected = alexPatchCount === 1
+      ? { role: 'member', custom_role_id: deliveryRoleId }
+      : { role: 'viewer', custom_role_id: null }
+    expect(body).toEqual(expected)
+    members = members.map((member) => member.user_id === 'u-alex'
+      ? {
+          ...member,
+          role: expected.role,
+          custom_role_id: expected.custom_role_id,
+          custom_role_name: expected.custom_role_id ? 'Delivery lead' : null,
+        }
+      : member)
+    await route.fulfill({ json: members.find((member) => member.user_id === 'u-alex') })
+  })
+  await page.route(`**/api/v1/projects/${project.id}/permissions`, (route) =>
+    route.fulfill({
+      json: {
+        my_role: 'owner',
+        my_custom_role: null,
+        verbs: [
+          {
+            key: 'work_item.create',
+            label: '작업 생성',
+            owner: 'always',
+            member: 'always',
+            viewer: 'never',
+            effective: 'always',
+            condition: null,
+            note: null,
+          },
+        ],
+      },
+    }),
+  )
+
+  await page.goto(`/projects/${project.id}/settings?tab=members`)
+  await expect(page.getByText('커스텀 역할을 불러오지 못했습니다. 기본 역할은 계속 사용할 수 있습니다.')).toBeVisible()
+  await page.getByRole('button', { name: '다시 시도' }).click()
+
+  const addCustomRole = page.getByLabel('추가 커스텀 역할')
+  await expect(addCustomRole).toBeEnabled()
+  await expect(addCustomRole.locator(`option[value="${deliveryRoleId}"]`)).toHaveText('Delivery lead')
+
+  const archivedAssignment = page.getByLabel('Bo Lee 커스텀 역할')
+  await expect(archivedAssignment).toHaveValue(archivedRoleId)
+  await expect(archivedAssignment.locator(`option[value="${archivedRoleId}"]`)).toHaveText(
+    'Legacy triager · 보관됨',
+  )
+
+  const addRequest = page.waitForRequest(
+    (request) => request.method() === 'POST' && request.url().endsWith(`/projects/${project.id}/members`),
+  )
+  await page.getByLabel('추가할 멤버 이메일').fill('new.lead@oneflow.local')
+  await addCustomRole.selectOption(deliveryRoleId)
+  await page.getByRole('button', { name: '추가' }).click()
+  await addRequest
+  await expect(page.getByText('new.lead@oneflow.local')).toBeVisible()
+
+  const updateRequest = page.waitForRequest(
+    (request) => request.method() === 'PATCH' && request.url().endsWith('/members/u-alex'),
+  )
+  await page.getByLabel('Alex Kim 커스텀 역할').selectOption(deliveryRoleId)
+  await updateRequest
+  await expect(page.getByLabel('Alex Kim 커스텀 역할')).toHaveValue(deliveryRoleId)
+
+  const clearRequest = page.waitForRequest(
+    (request) => request.method() === 'PATCH' && request.url().endsWith('/members/u-alex'),
+  )
+  await page.getByLabel('Alex Kim 역할').selectOption('viewer')
+  await clearRequest
+  await expect(page.getByLabel('Alex Kim 커스텀 역할')).toHaveCount(0)
+
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/member-custom-role-ui/desktop.png',
+    fullPage: true,
+  })
+
+  await page.setViewportSize({ width: 390, height: 844 })
+  await expect(page.getByLabel('멤버 카드 목록')).toBeVisible()
+  await expect(page.getByLabel('Bo Lee 커스텀 역할')).toHaveValue(archivedRoleId)
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/member-custom-role-ui/mobile.png',
+    fullPage: true,
+  })
+})
+
+test('커스텀 역할 멤버는 읽기 전용 배정명과 서버 계산 실효 권한을 확인한다', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await mockApi(page)
+
+  const deliveryRoleId = '11111111-aaaa-4111-8111-111111111111'
+  await page.route('**/api/v1/workspace/project-roles', (route) =>
+    route.fulfill({
+      json: {
+        items: [
+          {
+            id: deliveryRoleId,
+            name: 'Delivery lead',
+            description: '실행 작업을 조율합니다.',
+            permissions: ['work_item.create'],
+            revision: 1,
+          },
+        ],
+        total: 1,
+      },
+    }),
+  )
+  await page.route(`**/api/v1/projects/${project.id}/members`, (route) =>
+    route.fulfill({
+      json: {
+        items: [
+          {
+            user_id: 'me-1',
+            email: 'dev@oneflow.local',
+            display_name: 'Dev User',
+            role: 'member',
+            custom_role_id: deliveryRoleId,
+            custom_role_name: 'Delivery lead',
+          },
+          {
+            user_id: 'u-owner',
+            email: 'owner@oneflow.local',
+            display_name: 'Project Owner',
+            role: 'owner',
+            custom_role_id: null,
+            custom_role_name: null,
+          },
+        ],
+        total: 2,
+      },
+    }),
+  )
+  await page.route(`**/api/v1/projects/${project.id}/permissions`, (route) =>
+    route.fulfill({
+      json: {
+        my_role: 'member',
+        my_custom_role: {
+          id: deliveryRoleId,
+          name: 'Delivery lead',
+          permissions: ['work_item.create'],
+        },
+        verbs: [
+          {
+            key: 'work_item.create',
+            label: '작업 생성',
+            owner: 'always',
+            member: 'always',
+            viewer: 'never',
+            effective: 'always',
+            condition: null,
+            note: null,
+          },
+          {
+            key: 'work_item.delete',
+            label: '작업 삭제',
+            owner: 'always',
+            member: 'never',
+            viewer: 'never',
+            effective: 'never',
+            condition: null,
+            note: null,
+          },
+        ],
+      },
+    }),
+  )
+
+  await page.goto(`/projects/${project.id}/settings?tab=members`)
+  await expect(page.getByLabel('팀 디렉터리').getByText('읽기 전용')).toBeVisible()
+  await expect(page.getByText('Delivery lead', { exact: true }).first()).toBeVisible()
+  await expect(page.getByLabel('추가할 멤버 이메일')).toHaveCount(0)
+  const permissions = page.getByRole('region', { name: '권한' })
+  await expect(permissions.getByText('실효 역할 · Delivery lead')).toBeVisible()
+  await expect(permissions.getByText('내 실효 권한').first()).toBeVisible()
+  await expectNoHorizontalOverflow(page)
+})
+
 test('멤버 패널: 역할별 권한 표를 렌더하고 내 역할 열을 강조한다', async ({ page }) => {
   await page.route('**/api/v1/projects', (route) => route.fulfill({ json: projects }))
   await page.route('**/api/v1/me', (route) =>
