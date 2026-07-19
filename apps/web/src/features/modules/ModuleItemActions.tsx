@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
-import { useEffect } from 'react'
 import { ExternalLink, Lock, Pencil, Trash2, Users, X } from 'lucide-react'
 
+import { useFloatingActionMenuLifecycle } from '@/components/ui/floating-action-menu'
 import { confirmDestructive } from '@/lib/guards'
 
 import { type ProjectModule, useDeleteModule } from './api'
@@ -10,6 +10,7 @@ export function ModuleItemActions({
   module,
   projectId,
   isOwner,
+  trigger,
   top,
   left,
   onOpenWorkItems,
@@ -21,6 +22,7 @@ export function ModuleItemActions({
   module: ProjectModule
   projectId: string
   isOwner: boolean
+  trigger: HTMLButtonElement
   top: number
   left: number
   onOpenWorkItems: (moduleId: string) => void
@@ -30,14 +32,7 @@ export function ModuleItemActions({
   onClose: () => void
 }) {
   const remove = useDeleteModule(projectId)
-
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose()
-    }
-    window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
-  }, [onClose])
+  const { menuRef, closeMenu } = useFloatingActionMenuLifecycle({ trigger, onClose })
 
   const deleteModule = () => {
     if (
@@ -49,7 +44,7 @@ export function ModuleItemActions({
     remove.mutate(module.id, {
       onSuccess: () => {
         onMessage(`'${module.name}' 모듈을 삭제했습니다.`, 'success')
-        onClose()
+        closeMenu(false)
       },
       onError: () => onMessage('모듈을 삭제하지 못했습니다.', 'error'),
     })
@@ -57,6 +52,8 @@ export function ModuleItemActions({
 
   return (
     <div
+      ref={menuRef}
+      id={`module-actions-${module.id}`}
       role="menu"
       aria-label={`${module.name} 모듈 작업`}
       className="fixed z-50 w-60 rounded-of border border-of-border bg-of-surface p-1 text-sm shadow-[var(--of-shadow-popover)]"
@@ -68,7 +65,7 @@ export function ModuleItemActions({
           type="button"
           aria-label="모듈 작업 닫기"
           className="rounded-[4px] p-0.5 hover:bg-of-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus"
-          onClick={onClose}
+          onClick={() => closeMenu(true)}
         >
           <X size={12} />
         </button>
@@ -76,7 +73,7 @@ export function ModuleItemActions({
       <MenuButton
         onClick={() => {
           onOpenWorkItems(module.id)
-          onClose()
+          closeMenu(false)
         }}
       >
         <ExternalLink size={13} /> 작업 목록 열기
@@ -84,7 +81,7 @@ export function ModuleItemActions({
       <MenuButton
         onClick={() => {
           onToggleMembers()
-          onClose()
+          closeMenu(false)
         }}
       >
         <Users size={13} /> 참여자 관리
@@ -95,7 +92,7 @@ export function ModuleItemActions({
           <MenuButton
             onClick={() => {
               onEdit()
-              onClose()
+              closeMenu(false)
             }}
           >
             <Pencil size={13} /> 편집
