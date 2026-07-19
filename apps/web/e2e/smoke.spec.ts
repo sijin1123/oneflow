@@ -17927,8 +17927,205 @@ test('포트폴리오 리포트가 행·합계·아카이브 토글을 보여준
   await expect(page.getByRole('button', { name: 'OneFlow 도입', exact: true })).toBeHidden()
   await scheduleFilter.getByRole('button', { name: '주의 1' }).click()
   await page.getByRole('button', { name: 'OneFlow 도입', exact: true }).click()
-  await expect(page).toHaveURL(new RegExp(`/projects/${project.id}/overview#schedule-baseline`))
+  await expect(page).toHaveURL(
+    new RegExp(`/projects/${project.id}/overview\\?baseline=baseline-1#schedule-baseline`),
+  )
   await expect(page.getByRole('region', { name: '프로젝트 일정 기준선' })).toBeVisible()
+})
+
+test('포트폴리오 최근 기준선 추세가 독립 재시도·부분 이력·정확한 기준선 딥링크를 제공한다', async ({ page }) => {
+  await mockApi(page)
+  await mockProjectOverview(page)
+  const noHistoryProjectId = '22222222-2222-4222-8222-222222222222'
+  const oldBaselineId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+  const latestBaselineId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
+  const portfolioItem = {
+    project_id: project.id,
+    key: 'ONE',
+    name: 'OneFlow 도입',
+    archived: false,
+    health: 'at_risk',
+    member_count: 3,
+    work_package_count: 12,
+    open_work_package_count: 7,
+    overdue_count: 2,
+    budget: 20000000,
+    cost_total: 5000000,
+    hours_total: 42.5,
+    schedule_baseline_id: latestBaselineId,
+    schedule_baseline_name: '출시 승인',
+    schedule_baseline_captured_at: '2026-07-18T00:00:00Z',
+    schedule_baseline_snapshot_count: 12,
+    schedule_changed_count: 3,
+    schedule_risk_count: 2,
+  }
+  const noHistoryItem = {
+    ...portfolioItem,
+    project_id: noHistoryProjectId,
+    key: 'NEW',
+    name: '신규 제품',
+    schedule_baseline_id: null,
+    schedule_baseline_name: null,
+    schedule_baseline_captured_at: null,
+    schedule_baseline_snapshot_count: 0,
+    schedule_changed_count: 0,
+    schedule_risk_count: 0,
+  }
+  await page.route('**/api/v1/reports/portfolio?include_archived=false', (route) =>
+    route.fulfill({
+      json: {
+        items: [portfolioItem, noHistoryItem],
+        totals: {
+          projects: 2,
+          work_packages: 24,
+          open: 14,
+          overdue: 4,
+          budget: 40000000,
+          cost_total: 10000000,
+          hours_total: 85,
+          schedule_baseline_projects: 1,
+          schedule_changed_projects: 1,
+          schedule_at_risk_projects: 1,
+          schedule_risk_items: 2,
+        },
+        total: 2,
+      },
+    }),
+  )
+  await page.route('**/api/v1/reports/portfolio/timeline?**', (route) =>
+    route.fulfill({ json: { items: [], total: 0 } }),
+  )
+  let trendRequests = 0
+  await page.route('**/api/v1/reports/portfolio/schedule-baseline-trends?**', async (route) => {
+    trendRequests += 1
+    if (trendRequests === 1) {
+      await route.fulfill({ status: 500, json: { detail: 'trend unavailable' } })
+      return
+    }
+    await route.fulfill({
+      json: {
+        items: [
+          {
+            project_id: project.id,
+            points: [
+              {
+                baseline_id: latestBaselineId,
+                name: '출시 승인',
+                captured_at: '2026-07-18T00:00:00Z',
+                snapshot_count: 12,
+                comparison_count: 13,
+                changed_count: 3,
+                risk_count: 2,
+              },
+              {
+                baseline_id: oldBaselineId,
+                name: '착수 승인',
+                captured_at: '2026-07-10T00:00:00Z',
+                snapshot_count: 10,
+                comparison_count: 13,
+                changed_count: 5,
+                risk_count: 1,
+              },
+            ],
+          },
+          { project_id: noHistoryProjectId, points: [] },
+        ],
+        total: 2,
+        history_limit: 5,
+      },
+    })
+  })
+  const baselineDetail = (id: string, name: string) => ({
+    baseline: {
+      id,
+      name,
+      version: 0,
+      captured_at: '2026-07-10T00:00:00Z',
+      captured_by_user_id: 'me-1',
+    },
+    total_snapshot: 10,
+    current_total: 13,
+    unchanged: 8,
+    later: 1,
+    earlier: 1,
+    unscheduled: 0,
+    rescheduled: 0,
+    added: 1,
+    removed: 0,
+    changed_total: 3,
+    items: [],
+    items_truncated: false,
+  })
+  await page.route(`**/api/v1/projects/${project.id}/schedule-baselines**`, async (route) => {
+    const url = new URL(route.request().url())
+    const suffix = url.pathname.split('/schedule-baselines')[1]?.replace(/^\//, '')
+    if (!suffix) {
+      await route.fulfill({
+        json: {
+          items: [
+            {
+              ...baselineDetail(latestBaselineId, '출시 승인').baseline,
+              total_snapshot: 12,
+              comparison_total: 13,
+              changed_total: 3,
+              risk_total: 2,
+            },
+            {
+              ...baselineDetail(oldBaselineId, '착수 승인').baseline,
+              total_snapshot: 10,
+              comparison_total: 13,
+              changed_total: 5,
+              risk_total: 1,
+            },
+          ],
+          total: 2,
+          current_total: 13,
+          limit: 20,
+        },
+      })
+      return
+    }
+    await route.fulfill({
+      json: baselineDetail(suffix, suffix === oldBaselineId ? '착수 승인' : '출시 승인'),
+    })
+  })
+
+  await page.goto('/reports')
+  await page.getByRole('button', { name: '기준선 추세' }).click()
+  await expect(page.getByText('기준선 적용', { exact: true })).toBeVisible()
+  await expect(page.getByRole('alert')).toContainText('데이터를 불러오지 못했습니다')
+  await page.getByRole('button', { name: '다시 시도' }).click()
+  const trendList = page.getByRole('list', { name: '프로젝트별 최근 기준선 추세' })
+  await expect(trendList).toBeVisible()
+  await expect(page.getByText('이력 있음 1/2')).toBeVisible()
+  await expect(page.getByText('저장된 일정 기준선이 없습니다.')).toBeVisible()
+  await expect(page.getByRole('button', { name: /OneFlow 도입 착수 승인 기준선 상세/ })).toBeVisible()
+  const trendFilter = page.getByRole('group', { name: '일정 기준선 필터' })
+  await trendFilter.getByRole('button', { name: '미설정 1' }).click()
+  await expect(trendList.getByText('신규 제품', { exact: true })).toBeVisible()
+  await expect(trendList.getByText('OneFlow 도입', { exact: true })).toBeHidden()
+  await trendFilter.getByRole('button', { name: '전체 2' }).click()
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/portfolio-baseline-trend-ui/desktop.png',
+    fullPage: true,
+  })
+
+  await page.getByRole('button', { name: /OneFlow 도입 착수 승인 기준선 상세/ }).click()
+  await expect(page).toHaveURL(
+    new RegExp(`/projects/${project.id}/overview\\?baseline=${oldBaselineId}#schedule-baseline`),
+  )
+  await expect(page.getByLabel('비교할 기준선')).toHaveValue(oldBaselineId)
+
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto('/reports')
+  await page.getByRole('button', { name: '기준선 추세' }).click()
+  const mobileTrend = page.getByRole('list', { name: '프로젝트별 최근 기준선 추세' })
+  await expect(mobileTrend).toBeVisible()
+  await expectNoHorizontalOverflow(page)
+  await mobileTrend.scrollIntoViewIfNeeded()
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/portfolio-baseline-trend-ui/mobile.png',
+  })
 })
 
 test('관리자 webhook 표면이 endpoint와 delivery lifecycle을 실제 요청에 연결한다', async ({ page }) => {

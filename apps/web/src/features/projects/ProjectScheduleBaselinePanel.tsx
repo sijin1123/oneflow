@@ -10,8 +10,8 @@ import {
   Trash2,
   X,
 } from 'lucide-react'
-import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { useCallback, useEffect, useState } from 'react'
+import { Link, useSearchParams } from 'react-router-dom'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -294,18 +294,38 @@ export function ProjectScheduleBaselinePanel({
 }) {
   const history = useProjectScheduleBaselines(projectId)
   const [selectedId, setSelectedId] = useState('')
+  const [searchParams, setSearchParams] = useSearchParams()
   const selected = useProjectScheduleBaseline(projectId, selectedId)
   const create = useCreateProjectScheduleBaseline(projectId)
   const remove = useDeleteProjectScheduleBaseline(projectId)
   const [createOpen, setCreateOpen] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
 
+  const selectBaseline = useCallback((baselineId: string) => {
+    setSelectedId(baselineId)
+    const next = new URLSearchParams(searchParams)
+    if (baselineId) next.set('baseline', baselineId)
+    else next.delete('baseline')
+    setSearchParams(next, { replace: true })
+  }, [searchParams, setSearchParams])
+
   useEffect(() => {
     const items = history.data?.items ?? []
-    if (!items.some((item) => item.id === selectedId)) {
-      setSelectedId(items[0]?.id ?? '')
+    const requestedId = searchParams.get('baseline') ?? ''
+    if (requestedId && items.some((item) => item.id === requestedId)) {
+      if (selectedId !== requestedId) setSelectedId(requestedId)
+      return
     }
-  }, [history.data?.items, selectedId])
+    if (items.some((item) => item.id === selectedId)) return
+    const fallbackId = items[0]?.id ?? ''
+    setSelectedId(fallbackId)
+    if (requestedId) {
+      const next = new URLSearchParams(searchParams)
+      if (fallbackId) next.set('baseline', fallbackId)
+      else next.delete('baseline')
+      setSearchParams(next, { replace: true })
+    }
+  }, [history.data?.items, searchParams, selectedId, setSearchParams])
 
   useEffect(() => {
     if (history.isPending || window.location.hash !== '#schedule-baseline') return
@@ -356,7 +376,7 @@ export function ProjectScheduleBaselinePanel({
       onConfirm={(name) => {
         create.mutate(name, {
           onSuccess: (summary) => {
-            setSelectedId(summary.baseline?.id ?? '')
+            selectBaseline(summary.baseline?.id ?? '')
             setCreateOpen(false)
           },
         })
@@ -409,7 +429,7 @@ export function ProjectScheduleBaselinePanel({
           <select
             id="schedule-baseline-selector"
             value={selectedEntry?.id ?? ''}
-            onChange={(event) => setSelectedId(event.target.value)}
+            onChange={(event) => selectBaseline(event.target.value)}
             className="h-8 min-w-0 flex-1 rounded-of border border-of-border bg-of-surface px-2 text-xs outline-none focus:border-of-focus focus:ring-1 focus:ring-of-focus sm:w-44 sm:flex-none"
           >
             {entries.map((entry) => (
@@ -434,7 +454,7 @@ export function ProjectScheduleBaselinePanel({
       <BaselineTrend
         entries={entries}
         selectedId={selectedEntry?.id ?? ''}
-        onSelect={setSelectedId}
+        onSelect={selectBaseline}
       />
 
       {selected.isError ? (
@@ -566,7 +586,7 @@ export function ProjectScheduleBaselinePanel({
             { baselineId: baseline.id, expectedVersion: baseline.version },
             {
               onSuccess: () => {
-                setSelectedId('')
+                selectBaseline('')
                 setDeleteOpen(false)
               },
             },

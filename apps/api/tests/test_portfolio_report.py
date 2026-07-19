@@ -260,6 +260,100 @@ async def test_portfolio_latest_schedule_baseline_variance_is_bounded_and_aggreg
     ) == (1, 1, 1, 2)
 
 
+async def test_portfolio_recent_baseline_trends_are_authorized_bounded_and_complete(
+    app, client, dev_user
+):
+    many = await create_project(client, key="TM", name="가 다중 이력")
+    single = await create_project(client, key="TS", name="나 단일 이력")
+    empty = await create_project(client, key="TE", name="다 이력 없음")
+    async with app.state.sessionmaker() as session, session.begin():
+        current = WorkPackage(
+            project_id=many["id"],
+            subject="외부로 노출되면 안 되는 작업 제목",
+            due_date=dt.date(2026, 7, 10),
+        )
+        stranger = User(email="trend-hidden@oneflow.local", display_name="Hidden")
+        hidden = Project(key="TH", name="라 숨김")
+        session.add_all([current, stranger, hidden])
+        await session.flush()
+        session.add(ProjectMember(project_id=hidden.id, user_id=stranger.id, role="owner"))
+
+        baselines = [
+            ProjectScheduleBaseline(
+                project_id=many["id"],
+                name=f"기준선 {index}",
+                captured_by_user_id=dev_user.id,
+                captured_at=dt.datetime(2026, 7, index, tzinfo=dt.UTC),
+            )
+            for index in range(1, 7)
+        ]
+        single_baseline = ProjectScheduleBaseline(
+            project_id=single["id"],
+            name="단일 기준선",
+            captured_by_user_id=dev_user.id,
+            captured_at=dt.datetime(2026, 7, 7, tzinfo=dt.UTC),
+        )
+        hidden_baseline = ProjectScheduleBaseline(
+            project_id=hidden.id,
+            name="비공개 기준선",
+            captured_by_user_id=stranger.id,
+        )
+        session.add_all([*baselines, single_baseline, hidden_baseline])
+        await session.flush()
+        session.add_all(
+            [
+                ProjectScheduleBaselineItem(
+                    baseline_id=baseline.id,
+                    work_package_id=current.id,
+                    subject=current.subject,
+                    due_date=dt.date(2026, 7, index + 3),
+                )
+                for index, baseline in enumerate(baselines, start=1)
+            ]
+        )
+
+    res = await client.get("/api/v1/reports/portfolio/schedule-baseline-trends")
+    assert res.status_code == 200, res.text
+    body = res.json()
+    assert body["history_limit"] == 5
+    assert body["total"] == 3
+    assert [item["project_id"] for item in body["items"]] == [
+        many["id"],
+        single["id"],
+        empty["id"],
+    ]
+    assert [point["name"] for point in body["items"][0]["points"]] == [
+        "기준선 6",
+        "기준선 5",
+        "기준선 4",
+        "기준선 3",
+        "기준선 2",
+    ]
+    assert body["items"][1]["points"][0]["name"] == "단일 기준선"
+    assert body["items"][2]["points"] == []
+    assert all(point["comparison_count"] == 1 for point in body["items"][0]["points"])
+    assert all(point["changed_count"] == 1 for point in body["items"][0]["points"])
+    assert all(point["risk_count"] == 1 for point in body["items"][0]["points"])
+    assert body["items"][1]["points"][0]["comparison_count"] == 0
+    assert "외부로 노출되면 안 되는 작업 제목" not in res.text
+    assert str(hidden.id) not in res.text
+
+    limited = (
+        await client.get(
+            "/api/v1/reports/portfolio/schedule-baseline-trends?history_limit=2&limit=2&offset=1"
+        )
+    ).json()
+    assert limited["history_limit"] == 2
+    assert [item["project_id"] for item in limited["items"]] == [single["id"], empty["id"]]
+    assert len(limited["items"][0]["points"]) == 1
+    assert (
+        await client.get("/api/v1/reports/portfolio/schedule-baseline-trends?history_limit=0")
+    ).status_code == 422
+    assert (
+        await client.get("/api/v1/reports/portfolio/schedule-baseline-trends?history_limit=6")
+    ).status_code == 422
+
+
 async def test_portfolio_csv_matches_json_and_headers(app, client, dev_user):
     rich, arch = await _seed(app, client, dev_user)
     res = await client.get("/api/v1/reports/portfolio/export.csv?include_archived=true")

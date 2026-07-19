@@ -56,6 +56,27 @@ class PortfolioReportRead(BaseModel):
     total: int
 
 
+class PortfolioScheduleTrendPoint(BaseModel):
+    baseline_id: uuid.UUID
+    name: str
+    captured_at: datetime
+    snapshot_count: int
+    comparison_count: int
+    changed_count: int
+    risk_count: int
+
+
+class PortfolioScheduleTrendProject(BaseModel):
+    project_id: uuid.UUID
+    points: list[PortfolioScheduleTrendPoint]
+
+
+class PortfolioScheduleTrendRead(BaseModel):
+    items: list[PortfolioScheduleTrendProject]
+    total: int
+    history_limit: int
+
+
 class PortfolioTimelineMilestone(BaseModel):
     id: uuid.UUID
     name: str
