@@ -225,6 +225,7 @@ function ProjectActions({
 }) {
   const navigate = useNavigate()
   const [open, setOpen] = useState(false)
+  const menuId = `project-actions-${project.id}`
   const members = useMembers(project.id, open)
   const archive = useArchiveProject(project.id)
   const isOwner = members.data?.items.some(
@@ -259,13 +260,20 @@ function ProjectActions({
           <button
             type="button"
             aria-label={`${project.name} 프로젝트 작업`}
+            aria-controls={menuId}
+            aria-expanded={open}
             className="flex h-8 w-7 shrink-0 items-center justify-center rounded-of text-of-muted opacity-100 transition-[opacity,color,background-color] hover:bg-of-surface-hover hover:text-of-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus sm:opacity-0 sm:group-hover/project:opacity-100 sm:group-focus-within/project:opacity-100"
             onClick={(event) => event.stopPropagation()}
           >
             <MoreHorizontal size={14} aria-hidden="true" />
           </button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="start" side="right" className="w-52">
+        <DropdownMenuContent
+          id={menuId}
+          align="start"
+          side="right"
+          className="w-52"
+        >
           <DropdownMenuLabel>{project.name}</DropdownMenuLabel>
           <DropdownMenuItem
             className="flex items-center gap-2 text-xs"

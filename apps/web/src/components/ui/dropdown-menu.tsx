@@ -17,7 +17,7 @@ export function DropdownMenuContent({
       <DropdownPrimitive.Content
         sideOffset={4}
         className={cn(
-          'z-50 min-w-36 rounded-of border border-of-border bg-of-surface p-1 text-sm shadow-[var(--of-shadow-popover)]',
+          'of-dropdown-motion z-50 min-w-36 rounded-of border border-of-border bg-of-surface p-1 text-sm shadow-[var(--of-shadow-popover)]',
           className,
         )}
         {...props}
