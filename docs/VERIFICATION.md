@@ -2805,3 +2805,15 @@ Chromium typed mock fixture에서 1440x960과 390x844 viewport를 사용했다. 
 - **증적**: `docs/screenshots/redevelopment/login-origin-dpr-closure-ui/`에 desktop/mobile 실제 캡처, 원본-런타임 정규화 대조, 5x pixel diff와 측정 계약을 보존한다.
 
 ---
+
+# UI-161 Workspace Branding 검증 (2026-07-19)
+
+- **UI 변경**: 워크스페이스 일반 설정에 PNG/JPEG/WebP 로고 선택, 저장 전 미리보기, 교체, 삭제, 진행·오류·충돌 상태를 추가했다. 저장 성공 시 React Query identity cache를 원자적으로 갱신해 상단 워크스페이스 전환기, 전환 popover, 데스크톱 사이드바와 모바일 헤더에 즉시 반영하며 이미지 로드 실패 또는 미설정 상태는 워크스페이스 이름 기반 두 글자 폴백을 사용한다.
+- **기능/API 반영**: migration `0111`은 로고 storage key, MIME, 파일명, 크기와 byte size를 WorkspaceProfile revision에 결합한다. 관리자 전용 PUT/DELETE는 `If-Match` CAS, 2 MiB stream 상한, PNG/JPEG/WebP 실제 decode, 정적 이미지·4096 edge·8M pixel 검증, 새 blob rollback과 교체 후 이전 blob 정리를 수행한다. 인증된 GET은 blob UUID 버전 URL, private immutable cache와 `nosniff`로 현재 blob을 반환하고, 이름 변경에는 URL이 유지되지만 교체 뒤 이전 버전 URL은 404가 된다. Storage sweep은 현행 로고 key를 live reference로 보존한다.
+- **권한/무결성**: 일반 사용자는 로고를 읽을 수 있지만 변경 API는 403이다. stale revision은 412와 최신 revision을 반환하고, 실패한 업로드는 새 blob을 제거하며 DB commit 전에 기존 blob을 삭제하지 않는다. PUT/DELETE 경로는 관리자 전용 workspace identity 변경으로 permission audit allowlist에 등록했다. LocalStorage 외 object store와 임의 theme 색상 편집은 이 surface 범위 밖으로 명시 이연한다.
+- **실스택 검증**: PostgreSQL `0111` 적용 API와 Vite UI에서 사용자 제공 PNG를 선택·저장한 뒤 설정 미리보기, 상단, 사이드바와 워크스페이스 popover 반영을 확인했다. DELETE 후 revision 증가와 모든 surface의 `ON` 폴백 복귀도 확인했다. 검증용 CORS origin은 로컬 프로세스에만 주입했고 제품 환경변수는 변경하지 않았다.
+- **자동 검증**: focused workspace/storage API **17 PASS**, permission/profile 재검증 **21 PASS**, full API **827 PASS**(기존 Alembic path separator warning 1건), migration `0111 -> 0110 -> 0111`, API Ruff/format, OpenAPI 생성·드리프트와 shared type check가 PASS했다. Web typecheck PASS, lint PASS(기존 Fast Refresh warning 4건), production build PASS(기존 chunk-size warning), unit **107 PASS**, component **8 PASS**, focused workspace E2E **4 PASS**, 최종 2-worker full E2E **318 PASS + opt-in visual QA 1 skip**이다. Clean-room frontend **161**/backend **45**, npm/pip audit 0 vulnerabilities와 diff check도 PASS했다.
+- 첫 4-worker full E2E는 기존 프로젝트 단계 화면의 마지막 screenshot 저장만 전체 30초 한도를 넘어 `317 PASS + 1 fail + 1 skip`이었고, 같은 시나리오 단독 실행은 **1 PASS**, 병렬도를 낮춘 전체 재실행은 위의 **318 PASS + 1 skip**으로 완료됐다. 제품 동작 실패나 소스 수정 없이 실행 부하를 분리해 재검증했다.
+- **증적**: `docs/screenshots/redevelopment/workspace-branding-ui/{desktop,mobile}.png`에 저장된 로고의 desktop popover와 mobile header를 보존한다. 신규 dependency 또는 영구 environment variable 변경은 없다.
+
+---

@@ -7,17 +7,18 @@ import { IconButton } from '@/components/ui/icon-button'
 import { useLogout } from '@/features/auth/api'
 import { useMe } from '@/features/members/api'
 import { NotificationBell } from '@/features/notifications/NotificationBell'
-import { useWorkspaceProfile } from '@/features/workspace-profile/api'
+import { useWorkspaceProfile, type WorkspaceIdentity } from '@/features/workspace-profile/api'
+import { WorkspaceLogo } from '@/features/workspace-profile/WorkspaceLogo'
 
 import { CommandPalette } from './CommandPalette'
 import { TopbarHelp } from './TopbarHelp'
 
 function WorkspaceMenu({
-  workspaceName,
+  workspace,
   open,
   onOpenChange,
 }: {
-  workspaceName: string
+  workspace: WorkspaceIdentity
   open: boolean
   onOpenChange: (open: boolean) => void
 }) {
@@ -69,8 +70,8 @@ function WorkspaceMenu({
   return (
     <div className="relative">
       <button ref={triggerRef} type="button" aria-label="워크스페이스 전환" aria-expanded={open} className="flex min-w-0 items-center gap-2 rounded-of px-1.5 py-1 text-left hover:bg-of-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus" onClick={() => onOpenChange(!open)}>
-        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-of bg-of-accent text-[11px] font-bold text-white shadow-[var(--of-shadow-xs)]">OF</span>
-        <span className="max-w-40 truncate text-sm font-semibold">{workspaceName}</span>
+        <WorkspaceLogo profile={workspace} />
+        <span className="max-w-40 truncate text-sm font-semibold">{workspace.name}</span>
         <ChevronDown
           size={14}
           data-testid="workspace-menu-chevron"
@@ -85,9 +86,9 @@ function WorkspaceMenu({
             <div className="border-b border-of-border px-2.5 py-2">
               <p className="truncate text-[11px] text-of-muted">{me.data?.email ?? '계정 정보를 불러오는 중'}</p>
               <div aria-label="현재 워크스페이스" className="mt-2 flex items-center gap-2 rounded-of bg-of-surface-2 px-2 py-2">
-                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-of bg-of-accent text-[10px] font-bold text-white">OF</span>
+                <WorkspaceLogo profile={workspace} />
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate text-xs font-semibold">{workspaceName}</span>
+                  <span className="block truncate text-xs font-semibold">{workspace.name}</span>
                   <span className="block text-[11px] text-of-muted">{isAdmin ? '관리자' : '멤버'}</span>
                 </span>
                 <Check size={14} className="shrink-0 text-of-accent" aria-label="선택됨" />
@@ -223,6 +224,16 @@ export function Topbar({
   onOpenMobileSidebar?: () => void
 }) {
   const workspaceProfile = useWorkspaceProfile()
+  const workspace = workspaceProfile.data ?? {
+    name: 'OneFlow',
+    revision: 1,
+    logo_url: null,
+    logo_content_type: null,
+    logo_filename: null,
+    logo_width: null,
+    logo_height: null,
+    logo_byte_size: null,
+  }
   const location = useLocation()
   const [openMenu, setOpenMenu] = useState<'workspace' | 'help' | 'account' | null>(null)
   const setWorkspaceOpen = useCallback((open: boolean) => setOpenMenu(open ? 'workspace' : null), [])
@@ -233,9 +244,10 @@ export function Topbar({
       <div className="flex min-w-0 flex-1 items-center gap-2 md:grid md:grid-cols-[minmax(15rem,1fr)_minmax(14rem,30rem)_minmax(15rem,1fr)] md:gap-3">
         <div className="flex min-w-0 items-center gap-2">
           <IconButton label="사이드바 열기" className="shrink-0 md:hidden" onClick={onOpenMobileSidebar}><Menu size={16} /></IconButton>
+          <WorkspaceLogo profile={workspace} className="md:hidden" />
           <div className="hidden md:block">
             <WorkspaceMenu
-              workspaceName={workspaceProfile.data?.name ?? 'OneFlow'}
+              workspace={workspace}
               open={openMenu === 'workspace'}
               onOpenChange={setWorkspaceOpen}
             />

@@ -172,38 +172,56 @@ def _print_report(report: SweepReport, *, min_age: timedelta) -> None:
         print(f"  ERROR: {err}")
 
 
-async def _fetch_keys() -> set[str]:
+async def _fetch_keys_from_connection(conn) -> set[str]:
     from sqlalchemy import select
+
+    from app.models.attachment import Attachment
+    from app.models.data_transfer_job import DataTransferJob
+    from app.models.workspace_profile import WorkspaceProfile
+
+    attachment_keys = set(
+        (
+            await conn.execute(
+                select(Attachment.storage_key).where(Attachment.storage_key.is_not(None))
+            )
+        )
+        .scalars()
+        .all()
+    )
+    transfer_keys = set(
+        (
+            await conn.execute(
+                select(DataTransferJob.artifact_storage_key).where(
+                    DataTransferJob.artifact_storage_key.is_not(None)
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    workspace_logo_keys = set(
+        (
+            await conn.execute(
+                select(WorkspaceProfile.logo_storage_key).where(
+                    WorkspaceProfile.logo_storage_key.is_not(None)
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return attachment_keys | transfer_keys | workspace_logo_keys
+
+
+async def _fetch_keys() -> set[str]:
     from sqlalchemy.ext.asyncio import create_async_engine
 
     from app.core.config import get_settings
-    from app.models.attachment import Attachment
-    from app.models.data_transfer_job import DataTransferJob
 
     engine = create_async_engine(get_settings().database_url)
     try:
         async with engine.connect() as conn:
-            attachment_keys = set(
-                (
-                    await conn.execute(
-                        select(Attachment.storage_key).where(Attachment.storage_key.is_not(None))
-                    )
-                )
-                .scalars()
-                .all()
-            )
-            transfer_keys = set(
-                (
-                    await conn.execute(
-                        select(DataTransferJob.artifact_storage_key).where(
-                            DataTransferJob.artifact_storage_key.is_not(None)
-                        )
-                    )
-                )
-                .scalars()
-                .all()
-            )
-            return attachment_keys | transfer_keys
+            return await _fetch_keys_from_connection(conn)
     finally:
         await engine.dispose()
 

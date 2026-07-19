@@ -5,6 +5,12 @@ import { api } from '@/lib/api'
 export type WorkspaceIdentity = {
   name: string
   revision: number
+  logo_url: string | null
+  logo_content_type: string | null
+  logo_filename: string | null
+  logo_width: number | null
+  logo_height: number | null
+  logo_byte_size: number | null
 }
 
 export type WorkspaceProfile = WorkspaceIdentity & {
@@ -81,8 +87,7 @@ export function useUpdateWorkspaceProfile() {
     onSuccess: (profile) => {
       queryClient.setQueryData(adminWorkspaceProfileKey, profile)
       queryClient.setQueryData<WorkspaceIdentity>(workspaceProfileKey, {
-        name: profile.name,
-        revision: profile.revision,
+        ...profile,
       })
     },
     onError: async () => {
@@ -91,6 +96,54 @@ export function useUpdateWorkspaceProfile() {
         queryClient.invalidateQueries({ queryKey: workspaceProfileKey }),
       ])
     },
+  })
+}
+
+function setWorkspaceProfileCache(
+  queryClient: ReturnType<typeof useQueryClient>,
+  profile: WorkspaceProfile,
+) {
+  queryClient.setQueryData(adminWorkspaceProfileKey, profile)
+  queryClient.setQueryData<WorkspaceIdentity>(workspaceProfileKey, profile)
+}
+
+function invalidateWorkspaceProfileCache(
+  queryClient: ReturnType<typeof useQueryClient>,
+) {
+  return Promise.all([
+    queryClient.invalidateQueries({ queryKey: adminWorkspaceProfileKey }),
+    queryClient.invalidateQueries({ queryKey: workspaceProfileKey }),
+  ])
+}
+
+export function useReplaceWorkspaceLogo() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ file, revision }: { file: File; revision: number }) =>
+      api<WorkspaceProfile>('/api/v1/admin/workspace/logo', {
+        method: 'PUT',
+        headers: {
+          'content-type': file.type,
+          'If-Match': `"${revision}"`,
+          'X-File-Name': encodeURIComponent(file.name),
+        },
+        body: file,
+      }),
+    onSuccess: (profile) => setWorkspaceProfileCache(queryClient, profile),
+    onError: () => invalidateWorkspaceProfileCache(queryClient),
+  })
+}
+
+export function useRemoveWorkspaceLogo() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ revision }: { revision: number }) =>
+      api<WorkspaceProfile>('/api/v1/admin/workspace/logo', {
+        method: 'DELETE',
+        headers: { 'If-Match': `"${revision}"` },
+      }),
+    onSuccess: (profile) => setWorkspaceProfileCache(queryClient, profile),
+    onError: () => invalidateWorkspaceProfileCache(queryClient),
   })
 }
 

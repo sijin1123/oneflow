@@ -1,8 +1,18 @@
 """Workspace General Settings profile API contracts."""
 
 import asyncio
+import base64
+import uuid
+from pathlib import Path
 
 from sqlalchemy import text
+
+from app.models.workspace_profile import WorkspaceProfile
+from app.services.storage_sweep import _fetch_keys_from_connection
+
+PNG = base64.b64decode(
+    "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAEklEQVR4nGPkndLBwMDAxAAGAA2bAS37E8jFAAAAAElFTkSuQmCC"
+)
 
 
 async def update_profile(client, name: str, revision: int = 1):
@@ -17,7 +27,16 @@ async def test_workspace_profile_default_read_and_name_update(client):
     default = await client.get("/api/v1/workspace/profile")
     assert default.status_code == 200
     assert default.headers["etag"] == '"1"'
-    assert default.json() == {"name": "OneFlow", "revision": 1}
+    assert default.json() == {
+        "name": "OneFlow",
+        "revision": 1,
+        "logo_url": None,
+        "logo_content_type": None,
+        "logo_filename": None,
+        "logo_width": None,
+        "logo_height": None,
+        "logo_byte_size": None,
+    }
 
     admin = await client.get("/api/v1/admin/workspace/profile")
     assert admin.status_code == 200
@@ -70,6 +89,112 @@ async def test_workspace_profile_stale_and_concurrent_writers(client):
     profile = await client.get("/api/v1/workspace/profile")
     assert profile.headers["etag"] == '"2"'
     assert profile.json()["revision"] == 2
+
+
+async def test_workspace_logo_upload_read_replace_remove_and_sweep_reference(client, app):
+    uploaded = await client.put(
+        "/api/v1/admin/workspace/logo",
+        content=PNG,
+        headers={
+            "content-type": "image/png",
+            "If-Match": '"1"',
+            "X-File-Name": "OneFlow%20mark.png",
+        },
+    )
+    assert uploaded.status_code == 200, uploaded.text
+    assert uploaded.headers["etag"] == '"2"'
+    logo_url = uploaded.json()["logo_url"]
+    assert logo_url.startswith("/api/v1/workspace/logo?version=")
+    uuid.UUID(logo_url.rsplit("=", 1)[-1])
+    assert uploaded.json()["logo_filename"] == "OneFlow mark.png"
+    assert uploaded.json()["logo_content_type"] == "image/png"
+    assert uploaded.json()["logo_width"] == 2
+    assert uploaded.json()["logo_height"] == 2
+    assert uploaded.json()["logo_byte_size"] == len(PNG)
+
+    identity = await client.get("/api/v1/workspace/profile")
+    assert identity.json()["logo_url"] == logo_url
+    logo = await client.get(logo_url)
+    assert logo.status_code == 200
+    assert logo.content == PNG
+    assert logo.headers["content-type"] == "image/png"
+    assert logo.headers["x-content-type-options"] == "nosniff"
+
+    async with app.state.sessionmaker() as session:
+        row = await session.get(WorkspaceProfile, 1)
+        first_key = row.logo_storage_key
+        assert first_key is not None
+        assert first_key in await _fetch_keys_from_connection(session)
+    first_path = Path(app.state.settings.storage_dir) / first_key
+    assert first_path.is_file()
+
+    renamed = await update_profile(client, "Delivery Workspace", revision=2)
+    assert renamed.status_code == 200
+    assert renamed.json()["revision"] == 3
+    assert renamed.json()["logo_url"] == logo_url
+
+    stale = await client.put(
+        "/api/v1/admin/workspace/logo",
+        content=PNG,
+        headers={"content-type": "image/png", "If-Match": '"1"'},
+    )
+    assert stale.status_code == 412
+    assert [path for path in first_path.parent.iterdir() if path.is_file()] == [first_path]
+
+    replaced = await client.put(
+        "/api/v1/admin/workspace/logo",
+        content=PNG,
+        headers={"content-type": "image/png", "If-Match": '"3"'},
+    )
+    assert replaced.status_code == 200
+    assert replaced.json()["revision"] == 4
+    assert replaced.json()["logo_url"] != logo_url
+    assert not first_path.exists()
+    assert (await client.get(logo_url)).status_code == 404
+
+    removed = await client.delete(
+        "/api/v1/admin/workspace/logo",
+        headers={"If-Match": '"4"'},
+    )
+    assert removed.status_code == 200
+    assert removed.json()["revision"] == 5
+    assert removed.json()["logo_url"] is None
+    assert (await client.get("/api/v1/workspace/logo")).status_code == 404
+    async with app.state.sessionmaker() as session:
+        assert not (await _fetch_keys_from_connection(session))
+
+
+async def test_workspace_logo_validation_and_admin_boundary(client, app):
+    mismatch = await client.put(
+        "/api/v1/admin/workspace/logo",
+        content=PNG,
+        headers={"content-type": "image/jpeg", "If-Match": '"1"'},
+    )
+    assert mismatch.status_code == 422
+    assert not list(Path(app.state.settings.storage_dir).rglob("*.*"))
+
+    unsupported = await client.put(
+        "/api/v1/admin/workspace/logo",
+        content=PNG,
+        headers={"content-type": "image/gif", "If-Match": '"1"'},
+    )
+    assert unsupported.status_code == 415
+    oversized = await client.put(
+        "/api/v1/admin/workspace/logo",
+        content=b"x" * (2 * 1024 * 1024 + 1),
+        headers={"content-type": "image/png", "If-Match": '"1"'},
+    )
+    assert oversized.status_code == 413
+
+    async with app.state.sessionmaker() as session, session.begin():
+        await session.execute(text("UPDATE users SET is_admin = false"))
+    denied = await client.put(
+        "/api/v1/admin/workspace/logo",
+        content=PNG,
+        headers={"content-type": "image/png", "If-Match": '"1"'},
+    )
+    assert denied.status_code == 403
+    assert (await client.get("/api/v1/workspace/logo")).status_code == 404
 
 
 async def test_workspace_calendar_normalizes_values_and_shares_revision(client, app):

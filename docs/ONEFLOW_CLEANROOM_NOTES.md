@@ -467,3 +467,9 @@ Plane/OpenProject source, API, database schema, package, asset, CSS, DOM hierarc
 UI-162의 유일한 시각 입력은 사용자가 직접 제공하고 OneFlow 제품 자산으로 승인한 `docs/oneflow-login-origin.png`다. 기준 파일과 runtime 1x 자산의 SHA-256은 모두 `62fafe9e44df9d189e8fe2f38fc25147d11b8459569be13ee0424ba06c0c4c76`이다. 고밀도 자산은 이 사용자 소유 원화에 결정적 Lanczos resample만 적용했으며 생성형 재해석, 제3자 로고·asset 사용, 색상 변경 또는 요소 재조합이 없다. 인증 영역은 기존 OneFlow auth API와 semantic DOM을 계속 사용한다.
 
 Plane/OpenProject source, package, asset, logo, CSS, DOM, wording 또는 branding은 입력·복사하지 않았다. 신규 API, DB/schema, migration, permission, environment, dependency 또는 Settings UI 변경은 없다. - attested-user-owned-oneflow-asset
+
+## UI-161 Workspace Branding
+
+`docs/plane-poc-reverse-spec/`와 사용자 캡처에서 사용한 입력은 워크스페이스 identity가 전역 shell과 설정 표면에 일관되게 표시되고 관리자가 로고를 교체한다는 제품 행동뿐이다. OneFlow 구현은 자체 WorkspaceProfile revision, LocalStorage abstraction, FastAPI/SQLAlchemy, React Query cache와 기존 shell primitives로 독립 설계했다.
+
+Plane/OpenProject source, API, database schema, package, asset, CSS, DOM hierarchy, exact dimensions/colors, wording, upload 구현, icons 또는 branding은 복사하지 않았다. OneFlow 고유 migration `0111`, bounded static-image validation, admin CAS, blob replacement rollback, live-reference sweep와 이름 기반 fallback을 추가했다. 외부 object store와 임의 theme 편집은 별도 운영·디자인 정책이 필요한 후속 surface다. - attested-independent-derivation

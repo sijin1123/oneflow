@@ -246,6 +246,24 @@ export interface paths {
         patch: operations["update_wiki_policy_api_v1_admin_workspace_features_wiki_patch"];
         trace?: never;
     };
+    "/api/v1/admin/workspace/logo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Replace Workspace Logo */
+        put: operations["replace_workspace_logo_api_v1_admin_workspace_logo_put"];
+        post?: never;
+        /** Remove Workspace Logo */
+        delete: operations["remove_workspace_logo_api_v1_admin_workspace_logo_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/workspace/profile": {
         parameters: {
             query?: never;
@@ -3835,6 +3853,23 @@ export interface paths {
         };
         /** Workspace Capabilities */
         get: operations["workspace_capabilities_api_v1_workspace_capabilities_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspace/logo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Workspace Logo */
+        get: operations["get_workspace_logo_api_v1_workspace_logo_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -9217,6 +9252,18 @@ export interface components {
         };
         /** WorkspaceIdentityRead */
         WorkspaceIdentityRead: {
+            /** Logo Byte Size */
+            logo_byte_size: number | null;
+            /** Logo Content Type */
+            logo_content_type: string | null;
+            /** Logo Filename */
+            logo_filename: string | null;
+            /** Logo Height */
+            logo_height: number | null;
+            /** Logo Url */
+            logo_url: string | null;
+            /** Logo Width */
+            logo_width: number | null;
             /** Name */
             name: string;
             /** Revision */
@@ -9347,6 +9394,18 @@ export interface components {
         WorkspaceProfileRead: {
             /** Id */
             id: number;
+            /** Logo Byte Size */
+            logo_byte_size: number | null;
+            /** Logo Content Type */
+            logo_content_type: string | null;
+            /** Logo Filename */
+            logo_filename: string | null;
+            /** Logo Height */
+            logo_height: number | null;
+            /** Logo Url */
+            logo_url: string | null;
+            /** Logo Width */
+            logo_width: number | null;
             /** Name */
             name: string;
             /** Revision */
@@ -10388,6 +10447,75 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["WorkspaceFeaturePolicyRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    replace_workspace_logo_api_v1_admin_workspace_logo_put: {
+        parameters: {
+            query?: never;
+            header?: {
+                "If-Match"?: string | null;
+                "X-File-Name"?: string | null;
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceProfileRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    remove_workspace_logo_api_v1_admin_workspace_logo_delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                "If-Match"?: string | null;
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceProfileRead"];
                 };
             };
             /** @description Validation Error */
@@ -20347,6 +20475,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["WorkspaceCapabilitiesRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_workspace_logo_api_v1_workspace_logo_get: {
+        parameters: {
+            query?: {
+                version?: string | null;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
             /** @description Validation Error */
