@@ -2867,3 +2867,13 @@ Chromium typed mock fixture에서 1440x960과 390x844 viewport를 사용했다. 
 - **이연 항목**: UI-166C에서 Workspace Settings 역할 매트릭스/lifecycle과 기존 프로젝트 멤버 배정 UI를 이 실제 authorization 계약에 연결한다. 외부 directory/SCIM은 운영 자격 증명 의존 범위다.
 
 ---
+
+# UI-166C1 Workspace Custom Role Settings 검증 (2026-07-19)
+
+- **UI 변경**: Workspace Settings에 `/admin/project-roles` 경로와 `프로젝트 역할` 내비게이션을 추가했다. 역할 목록·배정 인원·이름/설명·7개 capability 매트릭스·보관 포함 전환·생성·수정·보관·복원·append-only 변경 이력을 한 surface에 통합했다. loading, 접근 거부, 전체 오류/재시도, 감사 로그 오류/재시도, empty, validation, pending, archived read-only, unsaved-change guard, desktop/mobile no-overflow를 포함한다.
+- **기능/API 반영**: UI-166A/B의 실제 capability catalog, 관리자 역할 CRUD/lifecycle/audit API를 generated OpenAPI type으로 직접 사용한다. 모든 mutation은 역할 목록, active catalog, 프로젝트 멤버, effective permission, audit cache를 무효화하며 update/archive/restore에는 `expected_revision`을 보낸다. 412에서는 사용자의 편집을 유지한 채 최신 역할 revision을 다시 읽고 명시적으로 재저장한다. 역할 생성 상한은 보관 역할이 아닌 활성 역할 50개를 기준으로 한다.
+- **권한/경계**: `WorkspaceSettingsShell`의 workspace-admin fail-closed guard를 재사용하며 403 직접 응답도 명시적으로 처리한다. owner/member/viewer 기본 경계는 읽기 전용 설명으로 고정하고 사용자 지정 역할은 member에게 추가되는 7개 capability만 편집한다. 보관 역할은 기존 배정·유효 권한을 유지하고 새 배정에서 제외된다는 서버 계약을 그대로 표시한다. mock/dead control, 별도 DB/schema, migration, environment variable, dependency 또는 Settings storage 변경은 없다.
+- **검증**: typecheck PASS, lint PASS(기존 Fast Refresh warning 4건), production build PASS(기존 chunk-size warning), unit **107 PASS**, component **8 PASS**, focused 역할 lifecycle E2E **1 PASS**, 전용 포트 2-worker full E2E **322 PASS + opt-in visual QA 1 skip**다. Clean-room frontend **161**/backend **45**, npm/pip audit 0 vulnerabilities와 diff check도 PASS했다. 격리 worktree 첫 clean-room은 API `.venv` 부재로 backend scan을 skip해 fail-closed됐고 동일 잠금환경 `.venv` 연결 후 4단계 모두 PASS했다.
+- **증적/이연**: Chromium 증적은 `docs/screenshots/redevelopment/custom-roles-settings-ui/{desktop,mobile}.png`에 보존한다. 프로젝트 멤버별 사용자 지정 역할 배정은 기존 member management surface와 결합해야 하므로 `UI-166C2` 후속 PR로 분리하며, 이번 역할 정의 surface 안에는 미배선 UI가 없다.
+
+---

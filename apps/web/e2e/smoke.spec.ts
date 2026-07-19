@@ -36,6 +36,10 @@ import type { WorkspaceProjectPhaseDefinitions } from '../src/features/workspace
 import type { MyActivityList, MyWorkItemList } from '../src/features/my-work/api'
 import type { WorkspaceQuickLink } from '../src/features/my-work/quickLinksApi'
 import type {
+  ProjectRole,
+  ProjectRoleEvent,
+} from '../src/features/project-roles/contract'
+import type {
   WorkItemDraft,
   WorkItemDraftContent,
 } from '../src/features/work-item-drafts/api'
@@ -7787,6 +7791,253 @@ test('custom 프로젝트 단계는 생성하고 은퇴해도 프로젝트 데�
   await expect.poll(dockAvoidsVisibleControls).toBe(true)
   await page.screenshot({
     path: '../../docs/screenshots/redevelopment/dynamic-project-phases-ui/mobile.png',
+    fullPage: true,
+  })
+})
+
+test('프로젝트 역할 설정은 충돌 복구와 생성·보관·복원·감사 이력을 실제 API로 연결한다', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 })
+  await mockApi(page)
+
+  const capabilities = [
+    { key: 'work_item.create', label: '작업 생성', note: '프로젝트에 새 작업을 만듭니다.' },
+    { key: 'work_item.update', label: '작업 수정', note: '작업 속성과 설명을 변경합니다.' },
+    { key: 'work_item.delete', label: '작업 삭제', note: '프로젝트 작업을 삭제합니다.' },
+    { key: 'work_item.comment', label: '댓글 작성', note: '작업 활동에 댓글을 남깁니다.' },
+    { key: 'work_item.assign', label: '담당자 배정', note: '작업 담당자를 변경합니다.' },
+    { key: 'work_item.move', label: '상태 이동', note: '작업 상태를 변경합니다.' },
+    { key: 'work_item.manage_watchers', label: '구독자 관리', note: '작업 구독자를 관리합니다.' },
+  ]
+  let roles: ProjectRole[] = [
+    {
+      id: '11111111-aaaa-4111-8111-111111111111',
+      name: 'Delivery lead',
+      description: '실행 작업을 조율합니다.',
+      permissions: ['work_item.create', 'work_item.update', 'work_item.assign'],
+      archived_at: null,
+      assigned_member_count: 2,
+      revision: 1,
+      created_by_user_id: 'me-1',
+      created_by_name: 'Dev User',
+      updated_by_user_id: 'me-1',
+      updated_by_name: 'Dev User',
+      created_at: '2026-07-18T01:00:00Z',
+      updated_at: '2026-07-18T01:00:00Z',
+    },
+  ]
+  let events: ProjectRoleEvent[] = [
+    {
+      id: '22222222-aaaa-4222-8222-222222222222',
+      role_id: roles[0].id,
+      actor_id: 'me-1',
+      actor_name: 'Dev User',
+      event_type: 'created',
+      revision: 1,
+      snapshot: {
+        name: roles[0].name,
+        permissions: roles[0].permissions,
+        archived: false,
+      },
+      created_at: '2026-07-18T01:00:00Z',
+    },
+  ]
+  let patchCount = 0
+
+  await page.route('**/api/v1/workspace/project-role-capabilities', (route) =>
+    route.fulfill({ json: { items: capabilities, total: capabilities.length } }),
+  )
+  await page.route('**/api/v1/admin/workspace/project-roles**', async (route) => {
+    const request = route.request()
+    const url = new URL(request.url())
+    const segments = url.pathname.split('/').filter(Boolean)
+    const roleIndex = segments.indexOf('project-roles')
+    const roleId = segments[roleIndex + 1]
+    const action = segments[roleIndex + 2]
+
+    if (action === 'events') {
+      const items = events.filter((event) => event.role_id === roleId)
+      await route.fulfill({ json: { items, total: items.length, limit: 50, offset: 0 } })
+      return
+    }
+
+    if (request.method() === 'PATCH' && roleId) {
+      const body = request.postDataJSON() as {
+        expected_revision: number
+        name: string
+        description: string | null
+        permissions: string[]
+      }
+      patchCount += 1
+      const current = roles.find((role) => role.id === roleId)!
+      if (patchCount === 1) {
+        expect(body.expected_revision).toBe(1)
+        roles = roles.map((role) => role.id === roleId
+          ? { ...role, description: '다른 관리자의 설명', revision: 2, updated_by_name: 'Other Admin' }
+          : role)
+        await route.fulfill({
+          status: 412,
+          json: { detail: { code: 'stale_revision', current_revision: 2 } },
+        })
+        return
+      }
+      expect(body).toEqual({
+        expected_revision: 2,
+        name: 'Delivery lead',
+        description: '제품 전달과 배정을 조율합니다.',
+        permissions: [
+          'work_item.create',
+          'work_item.update',
+          'work_item.assign',
+          'work_item.manage_watchers',
+        ],
+      })
+      const updated: ProjectRole = {
+        ...current,
+        ...body,
+        revision: 3,
+        updated_by_name: 'Dev User',
+        updated_at: '2026-07-18T02:00:00Z',
+      }
+      roles = roles.map((role) => role.id === roleId ? updated : role)
+      events = [
+        {
+          id: '33333333-aaaa-4333-8333-333333333333',
+          role_id: roleId,
+          actor_id: 'me-1',
+          actor_name: 'Dev User',
+          event_type: 'updated',
+          revision: 3,
+          snapshot: { name: updated.name, permissions: updated.permissions, archived: false },
+          created_at: updated.updated_at,
+        },
+        ...events,
+      ]
+      await route.fulfill({ json: updated })
+      return
+    }
+
+    if (request.method() === 'POST' && action === undefined) {
+      const body = request.postDataJSON() as {
+        name: string
+        description: string | null
+        permissions: string[]
+      }
+      expect(body).toEqual({
+        name: 'Release coordinator',
+        description: '릴리스 작업을 조율합니다.',
+        permissions: ['work_item.move'],
+      })
+      const created: ProjectRole = {
+        id: '44444444-aaaa-4444-8444-444444444444',
+        ...body,
+        archived_at: null,
+        assigned_member_count: 0,
+        revision: 1,
+        created_by_user_id: 'me-1',
+        created_by_name: 'Dev User',
+        updated_by_user_id: 'me-1',
+        updated_by_name: 'Dev User',
+        created_at: '2026-07-18T03:00:00Z',
+        updated_at: '2026-07-18T03:00:00Z',
+      }
+      roles = [...roles, created]
+      events = [{
+        id: '55555555-aaaa-4555-8555-555555555555',
+        role_id: created.id,
+        actor_id: 'me-1',
+        actor_name: 'Dev User',
+        event_type: 'created',
+        revision: 1,
+        snapshot: { name: created.name, permissions: created.permissions, archived: false },
+        created_at: created.created_at,
+      }, ...events]
+      await route.fulfill({ status: 201, json: created })
+      return
+    }
+
+    if (request.method() === 'POST' && roleId && (action === 'archive' || action === 'restore')) {
+      const body = request.postDataJSON() as { expected_revision: number }
+      const current = roles.find((role) => role.id === roleId)!
+      expect(body.expected_revision).toBe(current.revision)
+      const archived = action === 'archive'
+      const updated: ProjectRole = {
+        ...current,
+        archived_at: archived ? '2026-07-18T04:00:00Z' : null,
+        revision: current.revision + 1,
+        updated_at: '2026-07-18T04:00:00Z',
+      }
+      roles = roles.map((role) => role.id === roleId ? updated : role)
+      events = [{
+        id: `${archived ? '66666666' : '77777777'}-aaaa-4666-8666-666666666666`,
+        role_id: roleId,
+        actor_id: 'me-1',
+        actor_name: 'Dev User',
+        event_type: archived ? 'archived' : 'restored',
+        revision: updated.revision,
+        snapshot: { name: updated.name, permissions: updated.permissions, archived },
+        created_at: updated.updated_at,
+      }, ...events]
+      await route.fulfill({ json: updated })
+      return
+    }
+
+    const includeArchived = url.searchParams.get('include_archived') === 'true'
+    const items = roles.filter((role) => includeArchived || role.archived_at === null)
+    await route.fulfill({ json: { items, total: items.length } })
+  })
+
+  await page.goto('/admin/project-roles')
+  await expect(page.getByRole('heading', { name: '프로젝트 역할', exact: true })).toBeVisible()
+  await expect(page.getByRole('link', { name: '프로젝트 역할' })).toHaveAttribute('aria-current', 'page')
+  await expect(page.getByLabel('역할 목록')).toContainText('배정 2명')
+  await expect(page.getByRole('region', { name: '프로젝트 역할 변경 이력' })).toContainText('생성 · Delivery lead')
+
+  const editForm = page.getByRole('form', { name: '프로젝트 역할 편집' })
+  await editForm.locator('textarea').fill('제품 전달과 배정을 조율합니다.')
+  await page.getByRole('checkbox', { name: /구독자 관리/ }).check()
+  await page.getByRole('button', { name: '변경 저장' }).click()
+  await expect(page.getByRole('alert')).toContainText('편집 내용은 유지')
+  await expect(editForm.locator('textarea')).toHaveValue('제품 전달과 배정을 조율합니다.')
+  await expect(editForm.getByText(/revision 2/)).toBeVisible()
+  await page.getByRole('button', { name: '변경 저장' }).click()
+  await expect(editForm.getByText(/revision 3/)).toBeVisible()
+  await expect(page.getByRole('region', { name: '프로젝트 역할 변경 이력' })).toContainText('수정 · Delivery lead')
+
+  await page.getByRole('button', { name: '새 역할' }).click()
+  await page.getByLabel('역할 이름').fill('Release coordinator')
+  await page.getByRole('form', { name: '새 프로젝트 역할' }).locator('textarea').fill('릴리스 작업을 조율합니다.')
+  await page.getByRole('checkbox', { name: /상태 이동/ }).check()
+  await page.getByRole('button', { name: '역할 생성' }).click()
+  await expect(page.getByRole('heading', { name: 'Release coordinator' })).toBeVisible()
+  await expect(page.getByLabel('역할 목록')).toContainText('Release coordinator')
+
+  page.once('dialog', (dialog) => dialog.accept())
+  await page.getByRole('button', { name: '역할 보관' }).click()
+  await expect(page.getByLabel('역할 목록')).not.toContainText('Release coordinator')
+  await page.getByRole('checkbox', { name: '보관 역할 포함' }).check()
+  await page.getByRole('button', { name: /Release coordinator/ }).click()
+  await expect(page.getByText('보관된 역할은 읽기 전용입니다.')).toBeVisible()
+  await page.getByRole('button', { name: '역할 복원' }).click()
+  await expect(page.getByText('보관된 역할은 읽기 전용입니다.')).toHaveCount(0)
+  await expect(page.getByRole('region', { name: '프로젝트 역할 변경 이력' })).toContainText('복원 · Release coordinator')
+  await page.locator('[data-shell-scroll-region]').evaluate((element) =>
+    element.scrollTo({ top: 0, behavior: 'instant' }),
+  )
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/custom-roles-settings-ui/desktop.png',
+    fullPage: true,
+  })
+
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.locator('[data-shell-scroll-region]').evaluate((element) =>
+    element.scrollTo({ top: 0, behavior: 'instant' }),
+  )
+  await expect(page.getByRole('heading', { name: '프로젝트 역할', exact: true })).toBeVisible()
+  await expect(page.getByLabel('역할 목록')).toContainText('Release coordinator')
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/custom-roles-settings-ui/mobile.png',
     fullPage: true,
   })
 })
