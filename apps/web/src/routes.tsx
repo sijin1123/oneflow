@@ -38,6 +38,7 @@ import { InitiativesSettingsPage } from '@/features/admin/InitiativesSettingsPag
 import { ReleasesSettingsPage } from '@/features/admin/ReleasesSettingsPage'
 import { CustomersSettingsPage } from '@/features/admin/CustomersSettingsPage'
 import { WorkspaceSettingsShell } from '@/features/admin/WorkspaceSettingsShell'
+import { WorkspaceSettingsOverviewPage } from '@/features/admin/WorkspaceSettingsOverviewPage'
 import { WorkspaceGeneralSettingsPage } from '@/features/admin/WorkspaceGeneralSettingsPage'
 import { WorkspaceCalendarSettingsPage } from '@/features/admin/WorkspaceCalendarSettingsPage'
 import { WorkspacePhaseDefinitionsSettingsPage } from '@/features/admin/WorkspacePhaseDefinitionsSettingsPage'
@@ -109,7 +110,8 @@ export const router = createBrowserRouter([
         path: 'admin',
         element: <WorkspaceSettingsShell />,
         children: [
-          { index: true, element: <Navigate to="users" replace /> },
+          { index: true, element: <Navigate to="overview" replace /> },
+          { path: 'overview', element: <WorkspaceSettingsOverviewPage /> },
           { path: 'general', element: <WorkspaceGeneralSettingsPage /> },
           { path: 'calendar', element: <WorkspaceCalendarSettingsPage /> },
           { path: 'project-phases', element: <WorkspacePhaseDefinitionsSettingsPage /> },

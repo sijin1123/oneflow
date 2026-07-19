@@ -479,3 +479,9 @@ Plane/OpenProject source, API, database schema, package, asset, CSS, DOM hierarc
 `docs/plane-poc-reverse-spec/`의 설정 정보구조에서 사용한 입력은 워크스페이스 연결 상태를 한 곳에서 훑고 실제 세부 관리 surface로 이동하며, 각 capability의 준비·오류 상태를 독립적으로 보여준다는 제품 행동뿐이다. OneFlow 구현은 기존 자체 Webhook, Data Transfer audit, AI workspace policy, public auth config, React Query와 local Settings primitives로 독립 설계했다.
 
 Plane/OpenProject source, API, database schema, package, asset, CSS, DOM hierarchy, exact dimensions/colors, wording, integration card 구현, icons 또는 branding은 복사하지 않았다. 허브는 이미 권한이 적용된 네 OneFlow API의 증명 가능한 값만 표시하고 secret이나 외부 provider 연결 상태를 추정하지 않는다. 신규 API, migration, dependency, environment 또는 permission 변경은 없으며, 외부 adapter는 운영 credential과 callback 검증이 확보되기 전까지 control을 노출하지 않는다. - attested-independent-derivation
+
+## UI-164 Workspace Administration Overview
+
+`docs/plane-poc-reverse-spec/`의 설정 정보구조에서 사용한 입력은 워크스페이스 운영자가 핵심 관리 영역의 현재 상태를 한 곳에서 훑고 실제 세부 설정으로 이동하며, 일부 상태 조회 실패가 전체 관리 동선을 막지 않는다는 제품 행동뿐이다. OneFlow 구현은 기존 자체 WorkspaceProfile, User directory, Invitation, Working Calendar, Project Phase Definition, Capability API와 local Settings primitives로 독립 설계했다.
+
+Plane/OpenProject source, API, database schema, package, asset, CSS, DOM hierarchy, exact dimensions/colors, wording, overview 행 구현, icons 또는 branding은 복사하지 않았다. 개요는 이미 권한이 적용된 여섯 OneFlow API의 증명 가능한 값만 표시하고 role/provider 상태를 추정하지 않는다. 신규 API, migration, dependency, environment 또는 permission 변경은 없다. - attested-independent-derivation

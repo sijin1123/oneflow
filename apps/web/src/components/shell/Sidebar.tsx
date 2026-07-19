@@ -858,6 +858,7 @@ function SidebarContent({
                   <div>
                     <SectionLabel>워크스페이스</SectionLabel>
                     <div className="space-y-0.5">
+                      <NavLink to="/admin/overview" className={navLinkClass} onClick={onNavigate}><LayoutDashboard /><span>개요</span></NavLink>
                       <NavLink to="/admin/general" className={navLinkClass} onClick={onNavigate}><Settings /><span>일반</span></NavLink>
                       <NavLink to="/admin/calendar" className={navLinkClass} onClick={onNavigate}><CalendarCheck2 /><span>근무 일정</span></NavLink>
                       <NavLink to="/admin/project-phases" className={navLinkClass} onClick={onNavigate}><Workflow /><span>프로젝트 단계</span></NavLink>
