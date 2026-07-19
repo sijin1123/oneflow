@@ -497,3 +497,9 @@ Plane/OpenProject source, package, asset, logo, CSS, DOM, wording 또는 brandin
 UI-169의 유일한 시각 입력은 사용자가 직접 제공하고 OneFlow 제품 자산으로 승인한 `docs/oneflow-login-origin.png`다. 좌측 story와 1x 브랜드 lockup은 승인 원본의 정확한 crop이며, 신규 `oneflow-login-logo-lockup@2x.png`는 기존 OneFlow 소유 2x 원화에서 같은 좌표를 결정적으로 잘라 만든 고밀도 파생 자산이다. 생성형 재해석, 색상 변경, 형태 재구성 또는 제3자 자산 사용은 없다.
 
 Plane/OpenProject source, package, asset, logo, CSS, DOM, wording 또는 branding은 입력·복사하지 않았다. 인증 화면은 기존 OneFlow auth API와 semantic DOM을 유지하며 신규 API, DB/schema, migration, permission, environment, dependency 또는 Settings UI 변경은 없다. - attested-user-owned-oneflow-asset
+
+## UI-170 Shared Action Menu Keyboard Lifecycle
+
+`docs/plane-poc-reverse-spec/`의 compact action menu 관찰에서 사용한 입력은 작업 메뉴가 열리면 사용 가능한 첫 항목으로 진입하고, 방향키로 이동하며, 외부 클릭과 `Escape`로 예측 가능하게 닫힌다는 제품 행동뿐이다. OneFlow 구현은 기존 자체 `InlineActionMenu`, React state/ref와 local design token을 사용해 상태·작업 타입·자동화 설정 surface의 공통 수명주기를 독립 설계했다.
+
+Plane/OpenProject source, API, database schema, package, asset, CSS, DOM hierarchy, exact dimensions/colors, wording, menu implementation, icons 또는 branding은 복사하지 않았다. 비활성 항목을 제외한 `ArrowUp`/`ArrowDown` 순환, `Home`/`End`, `Escape` trigger focus 복귀, `Tab` 자연 이탈과 외부 pointer dismissal을 추가했다. 신규 API, DB/schema, migration, permission, environment variable, dependency 또는 Settings storage 변경은 없다. - attested-independent-derivation
