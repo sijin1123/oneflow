@@ -2887,3 +2887,13 @@ Chromium typed mock fixture에서 1440x960과 390x844 viewport를 사용했다. 
 - **증적/이연**: Chromium 증적은 `docs/screenshots/redevelopment/member-custom-role-ui/{desktop,mobile}.png`에 보존한다. 외부 directory/SCIM과 이메일 초대 전달은 운영 자격 증명 의존 범위로 유지하며, 내부 custom-role 정의·인가·배정 surface에는 남은 미배선 기능이 없다.
 
 ---
+
+# UI-167 Login Interactive Pixel Closure 검증 (2026-07-19)
+
+- **UI 변경**: 첫 화면을 덮던 전체 로그인 screenshot layer와 첫 입력 시의 화면 교체 상태를 제거했다. 좌측은 사용자가 승인한 OneFlow 원화에서 정확히 분리한 `792x1086` story asset을 사용하고, 우측 브랜드는 동일 원화의 `205x70` lockup crop을 사용한다. 인증 카드는 첫 페인트부터 실제 DOM이며 `1280x720`처럼 낮은 데스크톱에서도 원본 4:3 좌표계의 padding, heading, field, option, submit, divider, provider, create-account 간격을 container 비율로 축소한다.
+- **기능/API 반영**: 이메일·비밀번호·remember me·password visibility·도움/계정 요청·OIDC 공급자·정책 dialog·언어·safe-next·loading/error/retry·keyboard focus는 기존 실제 auth API와 semantic control을 그대로 사용한다. 초기 상태와 상호작용 상태가 동일 DOM이므로 mock/dead control, 투명 hit area 또는 상호작용 뒤 다른 화면으로 바뀌는 동작이 없다. API, DB/schema, migration, permission, environment variable, dependency 또는 Settings storage 변경은 없다.
+- **픽셀 전수 실사**: 인앱 Chromium `1280x720`에서 product panel `(192,24) 896x672`를 승인 `1448x1086` 원본과 같은 크기로 정규화했다. 기능형 화면 전체 MAE는 `6.798 -> 3.398`, 좌측 story `2.293 -> 2.291`, 칸반 `2.040 -> 2.029`, 인증 영역 `12.234 -> 4.734`, auth card `17.470 -> 6.056`, fields `31.375 -> 6.054`, providers `13.030 -> 9.416`이다. 문구·브라우저 font raster 차이는 남지만 외곽·컨트롤 좌표와 submit gradient는 원본과 정렬됐다.
+- **반응형/검증**: 8개 목표 viewport에서 4:3 desktop panel, story/auth split, card/footer containment와 가로 overflow 0을 확인했다. typecheck PASS, lint PASS(기존 Fast Refresh warning 4건), production build PASS(기존 chunk-size warning), unit **107 PASS**, component **8 PASS**, focused login E2E **13 PASS**, npm audit high 0 vulnerabilities, clean-room frontend **161**/backend **45**가 PASS했다. 첫 4-worker login 묶음은 공유 Vite의 page load 지연 2건이 timeout됐고, 동일 13개를 1-worker로 재실행해 모두 통과했다. 전체 회귀는 PR CI에서 다시 검증한다.
+- **증적/이연**: `docs/screenshots/redevelopment/login-interactive-pixel-closure-ui/`에 desktop/mobile 실제 캡처와 원본-기능형 runtime-5x diff를 보존한다. 인증 surface 안의 기능 이연은 없으며 외부 공급자 실제 연결은 배포별 자격 증명 구성 경계를 유지한다.
+
+---

@@ -963,29 +963,6 @@
     0 4px 18px rgb(61 82 133 / 0.06);
 }
 
-.of-login-reference-stage {
-  position: absolute;
-  inset: 0;
-  z-index: 4;
-  width: 100%;
-  max-width: none;
-  height: 100%;
-  border-radius: inherit;
-  object-fit: fill;
-  pointer-events: none;
-  opacity: 0;
-  visibility: hidden;
-  transition:
-    opacity 160ms ease-out,
-    visibility 0s linear 160ms;
-}
-
-.of-login-page[data-reference-state="reference"] .of-login-reference-stage {
-  opacity: 1;
-  visibility: visible;
-  transition-delay: 0s;
-}
-
 .of-login-story {
   min-height: 0;
   border-radius: inherit;
@@ -995,12 +972,12 @@
 .of-login-story-art {
   top: 0;
   left: 0;
-  width: 100cqw;
+  width: 100%;
   max-width: none;
-  height: 100cqh;
+  height: 100%;
   object-fit: fill;
   object-position: left top;
-  image-rendering: -webkit-optimize-contrast;
+  image-rendering: auto;
   filter: none;
   transform: none;
   animation: of-login-reference-enter 420ms ease-out both;
@@ -1039,14 +1016,12 @@
 }
 
 .of-login-brand-reference img {
-  position: absolute;
-  top: -142.64%;
-  left: -493.23%;
-  width: 706.39%;
+  display: block;
+  width: 100%;
   max-width: none;
-  height: 1551.64%;
+  height: 100%;
   object-fit: fill;
-  image-rendering: -webkit-optimize-contrast;
+  image-rendering: auto;
 }
 
 .of-login-auth {
@@ -1176,7 +1151,7 @@
 .of-login-submit {
   min-height: clamp(42px, 3.59cqw, 44px);
   border-radius: clamp(7px, 0.69cqw, 9px);
-  background: #5964f2;
+  background: linear-gradient(100deg, #5367f5 0%, #6558f4 100%);
   box-shadow: 0 8px 18px rgb(83 103 245 / 0.12);
   font-size: clamp(11px, 1.04cqw, 13px);
   transform: translateY(-1px);
@@ -1267,38 +1242,38 @@
 @media (max-height: 800px) and (min-width: 881px) {
   .of-login-auth-card {
     overflow: hidden;
-    padding: 16px clamp(22px, 2.7cqw, 30px);
+    padding: 1.84cqw 3.2cqw 2.55cqw;
   }
 
   .of-login-heading {
-    margin: 12px 0 16px;
+    margin: 1.39cqw 0 2.87cqw;
   }
 
   .of-login-heading h2 {
-    font-size: clamp(20px, 2.21cqw, 23px);
+    font-size: 2.12cqw;
   }
 
   .of-login-heading p {
-    margin-top: 4px;
-    font-size: clamp(9.5px, 1.1cqw, 11px);
+    margin-top: 0.62cqw;
+    font-size: 1.1cqw;
   }
 
   .of-login-form {
-    gap: 5px;
+    gap: 0.98cqw;
   }
 
   .of-login-field {
-    gap: 4px;
-    font-size: 9px;
+    gap: 0.69cqw;
+    font-size: 0.97cqw;
   }
 
   .of-login-field + .of-login-field {
-    margin-top: 2px;
+    margin-top: 0.78cqw;
   }
 
   .of-login-input {
-    height: 36px;
-    font-size: 10px;
+    height: 3.9cqw;
+    font-size: 1.05cqw;
   }
 
   .of-login-password-toggle {
@@ -1308,38 +1283,43 @@
 
   .of-login-form-options,
   .of-login-link {
-    min-height: 24px;
+    min-height: 2.14cqw;
+  }
+
+  .of-login-form-options {
+    margin-top: 0.78cqw;
   }
 
   .of-login-checkbox,
   .of-login-link {
-    font-size: 9px;
+    font-size: 0.97cqw;
   }
 
   .of-login-submit {
-    min-height: 36px;
+    min-height: 3.59cqw;
+    margin-top: 0.45cqw;
   }
 
   .of-login-divider {
-    margin-top: 1px;
+    margin-top: 0.4cqw;
   }
 
   .of-login-providers {
-    gap: 5px;
-    margin-top: 3px;
+    gap: 0.66cqw;
+    margin-top: 0.74cqw;
   }
 
   .of-login-provider-button {
-    min-height: 34px;
-    font-size: 9.5px;
+    min-height: 3.59cqw;
+    font-size: 1.04cqw;
   }
 
   .of-login-create {
-    margin-top: 3px;
+    margin-top: 0.71cqw;
   }
 
   .of-login-create button {
-    min-height: 24px;
+    min-height: 2.75cqw;
   }
 }
 
@@ -1363,10 +1343,6 @@
     overflow: visible;
     border-radius: 0;
     box-shadow: none;
-  }
-
-  .of-login-reference-stage {
-    display: none;
   }
 
   .of-login-story {
@@ -1488,7 +1464,6 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .of-login-reference-stage,
   .of-login-story-art,
   .of-login-auth-card,
   .of-login-origin-route-accent path {

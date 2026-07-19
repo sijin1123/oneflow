@@ -16,8 +16,9 @@ import {
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 
-import loginOriginReference from '@/assets/generated/oneflow-login-origin-reference.png'
-import loginOriginReference2x from '@/assets/generated/oneflow-login-origin-reference@2x.png'
+import loginLogoLockup from '@/assets/generated/oneflow-login-logo-lockup.png'
+import loginStoryReference from '@/assets/generated/oneflow-login-story-reference.png'
+import loginStoryReference2x from '@/assets/generated/oneflow-login-story-reference@2x.png'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -158,10 +159,9 @@ function BrandLockup({ compact = false }: { compact?: boolean }) {
     <div className="of-login-brand" data-compact={compact || undefined} aria-label="oneflow">
       <span className="of-login-brand-reference" aria-hidden="true">
         <img
-          src={loginOriginReference}
-          srcSet={`${loginOriginReference} 1x, ${loginOriginReference2x} 2x`}
-          width="1448"
-          height="1086"
+          src={loginLogoLockup}
+          width="205"
+          height="70"
           alt=""
           draggable="false"
         />
@@ -176,9 +176,9 @@ function StoryPanel() {
       <h1 id="login-story-title" className="of-login-assistive">Plan. Flow. Deliver. Together.</h1>
       <img
         className="of-login-story-art"
-        src={loginOriginReference}
-        srcSet={`${loginOriginReference} 1x, ${loginOriginReference2x} 2x`}
-        width="1448"
+        src={loginStoryReference}
+        srcSet={`${loginStoryReference} 1x, ${loginStoryReference2x} 2x`}
+        width="792"
         height="1086"
         alt=""
         aria-hidden="true"
@@ -188,21 +188,6 @@ function StoryPanel() {
         <path d="M684 543C744 550 769 583 745 615C724 640 682 632 641 645C603 657 574 672 558 675C524 682 515 724 496 758" />
       </svg>
     </section>
-  )
-}
-
-function ReferenceStage() {
-  return (
-    <img
-      className="of-login-reference-stage"
-      src={loginOriginReference}
-      srcSet={`${loginOriginReference} 1x, ${loginOriginReference2x} 2x`}
-      width="1448"
-      height="1086"
-      alt=""
-      aria-hidden="true"
-      draggable="false"
-    />
   )
 }
 
@@ -408,7 +393,6 @@ export function LoginPage() {
   const [notice, setNotice] = useState<NoticeKind | null>(null)
   const [redirectingProvider, setRedirectingProvider] = useState<OidcProvider | null>(null)
   const [validationError, setValidationError] = useState<string | null>(null)
-  const [referenceEngaged, setReferenceEngaged] = useState(false)
   const emailInputRef = useRef<HTMLInputElement>(null)
   const forgotButtonRef = useRef<HTMLButtonElement>(null)
   const requestAccessButtonRef = useRef<HTMLButtonElement>(null)
@@ -462,16 +446,6 @@ export function LoginPage() {
   const oauthError = oauthErrorCode ? text[oauthErrorCode] : null
   const assistanceNotice = notice === 'forgot' || notice === 'request' ? notice : null
   const informationNotice = notice && notice !== 'forgot' && notice !== 'request' ? notice : null
-  const referenceEligible = locale === 'en'
-    && !email
-    && !password
-    && !searchParams.get('invited')
-    && !oauthError
-    && !config.isError
-    && !login.isError
-    && (config.isPending || devEnabled)
-  const showReferenceStage = referenceEligible && !referenceEngaged
-
   const closeAssistance = (kind: AssistanceNoticeKind) => {
     const trigger = kind === 'forgot' ? forgotButtonRef.current : requestAccessButtonRef.current
     setNotice(null)
@@ -495,12 +469,7 @@ export function LoginPage() {
       <div
         className="of-login-page"
         data-locale={locale}
-        data-reference-state={showReferenceStage ? 'reference' : 'interactive'}
-        onFocusCapture={() => setReferenceEngaged(true)}
-        onKeyDownCapture={() => setReferenceEngaged(true)}
-        onPointerDownCapture={() => setReferenceEngaged(true)}
       >
-        <ReferenceStage />
         <StoryPanel />
         <main className="of-login-auth" aria-labelledby="login-title">
         <section className="of-login-auth-card">
