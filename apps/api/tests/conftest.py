@@ -132,7 +132,8 @@ async def _clean_tables(app):
                 "TRUNCATE TABLE auth_assistance_rate_limits, auth_assistance_requests, "
                 "initiative_label_assignments, initiative_labels, "
                 "work_package_relations, work_packages, "
-                "project_members, projects, users RESTART IDENTITY CASCADE"
+                "project_role_events, project_members, project_roles, "
+                "projects, users RESTART IDENTITY CASCADE"
             )
         )
         await session.execute(

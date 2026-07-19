@@ -334,6 +334,92 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/workspace/project-roles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Admin Project Roles */
+        get: operations["list_admin_project_roles_api_v1_admin_workspace_project_roles_get"];
+        put?: never;
+        /** Create Project Role */
+        post: operations["create_project_role_api_v1_admin_workspace_project_roles_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/workspace/project-roles/{role_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update Project Role */
+        patch: operations["update_project_role_api_v1_admin_workspace_project_roles__role_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/admin/workspace/project-roles/{role_id}/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Archive Project Role */
+        post: operations["archive_project_role_api_v1_admin_workspace_project_roles__role_id__archive_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/workspace/project-roles/{role_id}/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Project Role Events */
+        get: operations["list_project_role_events_api_v1_admin_workspace_project_roles__role_id__events_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/workspace/project-roles/{role_id}/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Restore Project Role */
+        post: operations["restore_project_role_api_v1_admin_workspace_project_roles__role_id__restore_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/attachments/{attachment_id}": {
         parameters: {
             query?: never;
@@ -3912,6 +3998,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspace/project-role-capabilities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Project Role Capabilities */
+        get: operations["list_project_role_capabilities_api_v1_workspace_project_role_capabilities_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspace/project-roles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Active Project Roles */
+        get: operations["list_active_project_roles_api_v1_workspace_project_roles_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -6285,6 +6405,8 @@ export interface components {
         };
         /** MemberCreate */
         MemberCreate: {
+            /** Custom Role Id */
+            custom_role_id?: string | null;
             /** Email */
             email: string;
             /**
@@ -6302,6 +6424,10 @@ export interface components {
         };
         /** MemberRead */
         MemberRead: {
+            /** Custom Role Id */
+            custom_role_id?: string | null;
+            /** Custom Role Name */
+            custom_role_name?: string | null;
             /** Display Name */
             display_name: string;
             /** Email */
@@ -6316,6 +6442,8 @@ export interface components {
         };
         /** MemberRoleUpdate */
         MemberRoleUpdate: {
+            /** Custom Role Id */
+            custom_role_id?: string | null;
             /** Role */
             role: string;
         };
@@ -6920,8 +7048,21 @@ export interface components {
              */
             status: "ok" | "warning" | "error";
         };
+        /** PermissionCustomRole */
+        PermissionCustomRole: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Permissions */
+            permissions: string[];
+        };
         /** PermissionReportRead */
         PermissionReportRead: {
+            my_custom_role?: components["schemas"]["PermissionCustomRole"] | null;
             /** My Role */
             my_role: string;
             /** Verbs */
@@ -6931,6 +7072,11 @@ export interface components {
         PermissionVerb: {
             /** Condition */
             condition: string | null;
+            /**
+             * Effective
+             * @enum {string}
+             */
+            effective: "always" | "never" | "conditional";
             /** Key */
             key: string;
             /** Label */
@@ -7727,6 +7873,156 @@ export interface components {
              * Format: uuid
              */
             target_id: string;
+        };
+        /** ProjectRoleCapability */
+        ProjectRoleCapability: {
+            /** Key */
+            key: string;
+            /** Label */
+            label: string;
+            /** Note */
+            note: string | null;
+        };
+        /** ProjectRoleCapabilityList */
+        ProjectRoleCapabilityList: {
+            /** Items */
+            items: components["schemas"]["ProjectRoleCapability"][];
+            /** Total */
+            total: number;
+        };
+        /** ProjectRoleCatalogItem */
+        ProjectRoleCatalogItem: {
+            /** Description */
+            description: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Permissions */
+            permissions: string[];
+            /** Revision */
+            revision: number;
+        };
+        /** ProjectRoleCatalogList */
+        ProjectRoleCatalogList: {
+            /** Items */
+            items: components["schemas"]["ProjectRoleCatalogItem"][];
+            /** Total */
+            total: number;
+        };
+        /** ProjectRoleCreate */
+        ProjectRoleCreate: {
+            /** Description */
+            description?: string | null;
+            /** Name */
+            name: string;
+            /** Permissions */
+            permissions?: string[];
+        };
+        /** ProjectRoleEventList */
+        ProjectRoleEventList: {
+            /** Items */
+            items: components["schemas"]["ProjectRoleEventRead"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Total */
+            total: number;
+        };
+        /** ProjectRoleEventRead */
+        ProjectRoleEventRead: {
+            /** Actor Id */
+            actor_id: string | null;
+            /** Actor Name */
+            actor_name: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Event Type */
+            event_type: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Revision */
+            revision: number;
+            /**
+             * Role Id
+             * Format: uuid
+             */
+            role_id: string;
+            /** Snapshot */
+            snapshot: {
+                [key: string]: unknown;
+            };
+        };
+        /** ProjectRoleList */
+        ProjectRoleList: {
+            /** Items */
+            items: components["schemas"]["ProjectRoleRead"][];
+            /** Total */
+            total: number;
+        };
+        /** ProjectRoleRead */
+        ProjectRoleRead: {
+            /** Archived At */
+            archived_at: string | null;
+            /** Assigned Member Count */
+            assigned_member_count: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Created By Name */
+            created_by_name: string;
+            /** Created By User Id */
+            created_by_user_id: string | null;
+            /** Description */
+            description: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Permissions */
+            permissions: string[];
+            /** Revision */
+            revision: number;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Updated By Name */
+            updated_by_name: string;
+            /** Updated By User Id */
+            updated_by_user_id: string | null;
+        };
+        /** ProjectRoleRevision */
+        ProjectRoleRevision: {
+            /** Expected Revision */
+            expected_revision: number;
+        };
+        /** ProjectRoleUpdate */
+        ProjectRoleUpdate: {
+            /** Description */
+            description?: string | null;
+            /** Expected Revision */
+            expected_revision: number;
+            /** Name */
+            name?: string | null;
+            /** Permissions */
+            permissions?: string[] | null;
         };
         /** ProjectScheduleBaselineCreate */
         ProjectScheduleBaselineCreate: {
@@ -10735,6 +11031,233 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["WorkspaceProjectPhaseDefinitionsRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_admin_project_roles_api_v1_admin_workspace_project_roles_get: {
+        parameters: {
+            query?: {
+                include_archived?: boolean;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectRoleList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_project_role_api_v1_admin_workspace_project_roles_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProjectRoleCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectRoleRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_project_role_api_v1_admin_workspace_project_roles__role_id__patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                role_id: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProjectRoleUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectRoleRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    archive_project_role_api_v1_admin_workspace_project_roles__role_id__archive_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                role_id: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProjectRoleRevision"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectRoleRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_project_role_events_api_v1_admin_workspace_project_roles__role_id__events_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                role_id: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectRoleEventList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    restore_project_role_api_v1_admin_workspace_project_roles__role_id__restore_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                role_id: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProjectRoleRevision"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectRoleRead"];
                 };
             };
             /** @description Validation Error */
@@ -20576,6 +21099,72 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["WorkspaceProjectPhaseDefinitionsRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_project_role_capabilities_api_v1_workspace_project_role_capabilities_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectRoleCapabilityList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_active_project_roles_api_v1_workspace_project_roles_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectRoleCatalogList"];
                 };
             };
             /** @description Validation Error */

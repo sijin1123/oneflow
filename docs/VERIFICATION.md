@@ -2847,3 +2847,13 @@ Chromium typed mock fixture에서 1440x960과 390x844 viewport를 사용했다. 
 - **증적**: `docs/screenshots/redevelopment/login-exact-origin-interaction-ui/`에 desktop rest/interactive, mobile, normalized runtime, side-by-side와 5x diff를 보존한다. API/DB/migration/permission/environment/dependency/settings-storage 변경과 이연 항목은 없다.
 
 ---
+
+# UI-166A Workspace Custom Project Role Foundation 검증 (2026-07-18)
+
+- **UI 변경**: 없음. 미배선 역할 화면이나 장식용 권한 control을 먼저 만들지 않고, 다음 Settings surface가 실제로 소비할 수 있는 영속·인가 계약을 선행 구현했다.
+- **기능/API 반영**: migration `0112`는 workspace 전역 `project_roles`, append-only `project_role_events`, `project_members.custom_role_id`를 추가한다. 사용자 지정 역할은 기존 `member` 권한을 기준으로 상태·작업 타입·필드·사이클·모듈·자동화·인테이크 판정의 7개 capability만 추가 위임한다. 프로젝트/멤버 관리, 작업 이동, 공유 대시보드 기본값은 위임할 수 없다. 관리자 create/update/archive/restore와 pagination된 audit history, 인증 사용자용 active catalog/capability list, 멤버 배정, 역할별 effective permission report와 `require_permission` 평가기를 제공한다.
+- **권한/무결성**: owner/member/viewer는 예약 이름이며 사용자 지정 역할은 `member`에만 결합된다. 이름은 대소문자 무시 workspace unique, 역할 수는 50개로 제한하고 optimistic revision, catalog/row lock, DB FK/CHECK를 적용했다. 보관된 역할은 새 배정을 막지만 기존 배정과 권한은 유지해 운영 중인 프로젝트 권한을 조용히 회수하지 않는다. 기존 마지막 owner advisory lock, non-member 404 existence hiding, viewer read-only와 archived-project 409 계약은 유지된다. 역할 정의 변경은 actor와 revision을 포함한 상태 snapshot event로 남는다.
+- **검증**: 최종 focused 역할/멤버/권한 report **25 PASS**, 최종 migration `0112 -> 0111 -> 0112` PASS, 변경 중간 전체 API **834 PASS** 후 입력·감사 pagination 경계만 보강하고 focused를 재실행했다. API Ruff/format, OpenAPI 생성·드리프트, shared type check, web typecheck/lint/build, clean-room frontend **161**/backend **45**, Python/web audit 0 vulnerabilities와 diff check가 PASS했다. 새 worktree에 `node_modules`가 없어 첫 clean-room/typecheck가 fail-closed됐고 잠금파일 기반 `npm ci` 후 같은 검증이 PASS했다.
+- **이연 항목**: 7개 capability의 실제 owner-only endpoint guard 전환은 `UI-166B`, Workspace Settings 역할 편집과 프로젝트 멤버 배정 UI/E2E는 `UI-166C`에서 이어서 구현한다. 이번 기반만으로 사용자에게 노출되는 dead control은 없다. 외부 directory/SCIM 동기화는 운영 자격 증명 의존 범위로 유지한다. 요청된 plan-validator는 프로젝트와 사용자 홈에 실행 스크립트가 존재하지 않아 실행할 수 없었으며, 검증을 축소하지 않고 permission-critical invariant와 실제 테스트를 기준으로 진행했다.
+
+---

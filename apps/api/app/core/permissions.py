@@ -218,6 +218,20 @@ PERMISSION_MATRIX: list[dict[str, str | None]] = [
 
 VERB_KEYS = {row["key"] for row in PERMISSION_MATRIX}
 
+# Custom project roles intentionally layer on the built-in `member` role and
+# can delegate only these owner-like, project-content capabilities. Workspace
+# administration, project ownership/member management, cross-project moves and
+# shared dashboard defaults remain non-delegable invariants.
+DELEGABLE_PROJECT_PERMISSIONS: tuple[str, ...] = (
+    "status.manage",
+    "project_type.manage",
+    "field.manage",
+    "cycle.manage",
+    "module.manage",
+    "automation.manage",
+    "intake.triage",
+)
+
 # Every mutating "METHOD path" (OpenAPI template path) must appear here or in
 # ENDPOINT_ALLOWLIST — the coverage pytest enforces it.
 ENDPOINT_VERBS: dict[str, str] = {
@@ -337,6 +351,18 @@ ENDPOINT_ALLOWLIST: dict[str, str] = {
         "읽기 전용 PQL parse/value validation — 인증 사용자 member scope 조회만 수행"
     ),
     "POST /api/v1/projects": "워크스페이스 — 모든 활성 사용자가 프로젝트를 만들 수 있음",
+    "POST /api/v1/admin/workspace/project-roles": (
+        "워크스페이스 사용자 지정 프로젝트 역할 생성 — is_admin 전용"
+    ),
+    "PATCH /api/v1/admin/workspace/project-roles/{role_id}": (
+        "워크스페이스 사용자 지정 프로젝트 역할 수정 — is_admin 전용"
+    ),
+    "POST /api/v1/admin/workspace/project-roles/{role_id}/archive": (
+        "워크스페이스 사용자 지정 프로젝트 역할 보관 — is_admin 전용"
+    ),
+    "POST /api/v1/admin/workspace/project-roles/{role_id}/restore": (
+        "워크스페이스 사용자 지정 프로젝트 역할 복원 — is_admin 전용"
+    ),
     "POST /api/v1/projects/{project_id}/data-transfer-jobs/export": (
         "읽기 가능한 프로젝트 export artifact/audit 생성 — viewer 포함 current member"
     ),

@@ -6,14 +6,25 @@ projects. 403 is reserved for Phase 2 role-based denials.
 """
 
 import uuid
+from dataclasses import dataclass
 
 from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.permissions import ALWAYS, PERMISSION_MATRIX
 from app.models.member import ProjectMember
 from app.models.project import Project
+from app.models.project_role import ProjectRole
 from app.models.user import User
+
+
+@dataclass(frozen=True)
+class ProjectAccess:
+    role: str
+    custom_role_id: uuid.UUID | None
+    custom_role_name: str | None
+    custom_permissions: frozenset[str]
 
 
 async def is_member(session: AsyncSession, project_id: uuid.UUID, user_id: uuid.UUID) -> bool:
@@ -35,6 +46,72 @@ async def member_role(
             )
         )
     ).scalar_one_or_none()
+
+
+async def member_access(
+    session: AsyncSession, project_id: uuid.UUID, user_id: uuid.UUID
+) -> ProjectAccess | None:
+    row = (
+        await session.execute(
+            select(
+                ProjectMember.role,
+                ProjectMember.custom_role_id,
+                ProjectRole.name,
+                ProjectRole.permissions,
+            )
+            .outerjoin(ProjectRole, ProjectRole.id == ProjectMember.custom_role_id)
+            .where(
+                ProjectMember.project_id == project_id,
+                ProjectMember.user_id == user_id,
+            )
+        )
+    ).one_or_none()
+    if row is None:
+        return None
+    role, custom_role_id, custom_role_name, custom_permissions = row
+    return ProjectAccess(
+        role=role,
+        custom_role_id=custom_role_id,
+        custom_role_name=custom_role_name,
+        custom_permissions=frozenset(custom_permissions or []),
+    )
+
+
+def permission_level(access: ProjectAccess, verb: str) -> str:
+    row = next((item for item in PERMISSION_MATRIX if item["key"] == verb), None)
+    if row is None:
+        raise ValueError(f"unknown project permission: {verb}")
+    if access.role == "member" and verb in access.custom_permissions:
+        return ALWAYS
+    return str(row[access.role])
+
+
+async def member_has_permission(
+    session: AsyncSession,
+    project_id: uuid.UUID,
+    user_id: uuid.UUID,
+    verb: str,
+) -> bool:
+    access = await member_access(session, project_id, user_id)
+    return access is not None and permission_level(access, verb) == ALWAYS
+
+
+async def require_permission(
+    session: AsyncSession,
+    project_id: uuid.UUID,
+    user: User,
+    verb: str,
+    *,
+    write: bool = False,
+) -> ProjectAccess:
+    access = await member_access(session, project_id, user.id)
+    if access is None:
+        raise HTTPException(status_code=404, detail="not found")
+    if permission_level(access, verb) != ALWAYS:
+        raise HTTPException(status_code=403, detail="insufficient project permission")
+    if write:
+        await require_active_project(session, project_id)
+    return access
 
 
 async def require_active_project(session: AsyncSession, project_id: uuid.UUID) -> None:
