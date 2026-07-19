@@ -2877,3 +2877,13 @@ Chromium typed mock fixture에서 1440x960과 390x844 viewport를 사용했다. 
 - **증적/이연**: Chromium 증적은 `docs/screenshots/redevelopment/custom-roles-settings-ui/{desktop,mobile}.png`에 보존한다. 프로젝트 멤버별 사용자 지정 역할 배정은 기존 member management surface와 결합해야 하므로 `UI-166C2` 후속 PR로 분리하며, 이번 역할 정의 surface 안에는 미배선 UI가 없다.
 
 ---
+
+# UI-166C2 Project Member Custom Role Assignment 검증 (2026-07-19)
+
+- **UI 변경**: Project Settings의 기존 멤버 추가 폼과 팀 디렉터리에 활성 커스텀 역할 선택기를 연결했다. 멤버 역할에서만 선택할 수 있고 소유자·뷰어 전환 시 커스텀 역할을 명시적으로 제거한다. 활성 catalog에서 사라진 기존 역할은 멤버 응답의 이름을 유지해 `보관됨`으로 표시하며 active 선택지에는 다시 노출하지 않는다. Catalog loading/error/retry, 기본 역할 fallback, mutation error, owner 편집, member/viewer 읽기 전용과 desktop/mobile no-overflow를 포함한다.
+- **기능/API 반영**: generated OpenAPI의 member create/update/read, project-role catalog와 permission-report 계약을 직접 사용한다. POST/PATCH는 실제 `custom_role_id`를 보내고 성공 후 roster, permission report와 admin assigned-count cache를 무효화한다. 내 커스텀 역할이 있으면 서버가 계산한 `effective` 값을 고정 owner/member/viewer 열과 분리된 `내 실효 권한` 열·모바일 행으로 보여준다. API, DB/schema, migration, permission registry, environment variable, dependency 또는 Settings storage 변경은 없다.
+- **권한/경계**: 기존 Project owner만 멤버십을 변경하며 마지막 owner guard와 archived-project 409는 서버 계약을 유지한다. 커스텀 역할은 built-in `member`에만 결합되고, catalog 장애 시 기본 owner/member/viewer 관리는 계속 가능하지만 커스텀 역할 변경은 fail-closed된다. 읽기 전용 사용자는 배정명과 실효 권한만 확인하며 관리 control은 받지 않는다. mock/dead control 또는 장식용 action은 없다.
+- **검증**: typecheck PASS, lint PASS(기존 Fast Refresh warning 4건), production build PASS(기존 chunk-size warning), unit **107 PASS**, component **8 PASS**, 멤버 설정 focused E2E **6 PASS**, 신규 핵심 E2E **2 PASS**, 전용 포트 full E2E **324 PASS + opt-in visual QA 1 skip**다. Clean-room frontend **161**/backend **45**, npm/pip audit 0 vulnerabilities가 PASS했다. 격리 worktree 첫 clean-room은 API `.venv` 부재로 fail-closed됐고 동일 잠금환경 연결 후 4단계 모두 PASS했다.
+- **증적/이연**: Chromium 증적은 `docs/screenshots/redevelopment/member-custom-role-ui/{desktop,mobile}.png`에 보존한다. 외부 directory/SCIM과 이메일 초대 전달은 운영 자격 증명 의존 범위로 유지하며, 내부 custom-role 정의·인가·배정 surface에는 남은 미배선 기능이 없다.
+
+---
