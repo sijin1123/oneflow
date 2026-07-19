@@ -2908,3 +2908,12 @@ Chromium typed mock fixture에서 1440x960과 390x844 viewport를 사용했다. 
 - **증적/이연**: `docs/screenshots/redevelopment/login-functional-pixel-regression-ui/`에 DPR 1/2 desktop, `390x844` mobile, 정규화 runtime, side-by-side와 5x diff를 보존한다. 외부 공급자 인증은 배포별 자격 증명 설정 경계를 유지하며 이번 surface의 구현 이연은 없다.
 
 ---
+
+# UI-170 Shared Action Menu Keyboard Lifecycle 검증 (2026-07-19)
+
+- **UI 변경**: 상태·작업 타입·자동화 설정이 공유하는 inline action menu가 열릴 때 첫 사용 가능 항목으로 포커스를 이동한다. 비활성 항목을 건너뛰는 `ArrowUp`/`ArrowDown` 순환, `Home`/`End`, 명시적인 focus ring, `Escape` 닫기와 trigger focus 복귀, `Tab` 이탈, 외부 pointer 닫기를 공통 적용했다.
+- **기능/API 반영**: 기존 편집·순서 이동·활성화·삭제 mutation을 그대로 유지하며 메뉴 선택 후 각 실제 dialog/action으로 진입한다. `aria-controls`, `aria-expanded`, `menu`/`menuitem` 관계와 열린 메뉴 ID를 연결했다. 신규 API, DB/schema, migration, permission, environment variable, dependency 또는 Settings storage 변경은 없다.
+- **이연 항목**: Cycle, Module, Timeline, Backlog 등 별도 floating action menu는 서로 다른 anchor/portal 수명주기를 사용하므로 다음 UI surface에서 같은 acceptance contract로 통합한다. 이번 shared inline menu 안에는 mock/dead control 또는 미배선 동작이 없다.
+- **검증**: typecheck PASS, lint PASS(기존 Fast Refresh warning 4건), production build PASS(기존 chunk-size warning), unit **107 PASS**, component **8 PASS**, focused status menu E2E **1 PASS**, 관련 설정 메뉴 E2E **2 PASS**, 전용 포트 2-worker full E2E **325 PASS + opt-in visual QA 1 skip**다. 실제 Chromium에서 첫 항목 진입, 비활성 항목 건너뛰기, 양방향 순환, `Home`/`End`, 외부 클릭, `Escape` focus 복귀와 뒤이은 실제 rename/reorder 요청을 검증했다. Clean-room frontend **161**/backend **45**, npm/pip audit 0 vulnerabilities와 diff check도 PASS했다.
+
+---
