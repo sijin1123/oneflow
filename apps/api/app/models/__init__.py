@@ -41,6 +41,7 @@ from app.models.project import Project
 from app.models.project_directory_preferences import UserProjectDirectoryPreferences
 from app.models.project_health_history import ProjectHealthHistory
 from app.models.project_phase import ProjectPhase
+from app.models.project_role import ProjectRole, ProjectRoleEvent
 from app.models.project_schedule_baseline import (
     ProjectScheduleBaseline,
     ProjectScheduleBaselineItem,
@@ -78,6 +79,8 @@ __all__ = [
     "ProjectScheduleBaselineItem",
     "Customer",
     "ProjectMember",
+    "ProjectRole",
+    "ProjectRoleEvent",
     "WorkPackage",
     "WorkspaceFeaturePolicy",
     "WorkspaceProfile",
