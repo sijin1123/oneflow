@@ -6,6 +6,7 @@ from sqlalchemy import (
     CheckConstraint,
     DateTime,
     ForeignKey,
+    Integer,
     SmallInteger,
     String,
     func,
@@ -57,6 +58,26 @@ class WorkspaceProfile(Base):
             "AND jsonb_array_length(project_phase_definitions) BETWEEN 4 AND 32",
             name="workspace_phase_definitions_array",
         ),
+        CheckConstraint(
+            "(logo_storage_key IS NULL AND logo_content_type IS NULL AND logo_filename IS NULL "
+            "AND logo_width IS NULL AND logo_height IS NULL AND logo_byte_size IS NULL) "
+            "OR (logo_storage_key IS NOT NULL AND logo_content_type IS NOT NULL "
+            "AND logo_filename IS NOT NULL AND logo_width IS NOT NULL "
+            "AND logo_height IS NOT NULL AND logo_byte_size IS NOT NULL)",
+            name="workspace_profile_logo_metadata_complete",
+        ),
+        CheckConstraint(
+            "logo_content_type IS NULL OR logo_content_type IN "
+            "('image/png', 'image/jpeg', 'image/webp')",
+            name="workspace_profile_logo_content_type",
+        ),
+        CheckConstraint(
+            "logo_width IS NULL OR (logo_width BETWEEN 1 AND 4096 "
+            "AND logo_height BETWEEN 1 AND 4096 "
+            "AND logo_width * logo_height <= 8000000 "
+            "AND logo_byte_size BETWEEN 1 AND 2097152)",
+            name="workspace_profile_logo_dimensions",
+        ),
     )
 
     id: Mapped[int] = mapped_column(SmallInteger, primary_key=True, default=1)
@@ -86,6 +107,12 @@ class WorkspaceProfile(Base):
             "]'::jsonb"
         ),
     )
+    logo_storage_key: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    logo_content_type: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    logo_filename: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    logo_width: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    logo_height: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    logo_byte_size: Mapped[int | None] = mapped_column(Integer, nullable=True)
     revision: Mapped[int] = mapped_column(BigInteger, nullable=False, default=1)
     updated_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True

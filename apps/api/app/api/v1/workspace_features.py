@@ -1,7 +1,14 @@
 import re
+import uuid
+from collections.abc import AsyncIterator
+from contextlib import suppress
 from datetime import UTC, datetime
+from pathlib import Path
+from urllib.parse import unquote
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Response
+from anyio import CapacityLimiter, to_thread
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response
+from PIL import Image, UnidentifiedImageError
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -38,6 +45,7 @@ from app.services.project_phase_definitions import (
     set_phase_retired,
     update_phase_definitions,
 )
+from app.services.storage import LocalStorage
 from app.services.workspace_features import (
     AI_FEATURE,
     CUSTOMERS_FEATURE,
@@ -48,6 +56,22 @@ from app.services.workspace_features import (
 )
 
 router = APIRouter()
+
+WORKSPACE_LOGO_TYPES = {
+    "image/png": "PNG",
+    "image/jpeg": "JPEG",
+    "image/webp": "WEBP",
+}
+WORKSPACE_LOGO_EXTENSIONS = {
+    "image/png": ".png",
+    "image/jpeg": ".jpg",
+    "image/webp": ".webp",
+}
+WORKSPACE_LOGO_MAX_BYTES = 2 * 1024 * 1024
+WORKSPACE_LOGO_MAX_EDGE = 4096
+WORKSPACE_LOGO_MAX_PIXELS = 8_000_000
+WORKSPACE_LOGO_NAMESPACE = "00000000-0000-0000-0000-000000000001"
+WORKSPACE_LOGO_DECODE_LIMITER = CapacityLimiter(1)
 
 
 def _require_admin(user: User) -> None:
@@ -84,10 +108,106 @@ def _profile_read(row: WorkspaceProfile) -> WorkspaceProfileRead:
         id=row.id,
         name=row.name,
         revision=row.revision,
+        logo_url=_logo_url(row),
+        logo_content_type=row.logo_content_type,
+        logo_filename=row.logo_filename,
+        logo_width=row.logo_width,
+        logo_height=row.logo_height,
+        logo_byte_size=row.logo_byte_size,
         updated_by_user_id=row.updated_by_user_id,
         updated_by_name=row.updated_by_name,
         updated_at=row.updated_at,
     )
+
+
+def _identity_read(row: WorkspaceProfile) -> WorkspaceIdentityRead:
+    return WorkspaceIdentityRead(
+        name=row.name,
+        revision=row.revision,
+        logo_url=_logo_url(row),
+        logo_content_type=row.logo_content_type,
+        logo_filename=row.logo_filename,
+        logo_width=row.logo_width,
+        logo_height=row.logo_height,
+        logo_byte_size=row.logo_byte_size,
+    )
+
+
+def _logo_url(row: WorkspaceProfile) -> str | None:
+    if row.logo_storage_key is None:
+        return None
+    version = row.logo_storage_key.rsplit("/", 1)[-1]
+    return f"/api/v1/workspace/logo?version={version}"
+
+
+def _logo_filename(value: str | None, content_type: str) -> str:
+    decoded = unquote(value or "").replace("\\", "/").split("/")[-1].strip()
+    decoded = "".join(character for character in decoded if ord(character) >= 32)
+    if not decoded:
+        return f"workspace-logo{WORKSPACE_LOGO_EXTENSIONS[content_type]}"
+    stem = Path(decoded).stem.strip() or "workspace-logo"
+    return f"{stem[:100]}{WORKSPACE_LOGO_EXTENSIONS[content_type]}"
+
+
+async def _bounded_logo_chunks(request: Request) -> AsyncIterator[bytes]:
+    total = 0
+    async for chunk in request.stream():
+        if not chunk:
+            continue
+        total += len(chunk)
+        if total > WORKSPACE_LOGO_MAX_BYTES:
+            raise HTTPException(status_code=413, detail="workspace logo cannot exceed 2 MiB")
+        yield chunk
+    if total == 0:
+        raise HTTPException(status_code=422, detail="workspace logo cannot be empty")
+
+
+def _inspect_workspace_logo(path: Path, content_type: str) -> tuple[int, int]:
+    try:
+        with Image.open(path) as image:
+            width, height = image.size
+            if (
+                image.format != WORKSPACE_LOGO_TYPES[content_type]
+                or getattr(image, "n_frames", 1) != 1
+                or width < 1
+                or height < 1
+                or width > WORKSPACE_LOGO_MAX_EDGE
+                or height > WORKSPACE_LOGO_MAX_EDGE
+                or width * height > WORKSPACE_LOGO_MAX_PIXELS
+            ):
+                raise ValueError("invalid workspace logo dimensions or format")
+            image.load()
+            return width, height
+    except (OSError, SyntaxError, ValueError, UnidentifiedImageError, Image.DecompressionBombError):
+        raise HTTPException(
+            status_code=422,
+            detail="workspace logo must be a valid static PNG, JPEG, or WebP image",
+        ) from None
+
+
+async def _locked_profile(
+    session: AsyncSession,
+    expected: int,
+) -> WorkspaceProfile:
+    row = (
+        await session.execute(
+            select(WorkspaceProfile).where(WorkspaceProfile.id == 1).with_for_update()
+        )
+    ).scalar_one_or_none()
+    if row is None:
+        raise HTTPException(status_code=500, detail="workspace profile is missing")
+    if row.revision != expected:
+        current_revision = row.revision
+        await session.rollback()
+        raise _stale_revision(current_revision)
+    return row
+
+
+def _touch_profile(row: WorkspaceProfile, user: User) -> None:
+    row.revision += 1
+    row.updated_by_user_id = user.id
+    row.updated_by_name = user.display_name
+    row.updated_at = datetime.now(UTC)
 
 
 def _calendar_read(row: WorkspaceProfile) -> WorkspaceCalendarRead:
@@ -207,7 +327,7 @@ async def get_workspace_profile(
     if row is None:
         raise HTTPException(status_code=500, detail="workspace profile is missing")
     response.headers["ETag"] = _etag(row.revision)
-    return WorkspaceIdentityRead(name=row.name, revision=row.revision)
+    return _identity_read(row)
 
 
 @router.get("/admin/workspace/profile", response_model=WorkspaceProfileRead)
@@ -261,6 +381,129 @@ async def update_workspace_profile(
             headers={"ETag": _etag(current_revision)},
         )
     await session.commit()
+    response.headers["ETag"] = _etag(row.revision)
+    return _profile_read(row)
+
+
+@router.get("/workspace/logo")
+async def get_workspace_logo(
+    version: uuid.UUID | None = None,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+    settings: Settings = Depends(get_settings),
+) -> Response:
+    del user
+    row = await session.get(WorkspaceProfile, 1)
+    if row is None:
+        raise HTTPException(status_code=500, detail="workspace profile is missing")
+    if row.logo_storage_key is None or row.logo_content_type is None:
+        raise HTTPException(status_code=404, detail="workspace logo is not configured")
+    current_version = row.logo_storage_key.rsplit("/", 1)[-1]
+    if version is None or str(version) != current_version:
+        raise HTTPException(status_code=404, detail="workspace logo version is not current")
+    path = LocalStorage(settings.storage_dir).path(row.logo_storage_key)
+    if path is None:
+        raise HTTPException(status_code=404, detail="workspace logo blob is missing")
+    try:
+        content = await to_thread.run_sync(path.read_bytes)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="workspace logo blob is missing") from None
+    return Response(
+        content=content,
+        media_type=row.logo_content_type,
+        headers={
+            "Cache-Control": "private, max-age=31536000, immutable",
+            "Content-Disposition": "inline",
+            "ETag": f'"workspace-logo-{current_version}"',
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
+
+
+@router.put("/admin/workspace/logo", response_model=WorkspaceProfileRead)
+async def replace_workspace_logo(
+    request: Request,
+    response: Response,
+    if_match: str | None = Header(default=None, alias="If-Match"),
+    x_file_name: str | None = Header(default=None, alias="X-File-Name"),
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+    settings: Settings = Depends(get_settings),
+) -> WorkspaceProfileRead:
+    _require_admin(user)
+    expected = _expected_revision(if_match)
+    content_type = request.headers.get("content-type", "").split(";", 1)[0].strip().lower()
+    if content_type not in WORKSPACE_LOGO_TYPES:
+        raise HTTPException(status_code=415, detail="workspace logo must be PNG, JPEG, or WebP")
+    content_length = request.headers.get("content-length")
+    if content_length is not None:
+        try:
+            if int(content_length) > WORKSPACE_LOGO_MAX_BYTES:
+                raise HTTPException(status_code=413, detail="workspace logo cannot exceed 2 MiB")
+        except ValueError:
+            raise HTTPException(status_code=400, detail="invalid Content-Length") from None
+
+    storage = LocalStorage(settings.storage_dir)
+    new_key = f"{WORKSPACE_LOGO_NAMESPACE}/{uuid.uuid4()}"
+    try:
+        byte_size = await storage.save_stream(new_key, _bounded_logo_chunks(request))
+        path = storage.path(new_key)
+        if path is None:
+            raise HTTPException(status_code=500, detail="workspace logo write failed")
+        width, height = await to_thread.run_sync(
+            _inspect_workspace_logo,
+            path,
+            content_type,
+            limiter=WORKSPACE_LOGO_DECODE_LIMITER,
+        )
+        row = await _locked_profile(session, expected)
+        old_key = row.logo_storage_key
+        row.logo_storage_key = new_key
+        row.logo_content_type = content_type
+        row.logo_filename = _logo_filename(x_file_name, content_type)
+        row.logo_width = width
+        row.logo_height = height
+        row.logo_byte_size = byte_size
+        _touch_profile(row, user)
+        await session.commit()
+    except BaseException:
+        await session.rollback()
+        with suppress(OSError):
+            storage.delete(new_key)
+        raise
+
+    if old_key is not None and old_key != new_key:
+        with suppress(OSError):
+            storage.delete(old_key)
+    response.headers["ETag"] = _etag(row.revision)
+    return _profile_read(row)
+
+
+@router.delete("/admin/workspace/logo", response_model=WorkspaceProfileRead)
+async def remove_workspace_logo(
+    response: Response,
+    if_match: str | None = Header(default=None, alias="If-Match"),
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+    settings: Settings = Depends(get_settings),
+) -> WorkspaceProfileRead:
+    _require_admin(user)
+    expected = _expected_revision(if_match)
+    row = await _locked_profile(session, expected)
+    old_key = row.logo_storage_key
+    if old_key is None:
+        response.headers["ETag"] = _etag(row.revision)
+        return _profile_read(row)
+    row.logo_storage_key = None
+    row.logo_content_type = None
+    row.logo_filename = None
+    row.logo_width = None
+    row.logo_height = None
+    row.logo_byte_size = None
+    _touch_profile(row, user)
+    await session.commit()
+    with suppress(OSError):
+        LocalStorage(settings.storage_dir).delete(old_key)
     response.headers["ETag"] = _etag(row.revision)
     return _profile_read(row)
 

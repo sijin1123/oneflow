@@ -14,6 +14,12 @@ from app.models.workspace_profile import (
 class WorkspaceIdentityRead(BaseModel):
     name: str
     revision: int
+    logo_url: str | None
+    logo_content_type: str | None
+    logo_filename: str | None
+    logo_width: int | None
+    logo_height: int | None
+    logo_byte_size: int | None
 
 
 class WorkspaceProfileRead(WorkspaceIdentityRead):

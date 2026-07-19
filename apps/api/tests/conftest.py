@@ -143,6 +143,8 @@ async def _clean_tables(app):
                 "VALUES (1, 'OneFlow', '[0, 1, 2, 3, 4]'::jsonb, '[]'::jsonb, 1, NULL, NULL) "
                 "ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, "
                 "working_weekdays = EXCLUDED.working_weekdays, holidays = EXCLUDED.holidays, "
+                "logo_storage_key = NULL, logo_content_type = NULL, logo_filename = NULL, "
+                "logo_width = NULL, logo_height = NULL, logo_byte_size = NULL, "
                 "revision = 1, "
                 "updated_by_user_id = NULL, updated_by_name = NULL, updated_at = now()"
             )
