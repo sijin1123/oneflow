@@ -2923,6 +2923,15 @@ Chromium typed mock fixture에서 1440x960과 390x844 viewport를 사용했다. 
 - **UI 변경**: 마일스톤 행의 중복 action menu를 공통 `InlineActionMenu`로 교체했다. 열기 즉시 첫 사용 가능 항목 진입, 방향키·`Home`/`End`, 외부 클릭, `Escape` trigger 복귀와 동일한 focus ring을 Settings의 다른 action menu와 공유한다.
 - **기능/API 반영**: 작업 목록은 실제 `milestone_id` 필터 route로 이동하고 owner 편집·삭제는 기존 PATCH/DELETE 및 파괴 확인을 유지한다. Viewer는 작업 목록 이동과 비활성 `쓰기 권한 없음` cue만 받으며 방향키 탐색은 비활성 항목을 건너뛴다. 신규 API, DB/schema, migration, permission, environment variable, dependency 또는 Settings storage 변경은 없다.
 - **이연 항목**: Cycle, Module, Timeline, Backlog처럼 viewport 좌표에 고정되는 floating menu는 trigger anchor와 portal 수명주기를 포함해 별도 후속 surface에서 통합한다. 이번 마일스톤 surface에는 mock/dead control 또는 미배선 동작이 없다.
-- **검증**: typecheck PASS, lint PASS(기존 Fast Refresh warning 4건), production build PASS(기존 chunk-size warning), unit **107 PASS**, component **8 PASS**, focused owner/viewer milestone E2E **2 PASS**, clean-room frontend **161**/backend **45**, npm/pip audit 0 vulnerabilities와 diff check가 PASS했다. 2-worker full E2E 첫 실행은 변경 영역을 포함해 **324 PASS + opt-in visual QA 1 skip**였고, 무관한 Workspace 초대 1건이 누적 부하에서 30초 대기 timeout을 1회 기록했다. 해당 시나리오 단독 재실행은 **repeat 5/5 PASS**(각 약 2.5초)로 재현되지 않았으며 PR CI의 독립 full E2E로 다시 확인한다.
+- **검증**: typecheck PASS, lint PASS(기존 Fast Refresh warning 4건), production build PASS(기존 chunk-size warning), unit **107 PASS**, component **8 PASS**, focused owner/viewer milestone E2E **2 PASS**, clean-room frontend **161**/backend **45**, npm/pip audit 0 vulnerabilities와 diff check가 PASS했다. 2-worker full E2E 첫 실행은 변경 영역을 포함해 **324 PASS + opt-in visual QA 1 skip**였고, 무관한 Workspace 초대 1건이 누적 부하에서 30초 대기 timeout을 1회 기록했다. 해당 시나리오 단독 재실행은 **repeat 5/5 PASS**(각 약 2.5초)로 재현되지 않았으며 PR CI `29696864679`와 main integration `29697190636`의 독립 full E2E에서는 재발 없이 4잡이 모두 통과했다.
+
+---
+
+# UI-172 Cycle Action Menu Lifecycle 검증 (2026-07-19)
+
+- **UI 변경**: viewport-fixed Cycle 행 메뉴가 열리면 첫 enabled action으로 포커스하고 `ArrowUp`/`ArrowDown`·`Home`/`End`로 비활성 항목을 건너뛰며 순환한다. `Escape`와 명시 닫기는 trigger 포커스를 복원하고 outside pointer는 자연스럽게 메뉴만 닫는다. Trigger의 `aria-haspopup`·`aria-expanded`·`aria-controls`를 실제 메뉴 ID와 연결한다.
+- **기능/API 반영**: 기존 작업 목록 필터 이동, 번다운 표시, owner 편집·완료 사이클 이월·삭제와 viewer read-only cue를 유지한다. 신규 API, DB/schema, migration, permission, environment variable, dependency 또는 Settings storage 변경은 없다.
+- **이연 항목**: Module, Timeline, Backlog의 viewport-fixed menu는 각 anchor와 고유 action을 다음 UI surface에서 같은 계약으로 수렴한다. 이번 Cycle surface에는 mock/dead control 또는 미배선 동작이 없다.
+- **검증**: typecheck PASS, lint PASS(기존 Fast Refresh warning 4건), production build PASS(기존 chunk-size warning), unit **107 PASS**, component **8 PASS**, 완료 사이클 이월을 포함한 focused Cycle E2E **3 PASS**, 전용 포트 2-worker full E2E **325 PASS + opt-in visual QA 1 skip**다. 실제 Chromium에서 첫 항목 진입, 비활성 cue 건너뛰기, `ArrowUp`/`ArrowDown` 양방향 순환, `Home`/`End`, 외부 클릭, `Escape` trigger focus 복귀와 실제 번다운·이월 동작을 확인했다. Clean-room frontend **161**/backend **45**, npm/pip audit 0 vulnerabilities와 diff check도 PASS했다.
 
 ---

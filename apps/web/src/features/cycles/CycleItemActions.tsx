@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { useEffect } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 import {
   ChartNoAxesColumn,
   ExternalLink,
@@ -20,6 +20,7 @@ export function CycleItemActions({
   projectId,
   isOwner,
   others,
+  trigger,
   top,
   left,
   onOpenWorkItems,
@@ -32,6 +33,7 @@ export function CycleItemActions({
   projectId: string
   isOwner: boolean
   others: Cycle[]
+  trigger: HTMLButtonElement
   top: number
   left: number
   onOpenWorkItems: (cycleId: string) => void
@@ -42,15 +44,63 @@ export function CycleItemActions({
 }) {
   const remove = useDeleteCycle(projectId)
   const rollover = useRolloverCycle(projectId)
+  const menuRef = useRef<HTMLDivElement>(null)
   const incomplete = Math.max(0, cycle.work_package_count - cycle.done_work_package_count)
 
+  const closeMenu = useCallback(
+    (restoreFocus: boolean) => {
+      onClose()
+      if (restoreFocus) requestAnimationFrame(() => trigger.focus())
+    },
+    [onClose, trigger],
+  )
+
   useEffect(() => {
+    const enabledItems = () =>
+      Array.from(
+        menuRef.current?.querySelectorAll<HTMLElement>(
+          '[role="menuitem"]:not([aria-disabled="true"]):not([disabled])',
+        ) ?? [],
+      )
+    const focusFrame = requestAnimationFrame(() => enabledItems()[0]?.focus())
+
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose()
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        closeMenu(true)
+        return
+      }
+      if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return
+      if (!menuRef.current?.contains(document.activeElement)) return
+
+      const items = enabledItems()
+      if (!items.length) return
+      event.preventDefault()
+      const currentIndex = items.indexOf(document.activeElement as HTMLElement)
+      let nextIndex = 0
+      if (event.key === 'End') nextIndex = items.length - 1
+      else if (event.key === 'ArrowUp')
+        nextIndex = currentIndex <= 0 ? items.length - 1 : currentIndex - 1
+      else if (event.key === 'ArrowDown')
+        nextIndex = currentIndex < 0 || currentIndex === items.length - 1 ? 0 : currentIndex + 1
+      items[nextIndex]?.focus()
     }
+
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target
+      if (!(target instanceof Node)) return
+      if (menuRef.current?.contains(target) || trigger.contains(target)) return
+      closeMenu(false)
+    }
+
     window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
-  }, [onClose])
+    document.addEventListener('pointerdown', onPointerDown)
+    return () => {
+      cancelAnimationFrame(focusFrame)
+      window.removeEventListener('keydown', onKeyDown)
+      document.removeEventListener('pointerdown', onPointerDown)
+    }
+  }, [closeMenu, trigger])
 
   const deleteCycle = () => {
     if (
@@ -62,7 +112,7 @@ export function CycleItemActions({
     remove.mutate(cycle.id, {
       onSuccess: () => {
         onMessage(`'${cycle.name}' 사이클을 삭제했습니다.`, 'success')
-        onClose()
+        closeMenu(false)
       },
       onError: () => onMessage('사이클을 삭제하지 못했습니다.', 'error'),
     })
@@ -82,7 +132,7 @@ export function CycleItemActions({
       {
         onSuccess: (result) => {
           onMessage(`'${target.name}'(으)로 ${result.moved}건을 이월했습니다.`, 'success')
-          onClose()
+          closeMenu(false)
         },
         onError: () => onMessage('미완료 작업을 이월하지 못했습니다.', 'error'),
       },
@@ -91,6 +141,8 @@ export function CycleItemActions({
 
   return (
     <div
+      ref={menuRef}
+      id={`cycle-actions-${cycle.id}`}
       role="menu"
       aria-label={`${cycle.name} 사이클 작업`}
       className="fixed z-50 w-60 rounded-of border border-of-border bg-of-surface p-1 text-sm shadow-[var(--of-shadow-popover)]"
@@ -102,7 +154,7 @@ export function CycleItemActions({
           type="button"
           aria-label="사이클 작업 닫기"
           className="rounded-[4px] p-0.5 hover:bg-of-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus"
-          onClick={onClose}
+          onClick={() => closeMenu(true)}
         >
           <X size={12} />
         </button>
@@ -110,7 +162,7 @@ export function CycleItemActions({
       <MenuButton
         onClick={() => {
           onOpenWorkItems(cycle.id)
-          onClose()
+          closeMenu(false)
         }}
       >
         <ExternalLink size={13} /> 작업 목록 열기
@@ -118,7 +170,7 @@ export function CycleItemActions({
       <MenuButton
         onClick={() => {
           onToggleBurndown()
-          onClose()
+          closeMenu(false)
         }}
       >
         <ChartNoAxesColumn size={13} /> 번다운 보기
@@ -129,7 +181,7 @@ export function CycleItemActions({
           <MenuButton
             onClick={() => {
               onEdit()
-              onClose()
+              closeMenu(false)
             }}
           >
             <Pencil size={13} /> 편집
