@@ -265,6 +265,16 @@ textarea {
   to { opacity: 1; transform: translateY(0) scale(1); }
 }
 
+@keyframes of-dropdown-enter {
+  from { opacity: 0; transform: scale(0.96); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes of-dropdown-exit {
+  from { opacity: 1; transform: scale(1); }
+  to { opacity: 0; transform: scale(0.98); }
+}
+
 @keyframes of-popover-exit {
   from { opacity: 1; transform: translateY(0) scale(1); }
   to { opacity: 0; transform: translateY(-3px) scale(0.97); }
@@ -319,6 +329,9 @@ textarea {
 
 .of-overlay-enter { animation: of-overlay-enter var(--of-duration-overlay) var(--of-ease-standard) both; }
 .of-menu-enter { animation: of-menu-enter 150ms var(--of-ease-standard) both; transform-origin: top left; }
+.of-dropdown-motion { transform-origin: var(--radix-dropdown-menu-content-transform-origin); }
+.of-dropdown-motion[data-state='open'] { animation: of-dropdown-enter var(--of-duration-default) var(--of-ease-emphasized) both; }
+.of-dropdown-motion[data-state='closed'] { animation: of-dropdown-exit var(--of-duration-fast) var(--of-ease-standard) both; }
 .of-popover-motion { transform-origin: var(--radix-popover-content-transform-origin); }
 .of-popover-motion[data-state='open'] { animation: of-menu-enter var(--of-duration-default) var(--of-ease-emphasized) both; }
 .of-popover-motion[data-state='closed'] { animation: of-popover-exit var(--of-duration-fast) var(--of-ease-standard) both; }
@@ -371,6 +384,7 @@ textarea {
 @media (prefers-reduced-motion: reduce) {
   .of-overlay-enter,
   .of-menu-enter,
+  .of-dropdown-motion,
   .of-popover-motion,
   .of-search-overlay-opening,
   .of-search-overlay-closing,

@@ -533,3 +533,9 @@ Plane/OpenProject source, API, database schema, package, asset, CSS, DOM hierarc
 `docs/plane-poc-reverse-spec/`에서 사용한 입력은 작업 항목의 compact dropdown이 현재 항목을 명확히 식별하고 pointer와 keyboard에서 동일한 실제 작업·종료 계약을 제공한다는 관찰 가능한 행동뿐이다. OneFlow 구현은 기존 자체 Radix dropdown primitive, Work Package API, React Query mutation과 local design token을 사용해 Board, List, Tree, Calendar의 중복 action content를 하나의 공통 컴포넌트로 독립 설계했다.
 
 Plane/OpenProject source, API, database schema, package, asset, CSS, DOM hierarchy, exact dimensions/colors, wording, menu implementation, icons 또는 branding은 복사하지 않았다. 네 surface의 실제 상세 drawer, 전체 페이지, 링크 복사, 복제, 이동과 owner/viewer 권한 경계를 유지하며 신규 API, DB/schema, migration, permission, environment variable, dependency 또는 Settings storage 변경은 없다. - attested-independent-derivation
+
+## UI-176 Project Sidebar Action Menu Lifecycle
+
+`docs/plane-poc-reverse-spec/`과 사용자 제공 캡처에서 사용한 입력은 프로젝트 sidebar의 compact action menu가 행에 고정되고, pointer와 keyboard에서 같은 열림·탐색·종료 계약 및 짧은 surface motion을 제공한다는 관찰 가능한 행동뿐이다. OneFlow 구현은 기존 자체 Radix dropdown primitive, Project API, local navigation preference와 design token을 사용해 독립 설계했다.
+
+Plane/OpenProject source, API, database schema, package, asset, CSS, DOM hierarchy, exact dimensions/colors, wording, menu implementation, icons 또는 branding은 복사하지 않았다. 기존 즐겨찾기 설정, clipboard 복사, 설정 이동, owner 확인 후 프로젝트 보관 mutation을 유지하고 공통 dropdown의 transform-origin 기반 열림·닫힘 motion, reduced-motion 제거와 trigger/menu ARIA 연결을 추가했다. 신규 API, DB/schema, migration, permission, environment variable, dependency 또는 Settings storage 변경은 없다. - attested-independent-derivation

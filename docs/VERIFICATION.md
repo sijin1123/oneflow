@@ -2962,3 +2962,13 @@ Chromium typed mock fixture에서 1440x960과 390x844 viewport를 사용했다. 
 - **검증**: typecheck PASS, lint PASS(기존 Fast Refresh warning 4건), production build PASS(기존 chunk-size warning), unit **107 PASS**, component **8 PASS**, owner/viewer·desktop/mobile 실제 기능과 keyboard lifecycle을 포함한 focused E2E **12 PASS**다. 2-worker full E2E는 변경 영역과 그 외 **324 PASS + opt-in visual QA 1 skip** 뒤 무관한 개인 메모 충돌 시나리오가 누적 부하에서 30초 timeout을 1회 기록했고, 해당 시나리오 단독 `repeat-each=5`는 **5/5 PASS**(각 약 1.9초)로 재현되지 않았다. 네 mobile screenshot을 실제 Chromium에서 검토해 menu가 viewport를 벗어나거나 주변 UI를 재배치하지 않음을 확인했다. Clean-room frontend **161**/backend **45**, npm/pip audit 0 vulnerabilities와 diff check도 PASS했다. PR CI 결과는 이어지는 검증에서 기록한다.
 
 ---
+
+# UI-176 Project Sidebar Action Menu Lifecycle 검증 (2026-07-19)
+
+- **UI 변경**: 프로젝트 sidebar의 ellipsis dropdown에 transform-origin 기반 열림/닫힘 motion을 공통 적용하고, `aria-controls`·`aria-expanded`를 실제 menu ID와 연결했다. 열기 즉시 첫 enabled action에 진입하며 `ArrowUp`/`ArrowDown`, `Home`/`End`, `Escape` trigger focus 복귀와 닫힘 애니메이션 중 상태를 검증했다. `prefers-reduced-motion`에서는 전환을 제거한다.
+- **기능/API 반영**: 기존 개인별 즐겨찾기 설정, clipboard 링크 복사, 프로젝트 설정 이동, owner 멤버 확인과 보관 mutation을 그대로 유지했다. viewer/member 권한 경계를 우회하거나 장식용·미배선 action을 추가하지 않았다. 신규 API, DB/schema, migration, permission, environment variable, dependency 또는 Settings storage 변경은 없다.
+- **이연 항목**: 없음. 이번 프로젝트 sidebar menu의 모든 노출 action은 기존 실제 상태·navigation·API에 연결돼 있다.
+- **검증**: typecheck PASS, lint PASS(기존 Fast Refresh warning 4건), production build PASS(기존 chunk-size warning), unit **107 PASS**, component **8 PASS**, keyboard·desktop/mobile·실제 즐겨찾기/복사/설정/보관 focused E2E PASS, 전용 포트 2-worker full E2E **325 PASS + opt-in visual QA 1 skip**다. 닫힘 motion 뒤 알림 검증은 menu text가 아니라 실제 `status` live region으로 고정하고 Tree/Timeline/프로젝트 메뉴 focused 재검증도 통과했다. Clean-room frontend **162**/backend **45**, pip/npm audit 0 vulnerabilities와 diff check가 PASS했다. 격리 worktree의 첫 clean-room은 API `.venv` 부재로 fail-closed됐고 동일 잠금환경 연결 후 4단계 모두 재검사 PASS했다.
+- **증적**: `docs/screenshots/redevelopment/projects-sidebar-actions-ui/{project-menu,mobile-project-menu}.png`을 실제 Chromium에서 확인해 desktop anchor, mobile drawer containment, focus state와 주변 layout 비재배치를 검증했다.
+
+---
