@@ -2950,6 +2950,15 @@ Chromium typed mock fixture에서 1440x960과 390x844 viewport를 사용했다. 
 - **UI 변경**: Backlog와 Timeline의 viewport-fixed 작업 항목 메뉴가 공통 `useFloatingActionMenuLifecycle`을 사용한다. 열기 즉시 첫 enabled action에 진입하고 `ArrowUp`/`ArrowDown`·`Home`/`End` 순환, 비활성 viewer cue 건너뛰기, `Tab` 자연 이탈, outside pointer 종료, `Escape`·명시 닫기의 trigger 복귀를 제공한다. Backlog React trigger와 DHTMLX가 생성한 Timeline trigger 모두 `aria-haspopup`·`aria-expanded`·`aria-controls`를 실제 메뉴 ID와 동기화한다.
 - **기능/API 반영**: 두 surface의 실제 상세 drawer, 전체 페이지 이동, 링크 복사, 복제 POST, 이동 panel과 owner/viewer 권한 경계를 그대로 유지했다. 신규 API, DB/schema, migration, permission, environment variable, dependency 또는 Settings storage 변경은 없다.
 - **이연 항목**: 없음. 이번 두 planning layout의 메뉴 안에는 mock/dead control 또는 미배선 동작이 없다.
-- **검증**: typecheck PASS, lint PASS(기존 Fast Refresh warning 4건), production build PASS(기존 chunk-size warning), unit **107 PASS**, component **8 PASS**, owner/viewer·desktop/mobile 실제 기능을 포함한 focused Backlog/Timeline E2E **6 PASS**, 전용 포트 2-worker full E2E **325 PASS + opt-in visual QA 1 skip**다. Clean-room frontend **161**/backend **45**, npm/pip audit 0 vulnerabilities, mobile screenshot containment와 diff check도 PASS했다. PR CI와 main integration은 이어지는 검증에서 기록한다.
+- **검증**: typecheck PASS, lint PASS(기존 Fast Refresh warning 4건), production build PASS(기존 chunk-size warning), unit **107 PASS**, component **8 PASS**, owner/viewer·desktop/mobile 실제 기능을 포함한 focused Backlog/Timeline E2E **6 PASS**, 전용 포트 2-worker full E2E **325 PASS + opt-in visual QA 1 skip**다. Clean-room frontend **161**/backend **45**, npm/pip audit 0 vulnerabilities, mobile screenshot containment와 diff check도 PASS했다. PR `#364`를 squash merge한 뒤 main integration CI `29700968144`에서도 frontend, backend, security-audit, cleanroom 4개 job이 모두 PASS했다.
+
+---
+
+# UI-175 Work Item Dropdown Action Convergence 검증 (2026-07-19)
+
+- **UI 변경**: Board 카드, List 행, Tree 항목, Calendar 항목의 중복 dropdown content를 공통 `WorkItemDropdownActionMenuContent`로 통합했다. 각 trigger와 menu는 작업 제목·surface를 포함한 접근성 이름을 유지하고, 열기 즉시 첫 실제 action에 진입하며 비활성 viewer cue를 건너뛰는 방향키 순환, `Escape` 종료와 trigger focus 복귀, 모바일 viewport containment를 공통 제공한다.
+- **기능/API 반영**: 네 surface 모두 실제 상세 drawer, 전체 페이지 이동, 링크 복사, 복제 POST, 이동 panel을 연결한다. 비동기 복제 결과는 dropdown이 닫혀 content가 unmount된 뒤에도 성공·오류 메시지를 전달하며, viewer는 읽기 action과 비활성 `읽기 전용` cue만 받는다. 신규 API, DB/schema, migration, permission, environment variable, dependency 또는 Settings storage 변경은 없다.
+- **이연 항목**: 없음. 이번 네 surface의 menu 안에는 mock/dead control 또는 미배선 동작이 없다.
+- **검증**: typecheck PASS, lint PASS(기존 Fast Refresh warning 4건), production build PASS(기존 chunk-size warning), unit **107 PASS**, component **8 PASS**, owner/viewer·desktop/mobile 실제 기능과 keyboard lifecycle을 포함한 focused E2E **12 PASS**다. 2-worker full E2E는 변경 영역과 그 외 **324 PASS + opt-in visual QA 1 skip** 뒤 무관한 개인 메모 충돌 시나리오가 누적 부하에서 30초 timeout을 1회 기록했고, 해당 시나리오 단독 `repeat-each=5`는 **5/5 PASS**(각 약 1.9초)로 재현되지 않았다. 네 mobile screenshot을 실제 Chromium에서 검토해 menu가 viewport를 벗어나거나 주변 UI를 재배치하지 않음을 확인했다. Clean-room frontend **161**/backend **45**, npm/pip audit 0 vulnerabilities와 diff check도 PASS했다. PR CI 결과는 이어지는 검증에서 기록한다.
 
 ---
