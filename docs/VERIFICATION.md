@@ -2863,7 +2863,7 @@ Chromium typed mock fixture에서 1440x960과 390x844 viewport를 사용했다. 
 - **UI 변경**: 없음. Workspace Settings 역할 control을 노출하기 전에 custom role이 실제 제품 동작을 바꾸는 권한 경로를 완결했다.
 - **기능/API 반영**: status, project type, custom field, cycle, module, automation rule, intake triage의 모든 기존 관리 mutation을 각 `*.manage`/`intake.triage` capability의 공통 `require_permission` guard에 연결했다. 읽기 계약은 그대로 두되, `intake.triage` 보유자는 다른 제출자의 큐와 판정 이력을 볼 수 있어 ID를 추측해야만 판정할 수 있는 불완전한 역할이 되지 않는다. plain member는 계속 자신의 intake만 볼 수 있다.
 - **권한 경계**: custom role은 매 테스트 단계 정확히 하나의 capability만 보유하며 해당 실제 route만 성공한다. capability 제거 403, archived project 409, 기존 owner success, plain member/viewer denial, non-member existence hiding과 기존 보관 읽기 계약을 유지한다. 프로젝트/멤버 관리, work move와 shared dashboard default는 이번 변경에 포함되지 않는다.
-- **검증**: 변경 7개 도메인과 custom role 집중 회귀 **60 PASS**, permission report/authz/viewer **31 PASS**, 최종 full API **835 PASS**(기존 Alembic path separator 경고 1건), 전체 API Ruff/format **428 files**, diff check PASS다. API schema, DB/migration, OpenAPI, environment variable, dependency와 Settings storage 변경은 없다.
+- **검증**: 변경 7개 도메인과 custom role 집중 회귀 **60 PASS**, permission report/authz/viewer **31 PASS**, 최종 full API **835 PASS**(기존 Alembic path separator 경고 1건), 전체 API Ruff/format **428 files**, OpenAPI 생성/드리프트와 diff check PASS다. API schema 형태, DB/migration, environment variable, dependency와 Settings storage 변경은 없으며, 변경된 endpoint 설명은 shared type 생성물에 동기화했다.
 - **이연 항목**: UI-166C에서 Workspace Settings 역할 매트릭스/lifecycle과 기존 프로젝트 멤버 배정 UI를 이 실제 authorization 계약에 연결한다. 외부 directory/SCIM은 운영 자격 증명 의존 범위다.
 
 ---

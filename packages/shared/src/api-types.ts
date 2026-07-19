@@ -2116,7 +2116,7 @@ export interface paths {
         get?: never;
         /**
          * Reorder Automation Rules
-         * @description Owner-only atomic reorder (Pass 82 — the custom-fields /order contract):
+         * @description Capability-gated atomic reorder (Pass 82 — the custom-fields /order contract):
          *     ordered_ids must list EXACTLY this project's rules (active + inactive);
          *     positions rewrite 0..n-1 in one transaction under the project order lock so
          *     a concurrent create can't interleave a duplicate position.
@@ -2196,7 +2196,7 @@ export interface paths {
         get?: never;
         /**
          * Reorder Custom Fields
-         * @description Owner-only atomic reorder (Pass 50 — the statuses /order contract
+         * @description Capability-gated atomic reorder (Pass 50 — the statuses /order contract
          *     verbatim): ordered_ids must list EXACTLY this project's fields (active
          *     and inactive); positions rewrite 0..n-1 in one transaction.
          */
@@ -2516,7 +2516,7 @@ export interface paths {
         put?: never;
         /**
          * Triage Intake
-         * @description Owner decision on an OPEN (pending/snoozed) item.
+         * @description Capability-gated decision on an OPEN (pending/snoozed) item.
          *
          *     Accept order inside ONE transaction: ① insert the work package (flushed for
          *     its id) → ② status-conditional UPDATE — rowcount 0 means someone else
@@ -2897,7 +2897,7 @@ export interface paths {
         get?: never;
         /**
          * Reorder Project Statuses
-         * @description Owner-only atomic reorder. The body must list exactly the project's status
+         * @description Capability-gated atomic reorder. The body must list exactly the project's status
          *     ids; positions are rewritten 0..n-1 in one transaction.
          */
         put: operations["reorder_project_statuses_api_v1_projects__project_id__statuses_order_put"];
@@ -2975,7 +2975,7 @@ export interface paths {
         get?: never;
         /**
          * Reorder Project Types
-         * @description Owner-only atomic reorder — same contract as the status reorder.
+         * @description Capability-gated atomic reorder — same contract as the status reorder.
          */
         put: operations["reorder_project_types_api_v1_projects__project_id__types_order_put"];
         post?: never;
