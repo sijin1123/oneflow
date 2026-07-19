@@ -15464,6 +15464,76 @@ test('로그인 원본 비주얼과 흐르는 협업 경로 강조를 유지한�
   })
 })
 
+test('로그인 승인 원본 초기 상태는 첫 상호작용과 동시에 기능형 인증 화면으로 전환된다', async ({ page }) => {
+  await mockApi(page)
+  await page.route('**/api/v1/auth/config', (route) => route.fulfill({
+    json: {
+      auth_mode: 'dev',
+      oidc_issuer: null,
+      oidc_client_id: null,
+      has_client_secret: false,
+      command_palette_enabled: false,
+      session_management_enabled: true,
+      password_required: true,
+    },
+  }))
+
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.goto('/login')
+  const pageFrame = page.locator('.of-login-page')
+  const referenceStage = page.locator('.of-login-reference-stage')
+  await expect(pageFrame).toHaveAttribute('data-reference-state', 'reference')
+  await expect(referenceStage).toBeVisible()
+  await expect(referenceStage).toHaveAttribute('srcset', /oneflow-login-origin-reference@2x/)
+  await expect(referenceStage).toHaveCSS('opacity', '1')
+
+  const email = page.getByLabel('Email address')
+  await email.click()
+  await expect(email).toBeFocused()
+  await expect(pageFrame).toHaveAttribute('data-reference-state', 'interactive')
+  await expect(referenceStage).toHaveCSS('opacity', '0')
+  await email.fill('dev@oneflow.local')
+  await page.getByLabel('Password', { exact: true }).fill('development-password')
+  await expect(email).toHaveValue('dev@oneflow.local')
+
+  await page.route('**/api/v1/auth/config', (route) => route.fulfill({
+    json: {
+      auth_mode: 'dev',
+      oidc_issuer: null,
+      oidc_client_id: null,
+      has_client_secret: false,
+      command_palette_enabled: false,
+      session_management_enabled: true,
+      password_required: false,
+    },
+  }))
+  await page.reload()
+  await expect(pageFrame).toHaveAttribute('data-reference-state', 'reference')
+  const passwordBox = await page.getByLabel('Password', { exact: true }).boundingBox()
+  expect(passwordBox).not.toBeNull()
+  await page.mouse.click(
+    passwordBox!.x + (passwordBox!.width / 2),
+    passwordBox!.y + (passwordBox!.height / 2),
+  )
+  await expect(pageFrame).toHaveAttribute('data-reference-state', 'interactive')
+  await expect(page.getByLabel('Password', { exact: true })).toBeDisabled()
+  await expect(page.getByText('Password is not required in this local environment')).toBeAttached()
+
+  await page.reload()
+  await expect(pageFrame).toHaveAttribute('data-reference-state', 'reference')
+  await page.keyboard.press('Tab')
+  await expect(pageFrame).toHaveAttribute('data-reference-state', 'interactive')
+  const keyboardTarget = page.locator('.of-login-page :focus')
+  expect(await keyboardTarget.count()).toBe(1)
+  await expect(keyboardTarget).toBeVisible()
+
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.reload()
+  await expect(referenceStage).toBeHidden()
+  await expect(page.getByRole('heading', { name: /Welcome back/ })).toBeVisible()
+  await expectNoHorizontalOverflow(page)
+})
+
 test('Workspace popover가 실제 설정·멤버·로그아웃 흐름에 연결된다', async ({
   page,
 }) => {

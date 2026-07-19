@@ -191,6 +191,21 @@ function StoryPanel() {
   )
 }
 
+function ReferenceStage() {
+  return (
+    <img
+      className="of-login-reference-stage"
+      src={loginOriginReference}
+      srcSet={`${loginOriginReference} 1x, ${loginOriginReference2x} 2x`}
+      width="1448"
+      height="1086"
+      alt=""
+      aria-hidden="true"
+      draggable="false"
+    />
+  )
+}
+
 function ProviderGlyph({ provider }: { provider: OidcProvider }) {
   if (provider === 'google') {
     return (
@@ -393,6 +408,7 @@ export function LoginPage() {
   const [notice, setNotice] = useState<NoticeKind | null>(null)
   const [redirectingProvider, setRedirectingProvider] = useState<OidcProvider | null>(null)
   const [validationError, setValidationError] = useState<string | null>(null)
+  const [referenceEngaged, setReferenceEngaged] = useState(false)
   const emailInputRef = useRef<HTMLInputElement>(null)
   const forgotButtonRef = useRef<HTMLButtonElement>(null)
   const requestAccessButtonRef = useRef<HTMLButtonElement>(null)
@@ -446,6 +462,15 @@ export function LoginPage() {
   const oauthError = oauthErrorCode ? text[oauthErrorCode] : null
   const assistanceNotice = notice === 'forgot' || notice === 'request' ? notice : null
   const informationNotice = notice && notice !== 'forgot' && notice !== 'request' ? notice : null
+  const referenceEligible = locale === 'en'
+    && !email
+    && !password
+    && !searchParams.get('invited')
+    && !oauthError
+    && !config.isError
+    && !login.isError
+    && (config.isPending || devEnabled)
+  const showReferenceStage = referenceEligible && !referenceEngaged
 
   const closeAssistance = (kind: AssistanceNoticeKind) => {
     const trigger = kind === 'forgot' ? forgotButtonRef.current : requestAccessButtonRef.current
@@ -467,7 +492,15 @@ export function LoginPage() {
 
   return (
     <div className="of-login-canvas">
-      <div className="of-login-page" data-locale={locale}>
+      <div
+        className="of-login-page"
+        data-locale={locale}
+        data-reference-state={showReferenceStage ? 'reference' : 'interactive'}
+        onFocusCapture={() => setReferenceEngaged(true)}
+        onKeyDownCapture={() => setReferenceEngaged(true)}
+        onPointerDownCapture={() => setReferenceEngaged(true)}
+      >
+        <ReferenceStage />
         <StoryPanel />
         <main className="of-login-auth" aria-labelledby="login-title">
         <section className="of-login-auth-card">
