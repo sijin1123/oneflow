@@ -461,3 +461,9 @@ Plane/OpenProject source, API, database schema, package, asset, CSS, DOM hierarc
 OpenProject의 공개 portfolio/baseline 제품 범주와 `docs/plane-poc-reverse-spec/`의 compact report/view-control 정보구조에서 사용한 입력은 권한 있는 여러 프로젝트의 최근 일정 기준선 변화를 같은 surface에서 비교하고 선택 시 상세 시점으로 이동한다는 제품 행동뿐이다. OneFlow 구현은 UI-156~158의 자체 snapshot과 current ProjectMember scope, PostgreSQL aggregate, FastAPI/SQLAlchemy 및 local Reporting primitives로 독립 설계했다.
 
 Plane/OpenProject source, API, database schema, package, asset, CSS, DOM hierarchy, exact dimensions/colors, wording, trend endpoint/chart 구현, icons 또는 branding은 복사하지 않았다. 집계는 반환이 승인된 최대 200개 프로젝트와 프로젝트당 최근 5개 기준선으로 제한하고 Work Package subject나 hidden-project 이력을 응답하지 않는다. 신규 migration, dependency, environment, permission 또는 Settings UI 변경은 없다. 임의 기준일·사용자 지정 기간과 차원/pivot report builder는 별도 bounded 분석 surface로 유지한다. — attested-independent-derivation
+
+## UI-162 Login Origin DPR Closure
+
+UI-162의 유일한 시각 입력은 사용자가 직접 제공하고 OneFlow 제품 자산으로 승인한 `docs/oneflow-login-origin.png`다. 기준 파일과 runtime 1x 자산의 SHA-256은 모두 `62fafe9e44df9d189e8fe2f38fc25147d11b8459569be13ee0424ba06c0c4c76`이다. 고밀도 자산은 이 사용자 소유 원화에 결정적 Lanczos resample만 적용했으며 생성형 재해석, 제3자 로고·asset 사용, 색상 변경 또는 요소 재조합이 없다. 인증 영역은 기존 OneFlow auth API와 semantic DOM을 계속 사용한다.
+
+Plane/OpenProject source, package, asset, logo, CSS, DOM, wording 또는 branding은 입력·복사하지 않았다. 신규 API, DB/schema, migration, permission, environment, dependency 또는 Settings UI 변경은 없다. - attested-user-owned-oneflow-asset

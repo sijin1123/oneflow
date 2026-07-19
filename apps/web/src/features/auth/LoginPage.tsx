@@ -17,6 +17,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 
 import loginOriginReference from '@/assets/generated/oneflow-login-origin-reference.png'
+import loginOriginReference2x from '@/assets/generated/oneflow-login-origin-reference@2x.png'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -156,7 +157,14 @@ function BrandLockup({ compact = false }: { compact?: boolean }) {
   return (
     <div className="of-login-brand" data-compact={compact || undefined} aria-label="oneflow">
       <span className="of-login-brand-reference" aria-hidden="true">
-        <img src={loginOriginReference} alt="" />
+        <img
+          src={loginOriginReference}
+          srcSet={`${loginOriginReference} 1x, ${loginOriginReference2x} 2x`}
+          width="1448"
+          height="1086"
+          alt=""
+          draggable="false"
+        />
       </span>
     </div>
   )
@@ -166,9 +174,18 @@ function StoryPanel() {
   return (
     <section className="of-login-story" aria-labelledby="login-story-title">
       <h1 id="login-story-title" className="of-login-assistive">Plan. Flow. Deliver. Together.</h1>
-      <img className="of-login-story-art" src={loginOriginReference} alt="" aria-hidden="true" />
+      <img
+        className="of-login-story-art"
+        src={loginOriginReference}
+        srcSet={`${loginOriginReference} 1x, ${loginOriginReference2x} 2x`}
+        width="1448"
+        height="1086"
+        alt=""
+        aria-hidden="true"
+        draggable="false"
+      />
       <svg className="of-login-origin-route-accent" viewBox="0 0 792 1086" aria-hidden="true">
-        <path d="M684 543C744 551 770 583 744 615C723 640 682 632 641 645C602 657 573 673 558 675C523 682 516 725 496 758" />
+        <path d="M684 543C744 550 769 583 745 615C724 640 682 632 641 645C603 657 574 672 558 675C524 682 515 724 496 758" />
       </svg>
     </section>
   )
