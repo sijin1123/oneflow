@@ -147,19 +147,24 @@ function CycleRow({
   const update = useUpdateCycle(projectId)
   const [editing, setEditing] = useState(false)
   const [showBurndown, setShowBurndown] = useState(false)
-  const [activeAction, setActiveAction] = useState<{ top: number; left: number } | null>(null)
+  const [activeAction, setActiveAction] = useState<{
+    top: number
+    left: number
+    trigger: HTMLButtonElement
+  } | null>(null)
   const [name, setName] = useState(cycle.name)
   const [start, setStart] = useState(cycle.start_date)
   const [end, setEnd] = useState(cycle.end_date)
 
-  const openActionMenu = (rect: DOMRect) => {
+  const openActionMenu = (trigger: HTMLButtonElement) => {
+    const rect = trigger.getBoundingClientRect()
     const width = 240
     const height = 248
     const maxLeft = Math.max(8, window.innerWidth - width - 8)
     const maxTop = Math.max(8, window.innerHeight - height)
     const left = Math.min(Math.max(8, rect.right - width), maxLeft)
     const top = Math.min(Math.max(8, rect.bottom + 6), maxTop)
-    setActiveAction({ top, left })
+    setActiveAction({ top, left, trigger })
   }
 
   if (editing) {
@@ -229,8 +234,14 @@ function CycleRow({
       <button
         type="button"
         aria-label={`${cycle.name} 사이클 작업`}
+        aria-haspopup="menu"
+        aria-expanded={activeAction !== null}
+        aria-controls={activeAction ? `cycle-actions-${cycle.id}` : undefined}
         className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-of border border-of-border text-of-muted hover:bg-of-surface-2 hover:text-of-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus"
-        onClick={(event) => openActionMenu(event.currentTarget.getBoundingClientRect())}
+        onClick={(event) => {
+          if (activeAction) setActiveAction(null)
+          else openActionMenu(event.currentTarget)
+        }}
       >
         <MoreHorizontal size={14} />
       </button>
@@ -240,6 +251,7 @@ function CycleRow({
           projectId={projectId}
           isOwner={isOwner}
           others={others}
+          trigger={activeAction.trigger}
           top={activeAction.top}
           left={activeAction.left}
           onOpenWorkItems={(cycleId) =>
