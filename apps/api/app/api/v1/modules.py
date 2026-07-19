@@ -6,7 +6,7 @@ from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import get_current_user
-from app.core.authz import is_member, require_member, require_role
+from app.core.authz import is_member, require_member, require_permission
 from app.db.session import get_session
 from app.models.member import ProjectMember
 from app.models.module import Module, ModuleMember
@@ -24,7 +24,7 @@ from app.schemas.module import (
 
 router = APIRouter()
 
-# Same permission split as cycles: managing modules is an owner action;
+# Same permission split as cycles: managing modules requires module.manage;
 # assigning a work package to a module is a member action via the WP PATCH.
 
 
@@ -150,7 +150,7 @@ async def create_module(
     session: AsyncSession = Depends(get_session),
     user: User = Depends(get_current_user),
 ) -> ModuleRead:
-    await require_role(session, project_id, user, {"owner"}, write=True)
+    await require_permission(session, project_id, user, "module.manage", write=True)
     if body.lead_id is not None:
         await _require_lead_member(session, project_id, body.lead_id)
     if body.start_date and body.target_date and body.start_date > body.target_date:
@@ -177,7 +177,7 @@ async def update_module(
     session: AsyncSession = Depends(get_session),
     user: User = Depends(get_current_user),
 ) -> ModuleRead:
-    await require_role(session, project_id, user, {"owner"}, write=True)
+    await require_permission(session, project_id, user, "module.manage", write=True)
     m = await _get_scoped(session, project_id, module_id)
     fields = body.model_dump(exclude_unset=True)
     for key in ("name", "state"):
@@ -205,7 +205,7 @@ async def delete_module(
     session: AsyncSession = Depends(get_session),
     user: User = Depends(get_current_user),
 ) -> Response:
-    await require_role(session, project_id, user, {"owner"}, write=True)
+    await require_permission(session, project_id, user, "module.manage", write=True)
     m = await _get_scoped(session, project_id, module_id)
     # The UI confirm shows work_package_count; the DB clears only module_id.
     await session.delete(m)
@@ -238,7 +238,7 @@ async def replace_module_members(
     and the conditional INSERT..SELECT re-checks eligibility at commit time
     (v65.1 R1-③). Two concurrent PUTs are last-write-wins by design (an
     informational roster — v65.1 R1-④)."""
-    await require_role(session, project_id, user, {"owner"}, write=True)
+    await require_permission(session, project_id, user, "module.manage", write=True)
     await _get_scoped(session, project_id, module_id)
     await session.execute(
         text("SELECT pg_advisory_xact_lock(:classid, hashtext(:pid))").bindparams(

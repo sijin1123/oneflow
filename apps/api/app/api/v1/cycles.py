@@ -8,7 +8,7 @@ from sqlalchemy import update as sa_update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import get_current_user
-from app.core.authz import require_member, require_role
+from app.core.authz import require_member, require_permission
 from app.core.config import Settings, get_settings
 from app.core.dates import utc_today
 from app.db.session import get_session
@@ -29,7 +29,7 @@ from app.services.webhooks import enqueue_work_package_event
 
 router = APIRouter()
 
-# Permission split (expansion PLAN §4 PR-C): managing cycles is an owner action
+# Permission split (expansion PLAN §4 PR-C): managing cycles requires cycle.manage;
 # (same as milestones/settings); ASSIGNING a work package to a cycle is a plain
 # member action via the work-package PATCH — see work_packages.py.
 
@@ -109,7 +109,7 @@ async def create_cycle(
     session: AsyncSession = Depends(get_session),
     user: User = Depends(get_current_user),
 ) -> CycleRead:
-    await require_role(session, project_id, user, {"owner"}, write=True)
+    await require_permission(session, project_id, user, "cycle.manage", write=True)
     c = Cycle(
         project_id=project_id,
         name=body.name,
@@ -130,7 +130,7 @@ async def update_cycle(
     session: AsyncSession = Depends(get_session),
     user: User = Depends(get_current_user),
 ) -> CycleRead:
-    await require_role(session, project_id, user, {"owner"}, write=True)
+    await require_permission(session, project_id, user, "cycle.manage", write=True)
     c = await _get_scoped(session, project_id, cycle_id)
     fields = body.model_dump(exclude_unset=True)
     for key in ("name", "start_date", "end_date"):
@@ -157,7 +157,7 @@ async def delete_cycle(
     session: AsyncSession = Depends(get_session),
     user: User = Depends(get_current_user),
 ) -> Response:
-    await require_role(session, project_id, user, {"owner"}, write=True)
+    await require_permission(session, project_id, user, "cycle.manage", write=True)
     c = await _get_scoped(session, project_id, cycle_id)
     # The UI shows work_package_count in its confirm dialog; the DB clears only
     # work_packages.cycle_id via the column-list SET NULL composite FK.
@@ -190,7 +190,7 @@ async def rollover_cycle(
     reverse rollover restores the previous grouping. Source/target lifecycle
     states are deliberately unconstrained (the operator picks the moment); the
     UI merely SUGGESTS completed sources."""
-    await require_role(session, project_id, user, {"owner"}, write=True)
+    await require_permission(session, project_id, user, "cycle.manage", write=True)
     await _get_scoped(session, project_id, cycle_id)
     if body.target_cycle_id == cycle_id:
         raise HTTPException(status_code=422, detail="target must differ from the source cycle")

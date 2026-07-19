@@ -1,7 +1,8 @@
 """Permission registry — the fixed role matrix, documented (Pass 62 PR-CA).
 
-This is a DOCUMENTATION registry, not an enforcement point: enforcement stays
-in require_role/require_member/require_writer at each endpoint (unchanged).
+This registry is also the canonical vocabulary consumed by the effective-role
+evaluator. Enforcement stays explicit at each endpoint through require_permission,
+require_role, require_member or require_writer.
 Two pytest layers keep it honest (v62.1 R1-③):
   (a) accuracy — representative verbs are exercised per role and must match
       the declared value, including the author/non-author conditional split;
