@@ -2944,3 +2944,12 @@ Chromium typed mock fixture에서 1440x960과 390x844 viewport를 사용했다. 
 - **검증**: typecheck PASS, lint PASS(기존 Fast Refresh warning 4건), production build PASS(기존 chunk-size warning), unit **107 PASS**, component **8 PASS**, Module 실제 참여자/편집과 owner/viewer 및 Cycle 이월 회귀를 포함한 focused E2E **7 PASS**, 전용 포트 2-worker full E2E **325 PASS + opt-in visual QA 1 skip**다. Clean-room frontend **161**/backend **45**, npm/pip audit 0 vulnerabilities와 diff check도 PASS했다.
 
 ---
+
+# UI-174 Planning Work Item Action Menu Convergence 검증 (2026-07-19)
+
+- **UI 변경**: Backlog와 Timeline의 viewport-fixed 작업 항목 메뉴가 공통 `useFloatingActionMenuLifecycle`을 사용한다. 열기 즉시 첫 enabled action에 진입하고 `ArrowUp`/`ArrowDown`·`Home`/`End` 순환, 비활성 viewer cue 건너뛰기, `Tab` 자연 이탈, outside pointer 종료, `Escape`·명시 닫기의 trigger 복귀를 제공한다. Backlog React trigger와 DHTMLX가 생성한 Timeline trigger 모두 `aria-haspopup`·`aria-expanded`·`aria-controls`를 실제 메뉴 ID와 동기화한다.
+- **기능/API 반영**: 두 surface의 실제 상세 drawer, 전체 페이지 이동, 링크 복사, 복제 POST, 이동 panel과 owner/viewer 권한 경계를 그대로 유지했다. 신규 API, DB/schema, migration, permission, environment variable, dependency 또는 Settings storage 변경은 없다.
+- **이연 항목**: 없음. 이번 두 planning layout의 메뉴 안에는 mock/dead control 또는 미배선 동작이 없다.
+- **검증**: typecheck PASS, lint PASS(기존 Fast Refresh warning 4건), production build PASS(기존 chunk-size warning), unit **107 PASS**, component **8 PASS**, owner/viewer·desktop/mobile 실제 기능을 포함한 focused Backlog/Timeline E2E **6 PASS**, 전용 포트 2-worker full E2E **325 PASS + opt-in visual QA 1 skip**다. Clean-room frontend **161**/backend **45**, npm/pip audit 0 vulnerabilities, mobile screenshot containment와 diff check도 PASS했다. PR CI와 main integration은 이어지는 검증에서 기록한다.
+
+---
