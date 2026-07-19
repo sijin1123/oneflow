@@ -29,6 +29,7 @@ import { StatusPage } from '@/features/ops/StatusPage'
 import { UsersPage } from '@/features/admin/UsersPage'
 import { AuthAssistancePage } from '@/features/admin/AuthAssistancePage'
 import { WebhooksPage } from '@/features/admin/WebhooksPage'
+import { IntegrationsSettingsPage } from '@/features/admin/IntegrationsSettingsPage'
 import { WorklogsPage } from '@/features/admin/WorklogsPage'
 import { WikiSettingsPage } from '@/features/admin/WikiSettingsPage'
 import { AiSettingsPage } from '@/features/admin/AiSettingsPage'
@@ -114,6 +115,7 @@ export const router = createBrowserRouter([
           { path: 'project-phases', element: <WorkspacePhaseDefinitionsSettingsPage /> },
           { path: 'users', element: <UsersPage /> },
           { path: 'auth-assistance', element: <AuthAssistancePage /> },
+          { path: 'integrations', element: <IntegrationsSettingsPage /> },
           { path: 'webhooks', element: <WebhooksPage /> },
           { path: 'worklogs', element: <WorklogsPage /> },
           { path: 'wiki', element: <WikiSettingsPage /> },

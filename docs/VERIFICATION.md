@@ -2817,3 +2817,13 @@ Chromium typed mock fixture에서 1440x960과 390x844 viewport를 사용했다. 
 - **증적**: `docs/screenshots/redevelopment/workspace-branding-ui/{desktop,mobile}.png`에 저장된 로고의 desktop popover와 mobile header를 보존한다. 신규 dependency 또는 영구 environment variable 변경은 없다.
 
 ---
+
+# UI-163 Workspace Integrations Hub 검증 (2026-07-19)
+
+- **UI 변경**: Workspace Settings의 개발자 도구에 `연결 및 통합` route와 navigation을 추가했다. 한 compact list에서 Webhooks, 데이터 전송, AI 작업 요약, 인증 상태를 스캔하고 각 기존 관리 화면으로 이동한다. Desktop은 한 행 안에서 상태와 action을 유지하고 390px mobile은 action이 전체 폭으로 내려가며 가로 overflow가 없다.
+- **기능 반영**: 네 행은 각각 기존 `GET /webhooks`, `GET /data-transfer-jobs`, `GET /admin/workspace/features/ai`, `GET /auth/config` React Query를 독립 호출한다. Webhook의 enabled/active endpoint/signing key, 실제 데이터 전송 이력과 최근 결과, AI 배포 상한·workspace policy·revision, auth mode·provider 수·session management만 서버 응답대로 표시한다. 한 query가 실패해도 나머지 상태와 action은 유지되고 해당 행에서만 명시적으로 재시도한다.
+- **권한/경계**: 기존 `WorkspaceSettingsShell` admin guard와 각 API의 권한 계약을 재사용한다. 비밀값은 읽거나 표시하지 않으며 GitHub/GitLab/Slack/Notion은 credential과 callback 검증이 없으므로 connect control이나 연결됨 상태를 만들지 않았다. 신규 API, DB/schema, migration, permission, environment variable, dependency 또는 별도 설정 저장은 없다.
+- **검증**: typecheck PASS, lint PASS(기존 Fast Refresh warning 4건), production build PASS(기존 chunk-size warning), unit **107 PASS**, component **8 PASS**, focused integrations/settings E2E **2 PASS**다. 첫 2-worker 전체 E2E는 기존 개인 메모 충돌 시나리오의 locator wait 1건만 30초 timeout이었고 동일 시나리오 단독 **1 PASS**로 격리했다. 최종 PR CI 동일 재시도 조건 전체 E2E는 **319 PASS + opt-in visual QA 1 skip**으로 통과했다. Clean-room frontend **161**/backend **45**, Python `pip-audit`와 web `npm audit` 모두 0 vulnerabilities, diff check도 PASS했다.
+- **증적/이연**: `docs/screenshots/redevelopment/integrations-hub-ui/{desktop,mobile}.png`에 실제 상태, 관리 action과 responsive layout을 보존한다. 실 GitHub/GitLab/Slack/Notion adapter는 외부 운영 자격이 확보될 때까지 명시 이연한다.
+
+---
