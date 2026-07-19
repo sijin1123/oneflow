@@ -1,7 +1,7 @@
 """Per-project workflow status configuration (PLAN §3 Phase 3 워크플로우 커스터마이징).
 
-Members read the configuration (labels/order drive the board and chips); owners
-rename and reorder statuses. Status keys are fixed, so work_packages.status keeps
+Members read the configuration (labels/order drive the board and chips); members
+with status.manage rename and reorder statuses. Status keys are fixed, so work_packages.status keeps
 its existing validation — this is a presentation/config layer only.
 """
 
@@ -12,7 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import get_current_user
-from app.core.authz import require_member, require_role
+from app.core.authz import require_member, require_permission
 from app.db.session import get_session
 from app.models.project_status import ProjectStatus
 from app.models.user import User
@@ -56,9 +56,9 @@ async def reorder_project_statuses(
     session: AsyncSession = Depends(get_session),
     user: User = Depends(get_current_user),
 ) -> ProjectStatusList:
-    """Owner-only atomic reorder. The body must list exactly the project's status
+    """Capability-gated atomic reorder. The body must list exactly the project's status
     ids; positions are rewritten 0..n-1 in one transaction."""
-    await require_role(session, project_id, user, {"owner"}, write=True)
+    await require_permission(session, project_id, user, "status.manage", write=True)
     rows = (
         (await session.execute(select(ProjectStatus).where(ProjectStatus.project_id == project_id)))
         .scalars()
@@ -86,8 +86,7 @@ async def update_project_status(
     session: AsyncSession = Depends(get_session),
     user: User = Depends(get_current_user),
 ) -> ProjectStatusRead:
-    # Owner-only: 404 for non-members, 403 for members without the owner role.
-    await require_role(session, project_id, user, {"owner"}, write=True)
+    await require_permission(session, project_id, user, "status.manage", write=True)
     row = (
         await session.execute(
             select(ProjectStatus).where(

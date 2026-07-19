@@ -7,7 +7,7 @@ from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import get_current_user
-from app.core.authz import require_member, require_role
+from app.core.authz import require_member, require_permission
 from app.db.session import get_session
 from app.models.project_type import (
     BUILTIN_TYPE_KEYS,
@@ -136,7 +136,7 @@ async def create_project_type(
     session: AsyncSession = Depends(get_session),
     user: User = Depends(get_current_user),
 ) -> ProjectTypeRead:
-    await require_role(session, project_id, user, {"owner"}, write=True)
+    await require_permission(session, project_id, user, "project_type.manage", write=True)
     await _lock_types(session, project_id)
     rows = await _ensure_defaults(session, project_id)
     if len(rows) >= MAX_PROJECT_TYPES:
@@ -171,7 +171,7 @@ async def update_project_type(
     session: AsyncSession = Depends(get_session),
     user: User = Depends(get_current_user),
 ) -> ProjectTypeRead:
-    await require_role(session, project_id, user, {"owner"}, write=True)
+    await require_permission(session, project_id, user, "project_type.manage", write=True)
     row = (
         await session.execute(select(ProjectType).where(ProjectType.id == type_id))
     ).scalar_one_or_none()
@@ -241,8 +241,8 @@ async def reorder_project_types(
     session: AsyncSession = Depends(get_session),
     user: User = Depends(get_current_user),
 ) -> ProjectTypeList:
-    """Owner-only atomic reorder — same contract as the status reorder."""
-    await require_role(session, project_id, user, {"owner"}, write=True)
+    """Capability-gated atomic reorder — same contract as the status reorder."""
+    await require_permission(session, project_id, user, "project_type.manage", write=True)
     await _lock_types(session, project_id)
     rows = (
         (await session.execute(select(ProjectType).where(ProjectType.project_id == project_id)))

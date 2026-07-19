@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.v1.project_types import require_type_enabled
 from app.api.v1.work_packages import require_wp_member
 from app.core.auth import get_current_user
-from app.core.authz import require_member, require_role
+from app.core.authz import require_member, require_permission
 from app.db.session import get_session
 from app.models.custom_field import CustomField, WpCustomValue
 from app.models.member import ProjectMember
@@ -89,7 +89,7 @@ async def create_custom_field(
     session: AsyncSession = Depends(get_session),
     user: User = Depends(get_current_user),
 ) -> CustomFieldRead:
-    await require_role(session, project_id, user, {"owner"}, write=True)
+    await require_permission(session, project_id, user, "field.manage", write=True)
     await _require_active_bindings(session, project_id, body.applies_to)
     # Deterministic append position in the same transaction; a concurrent-create
     # tie is tolerated — ordering stays stable via (position, created_at, id).
@@ -139,7 +139,7 @@ async def update_custom_field(
     session: AsyncSession = Depends(get_session),
     user: User = Depends(get_current_user),
 ) -> CustomFieldRead:
-    await require_role(session, project_id, user, {"owner"}, write=True)
+    await require_permission(session, project_id, user, "field.manage", write=True)
     f = await _get_scoped(session, project_id, field_id)
     fields = body.model_dump(exclude_unset=True)
     if fields.get("applies_to") is not None:
@@ -172,7 +172,7 @@ async def delete_custom_field(
     """Hard delete only when no values reference the field — enforced by the
     RESTRICT FK, so a concurrent value write makes THIS delete fail (409),
     never the other way around. Operational removal is is_active=false."""
-    await require_role(session, project_id, user, {"owner"}, write=True)
+    await require_permission(session, project_id, user, "field.manage", write=True)
     f = await _get_scoped(session, project_id, field_id)
     try:
         await session.delete(f)
@@ -367,10 +367,10 @@ async def reorder_custom_fields(
     session: AsyncSession = Depends(get_session),
     user: User = Depends(get_current_user),
 ) -> CustomFieldList:
-    """Owner-only atomic reorder (Pass 50 — the statuses /order contract
+    """Capability-gated atomic reorder (Pass 50 — the statuses /order contract
     verbatim): ordered_ids must list EXACTLY this project's fields (active
     and inactive); positions rewrite 0..n-1 in one transaction."""
-    await require_role(session, project_id, user, {"owner"}, write=True)
+    await require_permission(session, project_id, user, "field.manage", write=True)
     rows = (
         (await session.execute(select(CustomField).where(CustomField.project_id == project_id)))
         .scalars()

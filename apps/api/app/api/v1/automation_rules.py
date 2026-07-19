@@ -1,6 +1,6 @@
 """Project automation rules (PLAN §3 Phase 3 자동화).
 
-Members read rules; owners create/toggle/delete them. Rules are evaluated by
+Members read rules; members with automation.manage create/toggle/delete them. Rules are evaluated by
 app.services.automation inside the work-package PATCH transaction.
 """
 
@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.project_types import require_type_enabled
 from app.core.auth import get_current_user
-from app.core.authz import member_role, require_member, require_role
+from app.core.authz import member_role, require_member, require_permission
 from app.db.session import get_session
 from app.models.automation_rule import AutomationRule, AutomationRuleRun
 from app.models.user import User
@@ -138,7 +138,7 @@ async def create_automation_rule(
     session: AsyncSession = Depends(get_session),
     user: User = Depends(get_current_user),
 ) -> AutomationRuleRead:
-    await require_role(session, project_id, user, {"owner"}, write=True)
+    await require_permission(session, project_id, user, "automation.manage", write=True)
     await _require_assignee_value_member(session, project_id, body)
     await _require_active_rule_types(session, project_id, body)
     # Serialize with reorder so positions stay a total order (R1-①); new rules
@@ -180,11 +180,11 @@ async def reorder_automation_rules(
     session: AsyncSession = Depends(get_session),
     user: User = Depends(get_current_user),
 ) -> AutomationRuleList:
-    """Owner-only atomic reorder (Pass 82 — the custom-fields /order contract):
+    """Capability-gated atomic reorder (Pass 82 — the custom-fields /order contract):
     ordered_ids must list EXACTLY this project's rules (active + inactive);
     positions rewrite 0..n-1 in one transaction under the project order lock so
     a concurrent create can't interleave a duplicate position."""
-    await require_role(session, project_id, user, {"owner"}, write=True)
+    await require_permission(session, project_id, user, "automation.manage", write=True)
     await session.execute(
         text("SELECT pg_advisory_xact_lock(:classid, hashtext(:pid))").bindparams(
             classid=AUTOMATION_ORDER_LOCK_CLASSID, pid=str(project_id)
@@ -237,7 +237,7 @@ async def update_automation_rule(
     session: AsyncSession = Depends(get_session),
     user: User = Depends(get_current_user),
 ) -> AutomationRuleRead:
-    await require_role(session, project_id, user, {"owner"}, write=True)
+    await require_permission(session, project_id, user, "automation.manage", write=True)
     rule = await _get_owned_rule(session, project_id, rule_id)
     dumped = body.model_dump(exclude_unset=True)
     cond_keys = {"condition_field", "condition_value"}
@@ -289,7 +289,7 @@ async def delete_automation_rule(
     session: AsyncSession = Depends(get_session),
     user: User = Depends(get_current_user),
 ) -> Response:
-    await require_role(session, project_id, user, {"owner"}, write=True)
+    await require_permission(session, project_id, user, "automation.manage", write=True)
     rule = await _get_owned_rule(session, project_id, rule_id)
     await session.delete(rule)
     await session.commit()

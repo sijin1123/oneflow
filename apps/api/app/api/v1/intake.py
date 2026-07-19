@@ -6,7 +6,7 @@ from sqlalchemy import update as sa_update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import get_current_user
-from app.core.authz import member_role, require_member, require_role
+from app.core.authz import member_has_permission, require_member, require_permission
 from app.core.config import Settings, get_settings
 from app.db.session import get_session
 from app.models.intake import INTAKE_OPEN_STATUSES, IntakeDecisionHistory, IntakeItem
@@ -27,8 +27,9 @@ from app.services.webhooks import enqueue_work_package_event
 
 router = APIRouter()
 
-# Visibility: owners triage everything; plain members see their OWN submissions
-# only (the queue may hold other members' half-formed requests).
+# Visibility follows the same triage capability as the decision endpoint. Plain
+# members see only their own submissions because the queue may contain other
+# members' half-formed requests.
 
 
 def _to_read(row: IntakeItem, submitter_name: str | None) -> IntakeRead:
@@ -57,14 +58,14 @@ async def list_intake(
     user: User = Depends(get_current_user),
 ) -> IntakeList:
     await require_member(session, project_id, user)
-    role = await member_role(session, project_id, user.id)
+    can_triage = await member_has_permission(session, project_id, user.id, "intake.triage")
     stmt = (
         select(IntakeItem, User.display_name)
         .outerjoin(User, IntakeItem.submitted_by == User.id)
         .where(IntakeItem.project_id == project_id)
         .order_by(IntakeItem.created_at.desc(), IntakeItem.id.desc())
     )
-    if role != "owner":
+    if not can_triage:
         stmt = stmt.where(IntakeItem.submitted_by == user.id)
     rows = (await session.execute(stmt)).all()
     return IntakeList(items=[_to_read(r, name) for (r, name) in rows], total=len(rows))
@@ -102,12 +103,12 @@ async def list_intake_decision_history(
     user: User = Depends(get_current_user),
 ) -> IntakeDecisionHistoryList:
     await require_member(session, project_id, user)
-    role = await member_role(session, project_id, user.id)
+    can_triage = await member_has_permission(session, project_id, user.id, "intake.triage")
     visible_item = select(IntakeItem.id).where(
         IntakeItem.id == item_id,
         IntakeItem.project_id == project_id,
     )
-    if role != "owner":
+    if not can_triage:
         visible_item = visible_item.where(IntakeItem.submitted_by == user.id)
     if (await session.execute(visible_item)).scalar_one_or_none() is None:
         raise HTTPException(status_code=404, detail="not found")
@@ -155,14 +156,14 @@ async def triage_intake(
     user: User = Depends(get_current_user),
     settings: Settings = Depends(get_settings),
 ) -> IntakeRead:
-    """Owner decision on an OPEN (pending/snoozed) item.
+    """Capability-gated decision on an OPEN (pending/snoozed) item.
 
     Accept order inside ONE transaction: ① insert the work package (flushed for
     its id) → ② status-conditional UPDATE — rowcount 0 means someone else
     already decided, so the whole transaction (including the WP) rolls back and
     the caller gets 409. A concurrent accept therefore succeeds exactly once
     and can never leave a duplicate work package (PLAN P2-5)."""
-    await require_role(session, project_id, user, {"owner"}, write=True)
+    await require_permission(session, project_id, user, "intake.triage", write=True)
     item = (
         await session.execute(select(IntakeItem).where(IntakeItem.id == item_id))
     ).scalar_one_or_none()

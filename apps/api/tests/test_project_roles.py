@@ -1,10 +1,11 @@
 import uuid
+from datetime import UTC, datetime
 
 import pytest
 from sqlalchemy import select
 
 from app.core.authz import member_has_permission
-from app.models import ProjectRole, ProjectRoleEvent, User
+from app.models import Project, ProjectRole, ProjectRoleEvent, User
 from tests.conftest import create_project
 
 
@@ -296,3 +297,139 @@ async def test_project_role_event_rows_are_durable(app, client):
         )
     assert len(events) == 1
     assert events[0].snapshot["permissions"] == ["status.manage", "field.manage"]
+
+
+async def test_custom_role_capabilities_gate_their_real_mutation_endpoints(
+    app, client, dev_user, role_target
+):
+    role = await _create_role(client, name="Surface manager", permissions=["status.manage"])
+    project = await create_project(client, key="CR4")
+    project_id = project["id"]
+
+    intake = await client.post(
+        f"/api/v1/projects/{project_id}/intake",
+        json={"title": "Capability-routed intake"},
+    )
+    assert intake.status_code == 201, intake.text
+
+    added = await client.post(
+        f"/api/v1/projects/{project_id}/members",
+        json={"email": role_target["email"], "role": "member"},
+    )
+    assert added.status_code == 201, added.text
+    promoted = await client.patch(
+        f"/api/v1/projects/{project_id}/members/{role_target['id']}",
+        json={"role": "owner"},
+    )
+    assert promoted.status_code == 200, promoted.text
+    assigned = await client.patch(
+        f"/api/v1/projects/{project_id}/members/{dev_user.id}",
+        json={"role": "member", "custom_role_id": role["id"]},
+    )
+    assert assigned.status_code == 200, assigned.text
+
+    statuses = await client.get(f"/api/v1/projects/{project_id}/statuses")
+    assert statuses.status_code == 200, statuses.text
+    status_id = statuses.json()["items"][0]["id"]
+    requests = [
+        (
+            "status.manage",
+            "PATCH",
+            f"/api/v1/projects/{project_id}/statuses/{status_id}",
+            {"name": "Capability backlog"},
+            200,
+        ),
+        (
+            "project_type.manage",
+            "POST",
+            f"/api/v1/projects/{project_id}/types",
+            {"name": "Incident"},
+            201,
+        ),
+        (
+            "field.manage",
+            "POST",
+            f"/api/v1/projects/{project_id}/custom-fields",
+            {"name": "Severity", "field_type": "text"},
+            201,
+        ),
+        (
+            "cycle.manage",
+            "POST",
+            f"/api/v1/projects/{project_id}/cycles",
+            {"name": "Cycle one", "start_date": "2026-07-20", "end_date": "2026-07-31"},
+            201,
+        ),
+        (
+            "module.manage",
+            "POST",
+            f"/api/v1/projects/{project_id}/modules",
+            {"name": "Module one"},
+            201,
+        ),
+        (
+            "automation.manage",
+            "POST",
+            f"/api/v1/projects/{project_id}/automation-rules",
+            {
+                "name": "Escalate started work",
+                "trigger_value": "in_progress",
+                "action_value": "high",
+            },
+            201,
+        ),
+        (
+            "intake.triage",
+            "POST",
+            f"/api/v1/projects/{project_id}/intake/{intake.json()['id']}/triage",
+            {"status": "declined", "note": "Not planned"},
+            200,
+        ),
+    ]
+
+    revision = role["revision"]
+    for capability, method, url, payload, expected_status in requests:
+        updated = await client.patch(
+            f"/api/v1/admin/workspace/project-roles/{role['id']}",
+            json={"expected_revision": revision, "permissions": [capability]},
+        )
+        assert updated.status_code == 200, updated.text
+        revision = updated.json()["revision"]
+        if capability == "intake.triage":
+            queue = await client.get(f"/api/v1/projects/{project_id}/intake")
+            assert queue.status_code == 200, queue.text
+            assert [item["id"] for item in queue.json()["items"]] == [intake.json()["id"]]
+            history = await client.get(
+                f"/api/v1/projects/{project_id}/intake/{intake.json()['id']}/history"
+            )
+            assert history.status_code == 200, history.text
+        response = await client.request(method, url, json=payload)
+        assert response.status_code == expected_status, (capability, response.text)
+
+    cleared = await client.patch(
+        f"/api/v1/admin/workspace/project-roles/{role['id']}",
+        json={"expected_revision": revision, "permissions": []},
+    )
+    assert cleared.status_code == 200, cleared.text
+    denied = await client.patch(
+        f"/api/v1/projects/{project_id}/statuses/{status_id}",
+        json={"name": "Must stay denied"},
+    )
+    assert denied.status_code == 403
+
+    restored_status_permission = await client.patch(
+        f"/api/v1/admin/workspace/project-roles/{role['id']}",
+        json={
+            "expected_revision": cleared.json()["revision"],
+            "permissions": ["status.manage"],
+        },
+    )
+    assert restored_status_permission.status_code == 200, restored_status_permission.text
+    async with app.state.sessionmaker() as session, session.begin():
+        stored_project = await session.get(Project, uuid.UUID(project_id))
+        stored_project.archived_at = datetime.now(UTC)
+    archived = await client.patch(
+        f"/api/v1/projects/{project_id}/statuses/{status_id}",
+        json={"name": "Must stay archived"},
+    )
+    assert archived.status_code == 409
