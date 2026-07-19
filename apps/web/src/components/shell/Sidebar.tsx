@@ -62,6 +62,7 @@ import { useArchiveProject, useProjects } from '@/features/projects/api'
 import type { ProjectListItem } from '@/features/projects/types'
 import { useWorkspaceCapabilities } from '@/features/workspace-features/api'
 import { useWorkspaceProfile } from '@/features/workspace-profile/api'
+import { WorkspaceLogo } from '@/features/workspace-profile/WorkspaceLogo'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -778,6 +779,18 @@ function SidebarContent({
       {!collapsed ? (
       <div className="flex min-w-0 flex-1 flex-col bg-of-surface-raised md:mb-2 md:rounded-l-[var(--of-radius-lg)] md:border-y md:border-l md:border-of-border-subtle md:shadow-[var(--of-shadow-sm)]">
         <div className="flex h-11 shrink-0 items-center gap-2 px-3">
+          <WorkspaceLogo
+            profile={workspaceProfile.data ?? {
+              name: 'OneFlow',
+              revision: 1,
+              logo_url: null,
+              logo_content_type: null,
+              logo_filename: null,
+              logo_width: null,
+              logo_height: null,
+              logo_byte_size: null,
+            }}
+          />
           <div className="min-w-0 flex-1">
             <h2 className="truncate text-sm font-semibold leading-4">
               {wikiMode ? 'Wiki' : aiMode ? 'AI' : settingsMode ? 'Settings' : 'Projects'}
