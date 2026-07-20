@@ -15,9 +15,13 @@ export const SheetClose = DialogPrimitive.Close
 export function SheetContent({
   className,
   children,
+  displayTitle,
   title,
   ...props
-}: React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> & { title: string }) {
+}: React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> & {
+  displayTitle?: string
+  title: string
+}) {
   return (
     <DialogPrimitive.Portal>
       <DialogPrimitive.Overlay
@@ -34,7 +38,10 @@ export function SheetContent({
         {...props}
       >
         <div className="flex h-[var(--of-topbar-height)] items-center justify-between border-b border-of-border-subtle px-4">
-          <DialogPrimitive.Title className="text-sm font-semibold">{title}</DialogPrimitive.Title>
+          <DialogPrimitive.Title className="text-sm font-semibold">
+            <span className="sr-only">{title}</span>
+            <span aria-hidden="true">{displayTitle ?? title}</span>
+          </DialogPrimitive.Title>
           <DialogPrimitive.Close asChild>
             <IconButton label="닫기"><X /></IconButton>
           </DialogPrimitive.Close>
