@@ -4159,7 +4159,7 @@ test('활동 댓글 표면은 모바일에서 피드와 composer를 유지한다
   })
 })
 
-test('관계 표면은 모바일에서 의존 카드와 composer를 유지한다', async ({ page }) => {
+test('관계 표면은 모바일에서 compact row와 기능형 composer를 유지한다', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 })
   await mockApi(page)
   await page.route(`**/api/v1/work-packages/${wpA.id}/relations`, (route) =>
@@ -4192,16 +4192,135 @@ test('관계 표면은 모바일에서 의존 카드와 composer를 유지한다
   const relationSection = drawer.getByRole('region', { name: '관계' })
 
   await relationSection.scrollIntoViewIfNeeded()
-  await expect(relationSection.getByText('의존', { exact: true })).toBeVisible()
+  await expect(relationSection.getByText(/의존 2개/)).toBeVisible()
   await expect(relationSection.getByRole('list').getByText('차단함')).toBeVisible()
   await expect(relationSection.getByRole('list').getByText('선행')).toBeVisible()
   await expect(relationSection.getByText('보드 뷰 구현').first()).toBeVisible()
+  await expect(relationSection.getByLabel('관계 유형')).toHaveCount(0)
+  await relationSection.getByRole('button', { name: '관계 추가' }).click()
   await expect(relationSection.getByLabel('관계 유형')).toBeVisible()
   await expect(relationSection.getByLabel('대상 작업')).toBeVisible()
+  await relationSection.screenshot({
+    path: '../../docs/screenshots/redevelopment/detail-linked-content-ui/mobile-composer.png',
+  })
+  const relationRequest = page.waitForRequest((request) =>
+    request.method() === 'POST'
+      && request.url().endsWith(`/work-packages/${wpA.id}/relations`),
+  )
+  await relationSection.getByLabel('대상 작업').selectOption(wpB.id)
+  await relationSection.getByRole('button', { name: '추가', exact: true }).click()
+  expect((await relationRequest).postDataJSON()).toEqual({
+    target_id: wpB.id,
+    relation_type: 'relates',
+  })
+  await expect(relationSection.getByLabel('관계 유형')).toHaveCount(0)
   await expectNoHorizontalOverflow(page)
   await page.screenshot({
-    path: '../../docs/screenshots/redevelopment/relations-ui/mobile.png',
+    path: '../../docs/screenshots/redevelopment/detail-linked-content-ui/mobile.png',
     fullPage: true,
+  })
+})
+
+test('관계·페이지·첨부가 데스크톱에서 하나의 compact linked-content hierarchy를 이룬다', async ({ page }) => {
+  await mockApi(page)
+  await page.route(`**/api/v1/work-packages/${wpA.id}/relations`, (route) =>
+    route.fulfill({
+      json: {
+        items: [{
+          id: 'rel-desktop-1',
+          source_id: wpA.id,
+          target_id: wpB.id,
+          relation_type: 'relates',
+          direction: 'outgoing',
+        }],
+        total: 1,
+      },
+    }),
+  )
+  await page.route(`**/api/v1/work-packages/${wpA.id}/documents`, (route) =>
+    route.fulfill({
+      json: {
+        items: [{ id: 'doc-linked-1', title: 'API 설계 문서' }],
+        total: 1,
+      },
+    }),
+  )
+  await page.route(`**/api/v1/projects/${project.id}/attachments**`, (route) =>
+    route.fulfill({
+      json: {
+        items: [{
+          id: 'att-linked-1',
+          project_id: project.id,
+          work_package_id: wpA.id,
+          document_id: null,
+          filename: '요구사항.pdf',
+          content_type: 'application/pdf',
+          size_bytes: 2048,
+          url: 'oneflow://attachments/att-linked-1',
+          has_file: true,
+          uploaded_by: null,
+          created_at: '2026-07-20T00:00:00Z',
+        }],
+        total: 1,
+      },
+    }),
+  )
+
+  await page.goto(`/projects/${project.id}/work-packages`)
+  await page.getByRole('button', { name: '워크패키지 API 구현', exact: true }).click()
+  const drawer = page.getByRole('dialog', { name: '워크패키지 API 구현' })
+  const relationSection = drawer.getByRole('region', { name: '관계' })
+  await relationSection.scrollIntoViewIfNeeded()
+  await expect(relationSection.getByText('1개 · 의존 0개')).toBeVisible()
+  await expect(drawer.getByRole('region', { name: '페이지' }).getByText('API 설계 문서')).toBeVisible()
+  await expect(drawer.getByRole('region', { name: '첨부' }).getByText('요구사항.pdf')).toBeVisible()
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/detail-linked-content-ui/desktop.png',
+  })
+})
+
+test('관계·페이지·첨부 오류 행은 각각 실제 조회를 다시 시도한다', async ({ page }) => {
+  await mockApi(page)
+  let relationAttempts = 0
+  let pageAttempts = 0
+  let attachmentAttempts = 0
+  await page.route(`**/api/v1/work-packages/${wpA.id}/relations`, (route) => {
+    relationAttempts += 1
+    return relationAttempts <= 2
+      ? route.fulfill({ status: 500, json: { detail: 'relations unavailable' } })
+      : route.fulfill({ json: { items: [], total: 0 } })
+  })
+  await page.route(`**/api/v1/work-packages/${wpA.id}/documents`, (route) => {
+    pageAttempts += 1
+    return pageAttempts <= 2
+      ? route.fulfill({ status: 500, json: { detail: 'pages unavailable' } })
+      : route.fulfill({ json: { items: [], total: 0 } })
+  })
+  await page.route(`**/api/v1/projects/${project.id}/attachments**`, (route) => {
+    attachmentAttempts += 1
+    return attachmentAttempts <= 2
+      ? route.fulfill({ status: 500, json: { detail: 'attachments unavailable' } })
+      : route.fulfill({ json: { items: [], total: 0 } })
+  })
+
+  await page.goto(`/projects/${project.id}/work-packages`)
+  await page.getByRole('button', { name: '워크패키지 API 구현', exact: true }).click()
+  const drawer = page.getByRole('dialog', { name: '워크패키지 API 구현' })
+  for (const [name, recoveredText] of [
+    ['관계', '연결된 관계가 없습니다.'],
+    ['페이지', '연결된 페이지가 없습니다.'],
+    ['첨부', '연결된 파일이 없습니다.'],
+  ] as const) {
+    const section = drawer.getByRole('region', { name })
+    await expect(section.getByRole('alert')).toBeVisible()
+    await section.getByRole('button', { name: '다시 시도' }).click()
+    await expect(section.getByText(recoveredText)).toBeVisible()
+  }
+  expect({ relationAttempts, pageAttempts, attachmentAttempts }).toEqual({
+    relationAttempts: 3,
+    pageAttempts: 3,
+    attachmentAttempts: 3,
   })
 })
 
