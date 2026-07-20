@@ -961,8 +961,8 @@ function SidebarContent({
               <div>
                 <SectionLabel>AI workspace</SectionLabel>
                 <div className="space-y-0.5">
-                  <Link to="/ai" aria-current="page" className={projectLinkClass(true)} onClick={onNavigate}><Sparkles size={14} aria-hidden="true" /><span>작업 요약</span></Link>
-                  <Link to="/ai#summary-candidates" className={projectLinkClass(false)} onClick={onNavigate}><ListChecks size={14} aria-hidden="true" /><span>요약 후보</span></Link>
+                  <Link to="/ai" aria-current="page" className={projectLinkClass(true)} onClick={onNavigate}><Sparkles size={14} aria-hidden="true" /><span>OneFlow AI</span></Link>
+                  <Link to="/ai?new=1" className={projectLinkClass(false)} onClick={onNavigate}><Plus size={14} aria-hidden="true" /><span>새 대화</span></Link>
                   <Link to="/work-items" className={projectLinkClass(false)} onClick={onNavigate}><List size={14} aria-hidden="true" /><span>전체 작업</span></Link>
                 </div>
               </div>

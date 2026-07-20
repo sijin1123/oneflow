@@ -3112,3 +3112,14 @@ Chromium typed mock fixture에서 1440x960과 390x844 viewport를 사용했다. 
 - **증적**: `docs/screenshots/redevelopment/login-reference-fit-ui/`에 기준 크기, 인앱 크기와 모바일 실제 Chromium capture를 보존한다.
 
 ---
+
+# UI-192 OneFlow AI Ask/Build Workspace 검증 (2026-07-21)
+
+- **UI 변경**: 글로벌 AI 앱을 `OneFlow AI`, `새 대화`, `전체 작업`, 관리자 `AI 설정`의 고유 context navigation으로 재구성했다. 중앙 surface는 Ask/Build tab을 공유하며, Ask는 접근 가능한 작업 선택·질문·출처 deep link를 제공하고 Build는 작성 가능한 프로젝트·제목·우선순위·기한을 검토 dialog에서 확인한 뒤 생성한다. Ask의 My Work 오류와 Build의 프로젝트 오류는 서로 독립적으로 복구되며 desktop/mobile에서 같은 기능 계층을 유지한다.
+- **기능/API 반영**: Ask 질문은 최대 500자의 정규화된 body로 기존 권한·feature gate가 적용된 `POST /api/v1/work-packages/{id}/summary`에 실제 전송된다. 로컬 bounded provider는 일정, 상태, 우선순위/기록된 위험 단서, 코멘트·활동, 예상시간과 요약 질문을 authoritative work-package 필드로 답하고, 해석하지 못한 질문은 이를 명시한 일반 요약으로 폴백한다. 본문 없는 기존 detail 요약 호출은 그대로 호환된다. Build는 실제 work-package POST를 실행하며 503 실패 시 검토 내용을 보존한 재시도와 성공 deep link를 제공한다. 신규 DB/schema, migration, permission, environment variable 또는 Settings storage 변경은 없다.
+- **권한/상태**: Ask 후보는 기존 사용자 가시 My Work 결과로 제한되고 server membership 404 경계를 재사용한다. Build 프로젝트는 archived와 viewer를 제외한다. capability OFF/error, 후보 없음, 작성 프로젝트 없음, 요청 pending/error/success와 새 대화 reset이 실제 query/mutation 상태에 연결돼 있으며 mock/dead control 또는 장식용 action은 없다.
+- **이연 항목**: 외부 LLM/RAG를 사용하는 범용 자유 질문, 대화 이력 영속화와 여러 종류의 생성 action은 현재 deployment/provider 계약을 넘어 별도 후속 surface로 추적한다. 현재 UI는 지원하는 bounded 질문 범위를 명시하고 지원하지 않는 기능을 암시하는 control을 노출하지 않는다.
+- **검증**: typecheck PASS, lint PASS(기존 Fast Refresh warning 4건), production build PASS(기존 large chunk warning), unit **108 PASS**, component **8 PASS**, API focused **8 PASS**, API full **836 PASS**, Ask/Build·정책 focused E2E **7 PASS**, full E2E **347 PASS + opt-in visual QA manifest 1 skip**다. Clean-room frontend **162**/backend **45**, OpenAPI type parity, npm/pip audit 0 vulnerabilities와 diff check가 PASS했다. 감사 중 새로 탐지된 간접 개발 의존성 `brace-expansion 1.1.15` 1건은 `1.1.16` lockfile 최소 갱신 후 재감사해 0건으로 확인했다.
+- **증적**: `docs/screenshots/redevelopment/ai-ask-build-ui/{desktop-build,mobile-ask,mobile-navigation}.png`에 실제 Chromium desktop Build, 390px Ask와 mobile navigation을 보존했다. E2E는 질문 POST body, Build 동일 payload 재시도, 성공 링크, 독립 오류 복구, horizontal overflow와 Quick Dock 비겹침을 검사한다.
+
+---

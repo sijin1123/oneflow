@@ -23,7 +23,10 @@ export function useCapabilities() {
 
 export function useSummarize(wpId: string) {
   return useMutation({
-    mutationFn: () =>
-      api<AiSummaryResponse>(`/api/v1/work-packages/${wpId}/summary`, { method: 'POST' }),
+    mutationFn: (question?: string) =>
+      api<AiSummaryResponse>(`/api/v1/work-packages/${wpId}/summary`, {
+        method: 'POST',
+        body: question ? JSON.stringify({ question }) : undefined,
+      }),
   })
 }

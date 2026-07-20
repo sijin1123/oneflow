@@ -4220,6 +4220,11 @@ export interface components {
             /** Ai Summary Enabled */
             ai_summary_enabled: boolean;
         };
+        /** AiSummaryRequest */
+        AiSummaryRequest: {
+            /** Question */
+            question?: string | null;
+        };
         /** AiSummaryResponse */
         AiSummaryResponse: {
             /** Provider */
@@ -20411,7 +20416,11 @@ export interface operations {
                 oneflow_session?: string | null;
             };
         };
-        requestBody?: never;
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["AiSummaryRequest"] | null;
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {

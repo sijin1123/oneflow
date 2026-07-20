@@ -92,6 +92,43 @@ async def test_summary_when_enabled(ai_client):
     assert "버그" in body["summary"]  # type label present
 
 
+async def test_summary_answers_bounded_question_when_enabled(ai_client):
+    enabled = await ai_client.patch(
+        "/api/v1/admin/workspace/features/ai",
+        json={"enabled": True},
+        headers={"If-Match": '"1"'},
+    )
+    assert enabled.status_code == 200
+    proj = await create_project(ai_client, key="ASK", name="Ask")
+    wp = await create_wp(
+        ai_client,
+        proj["id"],
+        subject="릴리스 점검",
+        priority="urgent",
+        due_date="2026-07-31",
+    )
+
+    due = await ai_client.post(
+        f"/api/v1/work-packages/{wp['id']}/summary",
+        json={"question": "  이 작업의 기한은 언제인가요?  "},
+    )
+    assert due.status_code == 200
+    assert "2026-07-31" in due.json()["summary"]
+
+    fallback = await ai_client.post(
+        f"/api/v1/work-packages/{wp['id']}/summary",
+        json={"question": "누가 최종 승인하나요?"},
+    )
+    assert fallback.status_code == 200
+    assert "질문의 범위를 완전히 해석하지 못해" in fallback.json()["summary"]
+
+    too_long = await ai_client.post(
+        f"/api/v1/work-packages/{wp['id']}/summary",
+        json={"question": "가" * 501},
+    )
+    assert too_long.status_code == 422
+
+
 async def test_summary_member_scoped_when_enabled(ai_client, foreign_project):
     enabled = await ai_client.patch(
         "/api/v1/admin/workspace/features/ai",

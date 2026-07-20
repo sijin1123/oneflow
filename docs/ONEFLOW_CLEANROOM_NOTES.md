@@ -623,3 +623,9 @@ Plane/OpenProject source, API, database schema, package, asset, CSS, DOM hierarc
 UI-193의 유일한 시각 입력은 사용자가 직접 제공하고 OneFlow 제품 자산으로 승인한 `apps/web/src/assets/generated/oneflow-login-origin-reference.png`다. 신규 `oneflow-login-story-reference-495x679.png`·`oneflow-login-logo-lockup-128x44.png`와 갱신한 `667x915`·`173x59` 후보는 승인 원본을 각 최종 panel 크기로 먼저 Lanczos 축소한 뒤 정수 좌표 crop한 결정적 파생 자산이며 SHA-256 unit regression으로 고정한다. 생성형 재해석, 로고 형태 재구성, 색상 변경 또는 제3자 자산 사용은 없다.
 
 Plane/OpenProject source, package, asset, logo, CSS, DOM, wording 또는 branding은 입력·복사하지 않았다. 인증 영역은 기존 OneFlow semantic DOM과 auth API, 자체 CSS layout을 유지한다. 신규 API, DB/schema, migration, permission, environment variable, dependency 또는 Settings storage 변경은 없다. - attested-user-owned-oneflow-asset
+
+## UI-192 OneFlow AI Ask/Build Workspace
+
+`docs/plane-poc-reverse-spec/`에서 사용한 입력은 assistant workspace가 Ask와 Build mode를 분리하고, 현재 사용자 범위의 source를 표시하며, 생성 action은 실행 전에 검토한다는 관찰 가능한 정보 구조와 행동뿐이다. OneFlow 구현은 기존 자체 capability/My Work/project/work-package API, React Query mutation, Radix Dialog와 local design token/Lucide icon을 사용해 독립 설계했다.
+
+Plane/OpenProject source, API, database schema, package, asset, CSS, DOM hierarchy, exact dimensions/colors, wording, AI provider implementation, icons 또는 branding은 복사하지 않았다. Ask는 기존 membership 경계 안에서 최대 500자의 질문을 local bounded provider에 전달하고 일정·상태·우선순위·활동·예상시간·요약을 authoritative 필드로 답한다. Build는 기존 work-package create와 activity/webhook 계약을 그대로 사용한다. 신규 DB/schema, migration, permission, environment variable 또는 Settings storage 변경은 없으며, 범용 LLM/RAG와 multi-action generation은 노출하지 않고 후속으로 이연한다. - attested-independent-derivation
