@@ -2982,3 +2982,31 @@ Chromium typed mock fixture에서 1440x960과 390x844 viewport를 사용했다. 
 - **증적**: `docs/screenshots/redevelopment/navigation-overlay-motion-ui/{more-desktop,more-mobile}.png`과 `docs/screenshots/redevelopment/sidebar-resize-customize-ui/{desktop-customize,mobile-customize}.png`을 실제 Chromium에서 확인해 desktop anchor, mobile viewport containment, 완전 개방 상태와 주변 layout 비재배치를 검증했다.
 
 ---
+
+# UI-178 Shared Sheet Bidirectional Motion 검증 (2026-07-20)
+
+- **UI 변경**: 작업 상세, 이니셔티브 상세, 알림, CSV 가져오기와 템플릿 상세가 공유하는 우측 Sheet의 overlay와 panel을 닫힘 애니메이션이 끝날 때까지 유지한다. 열림·닫힘 fade/slide, focus trap, `Escape`/outside/close-button 종료와 trigger 복귀, reduced-motion과 mobile containment를 하나의 공통 수명주기로 제공한다.
+- **기능/API 반영**: 다섯 consumer의 실제 상세 조회·수정, 알림 인박스 이동, CSV 가져오기와 템플릿 동작을 유지했다. 열린 상태 transform을 해제해 중첩 fixed picker가 viewport 기준에서 벗어나지 않게 했다. 신규 API, DB/schema, migration, permission, environment variable, dependency 또는 Settings storage 변경은 없다.
+- **이연 항목**: 없음. 노출 control은 모두 기존 실제 navigation, query 또는 mutation에 연결돼 있다.
+- **검증**: typecheck, lint, production build, unit **107 PASS**, component **8 PASS**, focused regressions, full E2E **326 PASS + opt-in visual QA 1 skip**, clean-room frontend **162**/backend **45**, npm/pip audit 0 vulnerabilities가 PASS했다. PR #374/squash `cbb0a1b`, PR/main Actions `29718249125`/`29718696104`도 PASS했다.
+
+---
+
+# UI-179 Workspace Views Shared Modal Motion 검증 (2026-07-20)
+
+- **UI 변경**: Saved view, 열 순서와 Analytics dialog가 공통 overlay/content primitive를 사용해 짧은 fade/scale 열림과 닫힘, trigger focus 복귀, `Escape`/button 종료, reduced-motion과 mobile containment를 동일하게 제공한다.
+- **기능/API 반영**: 실제 saved-view 생성·수정·삭제, column order URL/private-view 왕복과 filtered Analytics 요청·loading/error/empty 상태를 그대로 유지했다. 신규 API, DB/schema, migration, permission, environment variable, dependency 또는 Settings storage 변경은 없다.
+- **이연 항목**: 없음. 세 modal의 control은 기존 실제 query, mutation 또는 URL state에 연결돼 있다.
+- **검증**: typecheck, lint, production build, unit **107 PASS**, component **8 PASS**, focused E2E **5 PASS**, full E2E, clean-room frontend **162**/backend **45**, npm/pip audit 0 vulnerabilities가 PASS했다. PR #375/squash `7c1e84e`, PR/main Actions `29719629199`/`29720085654`도 PASS했다.
+
+---
+
+# UI-180 Login In-App Exhaustive Pixel Audit 검증 (2026-07-20)
+
+- **UI 변경**: 승인 원본과 현재 로그인 화면을 Codex 인앱 Chromium에서 다시 실사했다. runtime 전체 원본의 SHA-256은 승인 원본과 동일하고, story와 auth logo source crop은 각각 pixel MAE `0`이다. 강제 2x 선택, `-webkit-optimize-contrast`, animation transform 해제는 같은 세션 A/B에서 오차를 키워 적용하지 않았다.
+- **기능/API 반영**: 첫 페인트부터 이메일, 비밀번호, remember me, password visibility, 지원 요청, OIDC, 정책 dialog, 언어, safe-next, loading/error/retry를 실제 semantic control과 기존 auth API로 제공한다. 승인 전체 화면 overlay, 투명 hit layer, mock 또는 dead control은 없다. 전체·story·logo 1x/2x 자산의 SHA-256을 고정하는 unit regression을 추가했다. 신규 API, DB/schema, migration, permission, environment variable, dependency 또는 Settings storage 변경은 없다.
+- **픽셀 전수 실사**: 인앱 Chromium DPR 1, viewport `1455x1259`, product panel `(117.5,172) 1220x915`를 승인 `1448x1086` 좌표로 정규화했다. MAE/최대 채널 delta `<=12` 비율은 전체 `4.088/90.67%`, story `4.034/89.69%`, top decoration `1.967/97.36%`, story brand `4.102/85.87%`, headline `5.742/75.72%`, Kanban `3.115/94.70%`, river/terrain `5.392/84.26%`, activity cards `5.617/80.28%`, foreground `4.064/90.70%`, auth `4.153/91.84%`, auth card `5.181/88.37%`, auth brand `7.230/86.17%`, fields `4.527/91.33%`, providers `8.345/87.27%`다. 인앱 screenshot transport가 JPEG bytes를 반환하므로 같은 서버·viewport의 Chromium PNG도 함께 보존했다. 잔여치는 compact downsampling, 인앱 capture codec, 브라우저 color management, semantic DOM font rasterization과 움직이는 협업 경로 highlight에서 발생한다.
+- **반응형/검증**: mobile `390x844`에서 canvas `scrollWidth === clientWidth === 375`로 가로 넘침이 없다. typecheck PASS, lint PASS(기존 Fast Refresh warning 4건), production build PASS(기존 chunk-size warning), unit **108 PASS**, component **8 PASS**, focused login E2E **8 PASS**, clean-room frontend **162**/backend **45**, npm/pip audit 0 vulnerabilities가 PASS했다.
+- **증적/이연**: `docs/screenshots/redevelopment/login-in-app-exhaustive-audit-ui/`에 desktop/mobile, normalized runtime, side-by-side와 5x diff를 보존한다. 외부 OIDC 공급자의 실제 연결은 배포별 credential 경계를 유지하며 이번 surface의 기능 이연은 없다.
+
+---
