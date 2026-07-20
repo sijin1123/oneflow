@@ -363,6 +363,19 @@ textarea {
   to { opacity: 0.92; transform: translateX(100%); }
 }
 
+@keyframes of-modal-overlay-opening { from { opacity: 0; } to { opacity: 1; } }
+@keyframes of-modal-overlay-closing { from { opacity: 1; } to { opacity: 0; } }
+
+@keyframes of-modal-content-opening {
+  from { opacity: 0; transform: translate(-50%, -48%) scale(0.98); }
+  to { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+}
+
+@keyframes of-modal-content-closing {
+  from { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  to { opacity: 0; transform: translate(-50%, -48%) scale(0.98); }
+}
+
 .of-overlay-enter { animation: of-overlay-enter var(--of-duration-overlay) var(--of-ease-standard) both; }
 .of-menu-enter { animation: of-menu-enter 150ms var(--of-ease-standard) both; transform-origin: top left; }
 .of-dropdown-motion { transform-origin: var(--radix-dropdown-menu-content-transform-origin); }
@@ -422,6 +435,11 @@ textarea {
 .of-sheet-content { will-change: opacity, transform; }
 .of-sheet-content[data-state='open'] { animation: of-sheet-content-opening var(--of-duration-overlay) var(--of-ease-emphasized) backwards; }
 .of-sheet-content[data-state='closed'] { animation: of-sheet-content-closing var(--of-duration-default) var(--of-ease-standard) both; pointer-events: none; }
+.of-modal-overlay[data-state='open'] { animation: of-modal-overlay-opening var(--of-duration-overlay) var(--of-ease-standard) both; }
+.of-modal-overlay[data-state='closed'] { animation: of-modal-overlay-closing var(--of-duration-default) var(--of-ease-standard) both; pointer-events: none; }
+.of-modal-content { will-change: opacity, transform; }
+.of-modal-content[data-state='open'] { animation: of-modal-content-opening var(--of-duration-overlay) var(--of-ease-emphasized) backwards; }
+.of-modal-content[data-state='closed'] { animation: of-modal-content-closing var(--of-duration-default) var(--of-ease-standard) both; pointer-events: none; }
 
 @media (pointer: coarse) {
   .of-touch-target {
@@ -440,6 +458,8 @@ textarea {
   .of-navigation-customizer-dialog,
   .of-sheet-overlay,
   .of-sheet-content,
+  .of-modal-overlay,
+  .of-modal-content,
   .of-search-overlay-opening,
   .of-search-overlay-closing,
   .of-search-surface-opening,

@@ -5,7 +5,7 @@
    All API responses are mocked with fixtures TYPED against the app's contract
    types — contract drift fails `npm run typecheck` (PLAN §8). */
 
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test, type Locator, type Page } from '@playwright/test'
 
 import type { Milestone } from '../src/features/milestones/api'
 import type { Customer } from '../src/features/customers/types'
@@ -3569,6 +3569,56 @@ test('Workspace Views Add view가 생성·되돌리기·갱신·삭제와 실패
   await page.screenshot({
     path: '../../docs/screenshots/redevelopment/workspace-saved-views-ui/mobile-create-error.png',
   })
+})
+
+test('Workspace Views 공통 modal은 세 기능의 양방향 motion과 포커스 복귀를 유지한다', async ({ page }) => {
+  await mockApi(page)
+  await page.goto('/work-items?layout=table')
+
+  const closeAndVerify = async (content: Locator, closeButton: Locator, trigger: Locator) => {
+    const overlay = page.locator('[data-slot="modal-overlay"]')
+    await expect(content).toHaveAttribute('data-state', 'open')
+    await expect(content).toHaveCSS('animation-name', 'of-modal-content-opening')
+    await expect(overlay).toHaveCSS('animation-name', 'of-modal-overlay-opening')
+
+    await closeButton.evaluate((button) => {
+      ;(button as HTMLButtonElement).click()
+    })
+    expect(await content.getAttribute('data-state')).toBe('closed')
+    expect(await overlay.getAttribute('data-state')).toBe('closed')
+    expect(await content.evaluate((element) => getComputedStyle(element).animationName)).toBe(
+      'of-modal-content-closing',
+    )
+    expect(await overlay.evaluate((element) => getComputedStyle(element).animationName)).toBe(
+      'of-modal-overlay-closing',
+    )
+    await expect(content).toBeHidden()
+    await expect(trigger).toBeFocused()
+  }
+
+  const addViewTrigger = page.getByRole('button', { name: 'Add view' })
+  await addViewTrigger.click()
+  const saveDialog = page.getByRole('dialog', { name: '작업영역 뷰 저장' })
+  await closeAndVerify(saveDialog, saveDialog.getByRole('button', { name: '닫기' }), addViewTrigger)
+
+  const displayTrigger = page.getByRole('button', { name: 'Display' })
+  await displayTrigger.click()
+  await page.getByRole('menuitem', { name: '열 순서 변경' }).click()
+  const orderDialog = page.getByRole('dialog', { name: '열 순서 변경' })
+  await closeAndVerify(
+    orderDialog,
+    orderDialog.getByRole('button', { name: '열 순서 닫기' }),
+    displayTrigger,
+  )
+
+  const analyticsTrigger = page.getByRole('button', { name: '작업 분석 열기' })
+  await analyticsTrigger.click()
+  const analyticsDialog = page.getByRole('dialog', { name: '작업 분석' })
+  await closeAndVerify(
+    analyticsDialog,
+    analyticsDialog.getByRole('button', { name: '작업 분석 닫기' }),
+    analyticsTrigger,
+  )
 })
 
 test('Workspace Analytics는 현재 Basic/PQL 필터의 전체 집계를 지연 조회하고 키보드로 닫힌다', async ({ page }) => {

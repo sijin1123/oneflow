@@ -4,6 +4,7 @@ import { type FormEvent, useEffect, useMemo, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { ModalContent, ModalOverlay } from '@/components/ui/modal'
 
 import {
   type WorkspaceSavedView,
@@ -147,8 +148,8 @@ export function WorkspaceSavedViewsControls({
           </Button>
         </Dialog.Trigger>
         <Dialog.Portal>
-          <Dialog.Overlay className="fixed inset-0 z-[var(--of-z-modal)] bg-black/30 of-overlay-enter motion-reduce:animate-none" />
-          <Dialog.Content className="fixed left-1/2 top-1/2 z-[calc(var(--of-z-modal)+1)] w-[min(28rem,calc(100vw-1.5rem))] -translate-x-1/2 -translate-y-1/2 rounded-of-lg border border-of-border bg-of-surface-raised p-4 shadow-[var(--of-shadow-popover)] focus:outline-none">
+          <ModalOverlay />
+          <ModalContent className="w-[min(28rem,calc(100vw-1.5rem))] rounded-of-lg border border-of-border bg-of-surface-raised p-4 shadow-[var(--of-shadow-popover)]">
             <div className="flex items-start gap-3">
               <div className="min-w-0 flex-1">
                 <Dialog.Title className="text-sm font-semibold">작업영역 뷰 저장</Dialog.Title>
@@ -180,7 +181,7 @@ export function WorkspaceSavedViewsControls({
                 </Button>
               </div>
             </form>
-          </Dialog.Content>
+          </ModalContent>
         </Dialog.Portal>
       </Dialog.Root>
 

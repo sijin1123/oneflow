@@ -4,6 +4,7 @@ import { type RefObject, useRef, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
 import type { GridDensity } from '@/components/ui/data-grid'
+import { ModalContent, ModalOverlay } from '@/components/ui/modal'
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -214,9 +215,9 @@ function WorkspaceColumnOrderDialog({
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-[var(--of-z-modal)] bg-black/30 of-overlay-enter motion-reduce:animate-none" />
-        <Dialog.Content
-          className="fixed left-1/2 top-1/2 z-[calc(var(--of-z-modal)+1)] w-[min(28rem,calc(100vw-1.5rem))] -translate-x-1/2 -translate-y-1/2 rounded-of-lg border border-of-border bg-of-surface-raised p-4 shadow-[var(--of-shadow-popover)] focus:outline-none"
+        <ModalOverlay />
+        <ModalContent
+          className="w-[min(28rem,calc(100vw-1.5rem))] rounded-of-lg border border-of-border bg-of-surface-raised p-4 shadow-[var(--of-shadow-popover)]"
           onCloseAutoFocus={(event) => {
             event.preventDefault()
             triggerRef.current?.focus()
@@ -268,7 +269,7 @@ function WorkspaceColumnOrderDialog({
               </li>
             ))}
           </ol>
-        </Dialog.Content>
+        </ModalContent>
       </Dialog.Portal>
     </Dialog.Root>
   )
