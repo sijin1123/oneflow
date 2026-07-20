@@ -1,10 +1,12 @@
 import {
   ArrowDownLeft,
   ArrowUpRight,
-  GitBranch,
   Link2,
   Network,
+  Plus,
+  RotateCcw,
   Trash2,
+  X,
   type LucideIcon,
 } from 'lucide-react'
 import { useState } from 'react'
@@ -12,7 +14,6 @@ import { useState } from 'react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Select } from '@/components/ui/select'
-import { cn } from '@/lib/utils'
 
 import {
   useCreateRelation,
@@ -61,35 +62,6 @@ function dependencyCount(items: Relation[]) {
   return items.filter((r) => r.relation_type !== 'relates').length
 }
 
-function RelationMetric({
-  icon: Icon,
-  label,
-  value,
-  tone = 'neutral',
-}: {
-  icon: LucideIcon
-  label: string
-  value: string
-  tone?: 'neutral' | 'accent'
-}) {
-  return (
-    <div className="flex min-w-0 items-center gap-3 rounded-of border border-of-border bg-of-surface px-3 py-3">
-      <span
-        className={cn(
-          'flex h-8 w-8 shrink-0 items-center justify-center rounded-of',
-          tone === 'accent' ? 'bg-of-accent-soft text-of-accent' : 'bg-of-surface-2 text-of-muted',
-        )}
-      >
-        <Icon size={15} aria-hidden="true" />
-      </span>
-      <span className="min-w-0">
-        <span className="block text-[11px] text-of-muted">{label}</span>
-        <span className="block text-sm font-semibold tabular-nums">{value}</span>
-      </span>
-    </div>
-  )
-}
-
 export function RelationsSection({
   wpId,
   projectId,
@@ -106,6 +78,7 @@ export function RelationsSection({
 
   const [relType, setRelType] = useState<Relation['relation_type']>('relates')
   const [targetId, setTargetId] = useState<string>('')
+  const [composerOpen, setComposerOpen] = useState(false)
 
   const subjectOf = (id: string) =>
     candidates.data?.items.find((w) => w.id === id)?.subject ?? id.slice(0, 8)
@@ -116,92 +89,95 @@ export function RelationsSection({
     if (!targetId) return
     createRelation.mutate(
       { target_id: targetId, relation_type: relType },
-      { onSuccess: () => setTargetId('') },
+      {
+        onSuccess: () => {
+          setTargetId('')
+          setComposerOpen(false)
+        },
+      },
     )
   }
 
   return (
-    <section aria-label="관계" className="rounded-of border border-of-border bg-of-surface p-4">
-      <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-        <div className="min-w-0">
-          <h3 className="text-sm font-semibold">관계</h3>
-          <p className="mt-1 text-xs leading-5 text-of-muted">
-            차단, 선후행, 연관 작업을 한 곳에서 확인하고 의존 흐름을 정리합니다.
-          </p>
+    <section aria-label="관계" className="border-y border-of-border-subtle bg-of-surface">
+      <div className="flex min-h-11 min-w-0 items-center justify-between gap-3 px-3">
+        <div className="flex min-w-0 items-center gap-2">
+          <Network size={14} className="shrink-0 text-of-muted" aria-hidden="true" />
+          <h3 className="text-xs font-semibold text-of-fg">관계</h3>
+          {relations.data ? (
+            <span className="truncate text-[11px] text-of-muted">
+              {relations.data.total}개 · 의존 {dependencyCount(relations.data.items)}개
+            </span>
+          ) : null}
         </div>
-        <Badge variant={canWrite ? 'accent' : 'outline'} className="self-start">
-          {canWrite ? '편집 가능' : '읽기 전용'}
-        </Badge>
+        {canWrite ? (
+          <button
+            type="button"
+            aria-label={composerOpen ? '관계 추가 닫기' : '관계 추가'}
+            aria-expanded={composerOpen}
+            className="flex size-7 shrink-0 items-center justify-center rounded-of text-of-muted transition-colors hover:bg-of-surface-hover hover:text-of-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus"
+            onClick={() => setComposerOpen((open) => !open)}
+          >
+            {composerOpen ? <X size={14} aria-hidden="true" /> : <Plus size={14} aria-hidden="true" />}
+          </button>
+        ) : null}
       </div>
 
       {relations.isPending ? (
-        <div className="mt-3 rounded-of border border-dashed border-of-border bg-of-surface-2/35 px-3 py-4 text-xs text-of-muted">
+        <p role="status" className="border-t border-of-border-subtle px-3 py-3 text-xs text-of-muted">
           불러오는 중...
-        </div>
+        </p>
       ) : relations.isError ? (
-        <div className="mt-3 rounded-of border border-of-border bg-of-surface px-3 py-4 text-xs text-of-danger">
-          관계를 불러오지 못했습니다.
+        <div className="flex items-center justify-between gap-3 border-t border-of-border-subtle px-3 py-3 text-xs">
+          <p role="alert" className="text-of-danger">관계를 불러오지 못했습니다.</p>
+          <Button variant="ghost" size="sm" onClick={() => { void relations.refetch() }}>
+            <RotateCcw size={13} aria-hidden="true" /> 다시 시도
+          </Button>
         </div>
       ) : (
-        <>
-          <div className="mt-3 grid gap-2 sm:grid-cols-3">
-            <RelationMetric
-              icon={GitBranch}
-              label="관계"
-              value={`${relations.data.total}건`}
-              tone="accent"
-            />
-            <RelationMetric
-              icon={Network}
-              label="의존"
-              value={`${dependencyCount(relations.data.items)}건`}
-            />
-            <RelationMetric icon={Link2} label="연결 후보" value={`${otherWps.length}건`} />
-          </div>
-
-          {relations.data.total === 0 ? (
-            <div className="mt-3 rounded-of border border-dashed border-of-border bg-of-surface-2/35 px-3 py-4 text-xs text-of-muted">
-              연결된 관계가 없습니다.
-            </div>
-          ) : (
-            <ul className="mt-3 grid gap-2">
-              {relations.data.items.map((r) => {
-                const other = otherId(r)
-                const meta = RELATION_META[r.relation_type]
-                return (
-                  <li key={r.id} className="rounded-of border border-of-border bg-of-surface-2/35 p-3">
-                    <div className="flex min-w-0 items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <RelationTypeBadge type={r.relation_type} />
-                        <p className="mt-2 truncate text-sm font-medium">{subjectOf(other)}</p>
-                        <p className="mt-1 text-xs leading-5 text-of-muted">
-                          {directionLabel(r.direction)} · {meta.description}
-                        </p>
-                      </div>
-                      {canWrite ? (
-                        <button
-                          type="button"
-                          aria-label="관계 삭제"
-                          className="shrink-0 rounded-of p-1.5 text-of-muted hover:bg-of-surface hover:text-of-danger"
-                          onClick={() => deleteRelation.mutate(r.id)}
-                        >
-                          <Trash2 size={14} />
-                        </button>
-                      ) : null}
+        relations.data.total === 0 ? (
+          <p className="border-t border-of-border-subtle px-3 py-3 text-xs text-of-muted">
+            연결된 관계가 없습니다.
+          </p>
+        ) : (
+          <ul className="divide-y divide-of-border-subtle border-t border-of-border-subtle">
+            {relations.data.items.map((r) => {
+              const other = otherId(r)
+              const meta = RELATION_META[r.relation_type]
+              return (
+                <li key={r.id} className="flex min-w-0 items-start gap-3 px-3 py-2.5 hover:bg-of-surface-hover/60">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <RelationTypeBadge type={r.relation_type} />
+                      <p className="min-w-0 flex-1 truncate text-xs font-medium">{subjectOf(other)}</p>
                     </div>
-                  </li>
-                )
-              })}
-            </ul>
-          )}
-        </>
+                    <p className="mt-1 truncate text-[11px] text-of-muted">
+                      {directionLabel(r.direction)} · {meta.description}
+                    </p>
+                  </div>
+                  {canWrite ? (
+                    <button
+                      type="button"
+                      aria-label={`${subjectOf(other)} 관계 삭제`}
+                      className="flex size-7 shrink-0 items-center justify-center rounded-of text-of-muted transition-colors hover:bg-of-surface-hover hover:text-of-danger focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus"
+                      onClick={() => deleteRelation.mutate(r.id)}
+                    >
+                      <Trash2 size={13} aria-hidden="true" />
+                    </button>
+                  ) : null}
+                </li>
+              )
+            })}
+          </ul>
+        )
       )}
 
-      {canWrite ? (
-        <>
-          <div className="mt-4 grid gap-2 rounded-of border border-of-border bg-of-surface-2/35 p-3 sm:grid-cols-[8rem_minmax(0,1fr)_auto] sm:items-end">
+      {canWrite && composerOpen ? (
+        <div className="border-t border-of-border-subtle bg-of-surface-2/30 p-3">
+          <div className="grid gap-2 sm:grid-cols-[8rem_minmax(0,1fr)_auto] sm:items-center">
             <Select
               aria-label="관계 유형"
+              autoFocus
               value={relType}
               onChange={(e) => setRelType(e.target.value as Relation['relation_type'])}
             >
@@ -233,11 +209,11 @@ export function RelationsSection({
             </Button>
           </div>
           {createRelation.isError ? (
-            <p className="text-xs text-of-danger">
+            <p role="alert" className="mt-2 text-xs text-of-danger">
               관계를 추가하지 못했습니다(이미 존재하거나 대상이 올바르지 않음).
             </p>
           ) : null}
-        </>
+        </div>
       ) : null}
     </section>
   )

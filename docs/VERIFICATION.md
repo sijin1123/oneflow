@@ -3051,3 +3051,13 @@ Chromium typed mock fixture에서 1440x960과 390x844 viewport를 사용했다. 
 - **증적**: `docs/screenshots/redevelopment/detail-properties-ui/{desktop,mobile}.png`에 실제 Chromium 전체 화면을 보존했다.
 
 ---
+
+# UI-187 Work Item Linked Content Sections 검증 (2026-07-21)
+
+- **UI 변경**: 작업 상세 본문의 Relations 대형 metric/card dashboard와 서로 다른 Pages/Attachments card 표현을 compact section header, count, divided row의 하나의 linked-content hierarchy로 재구성했다. 관계 추가 form은 항상 노출하지 않고 header의 icon command로 열며, mobile에서는 동일 순서의 single-column composer로 전환한다.
+- **기능/API 반영**: 기존 relation create/delete mutation, relation candidate query, document detail navigation, stored attachment download와 external attachment open을 그대로 유지한다. 세 section의 loading/empty/error를 같은 정보 계층으로 정리하고, 오류 행의 `다시 시도`는 각각 실제 query `refetch()`에 연결했다. writer만 relation composer/delete를 보며 viewer 경계는 유지한다. 신규 API, DB/schema, migration, permission, environment variable, dependency 또는 Settings UI 변경은 없다.
+- **이연 항목**: Time/Cost와 Custom fields의 본문 hierarchy는 이 PR에 섞지 않고 독립 후속 UI surface로 추적한다. 이번 Relations/Pages/Attachments에는 mock/dead control이나 기능 이연이 없다.
+- **검증**: typecheck PASS, lint PASS(기존 Fast Refresh warning 4건), production build PASS(기존 large chunk warning), unit **108 PASS**, component **8 PASS**, focused relation/mobile/desktop **3 PASS**, 세 query error recovery **1 PASS**, final desktop/mobile capture **2 PASS**, clean-room frontend **162**/backend **45**, npm audit 취약점 0, diff check PASS다. Full E2E는 변경 대상 3개를 포함해 **333 PASS + visual manifest 1 skip**이며, 무관한 Project schedule baseline overflow 안정화 1건이 4-worker 부하에서 timeout 후 단독 반복 **5/5 PASS**로 재현되지 않았다.
+- **증적**: `docs/screenshots/redevelopment/detail-linked-content-ui/{desktop,mobile,mobile-composer}.png`에 실제 Chromium 화면을 보존했다.
+
+---
