@@ -54,7 +54,7 @@ import {
   X,
   type LucideIcon,
 } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, type AnimationEvent as ReactAnimationEvent } from 'react'
 import { Link, NavLink, useLocation, useNavigate, useParams } from 'react-router-dom'
 
 import { useAuthConfig } from '@/features/auth/api'
@@ -95,6 +95,54 @@ type ProjectNavItem = {
   path: string
   label: string
   icon: LucideIcon
+}
+
+type OverlayPhase = 'closed' | 'opening' | 'open' | 'closing'
+
+function useOverlayPresence() {
+  const [phase, setPhase] = useState<OverlayPhase>('closed')
+
+  useEffect(() => {
+    if (phase !== 'opening' && phase !== 'closing') return
+    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    const timer = window.setTimeout(
+      () => setPhase((current) => {
+        if (current === 'opening') return 'open'
+        if (current === 'closing') return 'closed'
+        return current
+      }),
+      reducedMotion ? 0 : 260,
+    )
+    return () => window.clearTimeout(timer)
+  }, [phase])
+
+  const open = useCallback(() => {
+    setPhase((current) => current === 'open' || current === 'opening' ? current : 'opening')
+  }, [])
+  const close = useCallback(() => {
+    setPhase((current) => current === 'closed' || current === 'closing' ? current : 'closing')
+  }, [])
+  const toggle = useCallback(() => {
+    setPhase((current) => current === 'open' || current === 'opening' ? 'closing' : 'opening')
+  }, [])
+  const onAnimationEnd = useCallback((event: ReactAnimationEvent<HTMLElement>) => {
+    if (event.target !== event.currentTarget) return
+    setPhase((current) => {
+      if (current === 'opening') return 'open'
+      if (current === 'closing') return 'closed'
+      return current
+    })
+  }, [])
+
+  return {
+    phase,
+    present: phase !== 'closed',
+    expanded: phase === 'opening' || phase === 'open',
+    open,
+    close,
+    toggle,
+    onAnimationEnd,
+  }
 }
 
 const primaryNav: WorkspaceNavItem[] = [
@@ -340,18 +388,21 @@ function NavigationCustomizer({
   onProjectLimitChange: (value: number) => void
   onReset: () => void
 }) {
-  const [open, setOpen] = useState(false)
+  const overlay = useOverlayPresence()
+  const closeOverlay = overlay.close
+  const overlayPhase = overlay.phase
   const [draggedKey, setDraggedKey] = useState<SidebarNavKey | null>(null)
   const triggerRef = useRef<HTMLButtonElement>(null)
   const dialogRef = useRef<HTMLDivElement>(null)
   const wasOpen = useRef(false)
 
   useEffect(() => {
-    if (!open) {
+    if (overlayPhase === 'closed') {
       if (wasOpen.current) triggerRef.current?.focus()
       wasOpen.current = false
       return
     }
+    if (overlayPhase === 'closing') return
     wasOpen.current = true
     const dialog = dialogRef.current
     const focusable = dialog?.querySelectorAll<HTMLElement>(
@@ -361,7 +412,7 @@ function NavigationCustomizer({
     const handleDialogKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         event.preventDefault()
-        setOpen(false)
+        closeOverlay()
         return
       }
       if (event.key !== 'Tab' || !focusable?.length) return
@@ -377,7 +428,7 @@ function NavigationCustomizer({
     }
     window.addEventListener('keydown', handleDialogKey)
     return () => window.removeEventListener('keydown', handleDialogKey)
-  }, [open])
+  }, [closeOverlay, overlayPhase])
 
   return (
     <div>
@@ -385,28 +436,31 @@ function NavigationCustomizer({
         ref={triggerRef}
         type="button"
         aria-label="내비게이션 사용자 지정"
-        aria-expanded={open}
+        aria-expanded={overlay.expanded}
         title="내비게이션 사용자 지정"
         className="flex h-7 w-7 items-center justify-center rounded-of text-of-muted hover:bg-of-surface-2 hover:text-of-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus"
-        onClick={() => setOpen((current) => !current)}
+        onClick={overlay.toggle}
       >
         <SlidersHorizontal size={14} aria-hidden="true" />
       </button>
-      {open ? (
+      {overlay.present ? (
         <>
           <button
             type="button"
             tabIndex={-1}
             aria-label="내비게이션 사용자 지정 닫기"
-            className="fixed inset-0 z-[var(--of-z-modal)] cursor-default bg-of-overlay animate-in fade-in duration-[var(--of-duration-overlay)] motion-reduce:animate-none"
-            onClick={() => setOpen(false)}
+            data-phase={overlay.phase}
+            className="of-navigation-customizer-backdrop fixed inset-0 z-[var(--of-z-modal)] cursor-default bg-of-overlay"
+            onClick={overlay.close}
           />
           <div
             ref={dialogRef}
             role="dialog"
             aria-label="내비게이션 사용자 지정"
             aria-modal="true"
-            className="fixed left-1/2 top-1/2 z-[calc(var(--of-z-modal)+1)] flex max-h-[min(50rem,calc(100vh-2rem))] w-[min(42rem,calc(100vw-1.5rem))] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-of-lg border border-of-border bg-of-surface-raised shadow-[var(--of-shadow-popover)] animate-in fade-in zoom-in-95 duration-[var(--of-duration-overlay)] motion-reduce:animate-none"
+            data-phase={overlay.phase}
+            className="of-navigation-customizer-dialog fixed left-1/2 top-1/2 z-[calc(var(--of-z-modal)+1)] flex max-h-[min(50rem,calc(100vh-2rem))] w-[min(42rem,calc(100vw-1.5rem))] flex-col overflow-hidden rounded-of-lg border border-of-border bg-of-surface-raised shadow-[var(--of-shadow-popover)]"
+            onAnimationEnd={overlay.onAnimationEnd}
           >
             <div className="flex shrink-0 items-center justify-between border-b border-of-border-subtle px-5 py-4">
               <h2 className="text-base font-semibold">내비게이션 사용자 지정</h2>
@@ -414,7 +468,7 @@ function NavigationCustomizer({
                 type="button"
                 aria-label="내비게이션 사용자 지정 닫기"
                 className="flex h-7 w-7 items-center justify-center rounded-of text-of-muted hover:bg-of-surface-hover hover:text-of-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus"
-                onClick={() => setOpen(false)}
+                onClick={overlay.close}
               >
                 <X size={15} aria-hidden="true" />
               </button>
@@ -726,7 +780,9 @@ function SidebarContent({
   const myWorkTab = new URLSearchParams(location.search).get('tab')
   const profileWorkMode =
     location.pathname === '/my' && myWorkTab !== null && myWorkTab !== 'overview'
-  const [moreOpen, setMoreOpen] = useState(false)
+  const moreOverlay = useOverlayPresence()
+  const closeMoreOverlay = moreOverlay.close
+  const moreOverlayPhase = moreOverlay.phase
   const [projectActionMessage, setProjectActionMessage] = useState<string | null>(null)
   const moreTriggerRef = useRef<HTMLButtonElement>(null)
   const morePanelRef = useRef<HTMLDivElement>(null)
@@ -739,11 +795,12 @@ function SidebarContent({
   }, [projectActionMessage])
 
   useEffect(() => {
-    if (!moreOpen) {
+    if (moreOverlayPhase === 'closed') {
       if (wasMoreOpen.current) moreTriggerRef.current?.focus()
       wasMoreOpen.current = false
       return
     }
+    if (moreOverlayPhase === 'closing') return
     wasMoreOpen.current = true
     morePanelRef.current?.querySelector<HTMLElement>('a, button')?.focus()
     const closePanel = (event: KeyboardEvent | PointerEvent) => {
@@ -770,7 +827,7 @@ function SidebarContent({
         morePanelRef.current?.contains(event.target as Node) ||
         moreTriggerRef.current?.contains(event.target as Node)
       ) return
-      setMoreOpen(false)
+      closeMoreOverlay()
     }
     window.addEventListener('keydown', closePanel)
     window.addEventListener('pointerdown', closePanel)
@@ -778,7 +835,7 @@ function SidebarContent({
       window.removeEventListener('keydown', closePanel)
       window.removeEventListener('pointerdown', closePanel)
     }
-  }, [moreOpen])
+  }, [closeMoreOverlay, moreOverlayPhase])
 
   return (
     <div className="relative flex min-h-0 flex-1">
@@ -1006,7 +1063,7 @@ function SidebarContent({
                 aria-expanded={preferences.workspaceExpanded}
                 className="flex min-h-8 w-full items-center gap-2 rounded-of px-2 text-left text-[13px] font-medium text-of-secondary transition-colors hover:bg-of-surface-hover hover:text-of-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus"
                 onClick={() => {
-                  if (preferences.workspaceExpanded) setMoreOpen(false)
+                  if (preferences.workspaceExpanded) moreOverlay.close()
                   onWorkspaceExpandedChange(!preferences.workspaceExpanded)
                 }}
               >
@@ -1028,13 +1085,13 @@ function SidebarContent({
                     <button
                       ref={moreTriggerRef}
                       type="button"
-                      aria-expanded={moreOpen}
+                      aria-expanded={moreOverlay.expanded}
                       aria-controls="workspace-more-panel"
                       className="flex min-h-8 w-full items-center gap-2 rounded-of px-2 text-left text-[13px] text-of-secondary transition-colors hover:bg-of-surface-hover hover:text-of-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus"
-                      onClick={() => setMoreOpen((current) => !current)}
+                      onClick={moreOverlay.toggle}
                     >
-                      <ChevronRight size={14} className={cn('shrink-0 transition-transform duration-[var(--of-duration-fast)] motion-reduce:transition-none', moreOpen && 'rotate-90')} aria-hidden="true" />
-                      {moreOpen ? 'Hide' : 'More'}
+                      <ChevronRight size={14} className={cn('shrink-0 transition-transform duration-[var(--of-duration-fast)] motion-reduce:transition-none', moreOverlay.expanded && 'rotate-90')} aria-hidden="true" />
+                      {moreOverlay.expanded ? 'Hide' : 'More'}
                     </button>
                   ) : null}
                 </div>
@@ -1138,13 +1195,15 @@ function SidebarContent({
         </div>
       </div>
       ) : null}
-      {moreOpen && !wikiMode && !aiMode && !settingsMode ? (
+      {moreOverlay.present && !wikiMode && !aiMode && !settingsMode ? (
         <div
           ref={morePanelRef}
           id="workspace-more-panel"
           role="dialog"
           aria-label="워크스페이스 더 보기"
-          className="of-panel-enter fixed inset-x-2 top-2 bottom-2 z-50 flex min-w-0 flex-col overflow-hidden rounded-of-lg border border-of-border bg-of-surface-raised shadow-[var(--of-shadow-popover)] motion-reduce:animate-none md:absolute md:inset-x-auto md:left-full md:top-2 md:bottom-2 md:w-72"
+          data-phase={moreOverlay.phase}
+          className="of-sidebar-panel-motion fixed inset-x-2 top-2 bottom-2 z-50 flex min-w-0 flex-col overflow-hidden rounded-of-lg border border-of-border bg-of-surface-raised shadow-[var(--of-shadow-popover)] md:absolute md:inset-x-auto md:left-full md:top-2 md:bottom-2 md:w-72"
+          onAnimationEnd={moreOverlay.onAnimationEnd}
         >
           <div className="flex items-center justify-between border-b border-of-border-subtle px-3 py-2">
             <h3 className="text-sm font-semibold">Workspace</h3>
@@ -1152,7 +1211,7 @@ function SidebarContent({
               type="button"
               aria-label="More 닫기"
               className="flex h-7 w-7 items-center justify-center rounded-of text-of-muted hover:bg-of-surface-hover hover:text-of-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus"
-              onClick={() => setMoreOpen(false)}
+              onClick={moreOverlay.close}
             >
               <X size={15} aria-hidden="true" />
             </button>
@@ -1168,7 +1227,7 @@ function SidebarContent({
                     end={item.end}
                     className={({ isActive }) => cn(navLinkClass({ isActive }), 'min-w-0 flex-1')}
                     onClick={() => {
-                      setMoreOpen(false)
+                      moreOverlay.close()
                       onNavigate?.()
                     }}
                   >

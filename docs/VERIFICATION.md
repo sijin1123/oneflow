@@ -2972,3 +2972,13 @@ Chromium typed mock fixture에서 1440x960과 390x844 viewport를 사용했다. 
 - **증적**: `docs/screenshots/redevelopment/projects-sidebar-actions-ui/{project-menu,mobile-project-menu}.png`을 실제 Chromium에서 확인해 desktop anchor, mobile drawer containment, focus state와 주변 layout 비재배치를 검증했다.
 
 ---
+
+# UI-177 Navigation Overlay Bidirectional Motion 검증 (2026-07-20)
+
+- **UI 변경**: Workspace `More` 패널과 `내비게이션 사용자 지정` dialog가 `opening`/`open`/`closing`/`closed` 단계로 유지된다. 열림은 anchor에서 자연스럽게 확장되고 닫힘은 같은 축으로 축소되며, backdrop도 surface와 동시에 사라진다. 닫힘 완료 전에는 DOM을 유지해 애니메이션이 끊기지 않고 pointer interaction은 차단한다. `prefers-reduced-motion`에서는 중간 단계를 즉시 정착한다.
+- **기능/API 반영**: More의 실제 route 이동·pin/unpin, Customize의 표시 여부·순서·drag, 프로젝트 탐색 방식과 sidebar 프로젝트 수 제한 저장을 그대로 유지했다. `Escape`, outside pointer, 모바일 닫기, focus trap과 종료 후 trigger focus 복귀를 전환 단계와 함께 검증했다. 신규 API, DB/schema, migration, permission, environment variable, dependency 또는 Settings storage 변경은 없다.
+- **이연 항목**: 없음. 두 overlay의 노출 control은 모두 기존 실제 navigation 또는 개인 preference 저장에 연결돼 있으며 mock/dead control을 추가하지 않았다.
+- **검증**: typecheck PASS, lint PASS(기존 Fast Refresh warning 4건), production build PASS(기존 chunk-size warning), unit **107 PASS**, component **8 PASS**, desktop/mobile·focus·persistence·reduced-motion focused E2E PASS다. 첫 4-worker full E2E는 누적 부하에서 기존 장기 시나리오 5건이 30초 timeout되고 뒤이어 dev server channel이 종료됐다. 해당 5건 중 4건은 1-worker 재실행에서 PASS했고, 빠른 링크 1건은 닫힘 motion 중 남은 이전 Radix menu와 열린 menu를 함께 찾던 test locator를 `data-state="open"`으로 제한한 뒤 PASS했다. 이후 전용 포트 2-worker full E2E가 **325 PASS + opt-in visual QA 1 skip**로 완주했다. Clean-room frontend **162**/backend **45**, npm/pip audit 0 vulnerabilities도 PASS했다.
+- **증적**: `docs/screenshots/redevelopment/navigation-overlay-motion-ui/{more-desktop,more-mobile}.png`과 `docs/screenshots/redevelopment/sidebar-resize-customize-ui/{desktop-customize,mobile-customize}.png`을 실제 Chromium에서 확인해 desktop anchor, mobile viewport containment, 완전 개방 상태와 주변 layout 비재배치를 검증했다.
+
+---

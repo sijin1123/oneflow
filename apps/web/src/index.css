@@ -327,6 +327,29 @@ textarea {
   to { opacity: 1; transform: translateX(0) scale(1); }
 }
 
+@keyframes of-sidebar-panel-opening {
+  from { opacity: 0; transform: translateX(-8px) scale(0.985); }
+  to { opacity: 1; transform: translateX(0) scale(1); }
+}
+
+@keyframes of-sidebar-panel-closing {
+  from { opacity: 1; transform: translateX(0) scale(1); }
+  to { opacity: 0; transform: translateX(-8px) scale(0.985); }
+}
+
+@keyframes of-navigation-customizer-backdrop-opening { from { opacity: 0; } to { opacity: 1; } }
+@keyframes of-navigation-customizer-backdrop-closing { from { opacity: 1; } to { opacity: 0; } }
+
+@keyframes of-navigation-customizer-opening {
+  from { opacity: 0; transform: translate(-50%, -49%) scale(0.97); }
+  to { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+}
+
+@keyframes of-navigation-customizer-closing {
+  from { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  to { opacity: 0; transform: translate(-50%, -49%) scale(0.97); }
+}
+
 .of-overlay-enter { animation: of-overlay-enter var(--of-duration-overlay) var(--of-ease-standard) both; }
 .of-menu-enter { animation: of-menu-enter 150ms var(--of-ease-standard) both; transform-origin: top left; }
 .of-dropdown-motion { transform-origin: var(--radix-dropdown-menu-content-transform-origin); }
@@ -373,6 +396,14 @@ textarea {
 .of-dock-opening { pointer-events: none; }
 .of-dock-exit { animation: of-dock-exit var(--of-dock-motion-duration, 300ms) var(--of-ease-standard) both; animation-play-state: var(--of-dock-css-animation-play-state, running); transform-origin: bottom center; pointer-events: none; }
 .of-panel-enter { animation: of-panel-enter 200ms var(--of-ease-emphasized) both; transform-origin: right center; }
+.of-sidebar-panel-motion { transform-origin: left center; }
+.of-sidebar-panel-motion[data-phase='opening'] { animation: of-sidebar-panel-opening var(--of-duration-overlay) var(--of-ease-emphasized) both; }
+.of-sidebar-panel-motion[data-phase='closing'] { animation: of-sidebar-panel-closing var(--of-duration-default) var(--of-ease-standard) both; pointer-events: none; }
+.of-navigation-customizer-backdrop[data-phase='opening'] { animation: of-navigation-customizer-backdrop-opening var(--of-duration-overlay) var(--of-ease-standard) both; }
+.of-navigation-customizer-backdrop[data-phase='closing'] { animation: of-navigation-customizer-backdrop-closing var(--of-duration-default) var(--of-ease-standard) both; pointer-events: none; }
+.of-navigation-customizer-dialog { transform: translate(-50%, -50%); transform-origin: center; }
+.of-navigation-customizer-dialog[data-phase='opening'] { animation: of-navigation-customizer-opening var(--of-duration-overlay) var(--of-ease-emphasized) both; }
+.of-navigation-customizer-dialog[data-phase='closing'] { animation: of-navigation-customizer-closing var(--of-duration-default) var(--of-ease-standard) both; pointer-events: none; }
 
 @media (pointer: coarse) {
   .of-touch-target {
@@ -386,6 +417,9 @@ textarea {
   .of-menu-enter,
   .of-dropdown-motion,
   .of-popover-motion,
+  .of-sidebar-panel-motion,
+  .of-navigation-customizer-backdrop,
+  .of-navigation-customizer-dialog,
   .of-search-overlay-opening,
   .of-search-overlay-closing,
   .of-search-surface-opening,
