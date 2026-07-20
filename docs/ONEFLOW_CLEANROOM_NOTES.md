@@ -545,3 +545,21 @@ Plane/OpenProject source, API, database schema, package, asset, CSS, DOM hierarc
 `docs/plane-poc-reverse-spec/`과 사용자 제공 캡처에서 사용한 입력은 sidebar에서 여는 보조 패널과 navigation customization dialog가 현재 화면 위에 떠서 열리고 닫힐 때 같은 방향성의 짧은 motion, focus containment와 trigger 복귀를 제공한다는 관찰 가능한 행동뿐이다. OneFlow 구현은 기존 자체 sidebar preference, React state/ref, local design token과 CSS animation을 사용해 `opening`/`open`/`closing`/`closed` 수명주기를 독립 설계했다.
 
 Plane/OpenProject source, API, database schema, package, asset, CSS, DOM hierarchy, exact dimensions/colors, wording, motion implementation, icons 또는 branding은 복사하지 않았다. 기존 More pin/unpin, navigation visibility/order/drag, project navigation mode/limit persistence와 keyboard/outside dismissal을 유지하고 reduced-motion 즉시 정착을 추가했다. 신규 API, DB/schema, migration, permission, environment variable, dependency 또는 Settings storage 변경은 없다. - attested-independent-derivation
+
+## UI-178 Shared Sheet Bidirectional Motion
+
+`docs/plane-poc-reverse-spec/`에서 사용한 입력은 우측 상세 surface가 현재 화면 위에서 열리고 닫히며 focus를 가두고 종료 뒤 원래 trigger로 돌아간다는 관찰 가능한 행동뿐이다. OneFlow 구현은 자체 Radix Sheet primitive, React state와 local design token을 사용해 overlay와 panel의 양방향 presence lifecycle을 독립 설계했다.
+
+Plane/OpenProject source, API, database schema, package, asset, CSS, DOM hierarchy, exact dimensions/colors, wording, motion implementation, icons 또는 branding은 복사하지 않았다. 작업 상세, 이니셔티브 상세, 알림, CSV 가져오기와 템플릿 상세의 기존 API-backed 상태와 action을 유지하며 신규 API, DB/schema, migration, permission, environment variable, dependency 또는 Settings storage 변경은 없다. - attested-independent-derivation
+
+## UI-179 Workspace Views Shared Modal Motion
+
+`docs/plane-poc-reverse-spec/`에서 사용한 입력은 저장 뷰, 열 순서와 분석 surface가 같은 modal motion, focus containment와 종료 계약을 제공한다는 관찰 가능한 행동뿐이다. OneFlow 구현은 자체 Radix Dialog primitive, React state와 local design token을 사용해 overlay와 content의 양방향 presence lifecycle을 독립 설계했다.
+
+Plane/OpenProject source, API, database schema, package, asset, CSS, DOM hierarchy, exact dimensions/colors, wording, motion implementation, icons 또는 branding은 복사하지 않았다. 실제 saved-view CRUD, column order URL/private-view 왕복과 filtered analytics 요청·상태를 유지하며 신규 API, DB/schema, migration, permission, environment variable, dependency 또는 Settings storage 변경은 없다. - attested-independent-derivation
+
+## UI-180 Login In-App Exhaustive Pixel Audit
+
+UI-180의 유일한 시각 입력은 사용자가 직접 제공하고 OneFlow 제품 자산으로 승인한 `docs/oneflow-login-origin.png`다. runtime 전체 원본과 승인 원본의 SHA-256은 모두 `62fafe9e44df9d189e8fe2f38fc25147d11b8459569be13ee0424ba06c0c4c76`이며, story crop `(0,0)-(792,1086)`과 auth logo crop `(1011,100) 205x70`은 승인 원본 대비 pixel MAE `0`이다. 신규 unit test가 전체, story와 logo의 1x/2x 파생 자산 SHA-256을 고정한다.
+
+Plane/OpenProject source, package, asset, logo, CSS, DOM, wording 또는 branding은 입력·복사하지 않았다. 인증 영역은 기존 OneFlow auth API와 semantic DOM을 유지한다. 신규 API, DB/schema, migration, permission, environment variable, dependency 또는 Settings storage 변경은 없으며, 외부 OIDC 공급자의 실제 연결만 배포별 credential 경계를 유지한다. - attested-user-owned-oneflow-asset
