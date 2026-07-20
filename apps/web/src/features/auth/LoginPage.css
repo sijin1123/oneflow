@@ -1231,6 +1231,23 @@
   }
 }
 
+@media (min-width: 1268px) and (min-height: 961px) {
+  .of-login-page {
+    --of-login-panel-x: calc((100vw - 1220px) / 2);
+    --of-login-panel-y: calc((100dvh - 915px) / 2);
+    grid-template-columns: 667px 553px;
+    translate:
+      calc(round(nearest, var(--of-login-panel-x), 1px) - var(--of-login-panel-x))
+      calc(round(nearest, var(--of-login-panel-y), 1px) - var(--of-login-panel-y));
+  }
+
+  .of-login-brand-reference {
+    width: 173px;
+    height: 59px;
+    aspect-ratio: auto;
+  }
+}
+
 @media (max-height: 960px) and (min-width: 881px) {
   .of-login-page {
     width: auto;

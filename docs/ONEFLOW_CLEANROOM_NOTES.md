@@ -569,3 +569,9 @@ Plane/OpenProject source, package, asset, logo, CSS, DOM, wording 또는 brandin
 `docs/plane-poc-reverse-spec/`에서 사용한 입력은 프로젝트 표지와 일정 기준선 같은 기능형 대화상자가 현재 화면 위에 중앙 정렬되고, 열림과 닫힘에 같은 짧은 motion, focus containment와 trigger 복귀를 제공한다는 관찰 가능한 행동뿐이다. OneFlow 구현은 자체 Radix Dialog primitive, 기존 Project/Attachment/Schedule Baseline API, React Query state와 local design token을 사용해 독립 설계했다.
 
 Plane/OpenProject source, API, database schema, package, asset, CSS, DOM hierarchy, exact dimensions/colors, wording, modal implementation, icons 또는 branding은 복사하지 않았다. 표지 upload/remove와 기준선 create/delete·409 conflict recovery를 그대로 유지했고, Tailwind 4의 독립 `translate` 속성과 CSS animation transform이 중첩되던 좌표 결함을 공통 modal primitive에서 제거했다. 신규 API, DB/schema, migration, permission, environment variable, dependency 또는 Settings storage 변경은 없다. - attested-independent-derivation
+
+## UI-182 Login Integer Pixel Convergence
+
+UI-182의 유일한 시각 입력은 사용자가 직접 제공하고 OneFlow 제품 자산으로 승인한 `docs/oneflow-login-origin.png`다. 신규 `oneflow-login-story-reference-667x915.png`와 `oneflow-login-logo-lockup-173x59.png`는 기존 승인 crop을 Lanczos로 결정적으로 축소한 정수 픽셀 파생 자산이며 SHA-256 unit regression으로 고정한다. 생성형 재해석, 로고 형태 재구성, 색상 변경 또는 제3자 자산 사용은 없다.
+
+Plane/OpenProject source, package, asset, logo, CSS, DOM, wording 또는 branding은 입력·복사하지 않았다. 인증 영역은 기존 OneFlow auth API와 semantic DOM을 유지하며 신규 API, DB/schema, migration, permission, environment variable, dependency 또는 Settings storage 변경은 없다. - attested-user-owned-oneflow-asset
