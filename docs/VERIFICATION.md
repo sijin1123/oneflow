@@ -3091,3 +3091,13 @@ Chromium typed mock fixture에서 1440x960과 390x844 viewport를 사용했다. 
 - **증적**: `docs/screenshots/redevelopment/detail-description-ui/{desktop,mobile-edit}.png`을 실제 Chromium에서 확인해 scan-first 본문, 명시적 editor 전환과 390px mobile containment를 검증했다.
 
 ---
+
+# UI-191 Work Item AI Summary IA 검증 (2026-07-21)
+
+- **UI 변경**: feature-gated 작업 AI 요약을 남아 있던 중첩 card에서 공통 detail section header, on-demand action과 scan-first result row로 재구성했다. 생성 전, pending, 성공, 재생성 오류와 mobile 상태가 설명·시간·비용 section과 같은 밀도와 경계를 사용한다.
+- **기능/API 반영**: 기존 capability query와 실제 work-package summary POST를 그대로 사용한다. 성공 결과는 work item별로 격리해 full-page route가 바뀌어도 이전 작업의 요약이나 오류가 노출되지 않으며, 같은 작업의 재생성이 실패하면 마지막 성공 요약을 유지한 채 실제 POST를 다시 시도할 수 있다. 신규 API, DB/schema, migration, permission, environment variable, dependency 또는 Settings storage 변경은 없다.
+- **이연 항목**: workspace-level Ask/Build AI workflow는 기존 gap map의 별도 대형 surface로 유지한다. 이번 detail summary의 모든 control은 실제 capability 또는 mutation state에 연결돼 있으며 mock/dead control이나 장식용 action은 없다.
+- **검증**: typecheck PASS, lint PASS(기존 Fast Refresh warning 4건), production build PASS(기존 large chunk warning), unit **108 PASS**, component **8 PASS**, 생성·재생성 오류·성공값 보존·retry·capability OFF·work-item 전환·mobile을 포함한 focused E2E **4 PASS**다. 최종 4-worker full E2E는 **345 PASS + opt-in visual QA manifest 1 skip**로 완주했다. 1차 full E2E는 신규 AI 시나리오가 모두 통과한 가운데 기존 모바일 상세 기한 포커스가 병렬 부하에서 1회 timeout됐고, 별도로 남아 있던 기존 AI 정책 테스트의 구 버튼 문구 1건이 실패했다. 포커스 시나리오는 `--repeat-each=5 --workers=1`에서 **5/5 PASS**, 문구 계약 보정 후 focused E2E 재실행 **4/4 PASS**와 full E2E 재실행이 모두 통과했다. 첫 focused 실행의 구 버튼 문구와 `wpB` 상세 mock 누락 2건도 error context로 구현 결함이 아님을 확인해 새 명시적 action contract와 두 번째 work-item fixture를 반영했다. Clean-room frontend **162**/backend **45**, OpenAPI type parity, npm audit 0 vulnerabilities와 diff check가 PASS했다.
+- **증적**: `docs/screenshots/redevelopment/detail-ai-summary-ui/{desktop,mobile}.png`을 실제 Chromium에서 확인해 compact result hierarchy, drawer/full-page composition과 390px containment를 검증했다.
+
+---
