@@ -20,11 +20,15 @@ export function SheetContent({
 }: React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> & { title: string }) {
   return (
     <DialogPrimitive.Portal>
-      <DialogPrimitive.Overlay className="fixed inset-0 z-40 bg-of-overlay backdrop-blur-[2px] data-[state=open]:animate-in data-[state=open]:fade-in" />
+      <DialogPrimitive.Overlay
+        data-slot="sheet-overlay"
+        className="of-sheet-overlay fixed inset-0 z-40 bg-of-overlay backdrop-blur-[2px]"
+      />
       <DialogPrimitive.Content
         aria-describedby={undefined}
+        data-slot="sheet-content"
         className={cn(
-          'fixed inset-y-0 right-0 z-50 flex w-full max-w-xl flex-col border-l border-of-border bg-of-surface-raised shadow-[var(--of-shadow-popover)] outline-none',
+          'of-sheet-content fixed inset-y-0 right-0 z-50 flex w-full max-w-xl flex-col border-l border-of-border bg-of-surface-raised shadow-[var(--of-shadow-popover)] outline-none',
           className,
         )}
         {...props}

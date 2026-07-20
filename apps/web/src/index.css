@@ -350,6 +350,19 @@ textarea {
   to { opacity: 0; transform: translate(-50%, -49%) scale(0.97); }
 }
 
+@keyframes of-sheet-overlay-opening { from { opacity: 0; } to { opacity: 1; } }
+@keyframes of-sheet-overlay-closing { from { opacity: 1; } to { opacity: 0; } }
+
+@keyframes of-sheet-content-opening {
+  from { opacity: 0.92; transform: translateX(100%); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes of-sheet-content-closing {
+  from { opacity: 1; transform: translateX(0); }
+  to { opacity: 0.92; transform: translateX(100%); }
+}
+
 .of-overlay-enter { animation: of-overlay-enter var(--of-duration-overlay) var(--of-ease-standard) both; }
 .of-menu-enter { animation: of-menu-enter 150ms var(--of-ease-standard) both; transform-origin: top left; }
 .of-dropdown-motion { transform-origin: var(--radix-dropdown-menu-content-transform-origin); }
@@ -404,6 +417,11 @@ textarea {
 .of-navigation-customizer-dialog { transform: translate(-50%, -50%); transform-origin: center; }
 .of-navigation-customizer-dialog[data-phase='opening'] { animation: of-navigation-customizer-opening var(--of-duration-overlay) var(--of-ease-emphasized) both; }
 .of-navigation-customizer-dialog[data-phase='closing'] { animation: of-navigation-customizer-closing var(--of-duration-default) var(--of-ease-standard) both; pointer-events: none; }
+.of-sheet-overlay[data-state='open'] { animation: of-sheet-overlay-opening var(--of-duration-overlay) var(--of-ease-standard) both; }
+.of-sheet-overlay[data-state='closed'] { animation: of-sheet-overlay-closing var(--of-duration-default) var(--of-ease-standard) both; pointer-events: none; }
+.of-sheet-content { will-change: opacity, transform; }
+.of-sheet-content[data-state='open'] { animation: of-sheet-content-opening var(--of-duration-overlay) var(--of-ease-emphasized) backwards; }
+.of-sheet-content[data-state='closed'] { animation: of-sheet-content-closing var(--of-duration-default) var(--of-ease-standard) both; pointer-events: none; }
 
 @media (pointer: coarse) {
   .of-touch-target {
@@ -420,6 +438,8 @@ textarea {
   .of-sidebar-panel-motion,
   .of-navigation-customizer-backdrop,
   .of-navigation-customizer-dialog,
+  .of-sheet-overlay,
+  .of-sheet-content,
   .of-search-overlay-opening,
   .of-search-overlay-closing,
   .of-search-surface-opening,
