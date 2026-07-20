@@ -23,6 +23,7 @@ import { cn } from '@/lib/utils'
 type Props = {
   value: string
   onSave: (html: string) => void
+  onChange?: (html: string) => void
   ariaLabel: string
   /** Inline images (Pass 68): upload the file and resolve to the canonical
       download URL. Only the document editor passes this — surfaces without
@@ -30,6 +31,10 @@ type Props = {
   onImageUpload?: (file: File) => Promise<string>
   /** Read-only (Pass 76): no toolbar, no editing — content renders as-is. */
   editable?: boolean
+  /** Work-item descriptions use an explicit Save action instead of blur-save. */
+  saveOnBlur?: boolean
+  /** Plain removes editor chrome for scan-first read surfaces. */
+  appearance?: 'framed' | 'plain'
   /** Document-only inline comment integration. Other rich-text surfaces omit
       these props and retain the original editor behavior. */
   activeCommentAnchorIds?: string[]
@@ -79,9 +84,12 @@ const normalizeQuote = (value: string) => value.replace(/\s+/g, ' ').trim()
 export function RichTextEditor({
   value,
   onSave,
+  onChange,
   ariaLabel,
   onImageUpload,
   editable = true,
+  saveOnBlur = true,
+  appearance = 'framed',
   activeCommentAnchorIds = [],
   activeCommentAnchorId = null,
   onCommentAnchorActivate,
@@ -113,8 +121,12 @@ export function RichTextEditor({
     editorProps: {
       attributes: {
         'aria-label': ariaLabel,
-        class:
-          'min-h-20 max-h-72 overflow-y-auto rounded-b-of px-2 py-1.5 text-sm outline-none [&_ul]:list-disc [&_ol]:list-decimal [&_ul]:pl-5 [&_ol]:pl-5',
+        class: cn(
+          'max-h-72 overflow-y-auto text-sm outline-none [&_ol]:list-decimal [&_ol]:pl-5 [&_ul]:list-disc [&_ul]:pl-5',
+          appearance === 'plain'
+            ? 'min-h-16 px-1 py-2 leading-6 [&_blockquote]:border-l-2 [&_blockquote]:border-of-border [&_blockquote]:pl-3 [&_h1]:text-lg [&_h1]:font-semibold [&_h2]:text-base [&_h2]:font-semibold [&_p+p]:mt-2'
+            : 'min-h-20 rounded-b-of px-2 py-1.5',
+        ),
       },
       handleClick: (_view, _position, event) => {
         const target = event.target instanceof Element ? event.target : null
@@ -126,7 +138,10 @@ export function RichTextEditor({
         return false
       },
     },
-    onBlur: ({ editor }) => onSave(editor.isEmpty ? '' : editor.getHTML()),
+    onUpdate: ({ editor }) => onChange?.(editor.isEmpty ? '' : editor.getHTML()),
+    onBlur: ({ editor }) => {
+      if (saveOnBlur) onSave(editor.isEmpty ? '' : editor.getHTML())
+    },
     onSelectionUpdate: ({ editor }) => {
       const { from, to, $from, $to } = editor.state.selection
       const quote = normalizeQuote(editor.state.doc.textBetween(from, to, ' '))
@@ -257,7 +272,13 @@ export function RichTextEditor({
   }
 
   return (
-    <div className="rounded-of border border-of-border bg-of-surface">
+    <div
+      className={cn(
+        appearance === 'plain'
+          ? 'bg-transparent'
+          : 'rounded-of border border-of-border bg-of-surface',
+      )}
+    >
       {editable ? (
       <div className="flex min-h-8 items-center gap-0.5 border-b border-of-border bg-of-surface-2/40 px-1 py-0.5">
         <button
