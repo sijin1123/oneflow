@@ -4412,6 +4412,21 @@ test('드로어에서 활동 이력을 보여주고 댓글을 추가한다', asy
   await expect(drawer.getByText('사이클: 스프린트 1 → 스프린트 2')).toBeVisible()
 
   const activityFilters = drawer.getByRole('tablist', { name: '활동 피드 필터' })
+  const timeline = drawer.getByRole('list', { name: '활동 타임라인' })
+  await expect(timeline.getByRole('listitem').first()).toContainText('작업을 생성했습니다')
+  const orderToggle = drawer.getByRole('button', { name: '최신순으로 보기' })
+  await orderToggle.click()
+  await expect(drawer.getByRole('button', { name: '오래된순으로 보기' })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  )
+  await expect(timeline.getByRole('listitem').first()).toContainText('상태: 할 일 → 진행 중')
+
+  await activityFilters.getByRole('tab', { name: '활동', exact: true }).click()
+  await expect(drawer.getByLabel('댓글 입력')).toHaveCount(0)
+  await activityFilters.getByRole('tab', { name: '전체' }).click()
+  await expect(drawer.getByLabel('댓글 입력')).toBeVisible()
+
   const transitionRequest = page.waitForRequest(
     (req) => req.url().includes(`/work-packages/${wpA.id}/activities`) && req.url().includes('field=status'),
   )
@@ -4439,6 +4454,31 @@ test('드로어에서 활동 이력을 보여주고 댓글을 추가한다', asy
   await drawer.getByRole('tab', { name: '개요' }).click()
   await expect(drawer.getByText('설계서.pdf')).toBeVisible()
   await expect(drawer.getByLabel('설계서.pdf 다운로드')).toBeVisible()
+})
+
+test('활동 피드 오류는 현재 범위를 다시 요청해 타임라인으로 복구한다', async ({ page }) => {
+  await mockApi(page)
+  let shouldFail = true
+  await page.route(`**/api/v1/work-packages/${wpA.id}/activities**`, (route) => {
+    if (shouldFail) return route.fulfill({ status: 503, json: { detail: 'temporary' } })
+    return route.fulfill({ json: activities })
+  })
+
+  await page.goto(`/projects/${project.id}/work-packages`)
+  await page.getByRole('button', { name: '워크패키지 API 구현', exact: true }).click()
+  const drawer = page.getByRole('dialog', { name: '워크패키지 API 구현' })
+  await drawer.getByRole('tab', { name: '활동' }).click()
+  await expect(drawer.getByText('활동을 불러오지 못했습니다.')).toBeVisible()
+
+  shouldFail = false
+  const retryRequest = page.waitForRequest(
+    (request) => request.url().includes(`/work-packages/${wpA.id}/activities`),
+  )
+  await drawer.getByRole('button', { name: '다시 시도' }).click()
+  await retryRequest
+  await expect(drawer.getByRole('list', { name: '활동 타임라인' })).toContainText(
+    '작업을 생성했습니다',
+  )
 })
 
 test('댓글 스레드: 답글이 루트 아래 들여쓰기로 붙고 parent_id를 보낸다', async ({ page }) => {
