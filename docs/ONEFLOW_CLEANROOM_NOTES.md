@@ -581,3 +581,9 @@ Plane/OpenProject source, package, asset, logo, CSS, DOM, wording 또는 brandin
 UI-186의 유일한 시각 입력은 사용자가 직접 제공하고 OneFlow 제품 자산으로 승인한 `docs/oneflow-login-origin.png`이며, runtime reference와 동일한 SHA-256 `62fafe9e44df9d189e8fe2f38fc25147d11b8459569be13ee0424ba06c0c4c76`을 유지한다. story·logo bitmap을 재생성하거나 제3자 자산으로 대체하지 않고, 승인 crop이 브라우저 합성 단계에서 다시 보간되지 않도록 OneFlow 자체 CSS layout과 `srcset` 선택만 교정했다.
 
 Plane/OpenProject source, package, asset, logo, CSS, DOM, wording 또는 branding은 입력·복사하지 않았다. 인증 영역은 기존 OneFlow semantic DOM과 auth API, 자체 local design token을 유지한다. 신규 API, DB/schema, migration, permission, environment variable, dependency 또는 Settings storage 변경은 없다. - attested-user-owned-oneflow-asset
+
+## UI-185 Work Item Properties Rail IA
+
+`docs/plane-poc-reverse-spec/`에서 사용한 입력은 full-page 작업 상세가 compact label/value 속성 hierarchy, bounded groups, sticky desktop rail, collapse와 dual resize를 제공한다는 S027의 관찰 가능한 정보 구조와 행동뿐이다. OneFlow 구현은 기존 `WorkPackageDetailPanel`, work-package CAS PATCH, capability query, React state/localStorage와 자체 design token/Lucide icon으로 독립 설계했다.
+
+Plane/OpenProject source, API, database schema, package, asset, CSS, DOM hierarchy, exact dimensions/colors, wording, component implementation, icons 또는 branding은 복사하지 않았다. 모든 속성 write, 날짜 repair/validation, viewer boundary, loading/error, collapse, resize와 mobile flow를 기존 OneFlow 계약에 유지했고 신규 API, DB/schema, migration, permission, environment variable, dependency 또는 Settings storage 변경은 없다. - attested-independent-derivation

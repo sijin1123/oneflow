@@ -1,11 +1,23 @@
 import {
   Bell,
   BellOff,
+  Boxes,
+  Building2,
+  CalendarDays,
   CheckCircle2,
   ChevronDown,
+  CircleDot,
   Copy,
   ExternalLink,
+  Flag,
+  Layers3,
+  ListTree,
   MoveRight,
+  Signal,
+  SlidersHorizontal,
+  Tag,
+  Timer,
+  UserRound,
   Users,
 } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
@@ -40,6 +52,7 @@ import { Select } from '@/components/ui/select'
 import { Sheet, SheetContent } from '@/components/ui/sheet'
 import { ApiError } from '@/lib/api'
 import { decideOnPatchError } from '@/lib/conflict'
+import { formatDateTime } from '@/lib/datetime'
 
 // Tiptap is heavy — load it only when a drawer actually renders (code-split).
 const RichTextEditor = lazy(() =>
@@ -342,8 +355,11 @@ export function WorkPackageDetailPanel({
   }
 
   const propertyRowClass = resizableProperties
-    ? 'space-y-1.5 lg:grid lg:grid-cols-[var(--detail-property-label-width)_minmax(0,1fr)] lg:items-center lg:gap-2 lg:space-y-0'
-    : 'space-y-1.5'
+    ? 'group/property grid min-h-9 grid-cols-[minmax(6.5rem,0.8fr)_minmax(0,1.2fr)] items-center gap-2 px-3 py-1 transition-colors hover:bg-of-surface-hover/70 lg:grid-cols-[var(--detail-property-label-width)_minmax(0,1fr)]'
+    : 'group/property grid min-h-9 grid-cols-[minmax(6.5rem,0.8fr)_minmax(0,1.2fr)] items-center gap-2 px-3 py-1 transition-colors hover:bg-of-surface-hover/70'
+  const propertyLabelClass = 'flex min-w-0 items-center gap-2 text-[11px] font-medium text-of-muted'
+  const propertyIconClass = 'size-3.5 shrink-0 text-of-faint transition-colors group-hover/property:text-of-muted'
+  const propertyControlClass = 'h-7 min-w-0 !rounded-[4px] !border-transparent !bg-transparent px-2 text-xs !shadow-none hover:!border-of-border-subtle hover:!bg-of-surface focus-visible:!border-of-focus focus-visible:!bg-of-surface disabled:!bg-transparent'
   const detailGridStyle = resizableProperties
     ? ({ '--detail-properties-width': `${detailLayout.panelWidth}%` } as CSSProperties)
     : undefined
@@ -631,15 +647,18 @@ export function WorkPackageDetailPanel({
 
           <aside
             aria-label="작업 속성"
-            className="of-surface order-first space-y-3 bg-of-surface-raised p-3 lg:order-none lg:sticky lg:top-0 lg:self-start"
+            className="order-first overflow-hidden rounded-of border border-of-border-subtle bg-of-surface lg:order-none lg:sticky lg:top-0 lg:self-start lg:rounded-none lg:border-y-0 lg:border-r-0"
           >
             <button
               type="button"
               aria-expanded={propertiesOpen}
-              className="flex w-full items-center justify-between gap-2 text-xs font-semibold text-of-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus"
+              className="flex min-h-11 w-full items-center justify-between gap-2 px-3 text-xs font-semibold text-of-fg transition-colors hover:bg-of-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-of-focus"
               onClick={() => setPropertiesOpen((open) => !open)}
             >
-              속성
+              <span className="flex items-center gap-2">
+                <SlidersHorizontal size={14} className="text-of-muted" aria-hidden="true" />
+                속성
+              </span>
               <ChevronDown
                 size={14}
                 aria-hidden="true"
@@ -649,7 +668,7 @@ export function WorkPackageDetailPanel({
             {propertiesOpen ? <div
               ref={propertiesFieldsRef}
               style={propertyFieldsStyle}
-              className="relative grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-1 [&>*]:min-w-0"
+              className="relative border-t border-of-border-subtle"
             >
               {resizableProperties ? (
                 <button
@@ -674,216 +693,288 @@ export function WorkPackageDetailPanel({
                   <span className="w-px bg-transparent transition-colors group-hover:bg-of-accent group-focus-visible:bg-of-accent" />
                 </button>
               ) : null}
-              <div className={propertyRowClass}>
-                <label htmlFor="wp-status" className="text-xs font-medium text-of-muted">
-                  상태
-                </label>
-                <Select
-                  id="wp-status"
-                  value={wp.status}
-                  disabled={!canWrite || patch.isPending}
-                  onChange={(e) => send({ status: e.target.value as WpStatus })}
+              <section aria-labelledby="work-item-properties-details-heading" className="py-1.5">
+                <h3
+                  id="work-item-properties-details-heading"
+                  className="px-3 pb-1 pt-1 text-[11px] font-semibold text-of-secondary"
                 >
-                  {WP_STATUSES.map((s) => (
-                    <option key={s} value={s}>
-                      {statusLabel(s)}
-                    </option>
-                  ))}
-                </Select>
-              </div>
-              <div className={propertyRowClass}>
-                <label htmlFor="wp-priority" className="text-xs font-medium text-of-muted">
-                  우선순위
-                </label>
-                <Select
-                  id="wp-priority"
-                  value={wp.priority}
-                  disabled={!canWrite || patch.isPending}
-                  onChange={(e) => send({ priority: e.target.value as WpPriority })}
-                >
-                  {WP_PRIORITIES.map((p) => (
-                    <option key={p} value={p}>
-                      {PRIORITY_LABELS[p]}
-                    </option>
-                  ))}
-                </Select>
-              </div>
-              <div className={propertyRowClass}>
-                <label htmlFor="wp-start" className="text-xs font-medium text-of-muted">
-                  시작일
-                </label>
-                {/* date-only string round-trip — never through JS Date (§6.1) */}
-                <Input
-                  id="wp-start"
-                  readOnly={!canWrite}
-                  type="date"
-                  value={startDate}
-                  disabled={!canWrite || patch.isPending}
-                  max={dueDate || undefined}
-                  aria-invalid={Boolean(scheduleError)}
-                  onChange={(e) => setStartDate(e.target.value)}
-                  onBlur={saveScheduleDates}
-                />
-              </div>
-              <div className={propertyRowClass}>
-                <label htmlFor="wp-due" className="text-xs font-medium text-of-muted">
-                  기한
-                </label>
-                <Input
-                  id="wp-due"
-                  readOnly={!canWrite}
-                  type="date"
-                  value={dueDate}
-                  disabled={!canWrite || patch.isPending}
-                  min={startDate || undefined}
-                  aria-invalid={Boolean(scheduleError)}
-                  onChange={(e) => setDueDate(e.target.value)}
-                  onBlur={saveScheduleDates}
-                />
-              </div>
-              {scheduleError ? (
-                <p role="alert" className="text-xs text-of-danger lg:col-span-2">{scheduleError}</p>
-              ) : null}
-              <div className={propertyRowClass}>
-                <label htmlFor="wp-estimate" className="text-xs font-medium text-of-muted">
-                  예상 시간(h)
-                </label>
-                <Input
-                  id="wp-estimate"
-                  readOnly={!canWrite}
-                  type="number"
-                  step="0.5"
-                  min="0"
-                  value={estimate}
-                  disabled={!canWrite || patch.isPending}
-                  onChange={(e) => setEstimate(e.target.value)}
-                  onBlur={() => {
-                    const v = estimate.trim() === '' ? null : Number(estimate)
-                    if (v !== (wp.estimated_hours ?? null)) send({ estimated_hours: v })
-                  }}
-                />
-              </div>
-              <div className={propertyRowClass}>
-                <label htmlFor="wp-type" className="text-xs font-medium text-of-muted">
-                  타입
-                </label>
-                <Select
-                  id="wp-type"
-                  value={wp.type}
-                  disabled={!canWrite || patch.isPending}
-                  onChange={(e) => send({ type: e.target.value })}
-                >
-                  {projectTypes.options.map((type) => (
-                      <option key={type.key} value={type.key}>
-                        {type.label}
-                        {type.isActive ? '' : ' (비활성)'}
-                      </option>
-                    ))}
-                </Select>
-              </div>
-              {releasesEnabled ? <div className={propertyRowClass}>
-                <label htmlFor="wp-milestone" className="text-xs font-medium text-of-muted">
-                  마일스톤
-                </label>
-                <Select
-                  id="wp-milestone"
-                  value={wp.milestone_id ?? ''}
-                  disabled={!canWrite || patch.isPending}
-                  onChange={(e) => send({ milestone_id: e.target.value || null })}
-                >
-                  <option value="">없음</option>
-                  {milestones.data?.items.map((m) => (
-                    <option key={m.id} value={m.id}>
-                      {m.name}
-                    </option>
-                  ))}
-                </Select>
-              </div> : null}
-              {customersEnabled ? (
+                  상세
+                </h3>
                 <div className={propertyRowClass}>
-                  <label htmlFor="wp-customer" className="text-xs font-medium text-of-muted">
-                    고객
+                  <label htmlFor="wp-status" className={propertyLabelClass}>
+                    <CircleDot className={propertyIconClass} aria-hidden="true" />
+                    <span className="truncate">상태</span>
                   </label>
                   <Select
-                    id="wp-customer"
-                    value={wp.customer_id ?? ''}
+                    id="wp-status"
+                    className={propertyControlClass}
+                    value={wp.status}
                     disabled={!canWrite || patch.isPending}
-                    onChange={(e) => send({ customer_id: e.target.value || null })}
+                    onChange={(e) => send({ status: e.target.value as WpStatus })}
                   >
-                    <option value="">없음</option>
-                    {customers.data?.items.map((customer) => (
-                      <option
-                        key={customer.id}
-                        value={customer.id}
-                        disabled={customer.archived_at !== null && customer.id !== wp.customer_id}
-                      >
-                        {customer.name}{customer.archived_at ? ' (보관)' : ''}
+                    {WP_STATUSES.map((s) => (
+                      <option key={s} value={s}>
+                        {statusLabel(s)}
                       </option>
                     ))}
                   </Select>
                 </div>
-              ) : null}
-              <div className={propertyRowClass}>
-                <label htmlFor="wp-cycle" className="text-xs font-medium text-of-muted">
-                  사이클
-                </label>
-                <Select
-                  id="wp-cycle"
-                  value={wp.cycle_id ?? ''}
-                  disabled={!canWrite || patch.isPending}
-                  onChange={(e) => send({ cycle_id: e.target.value || null })}
+                <div className={propertyRowClass}>
+                  <label htmlFor="wp-priority" className={propertyLabelClass}>
+                    <Signal className={propertyIconClass} aria-hidden="true" />
+                    <span className="truncate">우선순위</span>
+                  </label>
+                  <Select
+                    id="wp-priority"
+                    className={propertyControlClass}
+                    value={wp.priority}
+                    disabled={!canWrite || patch.isPending}
+                    onChange={(e) => send({ priority: e.target.value as WpPriority })}
+                  >
+                    {WP_PRIORITIES.map((p) => (
+                      <option key={p} value={p}>{PRIORITY_LABELS[p]}</option>
+                    ))}
+                  </Select>
+                </div>
+                <div className={propertyRowClass}>
+                  <label htmlFor="wp-assignee" className={propertyLabelClass}>
+                    <UserRound className={propertyIconClass} aria-hidden="true" />
+                    <span className="truncate">담당자</span>
+                  </label>
+                  <Select
+                    id="wp-assignee"
+                    className={propertyControlClass}
+                    value={wp.assignee_id ?? ''}
+                    disabled={!canWrite || patch.isPending || members.isPending || members.isError}
+                    onChange={(e) => send({ assignee_id: e.target.value || null })}
+                  >
+                    <option value="">미배정</option>
+                    {legacyCurrentAssignee ? (
+                      <option value={wp.assignee_id ?? ''} disabled>
+                        {currentAssignee?.display_name ?? '알 수 없는 담당자'}
+                      </option>
+                    ) : null}
+                    {assignableMembers.map((m) => (
+                      <option key={m.user_id} value={m.user_id}>{m.display_name}</option>
+                    ))}
+                  </Select>
+                </div>
+                <div className={propertyRowClass}>
+                  <label htmlFor="wp-type" className={propertyLabelClass}>
+                    <Tag className={propertyIconClass} aria-hidden="true" />
+                    <span className="truncate">타입</span>
+                  </label>
+                  <Select
+                    id="wp-type"
+                    className={propertyControlClass}
+                    value={wp.type}
+                    disabled={!canWrite || patch.isPending}
+                    onChange={(e) => send({ type: e.target.value })}
+                  >
+                    {projectTypes.options.map((type) => (
+                      <option key={type.key} value={type.key}>
+                        {type.label}{type.isActive ? '' : ' (비활성)'}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+              </section>
+
+              <section
+                aria-labelledby="work-item-properties-schedule-heading"
+                className="border-t border-of-border-subtle py-1.5"
+              >
+                <h3
+                  id="work-item-properties-schedule-heading"
+                  className="px-3 pb-1 pt-1 text-[11px] font-semibold text-of-secondary"
                 >
-                  <option value="">없음</option>
-                  {cycles.data?.items.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                    </option>
-                  ))}
-                </Select>
-              </div>
-              <div className={propertyRowClass}>
-                <label htmlFor="wp-module" className="text-xs font-medium text-of-muted">
-                  모듈
-                </label>
-                <Select
-                  id="wp-module"
-                  value={wp.module_id ?? ''}
-                  disabled={!canWrite || patch.isPending}
-                  onChange={(e) => send({ module_id: e.target.value || null })}
+                  일정
+                </h3>
+                <div className={propertyRowClass}>
+                  <label htmlFor="wp-start" className={propertyLabelClass}>
+                    <CalendarDays className={propertyIconClass} aria-hidden="true" />
+                    <span className="truncate">시작일</span>
+                  </label>
+                  {/* date-only string round-trip — never through JS Date (§6.1) */}
+                  <Input
+                    id="wp-start"
+                    className={propertyControlClass}
+                    readOnly={!canWrite}
+                    type="date"
+                    value={startDate}
+                    disabled={!canWrite || patch.isPending}
+                    max={dueDate || undefined}
+                    aria-invalid={Boolean(scheduleError)}
+                    onChange={(e) => setStartDate(e.target.value)}
+                    onBlur={saveScheduleDates}
+                  />
+                </div>
+                <div className={propertyRowClass}>
+                  <label htmlFor="wp-due" className={propertyLabelClass}>
+                    <CalendarDays className={propertyIconClass} aria-hidden="true" />
+                    <span className="truncate">기한</span>
+                  </label>
+                  <Input
+                    id="wp-due"
+                    className={propertyControlClass}
+                    readOnly={!canWrite}
+                    type="date"
+                    value={dueDate}
+                    disabled={!canWrite || patch.isPending}
+                    min={startDate || undefined}
+                    aria-invalid={Boolean(scheduleError)}
+                    onChange={(e) => setDueDate(e.target.value)}
+                    onBlur={saveScheduleDates}
+                  />
+                </div>
+                {scheduleError ? (
+                  <p role="alert" className="px-3 pb-1 text-[11px] leading-4 text-of-danger">{scheduleError}</p>
+                ) : null}
+                <div className={propertyRowClass}>
+                  <label htmlFor="wp-estimate" className={propertyLabelClass}>
+                    <Timer className={propertyIconClass} aria-hidden="true" />
+                    <span title="예상 시간">예상</span>
+                  </label>
+                  <Input
+                    id="wp-estimate"
+                    className={propertyControlClass}
+                    readOnly={!canWrite}
+                    type="number"
+                    step="0.5"
+                    min="0"
+                    value={estimate}
+                    disabled={!canWrite || patch.isPending}
+                    aria-label="예상 시간(h)"
+                    onChange={(e) => setEstimate(e.target.value)}
+                    onBlur={() => {
+                      const v = estimate.trim() === '' ? null : Number(estimate)
+                      if (v !== (wp.estimated_hours ?? null)) send({ estimated_hours: v })
+                    }}
+                  />
+                </div>
+              </section>
+
+              <section
+                aria-labelledby="work-item-properties-structure-heading"
+                className="border-t border-of-border-subtle py-1.5"
+              >
+                <h3
+                  id="work-item-properties-structure-heading"
+                  className="flex items-center gap-1.5 px-3 pb-1 pt-1 text-[11px] font-semibold text-of-secondary"
                 >
-                  <option value="">없음</option>
-                  {modules.data?.items.map((m) => (
-                    <option key={m.id} value={m.id}>
-                      {m.name}
-                    </option>
-                  ))}
-                </Select>
-              </div>
-              <div className={propertyRowClass}>
-                <label htmlFor="wp-assignee" className="text-xs font-medium text-of-muted">
-                  담당자
-                </label>
-                <Select
-                  id="wp-assignee"
-                  value={wp.assignee_id ?? ''}
-                  disabled={!canWrite || patch.isPending || members.isPending || members.isError}
-                  onChange={(e) => send({ assignee_id: e.target.value || null })}
-                >
-                  <option value="">미배정</option>
-                  {legacyCurrentAssignee ? (
-                    <option value={wp.assignee_id ?? ''} disabled>
-                      {currentAssignee?.display_name ?? '알 수 없는 담당자'}
-                    </option>
-                  ) : null}
-                  {assignableMembers.map((m) => (
-                    <option key={m.user_id} value={m.user_id}>
-                      {m.display_name}
-                    </option>
-                  ))}
-                </Select>
-              </div>
+                  <ListTree size={12} className="text-of-faint" aria-hidden="true" />
+                  프로젝트 구조
+                </h3>
+                <div className={propertyRowClass}>
+                  <label htmlFor="wp-cycle" className={propertyLabelClass}>
+                    <Layers3 className={propertyIconClass} aria-hidden="true" />
+                    <span className="truncate">사이클</span>
+                  </label>
+                  <Select
+                    id="wp-cycle"
+                    className={propertyControlClass}
+                    value={wp.cycle_id ?? ''}
+                    disabled={!canWrite || patch.isPending}
+                    onChange={(e) => send({ cycle_id: e.target.value || null })}
+                  >
+                    <option value="">없음</option>
+                    {cycles.data?.items.map((c) => (
+                      <option key={c.id} value={c.id}>{c.name}</option>
+                    ))}
+                  </Select>
+                </div>
+                <div className={propertyRowClass}>
+                  <label htmlFor="wp-module" className={propertyLabelClass}>
+                    <Boxes className={propertyIconClass} aria-hidden="true" />
+                    <span className="truncate">모듈</span>
+                  </label>
+                  <Select
+                    id="wp-module"
+                    className={propertyControlClass}
+                    value={wp.module_id ?? ''}
+                    disabled={!canWrite || patch.isPending}
+                    onChange={(e) => send({ module_id: e.target.value || null })}
+                  >
+                    <option value="">없음</option>
+                    {modules.data?.items.map((m) => (
+                      <option key={m.id} value={m.id}>{m.name}</option>
+                    ))}
+                  </Select>
+                </div>
+                {releasesEnabled ? (
+                  <div className={propertyRowClass}>
+                    <label htmlFor="wp-milestone" className={propertyLabelClass}>
+                      <Flag className={propertyIconClass} aria-hidden="true" />
+                      <span className="truncate">마일스톤</span>
+                    </label>
+                    <Select
+                      id="wp-milestone"
+                      className={propertyControlClass}
+                      value={wp.milestone_id ?? ''}
+                      disabled={!canWrite || patch.isPending}
+                      onChange={(e) => send({ milestone_id: e.target.value || null })}
+                    >
+                      <option value="">없음</option>
+                      {milestones.data?.items.map((m) => (
+                        <option key={m.id} value={m.id}>{m.name}</option>
+                      ))}
+                    </Select>
+                  </div>
+                ) : null}
+                {customersEnabled ? (
+                  <div className={propertyRowClass}>
+                    <label htmlFor="wp-customer" className={propertyLabelClass}>
+                      <Building2 className={propertyIconClass} aria-hidden="true" />
+                      <span className="truncate">고객</span>
+                    </label>
+                    <Select
+                      id="wp-customer"
+                      className={propertyControlClass}
+                      value={wp.customer_id ?? ''}
+                      disabled={!canWrite || patch.isPending}
+                      onChange={(e) => send({ customer_id: e.target.value || null })}
+                    >
+                      <option value="">없음</option>
+                      {customers.data?.items.map((customer) => (
+                        <option
+                          key={customer.id}
+                          value={customer.id}
+                          disabled={customer.archived_at !== null && customer.id !== wp.customer_id}
+                        >
+                          {customer.name}{customer.archived_at ? ' (보관)' : ''}
+                        </option>
+                      ))}
+                    </Select>
+                  </div>
+                ) : null}
+              </section>
+
+              <section
+                aria-labelledby="work-item-properties-record-heading"
+                className="border-t border-of-border-subtle px-3 py-3"
+              >
+                <h3 id="work-item-properties-record-heading" className="text-[11px] font-semibold text-of-secondary">
+                  기록
+                </h3>
+                <dl className="mt-2 space-y-1.5 text-[11px] text-of-muted">
+                  <div className="flex items-center justify-between gap-3">
+                    <dt>생성자</dt>
+                    <dd className="min-w-0 truncate text-right text-of-secondary">{createdByName ?? '알 수 없음'}</dd>
+                  </div>
+                  <div className="flex items-center justify-between gap-3">
+                    <dt>최근 업데이트</dt>
+                    <dd className="min-w-0 truncate text-right text-of-secondary">{formatDateTime(wp.updated_at)}</dd>
+                  </div>
+                  <div className="flex items-center justify-between gap-3">
+                    <dt>버전</dt>
+                    <dd className="text-of-secondary">v{wp.version}</dd>
+                  </div>
+                </dl>
+              </section>
             </div> : (
-              <p className="text-xs text-of-muted">상태, 담당자, 일정 등 작업 속성이 접혀 있습니다.</p>
+              <p className="border-t border-of-border-subtle px-3 py-3 text-xs text-of-muted">
+                상태, 담당자, 일정 등 작업 속성이 접혀 있습니다.
+              </p>
             )}
           </aside>
         </div>
