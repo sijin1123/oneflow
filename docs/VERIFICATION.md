@@ -3061,3 +3061,13 @@ Chromium typed mock fixture에서 1440x960과 390x844 viewport를 사용했다. 
 - **증적**: `docs/screenshots/redevelopment/detail-linked-content-ui/{desktop,mobile,mobile-composer}.png`에 실제 Chromium 화면을 보존했다.
 
 ---
+
+# UI-188 Work Item Time/Cost Ledger IA 검증 (2026-07-21)
+
+- **UI 변경**: 작업 상세의 시간 추적과 비용을 중첩 카드·상시 노출 form에서 compact section header, 요약, 얇은 progress bar와 scan-first ledger row로 재구성했다. 작성자는 `+` action으로 필요한 순간에만 composer를 열고 `X`로 닫으며, 모바일과 데스크톱이 같은 정보 계층을 사용한다.
+- **기능/API 반영**: 시간 기록과 비용 등록은 각각 실제 POST를 보내고 성공 시 목록·합계를 갱신한 뒤 composer를 닫는다. 각 ledger row의 삭제는 실제 DELETE를 유지하며, 초기 조회 실패는 시간·비용별 `다시 시도`가 해당 query의 `refetch`를 실행한다. 예상·소요·잔여 시간, 비용 합계와 카테고리 표시는 서버 응답에서 계산한다. 신규 API, DB/schema, migration, permission, environment variable, dependency 또는 Settings storage 변경은 없다.
+- **권한/이연 항목**: Writer만 등록·삭제 control을 받고 viewer는 기존 값을 compact row로 읽는다. 로딩·오류·빈 상태를 section 안에서 독립 처리하며 mock/dead control 또는 장식용 action은 없다. Custom field 상세 계층은 UI-189 별도 surface로 이연한다.
+- **검증**: typecheck PASS, lint PASS(기존 Fast Refresh warning 4건), production build PASS(기존 chunk-size warning), unit **108 PASS**, component **8 PASS**, 신규 기능·오류 복구와 viewer 경계를 포함한 focused E2E **4 PASS**, 전용 포트 full E2E **336 PASS + opt-in visual QA 1 skip**다. Clean-room frontend **162**/backend **45**, npm audit 0 vulnerabilities와 diff check가 PASS했다. 기존 `5173` 로그인 서버 재사용으로 첫 focused 실행 3건이 이전 bundle을 읽어 실패했으며, UI-188 전용 `5190` 포트로 격리해 동일 검증과 전체 회귀를 재실행해 모두 통과했다.
+- **증적**: `docs/screenshots/redevelopment/detail-ledgers-ui/{desktop,mobile-time,mobile-time-composer,mobile-cost}.png`을 실제 Chromium에서 확인해 desktop rail 옆 계층, mobile containment, composer 전환과 주변 layout 비재배치를 검증했다.
+
+---
