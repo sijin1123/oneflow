@@ -3020,3 +3020,13 @@ Chromium typed mock fixture에서 1440x960과 390x844 viewport를 사용했다. 
 - **증적**: `docs/screenshots/redevelopment/project-modal-motion-ui/{cover-desktop,baseline-create-desktop,baseline-delete-mobile}.png`을 실제 Chromium에서 확인해 완전 개방 상태의 중앙 정렬, desktop spacing, 390px mobile no-overflow와 주변 layout 비재배치를 검증했다.
 
 ---
+
+# UI-182 Login Integer Pixel Convergence 검증 (2026-07-20)
+
+- **UI 변경**: 인앱 Chromium `1455x1259` 실사에서 product panel 시작점 `117.5px`, story 폭 `667.28125px`, auth logo `172.703125x58.96875`가 승인 원본 전체에 서브픽셀 축소 보간을 발생시키는 것을 확인했다. 큰 데스크톱에서 panel origin을 CSS `round()`로 정수 격자에 맞추고, story `667x915`와 auth logo `173x59`의 승인 원본 Lanczos 파생 자산을 실제 `srcset` 후보로 선택한다. 낮은 높이·tablet·mobile·DPR 2의 기존 반응형 후보는 유지한다.
+- **기능/API 반영**: 이메일, 비밀번호, remember me, password visibility, 도움/접근 요청, OIDC, 언어, safe-next와 실제 auth API 배선은 변경하지 않았다. 인증 surface를 승인 전체 이미지나 투명 hit layer로 교체하지 않았고 모든 control은 semantic DOM과 실제 상태를 유지한다. 신규 API, DB/schema, migration, permission, environment variable, dependency 또는 Settings storage 변경은 없다.
+- **픽셀 전수 재실사**: 동일 기준 좌표에서 full MAE `4.088 -> 2.632`, story `4.034 -> 1.791`, Kanban `3.019 -> 1.902`, river/terrain `5.304 -> 1.658`, activity `5.615 -> 2.198`, foreground `3.838 -> 1.408`, auth `4.153 -> 3.649`, auth brand `5.743 -> 2.822`로 감소했다. full/story의 최대 채널 delta `<=12` 비율은 각각 `90.67% -> 95.34%`, `89.69% -> 96.38%`다. desktop geometry는 panel `(118,172) 1220x915`, story `(118,172) 667x915`, logo `173x59`로 정착한다.
+- **검증**: 승인 전체/story/logo 및 신규 정수 크기 파생 자산 SHA-256 unit regression을 포함한 unit **108 PASS**, component **8 PASS**, typecheck PASS, lint PASS(기존 Fast Refresh warning 4건), production build PASS(기존 large chunk warning), focused visual/geometry E2E PASS, 전체 E2E **328 PASS / 1 visual manifest SKIP**, `390x844` no-overflow와 desktop/mobile lossless screenshot 시각 검토가 PASS했다. 첫 전체 E2E의 Quick Dock 300ms timing assertion 1건은 병렬 CPU stall 뒤 완료 phase를 읽은 비제품 플래키로 단독 반복 **3 PASS**했고, 동일 전체 E2E 재실행에서 해당 항목을 포함해 **328 PASS / 1 SKIP**으로 완주했다. clean-room inventory는 frontend 162/backend 45 packages PASS, `npm audit`과 `pip-audit`는 모두 취약점 0건이다.
+- **증적**: `docs/screenshots/redevelopment/login-integer-pixel-ui/`에 desktop/mobile, normalized runtime, side-by-side와 5x diff를 보존한다.
+
+---

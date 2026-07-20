@@ -17,8 +17,10 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 
 import loginLogoLockup from '@/assets/generated/oneflow-login-logo-lockup.png'
+import loginLogoLockupDesktop from '@/assets/generated/oneflow-login-logo-lockup-173x59.png'
 import loginLogoLockup2x from '@/assets/generated/oneflow-login-logo-lockup@2x.png'
 import loginStoryReference from '@/assets/generated/oneflow-login-story-reference.png'
+import loginStoryReferenceDesktop from '@/assets/generated/oneflow-login-story-reference-667x915.png'
 import loginStoryReference2x from '@/assets/generated/oneflow-login-story-reference@2x.png'
 import { Button } from '@/components/ui/button'
 import {
@@ -161,7 +163,8 @@ function BrandLockup({ compact = false }: { compact?: boolean }) {
       <span className="of-login-brand-reference" aria-hidden="true">
         <img
           src={loginLogoLockup}
-          srcSet={`${loginLogoLockup} 1x, ${loginLogoLockup2x} 2x`}
+          srcSet={`${loginLogoLockupDesktop} 173w, ${loginLogoLockup} 205w, ${loginLogoLockup2x} 410w`}
+          sizes="(min-width: 1268px) and (min-height: 961px) 173px, (max-width: 520px) 148px, (max-width: 880px) 164px, min(14.157vw, 173px)"
           width="205"
           height="70"
           alt=""
@@ -179,7 +182,8 @@ function StoryPanel() {
       <img
         className="of-login-story-art"
         src={loginStoryReference}
-        srcSet={`${loginStoryReference} 1x, ${loginStoryReference2x} 2x`}
+        srcSet={`${loginStoryReferenceDesktop} 667w, ${loginStoryReference} 792w, ${loginStoryReference2x} 1584w`}
+        sizes="(max-width: 880px) 183vw, (max-height: 960px) calc((100dvh - 48px) * 0.7293), 667px"
         width="792"
         height="1086"
         alt=""
