@@ -593,3 +593,9 @@ Plane/OpenProject source, API, database schema, package, asset, CSS, DOM hierarc
 `docs/plane-poc-reverse-spec/`에서 사용한 입력은 작업 상세의 관련 작업, 문서와 첨부가 compact count/header/row hierarchy와 필요할 때 여는 composer, loading/empty/error recovery를 제공한다는 S027의 관찰 가능한 정보 구조와 행동뿐이다. OneFlow 구현은 기존 relation/document/attachment API hooks, React Query, React state와 자체 design token/Lucide icon으로 독립 설계했다.
 
 Plane/OpenProject source, API, database schema, package, asset, CSS, DOM hierarchy, exact dimensions/colors, wording, component implementation, icons 또는 branding은 복사하지 않았다. relation create/delete, document navigation, attachment open/download, viewer boundary와 mobile flow를 기존 OneFlow 계약에 유지했고 신규 API, DB/schema, migration, permission, environment variable, dependency 또는 Settings storage 변경은 없다. - attested-independent-derivation
+
+## UI-188 Work Item Time/Cost Ledger IA
+
+`docs/plane-poc-reverse-spec/`에서 사용한 입력은 작업 상세의 실행 원장이 compact count/summary/row hierarchy와 필요할 때 여는 composer, loading/empty/error recovery를 제공한다는 S027의 관찰 가능한 정보 구조와 행동뿐이다. OneFlow 구현은 기존 time-entry/cost-entry API hooks, React Query, React state와 자체 design token/Lucide icon으로 독립 설계했다.
+
+Plane/OpenProject source, API, database schema, package, asset, CSS, DOM hierarchy, exact dimensions/colors, wording, component implementation, icons 또는 branding은 복사하지 않았다. time/cost create/delete, estimate/spent/remaining, category total, validation, viewer boundary와 mobile flow를 기존 OneFlow 계약에 유지했고 신규 API, DB/schema, migration, permission, environment variable, dependency 또는 Settings storage 변경은 없다. - attested-independent-derivation

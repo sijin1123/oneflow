@@ -4324,7 +4324,7 @@ test('관계·페이지·첨부 오류 행은 각각 실제 조회를 다시 시
   })
 })
 
-test('시간·비용 표면은 모바일에서 기록 카드와 ledger를 유지한다', async ({ page }) => {
+test('시간·비용 표면은 모바일에서 compact ledger와 기능형 composer를 유지한다', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 })
   await mockApi(page)
   await page.route(`**/api/v1/work-packages/${wpA.id}/time-entries`, (route) =>
@@ -4392,25 +4392,149 @@ test('시간·비용 표면은 모바일에서 기록 카드와 ledger를 유지
   const timeSection = drawer.getByRole('region', { name: '시간 추적' })
   const costSection = drawer.getByRole('region', { name: '비용' })
 
-  await expect(timeSection.getByText('10.5h')).toBeVisible()
-  await expect(timeSection.getByText('예상 대비 진행')).toBeVisible()
+  await expect(timeSection.getByText('2건 · 10.5h')).toBeVisible()
+  await expect(timeSection.getByText(/예상 16h · 소요 10.5h/)).toBeVisible()
   await expect(timeSection.getByText('API 설계')).toBeVisible()
-  await expect(timeSection.getByLabel('기록할 시간')).toBeVisible()
-  await expect(costSection.getByText('₩155,000').first()).toBeVisible()
+  await expect(timeSection.getByLabel('기록할 시간')).toHaveCount(0)
+  await expect(costSection.getByText('2건 · ₩155,000')).toBeVisible()
   await expect(costSection.getByText('인건비 ₩120,000')).toBeVisible()
   await expect(costSection.getByText('개발 인건비')).toBeVisible()
-  await expect(costSection.getByLabel('비용 금액')).toBeVisible()
+  await expect(costSection.getByLabel('비용 금액')).toHaveCount(0)
+
+  await timeSection.getByRole('button', { name: '시간 기록 추가' }).click()
+  await timeSection.getByLabel('기록할 시간').fill('1.25')
+  await timeSection.getByLabel('작업일').fill('2026-07-04')
+  await timeSection.getByLabel('시간 메모').fill('모바일 기록')
+  await timeSection.screenshot({
+    path: '../../docs/screenshots/redevelopment/detail-ledgers-ui/mobile-time-composer.png',
+  })
+  const timeRequest = page.waitForRequest((request) =>
+    request.method() === 'POST' && request.url().endsWith(`/work-packages/${wpA.id}/time-entries`),
+  )
+  await timeSection.getByRole('button', { name: '기록', exact: true }).click()
+  expect((await timeRequest).postDataJSON()).toEqual({
+    hours: 1.25,
+    spent_on: '2026-07-04',
+    comment: '모바일 기록',
+  })
+  await expect(timeSection.getByLabel('기록할 시간')).toHaveCount(0)
+
+  await costSection.getByRole('button', { name: '비용 기록 추가' }).click()
+  await costSection.getByLabel('비용 금액').fill('50000')
+  await costSection.getByLabel('비용 종류').selectOption('material')
+  await costSection.getByLabel('비용 발생일').fill('2026-07-05')
+  const costRequest = page.waitForRequest((request) =>
+    request.method() === 'POST' && request.url().endsWith(`/work-packages/${wpA.id}/cost-entries`),
+  )
+  await costSection.getByRole('button', { name: '기록', exact: true }).click()
+  expect((await costRequest).postDataJSON()).toEqual({
+    amount: 50000,
+    kind: 'material',
+    spent_on: '2026-07-05',
+    comment: null,
+  })
+  await expect(costSection.getByLabel('비용 금액')).toHaveCount(0)
   await expectNoHorizontalOverflow(page)
+  await page.mouse.move(1, 1)
   await timeSection.scrollIntoViewIfNeeded()
   await page.screenshot({
-    path: '../../docs/screenshots/redevelopment/time-cost-ui/mobile-time.png',
+    path: '../../docs/screenshots/redevelopment/detail-ledgers-ui/mobile-time.png',
     fullPage: true,
   })
   await costSection.scrollIntoViewIfNeeded()
   await page.screenshot({
-    path: '../../docs/screenshots/redevelopment/time-cost-ui/mobile-cost.png',
+    path: '../../docs/screenshots/redevelopment/detail-ledgers-ui/mobile-cost.png',
     fullPage: true,
   })
+})
+
+test('시간·비용 ledger는 데스크톱에서 compact summary와 행 계층을 공유한다', async ({ page }) => {
+  await mockApi(page)
+  await page.route(`**/api/v1/work-packages/${wpA.id}/time-entries`, (route) =>
+    route.fulfill({
+      json: {
+        items: [{
+          id: 'te-desktop-1',
+          work_package_id: wpA.id,
+          user_id: 'me-1',
+          hours: 8,
+          spent_on: '2026-07-02',
+          comment: '구현',
+          created_at: '2026-07-02T01:00:00Z',
+        }],
+        total: 1,
+        total_hours: 8,
+      },
+    }),
+  )
+  await page.route(`**/api/v1/work-packages/${wpA.id}/cost-entries`, (route) =>
+    route.fulfill({
+      json: {
+        items: [{
+          id: 'ce-desktop-1',
+          work_package_id: wpA.id,
+          user_id: 'me-1',
+          amount: 90000,
+          kind: 'labor',
+          spent_on: '2026-07-02',
+          comment: '개발',
+          created_at: '2026-07-02T01:00:00Z',
+        }],
+        total: 1,
+        total_amount: 90000,
+      },
+    }),
+  )
+
+  await page.goto(`/projects/${project.id}/work-packages`)
+  await page.getByRole('button', { name: '워크패키지 API 구현', exact: true }).click()
+  const drawer = page.getByRole('dialog', { name: '워크패키지 API 구현' })
+  const timeSection = drawer.getByRole('region', { name: '시간 추적' })
+  const costSection = drawer.getByRole('region', { name: '비용' })
+  await timeSection.scrollIntoViewIfNeeded()
+  await expect(timeSection.getByText('1건 · 8h')).toBeVisible()
+  await expect(timeSection.getByText('구현')).toBeVisible()
+  await expect(costSection.getByText('1건 · ₩90,000')).toBeVisible()
+  await expect(costSection.getByText('개발')).toBeVisible()
+  await expect(timeSection.getByLabel('기록할 시간')).toHaveCount(0)
+  await expect(costSection.getByLabel('비용 금액')).toHaveCount(0)
+  await expectNoHorizontalOverflow(page)
+  await page.mouse.move(1, 1)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/detail-ledgers-ui/desktop.png',
+  })
+})
+
+test('시간·비용 오류 행은 각각 실제 ledger 조회를 다시 시도한다', async ({ page }) => {
+  await mockApi(page)
+  let timeAttempts = 0
+  let costAttempts = 0
+  await page.route(`**/api/v1/work-packages/${wpA.id}/time-entries`, (route) => {
+    timeAttempts += 1
+    return timeAttempts <= 2
+      ? route.fulfill({ status: 500, json: { detail: 'time unavailable' } })
+      : route.fulfill({ json: { items: [], total: 0, total_hours: 0 } })
+  })
+  await page.route(`**/api/v1/work-packages/${wpA.id}/cost-entries`, (route) => {
+    costAttempts += 1
+    return costAttempts <= 2
+      ? route.fulfill({ status: 500, json: { detail: 'cost unavailable' } })
+      : route.fulfill({ json: { items: [], total: 0, total_amount: 0 } })
+  })
+
+  await page.goto(`/projects/${project.id}/work-packages`)
+  await page.getByRole('button', { name: '워크패키지 API 구현', exact: true }).click()
+  const drawer = page.getByRole('dialog', { name: '워크패키지 API 구현' })
+  for (const [name, recoveredText] of [
+    ['시간 추적', '아직 기록된 시간이 없습니다.'],
+    ['비용', '아직 기록된 비용이 없습니다.'],
+  ] as const) {
+    const section = drawer.getByRole('region', { name })
+    await expect(section.getByRole('alert')).toBeVisible()
+    await section.getByRole('button', { name: '다시 시도' }).click()
+    await expect(section.getByText(recoveredText)).toBeVisible()
+  }
+  expect({ timeAttempts, costAttempts }).toEqual({ timeAttempts: 3, costAttempts: 3 })
 })
 
 test('작업 상세 전체 페이지가 드로어 IA와 활동 탭을 재사용한다', async ({ page }) => {
