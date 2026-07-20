@@ -4382,6 +4382,53 @@ test('전체 페이지 작업 속성 패널과 라벨 열을 조절하고 브라
   })
 })
 
+test('작업 속성 패널이 스캔 가능한 구역과 기존 저장 동작을 함께 제공한다', async ({ page }) => {
+  await mockApi(page)
+  await page.goto(`/projects/${project.id}/work-packages/${wpA.id}`)
+
+  const properties = page.getByRole('complementary', { name: '작업 속성' })
+  await expect(properties.getByRole('heading', { name: '상세' })).toBeVisible()
+  await expect(properties.getByRole('heading', { name: '일정' })).toBeVisible()
+  await expect(properties.getByRole('heading', { name: '프로젝트 구조' })).toBeVisible()
+  await expect(properties.getByRole('heading', { name: '기록' })).toBeVisible()
+  await expect(properties.getByText('최근 업데이트')).toBeVisible()
+  await expect(properties.getByText('v0')).toBeVisible()
+
+  await properties.getByLabel('우선순위', { exact: true }).selectOption('urgent')
+  await expect(page.getByRole('button', { name: '우선순위 변경: 긴급' })).toBeVisible()
+  await expect(properties.getByLabel('우선순위', { exact: true })).toHaveValue('urgent')
+
+  const toggle = properties.getByRole('button', { name: '속성' })
+  await toggle.click()
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false')
+  await expect(properties.getByRole('heading', { name: '상세' })).toBeHidden()
+  await toggle.click()
+  await expect(toggle).toHaveAttribute('aria-expanded', 'true')
+  await expect(properties.getByRole('heading', { name: '상세' })).toBeVisible()
+
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/detail-properties-ui/desktop.png',
+    fullPage: true,
+  })
+})
+
+test('모바일 작업 속성 패널이 단일 열에서 기능을 유지한다', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await mockApi(page)
+  await page.goto(`/projects/${project.id}/work-packages/${wpA.id}`)
+
+  const properties = page.getByRole('complementary', { name: '작업 속성' })
+  await expect(properties.getByRole('heading', { name: '상세' })).toBeVisible()
+  await expect(properties.getByLabel('상태', { exact: true })).toHaveValue('todo')
+  await expect(page.getByRole('slider')).toHaveCount(0)
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/detail-properties-ui/mobile.png',
+    fullPage: true,
+  })
+})
+
 test('모바일 작업 상세 전체 페이지가 속성과 활동 탭을 유지한다', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 })
   await mockApi(page)

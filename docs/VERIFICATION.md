@@ -3041,3 +3041,13 @@ Chromium typed mock fixture에서 1440x960과 390x844 viewport를 사용했다. 
 - **증적**: `docs/screenshots/redevelopment/login-pixel-reinspection-ui/`에 reference-size capture, normalized side-by-side, 8x diff heatmap, pixel metrics JSON, desktop와 mobile lossless screenshot을 보존한다.
 
 ---
+
+# UI-185 Work Item Properties Rail IA 검증 (2026-07-21)
+
+- **UI 변경**: full-page와 drawer가 공유하는 작업 속성 영역을 하나의 form-like stack에서 `상세`, `일정`, `프로젝트 구조`, `기록`의 compact label/value hierarchy로 재구성했다. 데스크톱은 별도 card를 중첩하지 않는 sticky right rail, 모바일은 같은 정보 순서를 유지하는 단일 열 surface를 사용한다. 행 hover/focus, 아이콘, section divider와 밀도는 OneFlow token과 Lucide icon으로 구현했다.
+- **기능/API 반영**: 상태, 우선순위, 담당자, 타입, 시작일/기한, 예상 시간, 사이클, 모듈, 마일스톤과 고객의 기존 CAS PATCH 경로를 그대로 재사용한다. 날짜 역전 검증과 두 날짜 동시 repair, viewer read-only, roster loading/error, 전체 속성 collapse, persisted panel/label-column resize, 저장 오류와 header control 동기화를 보존했다. 기록 영역은 기존 work-package 응답의 생성자, 업데이트 시각과 version만 읽어 표시한다. 신규 API, DB/schema, migration, permission, environment variable, dependency 또는 Settings UI 변경은 없다.
+- **이연 항목**: 없음. 이번 rail에 추가된 control이나 값은 모두 기존 query/mutation 또는 authoritative 응답에 연결돼 있다.
+- **검증**: typecheck PASS, lint PASS(기존 Fast Refresh warning 4건), production build PASS(기존 large chunk warning), unit **108 PASS**, component **8 PASS**, focused property/resize/mobile E2E **3 PASS**와 최종 전용 capture E2E **2 PASS**, clean-room frontend **162**/backend **45**, npm audit high 0, diff check PASS다. Full E2E는 **331 PASS + visual manifest 1 skip**이며 Sidebar focus 1건이 4-worker 부하에서 timeout 후 단독 반복 **5/5 PASS**로 재현되지 않았다.
+- **증적**: `docs/screenshots/redevelopment/detail-properties-ui/{desktop,mobile}.png`에 실제 Chromium 전체 화면을 보존했다.
+
+---
