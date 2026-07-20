@@ -3,6 +3,7 @@ import { BarChart3, RefreshCw, X } from 'lucide-react'
 import { useState } from 'react'
 
 import { Button } from '@/components/ui/button'
+import { ModalContent, ModalOverlay } from '@/components/ui/modal'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
   type SearchAnalyticsBucket,
@@ -59,11 +60,8 @@ export function WorkspaceAnalyticsDialog({
         </Button>
       </Dialog.Trigger>
       <Dialog.Portal>
-        <Dialog.Overlay
-          data-testid="workspace-analytics-overlay"
-          className="fixed inset-0 z-[var(--of-z-modal)] bg-black/30 of-overlay-enter motion-reduce:animate-none"
-        />
-        <Dialog.Content className="fixed left-1/2 top-1/2 z-[calc(var(--of-z-modal)+1)] flex max-h-[min(44rem,calc(100dvh-1.5rem))] w-[min(52rem,calc(100vw-1.5rem))] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-of-lg border border-of-border bg-of-surface-raised shadow-[var(--of-shadow-popover)] focus:outline-none">
+        <ModalOverlay data-testid="workspace-analytics-overlay" />
+        <ModalContent className="flex max-h-[min(44rem,calc(100dvh-1.5rem))] w-[min(52rem,calc(100vw-1.5rem))] flex-col overflow-hidden rounded-of-lg border border-of-border bg-of-surface-raised shadow-[var(--of-shadow-popover)]">
           <header className="flex shrink-0 items-start gap-3 border-b border-of-border px-4 py-3 sm:px-5">
             <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-of border border-of-border-subtle bg-of-surface-2 text-of-secondary">
               <BarChart3 size={16} aria-hidden="true" />
@@ -157,7 +155,7 @@ export function WorkspaceAnalyticsDialog({
               </div>
             ) : null}
           </div>
-        </Dialog.Content>
+        </ModalContent>
       </Dialog.Portal>
     </Dialog.Root>
   )
