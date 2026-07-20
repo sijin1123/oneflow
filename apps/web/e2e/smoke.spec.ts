@@ -2056,14 +2056,23 @@ test('Quick Dock은 phase 시작 icon 전환과 실제 높이 fold를 같은 tim
   // The default motion uses the observed 300ms interval for icon, actions and pill reveal.
   await page.emulateMedia({ reducedMotion: 'no-preference' })
   await page.evaluate(() => document.documentElement.style.removeProperty('--of-dock-motion-duration'))
+  await page.evaluate(() => document.documentElement.style.setProperty('--of-dock-css-animation-play-state', 'paused'))
   await trigger.click()
+  await expect(dock).toHaveAttribute('data-phase', 'opening')
   await expect(dock).toHaveCSS('animation-duration', '0.3s')
   await expect(dock.getByTestId('quick-dock-toggle-icon')).toHaveCSS('animation-duration', '0.3s')
   await expect(dock.getByTestId('quick-dock-actions')).toHaveCSS('animation-duration', '0.3s')
+  await dock.evaluate((element) => {
+    for (const animation of element.getAnimations({ subtree: true })) animation.finish()
+  })
   await expect(dock).toHaveAttribute('data-phase', 'open')
   await dock.getByRole('button', { name: '빠른 도구 닫기' }).click()
   await expect(dock.getByTestId('quick-dock-actions')).toHaveCSS('animation-name', 'of-dock-actions-exit')
+  await dock.evaluate((element) => {
+    for (const animation of element.getAnimations({ subtree: true })) animation.finish()
+  })
   await expect(dock).toHaveCount(0)
+  await page.evaluate(() => document.documentElement.style.removeProperty('--of-dock-css-animation-play-state'))
 })
 
 test('Quick Dock은 opening 중 action 수가 바뀌어도 현재 높이에서 연속 retarget한다', async ({ page }) => {
@@ -9571,7 +9580,7 @@ test('드로어 커스텀 필드에 값을 입력하면 델타 PUT이 간다', a
   await expect(page.getByRole('dialog').getByLabel('재현 절차')).toHaveCount(0)
 })
 
-test('커스텀 필드 표면은 모바일에서 값 카드와 입력 상태를 유지한다', async ({ page }) => {
+test('커스텀 필드 표면은 모바일에서 compact property rows와 보존값을 유지한다', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 })
   await mockApi(page)
   await page.route(`**/api/v1/projects/${project.id}/custom-fields**`, (route) =>
@@ -9636,18 +9645,146 @@ test('커스텀 필드 표면은 모바일에서 값 카드와 입력 상태를 
   const drawer = page.getByRole('dialog', { name: '워크패키지 API 구현' })
   const customSection = drawer.getByRole('region', { name: '커스텀 필드' })
 
-  await customSection.scrollIntoViewIfNeeded()
   await expect(customSection.getByText('심각도')).toBeVisible()
+  await customSection.scrollIntoViewIfNeeded()
   await expect(customSection.getByText('점수')).toBeVisible()
   await expect(customSection.getByText('레거시 코드')).toBeVisible()
   await expect(customSection.getByLabel('심각도')).toBeVisible()
   await expect(customSection.getByLabel('점수')).toBeVisible()
   await expect(customSection.getByText('A-17 (비활성 필드)')).toBeVisible()
+  await expect(customSection.getByText('3개 · 값 2개')).toBeVisible()
+  await expect(customSection.getByText('편집 가능')).toHaveCount(0)
   await expectNoHorizontalOverflow(page)
+  await page.mouse.move(1, 1)
   await page.screenshot({
-    path: '../../docs/screenshots/redevelopment/custom-fields-ui/mobile.png',
+    path: '../../docs/screenshots/redevelopment/detail-custom-fields-ui/mobile.png',
     fullPage: true,
   })
+})
+
+test('커스텀 필드 표면은 데스크톱에서 type-aware row 계층과 실제 입력을 공유한다', async ({ page }) => {
+  await mockApi(page)
+  await page.route(`**/api/v1/projects/${project.id}/custom-fields**`, (route) =>
+    route.fulfill({
+      json: {
+        items: [
+          {
+            id: 'cf-desktop-1',
+            project_id: project.id,
+            name: '심각도',
+            field_type: 'dropdown',
+            options: ['낮음', '높음'],
+            position: 0,
+            is_active: true,
+            applies_to: null,
+            created_at: '2026-07-06T00:00:00Z',
+            updated_at: '2026-07-06T00:00:00Z',
+          },
+          {
+            id: 'cf-desktop-2',
+            project_id: project.id,
+            name: '검토 필요',
+            field_type: 'boolean',
+            options: null,
+            position: 1,
+            is_active: true,
+            applies_to: ['task'],
+            created_at: '2026-07-06T00:00:00Z',
+            updated_at: '2026-07-06T00:00:00Z',
+          },
+          {
+            id: 'cf-desktop-3',
+            project_id: project.id,
+            name: '담당 검토자',
+            field_type: 'member',
+            options: null,
+            position: 2,
+            is_active: true,
+            applies_to: null,
+            created_at: '2026-07-06T00:00:00Z',
+            updated_at: '2026-07-06T00:00:00Z',
+          },
+        ],
+        total: 3,
+      },
+    }),
+  )
+  await page.route(`**/api/v1/work-packages/${wpA.id}/custom-values`, (route) =>
+    route.fulfill({
+      json: {
+        items: [
+          { field_id: 'cf-desktop-1', value: '높음', member_display_name: null },
+          { field_id: 'cf-desktop-2', value: true, member_display_name: null },
+        ],
+        total: 2,
+      },
+    }),
+  )
+
+  await page.goto(`/projects/${project.id}/work-packages`)
+  await page.getByRole('button', { name: '워크패키지 API 구현', exact: true }).click()
+  const section = page
+    .getByRole('dialog', { name: '워크패키지 API 구현' })
+    .getByRole('region', { name: '커스텀 필드' })
+  await expect(section.getByText('3개 · 값 2개')).toBeVisible()
+  await section.scrollIntoViewIfNeeded()
+  await expect(section.getByLabel('심각도')).toHaveValue('높음')
+  await expect(section.getByLabel('검토 필요')).toBeChecked()
+  await expect(section.getByLabel('담당 검토자')).toBeVisible()
+  await expect(section.getByText('편집 가능')).toHaveCount(0)
+  await expectNoHorizontalOverflow(page)
+  await page.mouse.move(1, 1)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/detail-custom-fields-ui/desktop.png',
+  })
+})
+
+test('커스텀 필드 정의와 값 오류는 각각 실제 query를 다시 시도한다', async ({ page }) => {
+  await mockApi(page)
+  let fieldAttempts = 0
+  let valueAttempts = 0
+  await page.route(`**/api/v1/projects/${project.id}/custom-fields?include_inactive=true`, (route) => {
+    fieldAttempts += 1
+    return fieldAttempts <= 2
+      ? route.fulfill({ status: 500, json: { detail: 'definitions unavailable' } })
+      : route.fulfill({
+          json: {
+            items: [
+              {
+                id: 'cf-retry-1',
+                project_id: project.id,
+                name: '환경',
+                field_type: 'text',
+                options: null,
+                position: 0,
+                is_active: true,
+                applies_to: null,
+                created_at: '2026-07-06T00:00:00Z',
+                updated_at: '2026-07-06T00:00:00Z',
+              },
+            ],
+            total: 1,
+          },
+        })
+  })
+  await page.route(`**/api/v1/work-packages/${wpA.id}/custom-values`, (route) => {
+    valueAttempts += 1
+    return valueAttempts <= 2
+      ? route.fulfill({ status: 500, json: { detail: 'values unavailable' } })
+      : route.fulfill({ json: { items: [], total: 0 } })
+  })
+
+  await page.goto(`/projects/${project.id}/work-packages`)
+  await page.getByRole('button', { name: '워크패키지 API 구현', exact: true }).click()
+  const drawer = page.getByRole('dialog', { name: '워크패키지 API 구현' })
+  let section = drawer.getByRole('region', { name: '커스텀 필드' })
+  await expect(section.getByRole('alert')).toHaveText('커스텀 필드 정의를 불러오지 못했습니다.')
+  await section.getByRole('button', { name: '다시 시도' }).click()
+  section = drawer.getByRole('region', { name: '커스텀 필드' })
+  await expect(section.getByRole('alert')).toHaveText('커스텀 필드 값을 불러오지 못했습니다.')
+  await section.getByRole('button', { name: '다시 시도' }).click()
+  await expect(section.getByText('1개 · 값 0개')).toBeVisible()
+  expect({ fieldAttempts, valueAttempts }).toEqual({ fieldAttempts: 3, valueAttempts: 3 })
 })
 
 test('보드에서 카드를 드래그해 옮기면 상태 PATCH가 간다', async ({ page }) => {

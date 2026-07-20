@@ -3071,3 +3071,13 @@ Chromium typed mock fixture에서 1440x960과 390x844 viewport를 사용했다. 
 - **증적**: `docs/screenshots/redevelopment/detail-ledgers-ui/{desktop,mobile-time,mobile-time-composer,mobile-cost}.png`을 실제 Chromium에서 확인해 desktop rail 옆 계층, mobile containment, composer 전환과 주변 layout 비재배치를 검증했다.
 
 ---
+
+# UI-189 Work Item Custom Field Properties IA 검증 (2026-07-21)
+
+- **UI 변경**: 작업 상세의 커스텀 필드를 중첩 metric/card 구조에서 compact section header와 type-aware label/value row로 재구성했다. 텍스트, 숫자, URL, 예/아니오, 날짜, 드롭다운, 멤버 입력은 같은 정보 계층을 공유하며, 비활성 필드와 삭제된 드롭다운 선택값도 보존값임을 표시한 채 읽고 정리할 수 있다.
+- **기능/API 반영**: 기존 정의·값 query와 delta PUT을 그대로 사용한다. 숫자 유한값 검증, 멤버 roster 지연 조회·독립 오류 복구, 제거된 멤버 표시명 보존, writer 편집과 viewer 읽기 전용 경계를 유지했다. 정의 조회와 값 조회는 각 오류 행의 `다시 시도`가 해당 query만 다시 요청한다. 신규 API, DB/schema, migration, permission, environment variable, dependency 또는 Settings storage 변경은 없다.
+- **이연 항목**: 없음. 이번 custom-field surface의 모든 control은 실제 query 또는 mutation에 연결돼 있으며 mock/dead control이나 장식용 action은 없다.
+- **검증**: typecheck PASS, lint PASS(기존 Fast Refresh warning 4건), production build PASS(기존 large chunk warning), unit **108 PASS**, component **8 PASS**, 저장·desktop/mobile hierarchy·독립 오류 복구·viewer 경계를 포함한 focused E2E **5 PASS**다. 첫 4-worker full E2E는 **337 PASS + visual manifest 1 skip** 뒤 기존 Quick Dock 기본 300ms CSS 검사가 병렬 부하에서 종료 phase를 읽어 1회 실패했다. 해당 구간을 pause된 animation frame에서 검사하도록 안정화한 뒤 단독 PASS, 동일 4-worker full E2E 재실행 **338 PASS + 1 skip**로 완주했다. Clean-room frontend **162**/backend **45**, npm audit 0 vulnerabilities와 diff check가 PASS했다.
+- **증적**: `docs/screenshots/redevelopment/detail-custom-fields-ui/{desktop,mobile}.png`을 실제 Chromium에서 확인해 desktop property hierarchy, 390px mobile containment, inactive preserved value와 주변 section 비재배치를 검증했다.
+
+---

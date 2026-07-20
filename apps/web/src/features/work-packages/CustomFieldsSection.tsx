@@ -1,9 +1,9 @@
 import {
   CalendarDays,
-  CheckSquare,
   Hash,
   Link2,
   ListChecks,
+  RotateCcw,
   SlidersHorizontal,
   TextCursorInput,
   ToggleLeft,
@@ -14,6 +14,7 @@ import type React from 'react'
 import { useState } from 'react'
 
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import {
@@ -25,7 +26,6 @@ import {
 } from '@/features/custom-fields/api'
 import { useMembers } from '@/features/members/api'
 import { ApiError } from '@/lib/api'
-import { cn } from '@/lib/utils'
 
 import { useTypeLabels } from './useTypeLabels'
 
@@ -39,35 +39,6 @@ const FIELD_TYPE_ICONS: Record<CustomField['field_type'], LucideIcon> = {
   url: Link2,
 }
 
-function FieldMetric({
-  icon: Icon,
-  label,
-  value,
-  tone = 'neutral',
-}: {
-  icon: LucideIcon
-  label: string
-  value: string
-  tone?: 'accent' | 'neutral'
-}) {
-  return (
-    <div className="flex min-w-0 items-center gap-3 rounded-of border border-of-border bg-of-surface px-3 py-3">
-      <span
-        className={cn(
-          'flex h-8 w-8 shrink-0 items-center justify-center rounded-of',
-          tone === 'accent' ? 'bg-of-accent-soft text-of-accent' : 'bg-of-surface-2 text-of-muted',
-        )}
-      >
-        <Icon size={15} aria-hidden="true" />
-      </span>
-      <span className="min-w-0">
-        <span className="block text-[11px] text-of-muted">{label}</span>
-        <span className="block text-sm font-semibold tabular-nums">{value}</span>
-      </span>
-    </div>
-  )
-}
-
 function hasCustomValue(value: unknown) {
   return value !== undefined && value !== null && value !== ''
 }
@@ -78,9 +49,61 @@ function scopeLabel(field: CustomField, typeLabel: (key: string) => string) {
     : '모든 타입'
 }
 
+function MemberFieldInput({
+  field,
+  value,
+  displayName,
+  projectId,
+  pending,
+  onSave,
+}: {
+  field: CustomField
+  value: unknown
+  displayName: string | null
+  projectId: string
+  pending: boolean
+  onSave: (value: unknown) => void
+}) {
+  const members = useMembers(projectId)
+  const selected = typeof value === 'string' ? value : ''
+  const selectedExists = members.data?.items.some((member) => member.user_id === selected)
+
+  if (members.isError) {
+    return (
+      <div className="flex items-center justify-between gap-3 text-xs">
+        <p role="alert" className="text-of-danger">멤버 목록을 불러오지 못했습니다.</p>
+        <Button variant="ghost" size="sm" onClick={() => { void members.refetch() }}>
+          <RotateCcw size={13} aria-hidden="true" /> 다시 시도
+        </Button>
+      </div>
+    )
+  }
+
+  return (
+    <Select
+      aria-label={field.name}
+      className="h-8 text-xs"
+      value={selected}
+      disabled={pending || members.isPending}
+      onChange={(event) => onSave(event.target.value || null)}
+    >
+      <option value="">없음</option>
+      {selected && !selectedExists ? (
+        <option value={selected}>{displayName || selected} (현재 값)</option>
+      ) : null}
+      {members.data?.items.map((member) => (
+        <option key={member.user_id} value={member.user_id}>
+          {member.display_name}
+        </option>
+      ))}
+    </Select>
+  )
+}
+
 function FieldInput({
   field,
   value,
+  memberDisplayName,
   wpId,
   projectId,
   editable,
@@ -88,43 +111,59 @@ function FieldInput({
 }: {
   field: CustomField
   value: unknown
+  memberDisplayName: string | null
   wpId: string
   projectId: string
   editable: boolean
   canWrite: boolean
 }) {
   const put = usePutCustomValue(wpId)
-  const members = useMembers(projectId)
-  // Local draft for typed inputs; committed on blur (delta PUT of one field).
   const [draft, setDraft] = useState<string | null>(null)
+  const [draftError, setDraftError] = useState<string | null>(null)
 
-  const save = (v: unknown) => put.mutate({ field_id: field.id, value: v })
-  const err =
+  const save = (nextValue: unknown) => put.mutate({ field_id: field.id, value: nextValue })
+  const mutationError =
     put.isError && put.error instanceof ApiError ? put.error.message : put.isError ? '실패' : null
   const commitText = () => {
     if (draft === null) return
     const trimmed = draft.trim()
     const current = typeof value === 'string' || typeof value === 'number' ? String(value) : ''
-    if (trimmed !== current) {
-      if (trimmed === '') save(null)
-      else if (field.field_type === 'number') save(Number(trimmed))
-      else save(trimmed)
+    if (trimmed === current) {
+      setDraft(null)
+      setDraftError(null)
+      return
+    }
+    if (trimmed === '') {
+      save(null)
+    } else if (field.field_type === 'number') {
+      const numberValue = Number(trimmed)
+      if (!Number.isFinite(numberValue)) {
+        setDraftError('유효한 숫자를 입력하세요.')
+        return
+      }
+      save(numberValue)
+    } else {
+      save(trimmed)
     }
     setDraft(null)
+    setDraftError(null)
   }
 
   let control: React.ReactNode
   if (!editable) {
-    // Inactive with a stored value: read-only + a clear affordance.
+    const shownValue = field.field_type === 'member' && memberDisplayName
+      ? memberDisplayName
+      : String(value)
     control = (
-      <div className="flex flex-wrap items-center gap-2 text-xs">
-        <span className="min-w-0 text-of-muted">
-          {String(value)} {field.is_active ? '(다른 타입 필드)' : '(비활성 필드)'}
+      <div className="flex min-w-0 flex-wrap items-center gap-2 text-xs">
+        <span className="min-w-0 truncate text-of-secondary">
+          {shownValue} {field.is_active ? '(다른 타입 필드)' : '(비활성 필드)'}
         </span>
         {canWrite ? (
           <button
             type="button"
-            className="text-of-muted hover:text-of-danger"
+            className="shrink-0 rounded-of px-1.5 py-1 text-of-muted transition-colors hover:bg-of-surface-hover hover:text-of-danger focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus"
+            disabled={put.isPending}
             onClick={() => save(null)}
           >
             비우기
@@ -132,20 +171,23 @@ function FieldInput({
         ) : null}
       </div>
     )
-    return <Wrapped control={control} err={err} />
+    return <FieldControl control={control} error={mutationError} />
   }
 
   switch (field.field_type) {
     case 'boolean':
       control = (
-        <input
-          type="checkbox"
-          aria-label={field.name}
-          checked={value === true}
-          disabled={put.isPending}
-          onChange={(e) => save(e.target.checked)}
-          className="h-4 w-4 accent-of-accent"
-        />
+        <label className="inline-flex min-h-8 items-center gap-2 text-xs text-of-secondary">
+          <input
+            type="checkbox"
+            aria-label={field.name}
+            checked={value === true}
+            disabled={put.isPending}
+            onChange={(event) => save(event.target.checked)}
+            className="h-4 w-4 accent-of-accent"
+          />
+          {value === true ? '예' : '아니오'}
+        </label>
       )
       break
     case 'dropdown': {
@@ -156,16 +198,14 @@ function FieldInput({
           className="h-8 text-xs"
           value={typeof value === 'string' ? value : ''}
           disabled={put.isPending}
-          onChange={(e) => save(e.target.value || null)}
+          onChange={(event) => save(event.target.value || null)}
         >
           <option value="">없음</option>
           {orphan && typeof value === 'string' ? (
             <option value={value}>{value} (제거된 옵션)</option>
           ) : null}
-          {(field.options ?? []).map((o) => (
-            <option key={o} value={o}>
-              {o}
-            </option>
+          {(field.options ?? []).map((option) => (
+            <option key={option} value={option}>{option}</option>
           ))}
         </Select>
       )
@@ -173,20 +213,14 @@ function FieldInput({
     }
     case 'member':
       control = (
-        <Select
-          aria-label={field.name}
-          className="h-8 text-xs"
-          value={typeof value === 'string' ? value : ''}
-          disabled={put.isPending}
-          onChange={(e) => save(e.target.value || null)}
-        >
-          <option value="">없음</option>
-          {members.data?.items.map((m) => (
-            <option key={m.user_id} value={m.user_id}>
-              {m.display_name}
-            </option>
-          ))}
-        </Select>
+        <MemberFieldInput
+          field={field}
+          value={value}
+          displayName={memberDisplayName}
+          projectId={projectId}
+          pending={put.isPending}
+          onSave={save}
+        />
       )
       break
     case 'date':
@@ -194,45 +228,68 @@ function FieldInput({
         <Input
           type="date"
           aria-label={field.name}
-          className="h-8 w-full text-xs sm:w-40"
+          className="h-8 w-full text-xs sm:max-w-44"
           value={typeof value === 'string' ? value : ''}
           disabled={put.isPending}
-          onChange={(e) => save(e.target.value || null)}
+          onChange={(event) => save(event.target.value || null)}
         />
       )
       break
     default:
-      // text / number / url — commit on blur.
       control = (
         <Input
-          type={field.field_type === 'number' ? 'number' : 'text'}
+          type={field.field_type === 'number' ? 'number' : field.field_type === 'url' ? 'url' : 'text'}
           aria-label={field.name}
           className="h-8 text-xs"
           value={draft ?? (value == null ? '' : String(value))}
           disabled={put.isPending}
-          onChange={(e) => setDraft(e.target.value)}
+          onChange={(event) => {
+            setDraft(event.target.value)
+            setDraftError(null)
+          }}
           onBlur={commitText}
         />
       )
   }
-  return <Wrapped control={control} err={err} />
+  return <FieldControl control={control} error={draftError ?? mutationError} />
 }
 
-function Wrapped({ control, err }: { control: React.ReactNode; err: string | null }) {
+function FieldControl({ control, error }: { control: React.ReactNode; error: string | null }) {
   return (
-    <>
+    <div className="min-w-0">
       {control}
-      {err ? (
-        <p role="alert" className="text-[11px] text-of-danger">
-          저장 실패: {err}
-        </p>
-      ) : null}
-    </>
+      {error ? <p role="alert" className="mt-1 text-[11px] text-of-danger">저장 실패: {error}</p> : null}
+    </div>
   )
 }
 
-/* Custom field values in the drawer (Pass 3 PR-J). Fetches definitions with
-   include_inactive so stored values on deactivated fields stay visible. */
+function SectionStatus({
+  message,
+  error,
+  onRetry,
+}: {
+  message: string
+  error?: boolean
+  onRetry?: () => void
+}) {
+  return (
+    <section aria-label="커스텀 필드" className="border-y border-of-border-subtle bg-of-surface">
+      <div className="flex min-h-11 items-center gap-2 px-3">
+        <SlidersHorizontal size={14} className="text-of-muted" aria-hidden="true" />
+        <h3 className="text-xs font-semibold">커스텀 필드</h3>
+      </div>
+      <div className="flex items-center justify-between gap-3 border-t border-of-border-subtle px-3 py-3 text-xs">
+        <p role={error ? 'alert' : 'status'} className={error ? 'text-of-danger' : 'text-of-muted'}>{message}</p>
+        {onRetry ? (
+          <Button variant="ghost" size="sm" onClick={onRetry}>
+            <RotateCcw size={13} aria-hidden="true" /> 다시 시도
+          </Button>
+        ) : null}
+      </div>
+    </section>
+  )
+}
+
 export function CustomFieldsSection({
   wpId,
   projectId,
@@ -248,72 +305,72 @@ export function CustomFieldsSection({
   const values = useCustomValues(wpId)
   const typeLabel = useTypeLabels(projectId)
 
-  if (!fields.data || fields.data.total === 0) return null
-  const valueMap = new Map((values.data?.items ?? []).map((v) => [v.field_id, v.value]))
+  if (fields.isError) {
+    return <SectionStatus error message="커스텀 필드 정의를 불러오지 못했습니다." onRetry={() => { void fields.refetch() }} />
+  }
+  if (fields.isPending || !fields.data) {
+    return <SectionStatus message="커스텀 필드를 불러오는 중..." />
+  }
+  if (fields.data.total === 0) return null
+  if (values.isError) {
+    return <SectionStatus error message="커스텀 필드 값을 불러오지 못했습니다." onRetry={() => { void values.refetch() }} />
+  }
+  if (values.isPending || !values.data) {
+    return <SectionStatus message="커스텀 필드 값을 불러오는 중..." />
+  }
 
-  // Binding shapes the FORM: a field renders when it is active AND applies to
-  // the current type, or when a stored value remains (read-only + clear path).
-  const bound = (f: (typeof fields.data.items)[number]) =>
-    f.applies_to === null || f.applies_to.includes(wpType)
+  const valueMap = new Map(values.data.items.map((entry) => [entry.field_id, entry]))
+  const bound = (field: CustomField) =>
+    field.applies_to === null || field.applies_to.includes(wpType)
   const visible = fields.data.items.filter(
-    (f) => (f.is_active && bound(f)) || valueMap.has(f.id),
+    (field) => (field.is_active && bound(field)) || valueMap.has(field.id),
   )
   if (visible.length === 0) return null
-  const filled = visible.filter((f) => hasCustomValue(valueMap.get(f.id))).length
-  const editableCount = visible.filter((f) => canWrite && f.is_active && bound(f)).length
+  const filled = visible.filter((field) => hasCustomValue(valueMap.get(field.id)?.value)).length
 
   return (
-    <section aria-label="커스텀 필드" className="rounded-of border border-of-border bg-of-surface p-4">
-      <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-        <div className="min-w-0">
-          <h3 className="text-sm font-semibold">커스텀 필드</h3>
-          <p className="mt-1 text-xs leading-5 text-of-muted">
-            프로젝트별 속성과 저장된 값을 한 곳에서 확인합니다.
-          </p>
-        </div>
-        <Badge variant={canWrite ? 'accent' : 'outline'} className="self-start">
-          {canWrite ? '편집 가능' : '읽기 전용'}
-        </Badge>
+    <section aria-label="커스텀 필드" className="border-y border-of-border-subtle bg-of-surface">
+      <div className="flex min-h-11 min-w-0 items-center gap-2 px-3">
+        <SlidersHorizontal size={14} className="shrink-0 text-of-muted" aria-hidden="true" />
+        <h3 className="text-xs font-semibold">커스텀 필드</h3>
+        <span className="truncate text-[11px] text-of-muted">{visible.length}개 · 값 {filled}개</span>
       </div>
 
-      <div className="mt-3 grid gap-2 sm:grid-cols-3">
-        <FieldMetric icon={SlidersHorizontal} label="필드" value={`${visible.length}개`} tone="accent" />
-        <FieldMetric icon={CheckSquare} label="값 있음" value={`${filled}개`} />
-        <FieldMetric icon={ListChecks} label="편집 가능" value={`${editableCount}개`} />
-      </div>
-
-      <div className="mt-3 grid gap-2 sm:grid-cols-2">
-        {visible.map((f) => {
-          const Icon = FIELD_TYPE_ICONS[f.field_type]
-          const value = valueMap.get(f.id)
-          const editable = canWrite && f.is_active && bound(f)
+      <div className="divide-y divide-of-border-subtle border-t border-of-border-subtle">
+        {visible.map((field) => {
+          const Icon = FIELD_TYPE_ICONS[field.field_type]
+          const entry = valueMap.get(field.id)
+          const editable = canWrite && field.is_active && bound(field)
           return (
-          <div key={f.id} className="rounded-of border border-of-border bg-of-surface-2/35 p-3">
-            <div className="mb-3 flex min-w-0 items-start justify-between gap-3">
-              <div className="min-w-0">
-                <label className="block truncate text-xs font-semibold">{f.name}</label>
-                <p className="mt-1 truncate text-[11px] text-of-muted">
-                  {scopeLabel(f, typeLabel)}
-                </p>
+            <div
+              key={field.id}
+              className="grid min-w-0 gap-2 px-3 py-2.5 transition-colors hover:bg-of-surface-hover/60 sm:grid-cols-[minmax(10rem,0.85fr)_minmax(0,1.4fr)] sm:items-center"
+            >
+              <div className="flex min-w-0 items-start gap-2">
+                <Icon size={14} className="mt-0.5 shrink-0 text-of-muted" aria-hidden="true" />
+                <div className="min-w-0">
+                  <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+                    <label className="truncate text-xs font-medium">{field.name}</label>
+                    <Badge variant="neutral" className="shrink-0">{FIELD_TYPE_LABELS[field.field_type]}</Badge>
+                    {!editable ? (
+                      <Badge variant="outline" className="shrink-0">
+                        {hasCustomValue(entry?.value) ? '보존값' : '읽기'}
+                      </Badge>
+                    ) : null}
+                  </div>
+                  <p className="mt-0.5 truncate text-[11px] text-of-muted">{scopeLabel(field, typeLabel)}</p>
+                </div>
               </div>
-              <div className="flex shrink-0 flex-wrap justify-end gap-1">
-                <Badge variant="neutral">
-                  <Icon size={12} aria-hidden="true" /> {FIELD_TYPE_LABELS[f.field_type]}
-                </Badge>
-                <Badge variant={editable ? 'accent' : 'outline'}>
-                  {editable ? '입력' : hasCustomValue(value) ? '보존값' : '읽기'}
-                </Badge>
-              </div>
+              <FieldInput
+                field={field}
+                value={entry?.value}
+                memberDisplayName={entry?.member_display_name ?? null}
+                wpId={wpId}
+                projectId={projectId}
+                editable={editable}
+                canWrite={canWrite}
+              />
             </div>
-            <FieldInput
-              field={f}
-              value={value}
-              wpId={wpId}
-              projectId={projectId}
-              editable={editable}
-              canWrite={canWrite}
-            />
-          </div>
           )
         })}
       </div>
