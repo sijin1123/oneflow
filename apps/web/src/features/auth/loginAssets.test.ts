@@ -11,13 +11,17 @@ const approvedAssetHashes = {
   'oneflow-login-story-reference.png':
     '40e4c8969521a17df4f405652f46a9046823798cc0a7b7a89f42247d36edaf48',
   'oneflow-login-story-reference-667x915.png':
-    'e3ccb4be6188cd08170301884115e0578c3994689cab86588cb9d85b25d96aea',
+    'b1ece354e527f13ad8776774c03676419461ee93b67b93720bb37d3797d77716',
+  'oneflow-login-story-reference-495x679.png':
+    '3b4d6dce90415b2ba1ee4af7c306ffaba01cb34ecfe272972ad0426c333b02a7',
   'oneflow-login-story-reference@2x.png':
     '88bb8a2daeddd5c844a760694f44203c5a65b4371bda4078e8e3bfc4c94a0bea',
   'oneflow-login-logo-lockup.png':
     'b6360179356f752ab48ef31ba92b85b030b9d3267af252dcee48c004c9609c2f',
   'oneflow-login-logo-lockup-173x59.png':
-    '9d97cbc7b8804162f4d893d89a20db42f7e901e9fb5fbc8f14e791d1147a5202',
+    'f0dfe895d26a18331acaabeadeaae5ef814df2550ad9f89722d43fc27a5ac1cd',
+  'oneflow-login-logo-lockup-128x44.png':
+    'bd4d14e6ce78321644355315e25aac2078862eed9316c502a06aa2637dcdc6fa',
   'oneflow-login-logo-lockup@2x.png':
     '79cc1a160f51c729f5209b08d0c7df75954e9039c2fbd53339d97b04d1fa383a',
 } as const

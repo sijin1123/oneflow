@@ -16,9 +16,12 @@ import {
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 
+import loginLogoLockup128 from '@/assets/generated/oneflow-login-logo-lockup-128x44.png'
+import loginLogoLockup173 from '@/assets/generated/oneflow-login-logo-lockup-173x59.png'
 import loginLogoLockup from '@/assets/generated/oneflow-login-logo-lockup.png'
 import loginLogoLockup2x from '@/assets/generated/oneflow-login-logo-lockup@2x.png'
 import loginStoryReference from '@/assets/generated/oneflow-login-story-reference.png'
+import loginStoryReferenceCompact from '@/assets/generated/oneflow-login-story-reference-495x679.png'
 import loginStoryReferenceDesktop from '@/assets/generated/oneflow-login-story-reference-667x915.png'
 import loginStoryReference2x from '@/assets/generated/oneflow-login-story-reference@2x.png'
 import { Button } from '@/components/ui/button'
@@ -161,9 +164,9 @@ function BrandLockup({ compact = false }: { compact?: boolean }) {
     <div className="of-login-brand" data-compact={compact || undefined} aria-label="oneflow">
       <span className="of-login-brand-reference" aria-hidden="true">
         <img
-          src={loginLogoLockup}
-          srcSet={`${loginLogoLockup} 205w, ${loginLogoLockup2x} 410w`}
-          sizes="(min-width: 1268px) and (min-height: 961px) 173px, (max-width: 520px) 148px, (max-width: 880px) 164px, min(14.157vw, 173px)"
+          src={loginLogoLockup173}
+          srcSet={`${loginLogoLockup128} 128w, ${loginLogoLockup173} 173w, ${loginLogoLockup} 205w, ${loginLogoLockup2x} 410w`}
+          sizes="(min-width: 1268px) and (min-height: 961px) 173px, (max-width: 520px) 148px, (max-width: 880px) 164px, min(173px, calc(14.157vw - 7px), calc(18.876vh - 9.1px))"
           width="205"
           height="70"
           alt=""
@@ -180,9 +183,9 @@ function StoryPanel() {
       <h1 id="login-story-title" className="of-login-assistive">Plan. Flow. Deliver. Together.</h1>
       <img
         className="of-login-story-art"
-        src={loginStoryReference}
-        srcSet={`${loginStoryReferenceDesktop} 667w, ${loginStoryReference} 792w, ${loginStoryReference2x} 1584w`}
-        sizes="(max-width: 880px) 183vw, (max-height: 960px) calc((100dvh - 48px) * 0.7293), 667px"
+        src={loginStoryReferenceDesktop}
+        srcSet={`${loginStoryReferenceCompact} 495w, ${loginStoryReferenceDesktop} 667w, ${loginStoryReference} 792w, ${loginStoryReference2x} 1584w`}
+        sizes="(max-width: 880px) 183vw, min(667px, calc(54.672vw - 26.2px), calc(72.896vh - 35px))"
         width="792"
         height="1086"
         alt=""
