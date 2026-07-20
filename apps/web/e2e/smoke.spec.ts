@@ -16925,7 +16925,7 @@ test('로그인 모바일 화면은 인증 흐름에 집중하고 가로 넘침�
   expect(viewport.scrollWidth).toBe(viewport.clientWidth)
 })
 
-test('로그인 참조 UI는 8개 목표 뷰포트에서 넘침과 compact 충돌 없이 렌더링된다', async ({ page }) => {
+test('로그인 참조 UI는 9개 목표 뷰포트에서 넘침과 compact 충돌 없이 렌더링된다', async ({ page }) => {
   test.setTimeout(90_000)
   await page.emulateMedia({ reducedMotion: 'reduce' })
   await mockApi(page)
@@ -16947,6 +16947,7 @@ test('로그인 참조 UI는 8개 목표 뷰포트에서 넘침과 compact 충�
     { name: '1366x768', width: 1366, height: 768 },
     { name: '1280x720', width: 1280, height: 720 },
     { name: '1024x768', width: 1024, height: 768 },
+    { name: '953x917', width: 953, height: 917 },
     { name: '768x1024', width: 768, height: 1024 },
     { name: '390x844', width: 390, height: 844 },
   ]
@@ -16970,6 +16971,7 @@ test('로그인 참조 UI는 8개 목표 뷰포트에서 넘침과 compact 충�
       expect(panel).not.toBeNull()
       expect(panel!.width).toBeLessThanOrEqual(1221)
       expect(panel!.width).toBeLessThanOrEqual(viewport.width - 32)
+      expect(panel!.height).toBeLessThanOrEqual(viewport.height - 32)
       expect(Math.abs((panel!.width / panel!.height) - (4 / 3))).toBeLessThan(0.01)
       const geometry = await page.evaluate(() => {
         const box = (selector: string) => {
@@ -17153,7 +17155,7 @@ test('로그인 최대 데스크톱 합성은 원본 파생 자산을 정수 픽
   expect(geometry.story).toMatchObject({ x: 118, y: 172, width: 667, height: 915 })
   expect(geometry.story.currentSrc).toMatch(/oneflow-login-story-reference-667x915/)
   expect(geometry.logo).toMatchObject({ width: 173, height: 59 })
-  expect(geometry.logo.currentSrc).toMatch(/oneflow-login-logo-lockup\.png/)
+  expect(geometry.logo.currentSrc).toMatch(/oneflow-login-logo-lockup-173x59/)
   await expect(page.locator('.of-login-page')).toHaveCSS('translate', 'none')
   await expectNoHorizontalOverflow(page)
   await page.screenshot({
@@ -17172,6 +17174,90 @@ test('로그인 최대 데스크톱 합성은 원본 파생 자산을 정수 픽
   await expectNoHorizontalOverflow(page)
   await page.screenshot({
     path: '../../docs/screenshots/redevelopment/login-pixel-reinspection-ui/mobile.png',
+    fullPage: true,
+  })
+})
+
+test('로그인 reference-fit은 인앱 크기와 기준 크기에서 정수 raster를 선택한다', async ({ page }) => {
+  await mockApi(page)
+  await page.route('**/api/v1/auth/config', (route) => route.fulfill({
+    json: {
+      auth_mode: 'dev',
+      oidc_issuer: null,
+      oidc_client_id: null,
+      has_client_secret: false,
+      command_palette_enabled: false,
+      session_management_enabled: true,
+      password_required: true,
+    },
+  }))
+
+  await page.setViewportSize({ width: 953, height: 917 })
+  await page.goto('/login')
+  await page.locator('.of-login-story-art, .of-login-brand-reference img').evaluateAll(
+    async (images) => Promise.all(images.map((image) => (image as HTMLImageElement).decode())),
+  )
+  const inAppGeometry = await page.evaluate(() => {
+    const read = (selector: string) => {
+      const image = document.querySelector(selector) as HTMLImageElement
+      const rect = image.getBoundingClientRect()
+      return {
+        currentSrc: image.currentSrc,
+        width: rect.width,
+        height: rect.height,
+      }
+    }
+    const panel = document.querySelector('.of-login-page')!.getBoundingClientRect()
+    return {
+      panel: { width: panel.width, height: panel.height },
+      viewport: { width: document.documentElement.clientWidth, scrollWidth: document.documentElement.scrollWidth },
+      story: read('.of-login-story-art'),
+      logo: read('.of-login-brand-reference img'),
+    }
+  })
+  expect(inAppGeometry.panel.width).toBe(905)
+  expect(inAppGeometry.panel.height).toBeCloseTo(678.75, 1)
+  expect(inAppGeometry.viewport).toEqual({ width: 953, scrollWidth: 953 })
+  expect(inAppGeometry.story.currentSrc).toMatch(/oneflow-login-story-reference-495x679/)
+  expect(inAppGeometry.logo.currentSrc).toMatch(/oneflow-login-logo-lockup-128x44/)
+  expect(inAppGeometry.logo).toMatchObject({ width: 128, height: 44 })
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/login-reference-fit-ui/in-app-953x917.png',
+  })
+
+  await page.setViewportSize({ width: 1448, height: 1086 })
+  await page.reload()
+  await page.locator('.of-login-story-art, .of-login-brand-reference img').evaluateAll(
+    async (images) => Promise.all(images.map((image) => (image as HTMLImageElement).decode())),
+  )
+  const referenceGeometry = await page.evaluate(() => {
+    const image = (selector: string) => document.querySelector(selector) as HTMLImageElement
+    const story = image('.of-login-story-art')
+    const logo = image('.of-login-brand-reference img')
+    const panel = document.querySelector('.of-login-page')!.getBoundingClientRect()
+    return {
+      panel: { x: panel.x, y: panel.y, width: panel.width, height: panel.height },
+      story: { currentSrc: story.currentSrc, naturalWidth: story.naturalWidth, naturalHeight: story.naturalHeight },
+      logo: { currentSrc: logo.currentSrc, naturalWidth: logo.naturalWidth, naturalHeight: logo.naturalHeight },
+    }
+  })
+  expect(referenceGeometry.panel).toEqual({ x: 114, y: 86, width: 1220, height: 915 })
+  expect(referenceGeometry.story.currentSrc).toMatch(/oneflow-login-story-reference-667x915/)
+  expect(referenceGeometry.story).toMatchObject({ naturalWidth: 667, naturalHeight: 915 })
+  expect(referenceGeometry.logo.currentSrc).toMatch(/oneflow-login-logo-lockup-173x59/)
+  expect(referenceGeometry.logo).toMatchObject({ naturalWidth: 173, naturalHeight: 59 })
+  await expect(page.locator('.of-login-story-art')).toHaveCSS('animation-name', 'none')
+  await expect(page.locator('.of-login-auth-card')).toHaveCSS('animation-name', 'none')
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/login-reference-fit-ui/reference-1448x1086.png',
+  })
+
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.reload()
+  await expect(page.getByRole('heading', { name: /Welcome back/ })).toBeVisible()
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/login-reference-fit-ui/mobile-390x844.png',
     fullPage: true,
   })
 })

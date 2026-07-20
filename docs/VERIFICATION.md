@@ -3101,3 +3101,14 @@ Chromium typed mock fixture에서 1440x960과 390x844 viewport를 사용했다. 
 - **증적**: `docs/screenshots/redevelopment/detail-ai-summary-ui/{desktop,mobile}.png`을 실제 Chromium에서 확인해 compact result hierarchy, drawer/full-page composition과 390px containment를 검증했다.
 
 ---
+
+# UI-193 Login Reference Fit 재실사 검증 (2026-07-21)
+
+- **UI 변경**: 승인 원본을 compact panel 안에서 유지하면서 viewport의 가로와 세로를 함께 경계로 사용하도록 page sizing을 교정했다. `953x917` 인앱 크기에서는 panel이 `905x679`로 축소되어 가로 잘림과 불필요한 scroll을 제거하고, `1448x1086`에서는 panel `(114,86) 1220x915`를 유지한다. 두 크기에 맞춘 승인 원본 파생 story `495x679`/`667x915`와 auth logo `128x44`/`173x59`를 정수 raster 후보로 추가했으며 첫 프레임의 story/card fade를 제거했다.
+- **기능/API 반영**: 이메일, 비밀번호, remember me, password visibility, 로그인, Google/Microsoft/SSO 안내, 접근 요청, 정책·언어, safe-next와 실제 auth API 계약은 변경하지 않았다. 모든 control은 semantic DOM과 실제 state/event handler를 유지한다. 신규 API, DB/schema, migration, permission, environment variable, dependency 또는 Settings UI 변경은 없다.
+- **픽셀 전수 재실사**: 승인 원본을 `1220x915`로 정규화하고 최신 Chromium panel crop과 채널 단위로 비교했다. full MAE `1.5201`, story `0.0149`, auth `3.3354`이며 story brand, Kanban, auth logo는 모두 MAE `0.0000`이다. full pixel channel의 `97.58%`가 delta `<=8`, story는 `99.95%`다. auth의 차이는 semantic DOM browser font rasterization을 포함한다. 인앱 실사에서 viewport/scroll은 모두 `953x917`, panel `905x678.75`, story `495x679`, logo `128x44`, story/card animation `none`으로 확인했다.
+- **이연 항목**: 외부 OIDC 공급자의 실제 연결은 배포 credential 경계를 유지한다. 이외 로그인 surface의 mock/dead control 또는 미배선 UI는 없다.
+- **검증**: typecheck PASS, lint PASS(기존 Fast Refresh warning 4건), production build PASS(기존 large chunk warning), unit **108 PASS**, component **8 PASS**, 로그인 focused E2E **16 PASS**, 전체 E2E **346 PASS + opt-in visual QA manifest 1 skip**로 재시도 없이 완주했다. `1448x1086`·`953x917`·`390x844` lossless screenshot 시각 검토와 horizontal overflow 검사도 PASS했다. Clean-room frontend **162**/backend **45**, OpenAPI type parity, npm production audit 0 vulnerabilities와 diff check가 PASS했다.
+- **증적**: `docs/screenshots/redevelopment/login-reference-fit-ui/`에 기준 크기, 인앱 크기와 모바일 실제 Chromium capture를 보존한다.
+
+---

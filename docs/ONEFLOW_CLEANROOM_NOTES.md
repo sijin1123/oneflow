@@ -617,3 +617,9 @@ Plane/OpenProject source, API, database schema, package, asset, CSS, DOM hierarc
 `docs/plane-poc-reverse-spec/`에서 사용한 입력은 작업 상세의 보조 기능이 핵심 설명과 ledger 계층을 밀어내지 않는 compact on-demand hierarchy를 사용한다는 S027의 관찰 가능한 정보 구조와, gap map에 기록된 OneFlow의 실제 detail-level AI summary 계약뿐이다. OneFlow 구현은 기존 capability/summary API hooks, React Query mutation state, local React state와 자체 design token/Lucide icon으로 독립 설계했다.
 
 Plane/OpenProject source, API, database schema, package, asset, CSS, DOM hierarchy, exact dimensions/colors, wording, component implementation, icons 또는 branding은 복사하지 않았다. actual POST, capability gate, pending/error/retry, latest-success retention, work-item isolation과 mobile flow를 기존 OneFlow 계약에 유지했고 신규 API, DB/schema, migration, permission, environment variable, dependency 또는 Settings storage 변경은 없다. - attested-independent-derivation
+
+## UI-193 Login Reference Fit
+
+UI-193의 유일한 시각 입력은 사용자가 직접 제공하고 OneFlow 제품 자산으로 승인한 `apps/web/src/assets/generated/oneflow-login-origin-reference.png`다. 신규 `oneflow-login-story-reference-495x679.png`·`oneflow-login-logo-lockup-128x44.png`와 갱신한 `667x915`·`173x59` 후보는 승인 원본을 각 최종 panel 크기로 먼저 Lanczos 축소한 뒤 정수 좌표 crop한 결정적 파생 자산이며 SHA-256 unit regression으로 고정한다. 생성형 재해석, 로고 형태 재구성, 색상 변경 또는 제3자 자산 사용은 없다.
+
+Plane/OpenProject source, package, asset, logo, CSS, DOM, wording 또는 branding은 입력·복사하지 않았다. 인증 영역은 기존 OneFlow semantic DOM과 auth API, 자체 CSS layout을 유지한다. 신규 API, DB/schema, migration, permission, environment variable, dependency 또는 Settings storage 변경은 없다. - attested-user-owned-oneflow-asset
