@@ -14,8 +14,7 @@ export function WorkPackageDetailPage() {
   return (
     <div className="flex h-full min-w-0 flex-col bg-of-surface">
       <PageHeader
-        eyebrow="작업 상세"
-        title={wp?.subject ?? '작업 상세'}
+        title="작업 상세"
         actions={
           <Link
             to={`/projects/${projectId}/work-packages`}
