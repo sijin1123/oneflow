@@ -563,3 +563,9 @@ Plane/OpenProject source, API, database schema, package, asset, CSS, DOM hierarc
 UI-180의 유일한 시각 입력은 사용자가 직접 제공하고 OneFlow 제품 자산으로 승인한 `docs/oneflow-login-origin.png`다. runtime 전체 원본과 승인 원본의 SHA-256은 모두 `62fafe9e44df9d189e8fe2f38fc25147d11b8459569be13ee0424ba06c0c4c76`이며, story crop `(0,0)-(792,1086)`과 auth logo crop `(1011,100) 205x70`은 승인 원본 대비 pixel MAE `0`이다. 신규 unit test가 전체, story와 logo의 1x/2x 파생 자산 SHA-256을 고정한다.
 
 Plane/OpenProject source, package, asset, logo, CSS, DOM, wording 또는 branding은 입력·복사하지 않았다. 인증 영역은 기존 OneFlow auth API와 semantic DOM을 유지한다. 신규 API, DB/schema, migration, permission, environment variable, dependency 또는 Settings storage 변경은 없으며, 외부 OIDC 공급자의 실제 연결만 배포별 credential 경계를 유지한다. - attested-user-owned-oneflow-asset
+
+## UI-181 Project Functional Modal Motion
+
+`docs/plane-poc-reverse-spec/`에서 사용한 입력은 프로젝트 표지와 일정 기준선 같은 기능형 대화상자가 현재 화면 위에 중앙 정렬되고, 열림과 닫힘에 같은 짧은 motion, focus containment와 trigger 복귀를 제공한다는 관찰 가능한 행동뿐이다. OneFlow 구현은 자체 Radix Dialog primitive, 기존 Project/Attachment/Schedule Baseline API, React Query state와 local design token을 사용해 독립 설계했다.
+
+Plane/OpenProject source, API, database schema, package, asset, CSS, DOM hierarchy, exact dimensions/colors, wording, modal implementation, icons 또는 branding은 복사하지 않았다. 표지 upload/remove와 기준선 create/delete·409 conflict recovery를 그대로 유지했고, Tailwind 4의 독립 `translate` 속성과 CSS animation transform이 중첩되던 좌표 결함을 공통 modal primitive에서 제거했다. 신규 API, DB/schema, migration, permission, environment variable, dependency 또는 Settings storage 변경은 없다. - attested-independent-derivation

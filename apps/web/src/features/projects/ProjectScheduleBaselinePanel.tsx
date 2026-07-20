@@ -10,11 +10,12 @@ import {
   Trash2,
   X,
 } from 'lucide-react'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { ModalContent, ModalOverlay } from '@/components/ui/modal'
 import { ApiError } from '@/lib/api'
 import { formatDateTime } from '@/lib/datetime'
 
@@ -174,6 +175,7 @@ function CreateBaselineDialog({
   busy,
   defaultName,
   error,
+  returnFocusRef,
   onOpenChange,
   onConfirm,
 }: {
@@ -181,6 +183,7 @@ function CreateBaselineDialog({
   busy: boolean
   defaultName: string
   error: string
+  returnFocusRef: RefObject<HTMLButtonElement | null>
   onOpenChange: (open: boolean) => void
   onConfirm: (name: string) => void
 }) {
@@ -193,8 +196,14 @@ function CreateBaselineDialog({
   return (
     <Dialog.Root open={open} onOpenChange={(next) => { if (!busy) onOpenChange(next) }}>
       <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-[80] bg-black/45 of-overlay-enter" />
-        <Dialog.Content className="fixed left-1/2 top-1/2 z-[81] w-[min(27rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 rounded-of border border-of-border bg-of-surface p-4 shadow-[var(--of-shadow-popover)] of-overlay-enter focus:outline-none">
+        <ModalOverlay className="bg-black/45" />
+        <ModalContent
+          className="w-[min(27rem,calc(100vw-2rem))] rounded-of border border-of-border bg-of-surface p-4 shadow-[var(--of-shadow-popover)]"
+          onCloseAutoFocus={(event) => {
+            event.preventDefault()
+            returnFocusRef.current?.focus()
+          }}
+        >
           <form
             onSubmit={(event) => {
               event.preventDefault()
@@ -234,7 +243,7 @@ function CreateBaselineDialog({
             </div>
             {error ? <p role="alert" className="mt-3 text-xs text-of-danger">{error}</p> : null}
           </form>
-        </Dialog.Content>
+        </ModalContent>
       </Dialog.Portal>
     </Dialog.Root>
   )
@@ -245,6 +254,7 @@ function DeleteBaselineDialog({
   busy,
   name,
   error,
+  returnFocusRef,
   onOpenChange,
   onConfirm,
 }: {
@@ -252,14 +262,21 @@ function DeleteBaselineDialog({
   busy: boolean
   name: string
   error: string
+  returnFocusRef: RefObject<HTMLButtonElement | null>
   onOpenChange: (open: boolean) => void
   onConfirm: () => void
 }) {
   return (
     <Dialog.Root open={open} onOpenChange={(next) => { if (!busy) onOpenChange(next) }}>
       <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-[80] bg-black/45 of-overlay-enter" />
-        <Dialog.Content className="fixed left-1/2 top-1/2 z-[81] w-[min(26rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 rounded-of border border-of-border bg-of-surface p-4 shadow-[var(--of-shadow-popover)] of-overlay-enter focus:outline-none">
+        <ModalOverlay className="bg-black/45" />
+        <ModalContent
+          className="w-[min(26rem,calc(100vw-2rem))] rounded-of border border-of-border bg-of-surface p-4 shadow-[var(--of-shadow-popover)]"
+          onCloseAutoFocus={(event) => {
+            event.preventDefault()
+            returnFocusRef.current?.focus()
+          }}
+        >
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
               <Dialog.Title className="text-sm font-semibold">일정 기준선 삭제</Dialog.Title>
@@ -279,7 +296,7 @@ function DeleteBaselineDialog({
             </Button>
           </div>
           {error ? <p role="alert" className="mt-3 text-xs text-of-danger">{error}</p> : null}
-        </Dialog.Content>
+        </ModalContent>
       </Dialog.Portal>
     </Dialog.Root>
   )
@@ -300,6 +317,8 @@ export function ProjectScheduleBaselinePanel({
   const remove = useDeleteProjectScheduleBaseline(projectId)
   const [createOpen, setCreateOpen] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
+  const createTriggerRef = useRef<HTMLButtonElement>(null)
+  const deleteTriggerRef = useRef<HTMLButtonElement>(null)
 
   const selectBaseline = useCallback((baselineId: string) => {
     setSelectedId(baselineId)
@@ -369,6 +388,7 @@ export function ProjectScheduleBaselinePanel({
       busy={create.isPending}
       defaultName={defaultName}
       error={createError}
+      returnFocusRef={createTriggerRef}
       onOpenChange={(open) => {
         if (!open) create.reset()
         setCreateOpen(open)
@@ -402,7 +422,7 @@ export function ProjectScheduleBaselinePanel({
             현재 일정을 이름 있는 기준선으로 저장하면 이후 변동을 계속 비교할 수 있습니다.
           </p>
           {canManage ? (
-            <Button type="button" size="sm" onClick={() => setCreateOpen(true)}>
+            <Button ref={createTriggerRef} type="button" size="sm" onClick={() => setCreateOpen(true)}>
               <Save size={13} /> 첫 기준선 저장
             </Button>
           ) : (
@@ -438,6 +458,7 @@ export function ProjectScheduleBaselinePanel({
           </select>
           {canManage ? (
             <Button
+              ref={createTriggerRef}
               type="button"
               size="sm"
               variant="outline"
@@ -480,6 +501,7 @@ export function ProjectScheduleBaselinePanel({
             </div>
             {canManage && selected.data.baseline ? (
               <Button
+                ref={deleteTriggerRef}
                 type="button"
                 size="icon"
                 variant="ghost"
@@ -575,6 +597,7 @@ export function ProjectScheduleBaselinePanel({
         busy={remove.isPending}
         name={selected.data?.baseline?.name ?? selectedEntry?.name ?? ''}
         error={deleteError}
+        returnFocusRef={deleteTriggerRef}
         onOpenChange={(open) => {
           if (!open) remove.reset()
           setDeleteOpen(open)

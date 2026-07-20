@@ -3010,3 +3010,13 @@ Chromium typed mock fixture에서 1440x960과 390x844 viewport를 사용했다. 
 - **증적/이연**: `docs/screenshots/redevelopment/login-in-app-exhaustive-audit-ui/`에 desktop/mobile, normalized runtime, side-by-side와 5x diff를 보존한다. 외부 OIDC 공급자의 실제 연결은 배포별 credential 경계를 유지하며 이번 surface의 기능 이연은 없다.
 
 ---
+
+# UI-181 Project Functional Modal Motion 검증 (2026-07-20)
+
+- **UI 변경**: 프로젝트 표지, 일정 기준선 생성과 삭제 확인을 공통 `ModalOverlay`/`ModalContent`로 수렴해 열림·닫힘 fade/scale, focus trap, trigger focus 복귀와 mobile containment를 같은 계약으로 제공한다. 시각 QA에서 Tailwind 4의 독립 `translate` 속성과 keyframe `transform`이 중앙 이동을 중복 적용하던 결함을 발견해, modal 좌표를 CSS transform 한 곳에서만 소유하도록 교정했다.
+- **기능/API 반영**: 실제 표지 이미지 upload·project PATCH·remove와 실패 attachment cleanup, 기준선 POST·DELETE, stale version 409 재조회·재시도를 유지했다. Busy 상태의 dismissal 차단, 닫기 버튼과 종료 후 정확한 trigger 복귀도 실제 request 흐름 안에서 검증했다. 신규 API, DB/schema, migration, permission, environment variable, dependency 또는 Settings storage 변경은 없다.
+- **이연 항목**: 없음. 세 대화상자의 모든 control은 실제 query, mutation 또는 파일 선택에 연결돼 있으며 mock/dead control을 추가하지 않았다.
+- **검증**: typecheck PASS, lint PASS(기존 Fast Refresh warning 4건), production build PASS(기존 chunk-size warning), unit **108 PASS**, component **8 PASS**, centered geometry·close presence·focus·actual mutation을 포함한 focused E2E **2 PASS**, 공통 Saved view/Column order/Analytics modal까지 포함한 2-worker full E2E **327 PASS + opt-in visual QA 1 skip**다. Clean-room frontend **162**/backend **45**, npm/pip audit 0 vulnerabilities도 PASS했다.
+- **증적**: `docs/screenshots/redevelopment/project-modal-motion-ui/{cover-desktop,baseline-create-desktop,baseline-delete-mobile}.png`을 실제 Chromium에서 확인해 완전 개방 상태의 중앙 정렬, desktop spacing, 390px mobile no-overflow와 주변 layout 비재배치를 검증했다.
+
+---
