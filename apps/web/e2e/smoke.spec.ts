@@ -866,6 +866,7 @@ async function mockApi(page: Page, opts: { conflictOnPatch?: boolean } = {}) {
       const sent = request.postDataJSON() as {
         expected_version: number
         subject?: string
+        description?: string | null
         status?: string
         priority?: string
         assignee_id?: string | null
@@ -875,6 +876,7 @@ async function mockApi(page: Page, opts: { conflictOnPatch?: boolean } = {}) {
       const updated: WorkPackage = {
         ...currentWorkPackage,
         subject: sent.subject ?? currentWorkPackage.subject,
+        description: 'description' in sent ? sent.description! : currentWorkPackage.description,
         status: (sent.status as WorkPackage['status']) ?? currentWorkPackage.status,
         priority: (sent.priority as WorkPackage['priority']) ?? currentWorkPackage.priority,
         assignee_id: 'assignee_id' in sent ? sent.assignee_id! : currentWorkPackage.assignee_id,
@@ -14017,14 +14019,17 @@ test('AI 요약 플래그가 켜지면 드로어에서 요약을 생성한다', 
   await expect(drawer.getByText(/유형 '작업', 상태 '할 일'/)).toBeVisible()
 })
 
-test('드로어 설명이 리치 텍스트 에디터(툴바 포함)로 표시된다', async ({ page }) => {
+test('작업 설명은 읽기 우선으로 표시되고 작성자만 명시적 편집기를 연다', async ({ page }) => {
   await mockApi(page)
   await page.goto(`/projects/${project.id}/work-packages`)
   await page.getByRole('button', { name: '워크패키지 API 구현', exact: true }).click()
   const drawer = page.getByRole('dialog')
-  // lazy-loaded Tiptap editor: toolbar button + editable region
+  await expect(drawer.getByText('수직 슬라이스 데모')).toBeVisible()
+  await expect(drawer.getByRole('button', { name: '굵게' })).toBeHidden()
+  await drawer.getByRole('button', { name: '설명 편집' }).click()
   await expect(drawer.getByRole('button', { name: '굵게' })).toBeVisible()
-  await expect(drawer.getByLabel('설명')).toBeVisible()
+  await expect(drawer.locator('[contenteditable="true"][aria-label="설명"]')).toBeVisible()
+  await expect(drawer.getByRole('button', { name: '저장', exact: true })).toBeDisabled()
 })
 
 test('표시 메뉴에서 제목순 정렬을 선택하면 목록 쿼리에 sort=subject를 반영한다', async ({ page }) => {
@@ -14053,6 +14058,95 @@ const asViewer = (page: import('@playwright/test').Page) =>
     ),
     page.route(`**/api/v1/projects/${project.id}`, (route) => route.fulfill({ json: project })),
   ])
+
+test('작업 설명 편집은 실제 versioned PATCH로 저장하고 취소는 요청을 만들지 않는다', async ({ page }) => {
+  const descriptionPatches: Array<Record<string, unknown>> = []
+  page.on('request', (request) => {
+    if (request.method() === 'PATCH' && request.url().endsWith(`/work-packages/${wpA.id}`)) {
+      descriptionPatches.push(request.postDataJSON() as Record<string, unknown>)
+    }
+  })
+  await mockApi(page)
+  await page.goto(`/projects/${project.id}/work-packages/${wpA.id}`)
+
+  await page.getByRole('button', { name: '설명 편집' }).click()
+  const editor = page.locator('[contenteditable="true"][aria-label="설명"]')
+  await editor.fill('새 완료 기준을 공유합니다.')
+  await page.getByRole('button', { name: '저장', exact: true }).click()
+
+  await expect(page.getByText('새 완료 기준을 공유합니다.')).toBeVisible()
+  await expect(page.getByRole('button', { name: '굵게' })).toBeHidden()
+  expect(descriptionPatches).toEqual([
+    { expected_version: 0, description: '<p>새 완료 기준을 공유합니다.</p>' },
+  ])
+
+  await page.getByRole('button', { name: '설명 편집' }).click()
+  await page.locator('[contenteditable="true"][aria-label="설명"]').fill('취소할 초안')
+  await page.getByRole('button', { name: '취소', exact: true }).click()
+  await expect(page.getByText('새 완료 기준을 공유합니다.')).toBeVisible()
+  expect(descriptionPatches).toHaveLength(1)
+})
+
+test('작업 설명 충돌은 편집기를 닫지 않고 작성 중 초안을 유지한다', async ({ page }) => {
+  await mockApi(page, { conflictOnPatch: true })
+  await page.goto(`/projects/${project.id}/work-packages/${wpA.id}`)
+
+  await page.getByRole('button', { name: '설명 편집' }).click()
+  const editor = page.locator('[contenteditable="true"][aria-label="설명"]')
+  await editor.fill('충돌 뒤에도 남아야 하는 초안')
+  await page.getByRole('button', { name: '저장', exact: true }).click()
+
+  await expect(page.getByText('작성 중인 내용은 그대로 유지됩니다.')).toBeVisible()
+  await expect(editor).toContainText('충돌 뒤에도 남아야 하는 초안')
+  await expect(page.getByRole('button', { name: '저장', exact: true })).toBeVisible()
+})
+
+test('뷰어는 작업 설명을 읽되 편집 control을 받지 않는다', async ({ page }) => {
+  await mockApi(page)
+  await asViewer(page)
+  await page.goto(`/projects/${project.id}/work-packages/${wpA.id}`)
+
+  await expect(page.getByText('수직 슬라이스 데모')).toBeVisible()
+  await expect(page.getByRole('button', { name: '설명 편집' })).toBeHidden()
+  await expect(page.getByRole('button', { name: '굵게' })).toBeHidden()
+})
+
+test('빈 작업 설명은 작성 가능한 안내에서 실제 편집기로 전환된다', async ({ page }) => {
+  await mockApi(page)
+  await page.route(`**/api/v1/work-packages/${wpA.id}`, async (route) => {
+    if (route.request().method() === 'GET') {
+      await route.fulfill({ json: { ...wpA, description: null } })
+      return
+    }
+    await route.fallback()
+  })
+  await page.goto(`/projects/${project.id}/work-packages/${wpA.id}`)
+
+  await expect(page.getByText('설명을 추가해 작업의 배경과 완료 기준을 공유하세요.')).toBeVisible()
+  await page.getByRole('button', { name: '설명 편집' }).click()
+  await expect(page.locator('[contenteditable="true"][aria-label="설명"]')).toBeVisible()
+  await expect(page.getByRole('button', { name: '저장', exact: true })).toBeDisabled()
+})
+
+test('작업 설명 읽기·편집 surface는 desktop과 mobile에서 같은 계층을 유지한다', async ({ page }) => {
+  await mockApi(page)
+  await page.setViewportSize({ width: 1280, height: 720 })
+  await page.goto(`/projects/${project.id}/work-packages/${wpA.id}`)
+  await expect(page.getByText('수직 슬라이스 데모')).toBeVisible()
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/detail-description-ui/desktop.png',
+    fullPage: true,
+  })
+
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.getByRole('button', { name: '설명 편집' }).click()
+  await expect(page.getByRole('button', { name: '굵게' })).toBeVisible()
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/detail-description-ui/mobile-edit.png',
+    fullPage: true,
+  })
+})
 
 test('뷰어 문서 에디터는 제목·본문이 읽기 전용이고 저장·삭제·코멘트가 없다', async ({ page }) => {
   await mockApi(page)

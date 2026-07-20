@@ -3081,3 +3081,13 @@ Chromium typed mock fixture에서 1440x960과 390x844 viewport를 사용했다. 
 - **증적**: `docs/screenshots/redevelopment/detail-custom-fields-ui/{desktop,mobile}.png`을 실제 Chromium에서 확인해 desktop property hierarchy, 390px mobile containment, inactive preserved value와 주변 section 비재배치를 검증했다.
 
 ---
+
+# UI-190 Work Item Description IA 검증 (2026-07-21)
+
+- **UI 변경**: 작업 상세 설명을 상시 노출되는 편집기 프레임에서 scan-first 본문으로 재구성했다. 읽을 때는 툴바·중첩 테두리 없이 제목과 본문 계층만 보이고, 작성자가 편집 action을 실행한 동안에만 기존 rich-text toolbar와 명시적 저장·취소 control이 나타난다. 같은 계층을 desktop과 mobile에서 유지하며 빈 설명도 권한에 맞는 compact 상태로 표시한다.
+- **기능/API 반영**: 저장은 최신 work item version을 포함한 실제 PATCH를 사용하고 성공 응답으로 상세 query cache를 갱신한다. 취소와 `Escape`는 요청 없이 원문으로 복귀하며, 409 conflict 또는 일반 오류에서는 사용자가 작성한 draft를 유지해 다시 저장할 수 있다. 기존 plain-text 설명과 동등한 paragraph HTML은 변경 없음으로 판정한다. 신규 API, DB/schema, migration, permission, environment variable, dependency 또는 Settings storage 변경은 없다.
+- **권한/이연 항목**: Writer만 편집 action과 editor를 사용할 수 있고 viewer는 본문 또는 읽기 전용 빈 상태만 본다. 이번 description surface의 모든 control은 실제 state 또는 mutation에 연결돼 있으며 mock/dead control과 장식용 action은 없다. AI 요약의 on-demand 정보 계층은 후속 detail surface로 이연한다.
+- **검증**: typecheck PASS, lint PASS(기존 Fast Refresh warning 4건), production build PASS(기존 large chunk warning), unit **108 PASS**, component **8 PASS**, 저장·취소·409 draft 보존·viewer·empty·desktop/mobile 계층을 포함한 focused E2E **6 PASS**다. 최종 4-worker full E2E는 **343 PASS + opt-in visual QA manifest 1 skip**로 재시도 없이 완주했다. 그 전 1차 full E2E에서 신규 설명 시나리오는 모두 통과했고 기존 프로젝트 sidebar focus와 custom-field 오류 alert가 각 1회 timeout 됐으나, 두 시나리오를 각각 포함한 `--repeat-each=5 --workers=1` 격리 검증도 **10/10 PASS**였다. Clean-room frontend **162**/backend **45**, OpenAPI type parity, npm audit 0 vulnerabilities와 diff check가 PASS했다.
+- **증적**: `docs/screenshots/redevelopment/detail-description-ui/{desktop,mobile-edit}.png`을 실제 Chromium에서 확인해 scan-first 본문, 명시적 editor 전환과 390px mobile containment를 검증했다.
+
+---

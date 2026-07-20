@@ -21,7 +21,7 @@ import {
   Users,
 } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
-import { Suspense, lazy, useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 
@@ -54,17 +54,13 @@ import { ApiError } from '@/lib/api'
 import { decideOnPatchError } from '@/lib/conflict'
 import { formatDateTime } from '@/lib/datetime'
 
-// Tiptap is heavy — load it only when a drawer actually renders (code-split).
-const RichTextEditor = lazy(() =>
-  import('@/components/ui/rich-text-editor').then((m) => ({ default: m.RichTextEditor })),
-)
-
 import { CostSection } from './CostSection'
 import { HistorySection } from './HistorySection'
 import { AttachmentsSection } from './AttachmentsSection'
 import { PagesSection } from './PagesSection'
 import { RelationsSection } from './RelationsSection'
 import { TimeTrackingSection } from './TimeTrackingSection'
+import { WorkItemDescriptionSection } from './WorkItemDescriptionSection'
 import {
   useDuplicateWorkPackage,
   useMoveWorkPackage,
@@ -396,6 +392,14 @@ export function WorkPackageDetailPanel({
     })
   }
 
+  const sendAsync = (fields: Partial<Record<string, unknown>>) => {
+    const cached = queryClient.getQueryData<WorkPackage>(['work-package', wp.id])
+    return patch.mutateAsync({
+      wpId: wp.id,
+      patch: { expected_version: cached?.version ?? wp.version, ...fields },
+    })
+  }
+
   const saveScheduleDates = () => {
     if (scheduleError) return
     const nextStart = startDate || null
@@ -583,24 +587,14 @@ export function WorkPackageDetailPanel({
             : 'grid gap-4 lg:grid-cols-[minmax(0,1fr)_18rem]'}
         >
           <div className={`space-y-4 ${resizableProperties ? 'lg:pr-4' : ''}`}>
-            <div className="space-y-1.5">
-              <span className="text-xs font-medium text-of-muted">설명</span>
-              <Suspense
-                fallback={
-                  <div className="h-24 rounded-of border border-of-border bg-of-surface-2/40" />
-                }
-              >
-                <RichTextEditor
-                  editable={canWrite}
-                  value={wp.description ?? ''}
-                  ariaLabel="설명"
-                  onSave={(html) => {
-                    const next = html === '' ? null : html
-                    if (next !== (wp.description ?? null)) send({ description: next })
-                  }}
-                />
-              </Suspense>
-            </div>
+            <WorkItemDescriptionSection
+              value={wp.description}
+              canWrite={canWrite}
+              saving={patch.isPending}
+              onSave={async (description) => {
+                await sendAsync({ description })
+              }}
+            />
 
             <AiSummarySection wpId={wp.id} />
 

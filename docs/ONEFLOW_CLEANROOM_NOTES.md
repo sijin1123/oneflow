@@ -605,3 +605,9 @@ Plane/OpenProject source, API, database schema, package, asset, CSS, DOM hierarc
 `docs/plane-poc-reverse-spec/`에서 사용한 입력은 작업 상세의 확장 속성이 compact count/header/label-value hierarchy, 타입 단서, 보존값과 독립 loading/error recovery를 제공한다는 S027의 관찰 가능한 정보 구조와 행동뿐이다. OneFlow 구현은 기존 custom-field definition/value API hooks, React Query, React state와 자체 design token/Lucide icon으로 독립 설계했다.
 
 Plane/OpenProject source, API, database schema, package, asset, CSS, DOM hierarchy, exact dimensions/colors, wording, component implementation, icons 또는 branding은 복사하지 않았다. text/number/URL/boolean/date/dropdown/member 입력, delta PUT, removed option/member 보존, writer/viewer 경계와 mobile flow를 기존 OneFlow 계약에 유지했고 신규 API, DB/schema, migration, permission, environment variable, dependency 또는 Settings storage 변경은 없다. - attested-independent-derivation
+
+## UI-190 Work Item Description IA
+
+`docs/plane-poc-reverse-spec/`에서 사용한 입력은 작업 상세 설명이 scan-first 읽기 계층을 제공하고 명시적으로 편집을 시작한 동안에만 rich-text control을 노출한다는 S027의 관찰 가능한 정보 구조와 행동뿐이다. OneFlow 구현은 기존 Tiptap wrapper, work-package expected-version PATCH, React Query cache와 자체 design token/Lucide icon으로 독립 설계했다.
+
+Plane/OpenProject source, API, database schema, package, asset, CSS, DOM hierarchy, exact dimensions/colors, wording, component implementation, icons 또는 branding은 복사하지 않았다. explicit save/cancel, conflict/error draft retention, writer/viewer boundary, empty state와 mobile flow를 기존 OneFlow 계약에 유지했고 신규 API, DB/schema, migration, permission, environment variable, dependency 또는 Settings storage 변경은 없다. - attested-independent-derivation
