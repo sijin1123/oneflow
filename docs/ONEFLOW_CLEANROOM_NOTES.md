@@ -575,3 +575,9 @@ Plane/OpenProject source, API, database schema, package, asset, CSS, DOM hierarc
 UI-182의 유일한 시각 입력은 사용자가 직접 제공하고 OneFlow 제품 자산으로 승인한 `docs/oneflow-login-origin.png`다. 신규 `oneflow-login-story-reference-667x915.png`와 `oneflow-login-logo-lockup-173x59.png`는 기존 승인 crop을 Lanczos로 결정적으로 축소한 정수 픽셀 파생 자산이며 SHA-256 unit regression으로 고정한다. 생성형 재해석, 로고 형태 재구성, 색상 변경 또는 제3자 자산 사용은 없다.
 
 Plane/OpenProject source, package, asset, logo, CSS, DOM, wording 또는 branding은 입력·복사하지 않았다. 인증 영역은 기존 OneFlow auth API와 semantic DOM을 유지하며 신규 API, DB/schema, migration, permission, environment variable, dependency 또는 Settings storage 변경은 없다. - attested-user-owned-oneflow-asset
+
+## UI-186 Login Pixel Reinspection Closure
+
+UI-186의 유일한 시각 입력은 사용자가 직접 제공하고 OneFlow 제품 자산으로 승인한 `docs/oneflow-login-origin.png`이며, runtime reference와 동일한 SHA-256 `62fafe9e44df9d189e8fe2f38fc25147d11b8459569be13ee0424ba06c0c4c76`을 유지한다. story·logo bitmap을 재생성하거나 제3자 자산으로 대체하지 않고, 승인 crop이 브라우저 합성 단계에서 다시 보간되지 않도록 OneFlow 자체 CSS layout과 `srcset` 선택만 교정했다.
+
+Plane/OpenProject source, package, asset, logo, CSS, DOM, wording 또는 branding은 입력·복사하지 않았다. 인증 영역은 기존 OneFlow semantic DOM과 auth API, 자체 local design token을 유지한다. 신규 API, DB/schema, migration, permission, environment variable, dependency 또는 Settings storage 변경은 없다. - attested-user-owned-oneflow-asset
