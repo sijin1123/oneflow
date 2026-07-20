@@ -1,0 +1,52 @@
+{
+  "reference": "oneflow-login-origin-reference.png",
+  "capture": "reference-size.png",
+  "normalization": {
+    "viewport": [
+      1448,
+      1086
+    ],
+    "current_panel_crop": [
+      114,
+      86,
+      1334,
+      1001
+    ],
+    "comparison_size": [
+      1220,
+      915
+    ]
+  },
+  "metrics": {
+    "full": {
+      "mae": 1.8199,
+      "edge_ratio": 0.9513,
+      "reference_edge": 3.8742,
+      "current_edge": 3.6854
+    },
+    "story": {
+      "mae": 0.5062,
+      "edge_ratio": 1.0012,
+      "reference_edge": 4.3785,
+      "current_edge": 4.3835
+    },
+    "story_brand": {
+      "mae": 0.6632,
+      "edge_ratio": 0.9994,
+      "reference_edge": 9.7762,
+      "current_edge": 9.7704
+    },
+    "kanban": {
+      "mae": 1.0318,
+      "edge_ratio": 1.0003,
+      "reference_edge": 4.8609,
+      "current_edge": 4.8623
+    },
+    "auth": {
+      "mae": 3.4043,
+      "edge_ratio": 0.8564,
+      "reference_edge": 3.2813,
+      "current_edge": 2.81
+    }
+  }
+}

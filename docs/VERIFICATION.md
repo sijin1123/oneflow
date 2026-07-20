@@ -3030,3 +3030,14 @@ Chromium typed mock fixture에서 1440x960과 390x844 viewport를 사용했다. 
 - **증적**: `docs/screenshots/redevelopment/login-integer-pixel-ui/`에 desktop/mobile, normalized runtime, side-by-side와 5x diff를 보존한다.
 
 ---
+
+# UI-186 Login Pixel Reinspection Closure 검증 (2026-07-20)
+
+- **UI 변경**: 승인 원본을 포함한 story가 정수 좌표에 도달한 뒤에도 page-level `translate` 합성 때문에 GPU에서 다시 보간되던 원인을 제거했다. 큰 데스크톱 panel을 직접 정수 margin에 배치하고 story에 이미 포함된 외곽선을 중복 렌더링하지 않도록 auth 면에만 외곽선을 남겼다. auth logo는 173px 사전 축소본 대신 승인 205px crop을 DPR 1 source로 선택해 로고 획과 글자 선명도를 보존했고 card, input, CTA의 border·shadow·색을 원본 기준으로 미세 조정했다.
+- **기능/API 반영**: 이메일 입력, remember me, 비밀번호 표시, 지원·정책 dialog, Google/Microsoft/SSO availability, 언어, safe-next와 실제 auth API 계약을 그대로 유지했다. 인앱 Chromium에서 이메일 입력, remember toggle, 미설정 Google 안내 dialog의 열기·닫기와 가로 overflow 0을 다시 확인했다. 신규 API, DB/schema, migration, permission, environment variable, dependency 또는 Settings UI 변경은 없다.
+- **픽셀 전수 재실사**: `1448x1086` 현재 화면의 panel `(114,86)-(1334,1001)`을 승인 원본과 `1220x915`로 정규화했다. 이전 UI-182 기준 대비 full MAE는 `2.799 -> 1.820`, story는 `1.799 -> 0.506`으로 감소했다. 최종 story brand와 Kanban MAE는 각각 `0.663`, `1.032`이며 edge ratio는 story `1.0012`, brand `0.9994`, Kanban `1.0003`으로 원본 선명도를 유지한다. auth MAE는 `3.404`이며 semantic DOM과 브라우저 font rasterization 차이를 포함한다.
+- **이연 항목**: 외부 OIDC 공급자의 실제 연결은 배포 credential 경계를 유지한다. 이외 이번 로그인 surface의 mock/dead control 또는 미배선 UI는 없다.
+- **검증**: focused login E2E **15 PASS**, typecheck PASS, lint PASS(기존 Fast Refresh warning 4건), unit **108 PASS**, component **8 PASS**, production build PASS(기존 large chunk warning), clean-room frontend **161**/backend **45**, npm audit high 0, diff check PASS다. 2-worker full E2E는 **329 PASS + visual manifest 1 skip** 뒤 무관한 DHTMLX Timeline 강제 클릭 1건이 병렬 부하에서 5초 URL 전환을 놓쳤고, 동일 시나리오 단독 반복은 **5/5 PASS**로 재현되지 않았다.
+- **증적**: `docs/screenshots/redevelopment/login-pixel-reinspection-ui/`에 reference-size capture, normalized side-by-side, 8x diff heatmap, pixel metrics JSON, desktop와 mobile lossless screenshot을 보존한다.
+
+---
