@@ -437,7 +437,11 @@ textarea {
 .of-sheet-content[data-state='closed'] { animation: of-sheet-content-closing var(--of-duration-default) var(--of-ease-standard) both; pointer-events: none; }
 .of-modal-overlay[data-state='open'] { animation: of-modal-overlay-opening var(--of-duration-overlay) var(--of-ease-standard) both; }
 .of-modal-overlay[data-state='closed'] { animation: of-modal-overlay-closing var(--of-duration-default) var(--of-ease-standard) both; pointer-events: none; }
-.of-modal-content { will-change: opacity, transform; }
+.of-modal-content {
+  transform: translate(-50%, -50%);
+  transform-origin: center;
+  will-change: opacity, transform;
+}
 .of-modal-content[data-state='open'] { animation: of-modal-content-opening var(--of-duration-overlay) var(--of-ease-emphasized) backwards; }
 .of-modal-content[data-state='closed'] { animation: of-modal-content-closing var(--of-duration-default) var(--of-ease-standard) both; pointer-events: none; }
 

@@ -10,12 +10,13 @@ import {
   Upload,
   X,
 } from 'lucide-react'
-import { useRef, useState } from 'react'
+import { useRef, useState, type RefObject } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 
 import { ErrorState, ListSkeleton } from '@/components/shell/states'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { ModalContent, ModalOverlay } from '@/components/ui/modal'
 import { useDeleteAttachment, useUploadAttachment } from '@/features/attachments/api'
 import { useDashboard } from '@/features/dashboard/api'
 import { RecentActivity } from '@/features/dashboard/RecentActivity'
@@ -47,10 +48,12 @@ function CoverDialog({
   project,
   open,
   onOpenChange,
+  returnFocusRef,
 }: {
   project: Project
   open: boolean
   onOpenChange: (open: boolean) => void
+  returnFocusRef: RefObject<HTMLButtonElement | null>
 }) {
   const inputRef = useRef<HTMLInputElement>(null)
   const upload = useUploadAttachment(project.id)
@@ -110,8 +113,14 @@ function CoverDialog({
   return (
     <Dialog.Root open={open} onOpenChange={(next) => { if (!busy) onOpenChange(next) }}>
       <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-[80] bg-black/45 of-overlay-enter" />
-        <Dialog.Content className="fixed left-1/2 top-1/2 z-[81] w-[min(32rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 rounded-of border border-of-border bg-of-surface p-4 shadow-[var(--of-shadow-popover)] of-overlay-enter focus:outline-none">
+        <ModalOverlay className="bg-black/45" />
+        <ModalContent
+          className="w-[min(32rem,calc(100vw-2rem))] rounded-of border border-of-border bg-of-surface p-4 shadow-[var(--of-shadow-popover)]"
+          onCloseAutoFocus={(event) => {
+            event.preventDefault()
+            returnFocusRef.current?.focus()
+          }}
+        >
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
               <Dialog.Title className="text-sm font-semibold">프로젝트 표지</Dialog.Title>
@@ -156,7 +165,7 @@ function CoverDialog({
             {busy ? <span role="status" className="text-xs text-of-muted">저장 중...</span> : null}
           </div>
           {error ? <p role="alert" className="mt-3 text-xs text-of-danger">{error}</p> : null}
-        </Dialog.Content>
+        </ModalContent>
       </Dialog.Portal>
     </Dialog.Root>
   )
@@ -170,6 +179,7 @@ export function ProjectOverviewPage() {
   const members = useMembers(projectId)
   const me = useMe()
   const [coverOpen, setCoverOpen] = useState(false)
+  const coverTriggerRef = useRef<HTMLButtonElement>(null)
 
   if (project.isPending || dashboard.isPending) return <ListSkeleton />
   if (project.isError) return <ErrorState error={project.error} onRetry={() => project.refetch()} />
@@ -190,7 +200,7 @@ export function ProjectOverviewPage() {
       >
         {canChangeCover ? (
           <div className="absolute right-3 top-3">
-            <Button type="button" size="sm" variant="secondary" onClick={() => setCoverOpen(true)}>
+            <Button ref={coverTriggerRef} type="button" size="sm" variant="secondary" onClick={() => setCoverOpen(true)}>
               <Camera size={14} /> 표지 변경
             </Button>
           </div>
@@ -306,7 +316,12 @@ export function ProjectOverviewPage() {
       </div>
 
       {canChangeCover ? (
-        <CoverDialog project={project.data} open={coverOpen} onOpenChange={setCoverOpen} />
+        <CoverDialog
+          project={project.data}
+          open={coverOpen}
+          onOpenChange={setCoverOpen}
+          returnFocusRef={coverTriggerRef}
+        />
       ) : null}
     </div>
   )

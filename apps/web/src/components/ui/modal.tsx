@@ -27,7 +27,7 @@ export function ModalContent({
     <DialogPrimitive.Content
       data-slot="modal-content"
       className={cn(
-        'of-modal-content fixed left-1/2 top-1/2 z-[calc(var(--of-z-modal)+1)] -translate-x-1/2 -translate-y-1/2 focus:outline-none',
+        'of-modal-content fixed left-1/2 top-1/2 z-[calc(var(--of-z-modal)+1)] focus:outline-none',
         className,
       )}
       {...props}
