@@ -18,8 +18,12 @@ from app.models.activity import Activity
 from app.models.comment import WorkPackageComment
 from app.models.user import User
 from app.models.work_package import WorkPackage
-from app.schemas.ai import AiCapabilities, AiSummaryResponse
-from app.services.ai_summary import PROVIDER, summarize_work_package
+from app.schemas.ai import AiCapabilities, AiSummaryRequest, AiSummaryResponse
+from app.services.ai_summary import (
+    PROVIDER,
+    answer_work_package_question,
+    summarize_work_package,
+)
 from app.services.workspace_features import ai_effective_enabled
 
 router = APIRouter()
@@ -38,6 +42,7 @@ async def capabilities(
 @router.post("/work-packages/{wp_id}/summary", response_model=AiSummaryResponse)
 async def summarize(
     wp_id: uuid.UUID,
+    body: AiSummaryRequest | None = None,
     settings: Settings = Depends(get_settings),
     session: AsyncSession = Depends(get_session),
     user: User = Depends(get_current_user),
@@ -64,5 +69,9 @@ async def summarize(
         )
     ).scalar_one()
 
-    text = summarize_work_package(wp, comment_count, activity_count)
+    text = (
+        answer_work_package_question(wp, comment_count, activity_count, body.question)
+        if body and body.question
+        else summarize_work_package(wp, comment_count, activity_count)
+    )
     return AiSummaryResponse(work_package_id=wp.id, summary=text, provider=PROVIDER)
