@@ -1,0 +1,11 @@
+full mae=1.49295 rmse=6.49526 p95=2 exact=66.0633%
+story mae=0.01156 exact=99.7977%
+story_brand mae=0.00000 exact=100.0000%
+story_kanban mae=0.00000 exact=100.0000%
+story_lower mae=0.01375 exact=99.7205%
+auth mae=3.28144 exact=25.3352%
+auth_card mae=4.22643 exact=31.3383%
+auth_brand mae=0.01890 exact=97.2729%
+auth_heading mae=10.30075 exact=31.7023%
+auth_form mae=5.86246 exact=18.6504%
+footer mae=3.40440 exact=15.6742%

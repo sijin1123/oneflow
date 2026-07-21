@@ -936,7 +936,7 @@
   min-height: 100dvh;
   place-items: center;
   overflow: hidden;
-  padding: 24px;
+  padding: 0;
   background:
     radial-gradient(circle at 7% 7%, rgb(201 215 255 / 0.34), transparent 30%),
     radial-gradient(circle at 92% 9%, rgb(204 235 248 / 0.35), transparent 31%),
@@ -948,7 +948,7 @@
   position: relative;
   isolation: isolate;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  width: min(1220px, calc(100vw - 48px), calc(133.333dvh - 64px));
+  width: min(1448px, 100vw, 133.333dvh);
   height: auto;
   min-height: 0;
   aspect-ratio: 4 / 3;
@@ -1059,8 +1059,8 @@
     clamp(20px, 2.55cqw, 31px);
   background: rgb(254 254 254 / 0.98);
   box-shadow:
-    0 18px 50px rgb(54 73 125 / 0.06),
-    0 2px 9px rgb(54 73 125 / 0.04);
+    0 18px 50px rgb(54 73 125 / 0.04),
+    0 2px 9px rgb(54 73 125 / 0.025);
   backdrop-filter: blur(10px);
   animation: none;
   -ms-overflow-style: none;
@@ -1280,7 +1280,7 @@
   }
 }
 
-@media (min-width: 1268px) and (min-height: 961px) {
+@media (min-width: 1448px) and (min-height: 1086px) {
   /* Keep the approved raster on the layout pixel grid so the compositor does not resample it. */
   .of-login-canvas {
     place-items: start;
@@ -1288,40 +1288,206 @@
   }
 
   .of-login-page {
-    --of-login-panel-x: calc((100vw - 1220px) / 2);
-    --of-login-panel-y: calc((100dvh - 915px) / 2);
-    grid-template-columns: 667px 553px;
+    --of-login-panel-x: calc((100vw - 1448px) / 2);
+    --of-login-panel-y: calc((100dvh - 1086px) / 2);
+    width: 1448px;
+    height: 1086px;
+    grid-template-columns: 792px 656px;
     margin-top: round(nearest, var(--of-login-panel-y), 1px);
     margin-left: round(nearest, var(--of-login-panel-x), 1px);
   }
 
   .of-login-brand-reference {
-    width: 173px;
-    height: 59px;
+    width: 205px;
+    height: 70px;
     aspect-ratio: auto;
     transform: none;
   }
 
   .of-login-brand-reference img {
-    width: 173px;
-    height: 59px;
+    width: 205px;
+    height: 70px;
   }
 
   .of-login-auth-card {
-    top: 60px;
-    left: 51px;
-    width: 441px;
-    height: 750px;
-    padding: 23px 39px 31px;
+    top: 70px;
+    left: 60px;
+    width: 523px;
+    height: 892px;
+    border-radius: 21px;
+    padding: 29px 46px 37px;
+  }
+
+  .of-login-heading {
+    margin: 20px 0 42px;
+  }
+
+  .of-login-heading h2 {
+    font-size: 32.5px;
+    font-weight: 550;
+    transform: translate(-3px, -1px);
+  }
+
+  .of-login-heading p {
+    margin-top: 10px;
+    font-size: 16px;
+    transform: translateY(-2px) scaleX(1.022);
+  }
+
+  .of-login-form {
+    width: calc(100% - 1px);
+    gap: 14px;
+    transform: translate(1px, -5px);
+  }
+
+  .of-login-field {
+    gap: 10px;
+    font-size: 14px;
+  }
+
+  .of-login-field + .of-login-field {
+    margin-top: 13px;
+  }
+
+  .of-login-input-wrap {
+    width: 100%;
+    transform: translateY(-1px);
+  }
+
+  .of-login-input {
+    height: 55px;
+    border-radius: 11px;
+    padding-left: 50px;
+    font-size: 15px;
+  }
+
+  .of-login-input-wrap > svg {
+    left: 18px;
+    width: 20px;
+    height: 20px;
+  }
+
+  .of-login-password-toggle {
+    width: 48px;
+    height: 48px;
+  }
+
+  .of-login-form-options {
+    min-height: 32px;
+    margin-top: 5px;
+    margin-bottom: 3px;
+  }
+
+  .of-login-checkbox,
+  .of-login-link {
+    font-size: 14px;
+  }
+
+  .of-login-checkbox > span {
+    width: 18px;
+    height: 19px;
+  }
+
+  .of-login-submit {
+    width: calc(100% - 2px);
+    min-height: 51px;
+    justify-self: center;
+    border-radius: 11px;
+    padding-right: 45px;
+    padding-left: 14px;
+    font-size: 15px;
+  }
+
+  .of-login-divider {
+    margin-top: 12px;
+    font-size: 13px;
+  }
+
+  .of-login-providers {
+    gap: 8px;
+    margin-top: 10px;
+  }
+
+  .of-login-provider-button {
+    width: calc(100% - 2px);
+    min-height: 53px;
+    gap: 11px;
+    justify-self: center;
+    border-radius: 11px;
+    padding: 0 39px 4px 15px;
+    font-size: 16px;
+    font-weight: 620;
+  }
+
+  .of-login-google {
+    width: 21px;
+    height: 21px;
+  }
+
+  .of-login-microsoft,
+  .of-login-provider-button > svg {
+    width: 21px;
+    height: 21px;
+  }
+
+  .of-login-password-hidden-icon {
+    width: 22px;
+    height: 18px;
+  }
+
+  .of-login-password-hidden-icon > svg {
+    width: 22px;
+    height: 18px;
+  }
+
+  .of-login-password-hidden-icon::after {
+    top: 2px;
+    left: 2px;
+    width: 21px;
+    height: 1.5px;
+  }
+
+  .of-login-create {
+    margin-top: 7px;
+    font-size: 14px;
+  }
+
+  .of-login-create button {
+    min-height: 40px;
   }
 
   .of-login-footer {
-    right: 61px;
-    bottom: 39px;
-    left: 51px;
+    right: 72px;
+    bottom: 49px;
+    left: 60px;
     width: auto;
-    padding-right: 8px;
-    padding-left: 8px;
+    padding-right: 10px;
+    padding-left: 10px;
+  }
+
+  .of-login-footer nav button,
+  .of-login-language {
+    font-size: 12px;
+  }
+
+  .of-login-footer nav {
+    gap: 14px;
+    transform: translateY(-1px);
+  }
+
+  .of-login-language {
+    gap: 9px;
+    font-size: 13px;
+    transform: translateY(-1px);
+  }
+
+  .of-login-language svg {
+    width: 22px;
+    height: 22px;
+  }
+
+  .of-login-language svg:last-child {
+    width: 14px;
   }
 }
 
