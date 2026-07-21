@@ -670,3 +670,9 @@ Plane/OpenProject source, package, asset, logo, CSS, DOM, wording 또는 brandin
 `docs/plane-poc-reverse-spec/`에서 사용한 입력은 작업 활동과 댓글이 작성 시점의 사용자 identity를 compact avatar와 이름으로 일관되게 표현한다는 관찰 가능한 정보 구조와 행동뿐이다. OneFlow 구현은 자체 comment/activity append-only 기록, 개인 프로필 이미지 저장소, 프로젝트 멤버십 권한, React Query와 공통 `Avatar` 컴포넌트를 사용해 독립 설계했다.
 
 Plane/OpenProject source, API, database schema, package, asset, CSS, DOM hierarchy, exact dimensions/colors, wording, component implementation, icons 또는 branding은 복사하지 않았다. 이벤트 생성 transaction에서 이름과 이미지 key/content type을 snapshot하고, event-scoped private read와 version 검증으로 현재 멤버에게만 과거 이미지를 제공한다. 프로필 교체·삭제, 프로젝트 탈퇴와 계정 삭제 뒤에도 이력은 생성 시점 identity를 유지하며, 참조 blob은 storage sweep의 live set에 포함한다. 신규 dependency, environment variable 또는 Settings storage 변경은 없다. - attested-independent-derivation
+
+## UI-204 Document Comment Identity Avatars
+
+`docs/plane-poc-reverse-spec/`에서 사용한 입력은 문서 일반 코멘트와 본문 앵커 스레드가 작성 시점의 사용자 identity를 compact avatar와 이름으로 일관되게 표현한다는 관찰 가능한 정보 구조와 행동뿐이다. OneFlow 구현은 자체 Document comment/mention/reaction/visibility 계약, 개인 프로필 이미지 저장소, Wiki feature policy, 프로젝트 멤버십 권한, React Query와 공통 `Avatar` 컴포넌트를 사용해 독립 설계했다.
+
+Plane/OpenProject source, API, database schema, package, asset, CSS, DOM hierarchy, exact dimensions/colors, wording, component implementation, icons 또는 branding은 복사하지 않았다. 두 코멘트 생성 transaction에서 이름과 이미지 key/content type을 snapshot하고, event-scoped exact-version private read를 현재 멤버이면서 해당 shared/private 문서를 볼 수 있는 사용자에게만 제공한다. 프로필 교체·삭제 뒤에도 생성 시점 identity와 참조 blob을 보존하고 storage sweep live set에 포함한다. 신규 dependency, environment variable 또는 Settings storage 변경은 없다. - attested-independent-derivation

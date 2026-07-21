@@ -180,6 +180,7 @@ async def _fetch_keys_from_connection(conn) -> set[str]:
     from app.models.attachment import Attachment
     from app.models.comment import WorkPackageComment
     from app.models.data_transfer_job import DataTransferJob
+    from app.models.document_comment import ProjectDocumentComment
     from app.models.user import User
     from app.models.workspace_profile import WorkspaceProfile
 
@@ -247,6 +248,17 @@ async def _fetch_keys_from_connection(conn) -> set[str]:
         .scalars()
         .all()
     )
+    document_comment_actor_image_keys = set(
+        (
+            await conn.execute(
+                select(ProjectDocumentComment.author_profile_image_storage_key).where(
+                    ProjectDocumentComment.author_profile_image_storage_key.is_not(None)
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
     return (
         attachment_keys
         | transfer_keys
@@ -254,6 +266,7 @@ async def _fetch_keys_from_connection(conn) -> set[str]:
         | profile_image_keys
         | comment_actor_image_keys
         | activity_actor_image_keys
+        | document_comment_actor_image_keys
     )
 
 

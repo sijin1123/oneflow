@@ -984,6 +984,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/documents/{document_id}/comments/{comment_id}/actor-image": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Document Comment Actor Profile Image */
+        get: operations["get_document_comment_actor_profile_image_api_v1_documents__document_id__comments__comment_id__actor_image_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/health": {
         parameters: {
             query?: never;
@@ -5622,6 +5639,10 @@ export interface components {
             anchor_quote: string | null;
             /** Author Id */
             author_id: string | null;
+            /** Author Name */
+            author_name: string | null;
+            /** Author Profile Image Url */
+            author_profile_image_url: string | null;
             /** Body */
             body: string;
             /**
@@ -12879,6 +12900,44 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_document_comment_actor_profile_image_api_v1_documents__document_id__comments__comment_id__actor_image_get: {
+        parameters: {
+            query?: {
+                version?: string | null;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                document_id: string;
+                comment_id: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
             };
             /** @description Validation Error */
             422: {

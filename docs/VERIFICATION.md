@@ -3197,3 +3197,14 @@ Chromium typed mock fixture에서 1440x960과 390x844 viewport를 사용했다. 
 - **증적**: `docs/screenshots/redevelopment/activity-identity-avatars-ui/{desktop,mobile}.png`에 실제 Chromium work item activity surface를 보존한다.
 
 ---
+
+# UI-204 Document Comment Identity Avatars 검증 (2026-07-21)
+
+- **UI 변경**: Wiki 문서의 일반 코멘트와 본문 앵커 thread에 공통 `Avatar`를 적용했다. 작성 당시 이름과 저장 이미지가 우선이며, 이미지가 없거나 로드에 실패하면 같은 이름의 initials fallback을 사용한다. 기존 멘션, reaction, author delete, anchor focus/reply와 compact desktop/mobile hierarchy를 유지한다.
+- **기능/API 반영**: migration `0116`은 Document comment에 작성 시점 이름과 프로필 이미지 storage key/content type snapshot을 추가하고 기존 행의 현재 작성자명을 backfill한다. 일반/inline 두 생성 경로 모두 같은 transaction에서 identity를 capture한다. event-scoped 이미지 GET은 Wiki feature가 켜져 있고 요청자가 현재 프로젝트 멤버이며 shared 문서 또는 본인이 소유한 private 문서를 볼 수 있을 때만 exact stored version을 `private, no-store`로 반환한다. 잘못된 document/comment 조합, version, visibility, membership과 missing blob은 404다.
+- **권한/보존**: 프로필 교체·삭제는 Document comment가 참조하는 과거 blob을 지우지 않으며 storage sweep도 snapshot key를 live set으로 집계한다. 현재 프로필 URL을 과거 코멘트에 재사용하거나 public image endpoint를 만들지 않았다.
+- **이연 항목**: Initiative activity identity는 별도 UI surface로 남긴다. 이번 Document comment surface에는 mock/dead control 또는 장식용 avatar가 없고 신규 환경변수, Settings UI와 dependency는 없다.
+- **검증**: migration `0115 -> 0116 -> 0115 -> 0116`, profile/Document comment focused API **17 PASS**, 전체 API **850 PASS**(기존 Alembic 경고 1건), Ruff/format, OpenAPI type parity, typecheck, lint(기존 Fast Refresh warning 4건), production build(기존 large chunk warning), unit **108 PASS**, component **9 PASS**, focused E2E **1 PASS**, 전체 E2E **354 PASS + opt-in visual QA 1 skip**, clean-room frontend **162**/backend **45**, npm audit 0 vulnerabilities와 diff check가 PASS했다. 첫 전체 API 실행에서 PostgreSQL 63자 식별자 제한으로 CHECK constraint 이름 검증 1건이 실패해 constraint 이름을 축약했고, migration 왕복·focused API·전체 API를 순서대로 재검증했다. PR/main CI 결과는 merge 후 이 문단에 확정 기록한다.
+- **증적**: `docs/screenshots/redevelopment/document-comment-reactions-ui/{desktop,mobile}.png`에 실제 Chromium 일반/본문 앵커 코멘트 identity·reaction surface를 보존한다.
+
+---

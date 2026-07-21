@@ -15640,6 +15640,9 @@ test('문서 인라인·일반 코멘트 리액션은 quick/custom toggle과 읽
       document_id: 'd1',
       project_id: project.id,
       author_id: 'me-1',
+      author_name: 'Historical Writer',
+      author_profile_image_url:
+        '/api/v1/documents/d1/comments/inline-reaction/actor-image?version=11111111-1111-4111-8111-111111111111',
       body: '인라인 검토',
       anchor_id: anchorId,
       anchor_quote: '검토 문구',
@@ -15651,6 +15654,8 @@ test('문서 인라인·일반 코멘트 리액션은 quick/custom toggle과 읽
       document_id: 'd1',
       project_id: project.id,
       author_id: 'me-1',
+      author_name: 'Historical Writer',
+      author_profile_image_url: null,
       body: '일반 검토',
       anchor_id: null,
       anchor_quote: null,
@@ -15664,6 +15669,15 @@ test('문서 인라인·일반 코멘트 리액션은 quick/custom toggle과 읽
   await page.route('**/api/v1/documents/d1', (route) => route.fulfill({ json: doc }))
   await page.route('**/api/v1/documents/d1/comments', (route) =>
     route.fulfill({ json: { items: comments, total: comments.length } }),
+  )
+  await page.route('**/api/v1/documents/d1/comments/inline-reaction/actor-image**', (route) =>
+    route.fulfill({
+      contentType: 'image/png',
+      body: Buffer.from(
+        'iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAEklEQVR4nGPkndLBwMDAxAAGAA2bAS37E8jFAAAAAElFTkSuQmCC',
+        'base64',
+      ),
+    }),
   )
   await page.route('**/api/v1/documents/d1/work-package-links', (route) =>
     route.fulfill({ json: { items: [], total: 0 } }),
@@ -15718,6 +15732,8 @@ test('문서 인라인·일반 코멘트 리액션은 quick/custom toggle과 읽
 
   await page.goto(`/projects/${project.id}/documents/d1`)
   const inlineThread = page.locator(`[id="document-comment-thread-${anchorId}"]`)
+  await expect(inlineThread.getByLabel('Historical Writer', { exact: true })).toBeVisible()
+  await expect(inlineThread.locator('img')).toHaveCount(1)
   const inlineUp = inlineThread.getByRole('button', { name: '👍 리액션' })
   await expect(inlineUp).toContainText('2')
   await inlineUp.click()
