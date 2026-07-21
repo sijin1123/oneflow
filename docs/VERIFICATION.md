@@ -3123,3 +3123,13 @@ Chromium typed mock fixture에서 1440x960과 390x844 viewport를 사용했다. 
 - **증적**: `docs/screenshots/redevelopment/ai-ask-build-ui/{desktop-build,mobile-ask,mobile-navigation}.png`에 실제 Chromium desktop Build, 390px Ask와 mobile navigation을 보존했다. E2E는 질문 POST body, Build 동일 payload 재시도, 성공 링크, 독립 오류 복구, horizontal overflow와 Quick Dock 비겹침을 검사한다.
 
 ---
+# UI-194 Login Pixel Exact Reinspection 검증 (2026-07-21)
+
+- **UI 변경**: 사용자 승인 원본을 `1220x915` 제품 패널로 먼저 Lanczos 축소한 뒤 story `667x915`와 auth logo `173x59`를 정수 좌표에서 다시 파생했다. desktop semantic form은 원본의 1px label/input/options offset, CTA·provider text balance와 가입 행 위치로 보정했으며 tablet/mobile 후보와 compact panel framing은 유지했다.
+- **기능/API 반영**: 이메일, 비밀번호, remember me, password visibility, 실제 sign-in, Google/Microsoft/SSO availability, 정책 dialog, 언어와 safe-next를 기존 semantic control과 auth API로 계속 제공한다. 승인 전체 화면 overlay, 투명 hit layer, mock 또는 dead control은 없다. 변경된 파생 자산 SHA-256은 unit regression으로 고정했다. 신규 API, DB/schema, migration, permission, environment variable, dependency 또는 Settings UI 변경은 없다.
+- **픽셀 전수 실사**: lossless Chromium `1448x1086` 화면에서 panel `(114,86)-(1334,1001)`을 승인 원본과 `1220x915`로 정규화했다. 전체 MAE/delta `<=8`/p95는 `1.4090/97.56%/3`, story는 `0.0149/99.95%/0`, auth는 `3.0904/94.67%/10`이다. story brand, headline, Kanban, calendar, activity와 auth logo는 MAE `0`; top decoration `0.0307`, foreground `0.0185`다. 잔여치는 semantic DOM의 브라우저 font rasterization과 동적 협업 경로 accent에 집중된다.
+- **반응형/증적**: desktop `1448x1086`, 인앱 `953x917`, mobile `390x844` 실제 캡처와 정규화 원본/runtime, side-by-side, 8x diff, 영역별 JSON을 `docs/screenshots/redevelopment/login-pixel-exact-reinspection-ui/`에 보존했다.
+- **검증**: 변경 자산 SHA-256 회귀를 포함한 unit **108 PASS**, component **8 PASS**, typecheck PASS, lint PASS(기존 Fast Refresh warning 4건), production build PASS(기존 large chunk warning), 로그인 기능·9개 viewport·정수 raster·DPR 2를 포함한 focused E2E **10 PASS**다. 전체 E2E는 실행 시간 경계를 피하도록 4개 shard에서 합산 **347 PASS + opt-in visual QA manifest 1 skip**으로 완주했다. 최초 비분할 실행의 기존 custom project phase 1건과 shard 4의 기존 project health history 1건은 병렬 부하에서 5초 비동기 정착을 한 차례 놓쳤으나 각각 단독 반복 **5/5 PASS**로 재현되지 않았다. OpenAPI type parity, clean-room frontend **162**/backend **45**, npm/pip audit 0 vulnerabilities와 diff check도 PASS했다.
+- **이연 항목**: 외부 OIDC 공급자의 실제 연결은 배포별 credential 경계를 유지한다. 이외 이번 로그인 surface의 기능 이연은 없다.
+
+---

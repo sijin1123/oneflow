@@ -1239,6 +1239,44 @@
   .of-login-heading h2 {
     transform: translateX(-4px);
   }
+
+  .of-login-field > label {
+    transform: translate(1px, -1px);
+  }
+
+  .of-login-input-wrap {
+    width: calc(100% - 2px);
+    transform: translate(1px, -1px);
+  }
+
+  .of-login-checkbox {
+    gap: 9px;
+    transform: translate(1px, -1px);
+  }
+
+  .of-login-checkbox > span {
+    width: 15px;
+    height: 16px;
+  }
+
+  .of-login-link {
+    transform: translate(-1px, -1px);
+  }
+
+  .of-login-submit {
+    padding-right: clamp(28px, 3.12cqw, 38px);
+    padding-left: clamp(9px, 0.98cqw, 12px);
+  }
+
+  .of-login-provider-button {
+    padding-right: 33px;
+    padding-left: 13px;
+    font-weight: 650;
+  }
+
+  .of-login-create {
+    transform: translateX(-1.31cqw);
+  }
 }
 
 @media (min-width: 1268px) and (min-height: 961px) {
