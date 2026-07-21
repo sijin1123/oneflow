@@ -9,10 +9,11 @@ import {
 import { useState } from 'react'
 
 import { Badge } from '@/components/ui/badge'
+import { Avatar } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import { CommentReactionBar } from '@/components/ui/comment-reactions'
 import { Textarea } from '@/components/ui/textarea'
-import { useMemberNames, useMembers } from '@/features/members/api'
+import { profileImageSrc, useMemberNames, useMembers } from '@/features/members/api'
 import { useCanWrite } from '@/features/members/useCanWrite'
 import { formatDateTime } from '@/lib/datetime'
 import { cn } from '@/lib/utils'
@@ -42,12 +43,6 @@ const FEED_FILTERS: Array<{ key: FeedFilter; label: string }> = [
   { key: 'transitions', label: '전환' },
   { key: 'history', label: '이력' },
 ]
-
-function initials(name: string) {
-  const parts = name.trim().split(/\s+/).filter(Boolean)
-  if (parts.length === 0) return '?'
-  return parts.slice(0, 2).map((part) => part[0]).join('').toUpperCase()
-}
 
 export function HistorySection({ wpId, projectId }: { wpId: string; projectId: string }) {
   const [feedFilter, setFeedFilter] = useState<FeedFilter>('all')
@@ -178,19 +173,14 @@ export function HistorySection({ wpId, projectId }: { wpId: string; projectId: s
   const activeTabId = `work-item-activity-tab-${wpId}-${activeFilter.key}`
 
   const commentBox = (c: Comment, isReply: boolean) => {
-    const author = c.author_id ? memberName(c.author_id) : '알 수 없는 사용자'
+    const author = c.author_name ?? (c.author_id ? memberName(c.author_id) : '알 수 없는 사용자')
     return <article
       className={cn(
         'relative z-10 grid min-w-0 grid-cols-[2rem_minmax(0,1fr)] gap-3 py-3',
         isReply ? 'ml-7 border-l border-of-border-subtle pl-3' : '',
       )}
     >
-      <span
-        className="flex size-8 shrink-0 items-center justify-center rounded-full border border-of-border bg-of-surface text-[10px] font-semibold text-of-muted"
-        aria-hidden="true"
-      >
-        {initials(author)}
-      </span>
+      <Avatar name={author} src={profileImageSrc(c)} size="md" className="relative z-10" />
       <div className="min-w-0">
         <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5">
           <p className="truncate text-xs font-semibold text-of-fg">{author}</p>
@@ -353,15 +343,24 @@ export function HistorySection({ wpId, projectId }: { wpId: string; projectId: s
                   key={`a-${item.activity.id}`}
                   className="relative grid min-w-0 grid-cols-[2rem_minmax(0,1fr)] gap-3 py-3 before:absolute before:inset-y-0 before:left-4 before:w-px before:bg-of-border-subtle"
                 >
-                  <span
-                    className="relative z-10 flex size-8 shrink-0 items-center justify-center rounded-full border border-of-border bg-of-surface text-of-muted"
-                    aria-hidden="true"
-                  >
-                    <ActivityIcon size={14} />
-                  </span>
+                  {item.activity.actor_name ? (
+                    <Avatar
+                      name={item.activity.actor_name}
+                      src={profileImageSrc(item.activity)}
+                      size="md"
+                      className="relative z-10"
+                    />
+                  ) : (
+                    <span
+                      className="relative z-10 flex size-8 shrink-0 items-center justify-center rounded-full border border-of-border bg-of-surface text-of-muted"
+                      aria-label="시스템"
+                    >
+                      <ActivityIcon size={14} aria-hidden="true" />
+                    </span>
+                  )}
                   <span className="min-w-0 self-center text-xs text-of-muted">
                     <span className="font-medium text-of-text">
-                      {item.activity.actor_id ? memberName(item.activity.actor_id) : '시스템'}
+                      {item.activity.actor_name ?? '시스템'}
                     </span>
                     <span> · {activityText(item.activity)}</span>
                     <span className="ml-1 whitespace-nowrap text-[11px]">

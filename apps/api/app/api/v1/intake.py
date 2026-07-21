@@ -181,7 +181,7 @@ async def triage_intake(
         )
         session.add(wp)
         await session.flush()  # id for the conditional UPDATE + activity FK
-        record_created(session, wp.id, user.id)
+        await record_created(session, wp.id, user.id)
         accepted_wp_id = wp.id
 
     # Final-decision metadata: the note is ALWAYS replaced (null when omitted)

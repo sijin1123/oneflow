@@ -21,9 +21,16 @@ export function useMe() {
 }
 
 export function profileImageSrc(
-  profile: { profile_image_url?: string | null } | undefined,
+  profile: {
+    profile_image_url?: string | null
+    actor_profile_image_url?: string | null
+    author_profile_image_url?: string | null
+  } | undefined,
 ): string | null {
-  return profile?.profile_image_url ? `${BASE_URL}${profile.profile_image_url}` : null
+  const path = profile?.profile_image_url
+    ?? profile?.actor_profile_image_url
+    ?? profile?.author_profile_image_url
+  return path ? `${BASE_URL}${path}` : null
 }
 
 export function useReplaceProfileImage() {

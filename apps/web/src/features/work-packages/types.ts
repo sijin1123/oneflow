@@ -97,6 +97,8 @@ export type Comment = {
   /** set on replies — always references a ROOT comment (single-level threads) */
   parent_id: string | null
   author_id: string | null
+  author_name: string | null
+  author_profile_image_url: string | null
   body: string
   /** accepted mention user-ids (member-validated server-side); null = none */
   mentions: string[] | null
@@ -128,6 +130,8 @@ export type Activity = {
   id: string
   work_package_id: string
   actor_id: string | null
+  actor_name: string | null
+  actor_profile_image_url: string | null
   action: 'created' | 'field_changed' | 'commented'
   field: string | null
   old_value: string | null

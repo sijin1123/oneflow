@@ -25,6 +25,13 @@ class WorkPackageComment(Base):
 
     __tablename__ = "work_package_comments"
     __table_args__ = (
+        CheckConstraint(
+            "(author_profile_image_storage_key IS NULL "
+            "AND author_profile_image_content_type IS NULL) OR "
+            "(author_profile_image_storage_key IS NOT NULL "
+            "AND author_profile_image_content_type IS NOT NULL)",
+            name="author_image_metadata_complete",
+        ),
         UniqueConstraint("id", "work_package_id", name="uq_comments_id_wp"),
         ForeignKeyConstraint(
             ["parent_id", "work_package_id"],
@@ -32,6 +39,7 @@ class WorkPackageComment(Base):
             name="fk_comments_parent_same_wp",
             ondelete="SET NULL (parent_id)",
         ),
+        Index("ix_comments_author_profile_image_key", "author_profile_image_storage_key"),
         Index("ix_comments_parent", "parent_id"),
         Index("ix_comments_wp_created", "work_package_id", "created_at"),
     )
@@ -46,6 +54,9 @@ class WorkPackageComment(Base):
     author_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
+    author_name_snapshot: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    author_profile_image_storage_key: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    author_profile_image_content_type: Mapped[str | None] = mapped_column(String(32), nullable=True)
     body: Mapped[str] = mapped_column(Text, nullable=False)
     # Accepted mention user-ids (JSONB string list) — the canonical mention
     # representation (PLAN v10.1 R1-②): what was accepted is what renders.
@@ -57,6 +68,20 @@ class WorkPackageComment(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
     )
+
+    @property
+    def author_name(self) -> str | None:
+        return self.author_name_snapshot
+
+    @property
+    def author_profile_image_url(self) -> str | None:
+        if self.author_profile_image_storage_key is None:
+            return None
+        version = self.author_profile_image_storage_key.rsplit("/", 1)[-1]
+        return (
+            f"/api/v1/work-packages/{self.work_package_id}/comments/{self.id}/actor-image"
+            f"?version={version}"
+        )
 
 
 # Legacy Pass-17 keys, accepted forever on the wire and normalized to glyphs

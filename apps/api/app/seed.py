@@ -42,6 +42,11 @@ from app.models import (
 )
 from app.models.project_status import DEFAULT_STATUSES
 from app.models.project_type import DEFAULT_TYPES, ProjectType
+from app.services.activity import (
+    ActorIdentitySnapshot,
+    activity_actor_fields,
+    comment_author_fields,
+)
 
 DEV_USER_EMAIL = "dev@oneflow.local"
 ALLOWED_RESET_HOSTS = {"localhost", "127.0.0.1", "::1", "postgres"}
@@ -306,9 +311,24 @@ async def seed_data(session: AsyncSession) -> bool:
         )
 
         # A little history so the drawer's activity/comment section isn't empty.
+        dev_snapshot = ActorIdentitySnapshot(
+            name=dev.display_name,
+            profile_image_storage_key=dev.profile_image_storage_key,
+            profile_image_content_type=dev.profile_image_content_type,
+        )
+        mate_snapshot = ActorIdentitySnapshot(
+            name=mate.display_name,
+            profile_image_storage_key=mate.profile_image_storage_key,
+            profile_image_content_type=mate.profile_image_content_type,
+        )
         session.add_all(
             [
-                Activity(work_package_id=api_wp.id, actor_id=dev.id, action="created"),
+                Activity(
+                    work_package_id=api_wp.id,
+                    actor_id=dev.id,
+                    action="created",
+                    **activity_actor_fields(dev_snapshot),
+                ),
                 Activity(
                     work_package_id=api_wp.id,
                     actor_id=dev.id,
@@ -316,13 +336,20 @@ async def seed_data(session: AsyncSession) -> bool:
                     field="status",
                     old_value="todo",
                     new_value="in_review",
+                    **activity_actor_fields(dev_snapshot),
                 ),
                 WorkPackageComment(
                     work_package_id=api_wp.id,
                     author_id=mate.id,
                     body="계약 테스트까지 통과 확인했습니다. 리뷰 부탁드려요.",
+                    **comment_author_fields(mate_snapshot),
                 ),
-                Activity(work_package_id=api_wp.id, actor_id=mate.id, action="commented"),
+                Activity(
+                    work_package_id=api_wp.id,
+                    actor_id=mate.id,
+                    action="commented",
+                    **activity_actor_fields(mate_snapshot),
+                ),
                 TimeEntry(
                     work_package_id=api_wp.id,
                     user_id=dev.id,

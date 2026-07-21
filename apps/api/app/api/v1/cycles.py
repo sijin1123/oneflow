@@ -24,6 +24,7 @@ from app.schemas.cycle import (
     CycleRead,
     CycleUpdate,
 )
+from app.services.activity import activity_actor_fields, capture_actor_identity
 from app.services.cycle_scope import build_cycle_scope_analytics, record_cycle_scope_change
 from app.services.webhooks import enqueue_work_package_event
 
@@ -225,6 +226,7 @@ async def rollover_cycle(
     )
     # Assignment history (Pass 71, v71.1 R1-④): one activity per moved WP with
     # NAME snapshots — a later rename/delete never distorts this record.
+    actor_snapshot = await capture_actor_identity(session, user.id)
     for wp in moved_ids:
         record_cycle_scope_change(
             session,
@@ -242,6 +244,7 @@ async def rollover_cycle(
                 field="cycle_id",
                 old_value=src.name,
                 new_value=target.name,
+                **activity_actor_fields(actor_snapshot),
             )
         )
         await enqueue_work_package_event(

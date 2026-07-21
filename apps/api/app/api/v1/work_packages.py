@@ -51,7 +51,12 @@ from app.schemas.work_package import (
     WorkPackagePatch,
     WorkPackageRead,
 )
-from app.services.activity import record_created, record_field_changes
+from app.services.activity import (
+    activity_actor_fields,
+    capture_actor_identity,
+    record_created,
+    record_field_changes,
+)
 from app.services.automation import bump_fired, change_candidates, record_applied
 from app.services.cycle_scope import record_cycle_scope_change
 from app.services.notification import notify_watchers, record_assignment
@@ -543,7 +548,7 @@ async def stage_work_package_create(
     wp = WorkPackage(project_id=project_id, created_by=user.id, **data)
     session.add(wp)
     await session.flush()  # assigns wp.id for the activity FK
-    record_created(session, wp.id, user.id)
+    await record_created(session, wp.id, user.id)
     record_cycle_scope_change(
         session,
         project_id=project_id,
@@ -692,7 +697,7 @@ async def bulk_update_work_packages(
             setattr(wp, field, value)
         wp.version += 1
         disp_old, disp_new = await _display_values(session, old_values, changes)
-        record_field_changes(session, wp_id, user.id, disp_old, disp_new)
+        await record_field_changes(session, wp_id, user.id, disp_old, disp_new)
         applied_rules: set[uuid.UUID] = set()
         for candidate in row_auto:
             record_applied(
@@ -797,7 +802,7 @@ async def duplicate_work_package(
     )
     session.add(dup)
     await session.flush()
-    record_created(session, dup.id, user.id)
+    await record_created(session, dup.id, user.id)
     record_cycle_scope_change(
         session,
         project_id=src.project_id,
@@ -1048,7 +1053,7 @@ async def patch_work_package(
         if updated is not None:
             # Record field changes in the same transaction as the update.
             disp_old, disp_new = await _display_values(session, old_values, changes)
-            record_field_changes(session, wp_id, user.id, disp_old, disp_new)
+            await record_field_changes(session, wp_id, user.id, disp_old, disp_new)
             if "cycle_id" in changes:
                 record_cycle_scope_change(
                     session,
@@ -1664,6 +1669,7 @@ async def move_work_package(
             .where(Attachment.id.in_(moved_attachment_ids))
             .values(work_package_id=wp_id, project_id=body.target_project_id)
         )
+    actor_snapshot = await capture_actor_identity(session, user.id)
     session.add(
         Activity(
             work_package_id=wp_id,
@@ -1672,6 +1678,7 @@ async def move_work_package(
             field="project",
             old_value=names.get(old_project_id),
             new_value=names.get(body.target_project_id),
+            **activity_actor_fields(actor_snapshot),
         )
     )
     await session.commit()

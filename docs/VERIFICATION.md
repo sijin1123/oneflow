@@ -3186,3 +3186,14 @@ Chromium typed mock fixture에서 1440x960과 390x844 viewport를 사용했다. 
 - **증적**: `docs/screenshots/redevelopment/login-pixel-exhaustive-ui/`에 API 연결 상태의 desktop `1448x1086`, mobile `390x844`, 원본/runtime 나란히 보기, 8x diff와 영역별 JSON을 보존한다.
 
 ---
+
+# UI-202 Historical Activity Identity Avatars 검증 (2026-07-21)
+
+- **UI 변경**: 작업 상세 댓글 thread와 activity row, 프로젝트 Dashboard 최근 활동, My Work 활동 목록에 공통 `Avatar`를 적용했다. 이벤트에 저장된 이름과 이미지가 우선이며 이미지가 없거나 읽기에 실패하면 같은 이름의 initials fallback으로 돌아간다. 시스템 활동은 사용자 avatar로 가장하지 않고 기존 활동 icon을 유지한다.
+- **기능/API 반영**: migration `0115`는 comment/activity에 작성 시점 이름과 프로필 이미지 storage key/content type snapshot을 추가한다. 모든 work item create/update/comment/import/rollover/move 경로가 같은 transaction에서 identity를 capture하며, row share lock이 프로필 교체와 직렬화된다. event-scoped 이미지 GET은 현재 work item 프로젝트 멤버만 허용하고 version 불일치·비멤버·없는 blob은 404, 응답은 `private, no-store`다. 프로필 교체/삭제는 이력 참조 blob을 보존하고 storage sweep도 두 snapshot column을 live key로 집계한다.
+- **권한/보존**: 사용자가 프로젝트에서 제거되면 snapshot URL은 즉시 404가 되고, 다시 권한을 얻으면 동일 URL을 읽을 수 있다. 계정 row가 삭제되어 `author_id`/`actor_id`가 `NULL`이 된 뒤에도 저장된 이름과 이미지가 유지된다. 현재 프로필 URL을 과거 이력에 재사용하거나 public image endpoint를 만들지 않았다.
+- **이연 항목**: 없음. 댓글/activity pagination, reaction, filter/order, partial-error retry, writer/viewer와 mobile 계약을 유지하며 mock/dead control 또는 장식용 avatar는 없다. 신규 환경변수, Settings UI와 dependency는 없다.
+- **검증**: profile/history API **6 PASS**와 constraint-name 회귀 **1 PASS**, 최종 full API **849 PASS**다. Migration `0115 -> base -> 0115`, Ruff/format, OpenAPI type parity, typecheck, lint(기존 Fast Refresh warning 4건), production build(기존 large chunk warning), unit **108 PASS**, component **9 PASS**, 신규 actor snapshot E2E **1 PASS**, 최종 full E2E **354 PASS + opt-in visual QA manifest 1 skip**, clean-room frontend **162**/backend **45**, npm/pip audit 0 vulnerabilities와 diff check가 PASS했다. 첫 full API는 PostgreSQL 63자 식별자 제한으로 잘린 신규 CHECK 이름 1건을 발견해 이름을 축약하고 migration 왕복과 전체를 재실행했다. 첫 full E2E의 기존 속성 패널 2건은 별도 E2E/API 부하가 겹친 navigation timeout이었고, 단독 5회 반복 **10/10 PASS** 후 다른 테스트 프로세스 없이 전체를 재실행해 완주했다.
+- **증적**: `docs/screenshots/redevelopment/activity-identity-avatars-ui/{desktop,mobile}.png`에 실제 Chromium work item activity surface를 보존한다.
+
+---

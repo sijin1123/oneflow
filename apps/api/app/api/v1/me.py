@@ -230,7 +230,6 @@ async def my_work(
         )
     ).all()
 
-    actor = User.__table__.alias("actor")
     activity_rows = (
         await session.execute(
             select(
@@ -238,7 +237,6 @@ async def my_work(
                 WorkPackage.subject,
                 Project.id.label("pid"),
                 Project.name.label("pname"),
-                actor.c.display_name,
             )
             .join(WorkPackage, Activity.work_package_id == WorkPackage.id)
             .join(Project, WorkPackage.project_id == Project.id)
@@ -246,7 +244,6 @@ async def my_work(
                 ProjectMember,
                 (ProjectMember.project_id == Project.id) & (ProjectMember.user_id == user.id),
             )
-            .outerjoin(actor, Activity.actor_id == actor.c.id)
             .where(Project.archived_at.is_(None))
             .order_by(Activity.created_at.desc(), Activity.id.desc())
             .limit(MY_ACTIVITY_LIMIT)
@@ -264,14 +261,15 @@ async def my_work(
                 project_name=pname,
                 work_package_id=a.work_package_id,
                 work_package_subject=subject,
-                actor_name=actor_name,
+                actor_name=a.actor_name,
+                actor_profile_image_url=a.actor_profile_image_url,
                 action=a.action,
                 field=a.field,
                 old_value=a.old_value,
                 new_value=a.new_value,
                 created_at=a.created_at,
             )
-            for (a, subject, pid, pname, actor_name) in activity_rows
+            for (a, subject, pid, pname) in activity_rows
         ],
     )
 
@@ -359,14 +357,12 @@ async def my_activities(
     user: User = Depends(get_current_user),
 ) -> MyActivityList:
     """Paginated activity across projects where the caller is currently a member."""
-    actor = User.__table__.alias("actor")
     stmt = (
         select(
             Activity,
             WorkPackage.subject,
             Project.id.label("pid"),
             Project.name.label("pname"),
-            actor.c.display_name,
         )
         .join(WorkPackage, Activity.work_package_id == WorkPackage.id)
         .join(Project, WorkPackage.project_id == Project.id)
@@ -374,7 +370,6 @@ async def my_activities(
             ProjectMember,
             (ProjectMember.project_id == Project.id) & (ProjectMember.user_id == user.id),
         )
-        .outerjoin(actor, Activity.actor_id == actor.c.id)
         .where(Project.archived_at.is_(None))
     )
     if q is not None:
@@ -400,14 +395,15 @@ async def my_activities(
                 project_name=project_name,
                 work_package_id=activity.work_package_id,
                 work_package_subject=subject,
-                actor_name=actor_name,
+                actor_name=activity.actor_name,
+                actor_profile_image_url=activity.actor_profile_image_url,
                 action=activity.action,
                 field=activity.field,
                 old_value=activity.old_value,
                 new_value=activity.new_value,
                 created_at=activity.created_at,
             )
-            for activity, subject, project_id, project_name, actor_name in rows
+            for activity, subject, project_id, project_name in rows
         ],
         total=total,
         limit=limit,

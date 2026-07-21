@@ -38,6 +38,7 @@ export type MyActivity = {
   work_package_id: string
   work_package_subject: string
   actor_name: string | null
+  actor_profile_image_url: string | null
   action: string
   field: string | null
   old_value: string | null

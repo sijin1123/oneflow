@@ -47,6 +47,7 @@ export type ProjectActivity = {
   work_package_subject: string
   actor_id: string | null
   actor_name: string | null
+  actor_profile_image_url: string | null
   action: 'created' | 'field_changed' | 'commented'
   field: string | null
   old_value: string | null
