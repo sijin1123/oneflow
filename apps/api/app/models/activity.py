@@ -23,6 +23,14 @@ class Activity(Base):
         CheckConstraint(
             "action IN ('created', 'field_changed', 'commented')", name="action_allowed"
         ),
+        CheckConstraint(
+            "(actor_profile_image_storage_key IS NULL "
+            "AND actor_profile_image_content_type IS NULL) OR "
+            "(actor_profile_image_storage_key IS NOT NULL "
+            "AND actor_profile_image_content_type IS NOT NULL)",
+            name="activity_actor_profile_image_metadata_complete",
+        ),
+        Index("ix_activities_actor_profile_image_key", "actor_profile_image_storage_key"),
         Index("ix_activities_wp_created", "work_package_id", "created_at"),
     )
 
@@ -33,6 +41,9 @@ class Activity(Base):
     actor_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
+    actor_name_snapshot: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    actor_profile_image_storage_key: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    actor_profile_image_content_type: Mapped[str | None] = mapped_column(String(32), nullable=True)
     action: Mapped[str] = mapped_column(String(20), nullable=False)
     field: Mapped[str | None] = mapped_column(String(40), nullable=True)
     old_value: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -40,3 +51,17 @@ class Activity(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
+
+    @property
+    def actor_name(self) -> str | None:
+        return self.actor_name_snapshot
+
+    @property
+    def actor_profile_image_url(self) -> str | None:
+        if self.actor_profile_image_storage_key is None:
+            return None
+        version = self.actor_profile_image_storage_key.rsplit("/", 1)[-1]
+        return (
+            f"/api/v1/work-packages/{self.work_package_id}/activities/{self.id}/actor-image"
+            f"?version={version}"
+        )

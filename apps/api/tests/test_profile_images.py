@@ -5,6 +5,10 @@ import base64
 import uuid
 from pathlib import Path
 
+from sqlalchemy import delete, select
+
+from app.core.auth import DEV_USER_EMAIL
+from app.models.member import ProjectMember
 from app.models.user import User
 from app.services.storage_sweep import _fetch_keys_from_connection
 from tests.conftest import create_project, create_wp
@@ -185,6 +189,137 @@ async def test_project_collaboration_profile_image_urls_are_versioned_and_member
     assert (await client.get(member_url)).status_code == 404
     refreshed = await client.get(f"/api/v1/projects/{project['id']}/members")
     assert refreshed.json()["items"][0]["profile_image_url"] != member_url
+
+
+async def test_comment_and_activity_actor_images_remain_immutable_after_profile_changes(
+    client, app, foreign_project
+):
+    uploaded = await client.put(
+        "/api/v1/me/profile-image",
+        content=PNG,
+        headers=image_headers(1, "history.png"),
+    )
+    assert uploaded.status_code == 200
+    old_self_url = uploaded.json()["profile_image_url"]
+    project = await create_project(client, key="HIS", name="History avatar")
+    work_package = await create_wp(client, project["id"], subject="Immutable actor")
+    comment = await client.post(
+        f"/api/v1/work-packages/{work_package['id']}/comments",
+        json={"body": "Snapshot me"},
+    )
+    assert comment.status_code == 201
+    comment_item = comment.json()
+    assert comment_item["author_name"] == "Dev User"
+    comment_image_url = comment_item["author_profile_image_url"]
+    assert comment_image_url is not None
+
+    activities = await client.get(f"/api/v1/work-packages/{work_package['id']}/activities")
+    assert activities.status_code == 200
+    activity_items = activities.json()["items"]
+    assert {item["actor_name"] for item in activity_items} == {"Dev User"}
+    activity_image_urls = [
+        item["actor_profile_image_url"]
+        for item in activity_items
+        if item["actor_profile_image_url"] is not None
+    ]
+    assert len(activity_image_urls) == len(activity_items)
+
+    async with app.state.sessionmaker() as session, session.begin():
+        row = await session.get(User, uuid.UUID(uploaded.json()["id"]))
+        assert row is not None and row.profile_image_storage_key is not None
+        old_key = row.profile_image_storage_key
+        row.display_name = "Renamed User"
+    old_path = Path(app.state.settings.storage_dir) / old_key
+
+    replaced = await client.put(
+        "/api/v1/me/profile-image",
+        content=PNG,
+        headers=image_headers(2, "new.png"),
+    )
+    assert replaced.status_code == 200
+    assert old_path.is_file()
+    assert (await client.get(old_self_url)).status_code == 404
+
+    listed_comments = await client.get(
+        f"/api/v1/work-packages/{work_package['id']}/comment-threads"
+    )
+    listed_comment = listed_comments.json()["items"][0]["root"]
+    assert listed_comment["author_name"] == "Dev User"
+    assert listed_comment["author_profile_image_url"] == comment_image_url
+    comment_image = await client.get(comment_image_url)
+    assert comment_image.status_code == 200
+    assert comment_image.content == PNG
+    assert comment_image.headers["cache-control"] == "private, no-store"
+
+    listed_activities = await client.get(f"/api/v1/work-packages/{work_package['id']}/activities")
+    assert {item["actor_name"] for item in listed_activities.json()["items"]} == {"Dev User"}
+    for image_url in activity_image_urls:
+        image = await client.get(image_url)
+        assert image.status_code == 200
+        assert image.content == PNG
+        assert image.headers["cache-control"] == "private, no-store"
+
+    wrong_version = comment_image_url.rsplit("=", 1)[0] + f"={uuid.uuid4()}"
+    assert (await client.get(wrong_version)).status_code == 404
+    foreign_scope = comment_image_url.replace(
+        str(work_package["id"]), str(foreign_project["wp_id"]), 1
+    )
+    assert (await client.get(foreign_scope)).status_code == 404
+
+    removed = await client.delete("/api/v1/me/profile-image", headers={"If-Match": '"3"'})
+    assert removed.status_code == 200
+    async with app.state.sessionmaker() as session:
+        known_keys = await _fetch_keys_from_connection(session)
+    assert old_key in known_keys
+    assert old_path.is_file()
+
+    async with app.state.sessionmaker() as session, session.begin():
+        await session.execute(
+            delete(ProjectMember).where(
+                ProjectMember.project_id == uuid.UUID(project["id"]),
+                ProjectMember.user_id == uuid.UUID(uploaded.json()["id"]),
+            )
+        )
+    assert (await client.get(comment_image_url)).status_code == 404
+
+    async with app.state.sessionmaker() as session, session.begin():
+        actor = (
+            await session.execute(select(User).where(User.email == DEV_USER_EMAIL))
+        ).scalar_one()
+        session.add(
+            ProjectMember(project_id=uuid.UUID(project["id"]), user_id=actor.id, role="owner")
+        )
+    assert (await client.get(comment_image_url)).status_code == 200
+
+    async with app.state.sessionmaker() as session, session.begin():
+        actor = (
+            await session.execute(select(User).where(User.email == DEV_USER_EMAIL))
+        ).scalar_one()
+        await session.delete(actor)
+        await session.flush()
+        reader = User(email=DEV_USER_EMAIL, display_name="Replacement Reader", is_admin=True)
+        session.add(reader)
+        await session.flush()
+        session.add(
+            ProjectMember(project_id=uuid.UUID(project["id"]), user_id=reader.id, role="owner")
+        )
+
+    deleted_actor_comments = await client.get(
+        f"/api/v1/work-packages/{work_package['id']}/comment-threads"
+    )
+    deleted_actor_comment = deleted_actor_comments.json()["items"][0]["root"]
+    assert deleted_actor_comment["author_id"] is None
+    assert deleted_actor_comment["author_name"] == "Dev User"
+    assert deleted_actor_comment["author_profile_image_url"] == comment_image_url
+    assert (await client.get(comment_image_url)).content == PNG
+
+    deleted_actor_activities = await client.get(
+        f"/api/v1/work-packages/{work_package['id']}/activities"
+    )
+    assert all(item["actor_id"] is None for item in deleted_actor_activities.json()["items"])
+    assert {item["actor_name"] for item in deleted_actor_activities.json()["items"]} == {"Dev User"}
+    for item in deleted_actor_activities.json()["items"]:
+        assert (await client.get(item["actor_profile_image_url"])).content == PNG
 
 
 async def test_profile_image_validation_and_stale_cleanup(client, app):

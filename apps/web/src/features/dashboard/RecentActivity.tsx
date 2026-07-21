@@ -1,7 +1,8 @@
 import { useState } from 'react'
 
+import { Avatar } from '@/components/ui/avatar'
 import { Select } from '@/components/ui/select'
-import { useMembers } from '@/features/members/api'
+import { profileImageSrc, useMembers } from '@/features/members/api'
 import { FIELD_LABELS } from '@/features/work-packages/activityLabels'
 import { formatDateTime } from '@/lib/datetime'
 
@@ -77,11 +78,15 @@ export function RecentActivity({ projectId }: { projectId: string }) {
         <>
           <ul className="space-y-1.5">
             {activities.data.items.slice(0, 12).map((a) => (
-              <li key={a.id} className="flex min-w-0 items-baseline gap-2 text-xs">
-                <span className="shrink-0 font-medium text-of-muted">
-                  {a.actor_name ?? '시스템'}
-                </span>
+              <li key={a.id} className="flex min-w-0 items-center gap-2 text-xs">
+                <Avatar
+                  name={a.actor_name ?? '시스템'}
+                  src={profileImageSrc(a)}
+                  size="sm"
+                />
                 <span className="min-w-0 flex-1 truncate">
+                  <span className="font-medium text-of-text">{a.actor_name ?? '시스템'}</span>
+                  {' · '}
                   <span className="text-of-muted">{a.work_package_subject}</span> · {actionText(a)}
                 </span>
                 <span className="shrink-0 text-[11px] text-of-muted">

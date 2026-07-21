@@ -176,7 +176,9 @@ def _print_report(report: SweepReport, *, min_age: timedelta) -> None:
 async def _fetch_keys_from_connection(conn) -> set[str]:
     from sqlalchemy import select
 
+    from app.models.activity import Activity
     from app.models.attachment import Attachment
+    from app.models.comment import WorkPackageComment
     from app.models.data_transfer_job import DataTransferJob
     from app.models.user import User
     from app.models.workspace_profile import WorkspaceProfile
@@ -223,7 +225,36 @@ async def _fetch_keys_from_connection(conn) -> set[str]:
         .scalars()
         .all()
     )
-    return attachment_keys | transfer_keys | workspace_logo_keys | profile_image_keys
+    comment_actor_image_keys = set(
+        (
+            await conn.execute(
+                select(WorkPackageComment.author_profile_image_storage_key).where(
+                    WorkPackageComment.author_profile_image_storage_key.is_not(None)
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    activity_actor_image_keys = set(
+        (
+            await conn.execute(
+                select(Activity.actor_profile_image_storage_key).where(
+                    Activity.actor_profile_image_storage_key.is_not(None)
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return (
+        attachment_keys
+        | transfer_keys
+        | workspace_logo_keys
+        | profile_image_keys
+        | comment_actor_image_keys
+        | activity_actor_image_keys
+    )
 
 
 async def _fetch_keys() -> set[str]:

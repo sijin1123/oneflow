@@ -357,7 +357,7 @@ async def import_work_packages_csv(
             wp = WorkPackage(project_id=project_id, created_by=user.id, **data)
             session.add(wp)
             await session.flush()  # assign wp.id for the activity FK
-            record_created(session, wp.id, user.id)
+            await record_created(session, wp.id, user.id)
             await enqueue_work_package_event(
                 session, settings, "work_package.created", wp, list(data)
             )
@@ -589,7 +589,7 @@ async def _run_mapped_import(
             wp = WorkPackage(project_id=project_id, created_by=user.id, **data)
             session.add(wp)
             await session.flush()
-            record_created(session, wp.id, user.id)
+            await record_created(session, wp.id, user.id)
             await enqueue_work_package_event(
                 session, settings, "work_package.created", wp, list(data)
             )

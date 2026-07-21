@@ -269,9 +269,8 @@ async def project_activities(
     if action is not None and action not in ACTIVITY_ACTIONS:
         raise HTTPException(status_code=422, detail=f"action must be one of {ACTIVITY_ACTIONS}")
     stmt = (
-        select(Activity, WorkPackage.subject, User.display_name)
+        select(Activity, WorkPackage.subject)
         .join(WorkPackage, Activity.work_package_id == WorkPackage.id)
-        .outerjoin(User, Activity.actor_id == User.id)
         .where(WorkPackage.project_id == project_id)
     )
     if action is not None:
@@ -295,14 +294,15 @@ async def project_activities(
             work_package_id=a.work_package_id,
             work_package_subject=subject,
             actor_id=a.actor_id,
-            actor_name=actor_name,
+            actor_name=a.actor_name,
+            actor_profile_image_url=a.actor_profile_image_url,
             action=a.action,
             field=a.field,
             old_value=a.old_value,
             new_value=a.new_value,
             created_at=a.created_at,
         )
-        for (a, subject, actor_name) in rows
+        for (a, subject) in rows
     ]
     return ProjectActivityList(items=items, total=len(items), truncated=truncated)
 

@@ -59,6 +59,8 @@ class CommentRead(BaseModel):
     work_package_id: uuid.UUID
     parent_id: uuid.UUID | None
     author_id: uuid.UUID | None
+    author_name: str | None
+    author_profile_image_url: str | None
     body: str
     # Accepted mentions (member-validated at create time) — null means none.
     mentions: list[uuid.UUID] | None
@@ -91,6 +93,8 @@ class ActivityRead(BaseModel):
     id: uuid.UUID
     work_package_id: uuid.UUID
     actor_id: uuid.UUID | None
+    actor_name: str | None
+    actor_profile_image_url: str | None
     action: str
     field: str | None
     old_value: str | None
@@ -116,6 +120,7 @@ class ProjectActivityRead(BaseModel):
     # name is the display value, the id is the filter value.
     actor_id: uuid.UUID | None
     actor_name: str | None
+    actor_profile_image_url: str | None
     action: str
     field: str | None
     old_value: str | None

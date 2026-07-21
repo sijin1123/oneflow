@@ -26,7 +26,7 @@ from app.schemas.comment import (
     ReactionList,
     empty_reactions,
 )
-from app.services.activity import record_comment
+from app.services.activity import capture_actor_identity, comment_author_fields, record_comment
 from app.services.emoji import is_single_emoji, normalize_emoji
 from app.services.notification import notify_mentions, notify_watchers
 
@@ -190,11 +190,16 @@ async def create_comment(
             )
         if parent.parent_id is not None:
             raise HTTPException(status_code=422, detail="replies to replies are not allowed")
+    actor_snapshot = await capture_actor_identity(session, user.id)
     comment = WorkPackageComment(
-        work_package_id=wp_id, parent_id=body.parent_id, author_id=user.id, body=body.body
+        work_package_id=wp_id,
+        parent_id=body.parent_id,
+        author_id=user.id,
+        body=body.body,
+        **comment_author_fields(actor_snapshot),
     )
     session.add(comment)
-    record_comment(session, wp_id, user.id)  # same transaction as the comment
+    await record_comment(session, wp_id, user.id)  # same transaction as the comment
     # Notification order (PLAN v10.1 R1-①): watchers first — the RETURNING set
     # feeds the mention exclude, so nobody is notified twice for one comment.
     watch_notified = await notify_watchers(

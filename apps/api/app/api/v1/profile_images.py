@@ -11,13 +11,16 @@ from urllib.parse import unquote
 from anyio import CapacityLimiter, to_thread
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response
 from PIL import Image, UnidentifiedImageError
-from sqlalchemy import select
+from sqlalchemy import exists, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.v1.work_packages import require_wp_member
 from app.core.auth import get_current_user
 from app.core.authz import require_member
 from app.core.config import Settings, get_settings
 from app.db.session import get_session
+from app.models.activity import Activity
+from app.models.comment import WorkPackageComment
 from app.models.member import ProjectMember
 from app.models.user import User
 from app.schemas.user import MeRead
@@ -140,10 +143,27 @@ async def _profile_image_response(
 ) -> Response:
     if row.profile_image_storage_key is None or row.profile_image_content_type is None:
         raise HTTPException(status_code=404, detail="profile image is not configured")
-    current_version = row.profile_image_storage_key.rsplit("/", 1)[-1]
+    return await _stored_profile_image_response(
+        row.profile_image_storage_key,
+        row.profile_image_content_type,
+        version,
+        settings,
+        cache_control=cache_control,
+    )
+
+
+async def _stored_profile_image_response(
+    storage_key: str,
+    content_type: str,
+    version: uuid.UUID | None,
+    settings: Settings,
+    *,
+    cache_control: str,
+) -> Response:
+    current_version = storage_key.rsplit("/", 1)[-1]
     if version is None or str(version) != current_version:
         raise HTTPException(status_code=404, detail="profile image version is not current")
-    path = LocalStorage(settings.storage_dir).path(row.profile_image_storage_key)
+    path = LocalStorage(settings.storage_dir).path(storage_key)
     if path is None:
         raise HTTPException(status_code=404, detail="profile image blob is missing")
     try:
@@ -152,7 +172,7 @@ async def _profile_image_response(
         raise HTTPException(status_code=404, detail="profile image blob is missing") from None
     return Response(
         content=content,
-        media_type=row.profile_image_content_type,
+        media_type=content_type,
         headers={
             "Cache-Control": cache_control,
             "Content-Disposition": "inline",
@@ -160,6 +180,18 @@ async def _profile_image_response(
             "X-Content-Type-Options": "nosniff",
         },
     )
+
+
+async def _profile_image_is_referenced(session: AsyncSession, storage_key: str) -> bool:
+    comment_reference, activity_reference = (
+        await session.execute(
+            select(
+                exists().where(WorkPackageComment.author_profile_image_storage_key == storage_key),
+                exists().where(Activity.actor_profile_image_storage_key == storage_key),
+            )
+        )
+    ).one()
+    return bool(comment_reference or activity_reference)
 
 
 @router.get("/me/profile-image")
@@ -199,6 +231,59 @@ async def get_project_member_profile_image(
         version,
         settings,
         cache_control="private, no-store",
+    )
+
+
+@router.get("/work-packages/{wp_id}/comments/{comment_id}/actor-image")
+async def get_comment_actor_profile_image(
+    wp_id: uuid.UUID,
+    comment_id: uuid.UUID,
+    version: uuid.UUID | None = None,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+    settings: Settings = Depends(get_settings),
+) -> Response:
+    await require_wp_member(session, wp_id, user)
+    snapshot = (
+        await session.execute(
+            select(
+                WorkPackageComment.author_profile_image_storage_key,
+                WorkPackageComment.author_profile_image_content_type,
+            ).where(
+                WorkPackageComment.id == comment_id,
+                WorkPackageComment.work_package_id == wp_id,
+            )
+        )
+    ).one_or_none()
+    if snapshot is None or snapshot[0] is None or snapshot[1] is None:
+        raise HTTPException(status_code=404, detail="comment actor image is unavailable")
+    return await _stored_profile_image_response(
+        snapshot[0], snapshot[1], version, settings, cache_control="private, no-store"
+    )
+
+
+@router.get("/work-packages/{wp_id}/activities/{activity_id}/actor-image")
+async def get_activity_actor_profile_image(
+    wp_id: uuid.UUID,
+    activity_id: uuid.UUID,
+    version: uuid.UUID | None = None,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+    settings: Settings = Depends(get_settings),
+) -> Response:
+    await require_wp_member(session, wp_id, user)
+    snapshot = (
+        await session.execute(
+            select(
+                Activity.actor_profile_image_storage_key,
+                Activity.actor_profile_image_content_type,
+            ).where(Activity.id == activity_id, Activity.work_package_id == wp_id)
+        )
+    ).one_or_none()
+    if snapshot is None or snapshot[0] is None or snapshot[1] is None:
+        raise HTTPException(status_code=404, detail="activity actor image is unavailable")
+    return await _stored_profile_image_response(
+        snapshot[0], snapshot[1], version, settings, cache_control="private, no-store"
     )
 
 
@@ -254,7 +339,11 @@ async def replace_profile_image(
             storage.delete(new_key)
         raise
 
-    if old_key is not None and old_key != new_key:
+    if (
+        old_key is not None
+        and old_key != new_key
+        and not await _profile_image_is_referenced(session, old_key)
+    ):
         with suppress(OSError):
             storage.delete(old_key)
     response.headers["ETag"] = _etag(row.profile_revision)
@@ -283,7 +372,8 @@ async def remove_profile_image(
     row.profile_revision += 1
     row.updated_at = datetime.now(UTC)
     await session.commit()
-    with suppress(OSError):
-        LocalStorage(settings.storage_dir).delete(old_key)
+    if not await _profile_image_is_referenced(session, old_key):
+        with suppress(OSError):
+            LocalStorage(settings.storage_dir).delete(old_key)
     response.headers["ETag"] = _etag(row.profile_revision)
     return MeRead.model_validate(row)

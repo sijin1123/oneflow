@@ -3628,6 +3628,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/work-packages/{wp_id}/activities/{activity_id}/actor-image": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Activity Actor Profile Image */
+        get: operations["get_activity_actor_profile_image_api_v1_work_packages__wp_id__activities__activity_id__actor_image_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/work-packages/{wp_id}/comment-threads": {
         parameters: {
             query?: never;
@@ -3664,6 +3681,23 @@ export interface paths {
         put?: never;
         /** Create Comment */
         post: operations["create_comment_api_v1_work_packages__wp_id__comments_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/work-packages/{wp_id}/comments/{comment_id}/actor-image": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Comment Actor Profile Image */
+        get: operations["get_comment_actor_profile_image_api_v1_work_packages__wp_id__comments__comment_id__actor_image_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -4187,6 +4221,10 @@ export interface components {
             action: string;
             /** Actor Id */
             actor_id: string | null;
+            /** Actor Name */
+            actor_name: string | null;
+            /** Actor Profile Image Url */
+            actor_profile_image_url: string | null;
             /**
              * Created At
              * Format: date-time
@@ -4848,6 +4886,10 @@ export interface components {
         CommentRead: {
             /** Author Id */
             author_id: string | null;
+            /** Author Name */
+            author_name: string | null;
+            /** Author Profile Image Url */
+            author_profile_image_url: string | null;
             /** Body */
             body: string;
             /**
@@ -6846,6 +6888,8 @@ export interface components {
             action: string;
             /** Actor Name */
             actor_name: string | null;
+            /** Actor Profile Image Url */
+            actor_profile_image_url: string | null;
             /**
              * Created At
              * Format: date-time
@@ -7644,6 +7688,8 @@ export interface components {
             actor_id: string | null;
             /** Actor Name */
             actor_name: string | null;
+            /** Actor Profile Image Url */
+            actor_profile_image_url: string | null;
             /**
              * Created At
              * Format: date-time
@@ -20386,6 +20432,44 @@ export interface operations {
             };
         };
     };
+    get_activity_actor_profile_image_api_v1_work_packages__wp_id__activities__activity_id__actor_image_get: {
+        parameters: {
+            query?: {
+                version?: string | null;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                wp_id: string;
+                activity_id: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_comment_threads_api_v1_work_packages__wp_id__comment_threads_get: {
         parameters: {
             query?: {
@@ -20490,6 +20574,44 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CommentRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_comment_actor_profile_image_api_v1_work_packages__wp_id__comments__comment_id__actor_image_get: {
+        parameters: {
+            query?: {
+                version?: string | null;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                wp_id: string;
+                comment_id: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
             /** @description Validation Error */

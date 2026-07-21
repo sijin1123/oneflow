@@ -37,6 +37,7 @@ class MyActivityRead(BaseModel):
     work_package_id: uuid.UUID
     work_package_subject: str
     actor_name: str | None
+    actor_profile_image_url: str | None
     action: str
     field: str | None
     old_value: str | None

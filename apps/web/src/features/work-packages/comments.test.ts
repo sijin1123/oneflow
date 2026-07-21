@@ -10,6 +10,8 @@ function c(id: string, parent_id: string | null, at: string): Comment {
     work_package_id: 'w',
     parent_id,
     author_id: null,
+    author_name: null,
+    author_profile_image_url: null,
     body: id,
     mentions: null,
     reactions: [],

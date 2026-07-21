@@ -453,7 +453,7 @@ async def convert_action_item(
     )
     session.add(wp)
     await session.flush()
-    record_created(session, wp.id, user.id)
+    await record_created(session, wp.id, user.id)
     if assignee is not None:
         await record_assignment(
             session,

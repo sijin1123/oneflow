@@ -20,6 +20,7 @@ import { useEffect, useState } from 'react'
 import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom'
 
 import { EmptyState, ErrorState, ListSkeleton } from '@/components/shell/states'
+import { Avatar } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -40,6 +41,7 @@ import {
   getNotificationTargetPath,
 } from '@/features/notifications/view'
 import { useProjects } from '@/features/projects/api'
+import { profileImageSrc } from '@/features/members/api'
 import { usePersonalNotes } from '@/features/personal-notes/api'
 import { FIELD_LABELS } from '@/features/work-packages/activityLabels'
 import { PriorityChip, StatusChip } from '@/features/work-packages/chips'
@@ -333,13 +335,18 @@ function MyWorkProfileSurface({
               <li key={activity.id}>
                 <button
                   type="button"
-                  className="grid min-h-12 w-full min-w-0 gap-1 px-3 py-2 text-left hover:bg-of-surface-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"
+                  className="grid min-h-12 w-full min-w-0 grid-cols-[1.5rem_minmax(0,1fr)] items-center gap-2 px-3 py-2 text-left hover:bg-of-surface-2 sm:grid-cols-[1.5rem_minmax(0,1fr)_auto]"
                   onClick={() =>
                     navigate(
                       `/projects/${activity.project_id}/work-packages?wp=${activity.work_package_id}`,
                     )
                   }
                 >
+                  <Avatar
+                    name={activity.actor_name ?? '시스템'}
+                    src={profileImageSrc(activity)}
+                    size="sm"
+                  />
                   <span className="min-w-0 truncate text-[13px]">
                     <strong className="font-medium">{activity.actor_name ?? '시스템'}</strong>{' '}
                     <span className="text-of-muted">
@@ -347,7 +354,7 @@ function MyWorkProfileSurface({
                     </span>{' '}
                     · {actionText(activity)}
                   </span>
-                  <span className="text-[11px] text-of-muted">
+                  <span className="col-start-2 text-[11px] text-of-muted sm:col-start-auto">
                     {formatDateTime(activity.created_at)}
                   </span>
                 </button>
