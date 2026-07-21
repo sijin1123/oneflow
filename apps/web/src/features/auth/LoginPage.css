@@ -1324,7 +1324,7 @@
 
   .of-login-heading h2 {
     font-size: 32.5px;
-    font-weight: 550;
+    font-weight: 500;
     transform: translate(-3px, -1px);
   }
 
@@ -1358,7 +1358,8 @@
     height: 55px;
     border-radius: 11px;
     padding-left: 50px;
-    font-size: 15px;
+    font-size: 14.5px;
+    font-weight: 350;
   }
 
   .of-login-input-wrap > svg {
@@ -1383,6 +1384,10 @@
     font-size: 14px;
   }
 
+  .of-login-checkbox {
+    font-weight: 500;
+  }
+
   .of-login-checkbox > span {
     width: 18px;
     height: 19px;
@@ -1401,6 +1406,7 @@
   .of-login-divider {
     margin-top: 12px;
     font-size: 13px;
+    transform: translate(-16px, -1px);
   }
 
   .of-login-providers {
@@ -1414,9 +1420,9 @@
     gap: 11px;
     justify-self: center;
     border-radius: 11px;
-    padding: 0 39px 4px 15px;
+    padding: 0 39px 0 15px;
     font-size: 16px;
-    font-weight: 620;
+    font-weight: 400;
   }
 
   .of-login-google {
@@ -1454,6 +1460,7 @@
 
   .of-login-create button {
     min-height: 40px;
+    font-weight: 600;
   }
 
   .of-login-footer {
@@ -1472,13 +1479,13 @@
 
   .of-login-footer nav {
     gap: 14px;
-    transform: translateY(-1px);
+    transform: none;
   }
 
   .of-login-language {
     gap: 9px;
     font-size: 13px;
-    transform: translateY(-1px);
+    transform: none;
   }
 
   .of-login-language svg {

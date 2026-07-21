@@ -658,3 +658,9 @@ OneFlow 구현은 기존 자체 `ProjectListItem.current_user_role`, FastAPI/SQL
 `docs/plane-poc-reverse-spec/`에서 사용한 입력은 멤버 디렉터리와 작업 참여자 표면이 동일한 사용자 identity를 compact avatar와 이름 fallback으로 일관되게 표현한다는 관찰 가능한 정보 구조와 행동뿐이다. OneFlow 구현은 기존 개인 프로필 이미지 저장소, 프로젝트 멤버십 권한, member/watcher API, React Query와 자체 공통 `Avatar` 컴포넌트를 사용해 독립 설계했다.
 
 Plane/OpenProject source, API, database schema, package, asset, CSS, DOM hierarchy, exact dimensions/colors, wording, component implementation, icons 또는 branding은 복사하지 않았다. 프로젝트 외부 읽기와 과거 버전 URL을 차단하고, 업로드·삭제 뒤 현재 멤버와 워처 cache를 무효화하며, 이미지가 없는 사용자는 이름 기반 fallback을 유지한다. 신규 dependency, DB/schema, migration, environment variable 또는 Settings storage 변경은 없다. - attested-independent-derivation
+
+## UI-203 Login Pixel Exhaustive Closure
+
+UI-203의 유일한 시각 입력은 사용자가 직접 제공하고 OneFlow 제품 자산으로 승인한 `apps/web/src/assets/generated/oneflow-login-origin-reference.png`이며 SHA-256은 `62fafe9e44df9d189e8fe2f38fc25147d11b8459569be13ee0424ba06c0c4c76`이다. 런타임 story와 양쪽 OneFlow logo는 이 원본의 결정적 crop이며, 전수 실사에서 story brand·headline·Kanban과 auth logo가 각각 pixel MAE `0.0000`임을 다시 확인했다. 따라서 배경 그림과 브랜드 로고를 재생성하거나 재해석하지 않고 semantic auth DOM의 글꼴 raster, 정렬과 간격만 자체 CSS로 보정했다.
+
+Plane/OpenProject source, package, asset, logo, CSS, DOM, wording 또는 branding은 입력·복사하지 않았다. 이메일, 비밀번호, remember me, password visibility, 실제 sign-in, provider availability, assistance, policy, locale와 safe-next는 기존 OneFlow semantic control과 auth API를 유지한다. 신규 API, DB/schema, migration, permission, environment variable, dependency 또는 Settings storage 변경은 없다. - attested-user-owned-oneflow-asset
