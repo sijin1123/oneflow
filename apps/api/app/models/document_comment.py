@@ -29,6 +29,13 @@ class ProjectDocumentComment(Base):
 
     __tablename__ = "project_document_comments"
     __table_args__ = (
+        CheckConstraint(
+            "(author_profile_image_storage_key IS NULL "
+            "AND author_profile_image_content_type IS NULL) OR "
+            "(author_profile_image_storage_key IS NOT NULL "
+            "AND author_profile_image_content_type IS NOT NULL)",
+            name="author_image_metadata_complete",
+        ),
         # Same-project composite FK (v43.1) — reuses the 0029 unique; comments
         # die with their document (CASCADE).
         ForeignKeyConstraint(
@@ -38,6 +45,10 @@ class ProjectDocumentComment(Base):
             ondelete="CASCADE",
         ),
         Index("ix_document_comments_doc_created", "document_id", "created_at"),
+        Index(
+            "ix_document_comments_author_profile_image_key",
+            "author_profile_image_storage_key",
+        ),
         Index(
             "ix_document_comments_doc_anchor_created",
             "document_id",
@@ -59,6 +70,9 @@ class ProjectDocumentComment(Base):
     author_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
+    author_name_snapshot: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    author_profile_image_storage_key: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    author_profile_image_content_type: Mapped[str | None] = mapped_column(String(32), nullable=True)
     body: Mapped[str] = mapped_column(Text, nullable=False)
     mentions: Mapped[list | None] = mapped_column(JSONB(none_as_null=True), nullable=True)
     anchor_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
@@ -66,6 +80,19 @@ class ProjectDocumentComment(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
+
+    @property
+    def author_name(self) -> str | None:
+        return self.author_name_snapshot
+
+    @property
+    def author_profile_image_url(self) -> str | None:
+        if self.author_profile_image_storage_key is None:
+            return None
+        version = self.author_profile_image_storage_key.rsplit("/", 1)[-1]
+        return (
+            f"/api/v1/documents/{self.document_id}/comments/{self.id}/actor-image?version={version}"
+        )
 
 
 class ProjectDocumentCommentReaction(Base):

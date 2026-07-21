@@ -71,6 +71,7 @@ from app.schemas.document_comment import (
     InlineDocumentCommentCreate,
     InlineDocumentCommentResult,
 )
+from app.services.activity import capture_actor_identity, comment_author_fields
 from app.services.document_access import document_is_visible, document_visible_clause
 from app.services.document_activity import record_document_activity
 from app.services.document_revision import record_document_revision
@@ -1051,8 +1052,13 @@ async def create_document_comment(
     user: User = Depends(get_current_user),
 ) -> DocumentCommentRead:
     doc = await _get_doc_scoped(session, doc_id, user, write=True)
+    actor_snapshot = await capture_actor_identity(session, user.id)
     comment = ProjectDocumentComment(
-        document_id=doc.id, project_id=doc.project_id, author_id=user.id, body=body.body
+        document_id=doc.id,
+        project_id=doc.project_id,
+        author_id=user.id,
+        body=body.body,
+        **comment_author_fields(actor_snapshot),
     )
     try:
         session.add(comment)
@@ -1140,6 +1146,7 @@ async def create_inline_document_comment(
         doc.version += 1
         doc.updated_at = datetime.now(UTC)
 
+    actor_snapshot = await capture_actor_identity(session, user.id)
     comment = ProjectDocumentComment(
         document_id=doc.id,
         project_id=doc.project_id,
@@ -1147,6 +1154,7 @@ async def create_inline_document_comment(
         body=body.body,
         anchor_id=body.anchor_id,
         anchor_quote=body.anchor_quote,
+        **comment_author_fields(actor_snapshot),
     )
     try:
         session.add(comment)

@@ -21,10 +21,14 @@ from app.core.config import Settings, get_settings
 from app.db.session import get_session
 from app.models.activity import Activity
 from app.models.comment import WorkPackageComment
+from app.models.document import ProjectDocument
+from app.models.document_comment import ProjectDocumentComment
 from app.models.member import ProjectMember
 from app.models.user import User
 from app.schemas.user import MeRead
+from app.services.document_access import document_is_visible
 from app.services.storage import LocalStorage
+from app.services.workspace_features import require_feature_enabled
 
 router = APIRouter()
 
@@ -183,15 +187,18 @@ async def _stored_profile_image_response(
 
 
 async def _profile_image_is_referenced(session: AsyncSession, storage_key: str) -> bool:
-    comment_reference, activity_reference = (
+    comment_reference, activity_reference, document_comment_reference = (
         await session.execute(
             select(
                 exists().where(WorkPackageComment.author_profile_image_storage_key == storage_key),
                 exists().where(Activity.actor_profile_image_storage_key == storage_key),
+                exists().where(
+                    ProjectDocumentComment.author_profile_image_storage_key == storage_key
+                ),
             )
         )
     ).one()
-    return bool(comment_reference or activity_reference)
+    return bool(comment_reference or activity_reference or document_comment_reference)
 
 
 @router.get("/me/profile-image")
@@ -259,6 +266,46 @@ async def get_comment_actor_profile_image(
         raise HTTPException(status_code=404, detail="comment actor image is unavailable")
     return await _stored_profile_image_response(
         snapshot[0], snapshot[1], version, settings, cache_control="private, no-store"
+    )
+
+
+@router.get("/documents/{document_id}/comments/{comment_id}/actor-image")
+async def get_document_comment_actor_profile_image(
+    document_id: uuid.UUID,
+    comment_id: uuid.UUID,
+    version: uuid.UUID | None = None,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+    settings: Settings = Depends(get_settings),
+) -> Response:
+    await require_feature_enabled(session)
+    row = (
+        await session.execute(
+            select(ProjectDocumentComment, ProjectDocument)
+            .join(ProjectDocument, ProjectDocument.id == ProjectDocumentComment.document_id)
+            .where(
+                ProjectDocumentComment.id == comment_id,
+                ProjectDocumentComment.document_id == document_id,
+            )
+        )
+    ).one_or_none()
+    if row is None:
+        raise HTTPException(status_code=404, detail="document comment actor image is unavailable")
+    comment, document = row
+    await require_member(session, comment.project_id, user)
+    if not document_is_visible(document, user.id):
+        raise HTTPException(status_code=404, detail="document comment actor image is unavailable")
+    if (
+        comment.author_profile_image_storage_key is None
+        or comment.author_profile_image_content_type is None
+    ):
+        raise HTTPException(status_code=404, detail="document comment actor image is unavailable")
+    return await _stored_profile_image_response(
+        comment.author_profile_image_storage_key,
+        comment.author_profile_image_content_type,
+        version,
+        settings,
+        cache_control="private, no-store",
     )
 
 

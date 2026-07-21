@@ -27,13 +27,14 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { ReadOnlyNotice } from '@/components/shell/ReadOnlyNotice'
 import { ErrorState, ListSkeleton } from '@/components/shell/states'
 import { Badge } from '@/components/ui/badge'
+import { Avatar } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import { CommentReactionBar } from '@/components/ui/comment-reactions'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { useUploadAttachment } from '@/features/attachments/api'
 import { useCanWrite } from '@/features/members/useCanWrite'
-import { useMe, useMemberNames, useMembers } from '@/features/members/api'
+import { profileImageSrc, useMe, useMemberNames, useMembers } from '@/features/members/api'
 import { useProject } from '@/features/projects/api'
 import { ApiError } from '@/lib/api'
 import { formatDateTime } from '@/lib/datetime'
@@ -529,11 +530,13 @@ function DocumentComments({
     [data?.items],
   )
 
-  const authorLabel = (authorId: string | null) => {
+  const memberLabel = (authorId: string | null) => {
     if (authorId === null) return '삭제된 사용자'
     if (members.data?.items.some((m) => m.user_id === authorId)) return memberName(authorId)
     return '이전 구성원'
   }
+  const authorLabel = (comment: DocumentComment) =>
+    comment.author_name ?? memberLabel(comment.author_id)
   const mentionOptions =
     doc.visibility === 'shared'
       ? (members.data?.items ?? []).filter((member) => member.user_id !== me.data?.id)
@@ -627,27 +630,39 @@ function DocumentComments({
       key={comment.id}
       className="min-w-0 border-t border-of-border-subtle py-2 text-xs first:border-t-0"
     >
-      <div className="grid min-w-0 gap-1 sm:grid-cols-[auto_minmax(0,1fr)_auto_auto] sm:items-baseline">
-        <span className="font-medium text-of-muted">{authorLabel(comment.author_id)}</span>
-        <span className="min-w-0 whitespace-pre-wrap break-words">{comment.body}</span>
-        <span className="text-[11px] text-of-muted">{comment.created_at.slice(0, 10)}</span>
-        {canWrite && comment.author_id === me.data?.id ? (
-          <button
-            type="button"
-            aria-label="코멘트 삭제"
-            className="justify-self-start rounded-of p-1 text-of-muted hover:bg-of-surface-2 hover:text-of-danger sm:justify-self-auto"
-            disabled={del.isPending}
-            onClick={() => del.mutate(comment.id)}
-          >
-            <Trash2 size={12} />
-          </button>
-        ) : null}
+      <div className="grid min-w-0 grid-cols-[1.5rem_minmax(0,1fr)] gap-2">
+        <Avatar
+          name={authorLabel(comment)}
+          src={profileImageSrc(comment)}
+          size="sm"
+          className="relative z-10"
+        />
+        <div className="min-w-0">
+          <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
+            <span className="truncate font-semibold text-of-fg">{authorLabel(comment)}</span>
+            <span className="text-[11px] text-of-muted">{comment.created_at.slice(0, 10)}</span>
+            {canWrite && comment.author_id === me.data?.id ? (
+              <button
+                type="button"
+                aria-label="코멘트 삭제"
+                className="ml-auto rounded-of p-1 text-of-muted hover:bg-of-surface-2 hover:text-of-danger"
+                disabled={del.isPending}
+                onClick={() => del.mutate(comment.id)}
+              >
+                <Trash2 size={12} />
+              </button>
+            ) : null}
+          </div>
+          <p className="mt-1 min-w-0 whitespace-pre-wrap break-words leading-5 text-of-text">
+            {comment.body}
+          </p>
+        </div>
       </div>
       {comment.mentions && comment.mentions.length > 0 ? (
         <div className="mt-1 flex flex-wrap gap-1">
           {comment.mentions.map((userId) => (
             <Badge key={userId} variant="accent" className="text-[10px]">
-              @{authorLabel(userId)}
+              @{memberLabel(userId)}
             </Badge>
           ))}
         </div>
@@ -656,7 +671,7 @@ function DocumentComments({
         reactions={comment.reactions ?? []}
         canReact={canWrite}
         pending={toggleReaction.isPending}
-        label={`${authorLabel(comment.author_id)} 코멘트 리액션`}
+        label={`${authorLabel(comment)} 코멘트 리액션`}
         onToggle={({ key, on }) =>
           toggleReaction.mutate({ commentId: comment.id, key, on })
         }

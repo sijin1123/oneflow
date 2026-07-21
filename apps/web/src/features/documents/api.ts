@@ -312,6 +312,8 @@ export type DocumentComment = {
   document_id: string
   project_id: string
   author_id: string | null
+  author_name: string | null
+  author_profile_image_url: string | null
   body: string
   mentions: string[] | null
   anchor_id: string | null

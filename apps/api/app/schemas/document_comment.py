@@ -41,6 +41,8 @@ class DocumentCommentRead(BaseModel):
     document_id: uuid.UUID
     project_id: uuid.UUID
     author_id: uuid.UUID | None
+    author_name: str | None
+    author_profile_image_url: str | None
     body: str
     mentions: list[uuid.UUID] | None
     anchor_id: uuid.UUID | None
