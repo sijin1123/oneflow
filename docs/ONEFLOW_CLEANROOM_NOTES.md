@@ -676,3 +676,9 @@ Plane/OpenProject source, API, database schema, package, asset, CSS, DOM hierarc
 `docs/plane-poc-reverse-spec/`에서 사용한 입력은 문서 일반 코멘트와 본문 앵커 스레드가 작성 시점의 사용자 identity를 compact avatar와 이름으로 일관되게 표현한다는 관찰 가능한 정보 구조와 행동뿐이다. OneFlow 구현은 자체 Document comment/mention/reaction/visibility 계약, 개인 프로필 이미지 저장소, Wiki feature policy, 프로젝트 멤버십 권한, React Query와 공통 `Avatar` 컴포넌트를 사용해 독립 설계했다.
 
 Plane/OpenProject source, API, database schema, package, asset, CSS, DOM hierarchy, exact dimensions/colors, wording, component implementation, icons 또는 branding은 복사하지 않았다. 두 코멘트 생성 transaction에서 이름과 이미지 key/content type을 snapshot하고, event-scoped exact-version private read를 현재 멤버이면서 해당 shared/private 문서를 볼 수 있는 사용자에게만 제공한다. 프로필 교체·삭제 뒤에도 생성 시점 identity와 참조 blob을 보존하고 storage sweep live set에 포함한다. 신규 dependency, environment variable 또는 Settings storage 변경은 없다. - attested-independent-derivation
+
+## UI-207A Login Origin Pixel Reinspection
+
+UI-207A의 유일한 시각 입력은 사용자가 직접 제공하고 OneFlow 제품 자산으로 승인한 `apps/web/src/assets/generated/oneflow-login-origin-reference.png`이며 SHA-256은 `62fafe9e44df9d189e8fe2f38fc25147d11b8459569be13ee0424ba06c0c4c76`이다. 런타임 story와 양쪽 OneFlow logo는 이 원본의 결정적 crop이고, 재실사에서 story brand·headline·Kanban·calendar·activity와 auth logo가 각각 pixel MAE `0.0000`임을 확인했다. 배경과 로고를 새로 생성·재해석하지 않았으며 기능형 인증 DOM의 구분선 좌표·길이·색상만 원본과 대조해 보정했다.
+
+Plane/OpenProject source, package, asset, logo, CSS, DOM, wording 또는 branding은 입력·복사하지 않았다. 이메일, 비밀번호, remember me, password visibility, 실제 sign-in, provider availability, assistance, policy, locale와 safe-next는 기존 OneFlow semantic control과 auth API를 유지한다. 신규 API, DB/schema, migration, permission, environment variable, dependency 또는 Settings storage 변경은 없다. - attested-user-owned-oneflow-asset

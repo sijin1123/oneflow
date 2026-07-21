@@ -1406,7 +1406,21 @@
   .of-login-divider {
     margin-top: 12px;
     font-size: 13px;
-    transform: translate(-16px, -1px);
+    transform: translate(-18px, -1px);
+  }
+
+  .of-login-divider span {
+    background: #e2e4ea;
+  }
+
+  .of-login-divider span:first-child {
+    margin-right: 10px;
+    margin-left: 19px;
+  }
+
+  .of-login-divider span:last-child {
+    width: calc(100% + 1px);
+    transform: translateX(16px);
   }
 
   .of-login-providers {
