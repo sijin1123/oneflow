@@ -67,6 +67,7 @@ export const DEFAULT_SIDEBAR_PREFERENCES: SidebarPreferences = {
 }
 
 const validKeys = new Set<string>(SIDEBAR_NAV_KEYS)
+const sameTabSubscribers = new Set<(preferences: SidebarPreferences) => void>()
 
 function validStoredKeys(value: unknown): SidebarNavKey[] {
   if (!Array.isArray(value)) return []
@@ -156,16 +157,24 @@ export function useSidebarPreferences() {
     } catch {
       // Storage can be unavailable in hardened browser contexts.
     }
+    for (const subscriber of sameTabSubscribers) subscriber(preferences)
   }, [preferences])
 
   useEffect(() => {
+    const syncSameTab = (next: SidebarPreferences) => {
+      setPreferences((current) => (samePreferences(current, next) ? current : next))
+    }
+    sameTabSubscribers.add(syncSameTab)
     const syncPreferences = (event: StorageEvent) => {
       if (event.key !== null && event.key !== SIDEBAR_PREFERENCES_STORAGE_KEY) return
       const next = parseSidebarPreferences(event.newValue)
       setPreferences((current) => (samePreferences(current, next) ? current : next))
     }
     window.addEventListener('storage', syncPreferences)
-    return () => window.removeEventListener('storage', syncPreferences)
+    return () => {
+      sameTabSubscribers.delete(syncSameTab)
+      window.removeEventListener('storage', syncPreferences)
+    }
   }, [])
 
   const setCollapsed = useCallback((collapsed: boolean) => {

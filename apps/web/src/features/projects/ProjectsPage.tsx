@@ -9,6 +9,7 @@ import {
   RefreshCw,
   Search,
   SlidersHorizontal,
+  Star,
   X,
 } from 'lucide-react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
@@ -16,6 +17,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 
 import { EmptyState, ErrorState, ListSkeleton } from '@/components/shell/states'
+import { useSidebarPreferences } from '@/components/shell/sidebar-preferences'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -30,6 +32,7 @@ import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { ApiError } from '@/lib/api'
 import { cn } from '@/lib/utils'
+import { useMe } from '@/features/members/api'
 import { useWorkspaceCapabilities } from '@/features/workspace-features/api'
 
 import {
@@ -55,6 +58,7 @@ import {
   type ProjectListItem,
 } from './types'
 import { ProjectCover } from './ProjectCover'
+import { ProjectActionsMenu } from './ProjectActionsMenu'
 
 const KEY_RE = /^[A-Z][A-Z0-9]{1,9}$/
 
@@ -274,10 +278,18 @@ function ProjectRow({
   project,
   columns,
   onOpenInitiative,
+  meId,
+  favorite,
+  onFavoriteChange,
+  onMessage,
 }: {
   project: ProjectListItem
   columns: RollupKey[]
   onOpenInitiative: (id: string) => void
+  meId?: string
+  favorite: boolean
+  onFavoriteChange: (projectId: string, favorite: boolean) => void
+  onMessage: (message: string) => void
 }) {
   const archived = Boolean(project.archived_at)
 
@@ -335,11 +347,29 @@ function ProjectRow({
           ) : null}
         </div>
 
-        <ArrowUpRight
-          size={15}
-          aria-hidden="true"
-          className="hidden justify-self-end text-of-muted transition-colors group-hover:text-of-accent md:block"
-        />
+        <div className="flex items-center justify-end gap-0.5">
+          <button
+            type="button"
+            aria-label={`${project.name} ${favorite ? '즐겨찾기 해제' : '즐겨찾기에 추가'}`}
+            aria-pressed={favorite}
+            className={cn(
+              'flex h-8 w-7 items-center justify-center rounded-of text-of-muted transition-colors hover:bg-of-surface-2 hover:text-of-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus',
+              favorite && 'text-of-accent',
+            )}
+            onClick={() => onFavoriteChange(project.id, !favorite)}
+          >
+            <Star size={14} fill={favorite ? 'currentColor' : 'none'} aria-hidden="true" />
+          </button>
+          <ProjectActionsMenu
+            project={project}
+            meId={meId}
+            favorite={favorite}
+            onFavoriteChange={onFavoriteChange}
+            onMessage={onMessage}
+            placement="directory"
+            triggerLabel={`${project.name} 프로젝트 목록 작업`}
+          />
+        </div>
       </div>
     </li>
   )
@@ -349,10 +379,18 @@ function ProjectCard({
   project,
   columns,
   onOpenInitiative,
+  meId,
+  favorite,
+  onFavoriteChange,
+  onMessage,
 }: {
   project: ProjectListItem
   columns: RollupKey[]
   onOpenInitiative: (id: string) => void
+  meId?: string
+  favorite: boolean
+  onFavoriteChange: (projectId: string, favorite: boolean) => void
+  onMessage: (message: string) => void
 }) {
   const archived = Boolean(project.archived_at)
   const progress = project.work_package_count
@@ -379,6 +417,30 @@ function ProjectCard({
         <span className="pointer-events-none absolute bottom-2 left-3 flex h-8 w-8 items-center justify-center rounded-of border border-white/50 bg-white/90 font-mono text-[11px] font-semibold text-of-accent shadow-sm">
           {project.key.slice(0, 2)}
         </span>
+        <div className="absolute right-2 top-2 z-10 flex items-center gap-1">
+          <button
+            type="button"
+            aria-label={`${project.name} ${favorite ? '즐겨찾기 해제' : '즐겨찾기에 추가'}`}
+            aria-pressed={favorite}
+            className={cn(
+              'flex h-8 w-8 items-center justify-center rounded-of border border-white/60 bg-white/90 text-of-muted shadow-sm backdrop-blur-sm transition-colors hover:bg-white hover:text-of-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white',
+              favorite && 'text-of-accent',
+            )}
+            onClick={() => onFavoriteChange(project.id, !favorite)}
+          >
+            <Star size={14} fill={favorite ? 'currentColor' : 'none'} aria-hidden="true" />
+          </button>
+          <ProjectActionsMenu
+            project={project}
+            meId={meId}
+            favorite={favorite}
+            onFavoriteChange={onFavoriteChange}
+            onMessage={onMessage}
+            placement="directory"
+            triggerLabel={`${project.name} 프로젝트 카드 작업`}
+            triggerClassName="h-8 w-8 border border-white/60 bg-white/90 text-of-muted shadow-sm backdrop-blur-sm hover:bg-white hover:text-of-text focus-visible:ring-white"
+          />
+        </div>
       </ProjectCover>
 
       <div className="flex min-h-0 flex-1 flex-col p-3">
@@ -460,6 +522,8 @@ function matchesProject(project: ProjectListItem, query: string) {
 export function ProjectsPage() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const me = useMe()
+  const sidebarPreferences = useSidebarPreferences()
   const [searchParams, setSearchParams] = useSearchParams()
   const [includeArchived, setIncludeArchived] = useState(false)
   const [legacyPreferences] = useState(loadLocalProjectDirectoryPreferences)
@@ -473,6 +537,7 @@ export function ProjectsPage() {
   const userChangedPreferences = useRef(false)
   const { columns, sort, layout } = preferences
   const [query, setQuery] = useState('')
+  const [projectActionMessage, setProjectActionMessage] = useState('')
   const createRequested = searchParams.get('new') === '1'
   const [creating, setCreating] = useState(createRequested)
   const capabilities = useWorkspaceCapabilities()
@@ -489,6 +554,12 @@ export function ProjectsPage() {
     queryKey: ['me', 'project-directory-preferences'],
     queryFn: getProjectDirectoryPreferences,
   })
+
+  useEffect(() => {
+    if (!projectActionMessage) return
+    const timer = window.setTimeout(() => setProjectActionMessage(''), 3200)
+    return () => window.clearTimeout(timer)
+  }, [projectActionMessage])
 
   useEffect(() => {
     if (createRequested) setCreating(true)
@@ -780,27 +851,54 @@ export function ProjectsPage() {
       ) : (
         <section className={cn('mx-auto w-full max-w-7xl min-w-0 px-4 py-3 sm:px-6', layout === 'list' && 'overflow-hidden rounded-of')}>
           {layout === 'list' ? (
-            <div className="hidden grid-cols-[minmax(0,1.5fr)_9rem_minmax(12rem,0.8fr)_14rem_2rem] border-b border-of-border bg-of-surface-2 px-4 py-2 text-[11px] font-medium text-of-muted md:grid">
+            <div className="hidden grid-cols-[minmax(0,1.5fr)_9rem_minmax(12rem,0.8fr)_14rem_4rem] border-b border-of-border bg-of-surface-2 px-4 py-2 text-[11px] font-medium text-of-muted md:grid">
               <span>프로젝트</span>
               <span>상태</span>
               <span className="text-right">롤업</span>
               <span className="text-right">바로가기</span>
-              <span className="sr-only">열기</span>
+              <span className="text-right">작업</span>
             </div>
           ) : null}
           <div className={cn(layout === 'list' && 'overflow-hidden rounded-of border border-of-border bg-of-surface')}>
           <ul aria-label="프로젝트 디렉터리" className={cn(layout === 'grid' ? 'grid gap-3 md:grid-cols-2 2xl:grid-cols-3' : 'divide-y divide-of-border')}>
             {visibleProjects.map((project) => (
               layout === 'grid' ? (
-                <ProjectCard key={project.id} project={project} columns={visibleColumns} onOpenInitiative={(id) => navigate(`/initiatives?highlight=${id}`)} />
+                <ProjectCard
+                  key={project.id}
+                  project={project}
+                  columns={visibleColumns}
+                  onOpenInitiative={(id) => navigate(`/initiatives?highlight=${id}`)}
+                  meId={me.data?.id}
+                  favorite={sidebarPreferences.preferences.favoriteProjectIds.includes(project.id)}
+                  onFavoriteChange={sidebarPreferences.setFavoriteProject}
+                  onMessage={setProjectActionMessage}
+                />
               ) : (
-                <ProjectRow key={project.id} project={project} columns={visibleColumns} onOpenInitiative={(id) => navigate(`/initiatives?highlight=${id}`)} />
+                <ProjectRow
+                  key={project.id}
+                  project={project}
+                  columns={visibleColumns}
+                  onOpenInitiative={(id) => navigate(`/initiatives?highlight=${id}`)}
+                  meId={me.data?.id}
+                  favorite={sidebarPreferences.preferences.favoriteProjectIds.includes(project.id)}
+                  onFavoriteChange={sidebarPreferences.setFavoriteProject}
+                  onMessage={setProjectActionMessage}
+                />
               )
             ))}
           </ul>
           </div>
         </section>
       )}
+      {projectActionMessage ? (
+        <div
+          role="status"
+          aria-label="프로젝트 작업 결과"
+          className="fixed bottom-4 left-1/2 z-[80] max-w-[calc(100vw-2rem)] -translate-x-1/2 rounded-of border border-of-border bg-of-surface-raised px-3 py-2 text-xs text-of-text shadow-[var(--of-shadow-popover)]"
+        >
+          {projectActionMessage}
+        </div>
+      ) : null}
     </div>
   )
 }

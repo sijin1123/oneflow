@@ -33,9 +33,7 @@ import {
   List,
   ListChecks,
   ListTree,
-  Link as LinkIcon,
   LockKeyhole,
-  MoreHorizontal,
   Paperclip,
   PanelLeftClose,
   Plus,
@@ -58,22 +56,13 @@ import { useCallback, useEffect, useRef, useState, type AnimationEvent as ReactA
 import { Link, NavLink, useLocation, useNavigate, useParams } from 'react-router-dom'
 
 import { useAuthConfig } from '@/features/auth/api'
-import { useMe, useMembers } from '@/features/members/api'
+import { useMe } from '@/features/members/api'
 import { useCanWrite } from '@/features/members/useCanWrite'
-import { useArchiveProject, useProjects } from '@/features/projects/api'
-import type { ProjectListItem } from '@/features/projects/types'
+import { useProjects } from '@/features/projects/api'
+import { ProjectActionsMenu } from '@/features/projects/ProjectActionsMenu'
 import { useWorkspaceCapabilities } from '@/features/workspace-features/api'
 import { useWorkspaceProfile } from '@/features/workspace-profile/api'
 import { WorkspaceLogo } from '@/features/workspace-profile/WorkspaceLogo'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
-import { confirmDestructive } from '@/lib/guards'
 import { cn } from '@/lib/utils'
 
 import {
@@ -253,117 +242,6 @@ function NewWorkItemButton({ projectId, onNavigate }: { projectId: string; onNav
     >
       <Plus size={14} aria-hidden="true" /> 새 작업
     </button>
-  )
-}
-
-function ProjectActions({
-  project,
-  meId,
-  favorite,
-  onFavoriteChange,
-  onNavigate,
-  onMessage,
-}: {
-  project: ProjectListItem
-  meId?: string
-  favorite: boolean
-  onFavoriteChange: (projectId: string, favorite: boolean) => void
-  onNavigate?: () => void
-  onMessage: (message: string) => void
-}) {
-  const navigate = useNavigate()
-  const [open, setOpen] = useState(false)
-  const menuId = `project-actions-${project.id}`
-  const members = useMembers(project.id, open)
-  const archive = useArchiveProject(project.id)
-  const isOwner = members.data?.items.some(
-    (member) => member.user_id === meId && member.role === 'owner',
-  ) === true
-
-  const copyLink = async () => {
-    const href = `${window.location.origin}/projects/${project.id}/overview`
-    try {
-      if (!navigator.clipboard?.writeText) throw new Error('clipboard unavailable')
-      await navigator.clipboard.writeText(href)
-      onMessage(`'${project.name}' 링크를 복사했습니다.`)
-    } catch {
-      onMessage(`복사할 링크: ${href}`)
-    }
-  }
-
-  const archiveProject = () => {
-    if (!confirmDestructive(`'${project.name}' 프로젝트를 보관할까요?\n보관 중에는 모든 변경이 차단됩니다(복원 가능).`)) return
-    archive.mutate(true, {
-      onSuccess: () => {
-        onMessage(`'${project.name}' 프로젝트를 보관했습니다.`)
-      },
-      onError: () => onMessage(`'${project.name}' 프로젝트를 보관하지 못했습니다.`),
-    })
-  }
-
-  return (
-    <>
-      <DropdownMenu open={open} onOpenChange={setOpen}>
-        <DropdownMenuTrigger asChild>
-          <button
-            type="button"
-            aria-label={`${project.name} 프로젝트 작업`}
-            aria-controls={menuId}
-            aria-expanded={open}
-            className="flex h-8 w-7 shrink-0 items-center justify-center rounded-of text-of-muted opacity-100 transition-[opacity,color,background-color] hover:bg-of-surface-hover hover:text-of-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus sm:opacity-0 sm:group-hover/project:opacity-100 sm:group-focus-within/project:opacity-100"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <MoreHorizontal size={14} aria-hidden="true" />
-          </button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent
-          id={menuId}
-          align="start"
-          side="right"
-          className="w-52"
-        >
-          <DropdownMenuLabel>{project.name}</DropdownMenuLabel>
-          <DropdownMenuItem
-            className="flex items-center gap-2 text-xs"
-            onSelect={() => onFavoriteChange(project.id, !favorite)}
-          >
-            <Star size={13} fill={favorite ? 'currentColor' : 'none'} aria-hidden="true" />
-            {favorite ? '즐겨찾기 해제' : '즐겨찾기에 추가'}
-          </DropdownMenuItem>
-          <DropdownMenuItem className="flex items-center gap-2 text-xs" onSelect={() => void copyLink()}>
-            <LinkIcon size={13} aria-hidden="true" /> 링크 복사
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            className="flex items-center gap-2 text-xs"
-            onSelect={() => {
-              navigate(`/projects/${project.id}/settings`)
-              onNavigate?.()
-            }}
-          >
-            <Settings size={13} aria-hidden="true" /> 설정
-          </DropdownMenuItem>
-          {members.isPending ? (
-            <DropdownMenuLabel className="text-xs normal-case">권한 확인 중…</DropdownMenuLabel>
-          ) : null}
-          {members.isError ? (
-            <DropdownMenuLabel className="text-xs normal-case text-of-danger">권한을 확인할 수 없습니다.</DropdownMenuLabel>
-          ) : null}
-          {isOwner ? (
-            <>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem
-                className="flex items-center gap-2 text-xs text-of-danger"
-                disabled={archive.isPending}
-                onSelect={archiveProject}
-              >
-                <Archive size={13} aria-hidden="true" />
-                {archive.isPending ? '보관 중…' : '프로젝트 보관'}
-              </DropdownMenuItem>
-            </>
-          ) : null}
-        </DropdownMenuContent>
-      </DropdownMenu>
-    </>
   )
 }
 
@@ -1129,7 +1007,7 @@ function SidebarContent({
                           <span className="min-w-0 flex-1 truncate">{project.name}</span>
                           {favorite ? <Star size={11} fill="currentColor" aria-label="즐겨찾기" /> : null}
                         </NavLink>
-                        <ProjectActions
+                        <ProjectActionsMenu
                           project={project}
                           meId={me.data?.id}
                           favorite={favorite}
