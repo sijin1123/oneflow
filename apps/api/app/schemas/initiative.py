@@ -197,6 +197,7 @@ class InitiativeActivityRead(BaseModel):
     id: uuid.UUID
     actor_id: uuid.UUID | None
     actor_name: str | None
+    actor_profile_image_url: str | None
     kind: str
     changed_fields: list[str]
     created_at: datetime

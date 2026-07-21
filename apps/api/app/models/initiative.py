@@ -227,6 +227,13 @@ class InitiativeActivity(Base):
     __tablename__ = "initiative_activities"
     __table_args__ = (
         CheckConstraint(
+            "(actor_profile_image_storage_key IS NULL "
+            "AND actor_profile_image_content_type IS NULL) OR "
+            "(actor_profile_image_storage_key IS NOT NULL "
+            "AND actor_profile_image_content_type IS NOT NULL)",
+            name="actor_image_metadata_complete",
+        ),
+        CheckConstraint(
             "kind IN ('initiative_created', 'properties_updated', 'lifecycle_updated', "
             "'health_updated', 'owner_transferred', 'owner_claimed', 'labels_updated', "
             "'project_connected', 'project_disconnected', 'work_item_connected', "
@@ -249,6 +256,10 @@ class InitiativeActivity(Base):
             "created_at",
             "id",
         ),
+        Index(
+            "ix_initiative_activities_actor_image_key",
+            "actor_profile_image_storage_key",
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -258,6 +269,9 @@ class InitiativeActivity(Base):
     actor_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
+    actor_name_snapshot: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    actor_profile_image_storage_key: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    actor_profile_image_content_type: Mapped[str | None] = mapped_column(String(32), nullable=True)
     kind: Mapped[str] = mapped_column(String(32), nullable=False)
     changed_fields: Mapped[list[str]] = mapped_column(
         ARRAY(String(24)), nullable=False, default=list, server_default="{}"
@@ -265,3 +279,17 @@ class InitiativeActivity(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=text("clock_timestamp()")
     )
+
+    @property
+    def actor_name(self) -> str | None:
+        return self.actor_name_snapshot
+
+    @property
+    def actor_profile_image_url(self) -> str | None:
+        if self.actor_profile_image_storage_key is None:
+            return None
+        version = self.actor_profile_image_storage_key.rsplit("/", 1)[-1]
+        return (
+            f"/api/v1/initiatives/{self.initiative_id}/activities/{self.id}/actor-image"
+            f"?version={version}"
+        )

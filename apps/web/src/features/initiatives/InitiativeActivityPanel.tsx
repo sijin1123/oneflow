@@ -15,6 +15,8 @@ import {
 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
+import { Avatar } from '@/components/ui/avatar'
+import { profileImageSrc } from '@/features/members/api'
 import { formatDateTime } from '@/lib/datetime'
 
 import {
@@ -59,13 +61,18 @@ function ActivityRow({ item }: { item: InitiativeActivity }) {
   const Icon = meta.icon
   return (
     <li className="grid min-w-0 grid-cols-[28px_minmax(0,1fr)] gap-2.5 py-3">
-      <span className="flex h-7 w-7 items-center justify-center rounded-full border border-of-border-subtle bg-of-surface-2 text-of-muted">
-        <Icon size={13} strokeWidth={1.8} aria-hidden="true" />
-      </span>
+      <Avatar
+        name={item.actor_name ?? '이전 구성원'}
+        src={profileImageSrc(item)}
+        size="sm"
+      />
       <div className="min-w-0">
-        <p className="break-words text-xs leading-5 text-of-text">
+        <p className="flex min-w-0 flex-wrap items-center gap-x-1 break-words text-xs leading-5 text-of-text">
           <span className="font-medium">{item.actor_name ?? '이전 구성원'}</span>{' '}
-          <span className="text-of-muted">{meta.label}</span>
+          <span className="inline-flex items-center gap-1 text-of-muted">
+            <Icon size={11} strokeWidth={1.8} aria-hidden="true" />
+            {meta.label}
+          </span>
         </p>
         {item.changed_fields.length > 0 ? (
           <div className="mt-1 flex min-w-0 flex-wrap gap-1" aria-label="변경 필드">
