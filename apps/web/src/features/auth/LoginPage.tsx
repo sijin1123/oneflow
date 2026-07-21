@@ -166,7 +166,7 @@ function BrandLockup({ compact = false }: { compact?: boolean }) {
         <img
           src={loginLogoLockup173}
           srcSet={`${loginLogoLockup128} 128w, ${loginLogoLockup173} 173w, ${loginLogoLockup} 205w, ${loginLogoLockup2x} 410w`}
-          sizes="(min-width: 1268px) and (min-height: 961px) 173px, (max-width: 520px) 148px, (max-width: 880px) 164px, min(173px, calc(14.157vw - 7px), calc(18.876vh - 9.1px))"
+          sizes="(min-width: 1448px) and (min-height: 1086px) 205px, (max-width: 520px) 148px, (max-width: 880px) 164px, min(205px, 14.157vw, 18.876vh)"
           width="205"
           height="70"
           alt=""
@@ -185,7 +185,7 @@ function StoryPanel() {
         className="of-login-story-art"
         src={loginStoryReferenceDesktop}
         srcSet={`${loginStoryReferenceCompact} 495w, ${loginStoryReferenceDesktop} 667w, ${loginStoryReference} 792w, ${loginStoryReference2x} 1584w`}
-        sizes="(max-width: 880px) 183vw, min(667px, calc(54.672vw - 26.2px), calc(72.896vh - 35px))"
+        sizes="(min-width: 1448px) and (min-height: 1086px) 792px, (max-width: 880px) 183vw, min(792px, 54.696vw, 72.928vh)"
         width="792"
         height="1086"
         alt=""

@@ -17509,9 +17509,9 @@ test('로그인 참조 UI는 9개 목표 뷰포트에서 넘침과 compact 충�
     if (viewport.width >= 881) {
       const panel = await page.locator('.of-login-page').boundingBox()
       expect(panel).not.toBeNull()
-      expect(panel!.width).toBeLessThanOrEqual(1221)
-      expect(panel!.width).toBeLessThanOrEqual(viewport.width - 32)
-      expect(panel!.height).toBeLessThanOrEqual(viewport.height - 32)
+      expect(panel!.width).toBeLessThanOrEqual(1449)
+      expect(panel!.width).toBeLessThanOrEqual(viewport.width)
+      expect(panel!.height).toBeLessThanOrEqual(viewport.height)
       expect(Math.abs((panel!.width / panel!.height) - (4 / 3))).toBeLessThan(0.01)
       const geometry = await page.evaluate(() => {
         const box = (selector: string) => {
@@ -17691,11 +17691,11 @@ test('로그인 최대 데스크톱 합성은 원본 파생 자산을 정수 픽
     }
   })
 
-  expect(geometry.panel).toMatchObject({ x: 118, y: 172, width: 1220, height: 915 })
-  expect(geometry.story).toMatchObject({ x: 118, y: 172, width: 667, height: 915 })
-  expect(geometry.story.currentSrc).toMatch(/oneflow-login-story-reference-667x915/)
-  expect(geometry.logo).toMatchObject({ width: 173, height: 59 })
-  expect(geometry.logo.currentSrc).toMatch(/oneflow-login-logo-lockup-173x59/)
+  expect(geometry.panel).toMatchObject({ x: 4, y: 87, width: 1448, height: 1086 })
+  expect(geometry.story).toMatchObject({ x: 4, y: 87, width: 792, height: 1086 })
+  expect(geometry.story.currentSrc).toMatch(/oneflow-login-story-reference\.png/)
+  expect(geometry.logo).toMatchObject({ width: 205, height: 70 })
+  expect(geometry.logo.currentSrc).toMatch(/oneflow-login-logo-lockup\.png/)
   await expect(page.locator('.of-login-page')).toHaveCSS('translate', 'none')
   await expectNoHorizontalOverflow(page)
   await page.screenshot({
@@ -17755,12 +17755,13 @@ test('로그인 reference-fit은 인앱 크기와 기준 크기에서 정수 ras
       logo: read('.of-login-brand-reference img'),
     }
   })
-  expect(inAppGeometry.panel.width).toBe(905)
-  expect(inAppGeometry.panel.height).toBeCloseTo(678.75, 1)
+  expect(inAppGeometry.panel.width).toBe(953)
+  expect(inAppGeometry.panel.height).toBeCloseTo(714.75, 1)
   expect(inAppGeometry.viewport).toEqual({ width: 953, scrollWidth: 953 })
-  expect(inAppGeometry.story.currentSrc).toMatch(/oneflow-login-story-reference-495x679/)
-  expect(inAppGeometry.logo.currentSrc).toMatch(/oneflow-login-logo-lockup-128x44/)
-  expect(inAppGeometry.logo).toMatchObject({ width: 128, height: 44 })
+  expect(inAppGeometry.story.currentSrc).toMatch(/oneflow-login-story-reference-667x915/)
+  expect(inAppGeometry.logo.currentSrc).toMatch(/oneflow-login-logo-lockup-173x59/)
+  expect(inAppGeometry.logo.width).toBeCloseTo(135, 0)
+  expect(inAppGeometry.logo.height).toBeCloseTo(46.09, 1)
   await page.screenshot({
     path: '../../docs/screenshots/redevelopment/login-reference-fit-ui/in-app-953x917.png',
   })
@@ -17781,14 +17782,14 @@ test('로그인 reference-fit은 인앱 크기와 기준 크기에서 정수 ras
       logo: { currentSrc: logo.currentSrc, naturalWidth: logo.naturalWidth, naturalHeight: logo.naturalHeight },
     }
   })
-  expect(referenceGeometry.panel).toEqual({ x: 114, y: 86, width: 1220, height: 915 })
-  expect(referenceGeometry.story.currentSrc).toMatch(/oneflow-login-story-reference-667x915/)
-  expect(referenceGeometry.story).toMatchObject({ naturalWidth: 667, naturalHeight: 915 })
-  expect(referenceGeometry.logo.currentSrc).toMatch(/oneflow-login-logo-lockup-173x59/)
-  expect(referenceGeometry.logo).toMatchObject({ naturalWidth: 173, naturalHeight: 59 })
+  expect(referenceGeometry.panel).toEqual({ x: 0, y: 0, width: 1448, height: 1086 })
+  expect(referenceGeometry.story.currentSrc).toMatch(/oneflow-login-story-reference\.png/)
+  expect(referenceGeometry.story).toMatchObject({ naturalWidth: 792, naturalHeight: 1086 })
+  expect(referenceGeometry.logo.currentSrc).toMatch(/oneflow-login-logo-lockup\.png/)
+  expect(referenceGeometry.logo).toMatchObject({ naturalWidth: 205, naturalHeight: 70 })
   await expect(page.locator('.of-login-story-art')).toHaveCSS('animation-name', 'none')
   await expect(page.locator('.of-login-auth-card')).toHaveCSS('animation-name', 'none')
-  await expect(page.locator('.of-login-heading h2')).toHaveCSS('font-weight', '675')
+  await expect(page.locator('.of-login-heading h2')).toHaveCSS('font-weight', '550')
   await expect(page.locator('.of-login-field label').first()).toHaveCSS(
     'transform',
     'matrix(0.93, 0, 0, 1, 1, -1)',
@@ -17797,9 +17798,9 @@ test('로그인 reference-fit은 인앱 크기와 기준 크기에서 정수 ras
     'background-image',
     'linear-gradient(100deg, rgb(87, 98, 242) 0%, rgb(90, 101, 241) 100%)',
   )
-  await expect(page.locator('.of-login-provider-button').first()).toHaveCSS('font-weight', '675')
-  await expect(page.locator('.of-login-footer')).toHaveCSS('padding-left', '8px')
-  await expect(page.locator('.of-login-footer')).toHaveCSS('padding-right', '8px')
+  await expect(page.locator('.of-login-provider-button').first()).toHaveCSS('font-weight', '620')
+  await expect(page.locator('.of-login-footer')).toHaveCSS('padding-left', '10px')
+  await expect(page.locator('.of-login-footer')).toHaveCSS('padding-right', '10px')
   await page.screenshot({
     path: '../../docs/screenshots/redevelopment/login-reference-fit-ui/reference-1448x1086.png',
   })
