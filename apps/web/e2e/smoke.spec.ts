@@ -18055,7 +18055,7 @@ test('로그인 reference-fit은 인앱 크기와 기준 크기에서 정수 ras
   expect(referenceGeometry.logo).toMatchObject({ naturalWidth: 205, naturalHeight: 70 })
   await expect(page.locator('.of-login-story-art')).toHaveCSS('animation-name', 'none')
   await expect(page.locator('.of-login-auth-card')).toHaveCSS('animation-name', 'none')
-  await expect(page.locator('.of-login-heading h2')).toHaveCSS('font-weight', '550')
+  await expect(page.locator('.of-login-heading h2')).toHaveCSS('font-weight', '500')
   await expect(page.locator('.of-login-field label').first()).toHaveCSS(
     'transform',
     'matrix(0.93, 0, 0, 1, 1, -1)',
@@ -18064,7 +18064,17 @@ test('로그인 reference-fit은 인앱 크기와 기준 크기에서 정수 ras
     'background-image',
     'linear-gradient(100deg, rgb(87, 98, 242) 0%, rgb(90, 101, 241) 100%)',
   )
-  await expect(page.locator('.of-login-provider-button').first()).toHaveCSS('font-weight', '620')
+  await expect(page.locator('.of-login-input').first()).toHaveCSS('font-size', '14.5px')
+  await expect(page.locator('.of-login-input').first()).toHaveCSS('font-weight', '350')
+  await expect(page.locator('.of-login-checkbox')).toHaveCSS('font-weight', '500')
+  await expect(page.locator('.of-login-divider')).toHaveCSS(
+    'transform',
+    'matrix(1, 0, 0, 1, -16, -1)',
+  )
+  await expect(page.locator('.of-login-provider-button').first()).toHaveCSS('font-weight', '400')
+  await expect(page.locator('.of-login-create button')).toHaveCSS('font-weight', '600')
+  await expect(page.locator('.of-login-footer nav')).toHaveCSS('transform', 'none')
+  await expect(page.locator('.of-login-language')).toHaveCSS('transform', 'none')
   await expect(page.locator('.of-login-footer')).toHaveCSS('padding-left', '10px')
   await expect(page.locator('.of-login-footer')).toHaveCSS('padding-right', '10px')
   await page.screenshot({

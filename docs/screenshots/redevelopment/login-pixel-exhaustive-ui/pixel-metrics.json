@@ -1,0 +1,187 @@
+{
+  "reference": "apps/web/src/assets/generated/oneflow-login-origin-reference.png",
+  "reference_sha256": "62fafe9e44df9d189e8fe2f38fc25147d11b8459569be13ee0424ba06c0c4c76",
+  "runtime": "desktop-1448x1086.png",
+  "viewport": {
+    "width": 1448,
+    "height": 1086
+  },
+  "regions": {
+    "full_canvas": {
+      "bounds": [
+        0,
+        0,
+        1448,
+        1086
+      ],
+      "mae": 1.3151,
+      "p95": 2,
+      "max": 255
+    },
+    "story_surface": {
+      "bounds": [
+        0,
+        0,
+        792,
+        1086
+      ],
+      "mae": 0.0117,
+      "p95": 0,
+      "max": 69
+    },
+    "story_brand": {
+      "bounds": [
+        72,
+        88,
+        280,
+        165
+      ],
+      "mae": 0.0,
+      "p95": 0,
+      "max": 0
+    },
+    "story_headline": {
+      "bounds": [
+        68,
+        180,
+        370,
+        298
+      ],
+      "mae": 0.0,
+      "p95": 0,
+      "max": 0
+    },
+    "kanban_board": {
+      "bounds": [
+        392,
+        145,
+        790,
+        448
+      ],
+      "mae": 0.0,
+      "p95": 0,
+      "max": 0
+    },
+    "auth_surface": {
+      "bounds": [
+        792,
+        0,
+        1448,
+        1086
+      ],
+      "mae": 2.8887,
+      "p95": 7,
+      "max": 255
+    },
+    "auth_card": {
+      "bounds": [
+        852,
+        70,
+        1375,
+        962
+      ],
+      "mae": 3.6821,
+      "p95": 10,
+      "max": 255
+    },
+    "auth_logo": {
+      "bounds": [
+        1011,
+        100,
+        1216,
+        170
+      ],
+      "mae": 0.0,
+      "p95": 0,
+      "max": 0
+    },
+    "heading": {
+      "bounds": [
+        940,
+        180,
+        1300,
+        270
+      ],
+      "mae": 10.2164,
+      "p95": 63,
+      "max": 254
+    },
+    "fields": {
+      "bounds": [
+        900,
+        298,
+        1329,
+        498
+      ],
+      "mae": 3.7674,
+      "p95": 13,
+      "max": 254
+    },
+    "options": {
+      "bounds": [
+        900,
+        500,
+        1329,
+        560
+      ],
+      "mae": 4.2462,
+      "p95": 12,
+      "max": 232
+    },
+    "submit": {
+      "bounds": [
+        900,
+        568,
+        1329,
+        622
+      ],
+      "mae": 3.2873,
+      "p95": 14,
+      "max": 166
+    },
+    "divider": {
+      "bounds": [
+        900,
+        640,
+        1329,
+        680
+      ],
+      "mae": 1.3036,
+      "p95": 6,
+      "max": 139
+    },
+    "providers": {
+      "bounds": [
+        900,
+        688,
+        1329,
+        866
+      ],
+      "mae": 8.3661,
+      "p95": 36,
+      "max": 255
+    },
+    "signup": {
+      "bounds": [
+        900,
+        884,
+        1329,
+        934
+      ],
+      "mae": 4.164,
+      "p95": 20,
+      "max": 191
+    },
+    "footer": {
+      "bounds": [
+        842,
+        995,
+        1380,
+        1040
+      ],
+      "mae": 3.8977,
+      "p95": 20,
+      "max": 159
+    }
+  }
+}

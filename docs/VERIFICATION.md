@@ -3175,3 +3175,14 @@ Chromium typed mock fixture에서 1440x960과 390x844 viewport를 사용했다. 
 - **증적**: `docs/screenshots/redevelopment/collaboration-identity-avatars-ui/{members-desktop,watchers-mobile}.png`과 README에 실제 Chromium desktop/mobile 상태를 보존한다.
 
 ---
+
+# UI-203 Login Pixel Exhaustive Closure 검증 (2026-07-22)
+
+- **UI 변경**: 사용자 승인 원본과 기능형 로그인 DOM을 다시 전수 대조했다. 좌측 story, 좌측 브랜드·headline·Kanban과 우측 auth logo는 이미 승인 원본과 픽셀 단위로 일치하므로 자산을 변경하지 않았다. 우측 semantic DOM에서 오차가 남은 제목, 입력 placeholder, remember-me, divider, provider, 가입 링크와 footer의 글꼴 두께·정렬만 `1448x1086` 전용 정수 픽셀 규칙 안에서 보정했다.
+- **기능/API 반영**: 이메일, 비밀번호, remember me, password visibility, 실제 sign-in, Google/Microsoft/SSO availability, assistance request, 정책 dialog, locale와 safe-next 계약은 기존 OneFlow control과 auth API를 유지한다. 최신 브랜치를 API가 허용하는 `http://localhost:5173/login`에서 재실행해 인앱에서도 config 오류 없이 입력과 submit이 활성화됨을 확인했다. 신규 API, DB/schema, migration, permission, environment variable, dependency 또는 Settings UI 변경은 없다.
+- **픽셀 전수 실사**: 승인 원본과 runtime authority SHA-256은 `62fafe9e44df9d189e8fe2f38fc25147d11b8459569be13ee0424ba06c0c4c76`로 같다. lossless Chromium `1448x1086` 전체 MAE는 `1.4946`에서 **`1.3151`**, auth surface는 `3.2843`에서 **`2.8887`**, auth card는 `4.2308`에서 **`3.6821`**로 감소했다. story surface는 `0.0117`, story brand·headline·Kanban과 auth logo는 모두 `0.0000`, full p95는 `2`다. desktop/mobile 모두 document scroll 크기가 viewport와 같아 불필요한 overflow가 없다.
+- **이연 항목**: 외부 OIDC 공급자의 실제 연결은 배포별 credential 경계를 유지한다. 이외 이번 로그인 surface의 기능 이연, mock/dead control 또는 장식용 action은 없다.
+- **검증**: typecheck PASS, lint PASS(기존 Fast Refresh warning 4건), production build PASS(기존 large chunk warning), unit **108 PASS**, component **9 PASS**, 로그인 focused E2E **16 PASS**, 2-worker full E2E **353 PASS + opt-in visual QA manifest 1 skip**다. Clean-room frontend **162**/backend **45**, OpenAPI type parity, npm production audit 0 vulnerabilities와 diff check도 PASS했다.
+- **증적**: `docs/screenshots/redevelopment/login-pixel-exhaustive-ui/`에 API 연결 상태의 desktop `1448x1086`, mobile `390x844`, 원본/runtime 나란히 보기, 8x diff와 영역별 JSON을 보존한다.
+
+---
