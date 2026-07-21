@@ -640,3 +640,9 @@ Plane/OpenProject source, package, asset, logo, CSS, DOM, wording 또는 brandin
 UI-195의 입력은 `docs/plane-poc-reverse-spec/03-feature-matrix.md`, `04-interaction-catalog.md`, `11-focused-sidebar-views-observations.md`에 이미 기록된 project directory의 direct favorite, overflow menu, canonical link, settings, archive와 role boundary라는 관찰 결과다. Plane source, package, asset, CSS, DOM 구조 또는 copy는 열람·복사하지 않았다.
 
 OneFlow 구현은 기존 `ProjectListItem`, membership query, archive/unarchive mutation, React Router, local sidebar preference와 Radix dropdown primitive를 조합한 독립 코드다. 같은 탭의 directory와 sidebar가 즐겨찾기 상태를 즉시 공유하도록 자체 subscriber를 추가했고, owner만 archive/restore를 받도록 기존 server membership 계약을 재사용했다. 공개 URL의 가시성·해제·권한 계약이 없는 Publish는 동작하지 않는 모방 control로 노출하지 않고 후속 기능으로 명시 이연했다. - attested-independent-derivation
+
+## UI-196 Login Pixel Fidelity Exhaustive Reinspection
+
+UI-196의 유일한 시각 입력은 사용자가 직접 제공하고 OneFlow 제품 자산으로 승인한 `apps/web/src/assets/generated/oneflow-login-origin-reference.png`이며 SHA-256은 `62fafe9e44df9d189e8fe2f38fc25147d11b8459569be13ee0424ba06c0c4c76`이다. 런타임 story와 auth logo는 같은 원본의 결정적 파생 자산이고 source-level MAE는 각각 `0.0000`이다. 따라서 배경·로고를 생성형으로 재해석하거나 모양과 색상을 다시 그리지 않고, semantic auth DOM의 브라우저 렌더링 오차만 자체 CSS로 보정했다.
+
+Plane/OpenProject source, package, asset, logo, CSS, DOM, wording 또는 branding은 입력·복사하지 않았다. 이메일, 비밀번호, provider, assistance, policy, locale와 safe-next는 기존 OneFlow semantic control과 auth API를 유지하며 신규 API, DB/schema, migration, permission, environment variable, dependency 또는 Settings storage 변경은 없다. - attested-user-owned-oneflow-asset

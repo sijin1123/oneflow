@@ -1084,7 +1084,7 @@
 
 .of-login-heading h2 {
   font-size: clamp(22px, 2.12cqw, 26px);
-  font-weight: 700;
+  font-weight: 675;
   line-height: 1.18;
 }
 
@@ -1161,7 +1161,7 @@
 .of-login-submit {
   min-height: clamp(42px, 3.59cqw, 44px);
   border-radius: clamp(7px, 0.69cqw, 9px);
-  background: linear-gradient(100deg, #5360f2 0%, #5b66f2 100%);
+  background: linear-gradient(100deg, #5762f2 0%, #5a65f1 100%);
   box-shadow: 0 8px 18px rgb(83 103 245 / 0.12);
   font-size: clamp(11px, 1.04cqw, 13px);
   transform: translateY(-1px);
@@ -1241,7 +1241,8 @@
   }
 
   .of-login-field > label {
-    transform: translate(1px, -1px);
+    transform: translate(1px, -1px) scaleX(0.93);
+    transform-origin: left center;
   }
 
   .of-login-input-wrap {
@@ -1271,7 +1272,7 @@
   .of-login-provider-button {
     padding-right: 33px;
     padding-left: 13px;
-    font-weight: 650;
+    font-weight: 675;
   }
 
   .of-login-create {
@@ -1319,6 +1320,8 @@
     bottom: 39px;
     left: 51px;
     width: auto;
+    padding-right: 8px;
+    padding-left: 8px;
   }
 }
 

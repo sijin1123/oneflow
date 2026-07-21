@@ -3143,3 +3143,14 @@ Chromium typed mock fixture에서 1440x960과 390x844 viewport를 사용했다. 
 - **증적**: `docs/screenshots/redevelopment/project-directory-actions-ui/{desktop-card-menu,mobile-list-menu}.png`과 README에 실제 Chromium desktop/mobile 상태를 보존했다. E2E는 같은 탭 즐겨찾기 동기화, keyboard open/Escape/focus return, viewer 권한, clipboard, archive/restore request와 mobile horizontal overflow를 함께 검사한다.
 
 ---
+
+# UI-196 Login Pixel Fidelity Exhaustive Reinspection 검증 (2026-07-21)
+
+- **UI 변경**: 사용자 승인 원본과 실제 기능형 로그인 DOM을 `1448x1086` lossless Chromium capture에서 다시 전수 비교했다. 원본과 런타임의 SHA-256, story와 auth logo 파생 자산은 이미 완전히 일치하므로 배경·로고를 재해석하지 않았다. 오차가 집중된 semantic auth 영역만 측정해 제목과 provider 굵기, label 폭, CTA 색상과 tall-desktop footer 간격을 보정했다.
+- **기능/API 반영**: 이메일, 비밀번호, remember me, password visibility, 실제 sign-in, Google/Microsoft/SSO availability, assistance request, 정책 dialog, locale와 safe-next 계약을 기존 semantic control과 auth API로 유지한다. 신규 API, DB/schema, migration, permission, environment variable, dependency 또는 Settings UI 변경은 없다.
+- **픽셀 전수 실사**: 승인 원본과 런타임 원본 SHA-256은 모두 `62fafe9e44df9d189e8fe2f38fc25147d11b8459569be13ee0424ba06c0c4c76`이다. normalized `1220x915` 기준 full MAE는 `1.4090`에서 **`1.3402`**, auth는 `3.0904`에서 **`2.9391`**, story는 `0.0149`에서 **`0.0146`**으로 감소했다. story brand, headline, Kanban, calendar와 auth logo는 모두 MAE `0.0000`; full delta `<=8`은 `97.68%`, p95는 `3`이다.
+- **반응형/증적**: `1448x1086`, Codex 인앱 `1280x720`, mobile `390x844` 실제 화면과 normalized authority/runtime, side-by-side, 8x diff, 전체 영역 JSON을 `docs/screenshots/redevelopment/login-pixel-fidelity-ui/`에 보존했다. 모든 viewport에서 horizontal overflow가 없다.
+- **이연 항목**: 외부 OIDC 공급자의 실제 연결은 배포별 credential 경계를 유지한다. 이외 이번 로그인 surface의 기능 이연, mock/dead control 또는 장식용 action은 없다.
+- **검증**: typecheck PASS, lint PASS(기존 Fast Refresh warning 4건), production build PASS(기존 large chunk warning), unit **108 PASS**, component **8 PASS**, 로그인 기능·9개 viewport·정수 raster·DPR 2를 포함한 focused E2E **16 PASS**다. 최종 2-worker full E2E는 재시도 없이 **348 PASS + opt-in visual QA manifest 1 skip**로 완주했다. 4-worker 부하 실사에서 기존 navigation/load·300ms motion 시간창이 서로 다른 항목에서 흔들렸지만 관련 항목 단독 반복은 각각 **3/3** 또는 **5/5 PASS**였고, separator focus와 navigation customizer motion sampling의 두 테스트 시간창을 안정화했다. Clean-room frontend **162**/backend **45**, OpenAPI type parity, npm/pip audit 0 vulnerabilities와 diff check도 PASS했다.
+
+---
