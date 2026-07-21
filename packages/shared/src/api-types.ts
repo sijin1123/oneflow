@@ -3592,6 +3592,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/work-packages/{wp_id}/comment-threads": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Comment Threads
+         * @description Page root comments while always returning every reply for each root.
+         *
+         *     A flat comment cursor can split a conversation across pages. This endpoint
+         *     keeps a root and its single-level replies atomic, while the legacy flat
+         *     endpoint remains available for existing clients.
+         */
+        get: operations["list_comment_threads_api_v1_work_packages__wp_id__comment_threads_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/work-packages/{wp_id}/comments": {
         parameters: {
             query?: never;
@@ -4114,6 +4138,10 @@ export interface components {
         ActivityList: {
             /** Items */
             items: components["schemas"]["ActivityRead"][];
+            /** Next Cursor Created At */
+            next_cursor_created_at?: string | null;
+            /** Next Cursor Id */
+            next_cursor_id?: string | null;
             /** Total */
             total: number;
         };
@@ -4815,6 +4843,25 @@ export interface components {
              * Format: uuid
              */
             work_package_id: string;
+        };
+        /** CommentThreadList */
+        CommentThreadList: {
+            /** Items */
+            items: components["schemas"]["CommentThreadRead"][];
+            /** Next Cursor Created At */
+            next_cursor_created_at?: string | null;
+            /** Next Cursor Id */
+            next_cursor_id?: string | null;
+            /** Total Comments */
+            total_comments: number;
+            /** Total Threads */
+            total_threads: number;
+        };
+        /** CommentThreadRead */
+        CommentThreadRead: {
+            /** Replies */
+            replies: components["schemas"]["CommentRead"][];
+            root: components["schemas"]["CommentRead"];
         };
         /**
          * ConflictResponse
@@ -20102,8 +20149,11 @@ export interface operations {
                 offset?: number;
                 action?: string | null;
                 field?: string | null;
+                field_not?: string | null;
                 actor_id?: string | null;
                 order?: string;
+                cursor_created_at?: string | null;
+                cursor_id?: string | null;
             };
             header?: {
                 authorization?: string | null;
@@ -20124,6 +20174,46 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ActivityList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_comment_threads_api_v1_work_packages__wp_id__comment_threads_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                order?: string;
+                cursor_created_at?: string | null;
+                cursor_id?: string | null;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                wp_id: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommentThreadList"];
                 };
             };
             /** @description Validation Error */

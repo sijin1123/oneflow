@@ -53,6 +53,7 @@ import type {
   ActivityList,
   Comment,
   CommentList,
+  CommentThreadList,
   ConflictBody,
   CsvImportResult,
   RelationList,
@@ -244,6 +245,8 @@ const activities: ActivityList = {
     },
   ],
   total: 3,
+  next_cursor_created_at: null,
+  next_cursor_id: null,
 }
 const noComments: CommentList = { items: [], total: 0 }
 
@@ -837,11 +840,41 @@ async function mockApi(page: Page, opts: { conflictOnPatch?: boolean } = {}) {
     const url = new URL(route.request().url())
     const action = url.searchParams.get('action')
     const field = url.searchParams.get('field')
-    const items = activities.items.filter(
-      (activity) => (!action || activity.action === action) && (!field || activity.field === field),
+    const fieldNot = url.searchParams.get('field_not')
+    const order = url.searchParams.get('order') ?? 'asc'
+    const limit = Number(url.searchParams.get('limit') ?? 20)
+    const filtered = activities.items.filter(
+      (activity) =>
+        (!action || activity.action === action)
+        && (!field || activity.field === field)
+        && (!fieldNot || activity.field !== fieldNot),
     )
-    return route.fulfill({ json: { items, total: items.length } })
+    const ordered = order === 'desc' ? [...filtered].reverse() : filtered
+    const cursorId = url.searchParams.get('cursor_id')
+    const start = cursorId ? ordered.findIndex((activity) => activity.id === cursorId) + 1 : 0
+    const items = ordered.slice(start, start + limit)
+    const hasMore = start + items.length < ordered.length
+    const cursor = hasMore ? items.at(-1) : null
+    return route.fulfill({
+      json: {
+        items,
+        total: filtered.length,
+        next_cursor_created_at: cursor?.created_at ?? null,
+        next_cursor_id: cursor?.id ?? null,
+      },
+    })
   })
+  await page.route(`**/api/v1/work-packages/${wpA.id}/comment-threads**`, (route) =>
+    route.fulfill({
+      json: {
+        items: [],
+        total_threads: 0,
+        total_comments: 0,
+        next_cursor_created_at: null,
+        next_cursor_id: null,
+      } satisfies CommentThreadList,
+    }),
+  )
   await page.route(`**/api/v1/work-packages/${wpA.id}/comments`, async (route) => {
     if (route.request().method() === 'POST') {
       const sent = route.request().postDataJSON() as { body: string; parent_id?: string | null }
@@ -4541,8 +4574,16 @@ test('활동 댓글 표면은 모바일에서 피드와 composer를 유지한다
     reactions: [],
     ...at('2026-07-03T01:00:00Z'),
   }
-  await page.route(`**/api/v1/work-packages/${wpA.id}/comments`, (route) =>
-    route.fulfill({ json: { items: [rootComment, reply], total: 2 } }),
+  await page.route(`**/api/v1/work-packages/${wpA.id}/comment-threads**`, (route) =>
+    route.fulfill({
+      json: {
+        items: [{ root: rootComment, replies: [reply] }],
+        total_threads: 1,
+        total_comments: 2,
+        next_cursor_created_at: null,
+        next_cursor_id: null,
+      } satisfies CommentThreadList,
+    }),
   )
 
   await page.goto(`/projects/${project.id}/work-packages`)
@@ -5212,6 +5253,100 @@ test('활동 피드 오류는 현재 범위를 다시 요청해 타임라인으�
   )
 })
 
+test('활동 이력은 커서로 더 불러오고 추가 페이지 오류를 같은 위치에서 복구한다', async ({ page }) => {
+  await mockApi(page)
+  const activityItems: ActivityList['items'] = Array.from({ length: 3 }, (_, index) => ({
+    id: `page-activity-${index + 1}`,
+    work_package_id: wpA.id,
+    actor_id: null,
+    action: 'created',
+    field: null,
+    old_value: null,
+    new_value: null,
+    created_at: new Date(Date.UTC(2026, 6, 1, index)).toISOString(),
+  }))
+  const commentRoots: Comment[] = Array.from({ length: 3 }, (_, index) => ({
+    id: `page-comment-${index + 1}`,
+    work_package_id: wpA.id,
+    parent_id: null,
+    author_id: null,
+    body: `페이지 댓글 ${index + 1}`,
+    mentions: null,
+    reactions: [],
+    created_at: new Date(Date.UTC(2026, 6, 2, index)).toISOString(),
+    updated_at: new Date(Date.UTC(2026, 6, 2, index)).toISOString(),
+  }))
+
+  await page.route(`**/api/v1/work-packages/${wpA.id}/activities**`, (route) => {
+    const url = new URL(route.request().url())
+    const cursorId = url.searchParams.get('cursor_id')
+    const start = cursorId
+      ? activityItems.findIndex((activity) => activity.id === cursorId) + 1
+      : 0
+    const items = activityItems.slice(start, start + 2)
+    const cursor = start + items.length < activityItems.length ? items.at(-1) : null
+    return route.fulfill({
+      json: {
+        items,
+        total: activityItems.length,
+        next_cursor_created_at: cursor?.created_at ?? null,
+        next_cursor_id: cursor?.id ?? null,
+      } satisfies ActivityList,
+    })
+  })
+
+  let failNextCommentPage = true
+  await page.route(`**/api/v1/work-packages/${wpA.id}/comment-threads**`, (route) => {
+    const url = new URL(route.request().url())
+    const cursorId = url.searchParams.get('cursor_id')
+    if (cursorId && failNextCommentPage) {
+      failNextCommentPage = false
+      return route.fulfill({ status: 503, json: { detail: 'temporary' } })
+    }
+    const start = cursorId
+      ? commentRoots.findIndex((comment) => comment.id === cursorId) + 1
+      : 0
+    const roots = commentRoots.slice(start, start + 2)
+    const cursor = start + roots.length < commentRoots.length ? roots.at(-1) : null
+    return route.fulfill({
+      json: {
+        items: roots.map((root) => ({ root, replies: [] })),
+        total_threads: commentRoots.length,
+        total_comments: commentRoots.length,
+        next_cursor_created_at: cursor?.created_at ?? null,
+        next_cursor_id: cursor?.id ?? null,
+      } satisfies CommentThreadList,
+    })
+  })
+
+  await page.goto(`/projects/${project.id}/work-packages`)
+  await page.getByRole('button', { name: '워크패키지 API 구현', exact: true }).click()
+  const drawer = page.getByRole('dialog', { name: '워크패키지 API 구현' })
+  await drawer.getByRole('tab', { name: '활동' }).click()
+  await expect(drawer.getByText('4 / 6건 표시')).toBeVisible()
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/detail-activity-pagination-ui/desktop-initial.png',
+  })
+
+  await drawer.getByRole('button', { name: '더 불러오기' }).click()
+  await expect(drawer.getByText('추가 기록을 불러오지 못했습니다. 다시 시도해 주세요.')).toBeVisible()
+  await expect(drawer.getByText('5 / 6건 표시')).toBeVisible()
+
+  await drawer.getByRole('button', { name: '더 불러오기' }).click()
+  await expect(drawer.getByText('6 / 6건 표시')).toBeVisible()
+  await expect(drawer.getByRole('button', { name: '더 불러오기' })).toHaveCount(0)
+  await drawer.getByText('6 / 6건 표시').scrollIntoViewIfNeeded()
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/detail-activity-pagination-ui/desktop.png',
+  })
+  await page.setViewportSize({ width: 390, height: 844 })
+  await expectNoHorizontalOverflow(page)
+  await drawer.getByText('6 / 6건 표시').scrollIntoViewIfNeeded()
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/detail-activity-pagination-ui/mobile.png',
+  })
+})
+
 test('댓글 스레드: 답글이 루트 아래 들여쓰기로 붙고 parent_id를 보낸다', async ({ page }) => {
   await mockApi(page)
   const at = (d: string) => ({ created_at: d, updated_at: d })
@@ -5235,7 +5370,18 @@ test('댓글 스레드: 답글이 루트 아래 들여쓰기로 붙고 parent_id
     reactions: [],
     ...at('2026-07-02T00:00:00Z'),
   }
-  // Registered after mockApi → precedence over the empty default.
+  await page.route(`**/api/v1/work-packages/${wpA.id}/comment-threads**`, (route) =>
+    route.fulfill({
+      json: {
+        items: [{ root: rootComment, replies: [reply] }],
+        total_threads: 1,
+        total_comments: 2,
+        next_cursor_created_at: null,
+        next_cursor_id: null,
+      } satisfies CommentThreadList,
+    }),
+  )
+  // Registered after mockApi → precedence over the default create handler.
   await page.route(`**/api/v1/work-packages/${wpA.id}/comments`, async (route) => {
     if (route.request().method() === 'POST') {
       const sent = route.request().postDataJSON() as { body: string; parent_id?: string | null }
@@ -5250,7 +5396,7 @@ test('댓글 스레드: 답글이 루트 아래 들여쓰기로 붙고 parent_id
       })
       return
     }
-    await route.fulfill({ json: { items: [rootComment, reply], total: 2 } })
+    await route.fallback()
   })
 
   await page.goto(`/projects/${project.id}/work-packages`)

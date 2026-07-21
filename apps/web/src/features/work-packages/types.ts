@@ -116,6 +116,14 @@ export type CommentList = {
   total: number
 }
 
+export type CommentThreadList = {
+  items: Array<{ root: Comment; replies: Comment[] }>
+  total_threads: number
+  total_comments: number
+  next_cursor_created_at: string | null
+  next_cursor_id: string | null
+}
+
 export type Activity = {
   id: string
   work_package_id: string
@@ -163,6 +171,8 @@ export type CostEntryList = {
 export type ActivityList = {
   items: Activity[]
   total: number
+  next_cursor_created_at: string | null
+  next_cursor_id: string | null
 }
 
 export type CsvRowError = {

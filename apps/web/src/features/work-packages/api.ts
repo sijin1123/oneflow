@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { ApiError, api } from '@/lib/api'
 import { decideOnPatchError } from '@/lib/conflict'
@@ -6,7 +6,7 @@ import { decideOnPatchError } from '@/lib/conflict'
 import type {
   ActivityList,
   Comment,
-  CommentList,
+  CommentThreadList,
   ConflictBody,
   CostEntryList,
   RelationList,
@@ -216,29 +216,85 @@ export function useDeleteCostEntry(wpId: string) {
   })
 }
 
-export function useComments(wpId: string | null) {
-  return useQuery({
-    queryKey: ['work-package-comments', wpId],
-    queryFn: () => api<CommentList>(`/api/v1/work-packages/${wpId}/comments`),
-    enabled: wpId !== null,
+type FeedCursor = { createdAt: string; id: string }
+
+const ACTIVITY_PAGE_SIZE = 20
+const COMMENT_THREAD_PAGE_SIZE = 20
+
+function nextCursor(page: {
+  next_cursor_created_at: string | null
+  next_cursor_id: string | null
+}): FeedCursor | undefined {
+  return page.next_cursor_created_at && page.next_cursor_id
+    ? { createdAt: page.next_cursor_created_at, id: page.next_cursor_id }
+    : undefined
+}
+
+export function useCommentThreads(
+  wpId: string | null,
+  order: 'asc' | 'desc',
+  enabled = true,
+) {
+  return useInfiniteQuery({
+    queryKey: ['work-package-comments', wpId, order],
+    initialPageParam: null as FeedCursor | null,
+    queryFn: ({ pageParam }) => {
+      const params = new URLSearchParams({
+        limit: String(COMMENT_THREAD_PAGE_SIZE),
+        order,
+      })
+      if (pageParam) {
+        params.set('cursor_created_at', pageParam.createdAt)
+        params.set('cursor_id', pageParam.id)
+      }
+      return api<CommentThreadList>(
+        `/api/v1/work-packages/${wpId}/comment-threads?${params.toString()}`,
+      )
+    },
+    getNextPageParam: nextCursor,
+    enabled: wpId !== null && enabled,
+    retry: false,
   })
 }
 
 export type ActivityFilters = {
   action?: 'created' | 'field_changed' | 'commented'
   field?: string
+  fieldNot?: string
 }
 
-export function useActivities(wpId: string | null, filters: ActivityFilters = {}) {
-  const params = new URLSearchParams()
-  if (filters.action) params.set('action', filters.action)
-  if (filters.field) params.set('field', filters.field)
-  const query = params.toString()
-  return useQuery({
-    queryKey: ['work-package-activities', wpId, filters.action, filters.field],
-    queryFn: () =>
-      api<ActivityList>(`/api/v1/work-packages/${wpId}/activities${query ? `?${query}` : ''}`),
-    enabled: wpId !== null,
+export function useActivities(
+  wpId: string | null,
+  filters: ActivityFilters = {},
+  order: 'asc' | 'desc' = 'asc',
+  enabled = true,
+) {
+  return useInfiniteQuery({
+    queryKey: [
+      'work-package-activities',
+      wpId,
+      filters.action,
+      filters.field,
+      filters.fieldNot,
+      order,
+    ],
+    initialPageParam: null as FeedCursor | null,
+    queryFn: ({ pageParam }) => {
+      const params = new URLSearchParams({ limit: String(ACTIVITY_PAGE_SIZE), order })
+      if (filters.action) params.set('action', filters.action)
+      if (filters.field) params.set('field', filters.field)
+      if (filters.fieldNot) params.set('field_not', filters.fieldNot)
+      if (pageParam) {
+        params.set('cursor_created_at', pageParam.createdAt)
+        params.set('cursor_id', pageParam.id)
+      }
+      return api<ActivityList>(
+        `/api/v1/work-packages/${wpId}/activities?${params.toString()}`,
+      )
+    },
+    getNextPageParam: nextCursor,
+    enabled: wpId !== null && enabled,
+    retry: false,
   })
 }
 

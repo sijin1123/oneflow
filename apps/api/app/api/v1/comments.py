@@ -1,8 +1,9 @@
 import uuid
+from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Response
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy import delete as sa_delete
-from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -19,6 +20,8 @@ from app.schemas.comment import (
     CommentCreate,
     CommentList,
     CommentRead,
+    CommentThreadList,
+    CommentThreadRead,
     ReactionAgg,
     ReactionList,
     empty_reactions,
@@ -28,6 +31,29 @@ from app.services.emoji import is_single_emoji, normalize_emoji
 from app.services.notification import notify_mentions, notify_watchers
 
 router = APIRouter()
+
+
+def _validate_cursor(
+    cursor_created_at: datetime | None, cursor_id: uuid.UUID | None, offset: int = 0
+) -> None:
+    if (cursor_created_at is None) != (cursor_id is None):
+        raise HTTPException(
+            status_code=422, detail="cursor_created_at and cursor_id must be provided together"
+        )
+    if cursor_created_at is not None and offset:
+        raise HTTPException(status_code=422, detail="cursor and offset cannot be combined")
+
+
+def _after_cursor(model, created_at: datetime, row_id: uuid.UUID, order: str):
+    if order == "asc":
+        return or_(
+            model.created_at > created_at,
+            and_(model.created_at == created_at, model.id > row_id),
+        )
+    return or_(
+        model.created_at < created_at,
+        and_(model.created_at == created_at, model.id < row_id),
+    )
 
 
 @router.get("/work-packages/{wp_id}/comments", response_model=CommentList)
@@ -55,6 +81,91 @@ async def list_comments(
     for item in items:
         item.reactions = aggs[item.id]
     return CommentList(items=items, total=total)
+
+
+@router.get("/work-packages/{wp_id}/comment-threads", response_model=CommentThreadList)
+async def list_comment_threads(
+    wp_id: uuid.UUID,
+    limit: int = Query(default=20, ge=1, le=100),
+    order: str = Query(default="asc", pattern="^(asc|desc)$"),
+    cursor_created_at: datetime | None = Query(default=None),
+    cursor_id: uuid.UUID | None = Query(default=None),
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+) -> CommentThreadList:
+    """Page root comments while always returning every reply for each root.
+
+    A flat comment cursor can split a conversation across pages. This endpoint
+    keeps a root and its single-level replies atomic, while the legacy flat
+    endpoint remains available for existing clients.
+    """
+    await require_wp_member(session, wp_id, user)
+    _validate_cursor(cursor_created_at, cursor_id)
+
+    roots = select(WorkPackageComment).where(
+        WorkPackageComment.work_package_id == wp_id,
+        WorkPackageComment.parent_id.is_(None),
+    )
+    total_threads = (
+        await session.execute(select(func.count()).select_from(roots.subquery()))
+    ).scalar_one()
+    total_comments = (
+        await session.execute(
+            select(func.count())
+            .select_from(WorkPackageComment)
+            .where(WorkPackageComment.work_package_id == wp_id)
+        )
+    ).scalar_one()
+    if cursor_created_at is not None and cursor_id is not None:
+        roots = roots.where(_after_cursor(WorkPackageComment, cursor_created_at, cursor_id, order))
+    order_columns = (
+        (WorkPackageComment.created_at.asc(), WorkPackageComment.id.asc())
+        if order == "asc"
+        else (WorkPackageComment.created_at.desc(), WorkPackageComment.id.desc())
+    )
+    root_rows = (
+        (await session.execute(roots.order_by(*order_columns).limit(limit + 1))).scalars().all()
+    )
+    has_more = len(root_rows) > limit
+    root_rows = root_rows[:limit]
+    root_ids = [comment.id for comment in root_rows]
+    reply_rows = []
+    if root_ids:
+        reply_rows = (
+            (
+                await session.execute(
+                    select(WorkPackageComment)
+                    .where(WorkPackageComment.parent_id.in_(root_ids))
+                    .order_by(WorkPackageComment.created_at.asc(), WorkPackageComment.id.asc())
+                )
+            )
+            .scalars()
+            .all()
+        )
+
+    all_rows = [*root_rows, *reply_rows]
+    aggs = await _reaction_aggregates(session, [comment.id for comment in all_rows], user.id)
+    replies_by_root: dict[uuid.UUID, list[CommentRead]] = {root_id: [] for root_id in root_ids}
+    for reply in reply_rows:
+        item = CommentRead.model_validate(reply)
+        item.reactions = aggs[item.id]
+        if reply.parent_id is not None:
+            replies_by_root[reply.parent_id].append(item)
+
+    items: list[CommentThreadRead] = []
+    for root in root_rows:
+        item = CommentRead.model_validate(root)
+        item.reactions = aggs[item.id]
+        items.append(CommentThreadRead(root=item, replies=replies_by_root[root.id]))
+
+    cursor_root = root_rows[-1] if has_more else None
+    return CommentThreadList(
+        items=items,
+        total_threads=total_threads,
+        total_comments=total_comments,
+        next_cursor_created_at=cursor_root.created_at if cursor_root else None,
+        next_cursor_id=cursor_root.id if cursor_root else None,
+    )
 
 
 @router.post("/work-packages/{wp_id}/comments", response_model=CommentRead, status_code=201)
@@ -213,8 +324,11 @@ async def list_activities(
     offset: int = Query(default=0, ge=0),
     action: str | None = Query(default=None),
     field: str | None = Query(default=None, max_length=40),
+    field_not: str | None = Query(default=None, max_length=40),
     actor_id: uuid.UUID | None = Query(default=None),
     order: str = Query(default="asc", pattern="^(asc|desc)$"),
+    cursor_created_at: datetime | None = Query(default=None),
+    cursor_id: uuid.UUID | None = Query(default=None),
     session: AsyncSession = Depends(get_session),
     user: User = Depends(get_current_user),
 ) -> ActivityList:
@@ -222,6 +336,7 @@ async def list_activities(
     internal key match (trimmed, ≤40) — combining it with action=created or
     commented legitimately yields an empty page, never a 422."""
     await require_wp_member(session, wp_id, user)
+    _validate_cursor(cursor_created_at, cursor_id, offset)
     if action is not None and action not in ACTIVITY_ACTIONS:
         raise HTTPException(status_code=422, detail=f"action must be one of {ACTIVITY_ACTIONS}")
     base = select(Activity).where(Activity.work_package_id == wp_id)
@@ -229,20 +344,32 @@ async def list_activities(
         base = base.where(Activity.action == action)
     if field is not None:
         base = base.where(Activity.field == field.strip())
+    if field_not is not None:
+        excluded = field_not.strip()
+        base = base.where(or_(Activity.field.is_(None), Activity.field != excluded))
     if actor_id is not None:
         # Same independent-AND contract (Pass 38); rows with a null actor
         # never match a concrete id.
         base = base.where(Activity.actor_id == actor_id)
     total = (await session.execute(select(func.count()).select_from(base.subquery()))).scalar_one()
-    order_col = Activity.created_at.asc() if order == "asc" else Activity.created_at.desc()
+    if cursor_created_at is not None and cursor_id is not None:
+        base = base.where(_after_cursor(Activity, cursor_created_at, cursor_id, order))
+    order_columns = (
+        (Activity.created_at.asc(), Activity.id.asc())
+        if order == "asc"
+        else (Activity.created_at.desc(), Activity.id.desc())
+    )
     rows = (
-        (
-            await session.execute(
-                # id ASC tie-breaker: equal timestamps must page deterministically.
-                base.order_by(order_col, Activity.id.asc()).limit(limit).offset(offset)
-            )
-        )
+        (await session.execute(base.order_by(*order_columns).limit(limit + 1).offset(offset)))
         .scalars()
         .all()
     )
-    return ActivityList(items=[ActivityRead.model_validate(a) for a in rows], total=total)
+    has_more = len(rows) > limit
+    rows = rows[:limit]
+    cursor_row = rows[-1] if has_more else None
+    return ActivityList(
+        items=[ActivityRead.model_validate(a) for a in rows],
+        total=total,
+        next_cursor_created_at=cursor_row.created_at if cursor_row else None,
+        next_cursor_id=cursor_row.id if cursor_row else None,
+    )
