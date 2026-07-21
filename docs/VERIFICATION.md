@@ -3133,3 +3133,13 @@ Chromium typed mock fixture에서 1440x960과 390x844 viewport를 사용했다. 
 - **이연 항목**: 외부 OIDC 공급자의 실제 연결은 배포별 credential 경계를 유지한다. 이외 이번 로그인 surface의 기능 이연은 없다.
 
 ---
+
+# UI-195 Project Directory Functional Actions 검증 (2026-07-21)
+
+- **UI 변경**: `/projects` 카드와 목록에 직접 즐겨찾기와 overflow action을 추가하고, 기존 Sidebar의 프로젝트 메뉴를 같은 공통 컴포넌트로 통합했다. 카드 cover 위 action과 목록의 마지막 action column은 keyboard focus, `aria-expanded`, menu focus return과 기존 Plane-like compact density를 유지한다. desktop 카드 메뉴와 390px mobile 목록 메뉴에서 가로 넘침이 없음을 확인했다.
+- **기능/API 반영**: 즐겨찾기는 기존 sidebar preference에 저장되며 같은 탭의 Sidebar와 directory가 즉시 동기화된다. 링크 복사는 canonical overview URL을 clipboard에 기록하고 접근 가능한 status feedback을 제공한다. 설정은 실제 route로 이동한다. 메뉴가 열릴 때 실제 membership query로 owner를 확인하고 owner만 기존 archive/unarchive mutation과 확인 dialog를 실행한다. 보관 포함 상태에서 archive와 restore가 directory query에 즉시 반영된다. 신규 API, DB/schema, migration, permission, environment variable, dependency 또는 Settings UI 변경은 없다.
+- **권한/이연 항목**: viewer는 즐겨찾기·링크 복사·설정만 사용하고 archive/restore action을 받지 않는다. Publish는 공개 범위, 권한, revoke와 감사 계약이 정의되지 않아 dead control로 만들지 않고 후속 PR로 이연한다. 이외 이번 surface의 mock/dead control 또는 장식용 action은 없다.
+- **검증**: typecheck PASS, lint PASS(기존 Fast Refresh warning 4건), production build PASS(기존 large chunk warning), unit **108 PASS**, component **8 PASS**, Sidebar와 directory focused E2E **2 PASS**, full E2E **348 PASS + opt-in visual QA manifest 1 skip**다. Clean-room frontend **162**/backend **45**, OpenAPI type parity, npm/pip audit 0 vulnerabilities와 diff check가 PASS했다.
+- **증적**: `docs/screenshots/redevelopment/project-directory-actions-ui/{desktop-card-menu,mobile-list-menu}.png`과 README에 실제 Chromium desktop/mobile 상태를 보존했다. E2E는 같은 탭 즐겨찾기 동기화, keyboard open/Escape/focus return, viewer 권한, clipboard, archive/restore request와 mobile horizontal overflow를 함께 검사한다.
+
+---
