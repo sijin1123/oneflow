@@ -18,9 +18,8 @@ import { formatDateTime } from '@/lib/datetime'
 import { cn } from '@/lib/utils'
 
 import { FIELD_LABELS } from './activityLabels'
-import { useActivities, useComments, useCreateComment, useToggleReaction } from './api'
+import { useActivities, useCommentThreads, useCreateComment, useToggleReaction } from './api'
 import type { CommentThread } from './comments'
-import { groupThreads } from './comments'
 import { PRIORITY_LABELS } from './types'
 import type { Activity, Comment } from './types'
 import { useStatusLabels } from './useStatusLabels'
@@ -55,14 +54,17 @@ export function HistorySection({ wpId, projectId }: { wpId: string; projectId: s
   const [feedOrder, setFeedOrder] = useState<FeedOrder>('oldest')
   const activityFilters =
     feedFilter === 'updates'
-      ? { action: 'field_changed' as const }
+      ? { action: 'field_changed' as const, fieldNot: 'status' }
       : feedFilter === 'transitions'
         ? { action: 'field_changed' as const, field: 'status' }
         : feedFilter === 'history'
           ? { action: 'created' as const }
           : {}
-  const activities = useActivities(wpId, activityFilters)
-  const comments = useComments(wpId)
+  const showActivities = feedFilter !== 'comments'
+  const showComments = feedFilter === 'all' || feedFilter === 'comments'
+  const order = feedOrder === 'oldest' ? 'asc' : 'desc'
+  const activities = useActivities(wpId, activityFilters, order, showActivities)
+  const comments = useCommentThreads(wpId, order, showComments)
   const createComment = useCreateComment(wpId)
   const toggleReaction = useToggleReaction(wpId)
   const statusLabel = useStatusLabels(projectId)
@@ -93,18 +95,17 @@ export function HistorySection({ wpId, projectId }: { wpId: string; projectId: s
     return `${field}: ${labelValue(a.field, a.old_value)} → ${labelValue(a.field, a.new_value)}`
   }
 
-  const visibleActivities =
-    feedFilter === 'comments'
-      ? []
-      : feedFilter === 'updates'
-        ? (activities.data?.items ?? []).filter((activity) => activity.field !== 'status')
-        : (activities.data?.items ?? [])
-  const showComments = feedFilter === 'all' || feedFilter === 'comments'
+  const visibleActivities = showActivities
+    ? (activities.data?.pages.flatMap((page) => page.items) ?? [])
+    : []
+  const visibleThreads = showComments
+    ? (comments.data?.pages.flatMap((page) => page.items) ?? [])
+    : []
   const feed: FeedItem[] = [
     ...visibleActivities.map(
       (a): FeedItem => ({ kind: 'activity', at: a.created_at, activity: a }),
     ),
-    ...(showComments ? groupThreads(comments.data?.items ?? []) : []).map(
+    ...visibleThreads.map(
       (t): FeedItem => ({ kind: 'thread', at: t.root.created_at, thread: t }),
     ),
   ].sort((x, y) => (
@@ -120,6 +121,7 @@ export function HistorySection({ wpId, projectId }: { wpId: string; projectId: s
         onSuccess: () => {
           setDraft('')
           setMentioned([])
+          setFeedOrder('newest')
         },
       },
     )
@@ -145,8 +147,32 @@ export function HistorySection({ wpId, projectId }: { wpId: string; projectId: s
     )
   }
 
-  const pending = activities.isPending || comments.isPending
-  const error = activities.isError || comments.isError
+  const pending =
+    (showActivities && activities.isPending) || (showComments && comments.isPending)
+  const error =
+    (showActivities && activities.isError && !activities.data)
+    || (showComments && comments.isError && !comments.data)
+  const activityTotal = showActivities ? (activities.data?.pages[0]?.total ?? 0) : 0
+  const commentTotal = showComments ? (comments.data?.pages[0]?.total_comments ?? 0) : 0
+  const loadedActivityCount = visibleActivities.length
+  const loadedCommentCount = visibleThreads.reduce(
+    (count, thread) => count + 1 + thread.replies.length,
+    0,
+  )
+  const loadedCount = loadedActivityCount + loadedCommentCount
+  const totalCount = activityTotal + commentTotal
+  const hasMoreActivities = showActivities && Boolean(activities.hasNextPage)
+  const hasMoreComments = showComments && Boolean(comments.hasNextPage)
+  const hasMore = hasMoreActivities || hasMoreComments
+  const loadingMore = activities.isFetchingNextPage || comments.isFetchingNextPage
+  const loadMoreError =
+    (showActivities && activities.isFetchNextPageError)
+    || (showComments && comments.isFetchNextPageError)
+
+  const loadMore = () => {
+    if (hasMoreActivities) void activities.fetchNextPage()
+    if (hasMoreComments) void comments.fetchNextPage()
+  }
   const activeFilter = FEED_FILTERS.find((filter) => filter.key === feedFilter) ?? FEED_FILTERS[0]
   const feedPanelId = `work-item-activity-panel-${wpId}`
   const activeTabId = `work-item-activity-tab-${wpId}-${activeFilter.key}`
@@ -250,6 +276,13 @@ export function HistorySection({ wpId, projectId }: { wpId: string; projectId: s
       </div>
 
       <div id={feedPanelId} role="tabpanel" aria-labelledby={activeTabId} className="min-w-0">
+        {!pending && !error && totalCount > 0 ? (
+          <div className="flex min-h-8 items-center justify-between gap-3 border-b border-of-border-subtle px-1 text-[11px] text-of-muted">
+            <span aria-live="polite">{loadedCount} / {totalCount}건 표시</span>
+            {hasMore ? <span>{feedOrder === 'oldest' ? '이후 기록 있음' : '이전 기록 있음'}</span> : null}
+          </div>
+        ) : null}
+
         {pending ? (
           <div role="status" className="border-b border-of-border-subtle py-10 text-center text-xs text-of-muted">
             불러오는 중...
@@ -261,8 +294,8 @@ export function HistorySection({ wpId, projectId }: { wpId: string; projectId: s
               variant="outline"
               size="sm"
               onClick={() => {
-                void activities.refetch()
-                void comments.refetch()
+                if (showActivities) void activities.refetch()
+                if (showComments) void comments.refetch()
               }}
             >
               다시 시도
@@ -340,6 +373,25 @@ export function HistorySection({ wpId, projectId }: { wpId: string; projectId: s
             )}
           </ul>
         )}
+
+        {!pending && !error && hasMore ? (
+          <div className="flex flex-col items-center gap-2 border-t border-of-border-subtle py-3">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={loadMore}
+              disabled={loadingMore}
+              aria-describedby={loadMoreError ? `${feedPanelId}-load-error` : undefined}
+            >
+              {loadingMore ? '불러오는 중...' : '더 불러오기'}
+            </Button>
+            {loadMoreError ? (
+              <p id={`${feedPanelId}-load-error`} role="alert" className="text-[11px] text-of-danger">
+                추가 기록을 불러오지 못했습니다. 다시 시도해 주세요.
+              </p>
+            ) : null}
+          </div>
+        ) : null}
 
         {canWrite && showComments ? (
           <div className="space-y-3 border-t border-of-border-subtle pt-4">

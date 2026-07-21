@@ -72,6 +72,19 @@ class CommentList(BaseModel):
     total: int
 
 
+class CommentThreadRead(BaseModel):
+    root: CommentRead
+    replies: list[CommentRead]
+
+
+class CommentThreadList(BaseModel):
+    items: list[CommentThreadRead]
+    total_threads: int
+    total_comments: int
+    next_cursor_created_at: datetime | None = None
+    next_cursor_id: uuid.UUID | None = None
+
+
 class ActivityRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -88,6 +101,8 @@ class ActivityRead(BaseModel):
 class ActivityList(BaseModel):
     items: list[ActivityRead]
     total: int
+    next_cursor_created_at: datetime | None = None
+    next_cursor_id: uuid.UUID | None = None
 
 
 class ProjectActivityRead(BaseModel):

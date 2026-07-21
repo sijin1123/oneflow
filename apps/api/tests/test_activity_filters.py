@@ -48,6 +48,61 @@ async def test_wp_activity_filters_and_order(client, seeded):
     assert asc[0] == "created"  # default asc preserved
 
 
+async def test_wp_activity_cursor_and_exact_exclusion(client, seeded):
+    wp_id = seeded["wp_id"]
+    base = f"/api/v1/work-packages/{wp_id}/activities"
+
+    first = (await client.get(f"{base}?limit=1&order=asc")).json()
+    assert first["total"] == 3
+    assert len(first["items"]) == 1
+    assert first["next_cursor_created_at"] is not None
+    assert first["next_cursor_id"] == first["items"][0]["id"]
+
+    second = (
+        await client.get(
+            base,
+            params={
+                "limit": 1,
+                "order": "asc",
+                "cursor_created_at": first["next_cursor_created_at"],
+                "cursor_id": first["next_cursor_id"],
+            },
+        )
+    ).json()
+    assert second["total"] == 3
+    assert second["items"][0]["id"] != first["items"][0]["id"]
+
+    third = (
+        await client.get(
+            base,
+            params={
+                "limit": 1,
+                "order": "asc",
+                "cursor_created_at": second["next_cursor_created_at"],
+                "cursor_id": second["next_cursor_id"],
+            },
+        )
+    ).json()
+    paged_ids = [first["items"][0]["id"], second["items"][0]["id"], third["items"][0]["id"]]
+    assert len(set(paged_ids)) == 3
+    assert third["next_cursor_id"] is None
+
+    updates = (await client.get(f"{base}?action=field_changed&field_not=status")).json()
+    assert updates["total"] == 0
+
+    assert (await client.get(f"{base}?cursor_id={first['next_cursor_id']}")).status_code == 422
+    assert (
+        await client.get(
+            base,
+            params={
+                "offset": 1,
+                "cursor_created_at": first["next_cursor_created_at"],
+                "cursor_id": first["next_cursor_id"],
+            },
+        )
+    ).status_code == 422
+
+
 async def test_project_feed_filters_truncated_and_scope(client, seeded, foreign_project):
     pid = seeded["pid"]
     base = f"/api/v1/projects/{pid}/activities"
