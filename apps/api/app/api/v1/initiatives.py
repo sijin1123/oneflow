@@ -554,7 +554,7 @@ async def replace_initiative_labels(
         actor_id=user.id,
         kind="initiative_updated",
     )
-    record_initiative_activity(
+    await record_initiative_activity(
         session,
         initiative_id=initiative_id,
         actor_id=user.id,
@@ -591,7 +591,7 @@ async def create_initiative(
         initial_fields.add("start_date")
     if body.target_date is not None:
         initial_fields.add("target_date")
-    record_initiative_activity(
+    await record_initiative_activity(
         session,
         initiative_id=ini.id,
         actor_id=user.id,
@@ -622,26 +622,30 @@ async def list_initiative_activities(
         )
     ).scalar_one()
     rows = (
-        await session.execute(
-            select(InitiativeActivity, User.display_name)
-            .outerjoin(User, User.id == InitiativeActivity.actor_id)
-            .where(InitiativeActivity.initiative_id == initiative_id)
-            .order_by(InitiativeActivity.created_at.desc(), InitiativeActivity.id.desc())
-            .limit(limit)
-            .offset(offset)
+        (
+            await session.execute(
+                select(InitiativeActivity)
+                .where(InitiativeActivity.initiative_id == initiative_id)
+                .order_by(InitiativeActivity.created_at.desc(), InitiativeActivity.id.desc())
+                .limit(limit)
+                .offset(offset)
+            )
         )
-    ).all()
+        .scalars()
+        .all()
+    )
     return InitiativeActivityList(
         items=[
             InitiativeActivityRead(
                 id=activity.id,
                 actor_id=activity.actor_id,
-                actor_name=actor_name,
+                actor_name=activity.actor_name,
+                actor_profile_image_url=activity.actor_profile_image_url,
                 kind=activity.kind,
                 changed_fields=activity.changed_fields,
                 created_at=activity.created_at,
             )
-            for activity, actor_name in rows
+            for activity in rows
         ],
         total=total,
     )
@@ -684,7 +688,7 @@ async def transfer_ownership(
         actor_id=user.id,
         kind="initiative_owner",
     )
-    record_initiative_activity(
+    await record_initiative_activity(
         session,
         initiative_id=initiative_id,
         actor_id=user.id,
@@ -725,7 +729,7 @@ async def claim_ownership(
         actor_id=user.id,
         kind="initiative_owner",
     )
-    record_initiative_activity(
+    await record_initiative_activity(
         session,
         initiative_id=initiative_id,
         actor_id=user.id,
@@ -888,7 +892,7 @@ async def connect_initiative_work_item(
             actor_id=user.id,
             kind="initiative_scope",
         )
-        record_initiative_activity(
+        await record_initiative_activity(
             session,
             initiative_id=initiative_id,
             actor_id=user.id,
@@ -934,7 +938,7 @@ async def disconnect_initiative_work_item(
         actor_id=user.id,
         kind="initiative_scope",
     )
-    record_initiative_activity(
+    await record_initiative_activity(
         session,
         initiative_id=initiative_id,
         actor_id=user.id,
@@ -997,7 +1001,7 @@ async def update_initiative(
     lifecycle_fields = changed & {"state"}
     property_fields = changed & {"name", "description", "start_date", "target_date"}
     if health_fields:
-        record_initiative_activity(
+        await record_initiative_activity(
             session,
             initiative_id=initiative_id,
             actor_id=user.id,
@@ -1005,7 +1009,7 @@ async def update_initiative(
             changed_fields=health_fields,
         )
     if lifecycle_fields:
-        record_initiative_activity(
+        await record_initiative_activity(
             session,
             initiative_id=initiative_id,
             actor_id=user.id,
@@ -1013,7 +1017,7 @@ async def update_initiative(
             changed_fields=lifecycle_fields,
         )
     if property_fields:
-        record_initiative_activity(
+        await record_initiative_activity(
             session,
             initiative_id=initiative_id,
             actor_id=user.id,
@@ -1056,7 +1060,7 @@ async def connect_project(
             actor_id=user.id,
             kind="initiative_scope",
         )
-        record_initiative_activity(
+        await record_initiative_activity(
             session,
             initiative_id=initiative_id,
             actor_id=user.id,
@@ -1093,7 +1097,7 @@ async def disconnect_project(
         actor_id=user.id,
         kind="initiative_scope",
     )
-    record_initiative_activity(
+    await record_initiative_activity(
         session,
         initiative_id=initiative_id,
         actor_id=user.id,

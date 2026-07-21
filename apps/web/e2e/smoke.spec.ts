@@ -23587,7 +23587,11 @@ test('Initiative 상세 활동은 실제 이력을 페이지 단위로 복구해
   const activities: InitiativeActivity[] = kinds.map((kind, index) => ({
     id: `22222222-2222-4222-8222-${String(index + 1).padStart(12, '0')}`,
     actor_id: index === 11 ? null : 'me-1',
-    actor_name: index === 11 ? null : 'Dev User',
+    actor_name: index === 11 ? null : index === 0 ? 'Historical Strategist' : 'Dev User',
+    actor_profile_image_url:
+      index === 0
+        ? `/api/v1/initiatives/${initiative.id}/activities/22222222-2222-4222-8222-000000000001/actor-image?version=11111111-1111-4111-8111-111111111111`
+        : null,
     kind,
     changed_fields:
       kind === 'properties_updated'
@@ -23601,6 +23605,16 @@ test('Initiative 상세 활동은 실제 이력을 페이지 단위로 복구해
   }))
   let failInitial = true
   let failNextPage = true
+
+  await page.route('**/api/v1/initiatives/*/activities/*/actor-image**', (route) =>
+    route.fulfill({
+      contentType: 'image/png',
+      body: Buffer.from(
+        'iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAEklEQVR4nGPkndLBwMDAxAAGAA2bAS37E8jFAAAAAElFTkSuQmCC',
+        'base64',
+      ),
+    }),
+  )
 
   await page.route('**/api/v1/initiatives**', async (route) => {
     const request = route.request()
@@ -23644,6 +23658,8 @@ test('Initiative 상세 활동은 실제 이력을 페이지 단위로 복구해
   await expect(activitySection.getByRole('alert')).toContainText('활동을 불러오지 못했습니다')
   await activitySection.getByRole('button', { name: '재시도' }).click()
   await expect(activitySection.getByText('기본 정보를 수정했습니다.', { exact: true })).toBeVisible()
+  await expect(activitySection.getByLabel('Historical Strategist', { exact: true })).toBeVisible()
+  await expect(activitySection.getByLabel('Historical Strategist', { exact: true }).locator('img')).toHaveCount(1)
   await expect(activitySection.getByText('13건', { exact: true })).toBeVisible()
   await expect(activitySection.getByLabel('변경 필드').first()).toContainText('이름')
 

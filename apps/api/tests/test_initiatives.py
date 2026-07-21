@@ -91,10 +91,12 @@ async def test_initiative_activity_records_real_mutations_and_paginates(client):
         "labels_updated",
     ]
     assert all(row["actor_name"] == "Dev User" for row in payload["items"])
+    assert all(row["actor_profile_image_url"] is None for row in payload["items"])
     assert set(payload["items"][0]) == {
         "id",
         "actor_id",
         "actor_name",
+        "actor_profile_image_url",
         "kind",
         "changed_fields",
         "created_at",
@@ -158,6 +160,7 @@ async def test_initiative_activity_rechecks_visibility_and_preserves_deleted_act
             InitiativeActivity(
                 initiative_id=initiative.id,
                 actor_id=member_project["owner_id"],
+                actor_name_snapshot="Owner",
                 kind="initiative_created",
                 changed_fields=["name", "state"],
             )
@@ -175,7 +178,7 @@ async def test_initiative_activity_rechecks_visibility_and_preserves_deleted_act
     retained = await client.get(f"/api/v1/initiatives/{initiative_id}/activities")
     assert retained.status_code == 200
     assert retained.json()["items"][0]["actor_id"] is None
-    assert retained.json()["items"][0]["actor_name"] is None
+    assert retained.json()["items"][0]["actor_name"] == "Owner"
 
     async with app.state.sessionmaker() as session, session.begin():
         await session.execute(

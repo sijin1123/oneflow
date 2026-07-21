@@ -66,6 +66,7 @@ export type InitiativeActivity = {
   id: string
   actor_id: string | null
   actor_name: string | null
+  actor_profile_image_url: string | null
   kind: InitiativeActivityKind
   changed_fields: string[]
   created_at: string
