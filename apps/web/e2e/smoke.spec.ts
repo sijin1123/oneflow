@@ -18231,8 +18231,25 @@ test('로그인 reference-fit은 인앱 크기와 기준 크기에서 정수 ras
   await expect(page.locator('.of-login-checkbox')).toHaveCSS('font-weight', '500')
   await expect(page.locator('.of-login-divider')).toHaveCSS(
     'transform',
-    'matrix(1, 0, 0, 1, -16, -1)',
+    'matrix(1, 0, 0, 1, -18, -1)',
   )
+  await expect(page.locator('.of-login-divider span').first()).toHaveCSS('background-color', 'rgb(226, 228, 234)')
+  await expect(page.locator('.of-login-divider span').last()).toHaveCSS('transform', 'matrix(1, 0, 0, 1, 16, 0)')
+  const dividerSegments = await page.locator('.of-login-divider span').evaluateAll((segments) =>
+    segments.map((segment) => {
+      const rect = segment.getBoundingClientRect()
+      return { x: rect.x, y: rect.y, width: rect.width, height: rect.height }
+    }),
+  )
+  expect(dividerSegments).toHaveLength(2)
+  expect(dividerSegments[0].height).toBe(1)
+  expect(dividerSegments[1].height).toBe(1)
+  expect(dividerSegments[0].x).toBeCloseTo(901, 0)
+  expect(dividerSegments[1].x).toBeCloseTo(1132.234375, 0)
+  expect(dividerSegments[0].width).toBeCloseTo(164.75, 0)
+  expect(dividerSegments[1].width).toBeCloseTo(194.765625, 0)
+  expect(dividerSegments[0].y).toBeCloseTo(654.78, 1)
+  expect(dividerSegments[1].y).toBeCloseTo(654.78, 1)
   await expect(page.locator('.of-login-provider-button').first()).toHaveCSS('font-weight', '400')
   await expect(page.locator('.of-login-create button')).toHaveCSS('font-weight', '600')
   await expect(page.locator('.of-login-footer nav')).toHaveCSS('transform', 'none')

@@ -3208,3 +3208,13 @@ Chromium typed mock fixture에서 1440x960과 390x844 viewport를 사용했다. 
 - **증적**: `docs/screenshots/redevelopment/document-comment-reactions-ui/{desktop,mobile}.png`에 실제 Chromium 일반/본문 앵커 코멘트 identity·reaction surface를 보존한다.
 
 ---
+
+# UI-207A Login Origin Pixel Reinspection 검증 (2026-07-21)
+
+- **UI 변경**: 사용자 승인 원본과 현재 기능형 로그인 화면을 동일 `1448x1086` Chromium 조건에서 다시 전수 대조했다. 좌측 수채화 story와 양쪽 OneFlow 브랜드는 이미 승인 원본의 결정적 crop으로 픽셀 일치하므로 변경하지 않았다. 인증 surface에서 좌우 구분선만 단일 대칭 grid로 단순화돼 원본의 비대칭 길이·좌표와 달랐고, 텍스트 위치를 유지한 채 두 선을 독립 정렬하고 원본 색상으로 보정했다.
+- **기능/API 반영**: 이메일, 비밀번호, remember me, password visibility, 실제 sign-in, Google/Microsoft/SSO availability, assistance request, 정책 dialog, locale와 safe-next를 기존 semantic control과 auth API로 유지한다. 최신 브랜치를 `http://localhost:5173/login`에서 재실행해 config 오류 없이 입력과 submit이 활성화되고 document scroll이 viewport와 같음을 확인했다. 신규 API, DB/schema, migration, permission, environment variable, dependency 또는 Settings UI 변경은 없다.
+- **픽셀 전수 실사**: 승인 원본과 runtime authority SHA-256은 모두 `62fafe9e44df9d189e8fe2f38fc25147d11b8459569be13ee0424ba06c0c4c76`이다. lossless Chromium 전체 MAE는 **`1.3132`**, p95는 **`2`**, story surface는 **`0.0123`**, auth surface는 **`2.8839`**다. 좌측 브랜드·headline·Kanban·calendar·activity와 auth logo는 모두 **`0.0000`**이다. 구분선 MAE는 `1.3036 -> 1.2381`, p95는 `6 -> 3`으로 감소했고 DOM 좌표는 첫 선 `(x=901, w=164.75)`, 둘째 선 `(x=1132.234375, w=194.765625)`로 고정했다.
+- **검증**: 로그인 focused E2E **16 PASS**, typecheck PASS, lint PASS(기존 Fast Refresh warning 4건), unit **108 PASS**, component **9 PASS**, production build PASS(기존 large chunk warning), 2-worker full E2E **354 PASS + opt-in visual QA manifest 1 skip**다. Clean-room frontend **162**/backend **45**, npm production audit 0 vulnerabilities와 diff check도 PASS했다.
+- **증적/이연**: `docs/screenshots/redevelopment/login-origin-reinspection-ui-207a/`에 desktop `1448x1086`, compact `953x917`, mobile `390x844`, 원본/runtime 나란히 보기, 8x diff와 전 영역 JSON을 보존한다. 외부 OIDC 공급자 연결은 배포별 credential 경계를 유지하며, 이외 이번 로그인 surface의 기능 이연·mock/dead control은 없다.
+
+---
