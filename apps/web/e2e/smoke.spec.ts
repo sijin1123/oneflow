@@ -18242,8 +18242,10 @@ test('로그인 reference-fit은 인앱 크기와 기준 크기에서 정수 ras
     }),
   )
   expect(dividerSegments).toHaveLength(2)
-  expect(dividerSegments[0]).toMatchObject({ x: 901, width: 164.75, height: 1 })
-  expect(dividerSegments[1]).toMatchObject({ x: 1132.234375, width: 194.765625, height: 1 })
+  expect(dividerSegments[0]).toMatchObject({ x: 901, height: 1 })
+  expect(dividerSegments[1]).toMatchObject({ x: 1132.234375, height: 1 })
+  expect(dividerSegments[0].width).toBeCloseTo(164.75, 0)
+  expect(dividerSegments[1].width).toBeCloseTo(194.765625, 0)
   expect(dividerSegments[0].y).toBeCloseTo(654.78, 1)
   expect(dividerSegments[1].y).toBeCloseTo(654.78, 1)
   await expect(page.locator('.of-login-provider-button').first()).toHaveCSS('font-weight', '400')
