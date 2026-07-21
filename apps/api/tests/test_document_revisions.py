@@ -32,6 +32,7 @@ async def test_document_revisions_list_preview_restore_and_conflict(client):
     assert initial_revision["document_version"] == 0
     assert initial_revision["changed_fields"] == ["body", "title"]
     assert initial_revision["actor_name"] == "Dev User"
+    assert initial_revision["actor_profile_image_url"] is None
 
     preview = await client.get(
         f"/api/v1/documents/{document['id']}/revisions/{initial_revision['id']}"
@@ -174,6 +175,7 @@ async def test_revision_visibility_actor_and_write_boundaries(client, app, membe
             document_id=shared.id,
             document_version=0,
             actor_id=member_project["owner_id"],
+            actor_name_snapshot="Owner",
             title=shared.title,
             body=shared.body,
             changed_fields=["body", "title"],
@@ -182,6 +184,7 @@ async def test_revision_visibility_actor_and_write_boundaries(client, app, membe
             document_id=private.id,
             document_version=0,
             actor_id=member_project["owner_id"],
+            actor_name_snapshot="Owner",
             title=private.title,
             body=private.body,
             changed_fields=["body", "title"],
@@ -204,7 +207,7 @@ async def test_revision_visibility_actor_and_write_boundaries(client, app, membe
     retained = await client.get(f"/api/v1/documents/{shared_id}/revisions")
     assert retained.status_code == 200, retained.text
     assert retained.json()["items"][0]["actor_id"] is None
-    assert retained.json()["items"][0]["actor_name"] is None
+    assert retained.json()["items"][0]["actor_name"] == "Owner"
 
     async with app.state.sessionmaker() as session, session.begin():
         membership = await session.scalar(

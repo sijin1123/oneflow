@@ -90,6 +90,13 @@ class DocumentActivity(Base):
     __tablename__ = "document_activities"
     __table_args__ = (
         CheckConstraint(
+            "(actor_profile_image_storage_key IS NULL "
+            "AND actor_profile_image_content_type IS NULL) OR "
+            "(actor_profile_image_storage_key IS NOT NULL "
+            "AND actor_profile_image_content_type IS NOT NULL)",
+            name="actor_image_metadata_complete",
+        ),
+        CheckConstraint(
             "kind IN ('document_created', 'document_updated', "
             "'document_archived', 'document_restored', 'document_version_restored')",
             name="kind_allowed",
@@ -109,6 +116,10 @@ class DocumentActivity(Base):
             "created_at",
             "id",
         ),
+        Index(
+            "ix_document_activities_actor_image_key",
+            "actor_profile_image_storage_key",
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -120,6 +131,9 @@ class DocumentActivity(Base):
     actor_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
+    actor_name_snapshot: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    actor_profile_image_storage_key: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    actor_profile_image_content_type: Mapped[str | None] = mapped_column(String(32), nullable=True)
     kind: Mapped[str] = mapped_column(String(32), nullable=False)
     changed_fields: Mapped[list[str]] = mapped_column(
         ARRAY(String(24)), nullable=False, default=list, server_default="{}"
@@ -128,12 +142,33 @@ class DocumentActivity(Base):
         DateTime(timezone=True), nullable=False, server_default=text("clock_timestamp()")
     )
 
+    @property
+    def actor_name(self) -> str | None:
+        return self.actor_name_snapshot
+
+    @property
+    def actor_profile_image_url(self) -> str | None:
+        if self.actor_profile_image_storage_key is None:
+            return None
+        version = self.actor_profile_image_storage_key.rsplit("/", 1)[-1]
+        return (
+            f"/api/v1/documents/{self.document_id}/activities/{self.id}/actor-image"
+            f"?version={version}"
+        )
+
 
 class DocumentRevision(Base):
     """Immutable title/body snapshot for one successful Document content mutation."""
 
     __tablename__ = "document_revisions"
     __table_args__ = (
+        CheckConstraint(
+            "(actor_profile_image_storage_key IS NULL "
+            "AND actor_profile_image_content_type IS NULL) OR "
+            "(actor_profile_image_storage_key IS NOT NULL "
+            "AND actor_profile_image_content_type IS NOT NULL)",
+            name="actor_image_metadata_complete",
+        ),
         CheckConstraint("document_version >= 0", name="document_version_nonnegative"),
         CheckConstraint(
             "changed_fields <@ ARRAY['title', 'body']::varchar[] "
@@ -151,6 +186,10 @@ class DocumentRevision(Base):
             "document_version",
             "id",
         ),
+        Index(
+            "ix_document_revisions_actor_image_key",
+            "actor_profile_image_storage_key",
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -163,6 +202,9 @@ class DocumentRevision(Base):
     actor_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
+    actor_name_snapshot: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    actor_profile_image_storage_key: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    actor_profile_image_content_type: Mapped[str | None] = mapped_column(String(32), nullable=True)
     title: Mapped[str] = mapped_column(String(200), nullable=False)
     body: Mapped[str | None] = mapped_column(Text, nullable=True)
     changed_fields: Mapped[list[str]] = mapped_column(ARRAY(String(16)), nullable=False)
@@ -174,6 +216,20 @@ class DocumentRevision(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=text("clock_timestamp()")
     )
+
+    @property
+    def actor_name(self) -> str | None:
+        return self.actor_name_snapshot
+
+    @property
+    def actor_profile_image_url(self) -> str | None:
+        if self.actor_profile_image_storage_key is None:
+            return None
+        version = self.actor_profile_image_storage_key.rsplit("/", 1)[-1]
+        return (
+            f"/api/v1/documents/{self.document_id}/revisions/{self.id}/actor-image"
+            f"?version={version}"
+        )
 
 
 class DocumentWorkPackageLink(Base):

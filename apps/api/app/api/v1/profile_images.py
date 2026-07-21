@@ -21,7 +21,7 @@ from app.core.config import Settings, get_settings
 from app.db.session import get_session
 from app.models.activity import Activity
 from app.models.comment import WorkPackageComment
-from app.models.document import ProjectDocument
+from app.models.document import DocumentActivity, DocumentRevision, ProjectDocument
 from app.models.document_comment import ProjectDocumentComment
 from app.models.initiative import Initiative, InitiativeActivity, InitiativeProject
 from app.models.member import ProjectMember
@@ -192,7 +192,14 @@ async def _stored_profile_image_response(
 
 
 async def _profile_image_is_referenced(session: AsyncSession, storage_key: str) -> bool:
-    comment_reference, activity_reference, document_comment_reference, initiative_reference = (
+    (
+        comment_reference,
+        activity_reference,
+        document_comment_reference,
+        initiative_reference,
+        document_activity_reference,
+        document_revision_reference,
+    ) = (
         await session.execute(
             select(
                 exists().where(WorkPackageComment.author_profile_image_storage_key == storage_key),
@@ -201,6 +208,8 @@ async def _profile_image_is_referenced(session: AsyncSession, storage_key: str) 
                     ProjectDocumentComment.author_profile_image_storage_key == storage_key
                 ),
                 exists().where(InitiativeActivity.actor_profile_image_storage_key == storage_key),
+                exists().where(DocumentActivity.actor_profile_image_storage_key == storage_key),
+                exists().where(DocumentRevision.actor_profile_image_storage_key == storage_key),
             )
         )
     ).one()
@@ -209,6 +218,8 @@ async def _profile_image_is_referenced(session: AsyncSession, storage_key: str) 
         or activity_reference
         or document_comment_reference
         or initiative_reference
+        or document_activity_reference
+        or document_revision_reference
     )
 
 
@@ -314,6 +325,86 @@ async def get_document_comment_actor_profile_image(
     return await _stored_profile_image_response(
         comment.author_profile_image_storage_key,
         comment.author_profile_image_content_type,
+        version,
+        settings,
+        cache_control="private, no-store",
+    )
+
+
+@router.get("/documents/{document_id}/activities/{activity_id}/actor-image")
+async def get_document_activity_actor_profile_image(
+    document_id: uuid.UUID,
+    activity_id: uuid.UUID,
+    version: uuid.UUID | None = None,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+    settings: Settings = Depends(get_settings),
+) -> Response:
+    await require_feature_enabled(session)
+    row = (
+        await session.execute(
+            select(DocumentActivity, ProjectDocument)
+            .join(ProjectDocument, ProjectDocument.id == DocumentActivity.document_id)
+            .where(
+                DocumentActivity.id == activity_id,
+                DocumentActivity.document_id == document_id,
+            )
+        )
+    ).one_or_none()
+    if row is None:
+        raise HTTPException(status_code=404, detail="document activity actor image is unavailable")
+    activity, document = row
+    await require_member(session, document.project_id, user)
+    if not document_is_visible(document, user.id):
+        raise HTTPException(status_code=404, detail="document activity actor image is unavailable")
+    if (
+        activity.actor_profile_image_storage_key is None
+        or activity.actor_profile_image_content_type is None
+    ):
+        raise HTTPException(status_code=404, detail="document activity actor image is unavailable")
+    return await _stored_profile_image_response(
+        activity.actor_profile_image_storage_key,
+        activity.actor_profile_image_content_type,
+        version,
+        settings,
+        cache_control="private, no-store",
+    )
+
+
+@router.get("/documents/{document_id}/revisions/{revision_id}/actor-image")
+async def get_document_revision_actor_profile_image(
+    document_id: uuid.UUID,
+    revision_id: uuid.UUID,
+    version: uuid.UUID | None = None,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+    settings: Settings = Depends(get_settings),
+) -> Response:
+    await require_feature_enabled(session)
+    row = (
+        await session.execute(
+            select(DocumentRevision, ProjectDocument)
+            .join(ProjectDocument, ProjectDocument.id == DocumentRevision.document_id)
+            .where(
+                DocumentRevision.id == revision_id,
+                DocumentRevision.document_id == document_id,
+            )
+        )
+    ).one_or_none()
+    if row is None:
+        raise HTTPException(status_code=404, detail="document revision actor image is unavailable")
+    revision, document = row
+    await require_member(session, document.project_id, user)
+    if not document_is_visible(document, user.id):
+        raise HTTPException(status_code=404, detail="document revision actor image is unavailable")
+    if (
+        revision.actor_profile_image_storage_key is None
+        or revision.actor_profile_image_content_type is None
+    ):
+        raise HTTPException(status_code=404, detail="document revision actor image is unavailable")
+    return await _stored_profile_image_response(
+        revision.actor_profile_image_storage_key,
+        revision.actor_profile_image_content_type,
         version,
         settings,
         cache_control="private, no-store",

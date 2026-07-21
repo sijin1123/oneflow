@@ -984,6 +984,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/documents/{document_id}/activities/{activity_id}/actor-image": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Document Activity Actor Profile Image */
+        get: operations["get_document_activity_actor_profile_image_api_v1_documents__document_id__activities__activity_id__actor_image_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/documents/{document_id}/comments/{comment_id}/actor-image": {
         parameters: {
             query?: never;
@@ -993,6 +1010,23 @@ export interface paths {
         };
         /** Get Document Comment Actor Profile Image */
         get: operations["get_document_comment_actor_profile_image_api_v1_documents__document_id__comments__comment_id__actor_image_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/documents/{document_id}/revisions/{revision_id}/actor-image": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Document Revision Actor Profile Image */
+        get: operations["get_document_revision_actor_profile_image_api_v1_documents__document_id__revisions__revision_id__actor_image_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -5609,6 +5643,8 @@ export interface components {
             actor_id: string | null;
             /** Actor Name */
             actor_name: string | null;
+            /** Actor Profile Image Url */
+            actor_profile_image_url: string | null;
             /** Changed Fields */
             changed_fields: ("title" | "body" | "parent" | "visibility" | "archive_state")[];
             /**
@@ -5879,6 +5915,8 @@ export interface components {
             actor_id: string | null;
             /** Actor Name */
             actor_name: string | null;
+            /** Actor Profile Image Url */
+            actor_profile_image_url: string | null;
             /** Body */
             body: string | null;
             /** Changed Fields */
@@ -5911,6 +5949,8 @@ export interface components {
             actor_id: string | null;
             /** Actor Name */
             actor_name: string | null;
+            /** Actor Profile Image Url */
+            actor_profile_image_url: string | null;
             /** Changed Fields */
             changed_fields: ("title" | "body")[];
             /**
@@ -12931,6 +12971,44 @@ export interface operations {
             };
         };
     };
+    get_document_activity_actor_profile_image_api_v1_documents__document_id__activities__activity_id__actor_image_get: {
+        parameters: {
+            query?: {
+                version?: string | null;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                document_id: string;
+                activity_id: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_document_comment_actor_profile_image_api_v1_documents__document_id__comments__comment_id__actor_image_get: {
         parameters: {
             query?: {
@@ -12942,6 +13020,44 @@ export interface operations {
             path: {
                 document_id: string;
                 comment_id: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_document_revision_actor_profile_image_api_v1_documents__document_id__revisions__revision_id__actor_image_get: {
+        parameters: {
+            query?: {
+                version?: string | null;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                document_id: string;
+                revision_id: string;
             };
             cookie?: {
                 oneflow_session?: string | null;
