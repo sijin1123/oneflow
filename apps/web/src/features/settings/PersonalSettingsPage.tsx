@@ -1,6 +1,7 @@
-import { useState } from 'react'
-import { Copy, KeyRound, LogOut, MonitorSmartphone, ShieldCheck } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { Copy, KeyRound, LogOut, MonitorSmartphone, ShieldCheck, Trash2, Upload } from 'lucide-react'
 
+import { Avatar } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -10,7 +11,13 @@ import {
   useAuthSessions,
   useRevokeAuthSession,
 } from '@/features/auth/api'
-import { useMe } from '@/features/members/api'
+import {
+  profileImageSrc,
+  useMe,
+  useRemoveProfileImage,
+  useReplaceProfileImage,
+} from '@/features/members/api'
+import { ApiError } from '@/lib/api'
 import { formatDateTime } from '@/lib/datetime'
 
 import {
@@ -21,6 +28,200 @@ import {
 } from './accessTokensApi'
 import { NotificationsPanel } from './NotificationsPanel'
 import { SettingsFrame, SettingsSection } from './SettingsShell'
+
+const PROFILE_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/webp']
+const PROFILE_IMAGE_MAX_BYTES = 2 * 1024 * 1024
+
+function AccountProfilePanel() {
+  const me = useMe()
+  const replaceImage = useReplaceProfileImage()
+  const removeImage = useRemoveProfileImage()
+  const inputRef = useRef<HTMLInputElement>(null)
+  const [selected, setSelected] = useState<File | null>(null)
+  const [selectionError, setSelectionError] = useState<string | null>(null)
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!selected) {
+      setPreviewUrl(null)
+      return
+    }
+    const url = URL.createObjectURL(selected)
+    setPreviewUrl(url)
+    return () => URL.revokeObjectURL(url)
+  }, [selected])
+
+  if (me.isError) {
+    return (
+      <div className="flex min-w-0 flex-wrap items-center justify-between gap-2" role="alert">
+        <p className="text-xs text-of-danger">계정 정보를 불러오지 못했습니다.</p>
+        <Button type="button" size="sm" variant="outline" onClick={() => void me.refetch()}>
+          다시 시도
+        </Button>
+      </div>
+    )
+  }
+  if (!me.data) {
+    return <div className="h-20 animate-pulse rounded-of bg-of-subtle" aria-label="계정 불러오는 중" />
+  }
+
+  const busy = replaceImage.isPending || removeImage.isPending
+  const mutationError = replaceImage.error ?? removeImage.error
+  const stale = mutationError instanceof ApiError && mutationError.status === 412
+  const serverError = mutationError instanceof ApiError ? mutationError.message : null
+  const currentSrc = profileImageSrc(me.data)
+
+  const clearSelection = () => {
+    setSelected(null)
+    setSelectionError(null)
+    replaceImage.reset()
+    if (inputRef.current) inputRef.current.value = ''
+  }
+
+  return (
+    <div className="min-w-0 space-y-4">
+      <div className="flex min-w-0 items-center gap-3">
+        <Avatar
+          name={me.data.display_name}
+          src={previewUrl ?? currentSrc}
+          size="lg"
+          className="h-16 w-16 text-lg"
+        />
+        <div className="min-w-0">
+          <p className="text-sm font-medium">
+            {me.data.display_name}
+            {me.data.is_admin ? (
+              <Badge variant="accent" className="ml-2">
+                워크스페이스 관리자
+              </Badge>
+            ) : null}
+          </p>
+          <p className="truncate text-xs text-of-muted">{me.data.email}</p>
+          <p className="mt-1 text-[11px] text-of-muted">
+            PNG, JPEG 또는 WebP · 최대 2 MiB
+          </p>
+        </div>
+      </div>
+
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/png,image/jpeg,image/webp"
+        className="sr-only"
+        aria-label="프로필 이미지 파일"
+        onChange={(event) => {
+          const file = event.target.files?.[0] ?? null
+          replaceImage.reset()
+          removeImage.reset()
+          setSelectionError(null)
+          if (!file) {
+            setSelected(null)
+            return
+          }
+          if (!PROFILE_IMAGE_TYPES.includes(file.type)) {
+            setSelected(null)
+            setSelectionError('PNG, JPEG 또는 WebP 이미지를 선택해 주세요.')
+            event.target.value = ''
+            return
+          }
+          if (file.size > PROFILE_IMAGE_MAX_BYTES) {
+            setSelected(null)
+            setSelectionError('프로필 이미지는 2 MiB 이하여야 합니다.')
+            event.target.value = ''
+            return
+          }
+          setSelected(file)
+        }}
+      />
+
+      <div className="flex min-w-0 flex-wrap items-center gap-2">
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          disabled={busy}
+          onClick={() => inputRef.current?.click()}
+        >
+          <Upload size={13} aria-hidden="true" />
+          {currentSrc ? '이미지 교체' : '이미지 선택'}
+        </Button>
+        {selected ? (
+          <Button
+            type="button"
+            size="sm"
+            disabled={busy}
+            onClick={() =>
+              replaceImage.mutate(
+                { file: selected, revision: me.data.profile_revision },
+                { onSuccess: clearSelection },
+              )
+            }
+          >
+            {replaceImage.isPending ? '저장 중' : '프로필 이미지 저장'}
+          </Button>
+        ) : null}
+        {currentSrc && !selected ? (
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            disabled={busy}
+            onClick={() => removeImage.mutate(me.data.profile_revision)}
+          >
+            <Trash2 size={13} aria-hidden="true" />
+            {removeImage.isPending ? '삭제 중' : '삭제'}
+          </Button>
+        ) : null}
+        {selected ? (
+          <Button type="button" size="sm" variant="ghost" disabled={busy} onClick={clearSelection}>
+            취소
+          </Button>
+        ) : null}
+      </div>
+
+      {selected ? (
+        <p className="truncate text-xs text-of-muted" role="status">
+          선택됨: {selected.name}
+        </p>
+      ) : me.data.profile_image_filename ? (
+        <p className="truncate text-xs text-of-muted">
+          현재 이미지: {me.data.profile_image_filename}
+          {me.data.profile_image_width && me.data.profile_image_height
+            ? ` · ${me.data.profile_image_width}×${me.data.profile_image_height}`
+            : ''}
+        </p>
+      ) : null}
+      {selectionError ? <p className="text-xs text-of-danger" role="alert">{selectionError}</p> : null}
+      {mutationError ? (
+        <div className="flex min-w-0 flex-wrap items-center justify-between gap-2" role="alert">
+          <p className="text-xs text-of-danger">
+            {stale
+              ? me.isFetching
+                ? '다른 화면에서 계정 이미지가 변경되었습니다. 최신 상태를 불러오는 중입니다.'
+                : '다른 화면에서 계정 이미지가 변경되었습니다. 최신 상태로 다시 저장해 주세요.'
+              : serverError ?? '프로필 이미지를 변경하지 못했습니다.'}
+          </p>
+          {stale && selected ? (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={replaceImage.isPending || me.isFetching}
+              onClick={() =>
+                replaceImage.mutate(
+                  { file: selected, revision: me.data.profile_revision },
+                  { onSuccess: clearSelection },
+                )
+              }
+            >
+              {me.isFetching ? '최신 상태 불러오는 중' : '다시 저장'}
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  )
+}
 
 function AccessTokensPanel() {
   const tokens = useAccessTokens()
@@ -315,26 +516,9 @@ export function PersonalSettingsPage() {
         <div className="min-w-0 space-y-4">
           <SettingsSection
             title="내 계정"
-            description="워크스페이스에서 표시되는 이름과 현재 계정 권한을 확인합니다."
+            description="워크스페이스에서 표시되는 프로필 이미지, 이름과 현재 계정 권한을 관리합니다."
           >
-            {me.data ? (
-              <div className="flex items-center gap-3">
-                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-of-accent-soft text-sm font-semibold text-of-accent">
-                  {me.data.display_name.slice(0, 1)}
-                </div>
-                <div className="min-w-0">
-                  <p className="text-sm font-medium">
-                    {me.data.display_name}
-                    {me.data.is_admin ? (
-                      <Badge variant="accent" className="ml-2">
-                        워크스페이스 관리자
-                      </Badge>
-                    ) : null}
-                  </p>
-                  <p className="truncate text-xs text-of-muted">{me.data.email}</p>
-                </div>
-              </div>
-            ) : null}
+            <AccountProfilePanel />
           </SettingsSection>
 
           <SessionsPanel

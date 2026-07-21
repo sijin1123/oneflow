@@ -13,7 +13,7 @@ rails (PLAN v11.1 R1 판정):
   in-flight upload's temp file and a just-committed row whose key snapshot
   predates it both look like orphans for a moment.
 - only `.upload-*` temps and paths shaped like the server-generated
-  `{project_uuid}/{object_uuid}` key are eligible; symlinks and anything
+  `{owner_uuid}/{object_uuid}` key are eligible; symlinks and anything
   else are reported as unrecognized and left alone.
 - rows whose blob is MISSING are reported only — restoring or deleting data is
   an operator decision, never the sweep's.
@@ -77,7 +77,8 @@ def sweep_storage(
     now: datetime | None = None,
 ) -> SweepReport:
     """Pure sweep over the storage root. `known_keys` is the full set of live
-    attachment and export-artifact storage keys. In delete mode candidates are MOVED under
+    storage keys referenced by attachments, exports, workspace logos, and profile images.
+    In delete mode candidates are MOVED under
     `<root>/.quarantine/<runstamp>/` (never unlinked); failures land in
     report.errors and leave the file in place."""
     root_path = Path(root).resolve()
@@ -177,6 +178,7 @@ async def _fetch_keys_from_connection(conn) -> set[str]:
 
     from app.models.attachment import Attachment
     from app.models.data_transfer_job import DataTransferJob
+    from app.models.user import User
     from app.models.workspace_profile import WorkspaceProfile
 
     attachment_keys = set(
@@ -210,7 +212,18 @@ async def _fetch_keys_from_connection(conn) -> set[str]:
         .scalars()
         .all()
     )
-    return attachment_keys | transfer_keys | workspace_logo_keys
+    profile_image_keys = set(
+        (
+            await conn.execute(
+                select(User.profile_image_storage_key).where(
+                    User.profile_image_storage_key.is_not(None)
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return attachment_keys | transfer_keys | workspace_logo_keys | profile_image_keys
 
 
 async def _fetch_keys() -> set[str]:

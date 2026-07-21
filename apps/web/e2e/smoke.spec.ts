@@ -663,6 +663,13 @@ async function mockApi(page: Page, opts: { conflictOnPatch?: boolean } = {}) {
         display_name: 'Dev User',
         is_active: true,
         is_admin: true,
+        profile_image_url: null,
+        profile_image_content_type: null,
+        profile_image_filename: null,
+        profile_image_width: null,
+        profile_image_height: null,
+        profile_image_byte_size: null,
+        profile_revision: 1,
       },
     }),
   )
@@ -8342,6 +8349,180 @@ test('개인 설정에서 알림 토글이 PUT을 보내고 구 딥링크가 리
     path: '../../docs/screenshots/redevelopment/overdue-reminders-ui/mobile.png',
     fullPage: true,
   })
+})
+
+test('개인 설정 프로필 이미지는 미리보기·저장·shell 반영·삭제를 완결한다', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await mockApi(page)
+  const png = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAEklEQVR4nGPkndLBwMDAxAAGAA2bAS37E8jFAAAAAElFTkSuQmCC',
+    'base64',
+  )
+  let me = {
+    id: 'me-1',
+    email: 'dev@oneflow.local',
+    display_name: 'Dev User',
+    is_active: true,
+    is_admin: true,
+    profile_image_url: null as string | null,
+    profile_image_content_type: null as string | null,
+    profile_image_filename: null as string | null,
+    profile_image_width: null as number | null,
+    profile_image_height: null as number | null,
+    profile_image_byte_size: null as number | null,
+    profile_revision: 1,
+  }
+  await page.route('**/api/v1/me', (route) => route.fulfill({ json: me }))
+  await page.route('**/api/v1/me/profile-image**', async (route) => {
+    const request = route.request()
+    if (request.method() === 'PUT') {
+      expect(request.headers()['content-type']).toBe('image/png')
+      expect(request.headers()['if-match']).toBe('"1"')
+      expect(request.headers()['x-file-name']).toBe('profile%20photo.png')
+      expect(request.postDataBuffer()?.length).toBe(png.length)
+      me = {
+        ...me,
+        profile_image_url:
+          '/api/v1/me/profile-image?version=11111111-1111-4111-8111-111111111111',
+        profile_image_content_type: 'image/png',
+        profile_image_filename: 'profile photo.png',
+        profile_image_width: 2,
+        profile_image_height: 2,
+        profile_image_byte_size: png.length,
+        profile_revision: 2,
+      }
+      await route.fulfill({ json: me, headers: { ETag: '"2"' } })
+      return
+    }
+    if (request.method() === 'DELETE') {
+      expect(request.headers()['if-match']).toBe('"2"')
+      me = {
+        ...me,
+        profile_image_url: null,
+        profile_image_content_type: null,
+        profile_image_filename: null,
+        profile_image_width: null,
+        profile_image_height: null,
+        profile_image_byte_size: null,
+        profile_revision: 3,
+      }
+      await route.fulfill({ json: me, headers: { ETag: '"3"' } })
+      return
+    }
+    await route.fulfill({ body: png, contentType: 'image/png' })
+  })
+
+  await page.goto('/settings')
+  const account = page.getByRole('region', { name: '내 계정' })
+  await account.getByLabel('프로필 이미지 파일').setInputFiles({
+    name: 'profile photo.png',
+    mimeType: 'image/png',
+    buffer: png,
+  })
+  await expect(account.getByText('선택됨: profile photo.png')).toBeVisible()
+  await expect(account.locator('img')).toHaveAttribute('src', /^blob:/)
+
+  const put = page.waitForRequest(
+    (request) => request.method() === 'PUT' && request.url().includes('/me/profile-image'),
+  )
+  await account.getByRole('button', { name: '프로필 이미지 저장' }).click()
+  await put
+  await expect(account.getByText('현재 이미지: profile photo.png · 2×2')).toBeVisible()
+  await expect(page.getByLabel('계정 메뉴').locator('img')).toHaveAttribute(
+    'src',
+    /profile-image\?version=11111111/,
+  )
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/personal-profile-image-ui/desktop.png',
+    fullPage: true,
+  })
+
+  await page.setViewportSize({ width: 390, height: 844 })
+  await account.scrollIntoViewIfNeeded()
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/personal-profile-image-ui/mobile.png',
+    fullPage: true,
+  })
+
+  const remove = page.waitForRequest(
+    (request) => request.method() === 'DELETE' && request.url().includes('/me/profile-image'),
+  )
+  await account.getByRole('button', { name: '삭제' }).click()
+  await remove
+  await expect(account.getByRole('button', { name: '이미지 선택' })).toBeVisible()
+  await expect(page.getByLabel('계정 메뉴').locator('img')).toHaveCount(0)
+})
+
+test('프로필 이미지 충돌은 선택 파일을 보존하고 최신 revision으로 재시도한다', async ({ page }) => {
+  await mockApi(page)
+  const png = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAEklEQVR4nGPkndLBwMDAxAAGAA2bAS37E8jFAAAAAElFTkSuQmCC',
+    'base64',
+  )
+  let revision = 1
+  let attempts = 0
+  const me = () => ({
+    id: 'me-1',
+    email: 'dev@oneflow.local',
+    display_name: 'Dev User',
+    is_active: true,
+    is_admin: true,
+    profile_image_url: null,
+    profile_image_content_type: null,
+    profile_image_filename: null,
+    profile_image_width: null,
+    profile_image_height: null,
+    profile_image_byte_size: null,
+    profile_revision: revision,
+  })
+  await page.route('**/api/v1/me', (route) => route.fulfill({ json: me() }))
+  await page.route('**/api/v1/me/profile-image**', async (route) => {
+    if (route.request().method() !== 'PUT') {
+      await route.fulfill({ status: 404, json: { detail: 'not configured' } })
+      return
+    }
+    attempts += 1
+    if (attempts === 1) {
+      expect(route.request().headers()['if-match']).toBe('"1"')
+      revision = 2
+      await route.fulfill({
+        status: 412,
+        headers: { ETag: '"2"' },
+        json: { detail: { code: 'stale_revision', current_revision: 2 } },
+      })
+      return
+    }
+    expect(route.request().headers()['if-match']).toBe('"2"')
+    revision = 3
+    await route.fulfill({
+      json: {
+        ...me(),
+        profile_image_url:
+          '/api/v1/me/profile-image?version=33333333-3333-4333-8333-333333333333',
+        profile_image_content_type: 'image/png',
+        profile_image_filename: 'retry.png',
+        profile_image_width: 2,
+        profile_image_height: 2,
+        profile_image_byte_size: png.length,
+      },
+    })
+  })
+
+  await page.goto('/settings')
+  const account = page.getByRole('region', { name: '내 계정' })
+  await account.getByLabel('프로필 이미지 파일').setInputFiles({
+    name: 'retry.png',
+    mimeType: 'image/png',
+    buffer: png,
+  })
+  await account.getByRole('button', { name: '프로필 이미지 저장' }).click()
+  await expect(account.getByRole('alert')).toContainText('최신 상태로 다시 저장해 주세요.')
+  await expect(account.getByText('선택됨: retry.png')).toBeVisible()
+  await account.getByRole('button', { name: '다시 저장' }).click()
+  await expect(account.getByText('현재 이미지: retry.png · 2×2')).toBeVisible()
+  expect(attempts).toBe(2)
 })
 
 test('개인 알림 설정은 로딩 오류와 재시도를 기능적으로 처리한다', async ({ page }) => {

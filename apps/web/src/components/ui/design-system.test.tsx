@@ -3,6 +3,7 @@ import { LayoutGrid } from 'lucide-react'
 import { describe, expect, it, vi } from 'vitest'
 
 import { Checkbox, SegmentedControl, Switch } from './controls'
+import { Avatar } from './avatar'
 import { DataGrid, DataGridFrame } from './data-grid'
 import { IconButton } from './icon-button'
 
@@ -59,5 +60,16 @@ describe('OneFlow interaction primitives', () => {
     const region = screen.getByRole('region', { name: '작업 표 스크롤 영역' })
     expect(region.dataset.density).toBe('compact')
     expect(region.tabIndex).toBe(0)
+  })
+
+  it('falls back to initials when an avatar image cannot load', () => {
+    const { container, rerender } = render(<Avatar name="Dev User" src="/missing.png" />)
+    const image = container.querySelector('img')
+    expect(image).not.toBeNull()
+    fireEvent.error(image!)
+    expect(screen.getByLabelText('Dev User').textContent).toContain('DU')
+
+    rerender(<Avatar name="Dev User" src="/replacement.png" />)
+    expect(container.querySelector('img')?.getAttribute('src')).toBe('/replacement.png')
   })
 })

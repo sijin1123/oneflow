@@ -34,6 +34,7 @@ from app.api.v1 import (
     ops,
     permissions,
     personal_notes,
+    profile_images,
     project_phases,
     project_publications,
     project_roles,
@@ -180,6 +181,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(project_roles.router, prefix="/api/v1", tags=["project-roles"])
     app.include_router(reports.router, prefix="/api/v1", tags=["reports"])
     app.include_router(me.router, prefix="/api/v1", tags=["me"])
+    app.include_router(profile_images.router, prefix="/api/v1", tags=["profile-images"])
     app.include_router(personal_notes.router, prefix="/api/v1", tags=["personal-notes"])
     app.include_router(
         workspace_invitations.router,
