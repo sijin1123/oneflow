@@ -5,7 +5,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { Avatar } from '@/components/ui/avatar'
 import { IconButton } from '@/components/ui/icon-button'
 import { useLogout } from '@/features/auth/api'
-import { useMe } from '@/features/members/api'
+import { profileImageSrc, useMe } from '@/features/members/api'
 import { NotificationBell } from '@/features/notifications/NotificationBell'
 import { useWorkspaceProfile, type WorkspaceIdentity } from '@/features/workspace-profile/api'
 import { WorkspaceLogo } from '@/features/workspace-profile/WorkspaceLogo'
@@ -175,7 +175,7 @@ function AccountMenu({ open, onOpenChange }: { open: boolean; onOpenChange: (ope
         className="rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus focus-visible:ring-offset-2"
         onClick={() => onOpenChange(!open)}
       >
-        <Avatar name={me.data.display_name} size="md" />
+        <Avatar name={me.data.display_name} src={profileImageSrc(me.data)} size="md" />
       </button>
       {open ? (
         <>

@@ -14,13 +14,7 @@ export type MemberRoleUpdate = Omit<components['schemas']['MemberRoleUpdate'], '
   role: BuiltInProjectRole
 }
 
-export type Me = {
-  id: string
-  email: string
-  display_name: string
-  is_active: boolean
-  is_admin: boolean
-}
+export type Me = components['schemas']['MeRead']
 
 export type PermissionAllow = components['schemas']['PermissionVerb']['effective']
 export type PermissionVerb = components['schemas']['PermissionVerb']

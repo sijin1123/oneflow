@@ -47,7 +47,7 @@ from app.schemas.project_directory_preferences import (
     ProjectDirectoryPreferencesPut,
     ProjectDirectoryPreferencesRead,
 )
-from app.schemas.user import UserRead
+from app.schemas.user import MeRead
 from app.services.document_access import document_visible_clause
 
 router = APIRouter()
@@ -63,11 +63,11 @@ DEFAULT_PROJECT_DIRECTORY_COLUMNS = [
 ]
 
 
-@router.get("/me", response_model=UserRead)
-async def me(user: User = Depends(get_current_user)) -> UserRead:
+@router.get("/me", response_model=MeRead)
+async def me(user: User = Depends(get_current_user)) -> MeRead:
     """The authenticated user (dev user in dev mode). Lets the UI decide which
     per-project controls to show based on the caller's membership role."""
-    return UserRead.model_validate(user)
+    return MeRead.model_validate(user)
 
 
 @router.get(

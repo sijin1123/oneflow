@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import type * as React from 'react'
 
 import { cn } from '@/lib/utils'
@@ -19,6 +20,8 @@ export function Avatar({
   size?: keyof typeof SIZE
   className?: string
 }) {
+  const [failed, setFailed] = useState(false)
+  useEffect(() => setFailed(false), [src])
   const initials = name
     .trim()
     .split(/\s+/)
@@ -37,7 +40,16 @@ export function Avatar({
       title={name}
       aria-label={name}
     >
-      {src ? <img src={src} alt="" className="h-full w-full object-cover" /> : initials || '?'}
+      {src && !failed ? (
+        <img
+          src={src}
+          alt=""
+          className="h-full w-full object-cover"
+          onError={() => setFailed(true)}
+        />
+      ) : (
+        initials || '?'
+      )}
     </span>
   )
 }

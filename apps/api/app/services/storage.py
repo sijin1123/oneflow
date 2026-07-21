@@ -27,7 +27,8 @@ def scan(path: Path) -> None:
     """Virus-scan integration seam — intentionally a no-op.
 
     Accepted risk for the internal deployment: the server never executes
-    stored files and downloads are forced to Content-Disposition: attachment.
+    stored files. General attachments download as `attachment`; inline image
+    consumers validate a small static raster allowlist before publication.
     Wire a real scanner (e.g. clamd) here before exposing uploads beyond the
     company network."""
 

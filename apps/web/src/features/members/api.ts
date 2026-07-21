@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useMemo } from 'react'
 
-import { api } from '@/lib/api'
+import { ApiError, BASE_URL, api } from '@/lib/api'
 
 import type {
   Me,
@@ -17,6 +17,49 @@ export function useMe() {
     queryKey: ['me'],
     queryFn: () => api<Me>('/api/v1/me'),
     staleTime: Infinity, // dev user does not change within a session
+  })
+}
+
+export function profileImageSrc(me: Me | undefined): string | null {
+  return me?.profile_image_url ? `${BASE_URL}${me.profile_image_url}` : null
+}
+
+export function useReplaceProfileImage() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ file, revision }: { file: File; revision: number }) =>
+      api<Me>('/api/v1/me/profile-image', {
+        method: 'PUT',
+        headers: {
+          'content-type': file.type,
+          'If-Match': `"${revision}"`,
+          'X-File-Name': encodeURIComponent(file.name),
+        },
+        body: file,
+      }),
+    onSuccess: (updated) => queryClient.setQueryData(['me'], updated),
+    onError: (error) => {
+      if (error instanceof ApiError && error.status === 412) {
+        void queryClient.invalidateQueries({ queryKey: ['me'] })
+      }
+    },
+  })
+}
+
+export function useRemoveProfileImage() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (revision: number) =>
+      api<Me>('/api/v1/me/profile-image', {
+        method: 'DELETE',
+        headers: { 'If-Match': `"${revision}"` },
+      }),
+    onSuccess: (updated) => queryClient.setQueryData(['me'], updated),
+    onError: (error) => {
+      if (error instanceof ApiError && error.status === 412) {
+        void queryClient.invalidateQueries({ queryKey: ['me'] })
+      }
+    },
   })
 }
 

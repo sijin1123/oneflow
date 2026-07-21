@@ -18,6 +18,18 @@ class UserRead(BaseModel):
     is_admin: bool
 
 
+class MeRead(UserRead):
+    """Authenticated-user identity plus private profile-image metadata."""
+
+    profile_image_url: str | None
+    profile_image_content_type: str | None
+    profile_image_filename: str | None
+    profile_image_width: int | None
+    profile_image_height: int | None
+    profile_image_byte_size: int | None
+    profile_revision: int
+
+
 class UserDirectoryRead(UserRead):
     """Directory row for workspace admins (/api/v1/users)."""
 

@@ -476,6 +476,8 @@ ENDPOINT_ALLOWLIST: dict[str, str] = {
         "개인 초안 정리 — 프로젝트 멤버십 상실 뒤에도 소유자만 삭제 가능"
     ),
     "PUT /api/v1/me/notification-settings": "개인 알림 설정 — 사용자 스코프",
+    "PUT /api/v1/me/profile-image": "개인 프로필 이미지 — 인증 사용자 자기 계정 스코프",
+    "DELETE /api/v1/me/profile-image": "개인 프로필 이미지 제거 — 인증 사용자 자기 계정 스코프",
     "PUT /api/v1/me/project-directory-preferences": (
         "개인 프로젝트 디렉터리 표시 설정 — 사용자 스코프"
     ),

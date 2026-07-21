@@ -1488,6 +1488,25 @@ export interface paths {
         patch: operations["update_personal_note_api_v1_me_personal_notes__note_id__patch"];
         trace?: never;
     };
+    "/api/v1/me/profile-image": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Profile Image */
+        get: operations["get_profile_image_api_v1_me_profile_image_get"];
+        /** Replace Profile Image */
+        put: operations["replace_profile_image_api_v1_me_profile_image_put"];
+        post?: never;
+        /** Remove Profile Image */
+        delete: operations["remove_profile_image_api_v1_me_profile_image_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/me/project-directory-preferences": {
         parameters: {
             query?: never;
@@ -6296,6 +6315,39 @@ export interface components {
             user_id: string;
         };
         /**
+         * MeRead
+         * @description Authenticated-user identity plus private profile-image metadata.
+         */
+        MeRead: {
+            /** Display Name */
+            display_name: string;
+            /** Email */
+            email: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Is Active */
+            is_active: boolean;
+            /** Is Admin */
+            is_admin: boolean;
+            /** Profile Image Byte Size */
+            profile_image_byte_size: number | null;
+            /** Profile Image Content Type */
+            profile_image_content_type: string | null;
+            /** Profile Image Filename */
+            profile_image_filename: string | null;
+            /** Profile Image Height */
+            profile_image_height: number | null;
+            /** Profile Image Url */
+            profile_image_url: string | null;
+            /** Profile Image Width */
+            profile_image_width: number | null;
+            /** Profile Revision */
+            profile_revision: number;
+        };
+        /**
          * MeWorkRead
          * @description Personal home payload. Lists are hard-capped (no pagination yet):
          *     assigned/due-soon/created at 50, activity at 20 — documented in the
@@ -9101,22 +9153,6 @@ export interface components {
             project_name: string;
             /** Role */
             role: string;
-        };
-        /** UserRead */
-        UserRead: {
-            /** Display Name */
-            display_name: string;
-            /** Email */
-            email: string;
-            /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
-            /** Is Active */
-            is_active: boolean;
-            /** Is Admin */
-            is_admin: boolean;
         };
         /**
          * UserUpdate
@@ -13616,7 +13652,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["UserRead"];
+                    "application/json": components["schemas"]["MeRead"];
                 };
             };
             /** @description Validation Error */
@@ -14193,6 +14229,110 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PersonalNoteError"];
+                };
+            };
+        };
+    };
+    get_profile_image_api_v1_me_profile_image_get: {
+        parameters: {
+            query?: {
+                version?: string | null;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    replace_profile_image_api_v1_me_profile_image_put: {
+        parameters: {
+            query?: never;
+            header?: {
+                "If-Match"?: string | null;
+                "X-File-Name"?: string | null;
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MeRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    remove_profile_image_api_v1_me_profile_image_delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                "If-Match"?: string | null;
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MeRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
