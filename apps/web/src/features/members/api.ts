@@ -25,11 +25,13 @@ export function profileImageSrc(
     profile_image_url?: string | null
     actor_profile_image_url?: string | null
     author_profile_image_url?: string | null
+    changed_by_profile_image_url?: string | null
   } | undefined,
 ): string | null {
   const path = profile?.profile_image_url
     ?? profile?.actor_profile_image_url
     ?? profile?.author_profile_image_url
+    ?? profile?.changed_by_profile_image_url
   return path ? `${BASE_URL}${path}` : null
 }
 

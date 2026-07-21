@@ -3218,3 +3218,14 @@ Chromium typed mock fixture에서 1440x960과 390x844 viewport를 사용했다. 
 - **증적/이연**: `docs/screenshots/redevelopment/login-origin-reinspection-ui-207a/`에 desktop `1448x1086`, compact `953x917`, mobile `390x844`, 원본/runtime 나란히 보기, 8x diff와 전 영역 JSON을 보존한다. 외부 OIDC 공급자 연결은 배포별 credential 경계를 유지하며, 이외 이번 로그인 surface의 기능 이연·mock/dead control은 없다.
 
 ---
+
+# UI-207 Project Health History Identity Avatars 검증 (2026-07-22)
+
+- **UI 변경**: Project Overview 상태 보고 이력의 각 행에 공통 `Avatar`를 적용하고, 변경 당시 이름·시각을 상태 전환과 메모보다 먼저 읽히는 compact hierarchy로 재구성했다. 저장 이미지가 없거나 읽기에 실패하면 같은 불변 이름의 initials fallback을 사용하며 loading/error/retry/empty/최신 제한 안내와 desktop/mobile 밀도를 유지한다.
+- **기능/API 반영**: migration `0119`는 Project health history에 변경 시점 이름과 프로필 이미지 storage key/content type snapshot 및 live-key index를 추가하고 기존 행의 현재 작성자명을 backfill한다. 실제 health/note 값이 바뀌는 기존 PATCH transaction에서만 identity를 capture한다. event-scoped 이미지 GET은 현재 프로젝트 멤버에게 저장된 exact version만 `private, no-store`로 반환하고, 잘못된 project/history 조합·version·membership·missing blob은 404다. 프로필 교체·삭제 뒤에도 참조 blob을 보존하고 storage sweep live set에 포함한다.
+- **권한/보존**: history의 `changed_by`가 계정 삭제로 `NULL`이 되어도 snapshot 이름과 이미지 key는 유지된다. 목록은 mutable `users.display_name` join을 제거해 이후 이름·프로필 변경으로 과거 표현을 다시 쓰지 않는다. 현재 프로필 URL이나 공개 image endpoint를 과거 이력에 재사용하지 않았다.
+- **이연 항목**: Intake 판정 이력의 동일 identity 적용은 별도 UI-208 surface로 추적한다. 이번 Project health-history surface에는 mock/dead control 또는 장식용 avatar가 없고 신규 환경변수, Settings UI와 dependency는 없다.
+- **검증**: migration `0119 -> 0118 -> 0119`, constraint-name·Project health focused API **6 PASS**, 전체 API **853 PASS**(기존 Alembic 경고 1건), Ruff/format 441 files, OpenAPI generation/drift, typecheck, lint(기존 Fast Refresh warning 4건), production build(기존 large chunk warning), unit **108 PASS**, component **9 PASS**, 전체 E2E **354 PASS + opt-in visual QA 1 skip**, clean-room frontend **162**/backend **45**, npm/pip audit 0 vulnerabilities와 diff check가 PASS했다. 첫 전체 API는 PostgreSQL 63자 식별자 제한으로 축약된 신규 CHECK 이름 1건을 발견해 logical constraint 이름을 줄이고 migration 왕복·focused·전체 API를 재검증했다.
+- **증적**: `docs/screenshots/redevelopment/project-health-history-ui/{desktop,mobile}.png`과 README에 실제 Chromium 상태 이력 surface를 보존한다. E2E는 actor image 요청 1회와 decode width, immutable/fallback names, status/note/time, loading/error/retry와 mobile horizontal overflow를 검사한다.
+
+---
