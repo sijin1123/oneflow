@@ -7,18 +7,34 @@ null, Pass 29 precedent) and stamps by/at; null clears all fields (note
 alongside = 422); DB shape CHECK blocks impossible states."""
 
 import asyncio
+import base64
+import uuid
 
 import pytest
-from sqlalchemy import delete, text
+from sqlalchemy import delete, select, text
 from sqlalchemy.exc import IntegrityError
 
 from app.models.project_health_history import ProjectHealthHistory
 from app.models.user import User
+from app.services.storage_sweep import _fetch_keys_from_connection
 from tests.conftest import create_project
 
 
 async def patch(client, pid, body):
     return await client.patch(f"/api/v1/projects/{pid}", json=body)
+
+
+PNG = base64.b64decode(
+    "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAEklEQVR4nGPkndLBwMDAxAAGAA2bAS37E8jFAAAAAElFTkSuQmCC"
+)
+
+
+def image_headers(revision: int) -> dict[str, str]:
+    return {
+        "content-type": "image/png",
+        "If-Match": f'"{revision}"',
+        "X-File-Name": "health-reporter.png",
+    }
 
 
 @pytest.fixture
@@ -126,6 +142,75 @@ async def test_health_history_tracks_changes_clear_and_noop(client, project):
     assert (await client.get(f"/api/v1/projects/{pid}/health-history?limit=101")).status_code == 422
 
 
+async def test_health_history_preserves_actor_identity_and_versioned_image(
+    client, app, project, foreign_project
+):
+    pid = project["id"]
+    uploaded = await client.put(
+        "/api/v1/me/profile-image",
+        content=PNG,
+        headers=image_headers(1),
+    )
+    assert uploaded.status_code == 200, uploaded.text
+
+    reported = await patch(
+        client,
+        pid,
+        {"health": "at_risk", "health_note": "이미지 교체 전 보고"},
+    )
+    assert reported.status_code == 200, reported.text
+    item = (await client.get(f"/api/v1/projects/{pid}/health-history")).json()["items"][0]
+    image_url = item["changed_by_profile_image_url"]
+    assert item["changed_by_name"] == "Dev User"
+    assert image_url.startswith(
+        f"/api/v1/projects/{pid}/health-history/{item['id']}/actor-image?version="
+    )
+    assert (await client.get(image_url)).content == PNG
+
+    async with app.state.sessionmaker() as session, session.begin():
+        actor = await session.get(User, uuid.UUID(uploaded.json()["id"]))
+        assert actor is not None
+        actor.display_name = "Renamed User"
+        history = (
+            await session.execute(
+                select(ProjectHealthHistory).where(ProjectHealthHistory.id == uuid.UUID(item["id"]))
+            )
+        ).scalar_one()
+        old_key = history.changed_by_profile_image_storage_key
+        assert old_key is not None
+
+    replaced = await client.put(
+        "/api/v1/me/profile-image",
+        content=PNG,
+        headers=image_headers(2),
+    )
+    assert replaced.status_code == 200, replaced.text
+    removed = await client.delete(
+        "/api/v1/me/profile-image",
+        headers={"If-Match": '"3"'},
+    )
+    assert removed.status_code == 200, removed.text
+
+    preserved = (await client.get(f"/api/v1/projects/{pid}/health-history")).json()["items"][0]
+    assert preserved["changed_by_name"] == "Dev User"
+    assert preserved["changed_by_profile_image_url"] == image_url
+    historical_image = await client.get(image_url)
+    assert historical_image.status_code == 200
+    assert historical_image.content == PNG
+    assert historical_image.headers["cache-control"] == "private, no-store"
+    stale_version = await client.get(image_url.rsplit("=", 1)[0] + f"={uuid.uuid4()}")
+    assert stale_version.status_code == 404
+    async with app.state.sessionmaker() as session:
+        assert old_key in await _fetch_keys_from_connection(session)
+
+    foreign = str(foreign_project["project_id"])
+    hidden = await client.get(
+        f"/api/v1/projects/{foreign}/health-history/{item['id']}/actor-image"
+        f"?version={image_url.rsplit('=', 1)[-1]}"
+    )
+    assert hidden.status_code == 404
+
+
 async def test_health_history_member_visibility_and_concurrent_chain(
     client, app, project, member_project, foreign_project
 ):
@@ -134,8 +219,8 @@ async def test_health_history_member_visibility_and_concurrent_chain(
     assert (await client.get(f"/api/v1/projects/{shared}/health-history")).status_code == 200
     assert (await client.get(f"/api/v1/projects/{foreign}/health-history")).status_code == 404
 
-    # A removed author never makes historical reports unreadable or leaks a
-    # stale display name. The FK is SET NULL and the reader keeps a safe shape.
+    # A removed author never makes historical reports unreadable. The FK is SET
+    # NULL while the event-time display name remains stable.
     async with app.state.sessionmaker() as session, session.begin():
         session.add(
             ProjectHealthHistory(
@@ -145,13 +230,15 @@ async def test_health_history_member_visibility_and_concurrent_chain(
                 health="on_track",
                 note="공유 프로젝트 시작",
                 changed_by=member_project["owner_id"],
+                changed_by_name_snapshot="Removed Owner",
             )
         )
     async with app.state.sessionmaker() as session, session.begin():
         await session.execute(delete(User).where(User.id == member_project["owner_id"]))
     shared_history = (await client.get(f"/api/v1/projects/{shared}/health-history")).json()
     assert shared_history["items"][0]["changed_by"] is None
-    assert shared_history["items"][0]["changed_by_name"] is None
+    assert shared_history["items"][0]["changed_by_name"] == "Removed Owner"
+    assert shared_history["items"][0]["changed_by_profile_image_url"] is None
 
     pid = project["id"]
     first, second = await asyncio.gather(

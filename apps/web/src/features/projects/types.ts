@@ -29,6 +29,7 @@ export type ProjectHealthHistoryItem = {
   note: string | null
   changed_by: string | null
   changed_by_name: string | null
+  changed_by_profile_image_url: string | null
   created_at: string
 }
 

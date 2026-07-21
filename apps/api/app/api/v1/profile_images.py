@@ -25,6 +25,7 @@ from app.models.document import DocumentActivity, DocumentRevision, ProjectDocum
 from app.models.document_comment import ProjectDocumentComment
 from app.models.initiative import Initiative, InitiativeActivity, InitiativeProject
 from app.models.member import ProjectMember
+from app.models.project_health_history import ProjectHealthHistory
 from app.models.user import User
 from app.schemas.user import MeRead
 from app.services.document_access import document_is_visible
@@ -199,6 +200,7 @@ async def _profile_image_is_referenced(session: AsyncSession, storage_key: str) 
         initiative_reference,
         document_activity_reference,
         document_revision_reference,
+        project_health_history_reference,
     ) = (
         await session.execute(
             select(
@@ -210,6 +212,9 @@ async def _profile_image_is_referenced(session: AsyncSession, storage_key: str) 
                 exists().where(InitiativeActivity.actor_profile_image_storage_key == storage_key),
                 exists().where(DocumentActivity.actor_profile_image_storage_key == storage_key),
                 exists().where(DocumentRevision.actor_profile_image_storage_key == storage_key),
+                exists().where(
+                    ProjectHealthHistory.changed_by_profile_image_storage_key == storage_key
+                ),
             )
         )
     ).one()
@@ -220,6 +225,7 @@ async def _profile_image_is_referenced(session: AsyncSession, storage_key: str) 
         or initiative_reference
         or document_activity_reference
         or document_revision_reference
+        or project_health_history_reference
     )
 
 
@@ -260,6 +266,37 @@ async def get_project_member_profile_image(
         version,
         settings,
         cache_control="private, no-store",
+    )
+
+
+@router.get("/projects/{project_id}/health-history/{history_id}/actor-image")
+async def get_project_health_history_actor_profile_image(
+    project_id: uuid.UUID,
+    history_id: uuid.UUID,
+    version: uuid.UUID | None = None,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+    settings: Settings = Depends(get_settings),
+) -> Response:
+    await require_member(session, project_id, user)
+    snapshot = (
+        await session.execute(
+            select(
+                ProjectHealthHistory.changed_by_profile_image_storage_key,
+                ProjectHealthHistory.changed_by_profile_image_content_type,
+            ).where(
+                ProjectHealthHistory.id == history_id,
+                ProjectHealthHistory.project_id == project_id,
+            )
+        )
+    ).one_or_none()
+    if snapshot is None or snapshot[0] is None or snapshot[1] is None:
+        raise HTTPException(
+            status_code=404,
+            detail="project health history actor image is unavailable",
+        )
+    return await _stored_profile_image_response(
+        snapshot[0], snapshot[1], version, settings, cache_control="private, no-store"
     )
 
 

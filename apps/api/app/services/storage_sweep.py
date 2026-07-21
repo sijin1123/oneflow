@@ -183,6 +183,7 @@ async def _fetch_keys_from_connection(conn) -> set[str]:
     from app.models.document import DocumentActivity, DocumentRevision
     from app.models.document_comment import ProjectDocumentComment
     from app.models.initiative import InitiativeActivity
+    from app.models.project_health_history import ProjectHealthHistory
     from app.models.user import User
     from app.models.workspace_profile import WorkspaceProfile
 
@@ -294,6 +295,17 @@ async def _fetch_keys_from_connection(conn) -> set[str]:
         .scalars()
         .all()
     )
+    project_health_history_actor_image_keys = set(
+        (
+            await conn.execute(
+                select(ProjectHealthHistory.changed_by_profile_image_storage_key).where(
+                    ProjectHealthHistory.changed_by_profile_image_storage_key.is_not(None)
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
     return (
         attachment_keys
         | transfer_keys
@@ -305,6 +317,7 @@ async def _fetch_keys_from_connection(conn) -> set[str]:
         | initiative_activity_actor_image_keys
         | document_activity_actor_image_keys
         | document_revision_actor_image_keys
+        | project_health_history_actor_image_keys
     )
 
 

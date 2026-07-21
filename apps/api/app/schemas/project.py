@@ -120,6 +120,7 @@ class ProjectHealthHistoryRead(BaseModel):
     note: str | None
     changed_by: uuid.UUID | None
     changed_by_name: str | None = None
+    changed_by_profile_image_url: str | None = None
     created_at: datetime
 
 

@@ -34,6 +34,7 @@ from app.schemas.project import (
     ProjectUpdate,
     TemplateApplied,
 )
+from app.services.activity import capture_actor_identity
 from app.services.health import apply_health_patch
 from app.services.project_templates import capture_project_settings, materialize_project_settings
 from app.services.storage import LocalStorage
@@ -299,28 +300,23 @@ async def list_project_health_history(
         select(func.count()).select_from(ProjectHealthHistory).where(predicate)
     )
     rows = (
-        await session.execute(
-            select(ProjectHealthHistory, User.display_name)
-            .outerjoin(User, ProjectHealthHistory.changed_by == User.id)
-            .where(predicate)
-            .order_by(
-                ProjectHealthHistory.created_at.desc(),
-                ProjectHealthHistory.id.desc(),
+        (
+            await session.execute(
+                select(ProjectHealthHistory)
+                .where(predicate)
+                .order_by(
+                    ProjectHealthHistory.created_at.desc(),
+                    ProjectHealthHistory.id.desc(),
+                )
+                .limit(limit)
+                .offset(offset)
             )
-            .limit(limit)
-            .offset(offset)
         )
-    ).all()
+        .scalars()
+        .all()
+    )
     return ProjectHealthHistoryList(
-        items=[
-            ProjectHealthHistoryRead(
-                **ProjectHealthHistoryRead.model_validate(history).model_dump(
-                    exclude={"changed_by_name"}
-                ),
-                changed_by_name=display_name,
-            )
-            for history, display_name in rows
-        ],
+        items=[ProjectHealthHistoryRead.model_validate(history) for history in rows],
         total=total or 0,
     )
 
@@ -377,6 +373,7 @@ async def update_project(
     apply_health_patch(project, fields, user.id)
     if health_was_requested:
         if (previous_health, previous_note) != (project.health, project.health_note):
+            actor_snapshot = await capture_actor_identity(session, user.id)
             session.add(
                 ProjectHealthHistory(
                     project_id=project_id,
@@ -385,6 +382,11 @@ async def update_project(
                     health=project.health,
                     note=project.health_note,
                     changed_by=user.id,
+                    changed_by_name_snapshot=actor_snapshot.name,
+                    changed_by_profile_image_storage_key=(actor_snapshot.profile_image_storage_key),
+                    changed_by_profile_image_content_type=(
+                        actor_snapshot.profile_image_content_type
+                    ),
                 )
             )
         else:
