@@ -346,14 +346,14 @@ async def create_document(
         initial_fields.add("body")
     if doc.parent_id is not None:
         initial_fields.add("parent")
-    record_document_activity(
+    await record_document_activity(
         session,
         document_id=doc.id,
         actor_id=user.id,
         kind="document_created",
         changed_fields=initial_fields,
     )
-    record_document_revision(
+    await record_document_revision(
         session,
         document=doc,
         actor_id=user.id,
@@ -441,26 +441,30 @@ async def list_document_activities(
         )
     ).scalar_one()
     rows = (
-        await session.execute(
-            select(DocumentActivity, User.display_name)
-            .outerjoin(User, User.id == DocumentActivity.actor_id)
-            .where(DocumentActivity.document_id == doc_id)
-            .order_by(DocumentActivity.created_at.desc(), DocumentActivity.id.desc())
-            .limit(limit)
-            .offset(offset)
+        (
+            await session.execute(
+                select(DocumentActivity)
+                .where(DocumentActivity.document_id == doc_id)
+                .order_by(DocumentActivity.created_at.desc(), DocumentActivity.id.desc())
+                .limit(limit)
+                .offset(offset)
+            )
         )
-    ).all()
+        .scalars()
+        .all()
+    )
     return DocumentActivityList(
         items=[
             DocumentActivityRead(
                 id=activity.id,
                 actor_id=activity.actor_id,
-                actor_name=actor_name,
+                actor_name=activity.actor_name,
+                actor_profile_image_url=activity.actor_profile_image_url,
                 kind=activity.kind,
                 changed_fields=activity.changed_fields,
                 created_at=activity.created_at,
             )
-            for activity, actor_name in rows
+            for activity in rows
         ],
         total=total,
     )
@@ -489,28 +493,32 @@ async def list_document_revisions(
         .limit(1)
     )
     rows = (
-        await session.execute(
-            select(DocumentRevision, User.display_name)
-            .outerjoin(User, User.id == DocumentRevision.actor_id)
-            .where(DocumentRevision.document_id == doc_id)
-            .order_by(DocumentRevision.document_version.desc(), DocumentRevision.id.desc())
-            .limit(limit)
-            .offset(offset)
+        (
+            await session.execute(
+                select(DocumentRevision)
+                .where(DocumentRevision.document_id == doc_id)
+                .order_by(DocumentRevision.document_version.desc(), DocumentRevision.id.desc())
+                .limit(limit)
+                .offset(offset)
+            )
         )
-    ).all()
+        .scalars()
+        .all()
+    )
     return DocumentRevisionList(
         items=[
             DocumentRevisionSummary(
                 id=revision.id,
                 document_version=revision.document_version,
                 actor_id=revision.actor_id,
-                actor_name=actor_name,
+                actor_name=revision.actor_name,
+                actor_profile_image_url=revision.actor_profile_image_url,
                 title=revision.title,
                 changed_fields=revision.changed_fields,
                 restored_from_revision_id=revision.restored_from_revision_id,
                 created_at=revision.created_at,
             )
-            for revision, actor_name in rows
+            for revision in rows
         ],
         total=total,
         current_revision_id=current_revision_id,
@@ -530,22 +538,21 @@ async def get_document_revision(
     await _get_doc_scoped(session, doc_id, user)
     row = (
         await session.execute(
-            select(DocumentRevision, User.display_name)
-            .outerjoin(User, User.id == DocumentRevision.actor_id)
-            .where(
+            select(DocumentRevision).where(
                 DocumentRevision.id == revision_id,
                 DocumentRevision.document_id == doc_id,
             )
         )
-    ).one_or_none()
+    ).scalar_one_or_none()
     if row is None:
         raise HTTPException(status_code=404, detail="not found")
-    revision, actor_name = row
+    revision = row
     return DocumentRevisionRead(
         id=revision.id,
         document_version=revision.document_version,
         actor_id=revision.actor_id,
-        actor_name=actor_name,
+        actor_name=revision.actor_name,
+        actor_profile_image_url=revision.actor_profile_image_url,
         title=revision.title,
         body=revision.body,
         changed_fields=revision.changed_fields,
@@ -610,14 +617,14 @@ async def restore_document_revision(
         )
     ).scalar_one_or_none()
     if updated is not None:
-        record_document_revision(
+        await record_document_revision(
             session,
             document=updated,
             actor_id=user.id,
             changed_fields=changed_fields,
             restored_from_revision_id=revision.id,
         )
-        record_document_activity(
+        await record_document_activity(
             session,
             document_id=doc_id,
             actor_id=user.id,
@@ -716,7 +723,7 @@ async def update_document(
     }
     updated = (await session.execute(stmt)).scalar_one_or_none()
     if updated is not None and actual_changed_fields:
-        record_document_activity(
+        await record_document_activity(
             session,
             document_id=doc_id,
             actor_id=user.id,
@@ -725,7 +732,7 @@ async def update_document(
         )
         content_changed_fields = actual_changed_fields & {"title", "body"}
         if content_changed_fields:
-            record_document_revision(
+            await record_document_revision(
                 session,
                 document=updated,
                 actor_id=user.id,
@@ -779,7 +786,7 @@ async def _set_archive_state(
         )
     ).scalar_one_or_none()
     if updated is not None:
-        record_document_activity(
+        await record_document_activity(
             session,
             document_id=doc.id,
             actor_id=user.id,
@@ -1168,14 +1175,14 @@ async def create_inline_document_comment(
         )
         comment.mentions = [str(user_id) for user_id in accepted] or None
         if document_body_changed:
-            record_document_activity(
+            await record_document_activity(
                 session,
                 document_id=doc.id,
                 actor_id=user.id,
                 kind="document_updated",
                 changed_fields={"body"},
             )
-            record_document_revision(
+            await record_document_revision(
                 session,
                 document=doc,
                 actor_id=user.id,

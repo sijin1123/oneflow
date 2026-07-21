@@ -180,6 +180,7 @@ async def _fetch_keys_from_connection(conn) -> set[str]:
     from app.models.attachment import Attachment
     from app.models.comment import WorkPackageComment
     from app.models.data_transfer_job import DataTransferJob
+    from app.models.document import DocumentActivity, DocumentRevision
     from app.models.document_comment import ProjectDocumentComment
     from app.models.initiative import InitiativeActivity
     from app.models.user import User
@@ -271,6 +272,28 @@ async def _fetch_keys_from_connection(conn) -> set[str]:
         .scalars()
         .all()
     )
+    document_activity_actor_image_keys = set(
+        (
+            await conn.execute(
+                select(DocumentActivity.actor_profile_image_storage_key).where(
+                    DocumentActivity.actor_profile_image_storage_key.is_not(None)
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    document_revision_actor_image_keys = set(
+        (
+            await conn.execute(
+                select(DocumentRevision.actor_profile_image_storage_key).where(
+                    DocumentRevision.actor_profile_image_storage_key.is_not(None)
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
     return (
         attachment_keys
         | transfer_keys
@@ -280,6 +303,8 @@ async def _fetch_keys_from_connection(conn) -> set[str]:
         | activity_actor_image_keys
         | document_comment_actor_image_keys
         | initiative_activity_actor_image_keys
+        | document_activity_actor_image_keys
+        | document_revision_actor_image_keys
     )
 
 

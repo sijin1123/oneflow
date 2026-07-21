@@ -32,6 +32,7 @@ export type DocumentActivity = {
   id: string
   actor_id: string | null
   actor_name: string | null
+  actor_profile_image_url: string | null
   kind: DocumentActivityKind
   changed_fields: string[]
   created_at: string
@@ -65,6 +66,7 @@ export type DocumentRevisionSummary = {
   document_version: number
   actor_id: string | null
   actor_name: string | null
+  actor_profile_image_url: string | null
   title: string
   changed_fields: DocumentRevisionField[]
   restored_from_revision_id: string | null

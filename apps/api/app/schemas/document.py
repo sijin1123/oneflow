@@ -121,6 +121,7 @@ class DocumentActivityRead(BaseModel):
     id: uuid.UUID
     actor_id: uuid.UUID | None
     actor_name: str | None
+    actor_profile_image_url: str | None
     kind: DocumentActivityKind
     changed_fields: list[DocumentActivityField]
     created_at: datetime
@@ -139,6 +140,7 @@ class DocumentRevisionSummary(BaseModel):
     document_version: int
     actor_id: uuid.UUID | None
     actor_name: str | None
+    actor_profile_image_url: str | None
     title: str
     changed_fields: list[DocumentRevisionField]
     restored_from_revision_id: uuid.UUID | None

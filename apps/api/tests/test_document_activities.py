@@ -90,11 +90,13 @@ async def test_document_activity_records_real_mutations_and_paginates(client):
         "id",
         "actor_id",
         "actor_name",
+        "actor_profile_image_url",
         "kind",
         "changed_fields",
         "created_at",
     }
     assert all(item["actor_name"] == "Dev User" for item in newest.json()["items"])
+    assert all(item["actor_profile_image_url"] is None for item in newest.json()["items"])
 
 
 async def test_inline_anchor_body_mutation_is_one_activity(client):
@@ -157,6 +159,7 @@ async def test_document_activity_rechecks_visibility_and_preserves_deleted_actor
             DocumentActivity(
                 document_id=shared.id,
                 actor_id=member_project["owner_id"],
+                actor_name_snapshot="Owner",
                 kind="document_created",
                 changed_fields=["title", "visibility"],
             )
@@ -176,7 +179,7 @@ async def test_document_activity_rechecks_visibility_and_preserves_deleted_actor
     retained = await client.get(f"/api/v1/documents/{shared_id}/activities")
     assert retained.status_code == 200, retained.text
     assert retained.json()["items"][0]["actor_id"] is None
-    assert retained.json()["items"][0]["actor_name"] is None
+    assert retained.json()["items"][0]["actor_name"] == "Owner"
 
     async with app.state.sessionmaker() as session, session.begin():
         membership = await session.scalar(

@@ -392,6 +392,90 @@ async def test_document_comment_actor_image_remains_immutable_and_member_scoped(
     assert (await client.get(image_url)).status_code == 404
 
 
+async def test_document_history_actor_images_remain_immutable_and_member_scoped(client, app):
+    uploaded = await client.put(
+        "/api/v1/me/profile-image",
+        content=PNG,
+        headers=image_headers(1, "document-activity-history.png"),
+    )
+    assert uploaded.status_code == 200
+    project = await create_project(client, key="DHI", name="Document history identity")
+    document = await client.post(
+        f"/api/v1/projects/{project['id']}/documents",
+        json={"title": "Immutable history", "body": "<p>History</p>"},
+    )
+    assert document.status_code == 201
+    document_id = document.json()["id"]
+
+    activities = await client.get(f"/api/v1/documents/{document_id}/activities")
+    revisions = await client.get(f"/api/v1/documents/{document_id}/revisions")
+    assert activities.status_code == 200
+    assert revisions.status_code == 200
+    activity = activities.json()["items"][0]
+    revision = revisions.json()["items"][0]
+    assert activity["actor_name"] == "Dev User"
+    assert revision["actor_name"] == "Dev User"
+    activity_image_url = activity["actor_profile_image_url"]
+    revision_image_url = revision["actor_profile_image_url"]
+    assert activity_image_url.startswith(
+        f"/api/v1/documents/{document_id}/activities/{activity['id']}/actor-image"
+    )
+    assert revision_image_url.startswith(
+        f"/api/v1/documents/{document_id}/revisions/{revision['id']}/actor-image"
+    )
+
+    async with app.state.sessionmaker() as session, session.begin():
+        actor = await session.get(User, uuid.UUID(uploaded.json()["id"]))
+        assert actor is not None and actor.profile_image_storage_key is not None
+        old_key = actor.profile_image_storage_key
+        actor.display_name = "Renamed User"
+
+    replaced = await client.put(
+        "/api/v1/me/profile-image",
+        content=PNG,
+        headers=image_headers(2, "replacement.png"),
+    )
+    assert replaced.status_code == 200
+    old_path = Path(app.state.settings.storage_dir) / old_key
+    assert old_path.is_file()
+
+    historical_activity = (await client.get(f"/api/v1/documents/{document_id}/activities")).json()[
+        "items"
+    ][0]
+    historical_revision = (await client.get(f"/api/v1/documents/{document_id}/revisions")).json()[
+        "items"
+    ][0]
+    assert historical_activity["actor_name"] == "Dev User"
+    assert historical_activity["actor_profile_image_url"] == activity_image_url
+    assert historical_revision["actor_name"] == "Dev User"
+    assert historical_revision["actor_profile_image_url"] == revision_image_url
+    for image_url in (activity_image_url, revision_image_url):
+        image = await client.get(image_url)
+        assert image.status_code == 200
+        assert image.content == PNG
+        assert image.headers["cache-control"] == "private, no-store"
+        wrong_version = image_url.rsplit("=", 1)[0] + f"={uuid.uuid4()}"
+        assert (await client.get(wrong_version)).status_code == 404
+        wrong_document = image_url.replace(document_id, str(uuid.uuid4()), 1)
+        assert (await client.get(wrong_document)).status_code == 404
+
+    removed = await client.delete("/api/v1/me/profile-image", headers={"If-Match": '"3"'})
+    assert removed.status_code == 200
+    async with app.state.sessionmaker() as session:
+        assert old_key in await _fetch_keys_from_connection(session)
+    assert old_path.is_file()
+
+    async with app.state.sessionmaker() as session, session.begin():
+        await session.execute(
+            delete(ProjectMember).where(
+                ProjectMember.project_id == uuid.UUID(project["id"]),
+                ProjectMember.user_id == uuid.UUID(uploaded.json()["id"]),
+            )
+        )
+    assert (await client.get(activity_image_url)).status_code == 404
+    assert (await client.get(revision_image_url)).status_code == 404
+
+
 async def test_initiative_activity_actor_image_remains_immutable_and_visibility_scoped(
     client, app, member_project
 ):

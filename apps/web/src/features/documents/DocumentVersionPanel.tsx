@@ -11,6 +11,8 @@ import {
 import { Suspense, lazy, useEffect, useRef, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
+import { Avatar } from '@/components/ui/avatar'
+import { profileImageSrc } from '@/features/members/api'
 import { formatDateTime } from '@/lib/datetime'
 import { confirmDestructive } from '@/lib/guards'
 
@@ -190,12 +192,19 @@ export function DocumentVersionPanel({ doc, projectId, canRestore }: Props) {
                         ) : null}
                       </span>
                       <span className="truncate text-[11px] text-of-muted">{item.title}</span>
-                      <span className="flex min-w-0 flex-wrap items-center gap-1 text-[10px] text-of-muted">
-                        <span className="truncate">{item.actor_name ?? '이전 구성원'}</span>
-                        <span aria-hidden="true">·</span>
-                        <time dateTime={item.created_at} className="tabular-nums">
-                          {formatDateTime(item.created_at)}
-                        </time>
+                      <span className="flex min-w-0 items-center gap-1.5 text-[10px] text-of-muted">
+                        <Avatar
+                          name={item.actor_name ?? '이전 구성원'}
+                          src={profileImageSrc(item)}
+                          size="sm"
+                        />
+                        <span className="flex min-w-0 flex-wrap items-center gap-1">
+                          <span className="truncate">{item.actor_name ?? '이전 구성원'}</span>
+                          <span aria-hidden="true">·</span>
+                          <time dateTime={item.created_at} className="tabular-nums">
+                            {formatDateTime(item.created_at)}
+                          </time>
+                        </span>
                       </span>
                     </button>
                   </li>
@@ -261,6 +270,18 @@ export function DocumentVersionPanel({ doc, projectId, canRestore }: Props) {
                       버전 {revision.data.document_version}
                     </p>
                     <h3 className="mt-0.5 break-words text-sm font-semibold">{revision.data.title}</h3>
+                    <div className="mt-1 flex min-w-0 items-center gap-1.5 text-[10px] text-of-muted">
+                      <Avatar
+                        name={revision.data.actor_name ?? '이전 구성원'}
+                        src={profileImageSrc(revision.data)}
+                        size="sm"
+                      />
+                      <span className="truncate">{revision.data.actor_name ?? '이전 구성원'}</span>
+                      <span aria-hidden="true">·</span>
+                      <time dateTime={revision.data.created_at} className="tabular-nums">
+                        {formatDateTime(revision.data.created_at)}
+                      </time>
+                    </div>
                     <div className="mt-1 flex min-w-0 flex-wrap gap-1">
                       {revision.data.changed_fields.map((field) => (
                         <span
