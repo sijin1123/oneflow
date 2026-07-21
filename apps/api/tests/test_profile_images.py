@@ -119,9 +119,7 @@ async def test_profile_image_validation_and_stale_cleanup(client, app):
         headers={**image_headers(1), "content-type": "image/gif"},
     )
     assert unsupported.status_code == 415
-    empty = await client.put(
-        "/api/v1/me/profile-image", content=b"", headers=image_headers(1)
-    )
+    empty = await client.put("/api/v1/me/profile-image", content=b"", headers=image_headers(1))
     assert empty.status_code == 422
     oversized = await client.put(
         "/api/v1/me/profile-image",
@@ -131,13 +129,9 @@ async def test_profile_image_validation_and_stale_cleanup(client, app):
     assert oversized.status_code == 413
     assert not [path for path in Path(app.state.settings.storage_dir).rglob("*") if path.is_file()]
 
-    uploaded = await client.put(
-        "/api/v1/me/profile-image", content=PNG, headers=image_headers(1)
-    )
+    uploaded = await client.put("/api/v1/me/profile-image", content=PNG, headers=image_headers(1))
     assert uploaded.status_code == 200
-    stale = await client.put(
-        "/api/v1/me/profile-image", content=PNG, headers=image_headers(1)
-    )
+    stale = await client.put("/api/v1/me/profile-image", content=PNG, headers=image_headers(1))
     assert stale.status_code == 412
     assert stale.headers["etag"] == '"2"'
     assert stale.json()["detail"] == {"code": "stale_revision", "current_revision": 2}

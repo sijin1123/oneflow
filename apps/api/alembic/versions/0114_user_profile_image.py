@@ -50,9 +50,7 @@ def upgrade() -> None:
         "AND profile_image_width * profile_image_height <= 4000000 "
         "AND profile_image_byte_size BETWEEN 1 AND 2097152)",
     )
-    op.create_check_constraint(
-        "user_profile_revision_positive", "users", "profile_revision >= 1"
-    )
+    op.create_check_constraint("user_profile_revision_positive", "users", "profile_revision >= 1")
 
 
 def downgrade() -> None:
