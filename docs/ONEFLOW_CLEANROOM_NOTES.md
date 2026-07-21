@@ -646,3 +646,9 @@ OneFlow 구현은 기존 `ProjectListItem`, membership query, archive/unarchive 
 UI-196의 유일한 시각 입력은 사용자가 직접 제공하고 OneFlow 제품 자산으로 승인한 `apps/web/src/assets/generated/oneflow-login-origin-reference.png`이며 SHA-256은 `62fafe9e44df9d189e8fe2f38fc25147d11b8459569be13ee0424ba06c0c4c76`이다. 런타임 story와 auth logo는 같은 원본의 결정적 파생 자산이고 source-level MAE는 각각 `0.0000`이다. 따라서 배경·로고를 생성형으로 재해석하거나 모양과 색상을 다시 그리지 않고, semantic auth DOM의 브라우저 렌더링 오차만 자체 CSS로 보정했다.
 
 Plane/OpenProject source, package, asset, logo, CSS, DOM, wording 또는 branding은 입력·복사하지 않았다. 이메일, 비밀번호, provider, assistance, policy, locale와 safe-next는 기존 OneFlow semantic control과 auth API를 유지하며 신규 API, DB/schema, migration, permission, environment variable, dependency 또는 Settings storage 변경은 없다. - attested-user-owned-oneflow-asset
+
+## UI-197 Project Publish Functional Surface
+
+UI-197의 유일한 reference 입력은 `docs/plane-poc-reverse-spec/11-focused-sidebar-views-observations.md`에 기록된 project overflow menu의 `Publish project` 행동 범주다. Plane의 source, API, database schema, package, asset, CSS, DOM hierarchy, 정확한 화면 치수·색상, 문구, icon 또는 branding은 열람·복사하지 않았다.
+
+OneFlow 구현은 기존 자체 `ProjectListItem.current_user_role`, FastAPI/SQLAlchemy authorization, PostgreSQL row lock, append-only audit, React Query, Radix Dialog/Dropdown과 local design tokens를 사용해 공개 상태·UUID 회전·즉시 철회·보관 연동·최소 공개 집계를 독립 설계했다. 공개 페이지와 disclosure copy도 OneFlow의 데이터 경계에 맞춘 고유 구현이며, 공개되지 않는 내부 필드를 API schema에서부터 제외한다. 환경변수, Settings storage와 새 dependency는 없다. - attested-independent-derivation

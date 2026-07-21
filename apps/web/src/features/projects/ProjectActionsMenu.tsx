@@ -1,5 +1,5 @@
-import { Archive, Link as LinkIcon, MoreHorizontal, RotateCcw, Settings, Star } from 'lucide-react'
-import { useState } from 'react'
+import { Archive, Link as LinkIcon, MoreHorizontal, RotateCcw, Settings, Share2, Star } from 'lucide-react'
+import { useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
 import {
@@ -10,16 +10,15 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { useMembers } from '@/features/members/api'
 import { confirmDestructive } from '@/lib/guards'
 import { cn } from '@/lib/utils'
 
 import { useArchiveProject } from './api'
+import { ProjectPublicationDialog } from './ProjectPublicationDialog'
 import type { ProjectListItem } from './types'
 
 type ProjectActionsMenuProps = {
   project: ProjectListItem
-  meId?: string
   favorite: boolean
   onFavoriteChange: (projectId: string, favorite: boolean) => void
   onNavigate?: () => void
@@ -31,7 +30,6 @@ type ProjectActionsMenuProps = {
 
 export function ProjectActionsMenu({
   project,
-  meId,
   favorite,
   onFavoriteChange,
   onNavigate,
@@ -42,13 +40,12 @@ export function ProjectActionsMenu({
 }: ProjectActionsMenuProps) {
   const navigate = useNavigate()
   const [open, setOpen] = useState(false)
+  const [publicationOpen, setPublicationOpen] = useState(false)
+  const triggerRef = useRef<HTMLButtonElement>(null)
   const menuId = `project-actions-${placement}-${project.id}`
-  const members = useMembers(project.id, open)
   const archive = useArchiveProject(project.id)
   const archived = Boolean(project.archived_at)
-  const isOwner = members.data?.items.some(
-    (member) => member.user_id === meId && member.role === 'owner',
-  ) === true
+  const isOwner = project.current_user_role === 'owner'
 
   const copyLink = async () => {
     const href = `${window.location.origin}/projects/${project.id}/overview`
@@ -74,9 +71,11 @@ export function ProjectActionsMenu({
   }
 
   return (
+    <>
     <DropdownMenu open={open} onOpenChange={setOpen}>
       <DropdownMenuTrigger asChild>
         <button
+          ref={triggerRef}
           type="button"
           aria-label={triggerLabel}
           aria-controls={menuId}
@@ -117,14 +116,16 @@ export function ProjectActionsMenu({
         >
           <Settings size={13} aria-hidden="true" /> 설정
         </DropdownMenuItem>
-        {members.isPending ? (
-          <DropdownMenuLabel className="text-xs normal-case">권한 확인 중…</DropdownMenuLabel>
-        ) : null}
-        {members.isError ? (
-          <DropdownMenuLabel className="text-xs normal-case text-of-danger">권한을 확인할 수 없습니다.</DropdownMenuLabel>
-        ) : null}
         {isOwner ? (
           <>
+            {!archived ? (
+              <DropdownMenuItem
+                className="flex items-center gap-2 text-xs"
+                onSelect={() => setPublicationOpen(true)}
+              >
+                <Share2 size={13} aria-hidden="true" /> 프로젝트 공개
+              </DropdownMenuItem>
+            ) : null}
             <DropdownMenuSeparator />
             <DropdownMenuItem
               className={cn('flex items-center gap-2 text-xs', !archived && 'text-of-danger')}
@@ -140,5 +141,15 @@ export function ProjectActionsMenu({
         ) : null}
       </DropdownMenuContent>
     </DropdownMenu>
+    {isOwner ? (
+      <ProjectPublicationDialog
+        project={project}
+        open={publicationOpen}
+        onOpenChange={setPublicationOpen}
+        onMessage={onMessage}
+        returnFocusRef={triggerRef}
+      />
+    ) : null}
+    </>
   )
 }

@@ -23,8 +23,10 @@ import type {
   ProjectHealthHistoryList,
   ProjectList,
   ProjectListItem,
+  ProjectPublication,
   ProjectPhase,
   ProjectPhaseList,
+  PublicProject,
 } from '../src/features/projects/types'
 import type {
   ProjectScheduleBaselineList,
@@ -601,6 +603,17 @@ async function mockApi(page: Page, opts: { conflictOnPatch?: boolean } = {}) {
   // from here; default to the unarchived fixture so owner flows stay editable.
   await page.route(`**/api/v1/projects/${project.id}`, (route) =>
     route.fulfill({ json: project }),
+  )
+  await page.route('**/api/v1/projects/*/publication', (route) =>
+    route.fulfill({
+      json: {
+        published: false,
+        public_id: null,
+        published_at: null,
+        revoked_at: null,
+        revision: 0,
+      } satisfies ProjectPublication,
+    }),
   )
   await page.route('**/api/v1/projects/*/health-history**', (route) =>
     route.fulfill({ json: { items: [], total: 0 } satisfies ProjectHealthHistoryList }),
@@ -1383,6 +1396,7 @@ test('프로젝트 행 메뉴는 즐겨찾기·링크·설정·소유자 보관�
     id: '99999999-9999-4999-8999-999999999998',
     key: 'OPS',
     name: '운영 개선',
+    current_user_role: 'viewer' as const,
   }
   let ownerProjectArchived = false
   await page.route('**/api/v1/projects', (route) => route.fulfill({
@@ -1414,6 +1428,7 @@ test('프로젝트 행 메뉴는 즐겨찾기·링크·설정·소유자 보관�
   await expect(viewerMenuTrigger).toHaveAttribute('aria-expanded', 'true')
   const viewerMenu = page.getByRole('menu', { name: '운영 개선 프로젝트 작업' })
   await expect(viewerMenu.getByRole('menuitem', { name: '즐겨찾기에 추가' })).toBeFocused()
+  await expect(viewerMenu.getByRole('menuitem', { name: '프로젝트 공개' })).toHaveCount(0)
   await expect(viewerMenu).toHaveCSS('animation-name', 'of-dropdown-enter')
   await page.keyboard.press('ArrowDown')
   await expect(viewerMenu.getByRole('menuitem', { name: '링크 복사' })).toBeFocused()
@@ -1465,7 +1480,7 @@ test('프로젝트 행 메뉴는 즐겨찾기·링크·설정·소유자 보관�
   await expect(ownerMenu.getByRole('menuitem', { name: '프로젝트 보관' })).toBeFocused()
   await page.keyboard.press('Home')
   await expect(ownerMenu.getByRole('menuitem', { name: '즐겨찾기에 추가' })).toBeFocused()
-  await expect(page.getByRole('menuitem', { name: /Publish|공개/ })).toHaveCount(0)
+  await expect(ownerMenu.getByRole('menuitem', { name: '프로젝트 공개' })).toBeVisible()
   await page.screenshot({
     path: '../../docs/screenshots/redevelopment/projects-sidebar-actions-ui/project-menu.png',
   })
@@ -1547,7 +1562,7 @@ test('프로젝트 디렉터리 카드와 목록 메뉴는 즐겨찾기·복사�
   const ownerMenu = page.getByRole('menu', { name: 'OneFlow 도입 프로젝트 카드 작업' })
   await expect(ownerMenu.getByRole('menuitem', { name: '즐겨찾기 해제' })).toBeFocused()
   await expect(ownerMenu.getByRole('menuitem', { name: '프로젝트 보관' })).toBeVisible()
-  await expect(ownerMenu.getByRole('menuitem', { name: /Publish|공개/ })).toHaveCount(0)
+  await expect(ownerMenu.getByRole('menuitem', { name: '프로젝트 공개' })).toBeVisible()
   await page.screenshot({
     path: '../../docs/screenshots/redevelopment/project-directory-actions-ui/desktop-card-menu.png',
   })
@@ -1559,6 +1574,7 @@ test('프로젝트 디렉터리 카드와 목록 메뉴는 즐겨찾기·복사�
   await viewerCard.getByRole('button', { name: '운영 개선 프로젝트 카드 작업' }).click()
   const viewerMenu = page.getByRole('menu', { name: '운영 개선 프로젝트 카드 작업' })
   await expect(viewerMenu.getByRole('menuitem', { name: '프로젝트 보관' })).toHaveCount(0)
+  await expect(viewerMenu.getByRole('menuitem', { name: '프로젝트 공개' })).toHaveCount(0)
   await viewerMenu.getByRole('menuitem', { name: '링크 복사' }).click()
   await expect(page.getByRole('status', { name: '프로젝트 작업 결과' })).toContainText('링크를 복사했습니다')
   await expect.poll(() => page.evaluate(() => window.localStorage.getItem('__copied_directory_project_link')))
@@ -1595,6 +1611,134 @@ test('프로젝트 디렉터리 카드와 목록 메뉴는 즐겨찾기·복사�
   await page.screenshot({
     path: '../../docs/screenshots/redevelopment/project-directory-actions-ui/mobile-list-menu.png',
   })
+})
+
+test('프로젝트 공개는 소유자 발행·복사·비인증 요약·즉시 철회를 한 흐름으로 연결한다', async ({ page }) => {
+  test.setTimeout(90_000)
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: {
+        writeText: async (text: string) => window.localStorage.setItem('__copied_public_project_link', text),
+      },
+    })
+  })
+  await mockApi(page)
+
+  const publicId = '77777777-7777-4777-8777-777777777777'
+  const publishedAt = '2026-07-21T06:30:00Z'
+  let publication: ProjectPublication = {
+    published: false,
+    public_id: null,
+    published_at: null,
+    revoked_at: null,
+    revision: 0,
+  }
+  const publicProject: PublicProject = {
+    public_id: publicId,
+    name: project.name,
+    description: project.description,
+    published_at: publishedAt,
+    work_package_count: 12,
+    open_work_package_count: 7,
+    completed_work_package_count: 5,
+    completion_percent: 42,
+  }
+
+  await page.route(`**/api/v1/projects/${project.id}/publication`, async (route) => {
+    const method = route.request().method()
+    if (method === 'POST') {
+      publication = {
+        published: true,
+        public_id: publicId,
+        published_at: publishedAt,
+        revoked_at: null,
+        revision: 1,
+      }
+    } else if (method === 'DELETE') {
+      publication = {
+        published: false,
+        public_id: null,
+        published_at: publishedAt,
+        revoked_at: '2026-07-21T06:45:00Z',
+        revision: 1,
+      }
+    }
+    await route.fulfill({ json: publication })
+  })
+  await page.route(`**/api/v1/public/projects/${publicId}`, (route) => {
+    if (!publication.published) {
+      return route.fulfill({ status: 404, json: { detail: 'Public project not found' } })
+    }
+    return route.fulfill({ json: publicProject })
+  })
+
+  await page.goto('/projects')
+  const directory = page.getByRole('list', { name: '프로젝트 디렉터리' })
+  const ownerCard = directory.getByRole('listitem').filter({ hasText: project.name })
+  await ownerCard.getByRole('button', { name: `${project.name} 프로젝트 카드 작업` }).click()
+  await page.getByRole('menuitem', { name: '프로젝트 공개' }).click()
+
+  let dialog = page.getByRole('dialog', { name: '프로젝트 공개' })
+  await expect(dialog).toBeVisible()
+  await expect(dialog).toContainText('개별 작업과 내부 협업 정보는 포함하지 않습니다')
+  const publishRequest = page.waitForRequest(
+    (request) => request.method() === 'POST' && request.url().endsWith(`/projects/${project.id}/publication`),
+  )
+  await dialog.getByRole('button', { name: '프로젝트 공개', exact: true }).click()
+  await publishRequest
+  await expect(dialog.getByText('공개 중', { exact: true })).toBeVisible()
+  await expect(dialog).toContainText('작업 제목과 설명, 회원, 예산, 상태 메모, 문서, 파일, 댓글')
+  await dialog.getByRole('button', { name: '복사' }).click()
+  const publicUrl = `${new URL(page.url()).origin}/public/projects/${publicId}`
+  await expect.poll(() => page.evaluate(() => window.localStorage.getItem('__copied_public_project_link')))
+    .toBe(publicUrl)
+
+  await page.setViewportSize({ width: 390, height: 844 })
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/project-publish-ui/publication-dialog-mobile.png',
+  })
+  await dialog.getByRole('button', { name: '프로젝트 공개 창 닫기' }).click()
+
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.goto(`/public/projects/${publicId}`)
+  await expect(page.getByRole('heading', { name: project.name })).toBeVisible()
+  await expect(page.getByRole('region', { name: '프로젝트 진행 요약' })).toContainText('42%')
+  await expect(page.getByRole('region', { name: '프로젝트 진행 요약' })).toContainText('전체 12')
+  await expect(page.getByRole('navigation', { name: '글로벌 내비게이션' })).toHaveCount(0)
+  await expect(page.getByText(wpA.subject)).toHaveCount(0)
+  await expect(page.getByText('Dev User')).toHaveCount(0)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/project-publish-ui/public-project-desktop.png',
+  })
+
+  await page.setViewportSize({ width: 390, height: 844 })
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/project-publish-ui/public-project-mobile.png',
+  })
+
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.goto('/projects')
+  const reloadedOwnerCard = page.getByRole('list', { name: '프로젝트 디렉터리' })
+    .getByRole('listitem').filter({ hasText: project.name })
+  await reloadedOwnerCard.getByRole('button', { name: `${project.name} 프로젝트 카드 작업` }).click()
+  await page.getByRole('menuitem', { name: '프로젝트 공개' }).click()
+  dialog = page.getByRole('dialog', { name: '프로젝트 공개' })
+  await expect(dialog.getByText('공개 중', { exact: true })).toBeVisible()
+  await dialog.getByRole('button', { name: '공개 중지' }).click()
+  await expect(dialog).toContainText('현재 링크가 즉시 무효화됩니다')
+  const revokeRequest = page.waitForRequest(
+    (request) => request.method() === 'DELETE' && request.url().endsWith(`/projects/${project.id}/publication`),
+  )
+  await dialog.getByRole('button', { name: '공개 중지' }).click()
+  await revokeRequest
+  await expect(dialog.getByRole('button', { name: '프로젝트 공개', exact: true })).toBeVisible()
+
+  await page.goto(`/public/projects/${publicId}`)
+  await expect(page.getByRole('heading', { name: '공개 링크를 사용할 수 없습니다' })).toBeVisible()
+  await expect(page.getByText('공개가 중지되었거나 프로젝트가 보관되었습니다.')).toBeVisible()
 })
 
 test('사이드바 접기와 내비게이션 개인화는 reload와 cross-tab에서 유지된다', async ({ page }) => {

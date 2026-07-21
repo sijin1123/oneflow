@@ -25,7 +25,7 @@ CONDITIONAL = "conditional"
 PERMISSION_MATRIX: list[dict[str, str | None]] = [
     {
         "key": "project.manage",
-        "label": "프로젝트 설정·아카이브/복원",
+        "label": "프로젝트 설정·공개·아카이브/복원",
         "owner": ALWAYS,
         "member": NEVER,
         "viewer": NEVER,
@@ -240,6 +240,8 @@ ENDPOINT_VERBS: dict[str, str] = {
     "PATCH /api/v1/projects/{project_id}": "project.manage",
     "POST /api/v1/projects/{project_id}/archive": "project.manage",
     "POST /api/v1/projects/{project_id}/unarchive": "project.manage",
+    "POST /api/v1/projects/{project_id}/publication": "project.manage",
+    "DELETE /api/v1/projects/{project_id}/publication": "project.manage",
     "PATCH /api/v1/projects/{project_id}/phases/{phase_key}": "project.manage",
     "POST /api/v1/projects/{project_id}/schedule-baselines": "project.manage",
     "DELETE /api/v1/projects/{project_id}/schedule-baselines/{baseline_id}": "project.manage",

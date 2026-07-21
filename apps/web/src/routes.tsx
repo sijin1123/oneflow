@@ -22,6 +22,7 @@ import { GetStartedPage } from '@/features/onboarding/GetStartedPage'
 import { InboxPage } from '@/features/notifications/InboxPage'
 import { ProjectsPage } from '@/features/projects/ProjectsPage'
 import { ProjectOverviewPage } from '@/features/projects/ProjectOverviewPage'
+import { PublicProjectPage } from '@/features/projects/PublicProjectPage'
 import { SearchPage } from '@/features/search/SearchPage'
 import { TemplatesPage } from '@/features/project-templates/TemplatesPage'
 import { OperationsPage } from '@/features/ops/OperationsPage'
@@ -70,6 +71,7 @@ export const router = createBrowserRouter([
   // Outside the shell: must render with no session (Pass 72).
   { path: '/login', element: <LoginPage /> },
   { path: '/invite/:token', element: <InvitationAcceptPage /> },
+  { path: '/public/projects/:publicId', element: <PublicProjectPage /> },
   {
     path: '/',
     element: <AppShell />,
