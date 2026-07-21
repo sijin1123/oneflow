@@ -6,6 +6,7 @@ from pydantic import BaseModel
 class WatcherRead(BaseModel):
     user_id: uuid.UUID
     display_name: str
+    profile_image_url: str | None = None
 
 
 class WatcherList(BaseModel):

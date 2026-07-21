@@ -2627,6 +2627,23 @@ export interface paths {
         patch: operations["update_member_role_api_v1_projects__project_id__members__user_id__patch"];
         trace?: never;
     };
+    "/api/v1/projects/{project_id}/members/{user_id}/profile-image": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Project Member Profile Image */
+        get: operations["get_project_member_profile_image_api_v1_projects__project_id__members__user_id__profile_image_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{project_id}/milestones": {
         parameters: {
             query?: never;
@@ -6572,6 +6589,8 @@ export interface components {
             display_name: string;
             /** Email */
             email: string;
+            /** Profile Image Url */
+            profile_image_url?: string | null;
             /** Role */
             role: string;
             /**
@@ -9194,6 +9213,8 @@ export interface components {
         WatcherRead: {
             /** Display Name */
             display_name: string;
+            /** Profile Image Url */
+            profile_image_url?: string | null;
             /**
              * User Id
              * Format: uuid
@@ -17470,6 +17491,44 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MemberRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_project_member_profile_image_api_v1_projects__project_id__members__user_id__profile_image_get: {
+        parameters: {
+            query?: {
+                version?: string | null;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                project_id: string;
+                user_id: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
             /** @description Validation Error */

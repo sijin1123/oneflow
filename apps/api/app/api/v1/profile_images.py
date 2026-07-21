@@ -15,8 +15,10 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import get_current_user
+from app.core.authz import require_member
 from app.core.config import Settings, get_settings
 from app.db.session import get_session
+from app.models.member import ProjectMember
 from app.models.user import User
 from app.schemas.user import MeRead
 from app.services.storage import LocalStorage
@@ -129,19 +131,14 @@ async def _locked_user(session: AsyncSession, user_id: uuid.UUID, expected: int)
     return row
 
 
-@router.get("/me/profile-image")
-async def get_profile_image(
-    version: uuid.UUID | None = None,
-    session: AsyncSession = Depends(get_session),
-    user: User = Depends(get_current_user),
-    settings: Settings = Depends(get_settings),
+async def _profile_image_response(
+    row: User,
+    version: uuid.UUID | None,
+    settings: Settings,
+    *,
+    cache_control: str = "private, max-age=31536000, immutable",
 ) -> Response:
-    row = await session.get(User, user.id)
-    if (
-        row is None
-        or row.profile_image_storage_key is None
-        or row.profile_image_content_type is None
-    ):
+    if row.profile_image_storage_key is None or row.profile_image_content_type is None:
         raise HTTPException(status_code=404, detail="profile image is not configured")
     current_version = row.profile_image_storage_key.rsplit("/", 1)[-1]
     if version is None or str(version) != current_version:
@@ -157,11 +154,51 @@ async def get_profile_image(
         content=content,
         media_type=row.profile_image_content_type,
         headers={
-            "Cache-Control": "private, max-age=31536000, immutable",
+            "Cache-Control": cache_control,
             "Content-Disposition": "inline",
             "ETag": f'"profile-image-{current_version}"',
             "X-Content-Type-Options": "nosniff",
         },
+    )
+
+
+@router.get("/me/profile-image")
+async def get_profile_image(
+    version: uuid.UUID | None = None,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+    settings: Settings = Depends(get_settings),
+) -> Response:
+    row = await session.get(User, user.id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="profile image is not configured")
+    return await _profile_image_response(row, version, settings)
+
+
+@router.get("/projects/{project_id}/members/{user_id}/profile-image")
+async def get_project_member_profile_image(
+    project_id: uuid.UUID,
+    user_id: uuid.UUID,
+    version: uuid.UUID | None = None,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+    settings: Settings = Depends(get_settings),
+) -> Response:
+    await require_member(session, project_id, user)
+    target = (
+        await session.execute(
+            select(User)
+            .join(ProjectMember, ProjectMember.user_id == User.id)
+            .where(ProjectMember.project_id == project_id, User.id == user_id)
+        )
+    ).scalar_one_or_none()
+    if target is None:
+        raise HTTPException(status_code=404, detail="project member profile image is unavailable")
+    return await _profile_image_response(
+        target,
+        version,
+        settings,
+        cache_control="private, no-store",
     )
 
 

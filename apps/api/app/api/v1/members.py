@@ -73,6 +73,7 @@ def _read_member(
         user_id=target.id,
         email=target.email,
         display_name=target.display_name,
+        profile_image_url=target.project_profile_image_url(membership.project_id),
         role=membership.role,
         custom_role_id=membership.custom_role_id,
         custom_role_name=custom_role.name if custom_role is not None else None,

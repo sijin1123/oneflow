@@ -74,7 +74,7 @@ export function useWorkPackages(projectId: string, filters: WpFilters) {
 }
 
 export type WatcherList = {
-  items: Array<{ user_id: string; display_name: string }>
+  items: Array<{ user_id: string; display_name: string; profile_image_url?: string | null }>
   total: number
   me_watching: boolean
 }

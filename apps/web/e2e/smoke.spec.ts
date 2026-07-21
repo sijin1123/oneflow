@@ -8260,6 +8260,91 @@ test('워처 구독 표면은 모바일에서 알림 단서와 참여자를 유�
   })
 })
 
+test('프로필 이미지는 멤버 디렉터리와 워처 참여자에 전파되고 fallback을 유지한다', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await mockApi(page)
+  const png = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAEklEQVR4nGPkndLBwMDAxAAGAA2bAS37E8jFAAAAAElFTkSuQmCC',
+    'base64',
+  )
+  const imageUrl =
+    `/api/v1/projects/${project.id}/members/me-1/profile-image` +
+    '?version=11111111-1111-4111-8111-111111111111'
+
+  await page.route(`**/api/v1/projects/${project.id}/members`, (route) =>
+    route.fulfill({
+      json: {
+        items: [
+          {
+            user_id: 'me-1',
+            email: 'dev@oneflow.local',
+            display_name: 'Dev User',
+            profile_image_url: imageUrl,
+            role: 'owner',
+            custom_role_id: null,
+            custom_role_name: null,
+          },
+          {
+            user_id: 'u-alex',
+            email: 'alex@oneflow.local',
+            display_name: 'Alex Kim',
+            profile_image_url: null,
+            role: 'member',
+            custom_role_id: null,
+            custom_role_name: null,
+          },
+        ],
+        total: 2,
+      },
+    }),
+  )
+  await page.route(`**${imageUrl}`, (route) => route.fulfill({ body: png, contentType: 'image/png' }))
+  await page.route(`**/api/v1/work-packages/${wpA.id}/watchers`, (route) =>
+    route.fulfill({
+      json: {
+        items: [
+          { user_id: 'me-1', display_name: 'Dev User', profile_image_url: imageUrl },
+          { user_id: 'u-alex', display_name: 'Alex Kim', profile_image_url: null },
+        ],
+        total: 2,
+        me_watching: true,
+      },
+    }),
+  )
+
+  await page.goto(`/projects/${project.id}/settings?tab=members`)
+  const directory = page.getByRole('region', { name: '팀 디렉터리' })
+  await expect(directory.getByLabel('Dev User', { exact: true }).locator('img')).toHaveAttribute(
+    'src',
+    /profile-image\?version=11111111/,
+  )
+  await expect(directory.getByLabel('Alex Kim', { exact: true }).locator('img')).toHaveCount(0)
+  await expect(directory.getByLabel('Alex Kim', { exact: true })).toContainText('AK')
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/collaboration-identity-avatars-ui/members-desktop.png',
+    fullPage: true,
+  })
+
+  await page.goto(`/projects/${project.id}/work-packages`)
+  await page.getByRole('button', { name: '워크패키지 API 구현', exact: true }).click()
+  const watchSection = page.getByRole('region', { name: '워처 구독' })
+  await expect(watchSection.locator('img')).toHaveAttribute(
+    'src',
+    /profile-image\?version=11111111/,
+  )
+  await watchSection.getByRole('button', { name: '워처 2명 보기' }).click()
+  const watcherDetails = page.getByRole('region', { name: '워처 상세' })
+  await expect(watcherDetails.getByLabel('Dev User', { exact: true }).locator('img')).toBeVisible()
+  await expect(watcherDetails.getByLabel('Alex Kim', { exact: true })).toContainText('AK')
+
+  await page.setViewportSize({ width: 390, height: 844 })
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/collaboration-identity-avatars-ui/watchers-mobile.png',
+    fullPage: true,
+  })
+})
+
 test('개인 설정에서 알림 토글이 PUT을 보내고 구 딥링크가 리다이렉트된다', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 })
   await mockApi(page)

@@ -3165,3 +3165,13 @@ Chromium typed mock fixture에서 1440x960과 390x844 viewport를 사용했다. 
 - **증적**: `docs/screenshots/redevelopment/project-publish-ui/{publication-dialog-mobile,public-project-desktop,public-project-mobile}.png`에 실제 Chromium 상태를 보존했다. E2E는 owner/viewer 메뉴 경계, 발행·clipboard·비인증 route·sanitized content·모바일 overflow·2단계 철회와 철회 URL 404를 검사한다.
 
 ---
+
+# UI-201 Collaboration Identity Avatars 검증 (2026-07-21)
+
+- **UI 변경**: Project Settings의 멤버 디렉터리와 작업 상세의 워처 요약·참여자 popover를 공통 `Avatar`/`AvatarGroup`으로 통합했다. 저장 이미지와 이름 기반 fallback이 같은 밀도와 경계를 사용하며 desktop과 `390x844` mobile에서 내용과 action을 가리지 않는다.
+- **기능/API 반영**: member/watcher 응답에 현재 이미지 버전이 고정된 프로젝트 범위 URL을 추가했다. 읽기 API는 요청자와 대상 사용자가 모두 현재 프로젝트 멤버일 때만 파일을 반환하며, 과거 버전과 비멤버 접근은 404로 숨긴다. 교차 사용자 응답은 계정 전환·멤버십 회수 뒤 브라우저 cache가 권한 검사를 우회하지 않도록 `private, no-store`를 사용하고, 이력에 남은 탈퇴 watcher에는 이미지 URL을 발급하지 않는다. 개인 이미지 교체·삭제 성공 뒤 member/watcher query를 무효화해 shell과 협업 표면을 함께 갱신한다. 신규 DB/schema, migration, environment variable, dependency 또는 Settings storage 변경은 없다.
+- **권한/이연 항목**: owner/member/viewer의 기존 roster와 watcher read/write 경계는 유지한다. 과거 comment/activity actor의 immutable 이름 snapshot에 이미지 snapshot을 추가하는 일은 별도 UI-202로 이연한다. 이번 member/watcher surface에는 mock/dead control 또는 공개 이미지 경로가 없다.
+- **검증**: 교차 사용자 읽기·비멤버 404·이전 버전 폐기·탈퇴 watcher metadata를 포함한 API focused **20 PASS**, 최종 단독 full API **848 PASS**다. Typecheck, lint(기존 Fast Refresh warning 4건), production build(기존 large chunk warning), unit **108 PASS**, component **9 PASS**, focused E2E **4 PASS**, full E2E **353 PASS + opt-in visual manifest 1 skip**, OpenAPI generation/drift, Ruff/format, clean-room frontend **162**/backend **45**, npm/pip audit 0 vulnerabilities와 diff check가 PASS했다. 첫 full API 실행은 별도 focused pytest가 동일 test DB를 정리한 실행 격리 충돌로 폐기하고, 다른 DB test process 없이 전체를 재실행해 848건을 완주했다.
+- **증적**: `docs/screenshots/redevelopment/collaboration-identity-avatars-ui/{members-desktop,watchers-mobile}.png`과 README에 실제 Chromium desktop/mobile 상태를 보존한다.
+
+---

@@ -20,8 +20,10 @@ export function useMe() {
   })
 }
 
-export function profileImageSrc(me: Me | undefined): string | null {
-  return me?.profile_image_url ? `${BASE_URL}${me.profile_image_url}` : null
+export function profileImageSrc(
+  profile: { profile_image_url?: string | null } | undefined,
+): string | null {
+  return profile?.profile_image_url ? `${BASE_URL}${profile.profile_image_url}` : null
 }
 
 export function useReplaceProfileImage() {
@@ -37,7 +39,11 @@ export function useReplaceProfileImage() {
         },
         body: file,
       }),
-    onSuccess: (updated) => queryClient.setQueryData(['me'], updated),
+    onSuccess: (updated) => {
+      queryClient.setQueryData(['me'], updated)
+      void queryClient.invalidateQueries({ queryKey: ['members'] })
+      void queryClient.invalidateQueries({ queryKey: ['wp-watchers'] })
+    },
     onError: (error) => {
       if (error instanceof ApiError && error.status === 412) {
         void queryClient.invalidateQueries({ queryKey: ['me'] })
@@ -54,7 +60,11 @@ export function useRemoveProfileImage() {
         method: 'DELETE',
         headers: { 'If-Match': `"${revision}"` },
       }),
-    onSuccess: (updated) => queryClient.setQueryData(['me'], updated),
+    onSuccess: (updated) => {
+      queryClient.setQueryData(['me'], updated)
+      void queryClient.invalidateQueries({ queryKey: ['members'] })
+      void queryClient.invalidateQueries({ queryKey: ['wp-watchers'] })
+    },
     onError: (error) => {
       if (error instanceof ApiError && error.status === 412) {
         void queryClient.invalidateQueries({ queryKey: ['me'] })
