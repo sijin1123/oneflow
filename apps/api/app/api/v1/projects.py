@@ -17,6 +17,7 @@ from app.models.initiative import Initiative, InitiativeProject
 from app.models.member import ProjectMember
 from app.models.project import Project
 from app.models.project_health_history import ProjectHealthHistory
+from app.models.project_publication import ProjectPublication, ProjectPublicationEvent
 from app.models.project_status import DEFAULT_STATUSES, ProjectStatus
 from app.models.project_type import DEFAULT_TYPES, ProjectType
 from app.models.user import User
@@ -410,9 +411,31 @@ async def archive_project(
     project-scoped write returns 409 until the owner restores it (PR-G).
     Deliberately NOT write-gated — archiving twice is a no-op, not an error."""
     await require_role(session, project_id, user, {"owner"})
-    project = (await session.execute(select(Project).where(Project.id == project_id))).scalar_one()
+    project = (
+        await session.execute(select(Project).where(Project.id == project_id).with_for_update())
+    ).scalar_one()
     if project.archived_at is None:
-        project.archived_at = func.now()
+        now = (await session.execute(select(func.now()))).scalar_one()
+        project.archived_at = now
+        publication = (
+            await session.execute(
+                select(ProjectPublication)
+                .where(ProjectPublication.project_id == project_id)
+                .with_for_update()
+            )
+        ).scalar_one_or_none()
+        if publication is not None and publication.revoked_at is None:
+            publication.revoked_by = user.id
+            publication.revoked_at = now
+            session.add(
+                ProjectPublicationEvent(
+                    project_id=project_id,
+                    public_id=publication.public_id,
+                    actor_id=user.id,
+                    event_type="revoked",
+                    revision=publication.revision,
+                )
+            )
         await session.commit()
         await session.refresh(project)
     return ProjectRead.model_validate(project)

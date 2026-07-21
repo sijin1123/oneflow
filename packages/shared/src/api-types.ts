@@ -2756,6 +2756,25 @@ export interface paths {
         patch: operations["patch_project_phase_api_v1_projects__project_id__phases__phase_key__patch"];
         trace?: never;
     };
+    "/api/v1/projects/{project_id}/publication": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Project Publication */
+        get: operations["get_project_publication_api_v1_projects__project_id__publication_get"];
+        put?: never;
+        /** Publish Project */
+        post: operations["publish_project_api_v1_projects__project_id__publication_post"];
+        /** Revoke Project Publication */
+        delete: operations["revoke_project_publication_api_v1_projects__project_id__publication_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{project_id}/relations": {
         parameters: {
             query?: never;
@@ -3159,6 +3178,23 @@ export interface paths {
          *     same pipeline and response shape as the Jira adapter).
          */
         post: operations["import_linear_csv_api_v1_projects__project_id__work_packages_import_linear_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/public/projects/{public_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Public Project */
+        get: operations["get_public_project_api_v1_public_projects__public_id__get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -7808,6 +7844,19 @@ export interface components {
             /** Version */
             version: number;
         };
+        /** ProjectPublicationRead */
+        ProjectPublicationRead: {
+            /** Public Id */
+            public_id: string | null;
+            /** Published */
+            published: boolean;
+            /** Published At */
+            published_at: string | null;
+            /** Revision */
+            revision: number;
+            /** Revoked At */
+            revoked_at: string | null;
+        };
         /** ProjectRead */
         ProjectRead: {
             /** Archived At */
@@ -8369,6 +8418,31 @@ export interface components {
             health_note?: string | null;
             /** Name */
             name?: string | null;
+        };
+        /** PublicProjectRead */
+        PublicProjectRead: {
+            /** Completed Work Package Count */
+            completed_work_package_count: number;
+            /** Completion Percent */
+            completion_percent: number;
+            /** Description */
+            description: string | null;
+            /** Name */
+            name: string;
+            /** Open Work Package Count */
+            open_work_package_count: number;
+            /**
+             * Public Id
+             * Format: uuid
+             */
+            public_id: string;
+            /**
+             * Published At
+             * Format: date-time
+             */
+            published_at: string;
+            /** Work Package Count */
+            work_package_count: number;
         };
         /**
          * ReactionAgg
@@ -17704,6 +17778,111 @@ export interface operations {
             };
         };
     };
+    get_project_publication_api_v1_projects__project_id__publication_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectPublicationRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    publish_project_api_v1_projects__project_id__publication_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectPublicationRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    revoke_project_publication_api_v1_projects__project_id__publication_delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectPublicationRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_project_relations_api_v1_projects__project_id__relations_get: {
         parameters: {
             query?: {
@@ -18879,6 +19058,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CsvImportResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_public_project_api_v1_public_projects__public_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                public_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicProjectRead"];
                 };
             };
             /** @description Validation Error */

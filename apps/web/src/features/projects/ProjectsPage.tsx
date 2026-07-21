@@ -32,7 +32,6 @@ import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { ApiError } from '@/lib/api'
 import { cn } from '@/lib/utils'
-import { useMe } from '@/features/members/api'
 import { useWorkspaceCapabilities } from '@/features/workspace-features/api'
 
 import {
@@ -278,7 +277,6 @@ function ProjectRow({
   project,
   columns,
   onOpenInitiative,
-  meId,
   favorite,
   onFavoriteChange,
   onMessage,
@@ -286,7 +284,6 @@ function ProjectRow({
   project: ProjectListItem
   columns: RollupKey[]
   onOpenInitiative: (id: string) => void
-  meId?: string
   favorite: boolean
   onFavoriteChange: (projectId: string, favorite: boolean) => void
   onMessage: (message: string) => void
@@ -362,7 +359,6 @@ function ProjectRow({
           </button>
           <ProjectActionsMenu
             project={project}
-            meId={meId}
             favorite={favorite}
             onFavoriteChange={onFavoriteChange}
             onMessage={onMessage}
@@ -379,7 +375,6 @@ function ProjectCard({
   project,
   columns,
   onOpenInitiative,
-  meId,
   favorite,
   onFavoriteChange,
   onMessage,
@@ -387,7 +382,6 @@ function ProjectCard({
   project: ProjectListItem
   columns: RollupKey[]
   onOpenInitiative: (id: string) => void
-  meId?: string
   favorite: boolean
   onFavoriteChange: (projectId: string, favorite: boolean) => void
   onMessage: (message: string) => void
@@ -432,7 +426,6 @@ function ProjectCard({
           </button>
           <ProjectActionsMenu
             project={project}
-            meId={meId}
             favorite={favorite}
             onFavoriteChange={onFavoriteChange}
             onMessage={onMessage}
@@ -522,7 +515,6 @@ function matchesProject(project: ProjectListItem, query: string) {
 export function ProjectsPage() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
-  const me = useMe()
   const sidebarPreferences = useSidebarPreferences()
   const [searchParams, setSearchParams] = useSearchParams()
   const [includeArchived, setIncludeArchived] = useState(false)
@@ -868,7 +860,6 @@ export function ProjectsPage() {
                   project={project}
                   columns={visibleColumns}
                   onOpenInitiative={(id) => navigate(`/initiatives?highlight=${id}`)}
-                  meId={me.data?.id}
                   favorite={sidebarPreferences.preferences.favoriteProjectIds.includes(project.id)}
                   onFavoriteChange={sidebarPreferences.setFavoriteProject}
                   onMessage={setProjectActionMessage}
@@ -879,7 +870,6 @@ export function ProjectsPage() {
                   project={project}
                   columns={visibleColumns}
                   onOpenInitiative={(id) => navigate(`/initiatives?highlight=${id}`)}
-                  meId={me.data?.id}
                   favorite={sidebarPreferences.preferences.favoriteProjectIds.includes(project.id)}
                   onFavoriteChange={sidebarPreferences.setFavoriteProject}
                   onMessage={setProjectActionMessage}

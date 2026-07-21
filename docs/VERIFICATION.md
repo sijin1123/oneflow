@@ -3154,3 +3154,14 @@ Chromium typed mock fixture에서 1440x960과 390x844 viewport를 사용했다. 
 - **검증**: typecheck PASS, lint PASS(기존 Fast Refresh warning 4건), production build PASS(기존 large chunk warning), unit **108 PASS**, component **8 PASS**, 로그인 기능·9개 viewport·정수 raster·DPR 2를 포함한 focused E2E **16 PASS**다. 최종 2-worker full E2E는 재시도 없이 **348 PASS + opt-in visual QA manifest 1 skip**로 완주했다. 4-worker 부하 실사에서 기존 navigation/load·300ms motion 시간창이 서로 다른 항목에서 흔들렸지만 관련 항목 단독 반복은 각각 **3/3** 또는 **5/5 PASS**였고, separator focus와 navigation customizer motion sampling의 두 테스트 시간창을 안정화했다. Clean-room frontend **162**/backend **45**, OpenAPI type parity, npm/pip audit 0 vulnerabilities와 diff check도 PASS했다.
 
 ---
+
+# UI-197 Project Publish Functional Surface 검증 (2026-07-21)
+
+- **UI 변경**: Sidebar와 프로젝트 directory가 공유하는 overflow menu에 활성 프로젝트 소유자만 `프로젝트 공개`를 제공한다. dialog는 비공개·조회 중·오류/재시도·공개 중·2단계 철회 상태를 한 surface에서 처리하고, 공개 URL 복사와 새 탭 열기를 실제 command로 연결한다. 비인증 공개 페이지는 앱 shell 밖에서 프로젝트 이름·설명과 진행 집계만 보여주며 desktop/mobile이 같은 정보 순서를 유지한다.
+- **기능/API 반영**: migration `0113`은 프로젝트별 현재 공개 상태와 append-only publish/revoke 감사를 추가한다. owner-only POST는 프로젝트 row lock으로 동시 발행을 직렬화하고 같은 활성 링크에는 idempotent하며, 철회 후 재발행은 UUID와 revision을 회전해 이전 URL을 영구 무효화한다. DELETE와 프로젝트 보관은 같은 transaction에서 즉시 철회한다. 공개 GET은 인증 없이 허용하되 활성·비보관 프로젝트만 조회하고 `Cache-Control: no-store`를 사용한다.
+- **권한·보안**: 메뉴는 서버가 계산한 `current_user_role`을 사용해 owner만 노출하고 API가 최종 owner 경계를 다시 강제한다. 공개 응답은 이름, 설명, 공개 시각, 전체/열림/완료 수와 완료율만 직렬화한다. 작업 제목·설명, 회원, 예산, health note, 문서, 파일, 댓글은 응답과 화면에 포함하지 않는다. 중앙 permission registry의 `project.manage`에 publish/revoke를 등록했다.
+- **이연 항목**: 없음. 공개, 복사, 열기, 철회와 오류 복구 control은 모두 실제 query/mutation 또는 browser command에 연결돼 있으며 mock/dead control은 없다. 환경변수, Settings UI, 새 dependency는 추가하지 않았다.
+- **검증**: API focused **14 PASS**, API full **841 PASS**, migration `head -> base -> head` 왕복 PASS, OpenAPI type parity PASS, frontend typecheck/lint/build PASS(기존 Fast Refresh warning 4건과 large chunk warning), unit **108 PASS**, component **8 PASS**, project action/publication focused E2E **3 PASS**, 전용 포트 4-worker full E2E **349 PASS + opt-in visual QA manifest 1 skip**다. Clean-room frontend **161**/backend **45**, pip/npm audit 0 vulnerabilities와 diff check가 PASS했다.
+- **증적**: `docs/screenshots/redevelopment/project-publish-ui/{publication-dialog-mobile,public-project-desktop,public-project-mobile}.png`에 실제 Chromium 상태를 보존했다. E2E는 owner/viewer 메뉴 경계, 발행·clipboard·비인증 route·sanitized content·모바일 overflow·2단계 철회와 철회 URL 404를 검사한다.
+
+---

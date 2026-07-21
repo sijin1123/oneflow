@@ -7,9 +7,11 @@ import type {
   Project,
   ProjectHealthHistoryList,
   ProjectList,
+  ProjectPublication,
   ProjectPhase,
   ProjectPhaseKey,
   ProjectPhaseList,
+  PublicProject,
 } from './types'
 import {
   LatestPreferenceWriter,
@@ -172,5 +174,48 @@ export function useArchiveProject(projectId: string) {
       void queryClient.invalidateQueries({ queryKey: ['projects'] })
       void queryClient.invalidateQueries({ queryKey: ['project', projectId] })
     },
+  })
+}
+
+export function useProjectPublication(projectId: string, enabled = true) {
+  return useQuery({
+    queryKey: ['project-publication', projectId],
+    queryFn: () => api<ProjectPublication>(`/api/v1/projects/${projectId}/publication`),
+    enabled: Boolean(projectId) && enabled,
+  })
+}
+
+export function usePublishProject(projectId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: () =>
+      api<ProjectPublication>(`/api/v1/projects/${projectId}/publication`, {
+        method: 'POST',
+      }),
+    onSuccess: (publication) => {
+      queryClient.setQueryData(['project-publication', projectId], publication)
+    },
+  })
+}
+
+export function useRevokeProjectPublication(projectId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: () =>
+      api<ProjectPublication>(`/api/v1/projects/${projectId}/publication`, {
+        method: 'DELETE',
+      }),
+    onSuccess: (publication) => {
+      queryClient.setQueryData(['project-publication', projectId], publication)
+    },
+  })
+}
+
+export function usePublicProject(publicId: string) {
+  return useQuery({
+    queryKey: ['public-project', publicId],
+    queryFn: () => api<PublicProject>(`/api/v1/public/projects/${publicId}`),
+    enabled: Boolean(publicId),
+    retry: false,
   })
 }

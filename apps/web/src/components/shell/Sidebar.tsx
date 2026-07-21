@@ -1009,7 +1009,6 @@ function SidebarContent({
                         </NavLink>
                         <ProjectActionsMenu
                           project={project}
-                          meId={me.data?.id}
                           favorite={favorite}
                           onFavoriteChange={onFavoriteProjectChange}
                           onNavigate={onNavigate}

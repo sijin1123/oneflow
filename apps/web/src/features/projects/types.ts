@@ -93,3 +93,22 @@ export type ProjectList = {
   items: ProjectListItem[]
   total: number
 }
+
+export type ProjectPublication = {
+  published: boolean
+  public_id: string | null
+  published_at: string | null
+  revoked_at: string | null
+  revision: number
+}
+
+export type PublicProject = {
+  public_id: string
+  name: string
+  description: string | null
+  published_at: string
+  work_package_count: number
+  open_work_package_count: number
+  completed_work_package_count: number
+  completion_percent: number
+}
