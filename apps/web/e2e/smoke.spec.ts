@@ -1612,15 +1612,39 @@ test('사이드바 접기와 내비게이션 개인화는 reload와 cross-tab에
   await page.getByRole('button', { name: '사이드바 펼치기' }).click()
 
   const customizeButton = page.getByRole('button', { name: '내비게이션 사용자 지정' })
+  await page.evaluate(() => {
+    type MotionSample = { phase: string | null; dialog: string; backdrop: string }
+    const state = window as typeof window & { __navigationCustomizerMotion?: MotionSample[] }
+    state.__navigationCustomizerMotion = []
+    const collect = () => {
+      const dialog = document.querySelector<HTMLElement>('.of-navigation-customizer-dialog')
+      const backdrop = document.querySelector<HTMLElement>('.of-navigation-customizer-backdrop')
+      if (!dialog || !backdrop) return
+      state.__navigationCustomizerMotion?.push({
+        phase: dialog.dataset.phase ?? null,
+        dialog: getComputedStyle(dialog).animationName,
+        backdrop: getComputedStyle(backdrop).animationName,
+      })
+    }
+    new MutationObserver(collect).observe(document.body, {
+      subtree: true,
+      childList: true,
+      attributes: true,
+      attributeFilter: ['data-phase'],
+    })
+  })
   await customizeButton.click()
   const customizer = page.getByRole('dialog', { name: '내비게이션 사용자 지정' })
-  const customizerBackdrop = page.locator('.of-navigation-customizer-backdrop')
-  await expect(customizer).toHaveAttribute('data-phase', 'opening')
-  await expect(customizer).toHaveCSS('animation-name', 'of-navigation-customizer-opening')
-  await expect(customizerBackdrop).toHaveCSS(
-    'animation-name',
-    'of-navigation-customizer-backdrop-opening',
-  )
+  await expect.poll(() => page.evaluate(() => {
+    const state = window as typeof window & {
+      __navigationCustomizerMotion?: Array<{ phase: string | null; dialog: string; backdrop: string }>
+    }
+    return state.__navigationCustomizerMotion?.some((sample) => (
+      sample.phase === 'opening'
+      && sample.dialog === 'of-navigation-customizer-opening'
+      && sample.backdrop === 'of-navigation-customizer-backdrop-opening'
+    )) ?? false
+  })).toBe(true)
   await expect(customizer.getByRole('button', { name: '내비게이션 사용자 지정 닫기' })).toBeFocused()
   await page.keyboard.press('Shift+Tab')
   await expect(customizer.getByRole('button', { name: '기본값 복원' })).toBeFocused()
@@ -1639,12 +1663,16 @@ test('사이드바 접기와 내비게이션 개인화는 reload와 cross-tab에
     path: '../../docs/screenshots/redevelopment/sidebar-resize-customize-ui/desktop-customize.png',
   })
   await page.keyboard.press('Escape')
-  await expect(customizer).toHaveAttribute('data-phase', 'closing')
-  await expect(customizer).toHaveCSS('animation-name', 'of-navigation-customizer-closing')
-  await expect(customizerBackdrop).toHaveCSS(
-    'animation-name',
-    'of-navigation-customizer-backdrop-closing',
-  )
+  await expect.poll(() => page.evaluate(() => {
+    const state = window as typeof window & {
+      __navigationCustomizerMotion?: Array<{ phase: string | null; dialog: string; backdrop: string }>
+    }
+    return state.__navigationCustomizerMotion?.some((sample) => (
+      sample.phase === 'closing'
+      && sample.dialog === 'of-navigation-customizer-closing'
+      && sample.backdrop === 'of-navigation-customizer-backdrop-closing'
+    )) ?? false
+  })).toBe(true)
   await expect(customizer).toHaveCount(0)
   await expect(customizeButton).toBeFocused()
   await expect(contextNav.getByRole('link', { name: '초안' })).toHaveCount(0)
@@ -1717,6 +1745,7 @@ test('사이드바 너비와 프로젝트 탐색 모드는 조절·저장되고 
   await expect(separator).toHaveAttribute('aria-valuenow', '256')
   await page.keyboard.press('End')
   await expect(separator).toHaveAttribute('aria-valuenow', '420')
+  await separator.focus()
   await page.keyboard.press('Home')
   await expect(separator).toHaveAttribute('aria-valuenow', '220')
   await page.waitForTimeout(250)
@@ -17469,6 +17498,18 @@ test('로그인 reference-fit은 인앱 크기와 기준 크기에서 정수 ras
   expect(referenceGeometry.logo).toMatchObject({ naturalWidth: 173, naturalHeight: 59 })
   await expect(page.locator('.of-login-story-art')).toHaveCSS('animation-name', 'none')
   await expect(page.locator('.of-login-auth-card')).toHaveCSS('animation-name', 'none')
+  await expect(page.locator('.of-login-heading h2')).toHaveCSS('font-weight', '675')
+  await expect(page.locator('.of-login-field label').first()).toHaveCSS(
+    'transform',
+    'matrix(0.93, 0, 0, 1, 1, -1)',
+  )
+  await expect(page.locator('.of-login-submit')).toHaveCSS(
+    'background-image',
+    'linear-gradient(100deg, rgb(87, 98, 242) 0%, rgb(90, 101, 241) 100%)',
+  )
+  await expect(page.locator('.of-login-provider-button').first()).toHaveCSS('font-weight', '675')
+  await expect(page.locator('.of-login-footer')).toHaveCSS('padding-left', '8px')
+  await expect(page.locator('.of-login-footer')).toHaveCSS('padding-right', '8px')
   await page.screenshot({
     path: '../../docs/screenshots/redevelopment/login-reference-fit-ui/reference-1448x1086.png',
   })
