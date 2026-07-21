@@ -12,6 +12,7 @@ import {
 import { useEffect, useMemo, useState } from 'react'
 
 import { EmptyState } from '@/components/shell/states'
+import { Avatar } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -21,6 +22,7 @@ import {
   useMe,
   useMembers,
   usePermissionReport,
+  profileImageSrc,
   useRemoveMember,
   useUpdateMemberRole,
 } from '@/features/members/api'
@@ -66,11 +68,6 @@ function useMobileMembersLayout() {
   return mobile
 }
 
-function initials(name: string) {
-  const trimmed = name.trim()
-  return trimmed ? trimmed.slice(0, 1).toUpperCase() : '?'
-}
-
 function RoleBadge({ role }: { role: Member['role'] }) {
   const meta = ROLE_META[role]
   const Icon = meta.icon
@@ -83,15 +80,15 @@ function RoleBadge({ role }: { role: Member['role'] }) {
 
 function MemberAvatar({ member }: { member: Member }) {
   return (
-    <span
+    <Avatar
+      name={member.display_name}
+      src={profileImageSrc(member)}
+      size="md"
       className={cn(
-        'flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-semibold',
+        'shrink-0',
         member.role === 'owner' ? 'bg-of-accent-soft text-of-accent' : 'bg-of-surface-2 text-of-muted',
       )}
-      aria-hidden="true"
-    >
-      {initials(member.display_name)}
-    </span>
+    />
   )
 }
 

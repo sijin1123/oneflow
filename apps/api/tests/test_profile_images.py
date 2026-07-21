@@ -7,6 +7,7 @@ from pathlib import Path
 
 from app.models.user import User
 from app.services.storage_sweep import _fetch_keys_from_connection
+from tests.conftest import create_project, create_wp
 
 PNG = base64.b64decode(
     "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAEklEQVR4nGPkndLBwMDAxAAGAA2bAS37E8jFAAAAAElFTkSuQmCC"
@@ -104,6 +105,86 @@ async def test_profile_image_upload_read_replace_remove_and_sweep(client, app):
     )
     assert idempotent.status_code == 200
     assert idempotent.json()["profile_revision"] == 4
+
+
+async def test_project_collaboration_profile_image_urls_are_versioned_and_member_scoped(
+    client,
+    app,
+    member_project,
+    foreign_project,
+):
+    project = await create_project(client, key="AVI", name="Avatar project")
+    uploaded = await client.put(
+        "/api/v1/me/profile-image",
+        content=PNG,
+        headers=image_headers(1),
+    )
+    assert uploaded.status_code == 200
+    me = uploaded.json()
+
+    roster = await client.get(f"/api/v1/projects/{project['id']}/members")
+    assert roster.status_code == 200
+    member = roster.json()["items"][0]
+    member_url = member["profile_image_url"]
+    assert member_url.startswith(
+        f"/api/v1/projects/{project['id']}/members/{me['id']}/profile-image?version="
+    )
+    member_image = await client.get(member_url)
+    assert member_image.content == PNG
+    assert member_image.headers["cache-control"] == "private, no-store"
+
+    work_package = await create_wp(client, project["id"], subject="Avatar watcher")
+    assert (
+        await client.put(f"/api/v1/work-packages/{work_package['id']}/watchers/me")
+    ).status_code == 204
+    watcher_list = await client.get(f"/api/v1/work-packages/{work_package['id']}/watchers")
+    assert watcher_list.status_code == 200
+    watcher = watcher_list.json()["items"][0]
+    assert watcher["profile_image_url"] == member_url
+
+    owner_version = uuid.uuid4()
+    owner_key = f"{member_project['owner_id']}/{owner_version}"
+    owner_path = Path(app.state.settings.storage_dir) / owner_key
+    owner_path.parent.mkdir(parents=True, exist_ok=True)
+    owner_path.write_bytes(PNG)
+    async with app.state.sessionmaker() as session, session.begin():
+        owner = await session.get(User, member_project["owner_id"])
+        assert owner is not None
+        owner.profile_image_storage_key = owner_key
+        owner.profile_image_content_type = "image/png"
+        owner.profile_image_filename = "owner.png"
+        owner.profile_image_width = 2
+        owner.profile_image_height = 2
+        owner.profile_image_byte_size = len(PNG)
+
+    shared_roster = await client.get(f"/api/v1/projects/{member_project['project_id']}/members")
+    assert shared_roster.status_code == 200
+    owner_member = next(
+        item
+        for item in shared_roster.json()["items"]
+        if item["user_id"] == str(member_project["owner_id"])
+    )
+    assert owner_member["profile_image_url"].endswith(f"version={owner_version}")
+    owner_image = await client.get(owner_member["profile_image_url"])
+    assert owner_image.content == PNG
+    assert owner_image.headers["cache-control"] == "private, no-store"
+
+    version = member_url.rsplit("=", 1)[-1]
+    foreign_read = await client.get(
+        f"/api/v1/projects/{foreign_project['project_id']}/members/"
+        f"{foreign_project['user_id']}/profile-image?version={version}"
+    )
+    assert foreign_read.status_code == 404
+
+    replacement = await client.put(
+        "/api/v1/me/profile-image",
+        content=PNG,
+        headers=image_headers(2, "replacement.png"),
+    )
+    assert replacement.status_code == 200
+    assert (await client.get(member_url)).status_code == 404
+    refreshed = await client.get(f"/api/v1/projects/{project['id']}/members")
+    assert refreshed.json()["items"][0]["profile_image_url"] != member_url
 
 
 async def test_profile_image_validation_and_stale_cleanup(client, app):

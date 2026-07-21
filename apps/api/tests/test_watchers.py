@@ -5,10 +5,12 @@ for non-members, same-transaction fan-out on status/comment/assignee changes,
 actor self-exclusion, assignee dedupe (richer 'assigned' wins), and query-time
 membership evaluation (revoked members receive nothing)."""
 
+import uuid
+
 import pytest
 from sqlalchemy import delete, select
 
-from app.models import Notification, ProjectMember, WpWatcher
+from app.models import Notification, ProjectMember, User, WpWatcher
 from tests.conftest import create_project, create_wp
 
 
@@ -115,6 +117,14 @@ async def test_revoked_member_receives_nothing(client, app, member_project):
     wp = await create_wp(client, str(pid), subject="해지 검증")
     async with app.state.sessionmaker() as session, session.begin():
         session.add(WpWatcher(work_package_id=wp["id"], user_id=owner_id))
+        owner = await session.get(User, owner_id)
+        assert owner is not None
+        owner.profile_image_storage_key = f"{owner_id}/{uuid.uuid4()}"
+        owner.profile_image_content_type = "image/png"
+        owner.profile_image_filename = "owner.png"
+        owner.profile_image_width = 2
+        owner.profile_image_height = 2
+        owner.profile_image_byte_size = 1
         # Revoke the OWNER's membership directly (dev stays to act).
         await session.execute(
             delete(ProjectMember).where(
@@ -129,6 +139,9 @@ async def test_revoked_member_receives_nothing(client, app, member_project):
     assert res.status_code == 200, res.text
     assert await _notifications_for(app, owner_id, kind="watch_status") == []
     assert dev_id  # dev acted; nothing else to assert for the actor
+    watchers = await client.get(f"/api/v1/work-packages/{wp['id']}/watchers")
+    assert watchers.status_code == 200
+    assert watchers.json()["items"][0]["profile_image_url"] is None
 
 
 async def test_watch_notifications_render_in_inbox(client, app, member_project):

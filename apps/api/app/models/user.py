@@ -60,8 +60,20 @@ class User(Base):
     )
 
     @property
-    def profile_image_url(self) -> str | None:
+    def profile_image_version(self) -> str | None:
         if self.profile_image_storage_key is None:
             return None
-        version = self.profile_image_storage_key.rsplit("/", 1)[-1]
+        return self.profile_image_storage_key.rsplit("/", 1)[-1]
+
+    @property
+    def profile_image_url(self) -> str | None:
+        version = self.profile_image_version
+        if version is None:
+            return None
         return f"/api/v1/me/profile-image?version={version}"
+
+    def project_profile_image_url(self, project_id: uuid.UUID) -> str | None:
+        version = self.profile_image_version
+        if version is None:
+            return None
+        return f"/api/v1/projects/{project_id}/members/{self.id}/profile-image?version={version}"

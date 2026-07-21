@@ -26,6 +26,7 @@ import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent, PointerEvent a
 import { Link, useSearchParams } from 'react-router-dom'
 
 import { ErrorState, ListSkeleton } from '@/components/shell/states'
+import { Avatar, AvatarGroup } from '@/components/ui/avatar'
 import { Input } from '@/components/ui/input'
 import { AiSummarySection } from '@/features/ai/AiSummarySection'
 import { Button } from '@/components/ui/button'
@@ -33,7 +34,7 @@ import { IconButton } from '@/components/ui/icon-button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { ReadOnlyNotice } from '@/components/shell/ReadOnlyNotice'
 import { isAssignableMember } from '@/features/members/assignment'
-import { useMembers } from '@/features/members/api'
+import { profileImageSrc, useMembers } from '@/features/members/api'
 import { useCanWrite } from '@/features/members/useCanWrite'
 import { useProjects } from '@/features/projects/api'
 import { useCycles } from '@/features/cycles/api'
@@ -1004,16 +1005,17 @@ function WatchControl({ wpId, canWrite }: { wpId: string; canWrite: boolean }) {
             className="of-touch-target flex h-8 max-w-28 items-center gap-1.5 rounded-of border border-transparent px-1.5 text-xs text-of-muted transition-colors hover:border-of-border-subtle hover:bg-of-surface-hover hover:text-of-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus"
           >
             {summaryWatchers.length > 0 ? (
-              <span className="flex -space-x-1.5" aria-hidden="true">
+              <AvatarGroup>
                 {summaryWatchers.map((watcher) => (
-                  <span
+                  <Avatar
                     key={watcher.user_id}
-                    className="flex size-5 items-center justify-center rounded-full border border-of-surface bg-of-accent text-[9px] font-semibold text-white"
-                  >
-                    {watcherInitial(watcher.display_name)}
-                  </span>
+                    name={watcher.display_name}
+                    src={profileImageSrc(watcher)}
+                    size="sm"
+                    className="size-5 text-[9px]"
+                  />
                 ))}
-              </span>
+              </AvatarGroup>
             ) : (
               <Users size={14} aria-hidden="true" />
             )}
@@ -1055,9 +1057,11 @@ function WatchControl({ wpId, canWrite }: { wpId: string; canWrite: boolean }) {
                     key={watcher.user_id}
                     className="flex items-center gap-2 rounded-of px-1 py-1.5 text-xs text-of-fg"
                   >
-                    <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-of-accent text-[10px] font-semibold text-white">
-                      {watcherInitial(watcher.display_name)}
-                    </span>
+                    <Avatar
+                      name={watcher.display_name}
+                      src={profileImageSrc(watcher)}
+                      size="sm"
+                    />
                     <span className="min-w-0 flex-1 truncate">{watcher.display_name}</span>
                   </div>
                 ))
@@ -1100,8 +1104,4 @@ function WatchControl({ wpId, canWrite }: { wpId: string; canWrite: boolean }) {
       ) : null}
     </section>
   )
-}
-
-function watcherInitial(name: string) {
-  return name.trim().charAt(0).toUpperCase() || '?'
 }

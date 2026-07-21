@@ -652,3 +652,9 @@ Plane/OpenProject source, package, asset, logo, CSS, DOM, wording 또는 brandin
 UI-197의 유일한 reference 입력은 `docs/plane-poc-reverse-spec/11-focused-sidebar-views-observations.md`에 기록된 project overflow menu의 `Publish project` 행동 범주다. Plane의 source, API, database schema, package, asset, CSS, DOM hierarchy, 정확한 화면 치수·색상, 문구, icon 또는 branding은 열람·복사하지 않았다.
 
 OneFlow 구현은 기존 자체 `ProjectListItem.current_user_role`, FastAPI/SQLAlchemy authorization, PostgreSQL row lock, append-only audit, React Query, Radix Dialog/Dropdown과 local design tokens를 사용해 공개 상태·UUID 회전·즉시 철회·보관 연동·최소 공개 집계를 독립 설계했다. 공개 페이지와 disclosure copy도 OneFlow의 데이터 경계에 맞춘 고유 구현이며, 공개되지 않는 내부 필드를 API schema에서부터 제외한다. 환경변수, Settings storage와 새 dependency는 없다. - attested-independent-derivation
+
+## UI-201 Collaboration Identity Avatars
+
+`docs/plane-poc-reverse-spec/`에서 사용한 입력은 멤버 디렉터리와 작업 참여자 표면이 동일한 사용자 identity를 compact avatar와 이름 fallback으로 일관되게 표현한다는 관찰 가능한 정보 구조와 행동뿐이다. OneFlow 구현은 기존 개인 프로필 이미지 저장소, 프로젝트 멤버십 권한, member/watcher API, React Query와 자체 공통 `Avatar` 컴포넌트를 사용해 독립 설계했다.
+
+Plane/OpenProject source, API, database schema, package, asset, CSS, DOM hierarchy, exact dimensions/colors, wording, component implementation, icons 또는 branding은 복사하지 않았다. 프로젝트 외부 읽기와 과거 버전 URL을 차단하고, 업로드·삭제 뒤 현재 멤버와 워처 cache를 무효화하며, 이미지가 없는 사용자는 이름 기반 fallback을 유지한다. 신규 dependency, DB/schema, migration, environment variable 또는 Settings storage 변경은 없다. - attested-independent-derivation

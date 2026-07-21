@@ -11,6 +11,7 @@ class MemberRead(BaseModel):
     user_id: uuid.UUID
     email: str
     display_name: str
+    profile_image_url: str | None = None
     role: str
     custom_role_id: uuid.UUID | None = None
     custom_role_name: str | None = None
