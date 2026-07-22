@@ -5,6 +5,7 @@ import {
   FileText,
   FolderTree,
   History,
+  LoaderCircle,
   MessageSquareText,
   Quote,
   RotateCcw,
@@ -91,6 +92,18 @@ export function DocumentEditorPage() {
   const me = useMe()
   const members = useMembers(projectId)
   const comments = useDocumentComments(docId)
+  const commentData = useMemo<DocumentCommentList | undefined>(() => {
+    if (!comments.data) return undefined
+    const itemsById = new Map<string, DocumentComment>()
+    for (const page of comments.data.pages) {
+      for (const comment of page.items) itemsById.set(comment.id, comment)
+    }
+    const items = Array.from(itemsById.values()).sort(
+      (left, right) =>
+        left.created_at.localeCompare(right.created_at) || left.id.localeCompare(right.id),
+    )
+    return { items, total: comments.data.pages[0]?.total ?? items.length }
+  }, [comments.data])
   const createInlineComment = useCreateInlineDocumentComment(docId, projectId)
   const mentionOptions =
     doc?.visibility === 'shared'
@@ -111,7 +124,7 @@ export function DocumentEditorPage() {
     () =>
       Array.from(
         new Set(
-          (comments.data?.items ?? [])
+          (commentData?.items ?? [])
             .filter(
               (comment) =>
                 comment.anchor_id !== null &&
@@ -121,7 +134,7 @@ export function DocumentEditorPage() {
             .map((comment) => comment.anchor_id as string),
         ),
       ),
-    [comments.data?.items, doc?.body],
+    [commentData?.items, doc?.body],
   )
 
   useEffect(() => {
@@ -396,10 +409,15 @@ export function DocumentEditorPage() {
               doc={doc}
               projectId={projectId}
               canWrite={editable}
-              data={comments.data}
+              data={commentData}
               isPending={comments.isPending}
-              isError={comments.isError}
+              isError={comments.isError && !comments.data}
               onRetry={() => comments.refetch()}
+              hasNextPage={comments.hasNextPage}
+              isFetchingNextPage={comments.isFetchingNextPage}
+              isNextPageError={comments.isFetchNextPageError}
+              hasLoadedOlderPage={(comments.data?.pages.length ?? 0) > 1}
+              onLoadMore={() => comments.fetchNextPage()}
               activeAnchorId={activeCommentAnchorId}
               onActivateAnchor={activateBodyAnchor}
             />
@@ -478,6 +496,11 @@ function DocumentComments({
   isPending,
   isError,
   onRetry,
+  hasNextPage,
+  isFetchingNextPage,
+  isNextPageError,
+  hasLoadedOlderPage,
+  onLoadMore,
   activeAnchorId,
   onActivateAnchor,
 }: {
@@ -488,6 +511,11 @@ function DocumentComments({
   isPending: boolean
   isError: boolean
   onRetry: () => unknown
+  hasNextPage: boolean
+  isFetchingNextPage: boolean
+  isNextPageError: boolean
+  hasLoadedOlderPage: boolean
+  onLoadMore: () => unknown
   activeAnchorId: string | null
   onActivateAnchor: (anchorId: string) => void
 }) {
@@ -691,6 +719,41 @@ function DocumentComments({
         </div>
         <Badge variant="outline">본문 앵커 + 일반</Badge>
       </div>
+
+      {data && (data.total > data.items.length || data.total > 50 || hasLoadedOlderPage) ? (
+        <div
+          className="flex min-w-0 flex-col gap-2 rounded-of border border-of-border-subtle bg-of-surface-2/40 px-3 py-2 sm:flex-row sm:items-center sm:justify-between"
+          aria-live="polite"
+        >
+          <span className="text-xs text-of-muted">
+            {data.items.length} / {data.total}개 표시
+          </span>
+          {hasNextPage && !isNextPageError ? (
+            <Button
+              size="sm"
+              variant="outline"
+              className="w-full sm:w-auto"
+              disabled={isFetchingNextPage}
+              onClick={() => void onLoadMore()}
+            >
+              {isFetchingNextPage ? (
+                <LoaderCircle size={13} className="animate-spin" aria-hidden="true" />
+              ) : (
+                <History size={13} aria-hidden="true" />
+              )}
+              이전 코멘트 불러오기
+            </Button>
+          ) : null}
+          {isNextPageError ? (
+            <div className="flex min-w-0 flex-col gap-2 text-xs text-of-danger sm:flex-row sm:items-center">
+              <span>이전 코멘트를 불러오지 못했습니다.</span>
+              <Button size="sm" variant="outline" onClick={() => void onLoadMore()}>
+                다시 시도
+              </Button>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
 
       {isPending ? <div className="h-20 animate-pulse rounded-of bg-of-surface-2/60" /> : null}
       {isError ? (

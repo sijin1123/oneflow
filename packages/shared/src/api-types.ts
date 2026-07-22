@@ -843,9 +843,7 @@ export interface paths {
         };
         /**
          * List Document Comments
-         * @description Member-scoped; reads stay open on archived projects. `total` is the
-         *     FULL count (limit/offset — the WP-activities contract; nothing is ever
-         *     unreachable, v43.1 R1-②).
+         * @description Member-scoped comments with legacy offset and stable cursor paging.
          */
         get: operations["list_document_comments_api_v1_documents__doc_id__comments_get"];
         put?: never;
@@ -5732,6 +5730,10 @@ export interface components {
         DocumentCommentList: {
             /** Items */
             items: components["schemas"]["DocumentCommentRead"][];
+            /** Next Cursor Created At */
+            next_cursor_created_at?: string | null;
+            /** Next Cursor Id */
+            next_cursor_id?: string | null;
             /** Total */
             total: number;
         };
@@ -12666,6 +12668,9 @@ export interface operations {
             query?: {
                 limit?: number;
                 offset?: number;
+                order?: "asc" | "desc";
+                cursor_created_at?: string | null;
+                cursor_id?: string | null;
             };
             header?: {
                 authorization?: string | null;
