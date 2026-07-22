@@ -47,7 +47,8 @@ async def test_crud_normalization_and_pagination(client, doc):
     assert scripted.json()["body"] == "<script>alert(1)</script>"
 
     # Boundaries: 4000 ok, 4001/whitespace-only 422.
-    assert (await comment(client, doc_id, "x" * 4000)).status_code == 201
+    long_comment = await comment(client, doc_id, "x" * 4000)
+    assert long_comment.status_code == 201
     assert (await comment(client, doc_id, "x" * 4001)).status_code == 422
     assert (await comment(client, doc_id, "   ")).status_code == 422
 
@@ -56,6 +57,54 @@ async def test_crud_normalization_and_pagination(client, doc):
     assert (len(listed["items"]), listed["total"]) == (2, 3)
     page2 = (await client.get(f"/api/v1/documents/{doc_id}/comments?limit=2&offset=2")).json()
     assert (len(page2["items"]), page2["total"]) == (1, 3)
+
+    # The UI reads newest-first by a stable (created_at, id) cursor. A comment
+    # inserted between pages must not shift the older page as offset paging can.
+    first_cursor_page = (
+        await client.get(
+            f"/api/v1/documents/{doc_id}/comments", params={"limit": 2, "order": "desc"}
+        )
+    ).json()
+    assert first_cursor_page["total"] == 3
+    assert first_cursor_page["next_cursor_created_at"] is not None
+    assert first_cursor_page["next_cursor_id"] is not None
+    inserted = await comment(client, doc_id, "동시 추가")
+    assert inserted.status_code == 201
+    cursor_page = (
+        await client.get(
+            f"/api/v1/documents/{doc_id}/comments",
+            params={
+                "limit": 2,
+                "order": "desc",
+                "cursor_created_at": first_cursor_page["next_cursor_created_at"],
+                "cursor_id": first_cursor_page["next_cursor_id"],
+            },
+        )
+    ).json()
+    first_ids = {item["id"] for item in first_cursor_page["items"]}
+    cursor_ids = {item["id"] for item in cursor_page["items"]}
+    original_ids = {body["id"], scripted.json()["id"], long_comment.json()["id"]}
+    assert cursor_page["total"] == 4
+    assert first_ids.isdisjoint(cursor_ids)
+    assert first_ids | cursor_ids == original_ids
+    assert inserted.json()["id"] not in cursor_ids
+
+    assert (
+        await client.get(
+            f"/api/v1/documents/{doc_id}/comments",
+            params={"cursor_created_at": first_cursor_page["next_cursor_created_at"]},
+        )
+    ).status_code == 422
+    assert (
+        await client.get(
+            f"/api/v1/documents/{doc_id}/comments",
+            params={
+                "offset": 1,
+                "cursor_created_at": first_cursor_page["next_cursor_created_at"],
+                "cursor_id": first_cursor_page["next_cursor_id"],
+            },
+        )
+    ).status_code == 422
 
     # Author delete → 204; second delete → 404 (rowcount 0).
     cid = body["id"]

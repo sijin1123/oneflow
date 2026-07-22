@@ -18,8 +18,8 @@ from typing import Literal
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Response
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
+from sqlalchemy import and_, func, or_, select, text
 from sqlalchemy import delete as sa_delete
-from sqlalchemy import func, select, text
 from sqlalchemy import update as sa_update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import IntegrityError
@@ -1020,35 +1020,70 @@ async def list_document_comments(
     doc_id: uuid.UUID,
     limit: int = Query(default=200, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
+    order: Literal["asc", "desc"] = Query(default="asc"),
+    cursor_created_at: datetime | None = Query(default=None),
+    cursor_id: uuid.UUID | None = Query(default=None),
     session: AsyncSession = Depends(get_session),
     user: User = Depends(get_current_user),
 ) -> DocumentCommentList:
-    """Member-scoped; reads stay open on archived projects. `total` is the
-    FULL count (limit/offset — the WP-activities contract; nothing is ever
-    unreachable, v43.1 R1-②)."""
+    """Member-scoped comments with legacy offset and stable cursor paging."""
     doc = await _get_doc_scoped(session, doc_id, user)
     base = select(ProjectDocumentComment).where(ProjectDocumentComment.document_id == doc.id)
     total = (await session.execute(select(func.count()).select_from(base.subquery()))).scalar_one()
-    rows = (
-        (
-            await session.execute(
-                base.order_by(
-                    ProjectDocumentComment.created_at.asc(), ProjectDocumentComment.id.asc()
-                )
-                .limit(limit)
-                .offset(offset)
-            )
+    if (cursor_created_at is None) != (cursor_id is None):
+        raise HTTPException(
+            status_code=422, detail="cursor_created_at and cursor_id must be provided together"
         )
+    if cursor_created_at is not None and offset:
+        raise HTTPException(status_code=422, detail="cursor and offset cannot be combined")
+
+    page = base
+    if cursor_created_at is not None and cursor_id is not None:
+        if order == "asc":
+            page = page.where(
+                or_(
+                    ProjectDocumentComment.created_at > cursor_created_at,
+                    and_(
+                        ProjectDocumentComment.created_at == cursor_created_at,
+                        ProjectDocumentComment.id > cursor_id,
+                    ),
+                )
+            )
+        else:
+            page = page.where(
+                or_(
+                    ProjectDocumentComment.created_at < cursor_created_at,
+                    and_(
+                        ProjectDocumentComment.created_at == cursor_created_at,
+                        ProjectDocumentComment.id < cursor_id,
+                    ),
+                )
+            )
+    order_columns = (
+        (ProjectDocumentComment.created_at.asc(), ProjectDocumentComment.id.asc())
+        if order == "asc"
+        else (ProjectDocumentComment.created_at.desc(), ProjectDocumentComment.id.desc())
+    )
+    rows = (
+        (await session.execute(page.order_by(*order_columns).limit(limit + 1).offset(offset)))
         .scalars()
         .all()
     )
+    has_more = len(rows) > limit
+    rows = rows[:limit]
     items = [DocumentCommentRead.model_validate(r) for r in rows]
     reactions = await _document_comment_reaction_aggregates(
         session, [comment.id for comment in rows], user.id
     )
     for item in items:
         item.reactions = reactions[item.id]
-    return DocumentCommentList(items=items, total=total)
+    cursor_row = rows[-1] if has_more else None
+    return DocumentCommentList(
+        items=items,
+        total=total,
+        next_cursor_created_at=cursor_row.created_at if cursor_row else None,
+        next_cursor_id=cursor_row.id if cursor_row else None,
+    )
 
 
 @router.post("/documents/{doc_id}/comments", response_model=DocumentCommentRead, status_code=201)

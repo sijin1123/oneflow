@@ -1,4 +1,10 @@
-import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import {
+  useInfiniteQuery,
+  useMutation,
+  useQuery,
+  useQueryClient,
+  type InfiniteData,
+} from '@tanstack/react-query'
 
 import { ApiError, api } from '@/lib/api'
 
@@ -330,12 +336,96 @@ export type DocumentCommentReaction = {
   me: boolean
 }
 
-export type DocumentCommentList = { items: DocumentComment[]; total: number }
+export type DocumentCommentList = {
+  items: DocumentComment[]
+  total: number
+  next_cursor_created_at?: string | null
+  next_cursor_id?: string | null
+}
+
+const DOCUMENT_COMMENT_PAGE_SIZE = 50
+type DocumentCommentCursor = { createdAt: string; id: string } | null
+type DocumentCommentPages = InfiniteData<DocumentCommentList, DocumentCommentCursor>
+
+function latestCommentPage(
+  current: DocumentCommentPages | undefined,
+  comment: DocumentComment,
+): DocumentCommentPages {
+  const loaded = current?.pages.flatMap((page) => page.items) ?? []
+  const existed = loaded.some((item) => item.id === comment.id)
+  const total = Math.max(1, (current?.pages[0]?.total ?? 0) + (existed ? 0 : 1))
+  const byId = new Map(loaded.map((item) => [item.id, item]))
+  byId.set(comment.id, comment)
+  const items = Array.from(byId.values())
+    .sort(
+      (left, right) =>
+        right.created_at.localeCompare(left.created_at) || right.id.localeCompare(left.id),
+    )
+    .slice(0, DOCUMENT_COMMENT_PAGE_SIZE)
+  const cursor = total > items.length ? items.at(-1) : undefined
+  return {
+    pages: [
+      {
+        items,
+        total,
+        next_cursor_created_at: cursor?.created_at ?? null,
+        next_cursor_id: cursor?.id ?? null,
+      },
+    ],
+    pageParams: [null],
+  }
+}
+
+function withoutComment(
+  current: DocumentCommentPages | undefined,
+  commentId: string,
+): DocumentCommentPages | undefined {
+  if (!current) return current
+  const items = current.pages
+    .flatMap((page) => page.items)
+    .filter((comment) => comment.id !== commentId)
+    .sort(
+      (left, right) =>
+        right.created_at.localeCompare(left.created_at) || right.id.localeCompare(left.id),
+    )
+    .slice(0, DOCUMENT_COMMENT_PAGE_SIZE)
+  const total = Math.max(0, (current.pages[0]?.total ?? items.length + 1) - 1)
+  const cursor = total > items.length ? items.at(-1) : undefined
+  return {
+    pages: [
+      {
+        items,
+        total,
+        next_cursor_created_at: cursor?.created_at ?? null,
+        next_cursor_id: cursor?.id ?? null,
+      },
+    ],
+    pageParams: [null],
+  }
+}
 
 export function useDocumentComments(docId: string) {
-  return useQuery({
+  return useInfiniteQuery({
     queryKey: ['document-comments', docId],
-    queryFn: () => api<DocumentCommentList>(`/api/v1/documents/${docId}/comments`),
+    initialPageParam: null as DocumentCommentCursor,
+    queryFn: ({ pageParam }) => {
+      const params = new URLSearchParams({
+        limit: String(DOCUMENT_COMMENT_PAGE_SIZE),
+        order: 'desc',
+      })
+      if (pageParam) {
+        params.set('cursor_created_at', pageParam.createdAt)
+        params.set('cursor_id', pageParam.id)
+      }
+      return api<DocumentCommentList>(
+        `/api/v1/documents/${docId}/comments?${params.toString()}`,
+      )
+    },
+    getNextPageParam: (page) =>
+      page.next_cursor_created_at && page.next_cursor_id
+        ? { createdAt: page.next_cursor_created_at, id: page.next_cursor_id }
+        : undefined,
+    retry: false,
   })
 }
 
@@ -347,8 +437,10 @@ export function useCreateDocumentComment(docId: string) {
         method: 'POST',
         body: JSON.stringify(input),
       }),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['document-comments', docId] })
+    onSuccess: (comment) => {
+      queryClient.setQueryData<DocumentCommentPages>(['document-comments', docId], (current) =>
+        latestCommentPage(current, comment),
+      )
     },
   })
 }
@@ -377,12 +469,9 @@ export function useCreateInlineDocumentComment(docId: string, projectId: string)
       }),
     onSuccess: ({ comment, document }) => {
       queryClient.setQueryData(['document', document.id], document)
-      queryClient.setQueryData<DocumentCommentList>(
+      queryClient.setQueryData<DocumentCommentPages>(
         ['document-comments', docId],
-        (current) =>
-          current
-            ? { items: [...current.items, comment], total: current.total + 1 }
-            : { items: [comment], total: 1 },
+        (current) => latestCommentPage(current, comment),
       )
       void queryClient.invalidateQueries({ queryKey: ['documents', projectId] })
       void queryClient.invalidateQueries({ queryKey: ['document-activities', document.id] })
@@ -395,8 +484,11 @@ export function useDeleteDocumentComment(docId: string) {
   return useMutation({
     mutationFn: (commentId: string) =>
       api(`/api/v1/document-comments/${commentId}`, { method: 'DELETE' }),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['document-comments', docId] })
+    onSuccess: (_result, commentId) => {
+      queryClient.setQueryData<DocumentCommentPages>(
+        ['document-comments', docId],
+        (current) => withoutComment(current, commentId),
+      )
     },
   })
 }
@@ -418,15 +510,18 @@ export function useToggleDocumentCommentReaction(docId: string) {
         { method: on ? 'PUT' : 'DELETE' },
       ).then((result) => ({ commentId, reactions: result.items })),
     onSuccess: ({ commentId, reactions }) => {
-      queryClient.setQueryData<DocumentCommentList>(
+      queryClient.setQueryData<DocumentCommentPages>(
         ['document-comments', docId],
         (current) =>
           current
             ? {
                 ...current,
-                items: current.items.map((comment) =>
-                  comment.id === commentId ? { ...comment, reactions } : comment,
-                ),
+                pages: current.pages.map((page) => ({
+                  ...page,
+                  items: page.items.map((comment) =>
+                    comment.id === commentId ? { ...comment, reactions } : comment,
+                  ),
+                })),
               }
             : current,
       )

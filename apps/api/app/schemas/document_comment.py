@@ -53,7 +53,9 @@ class DocumentCommentRead(BaseModel):
 
 class DocumentCommentList(BaseModel):
     items: list[DocumentCommentRead]
-    total: int  # full count (limit/offset pagination — the WP-activities contract)
+    total: int  # full count across the visible document
+    next_cursor_created_at: datetime | None = None
+    next_cursor_id: uuid.UUID | None = None
 
 
 class InlineDocumentCommentCreate(DocumentCommentCreate):
