@@ -35,7 +35,7 @@ const workspaceRouteLabels: Array<{ path: string; title: string; parent: string 
 
 const projectRouteLabels: Array<{ suffix: string; title: string; parent: string; parentPath: string }> = [
   { suffix: '/overview', title: 'Overview', parent: '프로젝트', parentPath: 'overview' },
-  { suffix: '/work-packages', title: 'Work Packages', parent: '작업', parentPath: 'work-packages' },
+  { suffix: '/work-packages', title: 'Work items', parent: '작업', parentPath: 'work-packages' },
   { suffix: '/board', title: 'Board', parent: '작업', parentPath: 'work-packages' },
   { suffix: '/backlog', title: 'Backlog', parent: '작업', parentPath: 'work-packages' },
   { suffix: '/tree', title: 'Hierarchy', parent: '작업', parentPath: 'work-packages' },
@@ -81,7 +81,7 @@ export function getShellContext(
     const projectRoute = projectRouteLabels.find((item) => pathname.endsWith(item.suffix))
     let nestedRoute: { title: string; parent: string; parentPath: string } | null = null
     if (pathname.includes('/work-packages/')) {
-      nestedRoute = { title: 'Work Package', parent: '작업', parentPath: 'work-packages' }
+      nestedRoute = { title: 'Work item', parent: '작업', parentPath: 'work-packages' }
     } else if (pathname.includes('/documents/')) {
       nestedRoute = { title: 'Wiki Page', parent: '문서', parentPath: 'documents' }
     } else if (pathname.includes('/meetings/')) {
@@ -89,7 +89,7 @@ export function getShellContext(
     }
 
     const route = nestedRoute ?? projectRoute ?? {
-      title: 'Work Packages',
+      title: 'Work items',
       parent: '작업',
       parentPath: 'work-packages',
     }

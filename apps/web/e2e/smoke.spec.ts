@@ -1225,7 +1225,7 @@ test('앱 셸과 프로젝트/워크패키지 목록이 렌더링된다', async 
   await expect(page.getByText('OneFlow 도입', { exact: false }).first()).toBeVisible()
 
   await page.goto(`/projects/${project.id}/work-packages`)
-  await expect(page.getByRole('link', { name: /Work Packages/ })).toBeVisible()
+  await expect(page.getByRole('link', { name: /Work items/ })).toBeVisible()
   await expect(
     page.getByRole('button', { name: '워크패키지 API 구현', exact: true }),
   ).toBeVisible()
@@ -1247,7 +1247,7 @@ test('프로젝트 작업 화면 제어가 보기·필터·분석·생성 흐름
   await page.goto(`/projects/${project.id}/work-packages`)
 
   const controls = page.getByRole('region', { name: '작업 화면 제어' })
-  await expect(controls.getByRole('heading', { name: 'Work Packages' })).toBeVisible()
+  await expect(controls.getByRole('heading', { name: 'Work items' })).toBeVisible()
   await expect(controls.getByRole('link', { name: '목록 보기' })).toHaveAttribute(
     'href',
     `/projects/${project.id}/work-packages`,
@@ -1412,7 +1412,7 @@ test('Frame context는 workspace query와 project route를 실제 breadcrumb nav
   await page.setViewportSize({ width: 1440, height: 960 })
   await page.screenshot({ path: '../../docs/screenshots/redevelopment/shell-header-workspace-switcher-ui/desktop.png' })
   await page.setViewportSize({ width: 390, height: 844 })
-  await expect(page.getByTestId('frame-context-bar').getByText('Work Packages', { exact: true })).toBeVisible()
+  await expect(page.getByTestId('frame-context-bar').getByText('Work items', { exact: true })).toBeVisible()
   await expectNoHorizontalOverflow(page)
   await page.screenshot({ path: '../../docs/screenshots/redevelopment/shell-header-workspace-switcher-ui/mobile.png' })
 })
@@ -1441,7 +1441,7 @@ test('Projects context sidebar는 disclosure·More panel·pin navigation을 유�
   await workspaceDisclosure.click()
   await projectsDisclosure.click()
   await expect(contextNav.getByRole('link', { name: '리포트' })).toHaveCount(0)
-  await expect(contextNav.getByRole('link', { name: 'Work Packages' })).toHaveCount(0)
+  await expect(contextNav.getByRole('link', { name: 'Work items' })).toHaveCount(0)
   await page.setViewportSize({ width: 1440, height: 960 })
   await page.screenshot({ path: '../../docs/screenshots/redevelopment/projects-sidebar-hierarchy-ui/desktop.png' })
 
@@ -1477,11 +1477,11 @@ test('Projects context sidebar는 disclosure·More panel·pin navigation을 유�
   const projectDisclosure = contextNav.getByRole('button', { name: `${project.name} 하위 내비게이션` })
   await projectDisclosure.click()
   await expect(projectDisclosure).toHaveAttribute('aria-expanded', 'true')
-  await expect(contextNav.getByRole('link', { name: 'Work Packages' })).toBeVisible()
+  await expect(contextNav.getByRole('link', { name: 'Work items' })).toBeVisible()
   await projectDisclosure.click()
-  await expect(contextNav.getByRole('link', { name: 'Work Packages' })).toHaveCount(0)
+  await expect(contextNav.getByRole('link', { name: 'Work items' })).toHaveCount(0)
   await page.reload()
-  await expect(contextNav.getByRole('link', { name: 'Work Packages' })).toHaveCount(0)
+  await expect(contextNav.getByRole('link', { name: 'Work items' })).toHaveCount(0)
 
   await page.evaluate(() => localStorage.removeItem('oneflow.sidebar.preferences.v1'))
   const secondProject = {
@@ -1495,11 +1495,11 @@ test('Projects context sidebar는 disclosure·More panel·pin navigation을 유�
     json: { items: [{ ...project, ...projectRollups }, secondProject], total: 2 },
   }))
   await page.goto(`/projects/${project.id}/board`)
-  await expect(contextNav.getByRole('link', { name: 'Work Packages' })).toBeVisible()
+  await expect(contextNav.getByRole('link', { name: 'Work items' })).toBeVisible()
   await contextNav.getByRole('button', { name: `${secondProject.name} 하위 내비게이션` }).click()
-  await expect(contextNav.getByRole('link', { name: 'Work Packages' })).toHaveCount(2)
+  await expect(contextNav.getByRole('link', { name: 'Work items' })).toHaveCount(2)
   await page.reload()
-  await expect(contextNav.getByRole('link', { name: 'Work Packages' })).toHaveCount(2)
+  await expect(contextNav.getByRole('link', { name: 'Work items' })).toHaveCount(2)
 
   await moreTrigger.click()
   await morePanel.getByRole('link', { name: '리포트' }).click()
@@ -2064,7 +2064,7 @@ test('사이드바 너비와 프로젝트 탐색 모드는 조절·저장되고 
   await projectLink.click()
   const projectTabs = page.getByRole('navigation', { name: '프로젝트 화면 탭' })
   await expect(projectTabs).toBeVisible()
-  await expect(contextNav.getByRole('link', { name: 'Work Packages' })).toHaveCount(0)
+  await expect(contextNav.getByRole('link', { name: 'Work items' })).toHaveCount(0)
   await projectTabs.getByRole('link', { name: 'Board', exact: true }).click()
   await expect(page).toHaveURL(/\/projects\/[^/]+\/board$/)
   await expect(projectTabs.getByRole('link', { name: 'Board', exact: true })).toHaveAttribute('aria-current', 'page')
@@ -3079,7 +3079,7 @@ test('모바일 앱 셸에서 사이드바가 drawer로 열린다', async ({ pag
   await page.setViewportSize({ width: 390, height: 844 })
   await page.goto(`/projects/${project.id}/work-packages`)
 
-  await expect(page.getByTestId('frame-context-bar').getByText('Work Packages', { exact: true })).toBeVisible()
+  await expect(page.getByTestId('frame-context-bar').getByText('Work items', { exact: true })).toBeVisible()
   await page.screenshot({
     path: '../../docs/screenshots/redevelopment/view-controls/mobile.png',
     fullPage: true,
