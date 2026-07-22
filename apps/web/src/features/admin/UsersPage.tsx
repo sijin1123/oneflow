@@ -8,7 +8,7 @@ import {
   UserPlus,
   UsersRound,
 } from 'lucide-react'
-import { Fragment, useEffect, useMemo, useState } from 'react'
+import { Fragment, useDeferredValue, useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 
 import { EmptyState, ErrorState, ListSkeleton } from '@/components/shell/states'
@@ -22,10 +22,11 @@ import { cn } from '@/lib/utils'
 
 import {
   type DirectoryUser,
+  type UserDirectoryScope,
   useCreateUser,
   useUpdateUser,
+  useUserDirectory,
   useUserMemberships,
-  useUsers,
 } from './api'
 import { WorkspaceInvitationsPanel } from './WorkspaceInvitationsPanel'
 
@@ -34,8 +35,6 @@ const ROLE_LABELS: Record<string, string> = {
   member: '멤버',
   viewer: '뷰어',
 }
-
-type DirectoryFilter = 'all' | 'admins' | 'inactive'
 
 function initials(name: string) {
   const trimmed = name.trim()
@@ -129,8 +128,13 @@ function useMobileDirectoryLayout() {
    project's owner; the offboarding write tool is deactivation. */
 function MembershipsPanel({ userId }: { userId: string }) {
   const memberships = useUserMemberships(userId)
+  const items = memberships.data?.pages.flatMap((page) => page.items) ?? []
+  const total = memberships.data?.pages[0]?.total ?? 0
   return (
-    <div className="rounded-of border border-of-border bg-of-surface-2 px-3 py-2">
+    <div
+      aria-label="프로젝트 멤버십"
+      className="rounded-of border border-of-border bg-of-surface-2 px-3 py-2"
+    >
       <div className="mb-2 flex items-center gap-2 text-xs font-medium">
         <FolderKanban size={13} className="text-of-muted" aria-hidden="true" />
         프로젝트 멤버십
@@ -138,22 +142,51 @@ function MembershipsPanel({ userId }: { userId: string }) {
       {memberships.isPending ? (
         <span className="text-xs text-of-muted">멤버십을 불러오는 중...</span>
       ) : memberships.isError ? (
-        <span className="text-xs text-of-danger">멤버십을 불러오지 못했습니다.</span>
-      ) : memberships.data.total === 0 ? (
+        <span className="inline-flex flex-wrap items-center gap-2 text-xs text-of-danger">
+          멤버십을 불러오지 못했습니다.
+          <Button variant="outline" size="sm" onClick={() => void memberships.refetch()}>
+            다시 시도
+          </Button>
+        </span>
+      ) : total === 0 ? (
         <span className="text-xs text-of-muted">속한 프로젝트가 없습니다.</span>
       ) : (
-        <ul aria-label="프로젝트 멤버십" className="flex flex-wrap gap-1.5">
-          {memberships.data.items.map((m) => (
-            <li
-              key={m.project_id}
-              className="flex min-w-0 items-center gap-1 rounded-of border border-of-border bg-of-surface px-2 py-0.5 text-xs"
-            >
-              <span className="max-w-[12rem] truncate font-medium">{m.project_name}</span>
-              <span className="text-of-muted">· {ROLE_LABELS[m.role] ?? m.role}</span>
-              {m.archived ? <span className="text-[10px] text-of-muted">(아카이브)</span> : null}
-            </li>
-          ))}
-        </ul>
+        <div className="space-y-2">
+          <ul className="flex flex-wrap gap-1.5">
+            {items.map((m) => (
+              <li
+                key={m.project_id}
+                className="flex min-w-0 items-center gap-1 rounded-of border border-of-border bg-of-surface px-2 py-0.5 text-xs"
+              >
+                <span className="max-w-[12rem] truncate font-medium">{m.project_name}</span>
+                <span className="text-of-muted">· {ROLE_LABELS[m.role] ?? m.role}</span>
+                {m.archived ? (
+                  <span className="text-[10px] text-of-muted">(아카이브)</span>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+          <div className="flex min-w-0 flex-wrap items-center justify-between gap-2 text-[11px] text-of-muted">
+            <span aria-live="polite">
+              {items.length} / {total}개 표시
+            </span>
+            {memberships.hasNextPage ? (
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={memberships.isFetchingNextPage}
+                onClick={() => void memberships.fetchNextPage()}
+              >
+                {memberships.isFetchingNextPage ? '불러오는 중...' : '더 불러오기'}
+              </Button>
+            ) : null}
+            {memberships.isFetchNextPageError ? (
+              <span role="alert" className="text-of-danger">
+                추가 멤버십을 불러오지 못했습니다. 다시 시도해 주세요.
+              </span>
+            ) : null}
+          </div>
+        </div>
       )}
     </div>
   )
@@ -220,24 +253,64 @@ export function UsersPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const initialInviteComposer = searchParams.get('new') === '1'
   const me = useMe()
-  const { data, isPending, isError, error, refetch } = useUsers()
   const create = useCreateUser()
   const update = useUpdateUser()
   const [adding, setAdding] = useState(false)
   const [email, setEmail] = useState('')
   const [name, setName] = useState('')
   const [expanded, setExpanded] = useState<string | null>(null)
-  const [query, setQuery] = useState('')
-  const [filter, setFilter] = useState<DirectoryFilter>('all')
+  const rawQuery = searchParams.get('q') ?? ''
+  const query = rawQuery.slice(0, 120)
+  const deferredQuery = useDeferredValue(query.trim())
+  const rawScope = searchParams.get('scope')
+  const filter: UserDirectoryScope =
+    rawScope === 'admins' || rawScope === 'inactive' ? rawScope : 'all'
+  const directory = useUserDirectory({ q: deferredQuery, scope: filter })
+  const {
+    data,
+    isPending,
+    isError,
+    error,
+    refetch,
+    hasNextPage,
+    fetchNextPage,
+    isFetchingNextPage,
+    isFetchNextPageError,
+  } = directory
   const mobileLayout = useMobileDirectoryLayout()
   const view = searchParams.get('view') === 'invites' ? 'invites' : 'directory'
 
   useEffect(() => {
-    if (searchParams.get('new') !== '1') return
     const next = new URLSearchParams(searchParams)
-    next.delete('new')
+    let changed = false
+    if (searchParams.get('new') === '1') {
+      next.delete('new')
+      changed = true
+    }
+    if (rawQuery !== query) {
+      next.set('q', query)
+      changed = true
+    }
+    if (rawScope !== null && filter === 'all') {
+      next.delete('scope')
+      changed = true
+    }
+    if (changed) setSearchParams(next, { replace: true })
+  }, [filter, query, rawQuery, rawScope, searchParams, setSearchParams])
+
+  const setQuery = (value: string) => {
+    const next = new URLSearchParams(window.location.search)
+    if (value) next.set('q', value.slice(0, 120))
+    else next.delete('q')
     setSearchParams(next, { replace: true })
-  }, [searchParams, setSearchParams])
+  }
+
+  const setFilter = (scope: UserDirectoryScope) => {
+    const next = new URLSearchParams(window.location.search)
+    if (scope === 'all') next.delete('scope')
+    else next.set('scope', scope)
+    setSearchParams(next)
+  }
 
   const setView = (nextView: 'directory' | 'invites') => {
     const next = new URLSearchParams(searchParams)
@@ -248,24 +321,17 @@ export function UsersPage() {
     setAdding(false)
   }
 
-  const users = useMemo(() => data?.items ?? [], [data?.items])
-  const totalUsers = data?.total ?? users.length
-  const activeAdmins = users.filter((u) => u.is_admin && u.is_active)
-  const inactiveCount = users.filter((u) => !u.is_active).length
-  const filteredUsers = useMemo(() => {
-    const normalizedQuery = query.trim().toLowerCase()
-    return users.filter((u) => {
-      const matchesFilter =
-        filter === 'all' ||
-        (filter === 'admins' && u.is_admin) ||
-        (filter === 'inactive' && !u.is_active)
-      const matchesQuery =
-        !normalizedQuery ||
-        u.display_name.toLowerCase().includes(normalizedQuery) ||
-        u.email.toLowerCase().includes(normalizedQuery)
-      return matchesFilter && matchesQuery
-    })
-  }, [filter, query, users])
+  const users = useMemo(() => data?.pages.flatMap((page) => page.items) ?? [], [data?.pages])
+  const total = data?.pages[0]?.total ?? users.length
+  const summary = data?.pages[0]?.summary
+  const directorySummary = summary ?? {
+    users: total,
+    active: users.filter((item) => item.is_active).length,
+    admins: users.filter((item) => item.is_admin).length,
+    inactive: users.filter((item) => !item.is_active).length,
+    active_admins: users.filter((item) => item.is_active && item.is_admin).length,
+  }
+  const totalUsers = directorySummary.users
 
   if (isPending) return <ListSkeleton />
   if (isError) {
@@ -280,8 +346,8 @@ export function UsersPage() {
     return <ErrorState error={error} onRetry={() => refetch()} />
   }
 
-  const isLastActiveAdmin = (id: string) =>
-    activeAdmins.length === 1 && activeAdmins[0].id === id
+  const isLastActiveAdmin = (target: DirectoryUser) =>
+    target.is_active && target.is_admin && directorySummary.active_admins === 1
 
   const submit = () => {
     create.mutate(
@@ -332,11 +398,11 @@ export function UsersPage() {
         <DirectoryMetric
           icon={CheckCircle2}
           label="활성 계정"
-          value={users.length - inactiveCount}
+          value={directorySummary.active}
           tone="accent"
         />
-        <DirectoryMetric icon={ShieldCheck} label="관리자" value={activeAdmins.length} />
-        <DirectoryMetric icon={Ban} label="비활성" value={inactiveCount} tone="danger" />
+        <DirectoryMetric icon={ShieldCheck} label="관리자" value={directorySummary.admins} />
+        <DirectoryMetric icon={Ban} label="비활성" value={directorySummary.inactive} tone="danger" />
       </div>
 
       {adding ? (
@@ -388,6 +454,7 @@ export function UsersPage() {
             <Input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
+              maxLength={120}
               aria-label="사용자 검색"
               placeholder="이름 또는 이메일"
               className="h-8 pl-8 text-xs"
@@ -410,14 +477,14 @@ export function UsersPage() {
               variant={filter === key ? 'default' : 'ghost'}
               size="sm"
               aria-pressed={filter === key}
-              onClick={() => setFilter(key as DirectoryFilter)}
+              onClick={() => setFilter(key as UserDirectoryScope)}
             >
               {label}
             </Button>
           ))}
         </div>
 
-        {filteredUsers.length === 0 ? (
+        {users.length === 0 ? (
           <div className="rounded-of border border-dashed border-of-border bg-of-surface-2 px-3 py-8 text-center">
             <p className="text-sm font-medium">조건에 맞는 사용자가 없습니다</p>
             <p className="mt-1 text-xs text-of-muted">검색어나 상태 필터를 조정해 보세요.</p>
@@ -437,7 +504,7 @@ export function UsersPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredUsers.map((u) => (
+                    {users.map((u) => (
                       <Fragment key={u.id}>
                         <tr className="border-b border-of-border">
                           <td className="px-3 py-2 font-medium">
@@ -475,7 +542,7 @@ export function UsersPage() {
                               user={u}
                               currentUserId={me.data?.id}
                               updatePending={update.isPending}
-                              lastActiveAdmin={isLastActiveAdmin(u.id)}
+                              lastActiveAdmin={isLastActiveAdmin(u)}
                               onToggleActive={() =>
                                 update.mutate({ id: u.id, is_active: !u.is_active })
                               }
@@ -493,7 +560,7 @@ export function UsersPage() {
               </div>
             ) : (
               <ul className="grid min-w-0 gap-2" aria-label="사용자 카드 목록">
-                {filteredUsers.map((u) => (
+                {users.map((u) => (
                   <li key={u.id} className="rounded-of border border-of-border bg-of-surface p-3">
                     <div className="flex min-w-0 items-start gap-2">
                       <UserAvatar user={u} />
@@ -519,7 +586,7 @@ export function UsersPage() {
                         user={u}
                         currentUserId={me.data?.id}
                         updatePending={update.isPending}
-                        lastActiveAdmin={isLastActiveAdmin(u.id)}
+                        lastActiveAdmin={isLastActiveAdmin(u)}
                         onToggleActive={() => update.mutate({ id: u.id, is_active: !u.is_active })}
                         onToggleAdmin={() => update.mutate({ id: u.id, is_admin: !u.is_admin })}
                       />
@@ -533,6 +600,35 @@ export function UsersPage() {
                 ))}
               </ul>
             )}
+            <footer className="mt-3 flex min-w-0 flex-col items-center gap-2 border-t border-of-border-subtle pt-3 sm:flex-row sm:justify-between">
+              <p className="text-xs text-of-muted" aria-live="polite">
+                {users.length} / {total}명 표시
+              </p>
+              <div className="flex min-w-0 flex-col items-center gap-2 sm:items-end">
+                {hasNextPage ? (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={isFetchingNextPage}
+                    aria-describedby={
+                      isFetchNextPageError ? 'user-directory-load-more-error' : undefined
+                    }
+                    onClick={() => void fetchNextPage()}
+                  >
+                    {isFetchingNextPage ? '불러오는 중...' : '더 불러오기'}
+                  </Button>
+                ) : null}
+                {isFetchNextPageError ? (
+                  <p
+                    id="user-directory-load-more-error"
+                    role="alert"
+                    className="text-xs text-of-danger"
+                  >
+                    추가 사용자를 불러오지 못했습니다. 다시 시도해 주세요.
+                  </p>
+                ) : null}
+              </div>
+            </footer>
           </>
         )}
       </SettingsSection>

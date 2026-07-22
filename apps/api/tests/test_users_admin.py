@@ -28,6 +28,13 @@ async def test_me_and_directory_crud(client):
     listed = (await client.get("/api/v1/users")).json()
     assert listed["total"] == 1
     assert listed["items"][0]["email"] == "dev@oneflow.local"
+    assert listed["summary"] == {
+        "users": 1,
+        "active": 1,
+        "admins": 1,
+        "inactive": 0,
+        "active_admins": 1,
+    }
 
     # Email normalizes to a lowercase login key; registration is NEVER an
     # admin grant (R1-③).
@@ -57,6 +64,62 @@ async def test_me_and_directory_crud(client):
     assert (
         await client.post("/api/v1/users", json={"email": "nope", "display_name": "x"})
     ).status_code == 422
+
+
+async def test_directory_search_scope_pagination_and_complete_summary(client):
+    users = []
+    for email, display_name in [
+        ("alpha@corp.com", "Alpha"),
+        ("beta@corp.com", "Beta"),
+        ("gamma@corp.com", "Gamma"),
+        ("inactive@corp.com", "Inactive"),
+    ]:
+        users.append(
+            (
+                await client.post(
+                    "/api/v1/users", json={"email": email, "display_name": display_name}
+                )
+            ).json()
+        )
+    assert (
+        await client.patch(f"/api/v1/users/{users[1]['id']}", json={"is_admin": True})
+    ).status_code == 200
+    assert (
+        await client.patch(f"/api/v1/users/{users[3]['id']}", json={"is_active": False})
+    ).status_code == 200
+
+    first = (await client.get("/api/v1/users?limit=2")).json()
+    second = (await client.get("/api/v1/users?limit=2&offset=2")).json()
+    third = (await client.get("/api/v1/users?limit=2&offset=4")).json()
+    assert first["total"] == second["total"] == third["total"] == 5
+    assert [row["display_name"] for row in first["items"]] == ["Alpha", "Beta"]
+    assert [row["display_name"] for row in second["items"]] == ["Dev User", "Gamma"]
+    assert [row["display_name"] for row in third["items"]] == ["Inactive"]
+    assert first["summary"] == {
+        "users": 5,
+        "active": 4,
+        "admins": 2,
+        "inactive": 1,
+        "active_admins": 2,
+    }
+
+    admins = (await client.get("/api/v1/users?scope=admins")).json()
+    assert admins["total"] == 2
+    assert {row["email"] for row in admins["items"]} == {
+        "dev@oneflow.local",
+        "beta@corp.com",
+    }
+    inactive = (await client.get("/api/v1/users?scope=inactive")).json()
+    assert inactive["total"] == 1
+    assert inactive["items"][0]["email"] == "inactive@corp.com"
+    searched = (await client.get("/api/v1/users?q=GAMMA")).json()
+    assert searched["total"] == 1
+    assert searched["items"][0]["display_name"] == "Gamma"
+    escaped = (await client.get("/api/v1/users?q=%25")).json()
+    assert escaped["total"] == 0
+    assert (await client.get("/api/v1/users?limit=0")).status_code == 422
+    assert (await client.get("/api/v1/users?limit=201")).status_code == 422
+    assert (await client.get("/api/v1/users?scope=owners")).status_code == 422
 
 
 async def test_non_admin_gets_403(client, app):
