@@ -17822,6 +17822,70 @@ test('빈 프로젝트 목록에서 새 프로젝트를 만들면 생성 요청 
   await expect(page).toHaveURL(/\/projects\/p-new\/overview/)
 })
 
+test('프로젝트 생성 대화상자는 URL·포커스·pending·오류·모바일 상태를 함께 관리한다', async ({ page }) => {
+  await mockApi(page)
+  let releasePost!: () => void
+  const postGate = new Promise<void>((resolve) => {
+    releasePost = resolve
+  })
+
+  await page.route('**/api/v1/projects**', async (route) => {
+    const url = new URL(route.request().url())
+    if (url.pathname !== '/api/v1/projects') {
+      await route.fallback()
+      return
+    }
+    if (route.request().method() === 'POST') {
+      await postGate
+      await route.fulfill({ status: 409, json: { detail: 'Project key already exists' } })
+      return
+    }
+    await route.fulfill({ json: { items: [], total: 0 } satisfies ProjectList })
+  })
+
+  await page.goto('/projects?new=1')
+  const dialog = page.getByRole('dialog', { name: '새 프로젝트' })
+  await expect(dialog).toBeVisible()
+  await expect(dialog.getByLabel('이름')).toBeFocused()
+  await expect(page.getByText('조건에 맞는 프로젝트가 없습니다')).toHaveCount(0)
+  await expect(page.getByText('아직 프로젝트가 없습니다')).toBeVisible()
+
+  await page.keyboard.press('Escape')
+  await expect(dialog).toBeHidden()
+  await expect(page).toHaveURL(/\/projects$/)
+
+  const createButton = page.getByRole('button', { name: '새 프로젝트' }).first()
+  await createButton.click()
+  await expect(page).toHaveURL(/\/projects\?new=1$/)
+  await dialog.getByLabel('이름').fill('운영 자동화')
+  await dialog.getByLabel(/키 \(대문자/).fill('OPS')
+  await dialog.getByRole('button', { name: '만들기' }).click()
+  await expect(dialog.getByRole('button', { name: '프로젝트 만드는 중' })).toBeDisabled()
+
+  await page.keyboard.press('Escape')
+  await expect(dialog).toBeVisible()
+  releasePost()
+  await expect(dialog.getByRole('alert')).toContainText('이미 사용 중인 키입니다')
+
+  await dialog.getByRole('button', { name: '새 프로젝트 창 닫기' }).click()
+  await expect(dialog).toBeHidden()
+  await expect(page).toHaveURL(/\/projects$/)
+  await expect(createButton).toBeFocused()
+
+  await page.setViewportSize({ width: 390, height: 844 })
+  await createButton.click()
+  await expect(dialog).toBeVisible()
+  await expectNoHorizontalOverflow(page)
+  const bounds = await dialog.boundingBox()
+  expect(bounds).not.toBeNull()
+  expect(bounds!.x).toBeGreaterThanOrEqual(0)
+  expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(390)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/project-create-dialog-ui/mobile.png',
+    fullPage: false,
+  })
+})
+
 test('마일스톤 패널이 행 작업 메뉴·편집·삭제 확인·필터 이동을 제공한다', async ({ page }) => {
   await mockApi(page)
   await page.route('**/api/v1/me', (route) =>

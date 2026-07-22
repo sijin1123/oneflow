@@ -30,16 +30,13 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
-import { ApiError } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { useWorkspaceCapabilities } from '@/features/workspace-features/api'
 
 import {
   getProjectDirectoryPreferences,
   projectDirectoryPreferenceWriter,
-  useCreateProject,
   useProjectDirectory,
-  useProjects,
 } from './api'
 import {
   loadLocalProjectDirectoryPreferences,
@@ -59,139 +56,7 @@ import {
 } from './types'
 import { ProjectCover } from './ProjectCover'
 import { ProjectActionsMenu } from './ProjectActionsMenu'
-
-const KEY_RE = /^[A-Z][A-Z0-9]{1,9}$/
-
-function NewProjectForm({ onClose }: { onClose: () => void }) {
-  const navigate = useNavigate()
-  const create = useCreateProject()
-  const { data: existing } = useProjects()
-  const [name, setName] = useState('')
-  const [key, setKey] = useState('')
-  const [description, setDescription] = useState('')
-  const [templateId, setTemplateId] = useState('')
-
-  const keyValid = KEY_RE.test(key)
-  const canSubmit = name.trim().length > 0 && keyValid && !create.isPending
-
-  const submit = () => {
-    if (!canSubmit) return
-    create.mutate(
-      {
-        name: name.trim(),
-        key,
-        description: description.trim() || null,
-        template_project_id: templateId || null,
-      },
-      { onSuccess: (p) => navigate(`/projects/${p.id}/overview`) },
-    )
-  }
-
-  const conflict = create.error instanceof ApiError && create.error.status === 409
-  const otherError =
-    create.error instanceof ApiError && create.error.status !== 409 ? create.error.message : null
-
-  return (
-    <form
-      aria-label="새 프로젝트 생성"
-      className="rounded-of border border-of-border bg-of-surface p-4 shadow-[var(--of-shadow-card)]"
-      onSubmit={(event) => {
-        event.preventDefault()
-        submit()
-      }}
-    >
-      <div className="mb-4 flex min-w-0 flex-col gap-2 border-b border-of-border pb-3 sm:flex-row sm:items-start sm:justify-between">
-        <div className="min-w-0">
-          <p className="text-sm font-semibold">새 프로젝트</p>
-          <p className="mt-1 text-xs leading-5 text-of-muted">
-            작업 방식, 상태, 필드 구성을 담을 프로젝트 공간을 만듭니다.
-          </p>
-        </div>
-        <Button size="sm" variant="ghost" onClick={onClose}>
-          취소
-        </Button>
-      </div>
-
-      <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_10rem]">
-        <div className="space-y-1">
-          <label htmlFor="np-name" className="text-xs font-medium text-of-muted">
-            이름
-          </label>
-          <Input
-            id="np-name"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="프로젝트 이름"
-          />
-        </div>
-        <div className="space-y-1">
-          <label htmlFor="np-key" className="text-xs font-medium text-of-muted">
-            키 (대문자·숫자 2–10자)
-          </label>
-          <Input
-            id="np-key"
-            value={key}
-            onChange={(e) => setKey(e.target.value.toUpperCase())}
-            placeholder="ONE"
-            aria-invalid={key.length > 0 && !keyValid}
-            className="font-mono"
-          />
-        </div>
-      </div>
-
-      <div className="mt-3 grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(15rem,0.7fr)]">
-        <div className="space-y-1">
-          <label htmlFor="np-desc" className="text-xs font-medium text-of-muted">
-            설명 (선택)
-          </label>
-          <Input
-            id="np-desc"
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            placeholder="한 줄 설명"
-          />
-        </div>
-        <div className="space-y-1">
-          <label htmlFor="np-template" className="text-xs font-medium text-of-muted">
-            템플릿으로 사용할 프로젝트 (선택 — 상태·타입·필드·자동화 설정을 복사)
-          </label>
-          <Select
-            id="np-template"
-            value={templateId}
-            onChange={(e) => setTemplateId(e.target.value)}
-          >
-            <option value="">사용 안 함</option>
-            {(existing?.items ?? []).map((p) => (
-              <option key={p.id} value={p.id}>
-                [{p.key}] {p.name}
-              </option>
-            ))}
-          </Select>
-        </div>
-      </div>
-
-      <div className="mt-3 min-h-5">
-        {key.length > 0 && !keyValid ? (
-          <p className="text-xs text-of-danger">
-            키는 대문자로 시작하는 대문자·숫자 2–10자여야 합니다.
-          </p>
-        ) : null}
-        {conflict ? <p className="text-xs text-of-danger">이미 사용 중인 키입니다.</p> : null}
-        {otherError ? (
-          <p role="alert" className="text-xs text-of-danger">
-            생성하지 못했습니다: {otherError}
-          </p>
-        ) : null}
-      </div>
-
-      <div className="mt-2 flex flex-wrap items-center gap-2">
-        <Button size="sm" type="submit" disabled={!canSubmit}>
-          만들기
-        </Button>
-      </div>
-    </form>
-  )
-}
+import { ProjectCreateDialog } from './ProjectCreateDialog'
 
 function ProjectHealthBadge({ health, note }: { health: ProjectHealth | null; note: string | null }) {
   if (!health) return <Badge variant="outline">상태 미설정</Badge>
@@ -522,7 +387,7 @@ export function ProjectsPage() {
   const deferredQuery = useDeferredValue(query.trim())
   const [projectActionMessage, setProjectActionMessage] = useState('')
   const createRequested = searchParams.get('new') === '1'
-  const [creating, setCreating] = useState(createRequested)
+  const createReturnFocusRef = useRef<HTMLButtonElement>(null)
   const capabilities = useWorkspaceCapabilities()
   const initiativesEnabled = capabilities.data?.initiatives.enabled === true
   const availableColumns = initiativesEnabled
@@ -561,10 +426,6 @@ export function ProjectsPage() {
     return () => window.clearTimeout(timer)
   }, [projectActionMessage])
 
-  useEffect(() => {
-    if (createRequested) setCreating(true)
-  }, [createRequested])
-
   useEffect(
     () => projectDirectoryPreferenceWriter.subscribeStatus(setPreferenceSyncStatus),
     [],
@@ -600,12 +461,16 @@ export function ProjectsPage() {
     }
   }, [legacyPreferences, preferenceQuery.data, preferenceSyncStatus])
 
-  const closeCreate = () => {
-    setCreating(false)
-    if (!createRequested) return
+  const setCreateOpen = (open: boolean) => {
     const next = new URLSearchParams(searchParams)
-    next.delete('new')
+    if (open) next.set('new', '1')
+    else next.delete('new')
     setSearchParams(next, { replace: true })
+  }
+
+  const openCreate = (trigger: HTMLButtonElement) => {
+    createReturnFocusRef.current = trigger
+    setCreateOpen(true)
   }
 
   const setDirectoryParam = (key: 'q' | 'archived', value: string | null) => {
@@ -688,7 +553,7 @@ export function ProjectsPage() {
             <span><span className="text-of-muted">이니셔티브</span> <strong className="ml-1 font-semibold tabular-nums">{summary.initiatives}</strong></span>
           ) : null}
           <span className="ml-auto text-[11px] text-of-muted" aria-live="polite">{resultText}</span>
-          <Button size="sm" onClick={() => setCreating(true)} disabled={creating}>
+          <Button size="sm" onClick={(event) => openCreate(event.currentTarget)}>
             <Plus size={14} /> 새 프로젝트
           </Button>
         </section>
@@ -864,11 +729,15 @@ export function ProjectsPage() {
         </section>
       </div>
 
-      {creating ? <div className="mx-auto w-full max-w-7xl px-4 py-3 sm:px-6"><NewProjectForm onClose={closeCreate} /></div> : null}
+      <ProjectCreateDialog
+        open={createRequested}
+        onOpenChange={setCreateOpen}
+        returnFocusRef={createReturnFocusRef}
+      />
 
-      {summary.total === 0 && !query.trim() && !creating ? (
+      {summary.total === 0 && !query.trim() ? (
         <div className="px-4 sm:px-6"><EmptyState title="아직 프로젝트가 없습니다" hint="첫 프로젝트를 만들어 시작하세요.">
-          <Button size="sm" onClick={() => setCreating(true)}>
+          <Button size="sm" onClick={(event) => openCreate(event.currentTarget)}>
             <Plus size={14} /> 새 프로젝트
           </Button>
         </EmptyState></div>
