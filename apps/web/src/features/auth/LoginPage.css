@@ -1021,7 +1021,7 @@
   overflow: hidden;
   scrollbar-gutter: auto;
   padding: 0;
-  background: linear-gradient(145deg, #fafcff 0%, #f9fbff 100%);
+  background: #f7f9fe;
 }
 
 .of-login-auth::after {
@@ -1043,11 +1043,11 @@
   height: 82%;
   min-height: 0;
   overflow: auto;
-  border: 1px solid #f0f2f6;
+  border: 1px solid #edf0f4;
   border-radius: clamp(15px, 1.31cqw, 19px);
   padding: clamp(19px, 1.84cqw, 23px) clamp(28px, 3.2cqw, 39px)
     clamp(20px, 2.55cqw, 31px);
-  background: rgb(254 254 254 / 0.98);
+  background: rgb(254 253 253 / 0.98);
   box-shadow:
     0 18px 50px rgb(54 73 125 / 0.04),
     0 2px 9px rgb(54 73 125 / 0.025);
@@ -1116,7 +1116,7 @@
 .of-login-input {
   height: clamp(44px, 3.9cqw, 48px);
   padding-left: clamp(37px, 3.45cqw, 42px);
-  border-color: #e9ebf0;
+  border-color: #e8ebee;
   border-radius: clamp(7px, 0.69cqw, 9px);
   font-size: clamp(11px, 1.05cqw, 13px);
   font-weight: 400;
@@ -1162,7 +1162,7 @@
 .of-login-submit {
   min-height: clamp(42px, 3.59cqw, 44px);
   border-radius: clamp(7px, 0.69cqw, 9px);
-  background: linear-gradient(100deg, #626ef3 0%, #6370f4 52%, #646ff2 100%);
+  background: linear-gradient(100deg, #5662f2 0%, #5864f1 52%, #5a66f1 100%);
   box-shadow: 0 8px 18px rgb(83 103 245 / 0.12);
   font-size: clamp(11px, 1.04cqw, 13px);
   transform: translateY(-1px);
@@ -1191,7 +1191,7 @@
   gap: clamp(9px, 0.9cqw, 11px);
   padding-right: 29px;
   padding-left: 13px;
-  border-color: #edeef3;
+  border-color: #eceef3;
   background: #fefefe;
   color: var(--of-login-ink);
   border-radius: clamp(7px, 0.69cqw, 9px);

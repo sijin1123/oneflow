@@ -19085,7 +19085,7 @@ test('로그인 reference-fit은 인앱 크기와 기준 크기에서 정수 ras
   )
   await expect(page.locator('.of-login-submit')).toHaveCSS(
     'background-image',
-    'linear-gradient(100deg, rgb(98, 110, 243) 0%, rgb(99, 112, 244) 52%, rgb(100, 111, 242) 100%)',
+    'linear-gradient(100deg, rgb(86, 98, 242) 0%, rgb(88, 100, 241) 52%, rgb(90, 102, 241) 100%)',
   )
   await expect(page.locator('.of-login-input').first()).toHaveCSS('font-size', '14.5px')
   await expect(page.locator('.of-login-input').first()).toHaveCSS('font-weight', '350')
@@ -19114,7 +19114,7 @@ test('로그인 reference-fit은 인앱 크기와 기준 크기에서 정수 ras
   await expect(page.locator('.of-login-provider-button').first()).toHaveCSS('font-weight', '500')
   await expect(page.locator('.of-login-provider-button').first()).toHaveCSS(
     'border-color',
-    'rgb(237, 238, 243)',
+    'rgb(236, 238, 243)',
   )
   await expect(page.locator('.of-login-input').first()).toHaveCSS(
     'background-color',
