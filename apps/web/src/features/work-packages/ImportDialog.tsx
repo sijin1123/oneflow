@@ -89,13 +89,15 @@ export function ImportDialog({
 
   return (
     <Sheet open={actualOpen} onOpenChange={onOpenChange}>
-      <SheetTrigger asChild>
-        {trigger ?? (
-          <Button variant="outline" size="sm">
-            <Upload size={14} /> 가져오기
-          </Button>
-        )}
-      </SheetTrigger>
+      {trigger === false ? null : (
+        <SheetTrigger asChild>
+          {trigger ?? (
+            <Button variant="outline" size="sm">
+              <Upload size={14} /> 가져오기
+            </Button>
+          )}
+        </SheetTrigger>
+      )}
       <SheetContent title="CSV 가져오기">
         <div className="space-y-4">
           <div className="space-y-1.5">

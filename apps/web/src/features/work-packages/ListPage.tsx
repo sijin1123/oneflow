@@ -1,17 +1,20 @@
 import {
   AlertCircle,
   BarChart3,
+  Bookmark,
   CalendarDays,
   CheckCircle2,
   ClipboardList,
   Columns3,
   Download,
   List,
+  MoreHorizontal,
   Plus,
   RotateCcw,
   Search,
   SlidersHorizontal,
   SquareKanban,
+  Upload,
   X,
 } from 'lucide-react'
 import { type FormEvent, useEffect, useState } from 'react'
@@ -22,6 +25,12 @@ import { FrameContextActions } from '@/components/shell/FrameContextActions'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { DataGrid, DataGridFrame, type GridDensity } from '@/components/ui/data-grid'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { useCustomFields } from '@/features/custom-fields/api'
@@ -163,7 +172,10 @@ export function ListPage() {
   const importOpen = searchParams.get('ops') === 'import'
   const [queryDraft, setQueryDraft] = useState(query)
   const [density, setDensity] = useState<GridDensity>('compact')
-  const [filtersOpen, setFiltersOpen] = useState(true)
+  const [filtersOpen, setFiltersOpen] = useState(() =>
+    RESULT_FILTER_KEYS.some((key) => searchParams.get(key)),
+  )
+  const [savedViewsOpen, setSavedViewsOpen] = useState(false)
 
   useEffect(() => {
     setQueryDraft(query)
@@ -406,74 +418,94 @@ export function ListPage() {
               <Plus size={13} /> 새 작업
             </Button>
           ) : null}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" aria-label="작업 도구 더 보기">
+                <MoreHorizontal size={14} aria-hidden="true" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-44">
+              <DropdownMenuItem
+                aria-label={savedViewsOpen ? '저장 뷰 닫기' : '저장 뷰 관리'}
+                onSelect={() => setSavedViewsOpen((open) => !open)}
+              >
+                <Bookmark size={13} aria-hidden="true" />
+                {savedViewsOpen ? '저장 뷰 닫기' : '저장 뷰 관리'}
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                aria-label="내보내기"
+                disabled={exportCsv.isPending}
+                onSelect={() => exportCsv.mutate()}
+              >
+                <Download size={13} aria-hidden="true" /> 내보내기
+              </DropdownMenuItem>
+              <DropdownMenuItem aria-label="가져오기" onSelect={() => setImportOpen(true)}>
+                <Upload size={13} aria-hidden="true" /> 가져오기
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <ImportDialog
+            projectId={projectId}
+            open={importOpen}
+            onOpenChange={setImportOpen}
+            trigger={false}
+          />
         </section>
       </FrameContextActions>
-      <div className="border-b border-of-border bg-of-surface">
-        <div className="flex flex-col gap-2 px-4 py-2.5">
-          <div className="flex flex-col gap-2 xl:flex-row xl:items-center xl:justify-between">
-            <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
-              <form onSubmit={submitSearch} className="flex min-w-[220px] flex-1 gap-2 sm:max-w-sm">
-                <div className="relative min-w-0 flex-1">
-                  <Search
-                    size={14}
-                    className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-of-muted"
-                  />
-                  <Input
-                    value={queryDraft}
-                    onChange={(event) => setQueryDraft(event.target.value)}
-                    placeholder="작업 검색"
-                    aria-label="작업 목록 검색어"
-                    className="h-7 pl-8 pr-7 text-xs"
-                  />
-                  {queryDraft ? (
-                    <button
-                      type="button"
-                      aria-label="작업 검색어 지우기"
-                      className="absolute right-1 top-1/2 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-of text-of-muted transition-colors hover:bg-of-surface-hover hover:text-of-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus"
-                      onClick={clearSearch}
-                    >
-                      <X size={12} />
-                    </button>
-                  ) : null}
-                </div>
-                <Button type="submit" size="sm" variant="outline">
-                  <Search size={13} /> 검색
-                </Button>
-              </form>
-              {filtersOpen ? (
-                <div id="project-work-item-filters">
+      {filtersOpen || savedViewsOpen ? (
+        <div className="animate-in border-b border-of-border bg-of-surface fade-in slide-in-from-top-1 duration-150 motion-reduce:animate-none">
+          <div className="flex flex-col gap-2 px-4 py-2.5">
+            {filtersOpen ? (
+              <div
+                id="project-work-item-filters"
+                className="flex min-w-0 flex-col gap-2 xl:flex-row xl:items-center"
+              >
+                <form onSubmit={submitSearch} className="flex min-w-[220px] flex-1 gap-2 sm:max-w-sm">
+                  <div className="relative min-w-0 flex-1">
+                    <Search
+                      size={14}
+                      className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-of-muted"
+                    />
+                    <Input
+                      value={queryDraft}
+                      onChange={(event) => setQueryDraft(event.target.value)}
+                      placeholder="작업 검색"
+                      aria-label="작업 목록 검색어"
+                      className="h-7 pl-8 pr-7 text-xs"
+                    />
+                    {queryDraft ? (
+                      <button
+                        type="button"
+                        aria-label="작업 검색어 지우기"
+                        className="absolute right-1 top-1/2 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-of text-of-muted transition-colors hover:bg-of-surface-hover hover:text-of-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus"
+                        onClick={clearSearch}
+                      >
+                        <X size={12} />
+                      </button>
+                    ) : null}
+                  </div>
+                  <Button type="submit" size="sm" variant="outline">
+                    <Search size={13} /> 검색
+                  </Button>
+                </form>
+                <div className="min-w-0 flex-1">
                   <Filters projectId={projectId} />
                 </div>
-              ) : null}
-            </div>
+              </div>
+            ) : null}
 
-            <div className="flex shrink-0 flex-wrap items-center gap-2">
-              {data ? (
-                <span className="rounded-of bg-of-surface-2 px-2 py-1 text-xs text-of-muted" aria-live="polite">
-                  {data.items.length < data.total
-                    ? `${data.total}건 중 ${data.items.length}건`
-                    : `${data.total}건`}
-                </span>
-              ) : null}
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={exportCsv.isPending}
-                onClick={() => exportCsv.mutate()}
-              >
-                <Download size={14} /> 내보내기
-              </Button>
-              <ImportDialog projectId={projectId} open={importOpen} onOpenChange={setImportOpen} />
-            </div>
+            {savedViewsOpen ? (
+              <SavedFilters
+                projectId={projectId}
+                activeControlCount={activeControlCount}
+                onClearCurrentView={clearViewControls}
+                onClose={() => setSavedViewsOpen(false)}
+                withTopBorder={filtersOpen}
+              />
+            ) : null}
           </div>
-
-          <SavedFilters
-            projectId={projectId}
-            activeControlCount={activeControlCount}
-            onClearCurrentView={clearViewControls}
-          />
         </div>
-      </div>
+      ) : null}
 
       {canWrite || searchParams.has('draft') ? (
         <NewWorkPackageInline projectId={projectId} canWrite={canWrite} />

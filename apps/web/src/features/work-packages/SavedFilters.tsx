@@ -65,6 +65,8 @@ type SavedFiltersProps = {
   projectId: string
   activeControlCount?: number
   onClearCurrentView?: () => void
+  onClose?: () => void
+  withTopBorder?: boolean
 }
 
 /* Named views (expansion Pass 2 PR-F): a saved filter now carries a layout,
@@ -74,6 +76,8 @@ export function SavedFilters({
   projectId,
   activeControlCount = 0,
   onClearCurrentView,
+  onClose,
+  withTopBorder = true,
 }: SavedFiltersProps) {
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
@@ -132,7 +136,7 @@ export function SavedFilters({
   return (
     <section
       aria-label="저장 뷰 관리"
-      className="grid gap-2 border-t border-of-border/70 pt-2"
+      className={`grid gap-2 ${withTopBorder ? 'border-t border-of-border/70 pt-2' : ''}`}
     >
       <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
         <div className="flex min-w-0 flex-wrap items-center gap-1.5">
@@ -172,6 +176,11 @@ export function SavedFilters({
               onClick={() => setSaving(true)}
             >
               <Save size={13} /> 현재 필터를 뷰로 저장
+            </Button>
+          ) : null}
+          {onClose ? (
+            <Button variant="ghost" size="icon" aria-label="저장 뷰 닫기" onClick={onClose}>
+              <X size={13} />
             </Button>
           ) : null}
         </div>
