@@ -113,3 +113,69 @@ async def test_initiative_rollup_column(client, app):
     assert [x["name"] for x in row_b["initiatives"]] == ["가나 전략"]
     all_names = {x["name"] for p in listed["items"] for x in p["initiatives"]}
     assert "남의 전략" not in all_names  # never bleeds from a foreign project
+
+
+async def test_directory_search_sort_summary_and_paging(client):
+    alpha = await create_project(client, key="ALPHA", name="Alpha 100% Plan")
+    beta = await create_project(client, key="BETA", name="Beta Project")
+    gamma = await create_project(client, key="GAMMA", name="Gamma Project")
+
+    await create_wp(client, alpha["id"], subject="Alpha open")
+    for index in range(3):
+        await create_wp(client, beta["id"], subject=f"Beta open {index}")
+    assert (await client.post(f"/api/v1/projects/{gamma['id']}/archive")).status_code == 200
+
+    first = (
+        await client.get(
+            "/api/v1/projects",
+            params={
+                "include_archived": "true",
+                "sort_key": "work_package_count",
+                "sort_direction": "desc",
+                "limit": 2,
+            },
+        )
+    ).json()
+    assert [item["id"] for item in first["items"]] == [beta["id"], alpha["id"]]
+    assert first["total"] == 3
+    assert first["summary"] == {
+        "projects": 3,
+        "active": 2,
+        "archived": 1,
+        "open_work_packages": 4,
+        "overdue_work_packages": 0,
+        "initiatives": 0,
+    }
+
+    second = (
+        await client.get(
+            "/api/v1/projects",
+            params={
+                "include_archived": "true",
+                "sort_key": "work_package_count",
+                "sort_direction": "desc",
+                "limit": 2,
+                "offset": 2,
+            },
+        )
+    ).json()
+    assert [item["id"] for item in second["items"]] == [gamma["id"]]
+    assert second["summary"] == first["summary"]
+
+    searched = (
+        await client.get(
+            "/api/v1/projects",
+            params={"include_archived": "true", "q": "Beta"},
+        )
+    ).json()
+    assert [item["id"] for item in searched["items"]] == [beta["id"]]
+    assert searched["total"] == 1
+    assert searched["summary"]["projects"] == 3
+
+    literal = (await client.get("/api/v1/projects", params={"q": "%"})).json()
+    assert [item["id"] for item in literal["items"]] == [alpha["id"]]
+
+
+async def test_directory_rejects_unknown_sort_contract(client):
+    response = await client.get("/api/v1/projects", params={"sort_key": "owner"})
+    assert response.status_code == 422

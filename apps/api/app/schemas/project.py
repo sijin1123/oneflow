@@ -162,9 +162,19 @@ class ProjectListItem(ProjectRead):
     initiative_overflow: int = 0
 
 
+class ProjectDirectorySummary(BaseModel):
+    projects: int
+    active: int
+    archived: int
+    open_work_packages: int
+    overdue_work_packages: int
+    initiatives: int
+
+
 class ProjectList(BaseModel):
     items: list[ProjectListItem]
     total: int
+    summary: ProjectDirectorySummary
 
 
 class ProjectInitiativeRef(BaseModel):

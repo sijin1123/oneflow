@@ -13,7 +13,7 @@ import {
   X,
 } from 'lucide-react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 
 import { EmptyState, ErrorState, ListSkeleton } from '@/components/shell/states'
@@ -38,6 +38,7 @@ import {
   getProjectDirectoryPreferences,
   projectDirectoryPreferenceWriter,
   useCreateProject,
+  useProjectDirectory,
   useProjects,
 } from './api'
 import {
@@ -49,7 +50,7 @@ import {
   type ProjectLayout,
   type RollupKey,
 } from './projectDirectoryPreferences'
-import { SORT_KEYS, SORT_LABELS, sortProjects, type ProjectSortKey, type SortDir } from './sort'
+import { SORT_KEYS, SORT_LABELS, type ProjectSortKey, type SortDir } from './sort'
 import {
   HEALTH_LABELS,
   HEALTH_STYLES,
@@ -501,23 +502,12 @@ function ProjectCard({
   )
 }
 
-function matchesProject(project: ProjectListItem, query: string) {
-  const q = query.trim().toLowerCase()
-  if (!q) return true
-  return [
-    project.key,
-    project.name,
-    project.description ?? '',
-    ...project.initiatives.map((initiative) => initiative.name),
-  ].some((value) => value.toLowerCase().includes(q))
-}
-
 export function ProjectsPage() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const sidebarPreferences = useSidebarPreferences()
   const [searchParams, setSearchParams] = useSearchParams()
-  const [includeArchived, setIncludeArchived] = useState(false)
+  const includeArchived = searchParams.get('archived') === '1'
   const [legacyPreferences] = useState(loadLocalProjectDirectoryPreferences)
   const [preferences, setPreferences] = useState<ProjectDirectoryPreferences>(
     legacyPreferences.preferences,
@@ -528,7 +518,8 @@ export function ProjectsPage() {
   const migrationAttempted = useRef(false)
   const userChangedPreferences = useRef(false)
   const { columns, sort, layout } = preferences
-  const [query, setQuery] = useState('')
+  const query = searchParams.get('q') ?? ''
+  const deferredQuery = useDeferredValue(query.trim())
   const [projectActionMessage, setProjectActionMessage] = useState('')
   const createRequested = searchParams.get('new') === '1'
   const [creating, setCreating] = useState(createRequested)
@@ -541,7 +532,24 @@ export function ProjectsPage() {
     (column) => column !== 'initiatives' || initiativesEnabled,
   )
 
-  const { data, isPending, isFetching, isError, error, refetch } = useProjects(includeArchived)
+  const directory = useProjectDirectory({
+    includeArchived,
+    q: deferredQuery,
+    sortKey: sort.key,
+    sortDirection: sort.dir,
+  })
+  const {
+    data,
+    isPending,
+    isFetching,
+    isError,
+    error,
+    refetch,
+    hasNextPage,
+    fetchNextPage,
+    isFetchingNextPage,
+    isFetchNextPageError,
+  } = directory
   const preferenceQuery = useQuery({
     queryKey: ['me', 'project-directory-preferences'],
     queryFn: getProjectDirectoryPreferences,
@@ -600,6 +608,13 @@ export function ProjectsPage() {
     setSearchParams(next, { replace: true })
   }
 
+  const setDirectoryParam = (key: 'q' | 'archived', value: string | null) => {
+    const next = new URLSearchParams(searchParams)
+    if (value) next.set(key, value)
+    else next.delete(key)
+    setSearchParams(next, { replace: true })
+  }
+
   const changeSort = (next: { key: ProjectSortKey; dir: SortDir }) => {
     userChangedPreferences.current = true
     const updated = { ...preferences, sort: next }
@@ -625,34 +640,41 @@ export function ProjectsPage() {
     projectDirectoryPreferenceWriter.queue(updated)
   }
 
+  const projects = useMemo(() => data?.pages.flatMap((page) => page.items) ?? [], [data])
+  const total = data?.pages[0]?.total ?? 0
   const summary = useMemo(() => {
-    const items = data?.items ?? []
+    const serverSummary = data?.pages[0]?.summary
+    if (serverSummary) {
+      return {
+        total: serverSummary.projects,
+        active: serverSummary.active,
+        archived: serverSummary.archived,
+        open: serverSummary.open_work_packages,
+        overdue: serverSummary.overdue_work_packages,
+        initiatives: serverSummary.initiatives,
+      }
+    }
     return {
-      total: data?.total ?? 0,
-      active: items.filter((project) => !project.archived_at).length,
-      archived: items.filter((project) => project.archived_at).length,
-      open: items.reduce((sum, project) => sum + project.open_work_package_count, 0),
-      overdue: items.reduce((sum, project) => sum + project.overdue_count, 0),
-      initiatives: items.reduce(
+      total,
+      active: projects.filter((project) => !project.archived_at).length,
+      archived: projects.filter((project) => project.archived_at).length,
+      open: projects.reduce((sum, project) => sum + project.open_work_package_count, 0),
+      overdue: projects.reduce((sum, project) => sum + project.overdue_count, 0),
+      initiatives: projects.reduce(
         (sum, project) => sum + project.initiatives.length + project.initiative_overflow,
         0,
       ),
     }
-  }, [data])
-
-  const visibleProjects = useMemo(() => {
-    if (!data) return []
-    return sortProjects(data.items, sort.key, sort.dir).filter((project) =>
-      matchesProject(project, query),
-    )
-  }, [data, query, sort.dir, sort.key])
+  }, [data, projects, total])
 
   if (isPending) return <ListSkeleton />
-  if (isError) return <ErrorState error={error} onRetry={() => refetch()} />
+  if (isError && !data) return <ErrorState error={error} onRetry={() => refetch()} />
 
   const resultText = query.trim()
-    ? `${summary.total}개 중 ${visibleProjects.length}개 표시`
-    : `${summary.total}개 프로젝트`
+    ? `${summary.total}개 중 ${total}개 검색 · ${projects.length}개 표시`
+    : projects.length < total
+      ? `${projects.length}/${total}개 표시`
+      : `${total}개 프로젝트`
 
   return (
     <div className="flex min-h-full w-full flex-col bg-of-surface">
@@ -684,7 +706,8 @@ export function ProjectsPage() {
             />
             <Input
               value={query}
-              onChange={(event) => setQuery(event.target.value)}
+              onChange={(event) => setDirectoryParam('q', event.target.value)}
+              maxLength={120}
               placeholder="프로젝트 검색"
               aria-label="프로젝트 검색어"
               className="h-7 pl-8 pr-8 text-xs"
@@ -694,7 +717,7 @@ export function ProjectsPage() {
                 type="button"
                 aria-label="프로젝트 검색어 지우기"
                 className="absolute right-1 top-1/2 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-of text-of-muted transition-colors hover:bg-of-surface-hover hover:text-of-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus"
-                onClick={() => setQuery('')}
+                onClick={() => setDirectoryParam('q', null)}
               >
                 <X size={12} aria-hidden="true" />
               </button>
@@ -704,7 +727,7 @@ export function ProjectsPage() {
             <input
               type="checkbox"
               checked={includeArchived}
-              onChange={(e) => setIncludeArchived(e.target.checked)}
+              onChange={(e) => setDirectoryParam('archived', e.target.checked ? '1' : null)}
               className="h-3 w-3 accent-of-accent"
             />
             <Archive size={13} aria-hidden="true" />
@@ -811,6 +834,23 @@ export function ProjectsPage() {
               </button>
             </span>
           ) : null}
+          {isError && data && !isFetchNextPageError ? (
+            <span className="flex items-center gap-1 text-[11px] text-of-danger" role="alert">
+              프로젝트 갱신 실패
+              <button
+                type="button"
+                className="underline underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus"
+                onClick={() => void refetch()}
+              >
+                재시도
+              </button>
+            </span>
+          ) : null}
+          {query.trim() !== deferredQuery ? (
+            <span className="text-[11px] text-of-muted" aria-live="polite">
+              검색 반영 중
+            </span>
+          ) : null}
           <Button
             variant="outline"
             size="icon"
@@ -826,16 +866,16 @@ export function ProjectsPage() {
 
       {creating ? <div className="mx-auto w-full max-w-7xl px-4 py-3 sm:px-6"><NewProjectForm onClose={closeCreate} /></div> : null}
 
-      {data.total === 0 && !creating ? (
+      {summary.total === 0 && !query.trim() && !creating ? (
         <div className="px-4 sm:px-6"><EmptyState title="아직 프로젝트가 없습니다" hint="첫 프로젝트를 만들어 시작하세요.">
           <Button size="sm" onClick={() => setCreating(true)}>
             <Plus size={14} /> 새 프로젝트
           </Button>
         </EmptyState></div>
-      ) : visibleProjects.length === 0 ? (
+      ) : total === 0 ? (
         <div className="px-4 sm:px-6"><EmptyState title="조건에 맞는 프로젝트가 없습니다" hint="검색어를 지우거나 보관 포함을 켜 보세요.">
           {query ? (
-            <Button size="sm" variant="outline" onClick={() => setQuery('')}>
+            <Button size="sm" variant="outline" onClick={() => setDirectoryParam('q', null)}>
               검색 지우기
             </Button>
           ) : null}
@@ -853,7 +893,7 @@ export function ProjectsPage() {
           ) : null}
           <div className={cn(layout === 'list' && 'overflow-hidden rounded-of border border-of-border bg-of-surface')}>
           <ul aria-label="프로젝트 디렉터리" className={cn(layout === 'grid' ? 'grid gap-3 md:grid-cols-2 2xl:grid-cols-3' : 'divide-y divide-of-border')}>
-            {visibleProjects.map((project) => (
+            {projects.map((project) => (
               layout === 'grid' ? (
                 <ProjectCard
                   key={project.id}
@@ -878,6 +918,35 @@ export function ProjectsPage() {
             ))}
           </ul>
           </div>
+          <footer className="flex min-w-0 flex-col items-center gap-2 border-t border-of-border-subtle py-4 sm:flex-row sm:justify-between">
+            <p className="text-xs text-of-muted" aria-live="polite">
+              {projects.length} / {total}개 표시
+            </p>
+            <div className="flex min-w-0 flex-col items-center gap-2 sm:items-end">
+              {hasNextPage ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={isFetchingNextPage}
+                  aria-describedby={
+                    isFetchNextPageError ? 'project-directory-load-more-error' : undefined
+                  }
+                  onClick={() => fetchNextPage()}
+                >
+                  {isFetchingNextPage ? '불러오는 중...' : '더 불러오기'}
+                </Button>
+              ) : null}
+              {isFetchNextPageError ? (
+                <p
+                  id="project-directory-load-more-error"
+                  role="alert"
+                  className="text-xs text-of-danger"
+                >
+                  추가 프로젝트를 불러오지 못했습니다. 다시 시도해 주세요.
+                </p>
+              ) : null}
+            </div>
+          </footer>
         </section>
       )}
       {projectActionMessage ? (

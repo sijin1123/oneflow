@@ -90,9 +90,20 @@ export type ProjectListItem = Project & {
   initiative_overflow: number
 }
 
+export type ProjectDirectorySummary = {
+  projects: number
+  active: number
+  archived: number
+  open_work_packages: number
+  overdue_work_packages: number
+  initiatives: number
+}
+
 export type ProjectList = {
   items: ProjectListItem[]
   total: number
+  // Optional while older cached responses and clean-room E2E fixtures age out.
+  summary?: ProjectDirectorySummary
 }
 
 export type ProjectPublication = {

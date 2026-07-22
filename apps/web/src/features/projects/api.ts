@@ -1,4 +1,10 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import {
+  keepPreviousData,
+  useInfiniteQuery,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query'
 
 import { api } from '@/lib/api'
 import { registerIdentityReset } from '@/features/auth/cache'
@@ -19,6 +25,48 @@ import {
   type ProjectDirectoryPreferences,
   type ProjectDirectoryPreferencesPayload,
 } from './projectDirectoryPreferences'
+import type { ProjectSortKey, SortDir } from './sort'
+
+const PROJECT_DIRECTORY_PAGE_SIZE = 200
+
+async function getAllProjects(includeArchived: boolean) {
+  const initialPath = `/api/v1/projects${includeArchived ? '?include_archived=true' : ''}`
+  const first = await api<ProjectList>(initialPath)
+  if (first.items.length >= first.total) return first
+
+  const items = [...first.items]
+  while (items.length < first.total) {
+    const params = new URLSearchParams({ limit: '500', offset: String(items.length) })
+    if (includeArchived) params.set('include_archived', 'true')
+    const page = await api<ProjectList>(`/api/v1/projects?${params.toString()}`)
+    if (page.items.length === 0) break
+    items.push(...page.items)
+  }
+  return { ...first, items }
+}
+
+type ProjectDirectoryQuery = {
+  includeArchived: boolean
+  q: string
+  sortKey: ProjectSortKey
+  sortDirection: SortDir
+}
+
+function projectDirectoryPath(query: ProjectDirectoryQuery, offset: number) {
+  const params = new URLSearchParams()
+  if (offset > 0) {
+    params.set('limit', String(PROJECT_DIRECTORY_PAGE_SIZE))
+    params.set('offset', String(offset))
+  }
+  if (query.includeArchived) params.set('include_archived', 'true')
+  if (query.q) params.set('q', query.q)
+  if (query.sortKey !== 'default') {
+    params.set('sort_key', query.sortKey)
+    params.set('sort_direction', query.sortDirection)
+  }
+  const search = params.toString()
+  return `/api/v1/projects${search ? `?${search}` : ''}`
+}
 
 export type ProjectDirectoryPreferencesResponse = {
   columns: string[]
@@ -58,8 +106,21 @@ export function getProject(projectId: string) {
 export function useProjects(includeArchived = false) {
   return useQuery({
     queryKey: ['projects', { includeArchived }],
-    queryFn: () =>
-      api<ProjectList>(`/api/v1/projects${includeArchived ? '?include_archived=true' : ''}`),
+    queryFn: () => getAllProjects(includeArchived),
+  })
+}
+
+export function useProjectDirectory(query: ProjectDirectoryQuery) {
+  return useInfiniteQuery({
+    queryKey: ['projects', 'directory', query],
+    initialPageParam: 0,
+    queryFn: ({ pageParam }) => api<ProjectList>(projectDirectoryPath(query, pageParam)),
+    getNextPageParam: (lastPage, pages) => {
+      const loaded = pages.reduce((total, page) => total + page.items.length, 0)
+      return loaded < lastPage.total ? loaded : undefined
+    },
+    placeholderData: keepPreviousData,
+    retry: false,
   })
 }
 
