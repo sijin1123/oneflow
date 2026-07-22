@@ -1,7 +1,9 @@
 import { ArrowRight, ChevronDown, History, RotateCcw } from 'lucide-react'
 import { useState } from 'react'
 
+import { Avatar } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
+import { profileImageSrc } from '@/features/members/api'
 import { formatDateTime } from '@/lib/datetime'
 import { cn } from '@/lib/utils'
 
@@ -41,9 +43,20 @@ function TimelineRows({ items }: { items: IntakeDecisionHistoryItem[] }) {
       {items.map((item) => (
         <li
           key={item.id}
-          className="grid min-w-0 gap-2 py-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start sm:gap-4"
+          className="grid min-w-0 grid-cols-[28px_minmax(0,1fr)] gap-2.5 py-3"
         >
+          <Avatar
+            name={item.decided_by_name || '이전 구성원'}
+            src={profileImageSrc(item)}
+            size="sm"
+          />
           <div className="min-w-0">
+            <p className="flex min-w-0 flex-wrap items-baseline gap-x-1.5 text-[11px] leading-5 text-of-muted">
+              <span className="break-words font-medium text-of-text">
+                {item.decided_by_name || '이전 구성원'}
+              </span>
+              <time dateTime={item.created_at}>{formatDateTime(item.created_at)}</time>
+            </p>
             <div className="flex min-w-0 flex-wrap items-center gap-1.5">
               <StatusBadge status={item.previous_status} />
               <ArrowRight size={13} className="shrink-0 text-of-muted" aria-hidden="true" />
@@ -61,12 +74,6 @@ function TimelineRows({ items }: { items: IntakeDecisionHistoryItem[] }) {
               {item.note || '사유 없이 판정했습니다.'}
             </p>
           </div>
-          <p className="min-w-0 text-[11px] leading-5 text-of-muted sm:text-right">
-            <span className="block break-words font-medium text-of-text">
-              {item.decided_by_name || '이전 구성원'}
-            </span>
-            <time dateTime={item.created_at}>{formatDateTime(item.created_at)}</time>
-          </p>
         </li>
       ))}
     </ol>

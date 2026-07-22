@@ -32,6 +32,7 @@ export type IntakeDecisionHistoryItem = {
   snooze_until: string | null
   decided_by: string | null
   decided_by_name: string | null
+  decided_by_profile_image_url: string | null
   created_at: string
 }
 

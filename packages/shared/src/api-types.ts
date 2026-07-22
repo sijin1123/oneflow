@@ -2609,6 +2609,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{project_id}/intake/{item_id}/history/{history_id}/actor-image": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Intake Decision History Actor Profile Image */
+        get: operations["get_intake_decision_history_actor_profile_image_api_v1_projects__project_id__intake__item_id__history__history_id__actor_image_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{project_id}/intake/{item_id}/triage": {
         parameters: {
             query?: never;
@@ -6363,6 +6380,8 @@ export interface components {
             decided_by: string | null;
             /** Decided By Name */
             decided_by_name?: string | null;
+            /** Decided By Profile Image Url */
+            decided_by_profile_image_url?: string | null;
             /**
              * Id
              * Format: uuid
@@ -17490,6 +17509,45 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["IntakeDecisionHistoryList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_intake_decision_history_actor_profile_image_api_v1_projects__project_id__intake__item_id__history__history_id__actor_image_get: {
+        parameters: {
+            query?: {
+                version?: string | null;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                project_id: string;
+                item_id: string;
+                history_id: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
             /** @description Validation Error */

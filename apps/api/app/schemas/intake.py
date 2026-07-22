@@ -83,6 +83,7 @@ class IntakeDecisionHistoryRead(BaseModel):
     snooze_until: date | None
     decided_by: uuid.UUID | None
     decided_by_name: str | None = None
+    decided_by_profile_image_url: str | None = None
     created_at: datetime
 
 

@@ -20,7 +20,7 @@ from app.schemas.intake import (
     IntakeRead,
     IntakeTriage,
 )
-from app.services.activity import record_created
+from app.services.activity import capture_actor_identity, record_created
 from app.services.notification import record_intake_triage
 from app.services.sanitize import sanitize_html
 from app.services.webhooks import enqueue_work_package_event
@@ -48,6 +48,21 @@ def _to_read(row: IntakeItem, submitter_name: str | None) -> IntakeRead:
         triaged_at=row.triaged_at,
         created_at=row.created_at,
         updated_at=row.updated_at,
+    )
+
+
+def _decision_actor_image_url(
+    project_id: uuid.UUID,
+    item_id: uuid.UUID,
+    history: IntakeDecisionHistory,
+) -> str | None:
+    storage_key = history.decided_by_profile_image_storage_key
+    if storage_key is None:
+        return None
+    version = storage_key.rsplit("/", 1)[-1]
+    return (
+        f"/api/v1/projects/{project_id}/intake/{item_id}/history/{history.id}/actor-image"
+        f"?version={version}"
     )
 
 
@@ -118,27 +133,32 @@ async def list_intake_decision_history(
         select(func.count()).select_from(IntakeDecisionHistory).where(predicate)
     )
     rows = (
-        await session.execute(
-            select(IntakeDecisionHistory, User.display_name)
-            .outerjoin(User, IntakeDecisionHistory.decided_by == User.id)
-            .where(predicate)
-            .order_by(
-                IntakeDecisionHistory.created_at.desc(),
-                IntakeDecisionHistory.id.desc(),
+        (
+            await session.execute(
+                select(IntakeDecisionHistory)
+                .where(predicate)
+                .order_by(
+                    IntakeDecisionHistory.created_at.desc(),
+                    IntakeDecisionHistory.id.desc(),
+                )
+                .limit(limit)
+                .offset(offset)
             )
-            .limit(limit)
-            .offset(offset)
         )
-    ).all()
+        .scalars()
+        .all()
+    )
     return IntakeDecisionHistoryList(
         items=[
             IntakeDecisionHistoryRead(
                 **IntakeDecisionHistoryRead.model_validate(history).model_dump(
-                    exclude={"decided_by_name"}
+                    exclude={"decided_by_profile_image_url"}
                 ),
-                decided_by_name=display_name,
+                decided_by_profile_image_url=_decision_actor_image_url(
+                    project_id, item_id, history
+                ),
             )
-            for history, display_name in rows
+            for history in rows
         ],
         total=total or 0,
     )
@@ -206,6 +226,7 @@ async def triage_intake(
         # including the just-inserted work package.
         await session.rollback()
         raise HTTPException(status_code=409, detail="item was already triaged")
+    actor_snapshot = await capture_actor_identity(session, user.id)
     session.add(
         IntakeDecisionHistory(
             intake_item_id=item_id,
@@ -214,6 +235,9 @@ async def triage_intake(
             note=body.note,
             snooze_until=body.snooze_until if body.status == "snoozed" else None,
             decided_by=user.id,
+            decided_by_name_snapshot=actor_snapshot.name,
+            decided_by_profile_image_storage_key=actor_snapshot.profile_image_storage_key,
+            decided_by_profile_image_content_type=actor_snapshot.profile_image_content_type,
         )
     )
     if body.status == "accepted":
