@@ -9,9 +9,10 @@ only — memberships, assignments, and authored history stay intact; the one
 new-reference write it closes is project member ADD (409 in members.py)."""
 
 import uuid
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import func, select, text
+from sqlalchemy import func, or_, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -24,6 +25,7 @@ from app.schemas.user import (
     UserCreate,
     UserDirectoryList,
     UserDirectoryRead,
+    UserDirectorySummary,
     UserMembershipList,
     UserMembershipRead,
     UserUpdate,
@@ -62,17 +64,61 @@ async def _active_admin_count(session: AsyncSession) -> int:
 
 @router.get("/users", response_model=UserDirectoryList)
 async def list_users(
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    q: str | None = Query(default=None, max_length=120),
+    scope: Literal["all", "admins", "inactive"] = Query(default="all"),
     session: AsyncSession = Depends(get_session),
     user: User = Depends(get_current_user),
 ) -> UserDirectoryList:
     _require_admin(user)
+
+    summary_row = (
+        await session.execute(
+            select(
+                func.count(User.id),
+                func.count(User.id).filter(User.is_active.is_(True)),
+                func.count(User.id).filter(User.is_admin.is_(True)),
+                func.count(User.id).filter(User.is_active.is_(False)),
+                func.count(User.id).filter(User.is_admin.is_(True), User.is_active.is_(True)),
+            )
+        )
+    ).one()
+    summary = UserDirectorySummary(
+        users=summary_row[0],
+        active=summary_row[1],
+        admins=summary_row[2],
+        inactive=summary_row[3],
+        active_admins=summary_row[4],
+    )
+
+    base = select(User)
+    if scope == "admins":
+        base = base.where(User.is_admin.is_(True))
+    elif scope == "inactive":
+        base = base.where(User.is_active.is_(False))
+    needle = q.strip() if q else ""
+    if needle:
+        base = base.where(
+            or_(
+                User.display_name.icontains(needle, autoescape=True),
+                User.email.icontains(needle, autoescape=True),
+            )
+        )
+    total = (await session.execute(select(func.count()).select_from(base.subquery()))).scalar_one()
     rows = (
-        (await session.execute(select(User).order_by(User.display_name.asc(), User.id.asc())))
+        (
+            await session.execute(
+                base.order_by(func.lower(User.display_name).asc(), User.id.asc())
+                .limit(limit)
+                .offset(offset)
+            )
+        )
         .scalars()
         .all()
     )
     items = [UserDirectoryRead.model_validate(u) for u in rows]
-    return UserDirectoryList(items=items, total=len(items))
+    return UserDirectoryList(items=items, total=total, summary=summary)
 
 
 @router.get("/users/{user_id}/memberships", response_model=UserMembershipList)

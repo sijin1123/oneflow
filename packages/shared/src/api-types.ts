@@ -9322,6 +9322,7 @@ export interface components {
         UserDirectoryList: {
             /** Items */
             items: components["schemas"]["UserDirectoryRead"][];
+            summary: components["schemas"]["UserDirectorySummary"];
             /** Total */
             total: number;
         };
@@ -9348,6 +9349,22 @@ export interface components {
             is_active: boolean;
             /** Is Admin */
             is_admin: boolean;
+        };
+        /**
+         * UserDirectorySummary
+         * @description Workspace-wide counts, independent of directory search and scope.
+         */
+        UserDirectorySummary: {
+            /** Active */
+            active: number;
+            /** Active Admins */
+            active_admins: number;
+            /** Admins */
+            admins: number;
+            /** Inactive */
+            inactive: number;
+            /** Users */
+            users: number;
         };
         /** UserMembershipList */
         UserMembershipList: {
@@ -20126,7 +20143,12 @@ export interface operations {
     };
     list_users_api_v1_users_get: {
         parameters: {
-            query?: never;
+            query?: {
+                limit?: number;
+                offset?: number;
+                q?: string | null;
+                scope?: "all" | "admins" | "inactive";
+            };
             header?: {
                 authorization?: string | null;
             };

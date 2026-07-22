@@ -36,9 +36,20 @@ class UserDirectoryRead(UserRead):
     created_at: datetime
 
 
+class UserDirectorySummary(BaseModel):
+    """Workspace-wide counts, independent of directory search and scope."""
+
+    users: int
+    active: int
+    admins: int
+    inactive: int
+    active_admins: int
+
+
 class UserDirectoryList(BaseModel):
     items: list[UserDirectoryRead]
     total: int
+    summary: UserDirectorySummary
 
 
 class UserMembershipRead(BaseModel):
