@@ -10,6 +10,8 @@ const approvedAssetHashes = {
     'af72db2bd4fbd19e4dbce706fe14fab428eb7710576d81c0da205ddc455d3fae',
   'oneflow-login-story-reference.png':
     '40e4c8969521a17df4f405652f46a9046823798cc0a7b7a89f42247d36edaf48',
+  'oneflow-login-story-reference-525x720.png':
+    'f9605039ca7194e5c82f78c2de4a5d0fe4715bc8ea0a4aa9a2958d870fada39c',
   'oneflow-login-story-reference-667x915.png':
     'e3ccb4be6188cd08170301884115e0578c3994689cab86588cb9d85b25d96aea',
   'oneflow-login-story-reference-495x679.png':

@@ -20,6 +20,9 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import loginLogoLockup from '@/assets/generated/oneflow-login-logo-lockup.png'
 import loginLogoLockup2x from '@/assets/generated/oneflow-login-logo-lockup@2x.png'
 import loginStoryReference from '@/assets/generated/oneflow-login-story-reference.png'
+import loginStoryReference495 from '@/assets/generated/oneflow-login-story-reference-495x679.png'
+import loginStoryReference525 from '@/assets/generated/oneflow-login-story-reference-525x720.png'
+import loginStoryReference667 from '@/assets/generated/oneflow-login-story-reference-667x915.png'
 import loginStoryReference2x from '@/assets/generated/oneflow-login-story-reference@2x.png'
 import { Button } from '@/components/ui/button'
 import {
@@ -180,7 +183,8 @@ function StoryPanel() {
       <img
         className="of-login-story-art"
         src={loginStoryReference}
-        srcSet={`${loginStoryReference} 1x, ${loginStoryReference2x} 2x`}
+        srcSet={`${loginStoryReference495} 495w, ${loginStoryReference525} 525w, ${loginStoryReference667} 667w, ${loginStoryReference} 792w, ${loginStoryReference2x} 1584w`}
+        sizes="(max-width: 520px) 183vw, (max-height: 720px) 525px, min(792px, 54.696vw, 72.93dvh)"
         width="792"
         height="1086"
         alt=""
@@ -553,7 +557,7 @@ export function LoginPage() {
             <div className="of-login-form-options">
               <label className="of-login-checkbox">
                 <input type="checkbox" checked={rememberMe} onChange={(event) => setRememberMe(event.target.checked)} disabled={!formEnabled || login.isPending} />
-                <span><Check aria-hidden="true" /></span>{text.remember}
+                <span><Check aria-hidden="true" /></span><span className="of-login-checkbox-copy">{text.remember}</span>
               </label>
               <button ref={forgotButtonRef} type="button" className="of-login-link" onClick={() => setNotice('forgot')}>{text.forgot}</button>
             </div>
@@ -584,7 +588,9 @@ export function LoginPage() {
                     onClick={() => startProvider(provider)}
                   >
                     <ProviderGlyph provider={provider} />
-                    {provider === 'google' ? text.google : provider === 'microsoft' ? text.microsoft : text.sso}
+                    <span className="of-login-provider-copy">
+                      {provider === 'google' ? text.google : provider === 'microsoft' ? text.microsoft : text.sso}
+                    </span>
                   </button>
                 )
               })}

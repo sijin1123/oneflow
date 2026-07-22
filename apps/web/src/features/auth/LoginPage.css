@@ -257,7 +257,7 @@
   overflow: hidden;
   opacity: 0;
 }
-.of-login-checkbox > span {
+.of-login-checkbox > span:first-of-type {
   display: grid;
   width: 18px;
   height: 18px;
@@ -1021,7 +1021,7 @@
   overflow: hidden;
   scrollbar-gutter: auto;
   padding: 0;
-  background: linear-gradient(145deg, #f8fafe 0%, #f7f9fe 100%);
+  background: linear-gradient(145deg, #fafcff 0%, #f9fbff 100%);
 }
 
 .of-login-auth::after {
@@ -1153,7 +1153,7 @@
   color: #5864e8;
 }
 
-.of-login-checkbox > span {
+.of-login-checkbox > span:first-of-type {
   width: clamp(15px, 1.31cqw, 16px);
   height: clamp(15px, 1.31cqw, 16px);
   border-radius: 2px;
@@ -1162,7 +1162,7 @@
 .of-login-submit {
   min-height: clamp(42px, 3.59cqw, 44px);
   border-radius: clamp(7px, 0.69cqw, 9px);
-  background: linear-gradient(100deg, #5662f1 0%, #5763f2 52%, #5863f0 100%);
+  background: linear-gradient(100deg, #626ef3 0%, #6370f4 52%, #646ff2 100%);
   box-shadow: 0 8px 18px rgb(83 103 245 / 0.12);
   font-size: clamp(11px, 1.04cqw, 13px);
   transform: translateY(-1px);
@@ -1259,7 +1259,7 @@
     transform: translate(1px, -1px);
   }
 
-  .of-login-checkbox > span {
+  .of-login-checkbox > span:first-of-type {
     width: 15px;
     height: 16px;
   }
@@ -1342,17 +1342,25 @@
     font-size: calc(32.5px * var(--of-login-scale));
     font-weight: 600;
     transform: translate(
-        calc(-4px * var(--of-login-scale)),
-        calc(-1px * var(--of-login-scale))
+        calc(-2.25px * var(--of-login-scale)),
+        calc(-0.75px * var(--of-login-scale))
       )
-      scaleX(0.99);
+      scaleX(0.96);
+  }
+
+  .of-login-heading h2 span {
+    display: inline-block;
+    transform: translate(
+      calc(1.5px * var(--of-login-scale)),
+      calc(-4.5px * var(--of-login-scale))
+    );
   }
 
   .of-login-heading p {
     margin-top: calc(10px * var(--of-login-scale));
     font-size: calc(16px * var(--of-login-scale));
     color: #586783;
-    transform: translateY(calc(-2px * var(--of-login-scale))) scaleX(1.022);
+    transform: translateY(calc(-2px * var(--of-login-scale))) scaleX(0.965);
   }
 
   .of-login-form {
@@ -1428,31 +1436,36 @@
     font-weight: 500;
     transform: translate(
       calc(1px * var(--of-login-scale)),
-      calc(-1px * var(--of-login-scale))
+      calc(2px * var(--of-login-scale))
     );
+  }
+
+  .of-login-checkbox-copy {
+    display: inline-block;
+    transform: scaleX(0.93);
+    transform-origin: left center;
   }
 
   .of-login-link {
     min-height: calc(40px * var(--of-login-scale));
-    transform: translate(
-      calc(-1px * var(--of-login-scale)),
-      calc(-1px * var(--of-login-scale))
-    );
+    transform: translateY(calc(2px * var(--of-login-scale))) scaleX(0.94);
+    transform-origin: right center;
   }
 
-  .of-login-checkbox > span {
+  .of-login-checkbox > span:first-of-type {
     width: calc(19px * var(--of-login-scale));
     height: calc(19px * var(--of-login-scale));
   }
 
   .of-login-submit {
-    width: calc(100% - 2px * var(--of-login-scale));
+    width: 100%;
     min-height: calc(51px * var(--of-login-scale));
     justify-self: center;
     border-radius: calc(11px * var(--of-login-scale));
     padding-right: calc(45px * var(--of-login-scale));
     padding-left: calc(14px * var(--of-login-scale));
     font-size: calc(15px * var(--of-login-scale));
+    transform: none;
   }
 
   .of-login-divider {
@@ -1482,10 +1495,11 @@
   .of-login-providers {
     gap: calc(8px * var(--of-login-scale));
     margin-top: calc(10px * var(--of-login-scale));
+    transform: translateY(calc(1.5px * var(--of-login-scale)));
   }
 
   .of-login-provider-button {
-    width: calc(100% - 2px * var(--of-login-scale));
+    width: 100%;
     min-height: calc(53px * var(--of-login-scale));
     gap: calc(11px * var(--of-login-scale));
     justify-self: center;
@@ -1494,6 +1508,11 @@
       calc(15px * var(--of-login-scale));
     font-size: calc(16px * var(--of-login-scale));
     font-weight: 500;
+  }
+
+  .of-login-provider-copy {
+    display: inline-block;
+    transform: scaleX(0.97);
   }
 
   .of-login-google {
