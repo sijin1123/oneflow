@@ -150,7 +150,13 @@ async def test_document_notification_read_visibility_and_delete_cascade(
             )
         )
     hidden = await client.get("/api/v1/me/notifications")
-    assert hidden.json() == {"items": [], "total": 0, "unread": 0}
+    assert hidden.json() == {
+        "items": [],
+        "total": 0,
+        "unread": 0,
+        "next_cursor_created_at": None,
+        "next_cursor_id": None,
+    }
 
     async with app.state.sessionmaker() as session, session.begin():
         session.add(ProjectMember(project_id=project_id, user_id=dev_id, role="member"))

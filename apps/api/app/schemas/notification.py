@@ -28,3 +28,5 @@ class NotificationList(BaseModel):
     total: int
     # Always the true unread total, independent of the unread_only filter.
     unread: int
+    next_cursor_created_at: datetime | None = None
+    next_cursor_id: uuid.UUID | None = None
