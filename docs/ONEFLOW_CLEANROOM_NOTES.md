@@ -688,3 +688,9 @@ Plane/OpenProject source, package, asset, logo, CSS, DOM, wording 또는 brandin
 `docs/plane-poc-reverse-spec/`에서 사용한 입력은 프로젝트 상태 보고 이력이 변경 시점의 사용자 identity를 compact avatar, 이름, 시각과 상태 전환으로 일관되게 표현한다는 관찰 가능한 정보 구조와 행동뿐이다. OneFlow 구현은 자체 Project health append-only history, 개인 프로필 이미지 저장소, 프로젝트 멤버십 권한, React Query와 공통 `Avatar` 컴포넌트를 사용해 독립 설계했다.
 
 Plane/OpenProject source, API, database schema, package, asset, CSS, DOM hierarchy, exact dimensions/colors, wording, component implementation, icons 또는 branding은 복사하지 않았다. 기존 health mutation transaction에서 이름과 이미지 key/content type을 snapshot하고, event-scoped exact-version private read를 현재 프로젝트 멤버에게만 제공한다. 프로필 교체·삭제와 계정 변경 뒤에도 변경 시점 identity와 참조 blob을 보존하고 storage sweep live set에 포함한다. 신규 dependency, environment variable 또는 Settings storage 변경은 없다. - attested-independent-derivation
+
+## UI-210 Login Origin Exhaustive In-App Reinspection
+
+UI-210의 유일한 시각 입력은 사용자가 직접 제공하고 OneFlow 제품 자산으로 승인한 `apps/web/src/assets/generated/oneflow-login-origin-reference.png`이며 SHA-256은 `62fafe9e44df9d189e8fe2f38fc25147d11b8459569be13ee0424ba06c0c4c76`이다. 런타임 story와 양쪽 OneFlow logo는 이 원본의 결정적 crop이며, 데스크톱 재실사에서 story brand·headline·Kanban·calendar·activity와 auth logo가 모두 pixel MAE `0.0000`임을 확인했다. 배경·로고·카드를 새로 생성하거나 재해석하지 않고, 인앱 compact desktop이 승인 전체 캔버스를 자르던 자체 반응형 breakpoint만 수정했다.
+
+Plane/OpenProject source, package, asset, logo, CSS, DOM, wording 또는 branding은 입력·복사하지 않았다. `562x734` 인앱에서는 자체 `1448x1086` logical canvas를 균일 축소하고, `520px` 이하 phone에서는 기존 기능형 stacked auth flow를 유지한다. 이메일 검증과 focus, 실제 sign-in, provider availability, assistance, policy, locale와 safe-next 계약은 기존 OneFlow semantic control과 auth API를 그대로 사용한다. 신규 API, DB/schema, migration, permission, environment variable, dependency 또는 Settings storage 변경은 없다. - attested-user-owned-oneflow-asset

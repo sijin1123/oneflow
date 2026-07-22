@@ -800,7 +800,9 @@
   }
 }
 
-@media (max-width: 880px) {
+/* Keep the approved full-canvas composition in compact desktop/browser panes.
+   Only phone widths switch to the stacked functional layout. */
+@media (max-width: 520px) {
   .of-login-page {
     display: block;
     min-height: 100dvh;
@@ -1280,7 +1282,7 @@
   }
 }
 
-@media (min-width: 1448px) and (min-height: 1086px) {
+@media (min-width: 1448px) and (min-height: 1086px), (min-width: 521px) and (max-width: 880px) {
   /* Keep the approved raster on the layout pixel grid so the compositor does not resample it. */
   .of-login-canvas {
     place-items: start;
@@ -1596,7 +1598,7 @@
   }
 }
 
-@media (max-width: 880px) {
+@media (max-width: 520px) {
   .of-login-canvas {
     display: block;
     height: 100dvh;
@@ -1716,6 +1718,24 @@
 
   .of-login-heading h2 {
     font-size: 25px;
+  }
+}
+
+@media (min-width: 521px) and (max-width: 880px) {
+  .of-login-canvas {
+    display: grid;
+    height: 100dvh;
+    min-height: 0;
+    place-items: center;
+    overflow: hidden;
+    padding: 0;
+  }
+
+  .of-login-page {
+    width: 1448px;
+    height: 1086px;
+    margin: 0;
+    zoom: min(calc(100vw / 1448px), calc(100dvh / 1086px), 1);
   }
 }
 
