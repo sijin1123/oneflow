@@ -3253,6 +3253,17 @@ Chromium typed mock fixture에서 1440x960과 390x844 viewport를 사용했다. 
 
 ---
 
+# UI-212 Login Compact Origin Reinspection 검증 (2026-07-22)
+
+- **UI 변경**: 실제 Codex 인앱 `914x800`의 `/login`과 승인 `oneflow-login-origin.png`을 다시 전수 대조했다. `521px` 이상은 모두 승인 `1448x1086` 논리 캔버스와 `792:656` story/auth 비율을 유지해 균일 축소하며, compact 전용 495/667 story 및 128/173 logo 후보 선택과 별도 form 축소 규칙을 제거했다. `520px` 이하 mobile은 기존 기능형 stacked 흐름을 유지한다.
+- **기능/API 반영**: 이메일·비밀번호·remember me·password visibility·실제 sign-in, Google/Microsoft/SSO availability, assistance request, 정책 dialog, locale, safe-next, focus/keyboard 계약을 같은 semantic DOM과 기존 auth API로 유지한다. 신규 API, DB/schema, migration, permission, environment variable, dependency 또는 Settings UI 변경은 없다.
+- **픽셀 전수 실사**: 승인 원본과 runtime full reference SHA-256은 동일하며 story crop과 auth logo crop도 pixel-exact다. lossless Chromium `1448x1086`의 full/story/auth MAE는 **`1.3115/0.0123/2.8800`**, p95는 `2/0/7`이다. story brand·headline·Kanban·calendar·activity와 auth logo는 **`0.0000`**, 동적 collaboration route는 `0.0398`이다. 잔여 오차는 실제 동작하는 auth text·emoji·control의 브라우저 rasterization에 집중된다.
+- **인앱 실사**: panel `(0,57.25) 914x685.5`, story `499.9219x685.5`, auth card `(537.7813,101.4219) 330.125x563.0313`, zoom `0.631215`이며 document scroll size는 viewport와 동일한 `914x800`이다. 인앱 screenshot transport와 fractional downsampling을 포함한 Lanczos 기준 full/story/auth MAE는 `4.0403/4.2763/3.7553`으로 별도 기록하고, lossless capture를 픽셀 수용 기준으로 사용한다.
+- **검증**: typecheck PASS, lint PASS(기존 Fast Refresh warning 4건), production build PASS(기존 large chunk warning), unit **108 PASS**, component **9 PASS**, 로그인 focused E2E **17 PASS**, OpenAPI type parity, clean-room frontend **162**/backend **45**, npm audit 0 vulnerabilities와 diff check가 PASS했다. 첫 2-worker full E2E는 **355 PASS + visual skip 1**에서 기존 개인 메모 충돌 1건이 병렬 부하 timeout으로 흔들렸고 해당 시나리오 단일 반복 **5/5 PASS** 후, 최종 1-worker full E2E가 **356 PASS + opt-in visual QA 1 skip**으로 완주했다.
+- **증적/이연**: `docs/screenshots/redevelopment/login-compact-origin-ui/`에 desktop lossless, 실제 인앱 capture, `914x686` 정규화 pair, side-by-side, 8x diff와 전 영역 JSON을 보존한다. 외부 OIDC 공급자 연결은 배포별 credential 설정 경계를 유지하며 이외 이번 로그인 surface의 기능 이연·mock/dead control은 없다.
+
+---
+
 # UI-209 Inbox Notification Identity Avatars 검증 (2026-07-22)
 
 - **UI 변경**: Inbox와 topbar 알림 시트가 하나의 `NotificationItem`을 공유하도록 통합했다. actor가 있는 이벤트는 생성 시점 이름과 실제 저장 이미지를 `Avatar`로 표시하고, 이미지가 없거나 로드에 실패하면 같은 이름의 initials로 돌아간다. actor가 없는 due/overdue 시스템 알림은 사용자처럼 보이지 않도록 `BellRing` fallback을 사용한다. 알림 시트에는 loading skeleton과 기능형 error/retry 상태를 추가했고, unread dot·종류 badge·시각·target hint·deep link·개별/전체 읽음 처리를 두 surface에서 동일하게 유지한다.
