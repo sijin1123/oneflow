@@ -1247,7 +1247,10 @@ test('프로젝트 작업 화면 제어가 보기·필터·분석·생성 흐름
   await page.goto(`/projects/${project.id}/work-packages`)
 
   const controls = page.getByRole('region', { name: '작업 화면 제어' })
-  await expect(controls.getByRole('heading', { name: 'Work items' })).toBeVisible()
+  await expect(page.getByTestId('frame-context-bar').getByRole('region', { name: '작업 화면 제어' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Work items' })).toHaveClass(/sr-only/)
+  await expect(page.getByTestId('frame-context-bar').getByText('Work items', { exact: true })).toHaveCount(1)
+  await expect(controls.getByTestId('work-item-total')).toHaveText('2개')
   await expect(controls.getByRole('link', { name: '목록 보기' })).toHaveAttribute(
     'href',
     `/projects/${project.id}/work-packages`,
@@ -3080,6 +3083,9 @@ test('모바일 앱 셸에서 사이드바가 drawer로 열린다', async ({ pag
   await page.goto(`/projects/${project.id}/work-packages`)
 
   await expect(page.getByTestId('frame-context-bar').getByText('Work items', { exact: true })).toBeVisible()
+  await expect(page.getByTestId('frame-context-actions').getByRole('region', { name: '작업 화면 제어' })).toBeVisible()
+  await expect(page.getByRole('button', { name: '새 작업' })).toBeVisible()
+  await expectNoHorizontalOverflow(page)
   await page.screenshot({
     path: '../../docs/screenshots/redevelopment/view-controls/mobile.png',
     fullPage: true,

@@ -18,6 +18,7 @@ import { type FormEvent, useEffect, useState } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
 
 import { EmptyState, ErrorState, ListSkeleton } from '@/components/shell/states'
+import { FrameContextActions } from '@/components/shell/FrameContextActions'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { DataGrid, DataGridFrame, type GridDensity } from '@/components/ui/data-grid'
@@ -339,71 +340,74 @@ export function ListPage() {
   return (
     <div className="flex h-full flex-col">
       {members.data && !canWrite ? <ReadOnlyNotice className="mx-4 mt-2" /> : null}
-      <section aria-label="작업 화면 제어" className="border-b border-of-border bg-of-surface">
-        <div className="flex min-w-0 flex-col gap-2 px-4 py-2 lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex min-w-0 items-center gap-2">
-            <h1 className="truncate text-sm font-semibold">Work items</h1>
-            {data ? <Badge variant="outline">{data.total}</Badge> : null}
-          </div>
-
-          <div className="flex min-w-0 flex-wrap items-center gap-2 lg:justify-end">
-            <nav
-              aria-label="프로젝트 작업 보기"
-              className="flex h-7 items-center rounded-of border border-of-border bg-of-surface-2 p-0.5"
+      <h1 className="sr-only">Work items</h1>
+      <FrameContextActions>
+        <section aria-label="작업 화면 제어" className="flex min-w-0 flex-1 flex-wrap items-center justify-end gap-1.5">
+          {data ? (
+            <span
+              data-testid="work-item-total"
+              className="shrink-0 text-[11px] tabular-nums text-of-muted"
+              aria-label={`전체 ${data.total}개 작업`}
             >
-              {projectViews.map((view) => {
-                const Icon = view.icon
-                return (
-                  <Link
-                    key={view.path}
-                    to={`/projects/${projectId}/${view.path}`}
-                    aria-label={`${view.label} 보기`}
-                    aria-current={view.active ? 'page' : undefined}
-                    title={`${view.label} 보기`}
-                    className={`flex h-6 w-7 items-center justify-center rounded-[4px] text-of-muted hover:text-of-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus ${
-                      view.active ? 'bg-of-surface-selected text-of-accent' : ''
-                    }`}
-                  >
-                    <Icon size={13} aria-hidden="true" />
-                  </Link>
-                )
-              })}
-            </nav>
-            <Button
-              variant="outline"
-              size="sm"
-              aria-expanded={filtersOpen}
-              aria-controls="project-work-item-filters"
-              onClick={() => setFiltersOpen((open) => !open)}
-            >
-              <SlidersHorizontal size={13} /> 필터
-              {activeControlCount > 0 ? <span className="tabular-nums">{activeControlCount}</span> : null}
+              {data.total}개
+            </span>
+          ) : null}
+          <nav
+            aria-label="프로젝트 작업 보기"
+            className="flex h-7 items-center rounded-of border border-of-border bg-of-surface-2 p-0.5"
+          >
+            {projectViews.map((view) => {
+              const Icon = view.icon
+              return (
+                <Link
+                  key={view.path}
+                  to={`/projects/${projectId}/${view.path}`}
+                  aria-label={`${view.label} 보기`}
+                  aria-current={view.active ? 'page' : undefined}
+                  title={`${view.label} 보기`}
+                  className={`flex h-6 w-7 items-center justify-center rounded-[4px] text-of-muted hover:text-of-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus ${
+                    view.active ? 'bg-of-surface-selected text-of-accent' : ''
+                  }`}
+                >
+                  <Icon size={13} aria-hidden="true" />
+                </Link>
+              )
+            })}
+          </nav>
+          <Button
+            variant="outline"
+            size="sm"
+            aria-expanded={filtersOpen}
+            aria-controls="project-work-item-filters"
+            onClick={() => setFiltersOpen((open) => !open)}
+          >
+            <SlidersHorizontal size={13} /> 필터
+            {activeControlCount > 0 ? <span className="tabular-nums">{activeControlCount}</span> : null}
+          </Button>
+          <DisplayMenu
+            sort={sort}
+            columns={columns}
+            customColumns={customColumns}
+            customFields={customFields.data?.items ?? []}
+            onSortChange={setSort}
+            onToggleColumn={toggleColumn}
+            onToggleCustomColumn={toggleCustomColumn}
+            density={density}
+            onDensityChange={setDensity}
+          />
+          <Link
+            to={`/projects/${projectId}/dashboard`}
+            className="inline-flex h-7 items-center gap-1.5 rounded-of border border-of-border bg-of-surface px-2 text-xs font-medium text-of-text hover:bg-of-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus"
+          >
+            <BarChart3 size={13} aria-hidden="true" /> 분석
+          </Link>
+          {canWrite ? (
+            <Button size="sm" onClick={openCreate}>
+              <Plus size={13} /> 새 작업
             </Button>
-            <DisplayMenu
-              sort={sort}
-              columns={columns}
-              customColumns={customColumns}
-              customFields={customFields.data?.items ?? []}
-              onSortChange={setSort}
-              onToggleColumn={toggleColumn}
-              onToggleCustomColumn={toggleCustomColumn}
-              density={density}
-              onDensityChange={setDensity}
-            />
-            <Link
-              to={`/projects/${projectId}/dashboard`}
-              className="inline-flex h-7 items-center gap-1.5 rounded-of border border-of-border bg-of-surface px-2 text-xs font-medium text-of-text hover:bg-of-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus"
-            >
-              <BarChart3 size={13} aria-hidden="true" /> 분석
-            </Link>
-            {canWrite ? (
-              <Button size="sm" onClick={openCreate}>
-                <Plus size={13} /> 새 작업
-              </Button>
-            ) : null}
-          </div>
-        </div>
-      </section>
+          ) : null}
+        </section>
+      </FrameContextActions>
       <div className="border-b border-of-border bg-of-surface">
         <div className="flex flex-col gap-2 px-4 py-2.5">
           <div className="flex flex-col gap-2 xl:flex-row xl:items-center xl:justify-between">
