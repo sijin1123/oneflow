@@ -1,6 +1,5 @@
 import { BellRing, CheckCheck, Clock3, SlidersHorizontal } from 'lucide-react'
-import { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 
 import { ErrorState, EmptyState, ListSkeleton } from '@/components/shell/states'
 import { Badge } from '@/components/ui/badge'
@@ -9,20 +8,24 @@ import { cn } from '@/lib/utils'
 
 import {
   type Notification,
+  type NotificationScope,
+  useInboxNotifications,
   useMarkAllNotificationsRead,
   useMarkNotificationRead,
-  useNotifications,
 } from './api'
 import { NotificationItem } from './NotificationItem'
 import { getNotificationTargetPath } from './view'
 
-type Filter = 'all' | 'unread' | 'read'
-
-const filters: Array<{ key: Filter; label: string }> = [
+const filters: Array<{ key: NotificationScope; label: string }> = [
   { key: 'all', label: '전체' },
   { key: 'unread', label: '읽지 않음' },
   { key: 'read', label: '읽음' },
+  { key: 'mentions', label: '멘션' },
 ]
+
+function parseFilter(value: string | null): NotificationScope {
+  return filters.some((filter) => filter.key === value) ? (value as NotificationScope) : 'all'
+}
 
 function NotificationGroup({
   title,
@@ -74,22 +77,33 @@ function NotificationGroup({
 }
 
 export function InboxPage() {
-  const notifications = useNotifications()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const filter = parseFilter(searchParams.get('filter'))
+  const notifications = useInboxNotifications(filter)
   const markRead = useMarkNotificationRead()
   const markAll = useMarkAllNotificationsRead()
   const navigate = useNavigate()
-  const [filter, setFilter] = useState<Filter>('all')
 
   if (notifications.isPending) return <ListSkeleton rows={8} className="mx-auto max-w-6xl" />
-  if (notifications.isError) {
+  if (notifications.isError && !notifications.data) {
     return <ErrorState error={notifications.error} onRetry={() => notifications.refetch()} />
   }
 
-  const items = notifications.data.items
+  const pages = notifications.data.pages
+  const items = pages.flatMap((page) => page.items)
+  const total = pages[0]?.total ?? 0
+  const unread = pages[0]?.unread ?? 0
   const unreadItems = items.filter((item) => !item.read)
   const readItems = items.filter((item) => item.read)
-  const filteredItems =
-    filter === 'unread' ? unreadItems : filter === 'read' ? readItems : items
+
+  const selectFilter = (nextFilter: NotificationScope) => {
+    setSearchParams((current) => {
+      const next = new URLSearchParams(current)
+      if (nextFilter === 'all') next.delete('filter')
+      else next.set('filter', nextFilter)
+      return next
+    })
+  }
 
   const openNotification = (notification: Notification) => {
     if (!notification.read) markRead.mutate(notification.id)
@@ -112,13 +126,13 @@ export function InboxPage() {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <Badge variant={notifications.data.unread > 0 ? 'accent' : 'outline'}>
-            읽지 않음 {notifications.data.unread}
+          <Badge variant={unread > 0 ? 'accent' : 'outline'}>
+            읽지 않음 {unread}
           </Badge>
           <Button
             variant="outline"
             size="sm"
-            disabled={notifications.data.unread === 0 || markAll.isPending}
+            disabled={unread === 0 || markAll.isPending}
             onClick={() => markAll.mutate()}
           >
             <CheckCheck size={13} aria-hidden="true" /> 전체 읽음
@@ -145,14 +159,14 @@ export function InboxPage() {
                 ? 'border-of-accent bg-of-accent-soft text-of-accent'
                 : 'border-of-border bg-of-surface hover:bg-of-surface-hover',
             )}
-            onClick={() => setFilter(item.key)}
+            onClick={() => selectFilter(item.key)}
           >
             {item.label}
           </button>
         ))}
       </div>
 
-      {items.length === 0 ? (
+      {items.length === 0 && filter === 'all' ? (
         <EmptyState
           title="확인할 알림이 없습니다"
           hint="작업 배정, 이니셔티브 변경, 기한, 멘션, 인테이크 판정 알림이 여기에 모입니다."
@@ -164,7 +178,7 @@ export function InboxPage() {
             <BellRing size={13} aria-hidden="true" /> 알림 설정
           </Link>
         </EmptyState>
-      ) : filteredItems.length === 0 ? (
+      ) : items.length === 0 ? (
         <section className="flex min-h-[220px] min-w-0 items-center justify-center rounded-of border border-dashed border-of-border px-4 py-10 text-center">
           <div className="min-w-0">
             <Clock3 className="mx-auto mb-2 text-of-muted" size={20} aria-hidden="true" />
@@ -176,7 +190,7 @@ export function InboxPage() {
         <div className="space-y-5">
           <NotificationGroup
             title="읽지 않음"
-            count={unreadItems.length}
+            count={unread}
             items={unreadItems}
             onOpen={openNotification}
             onRead={markNotificationRead}
@@ -184,7 +198,7 @@ export function InboxPage() {
           />
           <NotificationGroup
             title="읽음"
-            count={readItems.length}
+            count={Math.max(total - unread, 0)}
             items={readItems}
             onOpen={openNotification}
             onRead={markNotificationRead}
@@ -193,14 +207,42 @@ export function InboxPage() {
         </div>
       ) : (
         <NotificationGroup
-          title={filter === 'unread' ? '읽지 않음' : '읽음'}
-          count={filteredItems.length}
-          items={filteredItems}
+          title={filters.find((item) => item.key === filter)?.label ?? '전체'}
+          count={total}
+          items={items}
           onOpen={openNotification}
           onRead={markNotificationRead}
           readPending={markRead.isPending}
         />
       )}
+
+      {items.length > 0 ? (
+        <footer className="flex min-w-0 flex-col items-center gap-2 border-t border-of-border pt-4 sm:flex-row sm:justify-between">
+          <p className="text-xs text-of-muted" aria-live="polite">
+            {items.length} / {total}건 표시
+          </p>
+          <div className="flex min-w-0 flex-col items-center gap-2 sm:items-end">
+            {notifications.hasNextPage ? (
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={notifications.isFetchingNextPage}
+                onClick={() => notifications.fetchNextPage()}
+                aria-describedby={
+                  notifications.isFetchNextPageError ? 'inbox-load-more-error' : undefined
+                }
+              >
+                {notifications.isFetchingNextPage ? '불러오는 중...' : '더 불러오기'}
+              </Button>
+            ) : null}
+            {notifications.isFetchNextPageError ? (
+              <p id="inbox-load-more-error" role="alert" className="text-xs text-of-danger">
+                추가 알림을 불러오지 못했습니다. 다시 시도해 주세요.
+              </p>
+            ) : null}
+          </div>
+        </footer>
+      ) : null}
     </div>
   )
 }

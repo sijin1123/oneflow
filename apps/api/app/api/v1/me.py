@@ -1,5 +1,5 @@
 import uuid
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
@@ -481,13 +481,24 @@ async def update_notification_settings(
 @router.get("/me/notifications", response_model=NotificationList)
 async def list_notifications(
     unread_only: bool = Query(default=False),
+    scope: Literal["all", "unread", "read", "mentions"] = Query(default="all"),
     limit: int = Query(default=50, ge=1, le=200),
+    cursor_created_at: datetime | None = Query(default=None),
+    cursor_id: uuid.UUID | None = Query(default=None),
     session: AsyncSession = Depends(get_session),
     user: User = Depends(get_current_user),
 ) -> NotificationList:
     """Current user's inbox, newest first, with target labels and immutable actor
-    identity. `unread` is always the true unread total so the bell badge is
-    correct even when the list is filtered."""
+    identity. `total` is the full filtered count, while `unread` is always the
+    true visible unread total so the bell badge is correct across tabs."""
+    if (cursor_created_at is None) != (cursor_id is None):
+        raise HTTPException(
+            status_code=422, detail="cursor_created_at and cursor_id must be provided together"
+        )
+    if unread_only and scope != "all":
+        raise HTTPException(status_code=422, detail="unread_only and scope cannot be combined")
+    effective_scope = "unread" if unread_only else scope
+    visible_projects = select(ProjectMember.project_id).where(ProjectMember.user_id == user.id)
     visible_project_initiatives = (
         select(InitiativeProject.initiative_id)
         .join(ProjectMember, ProjectMember.project_id == InitiativeProject.project_id)
@@ -514,12 +525,34 @@ async def list_notifications(
         ),
         and_(
             Notification.document_id.is_(None),
-            or_(
-                Notification.initiative_id.is_(None),
-                Notification.initiative_id.in_(visible_initiatives),
-            ),
+            Notification.initiative_id.is_not(None),
+            Notification.initiative_id.in_(visible_initiatives),
+        ),
+        and_(
+            Notification.document_id.is_(None),
+            Notification.initiative_id.is_(None),
+            Notification.project_id.is_not(None),
+            Notification.project_id.in_(visible_projects),
+        ),
+        and_(
+            Notification.document_id.is_(None),
+            Notification.initiative_id.is_(None),
+            Notification.project_id.is_(None),
         ),
     )
+    filtered_conditions = [Notification.user_id == user.id, notification_is_visible]
+    if effective_scope == "unread":
+        filtered_conditions.append(Notification.read.is_(False))
+    elif effective_scope == "read":
+        filtered_conditions.append(Notification.read.is_(True))
+    elif effective_scope == "mentions":
+        filtered_conditions.append(Notification.kind.in_(("mention", "document_mention")))
+
+    total = (
+        await session.execute(
+            select(func.count()).select_from(Notification).where(*filtered_conditions)
+        )
+    ).scalar_one()
     stmt = (
         select(
             Notification,
@@ -531,13 +564,23 @@ async def list_notifications(
         .outerjoin(WorkPackage, Notification.work_package_id == WorkPackage.id)
         .outerjoin(Initiative, Notification.initiative_id == Initiative.id)
         .outerjoin(ProjectDocument, Notification.document_id == ProjectDocument.id)
-        .where(Notification.user_id == user.id, notification_is_visible)
+        .where(*filtered_conditions)
     )
-    if unread_only:
-        stmt = stmt.where(Notification.read.is_(False))
-    stmt = stmt.order_by(Notification.created_at.desc(), Notification.id.desc()).limit(limit)
+    if cursor_created_at is not None and cursor_id is not None:
+        stmt = stmt.where(
+            or_(
+                Notification.created_at < cursor_created_at,
+                and_(
+                    Notification.created_at == cursor_created_at,
+                    Notification.id < cursor_id,
+                ),
+            )
+        )
+    stmt = stmt.order_by(Notification.created_at.desc(), Notification.id.desc()).limit(limit + 1)
 
     rows = (await session.execute(stmt)).all()
+    has_more = len(rows) > limit
+    rows = rows[:limit]
     items = [
         NotificationRead(
             id=n.id,
@@ -568,7 +611,16 @@ async def list_notifications(
             )
         )
     ).scalar_one()
-    return NotificationList(items=items, total=len(items), unread=unread)
+    cursor_notification = rows[-1][0] if has_more else None
+    return NotificationList(
+        items=items,
+        total=total,
+        unread=unread,
+        next_cursor_created_at=(
+            cursor_notification.created_at if cursor_notification is not None else None
+        ),
+        next_cursor_id=cursor_notification.id if cursor_notification is not None else None,
+    )
 
 
 @router.post("/me/notifications/{notification_id}/read", status_code=204)

@@ -609,7 +609,13 @@ async def test_inbox_hides_initiative_notification_after_visibility_is_revoked(
         await session.delete(membership)
 
     hidden = (await client.get("/api/v1/me/notifications")).json()
-    assert hidden == {"items": [], "total": 0, "unread": 0}
+    assert hidden == {
+        "items": [],
+        "total": 0,
+        "unread": 0,
+        "next_cursor_created_at": None,
+        "next_cursor_id": None,
+    }
 
 
 async def test_notification_target_shape_rejects_mixed_initiative_targets(client, app):

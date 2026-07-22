@@ -2,6 +2,7 @@
 
 import base64
 import uuid
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -248,6 +249,116 @@ async def test_list_mark_read_and_read_all(client, app, project):
 
     assert (await client.post("/api/v1/me/notifications/read-all")).status_code == 204
     assert (await client.get("/api/v1/me/notifications")).json()["unread"] == 0
+
+
+async def test_list_filters_true_totals_and_stable_cursor(client, app, project):
+    me = (await client.get("/api/v1/me")).json()
+    dev_id = uuid.UUID(me["id"])
+    project_id = uuid.UUID(project["id"])
+    created_at = datetime(2026, 7, 22, 9, 0, tzinfo=UTC)
+    ordered_ids = [uuid.UUID(int=value) for value in range(1, 5)]
+    async with app.state.sessionmaker() as session, session.begin():
+        session.add_all(
+            [
+                Notification(
+                    id=ordered_ids[0],
+                    user_id=dev_id,
+                    project_id=project_id,
+                    kind="assigned",
+                    read=False,
+                    created_at=created_at,
+                ),
+                Notification(
+                    id=ordered_ids[1],
+                    user_id=dev_id,
+                    project_id=project_id,
+                    kind="mention",
+                    read=False,
+                    created_at=created_at,
+                ),
+                Notification(
+                    id=ordered_ids[2],
+                    user_id=dev_id,
+                    project_id=project_id,
+                    kind="mention",
+                    read=True,
+                    created_at=created_at,
+                ),
+                Notification(
+                    id=ordered_ids[3],
+                    user_id=dev_id,
+                    project_id=project_id,
+                    kind="assigned",
+                    read=True,
+                    created_at=created_at,
+                ),
+            ]
+        )
+
+    first = (await client.get("/api/v1/me/notifications?limit=2")).json()
+    assert first["total"] == 4
+    assert first["unread"] == 2
+    assert [item["id"] for item in first["items"]] == [str(ordered_ids[3]), str(ordered_ids[2])]
+    assert first["next_cursor_id"] == str(ordered_ids[2])
+
+    async with app.state.sessionmaker() as session, session.begin():
+        session.add(
+            Notification(
+                user_id=dev_id,
+                project_id=project_id,
+                kind="assigned",
+                created_at=created_at + timedelta(seconds=1),
+            )
+        )
+
+    second = (
+        await client.get(
+            "/api/v1/me/notifications",
+            params={
+                "limit": 2,
+                "cursor_created_at": first["next_cursor_created_at"],
+                "cursor_id": first["next_cursor_id"],
+            },
+        )
+    ).json()
+    assert [item["id"] for item in second["items"]] == [
+        str(ordered_ids[1]),
+        str(ordered_ids[0]),
+    ]
+    assert second["next_cursor_id"] is None
+
+    unread = (await client.get("/api/v1/me/notifications?scope=unread")).json()
+    assert unread["total"] == 3 and all(not item["read"] for item in unread["items"])
+    read = (await client.get("/api/v1/me/notifications?scope=read")).json()
+    assert read["total"] == 2 and all(item["read"] for item in read["items"])
+    mentions = (await client.get("/api/v1/me/notifications?scope=mentions")).json()
+    assert mentions["total"] == 2
+    assert {item["kind"] for item in mentions["items"]} == {"mention"}
+    assert (
+        await client.get(f"/api/v1/me/notifications?cursor_id={first['next_cursor_id']}")
+    ).status_code == 422
+    assert (
+        await client.get("/api/v1/me/notifications?unread_only=true&scope=read")
+    ).status_code == 422
+
+    async with app.state.sessionmaker() as session, session.begin():
+        membership = await session.scalar(
+            select(ProjectMember).where(
+                ProjectMember.project_id == project_id,
+                ProjectMember.user_id == dev_id,
+            )
+        )
+        assert membership is not None
+        await session.delete(membership)
+
+    hidden = (await client.get("/api/v1/me/notifications")).json()
+    assert hidden == {
+        "items": [],
+        "total": 0,
+        "unread": 0,
+        "next_cursor_created_at": None,
+        "next_cursor_id": None,
+    }
 
 
 async def test_mark_other_users_notification_is_404(client, app, project):

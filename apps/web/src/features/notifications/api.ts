@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { api } from '@/lib/api'
 
@@ -23,7 +23,15 @@ export type NotificationList = {
   items: Notification[]
   total: number
   unread: number
+  next_cursor_created_at?: string | null
+  next_cursor_id?: string | null
 }
+
+export type NotificationScope = 'all' | 'unread' | 'read' | 'mentions'
+
+type NotificationCursor = { createdAt: string; id: string }
+
+const INBOX_PAGE_SIZE = 20
 
 export type OverdueReminderDays = 0 | 3 | 7 | 14
 
@@ -33,6 +41,26 @@ export function useNotifications() {
     queryFn: () => api<NotificationList>('/api/v1/me/notifications'),
     // Light polling keeps the bell badge fresh without a websocket (Phase 2).
     refetchInterval: 60_000,
+  })
+}
+
+export function useInboxNotifications(scope: NotificationScope) {
+  return useInfiniteQuery({
+    queryKey: ['notifications', 'inbox', scope],
+    initialPageParam: null as NotificationCursor | null,
+    queryFn: ({ pageParam }) => {
+      const params = new URLSearchParams({ scope, limit: String(INBOX_PAGE_SIZE) })
+      if (pageParam) {
+        params.set('cursor_created_at', pageParam.createdAt)
+        params.set('cursor_id', pageParam.id)
+      }
+      return api<NotificationList>(`/api/v1/me/notifications?${params.toString()}`)
+    },
+    getNextPageParam: (page) =>
+      page.next_cursor_created_at && page.next_cursor_id
+        ? { createdAt: page.next_cursor_created_at, id: page.next_cursor_id }
+        : undefined,
+    retry: false,
   })
 }
 

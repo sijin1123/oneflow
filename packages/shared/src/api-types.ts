@@ -1457,8 +1457,8 @@ export interface paths {
         /**
          * List Notifications
          * @description Current user's inbox, newest first, with target labels and immutable actor
-         *     identity. `unread` is always the true unread total so the bell badge is
-         *     correct even when the list is filtered.
+         *     identity. `total` is the full filtered count, while `unread` is always the
+         *     true visible unread total so the bell badge is correct across tabs.
          */
         get: operations["list_notifications_api_v1_me_notifications_get"];
         put?: never;
@@ -7217,6 +7217,10 @@ export interface components {
         NotificationList: {
             /** Items */
             items: components["schemas"]["NotificationRead"][];
+            /** Next Cursor Created At */
+            next_cursor_created_at?: string | null;
+            /** Next Cursor Id */
+            next_cursor_id?: string | null;
             /** Total */
             total: number;
             /** Unread */
@@ -14236,7 +14240,10 @@ export interface operations {
         parameters: {
             query?: {
                 unread_only?: boolean;
+                scope?: "all" | "unread" | "read" | "mentions";
                 limit?: number;
+                cursor_created_at?: string | null;
+                cursor_id?: string | null;
             };
             header?: {
                 authorization?: string | null;

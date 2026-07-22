@@ -12656,6 +12656,24 @@ test('알림 벨이 미확인 개수를 보여주고 모두 읽음을 보낸다'
     route.fulfill({ body: actorPng, contentType: 'image/png' }),
   )
   await page.route('**/api/v1/me/notifications', (route) => route.fulfill({ json: inbox }))
+  await page.route('**/api/v1/me/notifications?**', (route) => {
+    const scope = new URL(route.request().url()).searchParams.get('scope') ?? 'all'
+    const items = inbox.items.filter((item) => {
+      if (scope === 'unread') return !item.read
+      if (scope === 'read') return item.read
+      if (scope === 'mentions') return ['mention', 'document_mention'].includes(item.kind)
+      return true
+    })
+    return route.fulfill({
+      json: {
+        ...inbox,
+        items,
+        total: items.length,
+        next_cursor_created_at: null,
+        next_cursor_id: null,
+      },
+    })
+  })
 
   await page.goto(`/projects/${project.id}/work-packages`)
   const bell = page.getByRole('button', { name: '알림 3건 읽지 않음' })
@@ -12788,6 +12806,24 @@ test('인박스는 알림 센터를 모바일에서도 정리된 표면으로 �
     route.fulfill({ body: actorPng, contentType: 'image/png' }),
   )
   await page.route('**/api/v1/me/notifications', (route) => route.fulfill({ json: inbox }))
+  await page.route('**/api/v1/me/notifications?**', (route) => {
+    const scope = new URL(route.request().url()).searchParams.get('scope') ?? 'all'
+    const items = inbox.items.filter((item) => {
+      if (scope === 'unread') return !item.read
+      if (scope === 'read') return item.read
+      if (scope === 'mentions') return ['mention', 'document_mention'].includes(item.kind)
+      return true
+    })
+    return route.fulfill({
+      json: {
+        ...inbox,
+        items,
+        total: items.length,
+        next_cursor_created_at: null,
+        next_cursor_id: null,
+      },
+    })
+  })
 
   await page.goto(`/projects/${project.id}/work-packages`)
   await page.getByRole('button', { name: '알림 3건 읽지 않음' }).click()
@@ -12820,6 +12856,11 @@ test('인박스는 알림 센터를 모바일에서도 정리된 표면으로 �
   await page.getByRole('tab', { name: '읽음' }).click()
   await expect(page.getByText(/보드 뷰 구현/)).toBeVisible()
 
+  await page.getByRole('tab', { name: '멘션' }).click()
+  await expect(page).toHaveURL(/\/inbox\?filter=mentions$/)
+  await expect(page.getByText(/보드 뷰 구현/)).toBeVisible()
+  await expect(page.getByText(/워크패키지 API 구현/)).toHaveCount(0)
+
   const readAllReq = page.waitForRequest(
     (req) => req.method() === 'POST' && req.url().includes('/me/notifications/read-all'),
   )
@@ -12838,6 +12879,100 @@ test('인박스는 알림 센터를 모바일에서도 정리된 표면으로 �
   await page.getByRole('tab', { name: '전체' }).click()
   await page.getByText(/헬스를 업데이트했습니다/).click()
   await expect(page).toHaveURL(/\/initiatives\?initiative=ini-notify/)
+})
+
+test('인박스는 커서로 더 불러오고 추가 페이지 오류를 현재 목록에서 복구한다', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 820 })
+  await mockApi(page)
+  const items = [
+    {
+      id: 'page-n3',
+      kind: 'assigned',
+      project_id: project.id,
+      work_package_id: wpA.id,
+      work_package_subject: '첫 페이지 최신 알림',
+      actor_name: 'Dev User',
+      actor_profile_image_url: null,
+      read: false,
+      created_at: '2026-07-05T09:00:03Z',
+    },
+    {
+      id: 'page-n2',
+      kind: 'mention',
+      project_id: project.id,
+      work_package_id: wpB.id,
+      work_package_subject: '첫 페이지 멘션 알림',
+      actor_name: 'Ops Lead',
+      actor_profile_image_url: null,
+      read: true,
+      created_at: '2026-07-05T09:00:02Z',
+    },
+    {
+      id: 'page-n1',
+      kind: 'overdue',
+      project_id: project.id,
+      work_package_id: wpA.id,
+      work_package_subject: '추가 페이지 시스템 알림',
+      actor_name: null,
+      actor_profile_image_url: null,
+      read: false,
+      created_at: '2026-07-05T09:00:01Z',
+    },
+  ]
+  let failNextPage = true
+  await page.route('**/api/v1/me/notifications?**', (route) => {
+    const params = new URL(route.request().url()).searchParams
+    if (params.has('cursor_id')) {
+      if (failNextPage) {
+        failNextPage = false
+        return route.fulfill({ status: 500, json: { detail: 'temporary inbox failure' } })
+      }
+      return route.fulfill({
+        json: {
+          items: [items[2]],
+          total: 3,
+          unread: 2,
+          next_cursor_created_at: null,
+          next_cursor_id: null,
+        },
+      })
+    }
+    return route.fulfill({
+      json: {
+        items: items.slice(0, 2),
+        total: 3,
+        unread: 2,
+        next_cursor_created_at: items[1].created_at,
+        next_cursor_id: items[1].id,
+      },
+    })
+  })
+
+  await page.goto('/inbox')
+  await expect(page.getByText('2 / 3건 표시')).toBeVisible()
+  await expect(page.getByText('첫 페이지 최신 알림')).toBeVisible()
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/inbox-pagination-ui/desktop.png',
+    fullPage: true,
+  })
+
+  await page.getByRole('button', { name: '더 불러오기' }).click()
+  await expect(page.getByRole('alert')).toContainText('추가 알림을 불러오지 못했습니다')
+  await expect(page.getByText('2 / 3건 표시')).toBeVisible()
+
+  await page.getByRole('button', { name: '더 불러오기' }).click()
+  await expect(page.getByText('3 / 3건 표시')).toBeVisible()
+  await expect(page.getByText('추가 페이지 시스템 알림')).toBeVisible()
+  await expect(page.getByRole('button', { name: '더 불러오기' })).toHaveCount(0)
+
+  await page.setViewportSize({ width: 390, height: 844 })
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/inbox-pagination-ui/mobile.png',
+    fullPage: true,
+  })
 })
 
 test('새 프로젝트 폼에서 템플릿을 고르면 template_project_id를 보낸다', async ({ page }) => {
@@ -15908,30 +16043,34 @@ test('문서 코멘트 멘션은 member picker와 Document Inbox deep link를 �
     fullPage: true,
   })
 
-  await page.route('**/api/v1/me/notifications', (route) =>
-    route.fulfill({
-      json: {
-        items: [
-          {
-            id: 'document-notification',
-            kind: 'document_mention',
-            project_id: project.id,
-            initiative_id: null,
-            document_id: 'd1',
-            work_package_id: null,
-            intake_item_id: null,
-            work_package_subject: null,
-            initiative_name: null,
-            document_title: '멘션 검토 문서',
-            actor_name: 'Alex Kim',
-            read: false,
-            created_at: '2026-07-16T00:00:00Z',
-          },
-        ],
-        total: 1,
-        unread: 1,
+  const documentInbox = {
+    items: [
+      {
+        id: 'document-notification',
+        kind: 'document_mention',
+        project_id: project.id,
+        initiative_id: null,
+        document_id: 'd1',
+        work_package_id: null,
+        intake_item_id: null,
+        work_package_subject: null,
+        initiative_name: null,
+        document_title: '멘션 검토 문서',
+        actor_name: 'Alex Kim',
+        read: false,
+        created_at: '2026-07-16T00:00:00Z',
       },
-    }),
+    ],
+    total: 1,
+    unread: 1,
+    next_cursor_created_at: null,
+    next_cursor_id: null,
+  }
+  await page.route('**/api/v1/me/notifications', (route) =>
+    route.fulfill({ json: documentInbox }),
+  )
+  await page.route('**/api/v1/me/notifications?**', (route) =>
+    route.fulfill({ json: documentInbox }),
   )
   await page.setViewportSize({ width: 390, height: 844 })
   await page.goto('/inbox')

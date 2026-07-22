@@ -3273,3 +3273,14 @@ Chromium typed mock fixture에서 1440x960과 390x844 viewport를 사용했다. 
 - **증적**: `docs/screenshots/redevelopment/inbox-notification-avatars-ui/{sheet-desktop,inbox-mobile}.png`과 README에 실제 Chromium desktop 알림 시트와 mobile Inbox의 이미지·initials·system fallback 상태를 보존한다.
 
 ---
+
+# UI-211 Inbox Server Pagination And Filters 검증 (2026-07-22)
+
+- **UI 변경**: Inbox를 `All`, `Unread`, `Read`, `Mentions` URL-backed tab으로 통합하고, 서버가 제공하는 전체·안 읽음 건수를 그룹 수와 `loaded / total`에 동일하게 반영했다. 초기 loading/error/retry/empty, 추가 페이지 loading/error/retry, 모바일 가로 넘침 방지를 구분했고 추가 페이지 실패 시 이미 읽은 목록을 보존한다.
+- **기능/API 반영**: `GET /api/v1/me/notifications`에 `scope=all|unread|read|mentions`, `limit`, 쌍으로 전달되는 `cursor_created_at`/`cursor_id`를 추가했다. `(created_at, id) DESC` keyset pagination과 `limit + 1`로 동일 시각 UUID까지 결정적 순서를 보장하고, 필터된 true total과 전체 visible unread를 동시에 반환한다. 기존 `unread_only`는 호환을 유지하되 non-all scope과의 모호한 조합은 422로 거부한다.
+- **권한/가시성**: 알림을 읽는 시점에 현재 project membership과 document/initiative visibility를 다시 적용한다. 멤버십을 잃은 project notification과 더 이상 볼 수 없는 document/initiative notification은 목록·건수·cursor에서 모두 제외되며, 진짜 targetless system notification은 유지한다. 새 환경변수, DB migration, dependency, Settings UI 변경은 없다.
+- **이연 항목**: 없음. 모든 tab·더 불러오기·재시도·읽음 처리는 실제 query/mutation에 연결되어 있으며 mock/dead control은 없다.
+- **검증**: focused API **13 PASS**(18 deselected), 전체 API **857 PASS**(기존 Alembic warning 1건), Ruff/format **443 files**, OpenAPI generation/drift, typecheck, lint(기존 Fast Refresh warning 4건), production build(기존 large chunk warning), unit **108 PASS**, component **9 PASS**, Inbox focused E2E **3 PASS**, document mention regression **1 PASS**, 최종 1-worker full E2E **357 PASS + opt-in visual QA 1 skip**, clean-room frontend **162**/backend **45**, npm audit 0 vulnerabilities와 diff check가 PASS했다. 첫 full E2E는 기존 document mention mock이 query-string이 붙은 신규 Inbox 요청을 받지 못한 1건을 발견해 cursor 응답 계약과 query route를 반영했다. 다음 full E2E의 기존 sidebar drag 1회는 브라우저 부하에서 흔들렸고 단독 반복 **5/5 PASS** 후 독립 포트 최종 full E2E가 완주했다.
+- **증적**: `docs/screenshots/redevelopment/inbox-pagination-ui/{desktop,mobile}.png`과 README에 실제 Chromium 초기 페이지, 추가 페이지 재시도, 필터링된 mobile Inbox를 보존한다.
+
+---
