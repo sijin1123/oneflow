@@ -1285,140 +1285,184 @@
 }
 
 @media (min-width: 521px) {
-  /* Keep the approved raster on the layout pixel grid so the compositor does not resample it. */
+  /* Paint at the final responsive size. Scaling the whole 1448px DOM with CSS zoom
+     softens live text and controls in compact desktop panes. */
   .of-login-canvas {
-    place-items: start;
+    height: 100dvh;
+    min-height: 0;
+    place-items: center;
+    overflow: hidden;
     padding: 0;
   }
 
   .of-login-page {
-    --of-login-panel-x: calc((100vw - 1448px) / 2);
-    --of-login-panel-y: calc((100dvh - 1086px) / 2);
-    width: 1448px;
-    height: 1086px;
-    grid-template-columns: 792px 656px;
-    margin-top: round(nearest, var(--of-login-panel-y), 1px);
-    margin-left: round(nearest, var(--of-login-panel-x), 1px);
+    --of-login-scale: calc(100cqw / 1448px);
+    width: min(1448px, 100vw, 133.333333dvh);
+    height: auto;
+    aspect-ratio: 4 / 3;
+    grid-template-columns: minmax(0, 792fr) minmax(0, 656fr);
+    margin: 0;
+    border-radius: min(24px, 1.65745856vw, 2.20994475dvh);
+    box-shadow:
+      0 min(30px, 2.0718232vw, 2.76243094dvh)
+        min(90px, 6.21546961vw, 8.28729282dvh) rgb(61 82 133 / 0.16),
+      0 min(4px, 0.27624309vw, 0.36832413dvh)
+        min(18px, 1.24309392vw, 1.65745856dvh) rgb(61 82 133 / 0.06);
+    zoom: 1;
   }
 
   .of-login-brand-reference {
-    width: 205px;
-    height: 70px;
+    width: calc(205px * var(--of-login-scale));
+    height: calc(70px * var(--of-login-scale));
     aspect-ratio: auto;
     transform: none;
   }
 
   .of-login-brand-reference img {
-    width: 205px;
-    height: 70px;
+    width: calc(205px * var(--of-login-scale));
+    height: calc(70px * var(--of-login-scale));
   }
 
   .of-login-auth-card {
-    top: 70px;
-    left: 60px;
-    width: 523px;
-    height: 892px;
-    border-radius: 21px;
-    padding: 29px 46px 37px;
+    top: calc(70px * var(--of-login-scale));
+    left: calc(60px * var(--of-login-scale));
+    width: calc(523px * var(--of-login-scale));
+    height: calc(892px * var(--of-login-scale));
+    border-radius: calc(21px * var(--of-login-scale));
+    padding: calc(29px * var(--of-login-scale)) calc(46px * var(--of-login-scale))
+      calc(37px * var(--of-login-scale));
+    backdrop-filter: blur(calc(10px * var(--of-login-scale)));
   }
 
   .of-login-heading {
-    margin: 20px 0 42px;
+    margin: calc(20px * var(--of-login-scale)) 0 calc(42px * var(--of-login-scale));
   }
 
   .of-login-heading h2 {
-    font-size: 32.5px;
+    font-size: calc(32.5px * var(--of-login-scale));
     font-weight: 600;
-    transform: translate(-4px, -1px) scaleX(0.99);
+    transform: translate(
+        calc(-4px * var(--of-login-scale)),
+        calc(-1px * var(--of-login-scale))
+      )
+      scaleX(0.99);
   }
 
   .of-login-heading p {
-    margin-top: 10px;
-    font-size: 16px;
+    margin-top: calc(10px * var(--of-login-scale));
+    font-size: calc(16px * var(--of-login-scale));
     color: #586783;
-    transform: translateY(-2px) scaleX(1.022);
+    transform: translateY(calc(-2px * var(--of-login-scale))) scaleX(1.022);
   }
 
   .of-login-form {
-    width: calc(100% - 1px);
-    gap: 14px;
-    transform: translate(1px, -5px);
+    width: calc(100% - 1px * var(--of-login-scale));
+    gap: calc(14px * var(--of-login-scale));
+    transform: translate(
+      calc(1px * var(--of-login-scale)),
+      calc(-5px * var(--of-login-scale))
+    );
   }
 
   .of-login-field {
-    gap: 10px;
-    font-size: 14px;
+    gap: calc(10px * var(--of-login-scale));
+    font-size: calc(14px * var(--of-login-scale));
+  }
+
+  .of-login-field > label {
+    transform: translate(
+        calc(1px * var(--of-login-scale)),
+        calc(-1px * var(--of-login-scale))
+      )
+      scaleX(0.93);
   }
 
   .of-login-field + .of-login-field {
-    margin-top: 13px;
+    margin-top: calc(13px * var(--of-login-scale));
   }
 
   .of-login-input-wrap {
     width: 100%;
-    transform: translateY(-1px);
+    transform: translateY(calc(-1px * var(--of-login-scale)));
   }
 
   .of-login-input {
-    height: 55px;
-    border-radius: 11px;
-    padding-left: 52px;
-    font-size: 14.5px;
+    height: calc(55px * var(--of-login-scale));
+    border-radius: calc(11px * var(--of-login-scale));
+    padding-left: calc(52px * var(--of-login-scale));
+    font-size: calc(14.5px * var(--of-login-scale));
     font-weight: 350;
   }
 
   .of-login-input-wrap > svg {
-    left: 18px;
-    width: 20px;
-    height: 20px;
+    left: calc(18px * var(--of-login-scale));
+    width: calc(20px * var(--of-login-scale));
+    height: calc(20px * var(--of-login-scale));
   }
 
   .of-login-input-wrap > .lucide-lock-keyhole {
-    left: 19px;
-    width: 18px;
-    height: 18px;
+    left: calc(19px * var(--of-login-scale));
+    width: calc(18px * var(--of-login-scale));
+    height: calc(18px * var(--of-login-scale));
   }
 
   .of-login-password-toggle {
-    right: 5px;
-    width: 48px;
-    height: 48px;
+    right: calc(5px * var(--of-login-scale));
+    width: calc(48px * var(--of-login-scale));
+    height: calc(48px * var(--of-login-scale));
   }
 
   .of-login-form-options {
-    min-height: 32px;
-    margin-top: 5px;
-    margin-bottom: 3px;
+    min-height: calc(32px * var(--of-login-scale));
+    margin-top: calc(5px * var(--of-login-scale));
+    margin-bottom: calc(3px * var(--of-login-scale));
   }
 
   .of-login-checkbox,
   .of-login-link {
-    font-size: 14px;
+    font-size: calc(14px * var(--of-login-scale));
   }
 
   .of-login-checkbox {
+    gap: calc(10px * var(--of-login-scale));
     font-weight: 500;
+    transform: translate(
+      calc(1px * var(--of-login-scale)),
+      calc(-1px * var(--of-login-scale))
+    );
+  }
+
+  .of-login-link {
+    min-height: calc(40px * var(--of-login-scale));
+    transform: translate(
+      calc(-1px * var(--of-login-scale)),
+      calc(-1px * var(--of-login-scale))
+    );
   }
 
   .of-login-checkbox > span {
-    width: 19px;
-    height: 19px;
+    width: calc(19px * var(--of-login-scale));
+    height: calc(19px * var(--of-login-scale));
   }
 
   .of-login-submit {
-    width: calc(100% - 2px);
-    min-height: 51px;
+    width: calc(100% - 2px * var(--of-login-scale));
+    min-height: calc(51px * var(--of-login-scale));
     justify-self: center;
-    border-radius: 11px;
-    padding-right: 45px;
-    padding-left: 14px;
-    font-size: 15px;
+    border-radius: calc(11px * var(--of-login-scale));
+    padding-right: calc(45px * var(--of-login-scale));
+    padding-left: calc(14px * var(--of-login-scale));
+    font-size: calc(15px * var(--of-login-scale));
   }
 
   .of-login-divider {
-    margin-top: 12px;
-    font-size: 13px;
-    transform: translate(-18px, -1px);
+    gap: calc(14px * var(--of-login-scale));
+    margin-top: calc(12px * var(--of-login-scale));
+    font-size: calc(13px * var(--of-login-scale));
+    transform: translate(
+      calc(-18px * var(--of-login-scale)),
+      calc(-1px * var(--of-login-scale))
+    );
   }
 
   .of-login-divider span {
@@ -1426,89 +1470,94 @@
   }
 
   .of-login-divider span:first-child {
-    margin-right: 10px;
-    margin-left: 19px;
+    margin-right: calc(10px * var(--of-login-scale));
+    margin-left: calc(19px * var(--of-login-scale));
   }
 
   .of-login-divider span:last-child {
-    width: calc(100% + 1px);
-    transform: translateX(16px);
+    width: calc(100% + 1px * var(--of-login-scale));
+    transform: translateX(calc(16px * var(--of-login-scale)));
   }
 
   .of-login-providers {
-    gap: 8px;
-    margin-top: 10px;
+    gap: calc(8px * var(--of-login-scale));
+    margin-top: calc(10px * var(--of-login-scale));
   }
 
   .of-login-provider-button {
-    width: calc(100% - 2px);
-    min-height: 53px;
-    gap: 11px;
+    width: calc(100% - 2px * var(--of-login-scale));
+    min-height: calc(53px * var(--of-login-scale));
+    gap: calc(11px * var(--of-login-scale));
     justify-self: center;
-    border-radius: 11px;
-    padding: 0 39px 0 15px;
-    font-size: 16px;
+    border-radius: calc(11px * var(--of-login-scale));
+    padding: 0 calc(39px * var(--of-login-scale)) 0
+      calc(15px * var(--of-login-scale));
+    font-size: calc(16px * var(--of-login-scale));
     font-weight: 500;
   }
 
   .of-login-google {
-    width: 21px;
-    height: 21px;
+    width: calc(21px * var(--of-login-scale));
+    height: calc(21px * var(--of-login-scale));
   }
 
   .of-login-microsoft,
   .of-login-provider-button > svg {
-    width: 21px;
-    height: 21px;
+    width: calc(21px * var(--of-login-scale));
+    height: calc(21px * var(--of-login-scale));
   }
 
   .of-login-password-hidden-icon {
-    width: 23px;
-    height: 19px;
+    width: calc(23px * var(--of-login-scale));
+    height: calc(19px * var(--of-login-scale));
   }
 
   .of-login-create {
-    margin-top: 7px;
-    font-size: 14px;
+    margin-top: calc(7px * var(--of-login-scale));
+    font-size: calc(14px * var(--of-login-scale));
+    transform: translateX(calc(-19px * var(--of-login-scale)));
   }
 
   .of-login-create button {
-    min-height: 40px;
+    min-height: calc(40px * var(--of-login-scale));
     font-weight: 600;
   }
 
   .of-login-footer {
-    right: 72px;
-    bottom: 49px;
-    left: 60px;
+    right: calc(72px * var(--of-login-scale));
+    bottom: calc(49px * var(--of-login-scale));
+    left: calc(60px * var(--of-login-scale));
     width: auto;
-    padding-right: 10px;
-    padding-left: 10px;
+    min-height: calc(34px * var(--of-login-scale));
+    padding-right: calc(10px * var(--of-login-scale));
+    padding-left: calc(10px * var(--of-login-scale));
+    transform: translateY(calc(2px * var(--of-login-scale)));
   }
 
   .of-login-footer nav button,
   .of-login-language {
-    font-size: 12px;
+    min-height: calc(30px * var(--of-login-scale));
+    font-size: calc(12px * var(--of-login-scale));
   }
 
   .of-login-footer nav {
-    gap: 14px;
+    gap: calc(14px * var(--of-login-scale));
     transform: none;
   }
 
   .of-login-language {
-    gap: 9px;
-    font-size: 13px;
+    gap: calc(9px * var(--of-login-scale));
+    font-size: calc(13px * var(--of-login-scale));
     transform: none;
   }
 
   .of-login-language svg {
-    width: 22px;
-    height: 22px;
+    width: calc(22px * var(--of-login-scale));
+    height: calc(22px * var(--of-login-scale));
   }
 
   .of-login-language svg:last-child {
-    width: 14px;
+    width: calc(14px * var(--of-login-scale));
   }
 }
 
@@ -1632,24 +1681,6 @@
 
   .of-login-heading h2 {
     font-size: 25px;
-  }
-}
-
-@media (min-width: 521px) {
-  .of-login-canvas {
-    display: grid;
-    height: 100dvh;
-    min-height: 0;
-    place-items: center;
-    overflow: hidden;
-    padding: 0;
-  }
-
-  .of-login-page {
-    width: 1448px;
-    height: 1086px;
-    margin: 0;
-    zoom: min(calc(100vw / 1448px), calc(100dvh / 1086px), 1);
   }
 }
 
