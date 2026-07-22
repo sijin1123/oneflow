@@ -16,13 +16,9 @@ import {
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 
-import loginLogoLockup128 from '@/assets/generated/oneflow-login-logo-lockup-128x44.png'
-import loginLogoLockup173 from '@/assets/generated/oneflow-login-logo-lockup-173x59.png'
 import loginLogoLockup from '@/assets/generated/oneflow-login-logo-lockup.png'
 import loginLogoLockup2x from '@/assets/generated/oneflow-login-logo-lockup@2x.png'
 import loginStoryReference from '@/assets/generated/oneflow-login-story-reference.png'
-import loginStoryReferenceCompact from '@/assets/generated/oneflow-login-story-reference-495x679.png'
-import loginStoryReferenceDesktop from '@/assets/generated/oneflow-login-story-reference-667x915.png'
 import loginStoryReference2x from '@/assets/generated/oneflow-login-story-reference@2x.png'
 import { Button } from '@/components/ui/button'
 import {
@@ -164,9 +160,8 @@ function BrandLockup({ compact = false }: { compact?: boolean }) {
     <div className="of-login-brand" data-compact={compact || undefined} aria-label="oneflow">
       <span className="of-login-brand-reference" aria-hidden="true">
         <img
-          src={loginLogoLockup173}
-          srcSet={`${loginLogoLockup128} 128w, ${loginLogoLockup173} 173w, ${loginLogoLockup} 205w, ${loginLogoLockup2x} 410w`}
-          sizes="(min-width: 1448px) and (min-height: 1086px) 205px, (max-width: 520px) 148px, (max-width: 880px) 164px, min(205px, 14.157vw, 18.876vh)"
+          src={loginLogoLockup}
+          srcSet={`${loginLogoLockup} 1x, ${loginLogoLockup2x} 2x`}
           width="205"
           height="70"
           alt=""
@@ -183,9 +178,8 @@ function StoryPanel() {
       <h1 id="login-story-title" className="of-login-assistive">Plan. Flow. Deliver. Together.</h1>
       <img
         className="of-login-story-art"
-        src={loginStoryReferenceDesktop}
-        srcSet={`${loginStoryReferenceCompact} 495w, ${loginStoryReferenceDesktop} 667w, ${loginStoryReference} 792w, ${loginStoryReference2x} 1584w`}
-        sizes="(min-width: 1448px) and (min-height: 1086px) 792px, (max-width: 880px) 183vw, min(792px, 54.696vw, 72.928vh)"
+        src={loginStoryReference}
+        srcSet={`${loginStoryReference} 1x, ${loginStoryReference2x} 2x`}
         width="792"
         height="1086"
         alt=""

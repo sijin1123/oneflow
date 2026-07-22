@@ -1282,7 +1282,7 @@
   }
 }
 
-@media (min-width: 1448px) and (min-height: 1086px), (min-width: 521px) and (max-width: 880px) {
+@media (min-width: 521px) {
   /* Keep the approved raster on the layout pixel grid so the compositor does not resample it. */
   .of-login-canvas {
     place-items: start;
@@ -1514,90 +1514,6 @@
   }
 }
 
-@media (min-width: 881px) and (max-height: 960px), (min-width: 881px) and (max-width: 1267px) {
-  .of-login-auth-card {
-    overflow: hidden;
-    padding: 1.84cqw 3.2cqw 2.55cqw;
-  }
-
-  .of-login-heading {
-    margin: 1.39cqw 0 2.87cqw;
-  }
-
-  .of-login-heading h2 {
-    font-size: 2.12cqw;
-  }
-
-  .of-login-heading p {
-    margin-top: 0.62cqw;
-    font-size: 1.1cqw;
-  }
-
-  .of-login-form {
-    gap: 0.98cqw;
-  }
-
-  .of-login-field {
-    gap: 0.69cqw;
-    font-size: 0.97cqw;
-  }
-
-  .of-login-field + .of-login-field {
-    margin-top: 0.78cqw;
-  }
-
-  .of-login-input {
-    height: 3.9cqw;
-    font-size: 1.05cqw;
-  }
-
-  .of-login-password-toggle {
-    width: 34px;
-    height: 34px;
-  }
-
-  .of-login-form-options,
-  .of-login-link {
-    min-height: 2.14cqw;
-  }
-
-  .of-login-form-options {
-    margin-top: 0.78cqw;
-  }
-
-  .of-login-checkbox,
-  .of-login-link {
-    font-size: 0.97cqw;
-  }
-
-  .of-login-submit {
-    min-height: 3.59cqw;
-    margin-top: 0.45cqw;
-  }
-
-  .of-login-divider {
-    margin-top: 0.4cqw;
-  }
-
-  .of-login-providers {
-    gap: 0.66cqw;
-    margin-top: 0.74cqw;
-  }
-
-  .of-login-provider-button {
-    min-height: 3.59cqw;
-    font-size: 1.04cqw;
-  }
-
-  .of-login-create {
-    margin-top: 0.71cqw;
-  }
-
-  .of-login-create button {
-    min-height: 2.75cqw;
-  }
-}
-
 @media (max-width: 520px) {
   .of-login-canvas {
     display: block;
@@ -1721,7 +1637,7 @@
   }
 }
 
-@media (min-width: 521px) and (max-width: 880px) {
+@media (min-width: 521px) {
   .of-login-canvas {
     display: grid;
     height: 100dvh;

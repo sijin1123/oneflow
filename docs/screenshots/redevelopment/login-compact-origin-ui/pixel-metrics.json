@@ -1,0 +1,536 @@
+{
+  "reference": "/Users/ksj/Projects/projectmanagement/oneflow/docs/oneflow-login-origin.png",
+  "reference_sha256": "62fafe9e44df9d189e8fe2f38fc25147d11b8459569be13ee0424ba06c0c4c76",
+  "runtime_reference_sha256": "62fafe9e44df9d189e8fe2f38fc25147d11b8459569be13ee0424ba06c0c4c76",
+  "source_asset_identity": {
+    "full_reference_byte_exact": true,
+    "story_crop_pixel_exact": true,
+    "auth_logo_crop_pixel_exact": true
+  },
+  "desktop_1448x1086": {
+    "regions": {
+      "full_canvas": {
+        "bounds": [
+          0,
+          0,
+          1448,
+          1086
+        ],
+        "mae": 1.3115,
+        "p95": 2,
+        "max": 255,
+        "delta_lte_2_percent": 95.0939,
+        "delta_lte_8_percent": 98.1474
+      },
+      "story_surface": {
+        "bounds": [
+          0,
+          0,
+          792,
+          1086
+        ],
+        "mae": 0.0123,
+        "p95": 0,
+        "max": 76,
+        "delta_lte_2_percent": 99.9314,
+        "delta_lte_8_percent": 99.9613
+      },
+      "top_decoration": {
+        "bounds": [
+          0,
+          0,
+          792,
+          180
+        ],
+        "mae": 0.0197,
+        "p95": 0,
+        "max": 32,
+        "delta_lte_2_percent": 99.8525,
+        "delta_lte_8_percent": 99.9401
+      },
+      "story_brand": {
+        "bounds": [
+          72,
+          88,
+          280,
+          165
+        ],
+        "mae": 0.0,
+        "p95": 0,
+        "max": 0,
+        "delta_lte_2_percent": 100.0,
+        "delta_lte_8_percent": 100.0
+      },
+      "story_headline": {
+        "bounds": [
+          68,
+          180,
+          370,
+          298
+        ],
+        "mae": 0.0,
+        "p95": 0,
+        "max": 0,
+        "delta_lte_2_percent": 100.0,
+        "delta_lte_8_percent": 100.0
+      },
+      "kanban_board": {
+        "bounds": [
+          392,
+          145,
+          790,
+          448
+        ],
+        "mae": 0.0,
+        "p95": 0,
+        "max": 0,
+        "delta_lte_2_percent": 100.0,
+        "delta_lte_8_percent": 100.0
+      },
+      "calendar": {
+        "bounds": [
+          44,
+          460,
+          236,
+          690
+        ],
+        "mae": 0.0,
+        "p95": 0,
+        "max": 0,
+        "delta_lte_2_percent": 100.0,
+        "delta_lte_8_percent": 100.0
+      },
+      "collaboration_route": {
+        "bounds": [
+          430,
+          470,
+          792,
+          795
+        ],
+        "mae": 0.0398,
+        "p95": 0,
+        "max": 76,
+        "delta_lte_2_percent": 99.8535,
+        "delta_lte_8_percent": 99.8952
+      },
+      "activity": {
+        "bounds": [
+          244,
+          665,
+          455,
+          902
+        ],
+        "mae": 0.0,
+        "p95": 0,
+        "max": 0,
+        "delta_lte_2_percent": 100.0,
+        "delta_lte_8_percent": 100.0
+      },
+      "foreground": {
+        "bounds": [
+          0,
+          690,
+          792,
+          1086
+        ],
+        "mae": 0.0156,
+        "p95": 0,
+        "max": 76,
+        "delta_lte_2_percent": 99.9172,
+        "delta_lte_8_percent": 99.9464
+      },
+      "auth_surface": {
+        "bounds": [
+          792,
+          0,
+          1448,
+          1086
+        ],
+        "mae": 2.88,
+        "p95": 7,
+        "max": 255,
+        "delta_lte_2_percent": 89.2535,
+        "delta_lte_8_percent": 95.9575
+      },
+      "auth_card": {
+        "bounds": [
+          852,
+          70,
+          1375,
+          962
+        ],
+        "mae": 3.6687,
+        "p95": 10,
+        "max": 255,
+        "delta_lte_2_percent": 88.4616,
+        "delta_lte_8_percent": 94.3562
+      },
+      "auth_logo": {
+        "bounds": [
+          1011,
+          100,
+          1216,
+          170
+        ],
+        "mae": 0.0,
+        "p95": 0,
+        "max": 0,
+        "delta_lte_2_percent": 100.0,
+        "delta_lte_8_percent": 100.0
+      },
+      "heading": {
+        "bounds": [
+          940,
+          180,
+          1300,
+          270
+        ],
+        "mae": 10.2164,
+        "p95": 63,
+        "max": 254,
+        "delta_lte_2_percent": 78.2593,
+        "delta_lte_8_percent": 85.5319
+      },
+      "fields": {
+        "bounds": [
+          900,
+          298,
+          1329,
+          498
+        ],
+        "mae": 3.7122,
+        "p95": 12,
+        "max": 254,
+        "delta_lte_2_percent": 86.9542,
+        "delta_lte_8_percent": 94.1453
+      },
+      "options": {
+        "bounds": [
+          900,
+          500,
+          1329,
+          560
+        ],
+        "mae": 4.2462,
+        "p95": 12,
+        "max": 232,
+        "delta_lte_2_percent": 89.2955,
+        "delta_lte_8_percent": 94.2334
+      },
+      "submit": {
+        "bounds": [
+          900,
+          568,
+          1329,
+          622
+        ],
+        "mae": 3.2873,
+        "p95": 14,
+        "max": 166,
+        "delta_lte_2_percent": 80.1433,
+        "delta_lte_8_percent": 91.7724
+      },
+      "providers": {
+        "bounds": [
+          900,
+          688,
+          1329,
+          866
+        ],
+        "mae": 8.3661,
+        "p95": 36,
+        "max": 255,
+        "delta_lte_2_percent": 79.9329,
+        "delta_lte_8_percent": 88.878
+      },
+      "footer": {
+        "bounds": [
+          842,
+          995,
+          1380,
+          1040
+        ],
+        "mae": 3.8977,
+        "p95": 20,
+        "max": 159,
+        "delta_lte_2_percent": 88.4373,
+        "delta_lte_8_percent": 93.3402
+      }
+    }
+  },
+  "in_app_914x800": {
+    "geometry": {
+      "viewport": [
+        914,
+        800
+      ],
+      "panel_css_bounds": [
+        0,
+        57.25,
+        914,
+        742.75
+      ],
+      "panel_raster_crop": [
+        0,
+        57,
+        914,
+        743
+      ],
+      "zoom": 0.631215,
+      "document_scroll_size": [
+        914,
+        800
+      ]
+    },
+    "comparison": "Approved reference Lanczos-resized to 914x686 versus actual in-app Browser panel raster.",
+    "regions": {
+      "full_canvas": {
+        "bounds": [
+          0,
+          0,
+          914,
+          686
+        ],
+        "mae": 4.0403,
+        "p95": 13,
+        "max": 252,
+        "delta_lte_2_percent": 66.4232,
+        "delta_lte_8_percent": 88.5584
+      },
+      "story_surface": {
+        "bounds": [
+          0,
+          0,
+          500,
+          686
+        ],
+        "mae": 4.2763,
+        "p95": 14,
+        "max": 155,
+        "delta_lte_2_percent": 54.769,
+        "delta_lte_8_percent": 85.1863
+      },
+      "top_decoration": {
+        "bounds": [
+          0,
+          0,
+          500,
+          114
+        ],
+        "mae": 2.2811,
+        "p95": 6,
+        "max": 95,
+        "delta_lte_2_percent": 77.9257,
+        "delta_lte_8_percent": 96.831
+      },
+      "story_brand": {
+        "bounds": [
+          45,
+          56,
+          177,
+          104
+        ],
+        "mae": 7.196,
+        "p95": 33,
+        "max": 95,
+        "delta_lte_2_percent": 51.5941,
+        "delta_lte_8_percent": 76.4888
+      },
+      "story_headline": {
+        "bounds": [
+          43,
+          114,
+          234,
+          188
+        ],
+        "mae": 7.1814,
+        "p95": 33,
+        "max": 89,
+        "delta_lte_2_percent": 52.6437,
+        "delta_lte_8_percent": 75.9186
+      },
+      "kanban_board": {
+        "bounds": [
+          247,
+          92,
+          499,
+          283
+        ],
+        "mae": 2.9886,
+        "p95": 10,
+        "max": 105,
+        "delta_lte_2_percent": 68.8281,
+        "delta_lte_8_percent": 94.2111
+      },
+      "calendar": {
+        "bounds": [
+          28,
+          291,
+          149,
+          436
+        ],
+        "mae": 4.6104,
+        "p95": 19,
+        "max": 155,
+        "delta_lte_2_percent": 58.2692,
+        "delta_lte_8_percent": 84.3564
+      },
+      "collaboration_route": {
+        "bounds": [
+          271,
+          297,
+          500,
+          502
+        ],
+        "mae": 6.5208,
+        "p95": 16,
+        "max": 90,
+        "delta_lte_2_percent": 30.6174,
+        "delta_lte_8_percent": 69.1107
+      },
+      "activity": {
+        "bounds": [
+          154,
+          420,
+          287,
+          570
+        ],
+        "mae": 4.9539,
+        "p95": 19,
+        "max": 91,
+        "delta_lte_2_percent": 53.8596,
+        "delta_lte_8_percent": 81.8145
+      },
+      "foreground": {
+        "bounds": [
+          0,
+          436,
+          500,
+          686
+        ],
+        "mae": 4.5998,
+        "p95": 14,
+        "max": 91,
+        "delta_lte_2_percent": 47.9821,
+        "delta_lte_8_percent": 82.1741
+      },
+      "auth_surface": {
+        "bounds": [
+          500,
+          0,
+          914,
+          686
+        ],
+        "mae": 3.7553,
+        "p95": 12,
+        "max": 252,
+        "delta_lte_2_percent": 80.4983,
+        "delta_lte_8_percent": 92.631
+      },
+      "auth_card": {
+        "bounds": [
+          538,
+          44,
+          868,
+          608
+        ],
+        "mae": 4.821,
+        "p95": 18,
+        "max": 252,
+        "delta_lte_2_percent": 79.4126,
+        "delta_lte_8_percent": 89.4466
+      },
+      "auth_logo": {
+        "bounds": [
+          638,
+          63,
+          768,
+          107
+        ],
+        "mae": 6.7093,
+        "p95": 44,
+        "max": 162,
+        "delta_lte_2_percent": 77.1329,
+        "delta_lte_8_percent": 86.3811
+      },
+      "heading": {
+        "bounds": [
+          593,
+          114,
+          821,
+          171
+        ],
+        "mae": 15.2737,
+        "p95": 94,
+        "max": 250,
+        "delta_lte_2_percent": 65.5125,
+        "delta_lte_8_percent": 77.1109
+      },
+      "fields": {
+        "bounds": [
+          568,
+          188,
+          839,
+          315
+        ],
+        "mae": 3.8828,
+        "p95": 13,
+        "max": 203,
+        "delta_lte_2_percent": 80.9358,
+        "delta_lte_8_percent": 93.3657
+      },
+      "options": {
+        "bounds": [
+          568,
+          316,
+          839,
+          354
+        ],
+        "mae": 5.3901,
+        "p95": 36,
+        "max": 188,
+        "delta_lte_2_percent": 83.7768,
+        "delta_lte_8_percent": 90.4124
+      },
+      "submit": {
+        "bounds": [
+          568,
+          359,
+          839,
+          393
+        ],
+        "mae": 12.5223,
+        "p95": 59,
+        "max": 134,
+        "delta_lte_2_percent": 16.2253,
+        "delta_lte_8_percent": 36.9112
+      },
+      "providers": {
+        "bounds": [
+          568,
+          435,
+          839,
+          547
+        ],
+        "mae": 7.8802,
+        "p95": 44,
+        "max": 252,
+        "delta_lte_2_percent": 73.1111,
+        "delta_lte_8_percent": 84.8643
+      },
+      "footer": {
+        "bounds": [
+          531,
+          629,
+          871,
+          657
+        ],
+        "mae": 4.5739,
+        "p95": 23,
+        "max": 137,
+        "delta_lte_2_percent": 61.5616,
+        "delta_lte_8_percent": 90.3396
+      }
+    }
+  }
+}
