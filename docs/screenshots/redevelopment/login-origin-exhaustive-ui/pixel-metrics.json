@@ -1,0 +1,507 @@
+{
+  "reference": "/Users/ksj/Projects/projectmanagement/oneflow/docs/oneflow-login-origin.png",
+  "runtime": "docs/screenshots/redevelopment/login-origin-exhaustive-ui/desktop-1448x1086.png",
+  "reference_sha256": "62fafe9e44df9d189e8fe2f38fc25147d11b8459569be13ee0424ba06c0c4c76",
+  "generated_reference_sha256": "62fafe9e44df9d189e8fe2f38fc25147d11b8459569be13ee0424ba06c0c4c76",
+  "source_asset_identity": {
+    "reference_matches_generated_reference_file": true,
+    "story_crop_pixel_exact": true,
+    "auth_logo_crop_pixel_exact": true
+  },
+  "desktop": {
+    "viewport": {
+      "width": 1448,
+      "height": 1086,
+      "device_scale_factor": 1
+    },
+    "regions": {
+      "full_canvas": {
+        "bounds": [
+          0,
+          0,
+          1448,
+          1086
+        ],
+        "mae": 1.3106,
+        "p95": 2,
+        "max": 255,
+        "delta_lte_2_percent": 95.1049,
+        "delta_lte_8_percent": 98.1601
+      },
+      "story_surface": {
+        "bounds": [
+          0,
+          0,
+          792,
+          1086
+        ],
+        "mae": 0.0122,
+        "p95": 0,
+        "max": 76,
+        "delta_lte_2_percent": 99.9308,
+        "delta_lte_8_percent": 99.9612
+      },
+      "top_decoration": {
+        "bounds": [
+          0,
+          0,
+          792,
+          180
+        ],
+        "mae": 0.0197,
+        "p95": 0,
+        "max": 32,
+        "delta_lte_2_percent": 99.8525,
+        "delta_lte_8_percent": 99.9401
+      },
+      "story_brand": {
+        "bounds": [
+          72,
+          88,
+          280,
+          165
+        ],
+        "mae": 0.0,
+        "p95": 0,
+        "max": 0,
+        "delta_lte_2_percent": 100.0,
+        "delta_lte_8_percent": 100.0
+      },
+      "story_headline": {
+        "bounds": [
+          68,
+          180,
+          370,
+          298
+        ],
+        "mae": 0.0,
+        "p95": 0,
+        "max": 0,
+        "delta_lte_2_percent": 100.0,
+        "delta_lte_8_percent": 100.0
+      },
+      "kanban_board": {
+        "bounds": [
+          392,
+          145,
+          790,
+          448
+        ],
+        "mae": 0.0,
+        "p95": 0,
+        "max": 0,
+        "delta_lte_2_percent": 100.0,
+        "delta_lte_8_percent": 100.0
+      },
+      "calendar": {
+        "bounds": [
+          44,
+          460,
+          236,
+          690
+        ],
+        "mae": 0.0,
+        "p95": 0,
+        "max": 0,
+        "delta_lte_2_percent": 100.0,
+        "delta_lte_8_percent": 100.0
+      },
+      "activity": {
+        "bounds": [
+          244,
+          665,
+          455,
+          902
+        ],
+        "mae": 0.0,
+        "p95": 0,
+        "max": 0,
+        "delta_lte_2_percent": 100.0,
+        "delta_lte_8_percent": 100.0
+      },
+      "foreground": {
+        "bounds": [
+          0,
+          690,
+          792,
+          1086
+        ],
+        "mae": 0.0153,
+        "p95": 0,
+        "max": 76,
+        "delta_lte_2_percent": 99.9168,
+        "delta_lte_8_percent": 99.9465
+      },
+      "auth_surface": {
+        "bounds": [
+          792,
+          0,
+          1448,
+          1086
+        ],
+        "mae": 2.8781,
+        "p95": 7,
+        "max": 255,
+        "delta_lte_2_percent": 89.2785,
+        "delta_lte_8_percent": 95.9855
+      },
+      "auth_card": {
+        "bounds": [
+          852,
+          70,
+          1375,
+          962
+        ],
+        "mae": 3.6658,
+        "p95": 10,
+        "max": 255,
+        "delta_lte_2_percent": 88.4998,
+        "delta_lte_8_percent": 94.399
+      },
+      "auth_logo": {
+        "bounds": [
+          1011,
+          100,
+          1216,
+          170
+        ],
+        "mae": 0.0,
+        "p95": 0,
+        "max": 0,
+        "delta_lte_2_percent": 100.0,
+        "delta_lte_8_percent": 100.0
+      },
+      "heading": {
+        "bounds": [
+          940,
+          180,
+          1300,
+          270
+        ],
+        "mae": 10.2164,
+        "p95": 63,
+        "max": 254,
+        "delta_lte_2_percent": 78.2593,
+        "delta_lte_8_percent": 85.5319
+      },
+      "fields": {
+        "bounds": [
+          900,
+          298,
+          1329,
+          498
+        ],
+        "mae": 3.6963,
+        "p95": 12,
+        "max": 254,
+        "delta_lte_2_percent": 87.162,
+        "delta_lte_8_percent": 94.378
+      },
+      "options": {
+        "bounds": [
+          900,
+          500,
+          1329,
+          560
+        ],
+        "mae": 4.2462,
+        "p95": 12,
+        "max": 232,
+        "delta_lte_2_percent": 89.2955,
+        "delta_lte_8_percent": 94.2334
+      },
+      "submit": {
+        "bounds": [
+          900,
+          568,
+          1329,
+          622
+        ],
+        "mae": 3.2873,
+        "p95": 14,
+        "max": 166,
+        "delta_lte_2_percent": 80.1433,
+        "delta_lte_8_percent": 91.7724
+      },
+      "divider": {
+        "bounds": [
+          900,
+          640,
+          1329,
+          680
+        ],
+        "mae": 1.2381,
+        "p95": 3,
+        "max": 146,
+        "delta_lte_2_percent": 94.6484,
+        "delta_lte_8_percent": 96.2141
+      },
+      "providers": {
+        "bounds": [
+          900,
+          688,
+          1329,
+          866
+        ],
+        "mae": 8.3661,
+        "p95": 36,
+        "max": 255,
+        "delta_lte_2_percent": 79.9329,
+        "delta_lte_8_percent": 88.878
+      },
+      "signup": {
+        "bounds": [
+          900,
+          884,
+          1329,
+          934
+        ],
+        "mae": 4.164,
+        "p95": 20,
+        "max": 191,
+        "delta_lte_2_percent": 91.1997,
+        "delta_lte_8_percent": 93.4623
+      },
+      "footer": {
+        "bounds": [
+          842,
+          995,
+          1380,
+          1040
+        ],
+        "mae": 3.8977,
+        "p95": 20,
+        "max": 159,
+        "delta_lte_2_percent": 88.4373,
+        "delta_lte_8_percent": 93.3402
+      }
+    }
+  },
+  "in_app": {
+    "viewport": {
+      "width": 562,
+      "height": 734,
+      "device_scale_factor": 1
+    },
+    "before": {
+      "layout": "stacked",
+      "page": {
+        "x": 0,
+        "y": 0,
+        "width": 547,
+        "height": 734
+      },
+      "story": {
+        "x": 0,
+        "y": 0,
+        "width": 547,
+        "height": 190
+      },
+      "story_image": {
+        "x": 0,
+        "y": 0,
+        "width": 1001,
+        "height": 1372.5781
+      },
+      "auth_start_y": 190
+    },
+    "after": {
+      "layout": "scaled_full_canvas",
+      "page": {
+        "x": 0,
+        "y": 156.25,
+        "width": 562,
+        "height": 421.5
+      },
+      "story": {
+        "x": 0,
+        "y": 156.25,
+        "width": 307.3906,
+        "height": 421.5
+      },
+      "auth": {
+        "x": 307.3906,
+        "y": 156.25,
+        "width": 254.6094,
+        "height": 421.5
+      },
+      "zoom": 0.388122,
+      "document_overflow": {
+        "horizontal": false,
+        "vertical": false
+      }
+    },
+    "comparison_note": "Reference is Lanczos-resized to the same 562x422 raster; Chromium subpixel zoom and live text rasterization remain measurable.",
+    "regions": {
+      "full_panel": {
+        "bounds": [
+          0,
+          0,
+          562,
+          422
+        ],
+        "mae": 2.529,
+        "p95": 9,
+        "max": 249,
+        "delta_lte_2_percent": 85.9913,
+        "delta_lte_8_percent": 94.8951
+      },
+      "story_surface": {
+        "bounds": [
+          0,
+          0,
+          307,
+          422
+        ],
+        "mae": 1.8255,
+        "p95": 7,
+        "max": 73,
+        "delta_lte_2_percent": 86.5976,
+        "delta_lte_8_percent": 95.924
+      },
+      "auth_surface": {
+        "bounds": [
+          307,
+          0,
+          562,
+          422
+        ],
+        "mae": 3.3759,
+        "p95": 12,
+        "max": 249,
+        "delta_lte_2_percent": 85.2613,
+        "delta_lte_8_percent": 93.6564
+      },
+      "story_brand": {
+        "bounds": [
+          28,
+          34,
+          109,
+          65
+        ],
+        "mae": 4.4361,
+        "p95": 22,
+        "max": 62,
+        "delta_lte_2_percent": 69.7199,
+        "delta_lte_8_percent": 83.1939
+      },
+      "story_headline": {
+        "bounds": [
+          26,
+          70,
+          144,
+          116
+        ],
+        "mae": 4.865,
+        "p95": 23,
+        "max": 71,
+        "delta_lte_2_percent": 69.1046,
+        "delta_lte_8_percent": 80.7418
+      },
+      "kanban_board": {
+        "bounds": [
+          152,
+          56,
+          307,
+          174
+        ],
+        "mae": 1.9582,
+        "p95": 8,
+        "max": 73,
+        "delta_lte_2_percent": 86.6521,
+        "delta_lte_8_percent": 95.4693
+      },
+      "calendar": {
+        "bounds": [
+          17,
+          179,
+          92,
+          268
+        ],
+        "mae": 2.2201,
+        "p95": 9,
+        "max": 49,
+        "delta_lte_2_percent": 77.4382,
+        "delta_lte_8_percent": 94.2172
+      },
+      "activity": {
+        "bounds": [
+          95,
+          258,
+          177,
+          351
+        ],
+        "mae": 2.61,
+        "p95": 11,
+        "max": 47,
+        "delta_lte_2_percent": 74.3859,
+        "delta_lte_8_percent": 92.5081
+      },
+      "auth_logo": {
+        "bounds": [
+          392,
+          39,
+          473,
+          67
+        ],
+        "mae": 8.9988,
+        "p95": 73,
+        "max": 203,
+        "delta_lte_2_percent": 82.5397,
+        "delta_lte_8_percent": 86.7431
+      },
+      "heading": {
+        "bounds": [
+          365,
+          70,
+          505,
+          105
+        ],
+        "mae": 11.5412,
+        "p95": 74,
+        "max": 249,
+        "delta_lte_2_percent": 75.2313,
+        "delta_lte_8_percent": 80.7483
+      },
+      "fields": {
+        "bounds": [
+          349,
+          116,
+          516,
+          194
+        ],
+        "mae": 4.1205,
+        "p95": 14,
+        "max": 207,
+        "delta_lte_2_percent": 80.1192,
+        "delta_lte_8_percent": 91.3993
+      },
+      "providers": {
+        "bounds": [
+          349,
+          267,
+          516,
+          337
+        ],
+        "mae": 7.4085,
+        "p95": 35,
+        "max": 227,
+        "delta_lte_2_percent": 69.7975,
+        "delta_lte_8_percent": 82.1956
+      },
+      "footer": {
+        "bounds": [
+          327,
+          386,
+          536,
+          405
+        ],
+        "mae": 3.4057,
+        "p95": 22,
+        "max": 105,
+        "delta_lte_2_percent": 85.5116,
+        "delta_lte_8_percent": 91.2868
+      }
+    }
+  }
+}

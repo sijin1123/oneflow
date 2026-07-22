@@ -3240,3 +3240,15 @@ Chromium typed mock fixture에서 1440x960과 390x844 viewport를 사용했다. 
 - **증적**: `docs/screenshots/redevelopment/intake-decision-history-ui/{desktop,mobile}.png`과 README에 실제 Chromium 판정 이력 surface를 보존한다. E2E는 지연 조회, actor image 요청·decode, 전이/사유/보류일/시각, cache 재사용과 390px horizontal overflow를 검사한다.
 
 ---
+
+# UI-210 Login Origin Exhaustive In-App Reinspection 검증 (2026-07-22)
+
+- **UI 변경**: Codex 인앱 기본 `562x734`에서 `880px` 이하를 phone stacked layout으로 처리해 승인 원본의 좌측 story를 `547x190`으로 자르던 breakpoint를 수정했다. `521~880px` compact desktop은 승인 `1448x1086` logical canvas와 `792:656` story/auth 비율을 유지한 채 viewport에 균일 축소해 중앙 정렬하고, `520px` 이하 phone은 기존 기능형 stacked sign-in 흐름을 유지한다.
+- **기능/API 반영**: compact desktop에서도 이메일·비밀번호·remember me·password visibility·실제 sign-in·provider·assistance·policy·locale와 safe-next control을 모두 같은 semantic DOM으로 유지한다. 빈 submit은 접근 가능한 validation alert를 표시하고 이메일 필드로 focus한다. 신규 API, DB/schema, migration, permission, environment variable, dependency 또는 Settings UI 변경은 없다.
+- **픽셀 전수 실사**: 승인 원본과 tracked full reference SHA-256은 모두 `62fafe9e44df9d189e8fe2f38fc25147d11b8459569be13ee0424ba06c0c4c76`이다. story crop과 auth logo crop은 원본의 pixel-exact 파생 자산이다. lossless Chromium `1448x1086`에서 full MAE/p95/delta `<=2`는 `1.3106/2/95.1049%`, story는 `0.0122/0/99.9308%`, semantic auth surface는 `2.8781/7/89.2785%`다. story brand·headline·Kanban·calendar·activity와 auth logo는 모두 MAE `0.0000`이다.
+- **인앱 실사**: 수정 전 `562x734`에서는 story 원본이 약 `1001x1373`으로 확대된 뒤 잘리고 auth가 y=`190`부터 별도 배치됐다. 수정 후 전체 panel은 `(0,156.25,562,421.5)`, story는 폭 `307.3906`, auth는 `254.6094`, zoom은 `0.388122`이며 document overflow는 0이다. Lanczos 축소 원본 대비 compact full-panel MAE/p95는 `2.5290/9`; 잔여치는 Chromium subpixel scaling과 live text/control rasterization에 집중된다.
+- **검증**: typecheck PASS, lint PASS(기존 Fast Refresh warning 4건), unit **108 PASS**, component **9 PASS**, production build PASS(기존 large chunk warning), 로그인 focused E2E **16 PASS**, compact desktop focused E2E **1 PASS**, 최종 1-worker full E2E **355 PASS + opt-in visual QA 1 skip**다. Clean-room frontend **162**/backend **45**, npm production audit 0 vulnerabilities와 diff check도 PASS했다.
+- **이연 항목**: 외부 OIDC 공급자의 실제 연결은 배포별 credential 경계를 유지한다. 이외 이번 로그인 surface의 기능 이연, mock/dead control 또는 장식용 action은 없다.
+- **증적**: `docs/screenshots/redevelopment/login-origin-exhaustive-ui/`에 인앱 수정 전/후, 축소 원본/runtime, desktop 원본/runtime, 8x diff와 전체 영역 JSON을 보존한다.
+
+---
