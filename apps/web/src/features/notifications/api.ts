@@ -14,6 +14,7 @@ export type Notification = {
   initiative_name?: string | null
   document_title?: string | null
   actor_name: string | null
+  actor_profile_image_url?: string | null
   read: boolean
   created_at: string
 }

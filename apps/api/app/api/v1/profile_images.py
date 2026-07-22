@@ -26,6 +26,7 @@ from app.models.document_comment import ProjectDocumentComment
 from app.models.initiative import Initiative, InitiativeActivity, InitiativeProject
 from app.models.intake import IntakeDecisionHistory, IntakeItem
 from app.models.member import ProjectMember
+from app.models.notification import Notification
 from app.models.project_health_history import ProjectHealthHistory
 from app.models.user import User
 from app.schemas.user import MeRead
@@ -203,6 +204,7 @@ async def _profile_image_is_referenced(session: AsyncSession, storage_key: str) 
         document_revision_reference,
         project_health_history_reference,
         intake_decision_history_reference,
+        notification_reference,
     ) = (
         await session.execute(
             select(
@@ -220,6 +222,7 @@ async def _profile_image_is_referenced(session: AsyncSession, storage_key: str) 
                 exists().where(
                     IntakeDecisionHistory.decided_by_profile_image_storage_key == storage_key
                 ),
+                exists().where(Notification.actor_profile_image_storage_key == storage_key),
             )
         )
     ).one()
@@ -232,6 +235,7 @@ async def _profile_image_is_referenced(session: AsyncSession, storage_key: str) 
         or document_revision_reference
         or project_health_history_reference
         or intake_decision_history_reference
+        or notification_reference
     )
 
 
@@ -338,6 +342,32 @@ async def get_intake_decision_history_actor_profile_image(
             status_code=404,
             detail="intake decision history actor image is unavailable",
         )
+    return await _stored_profile_image_response(
+        snapshot[0], snapshot[1], version, settings, cache_control="private, no-store"
+    )
+
+
+@router.get("/me/notifications/{notification_id}/actor-image")
+async def get_notification_actor_profile_image(
+    notification_id: uuid.UUID,
+    version: uuid.UUID | None = None,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+    settings: Settings = Depends(get_settings),
+) -> Response:
+    snapshot = (
+        await session.execute(
+            select(
+                Notification.actor_profile_image_storage_key,
+                Notification.actor_profile_image_content_type,
+            ).where(
+                Notification.id == notification_id,
+                Notification.user_id == user.id,
+            )
+        )
+    ).one_or_none()
+    if snapshot is None or snapshot[0] is None or snapshot[1] is None:
+        raise HTTPException(status_code=404, detail="notification actor image is unavailable")
     return await _stored_profile_image_response(
         snapshot[0], snapshot[1], version, settings, cache_control="private, no-store"
     )

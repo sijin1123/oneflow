@@ -4,8 +4,6 @@ import { useNavigate } from 'react-router-dom'
 
 import { Button } from '@/components/ui/button'
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet'
-import { formatDateTime } from '@/lib/datetime'
-import { cn } from '@/lib/utils'
 
 import {
   type Notification,
@@ -13,11 +11,13 @@ import {
   useMarkNotificationRead,
   useNotifications,
 } from './api'
-import { getNotificationMessage, getNotificationTargetPath } from './view'
+import { NotificationItem } from './NotificationItem'
+import { getNotificationTargetPath } from './view'
 
 export function NotificationBell() {
   const [open, setOpen] = useState(false)
-  const { data } = useNotifications()
+  const notifications = useNotifications()
+  const { data } = notifications
   const markRead = useMarkNotificationRead()
   const markAll = useMarkAllNotificationsRead()
   const navigate = useNavigate()
@@ -67,35 +67,34 @@ export function NotificationBell() {
           </Button>
         </div>
 
-        {!data || data.items.length === 0 ? (
+        {notifications.isPending ? (
+          <div className="space-y-2" aria-label="알림 불러오는 중">
+            {Array.from({ length: 3 }, (_, index) => (
+              <div
+                key={index}
+                className="h-14 animate-pulse rounded-of bg-of-surface-2"
+                aria-hidden="true"
+              />
+            ))}
+          </div>
+        ) : notifications.isError ? (
+          <div className="rounded-of border border-of-danger/30 bg-of-danger/5 p-3 text-sm">
+            <p>알림을 불러오지 못했습니다.</p>
+            <Button
+              variant="outline"
+              size="sm"
+              className="mt-2"
+              onClick={() => notifications.refetch()}
+            >
+              다시 시도
+            </Button>
+          </div>
+        ) : !data || data.items.length === 0 ? (
           <p className="text-sm text-of-muted">알림이 없습니다.</p>
         ) : (
-          <ul className="space-y-1">
+          <ul className="divide-y divide-of-border overflow-hidden rounded-of border border-of-border bg-of-surface">
             {data.items.map((n) => (
-              <li key={n.id}>
-                <button
-                  type="button"
-                  onClick={() => openTarget(n)}
-                  className={cn(
-                    'w-full rounded-of border border-of-border p-2 text-left text-sm hover:bg-of-surface-2',
-                    !n.read && 'border-of-accent/40 bg-of-accent-soft/40',
-                  )}
-                >
-                  <div className="flex items-start gap-2">
-                    <span
-                      className={cn(
-                        'mt-1.5 h-2 w-2 shrink-0 rounded-full',
-                        !n.read && 'bg-of-accent',
-                      )}
-                      aria-hidden
-                    />
-                    <div className="min-w-0">
-                      <p className="break-words">{getNotificationMessage(n)}</p>
-                      <p className="mt-0.5 text-xs text-of-muted">{formatDateTime(n.created_at)}</p>
-                    </div>
-                  </div>
-                </button>
-              </li>
+              <NotificationItem key={n.id} notification={n} onOpen={openTarget} compact />
             ))}
           </ul>
         )}

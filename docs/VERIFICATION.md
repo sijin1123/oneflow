@@ -3252,3 +3252,13 @@ Chromium typed mock fixture에서 1440x960과 390x844 viewport를 사용했다. 
 - **증적**: `docs/screenshots/redevelopment/login-origin-exhaustive-ui/`에 인앱 수정 전/후, 축소 원본/runtime, desktop 원본/runtime, 8x diff와 전체 영역 JSON을 보존한다.
 
 ---
+
+# UI-209 Inbox Notification Identity Avatars 검증 (2026-07-22)
+
+- **UI 변경**: Inbox와 topbar 알림 시트가 하나의 `NotificationItem`을 공유하도록 통합했다. actor가 있는 이벤트는 생성 시점 이름과 실제 저장 이미지를 `Avatar`로 표시하고, 이미지가 없거나 로드에 실패하면 같은 이름의 initials로 돌아간다. actor가 없는 due/overdue 시스템 알림은 사용자처럼 보이지 않도록 `BellRing` fallback을 사용한다. 알림 시트에는 loading skeleton과 기능형 error/retry 상태를 추가했고, unread dot·종류 badge·시각·target hint·deep link·개별/전체 읽음 처리를 두 surface에서 동일하게 유지한다.
+- **기능/API 반영**: migration `0121`은 notification에 actor 이름과 profile image storage key/content type snapshot을 추가하고 기존 행은 확인 가능한 현재 이름만 backfill한다. assignment, watcher, work-item/document mention, intake, initiative fanout이 알림 생성 transaction에서 identity를 capture한다. 수신자만 접근 가능한 `/api/v1/me/notifications/{notification_id}/actor-image`는 snapshot의 exact version만 `private, no-store`로 반환하며 다른 수신자, 잘못된 version, snapshot 또는 blob 부재는 404다. 프로필 교체·삭제와 actor 계정 삭제 뒤에도 과거 notification의 이름·URL·blob이 유지되고 storage sweep live set에도 포함된다.
+- **이연 항목**: 없음. 예약 due/overdue 알림은 실제 actor가 없으므로 snapshot을 의도적으로 비워 두며 UI는 system fallback을 사용한다. 신규 환경변수, Settings UI와 dependency 변경은 없다.
+- **검증**: focused API **11 PASS**, final full API **856 PASS**다. Migration `0121 -> base -> 0121`, Ruff/format, OpenAPI generation/drift, typecheck, lint(기존 Fast Refresh warning 4건), production build(기존 large chunk warning), unit **108 PASS**, component **9 PASS**, focused desktop/mobile E2E **2 PASS**, final full E2E **355 PASS + opt-in visual QA manifest 1 skip**, clean-room frontend **162**/backend **45**, npm/pip audit 0 vulnerabilities와 diff check가 PASS했다. 첫 focused E2E는 Playwright가 UI-210의 기존 `5173` 서버를 재사용해 신규 branch가 아닌 페이지를 검사한 실행 격리 문제였고, 독립 포트 `5180`에서 재실행해 통과했다. 최종 full E2E도 독립 포트 `5181`에서 완주했다.
+- **증적**: `docs/screenshots/redevelopment/inbox-notification-avatars-ui/{sheet-desktop,inbox-mobile}.png`과 README에 실제 Chromium desktop 알림 시트와 mobile Inbox의 이미지·initials·system fallback 상태를 보존한다.
+
+---

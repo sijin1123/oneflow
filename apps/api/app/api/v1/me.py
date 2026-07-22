@@ -485,10 +485,9 @@ async def list_notifications(
     session: AsyncSession = Depends(get_session),
     user: User = Depends(get_current_user),
 ) -> NotificationList:
-    """Current user's inbox, newest first, with the work package subject and actor
-    name joined for display. `unread` is always the true unread total so the bell
-    badge is correct even when the list is filtered."""
-    actor = User.__table__.alias("actor")
+    """Current user's inbox, newest first, with target labels and immutable actor
+    identity. `unread` is always the true unread total so the bell badge is
+    correct even when the list is filtered."""
     visible_project_initiatives = (
         select(InitiativeProject.initiative_id)
         .join(ProjectMember, ProjectMember.project_id == InitiativeProject.project_id)
@@ -527,13 +526,11 @@ async def list_notifications(
             WorkPackage.subject.label("wp_subject"),
             Initiative.name.label("initiative_name"),
             ProjectDocument.title.label("document_title"),
-            actor.c.display_name.label("actor_name"),
         )
         .select_from(Notification)
         .outerjoin(WorkPackage, Notification.work_package_id == WorkPackage.id)
         .outerjoin(Initiative, Notification.initiative_id == Initiative.id)
         .outerjoin(ProjectDocument, Notification.document_id == ProjectDocument.id)
-        .outerjoin(actor, Notification.actor_id == actor.c.id)
         .where(Notification.user_id == user.id, notification_is_visible)
     )
     if unread_only:
@@ -553,11 +550,12 @@ async def list_notifications(
             work_package_subject=wp_subject,
             initiative_name=initiative_name,
             document_title=document_title,
-            actor_name=actor_name,
+            actor_name=n.actor_name,
+            actor_profile_image_url=n.actor_profile_image_url,
             read=n.read,
             created_at=n.created_at,
         )
-        for n, wp_subject, initiative_name, document_title, actor_name in rows
+        for n, wp_subject, initiative_name, document_title in rows
     ]
     unread = (
         await session.execute(

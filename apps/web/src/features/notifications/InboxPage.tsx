@@ -5,7 +5,6 @@ import { Link, useNavigate } from 'react-router-dom'
 import { ErrorState, EmptyState, ListSkeleton } from '@/components/shell/states'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { formatDateTime } from '@/lib/datetime'
 import { cn } from '@/lib/utils'
 
 import {
@@ -14,11 +13,8 @@ import {
   useMarkNotificationRead,
   useNotifications,
 } from './api'
-import {
-  getNotificationKindLabel,
-  getNotificationMessage,
-  getNotificationTargetPath,
-} from './view'
+import { NotificationItem } from './NotificationItem'
+import { getNotificationTargetPath } from './view'
 
 type Filter = 'all' | 'unread' | 'read'
 
@@ -27,73 +23,6 @@ const filters: Array<{ key: Filter; label: string }> = [
   { key: 'unread', label: '읽지 않음' },
   { key: 'read', label: '읽음' },
 ]
-
-function NotificationRow({
-  notification,
-  onOpen,
-  onRead,
-  readPending,
-}: {
-  notification: Notification
-  onOpen: (notification: Notification) => void
-  onRead: (notification: Notification) => void
-  readPending: boolean
-}) {
-  const target = getNotificationTargetPath(notification)
-
-  return (
-    <li>
-      <article
-        className={cn(
-          'flex min-w-0 flex-col gap-3 border-b border-of-border px-3 py-3 last:border-b-0 sm:flex-row sm:items-start',
-          !notification.read && 'bg-of-accent-soft/30',
-        )}
-      >
-        <button
-          type="button"
-          className="flex min-w-0 flex-1 gap-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus"
-          onClick={() => onOpen(notification)}
-        >
-          <span
-            className={cn(
-              'mt-1.5 h-2 w-2 shrink-0 rounded-full bg-of-border',
-              !notification.read && 'bg-of-accent',
-            )}
-            aria-hidden="true"
-          />
-          <span className="min-w-0 flex-1">
-            <span className="mb-1 flex min-w-0 flex-wrap items-center gap-2">
-              <Badge variant={notification.read ? 'outline' : 'accent'}>
-                {getNotificationKindLabel(notification)}
-              </Badge>
-              <span className="text-[11px] text-of-muted">
-                {formatDateTime(notification.created_at)}
-              </span>
-            </span>
-            <span className="block break-words text-sm font-medium leading-5">
-              {getNotificationMessage(notification)}
-            </span>
-            <span className="mt-1 block truncate text-xs text-of-muted">
-              {target ? '대상 화면으로 이동' : '읽음 처리만 가능한 알림'}
-            </span>
-          </span>
-        </button>
-
-        {!notification.read ? (
-          <Button
-            variant="ghost"
-            size="sm"
-            disabled={readPending}
-            className="self-start sm:self-center"
-            onClick={() => onRead(notification)}
-          >
-            읽음
-          </Button>
-        ) : null}
-      </article>
-    </li>
-  )
-}
 
 function NotificationGroup({
   title,
@@ -118,14 +47,25 @@ function NotificationGroup({
         <h2 className="text-sm font-semibold">{title}</h2>
         <span className="text-xs text-of-muted">{count}건</span>
       </div>
-      <ul className="overflow-hidden rounded-of border border-of-border bg-of-surface">
+      <ul className="divide-y divide-of-border overflow-hidden rounded-of border border-of-border bg-of-surface">
         {items.map((notification) => (
-          <NotificationRow
+          <NotificationItem
             key={notification.id}
             notification={notification}
             onOpen={onOpen}
-            onRead={onRead}
-            readPending={readPending}
+            showTargetHint
+            action={
+              !notification.read ? (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  disabled={readPending}
+                  onClick={() => onRead(notification)}
+                >
+                  읽음
+                </Button>
+              ) : null
+            }
           />
         ))}
       </ul>

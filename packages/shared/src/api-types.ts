@@ -1456,9 +1456,9 @@ export interface paths {
         };
         /**
          * List Notifications
-         * @description Current user's inbox, newest first, with the work package subject and actor
-         *     name joined for display. `unread` is always the true unread total so the bell
-         *     badge is correct even when the list is filtered.
+         * @description Current user's inbox, newest first, with target labels and immutable actor
+         *     identity. `unread` is always the true unread total so the bell badge is
+         *     correct even when the list is filtered.
          */
         get: operations["list_notifications_api_v1_me_notifications_get"];
         put?: never;
@@ -1480,6 +1480,23 @@ export interface paths {
         put?: never;
         /** Mark All Notifications Read */
         post: operations["mark_all_notifications_read_api_v1_me_notifications_read_all_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/me/notifications/{notification_id}/actor-image": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Notification Actor Profile Image */
+        get: operations["get_notification_actor_profile_image_api_v1_me_notifications__notification_id__actor_image_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -7209,6 +7226,8 @@ export interface components {
         NotificationRead: {
             /** Actor Name */
             actor_name: string | null;
+            /** Actor Profile Image Url */
+            actor_profile_image_url?: string | null;
             /**
              * Created At
              * Format: date-time
@@ -14268,6 +14287,43 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_notification_actor_profile_image_api_v1_me_notifications__notification_id__actor_image_get: {
+        parameters: {
+            query?: {
+                version?: string | null;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                notification_id: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
             };
             /** @description Validation Error */
             422: {
