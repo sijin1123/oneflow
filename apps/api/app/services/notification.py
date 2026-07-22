@@ -7,7 +7,7 @@ notification is committed atomically with the change that triggered it.
 import uuid
 from collections.abc import Iterable
 
-from sqlalchemy import and_, exists, false, func, insert, literal, or_, select, true
+from sqlalchemy import String, and_, exists, false, func, insert, literal, or_, select, true
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -18,6 +18,15 @@ from app.models.notification import Notification
 from app.models.notification_setting import UserNotificationSettings
 from app.models.user import User
 from app.models.watcher import WpWatcher
+from app.services.activity import ActorIdentitySnapshot, capture_actor_identity
+
+
+def _snapshot_literals(snapshot: ActorIdentitySnapshot):
+    return (
+        literal(snapshot.name, type_=String(120)),
+        literal(snapshot.profile_image_storage_key, type_=String(80)),
+        literal(snapshot.profile_image_content_type, type_=String(32)),
+    )
 
 
 async def notify_initiative_subscribers(
@@ -36,6 +45,8 @@ async def notify_initiative_subscribers(
     """
     if not kind.startswith("initiative_"):
         raise ValueError("initiative notification kind required")
+    actor_snapshot = await capture_actor_identity(session, actor_id)
+    actor_name, actor_image_key, actor_image_type = _snapshot_literals(actor_snapshot)
     uid = PGUUID(as_uuid=True)
     visible_project = exists(
         select(ProjectMember.id)
@@ -55,6 +66,9 @@ async def notify_initiative_subscribers(
             literal(None, type_=uid),
             literal(initiative_id, type_=uid),
             literal(actor_id, type_=uid),
+            actor_name,
+            actor_image_key,
+            actor_image_type,
             literal(kind),
             false(),
         )
@@ -79,7 +93,18 @@ async def notify_initiative_subscribers(
     created = await session.execute(
         insert(Notification)
         .from_select(
-            ["id", "user_id", "project_id", "initiative_id", "actor_id", "kind", "read"],
+            [
+                "id",
+                "user_id",
+                "project_id",
+                "initiative_id",
+                "actor_id",
+                "actor_name_snapshot",
+                "actor_profile_image_storage_key",
+                "actor_profile_image_content_type",
+                "kind",
+                "read",
+            ],
             recipients,
         )
         .returning(Notification.user_id)
@@ -108,6 +133,7 @@ async def record_assignment(
     ).scalar_one_or_none()
     if pref is False:  # absent row = default True
         return
+    actor_snapshot = await capture_actor_identity(session, actor_id)
     session.add(
         Notification(
             user_id=recipient_id,
@@ -115,6 +141,9 @@ async def record_assignment(
             project_id=project_id,
             work_package_id=wp_id,
             kind="assigned",
+            actor_name_snapshot=actor_snapshot.name,
+            actor_profile_image_storage_key=actor_snapshot.profile_image_storage_key,
+            actor_profile_image_content_type=actor_snapshot.profile_image_content_type,
         )
     )
 
@@ -139,6 +168,8 @@ async def notify_watchers(
     Returns the ACTUALLY notified user ids (RETURNING) so a later fan-out in
     the same transaction — mentions — can exclude exactly them, not the raw
     candidate set (PLAN v10.1 R1-①)."""
+    actor_snapshot = await capture_actor_identity(session, actor_id)
+    actor_name, actor_image_key, actor_image_type = _snapshot_literals(actor_snapshot)
     excluded = {actor_id, *exclude}
     uid = PGUUID(as_uuid=True)
     sel = (
@@ -148,6 +179,9 @@ async def notify_watchers(
             literal(project_id, type_=uid),
             literal(wp_id, type_=uid),
             literal(actor_id, type_=uid),
+            actor_name,
+            actor_image_key,
+            actor_image_type,
             literal(kind),
             false(),
         )
@@ -179,7 +213,18 @@ async def notify_watchers(
     created = await session.execute(
         insert(Notification)
         .from_select(
-            ["id", "user_id", "project_id", "work_package_id", "actor_id", "kind", "read"],
+            [
+                "id",
+                "user_id",
+                "project_id",
+                "work_package_id",
+                "actor_id",
+                "actor_name_snapshot",
+                "actor_profile_image_storage_key",
+                "actor_profile_image_content_type",
+                "kind",
+                "read",
+            ],
             sel,
         )
         .returning(Notification.user_id)
@@ -226,6 +271,8 @@ async def notify_mentions(
     accepted = [uid for uid in candidates if uid in members]
     to_notify = [uid for uid in accepted if uid not in set(exclude)]
     if to_notify:
+        actor_snapshot = await capture_actor_identity(session, actor_id)
+        actor_name, actor_image_key, actor_image_type = _snapshot_literals(actor_snapshot)
         sel = (
             select(
                 func.gen_random_uuid(),
@@ -233,6 +280,9 @@ async def notify_mentions(
                 literal(project_id, type_=uid_t),
                 literal(wp_id, type_=uid_t),
                 literal(actor_id, type_=uid_t),
+                actor_name,
+                actor_image_key,
+                actor_image_type,
                 literal("mention"),
                 false(),
             )
@@ -249,7 +299,18 @@ async def notify_mentions(
         )
         await session.execute(
             insert(Notification).from_select(
-                ["id", "user_id", "project_id", "work_package_id", "actor_id", "kind", "read"],
+                [
+                    "id",
+                    "user_id",
+                    "project_id",
+                    "work_package_id",
+                    "actor_id",
+                    "actor_name_snapshot",
+                    "actor_profile_image_storage_key",
+                    "actor_profile_image_content_type",
+                    "kind",
+                    "read",
+                ],
                 sel,
             )
         )
@@ -298,6 +359,8 @@ async def notify_document_mentions(
     if not accepted:
         return []
 
+    actor_snapshot = await capture_actor_identity(session, actor_id)
+    actor_name, actor_image_key, actor_image_type = _snapshot_literals(actor_snapshot)
     uid_t = PGUUID(as_uuid=True)
     recipients = (
         select(
@@ -306,6 +369,9 @@ async def notify_document_mentions(
             literal(project_id, type_=uid_t),
             literal(document_id, type_=uid_t),
             literal(actor_id, type_=uid_t),
+            actor_name,
+            actor_image_key,
+            actor_image_type,
             literal("document_mention"),
             false(),
         )
@@ -324,7 +390,18 @@ async def notify_document_mentions(
     )
     await session.execute(
         insert(Notification).from_select(
-            ["id", "user_id", "project_id", "document_id", "actor_id", "kind", "read"],
+            [
+                "id",
+                "user_id",
+                "project_id",
+                "document_id",
+                "actor_id",
+                "actor_name_snapshot",
+                "actor_profile_image_storage_key",
+                "actor_profile_image_content_type",
+                "kind",
+                "read",
+            ],
             recipients,
         )
     )
@@ -368,6 +445,7 @@ async def record_intake_triage(
     ).scalar_one_or_none()
     if pref is False:  # absent row = default True
         return
+    actor_snapshot = await capture_actor_identity(session, actor_id)
     session.add(
         Notification(
             user_id=recipient_id,
@@ -376,5 +454,8 @@ async def record_intake_triage(
             work_package_id=accepted_wp_id,
             intake_item_id=item.id,
             kind="intake_accepted" if accepted_wp_id is not None else "intake_declined",
+            actor_name_snapshot=actor_snapshot.name,
+            actor_profile_image_storage_key=actor_snapshot.profile_image_storage_key,
+            actor_profile_image_content_type=actor_snapshot.profile_image_content_type,
         )
     )

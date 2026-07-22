@@ -18,6 +18,7 @@ class NotificationRead(BaseModel):
     initiative_name: str | None = None
     document_title: str | None = None
     actor_name: str | None
+    actor_profile_image_url: str | None = None
     read: bool
     created_at: datetime
 

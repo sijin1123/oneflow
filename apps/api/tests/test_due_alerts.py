@@ -76,6 +76,7 @@ async def test_selection_dedupe_and_shape(client, app, project):
     kinds = sorted(n["kind"] for n in inbox["items"])
     assert kinds == ["due_soon", "overdue"]
     assert all(n["actor_name"] is None for n in inbox["items"])  # system event
+    assert all(n["actor_profile_image_url"] is None for n in inbox["items"])
     assert inbox["unread"] == 2
 
 
