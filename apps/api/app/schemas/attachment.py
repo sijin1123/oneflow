@@ -83,6 +83,30 @@ class AttachmentList(BaseModel):
     total: int
 
 
+class AttachmentDirectoryItem(AttachmentRead):
+    work_package_subject: str | None = None
+    document_title: str | None = None
+
+
+class AttachmentDirectorySummary(BaseModel):
+    total: int
+    file_count: int
+    link_count: int
+    linked_count: int
+    indexed_file_count: int
+    pending_index_count: int
+    used_bytes: int
+
+
+class AttachmentDirectoryList(BaseModel):
+    items: list[AttachmentDirectoryItem]
+    total: int
+    summary: AttachmentDirectorySummary
+    next_cursor_created_at: datetime | None = None
+    next_cursor_id: uuid.UUID | None = None
+    highlight_item: AttachmentDirectoryItem | None = None
+
+
 class StorageRead(BaseModel):
     """Settings Storage tab payload (Pass 57): used counts stored blobs only;
     links carry no bytes. quota comes from env (read-only here)."""

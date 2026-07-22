@@ -2,7 +2,7 @@
 
 import pytest
 
-from tests.conftest import create_project
+from tests.conftest import create_project, create_wp
 
 
 @pytest.fixture
@@ -68,6 +68,133 @@ async def test_attachments_are_member_scoped(client, foreign_project):
 async def test_delete_unknown_attachment_404(client, project):
     missing = "00000000-0000-4000-8000-000000000000"
     assert (await client.delete(f"/api/v1/attachments/{missing}")).status_code == 404
+
+
+async def test_attachment_directory_search_scope_and_complete_summary(client, project):
+    pid = project["id"]
+    wp = await create_wp(client, pid, subject="연결 작업 알파")
+    document = (
+        await client.post(
+            f"/api/v1/projects/{pid}/documents",
+            json={"title": "연결 문서 베타"},
+        )
+    ).json()
+    wp_link = (
+        await client.post(
+            f"/api/v1/projects/{pid}/attachments",
+            json={
+                "filename": "recording.url",
+                "url": "https://example.com/recording",
+                "work_package_id": wp["id"],
+            },
+        )
+    ).json()
+    await client.post(
+        f"/api/v1/projects/{pid}/attachments",
+        json={
+            "filename": "notes.url",
+            "url": "https://example.com/notes",
+            "document_id": document["id"],
+        },
+    )
+    uploaded = await client.post(
+        f"/api/v1/projects/{pid}/attachments/upload?filename=report.txt",
+        content=b"hello directory",
+        headers={"content-type": "text/plain", "content-length": "15"},
+    )
+    assert uploaded.status_code == 201, uploaded.text
+
+    searched = (
+        await client.get(
+            f"/api/v1/projects/{pid}/attachments/directory",
+            params={"q": "연결 작업 알파"},
+        )
+    ).json()
+    assert searched["total"] == 1
+    assert [row["id"] for row in searched["items"]] == [wp_link["id"]]
+    assert searched["items"][0]["work_package_subject"] == "연결 작업 알파"
+    assert searched["items"][0]["document_title"] is None
+    assert searched["summary"] == {
+        "total": 3,
+        "file_count": 1,
+        "link_count": 2,
+        "linked_count": 2,
+        "indexed_file_count": 1,
+        "pending_index_count": 0,
+        "used_bytes": 15,
+    }
+
+    links = (
+        await client.get(
+            f"/api/v1/projects/{pid}/attachments/directory",
+            params={"scope": "links"},
+        )
+    ).json()
+    assert links["total"] == 2
+    assert all(not row["has_file"] for row in links["items"])
+    escaped = (
+        await client.get(
+            f"/api/v1/projects/{pid}/attachments/directory",
+            params={"q": "%"},
+        )
+    ).json()
+    assert escaped["total"] == 0
+
+
+async def test_attachment_directory_cursor_is_stable_and_highlight_is_discoverable(client, project):
+    pid = project["id"]
+    original_ids = []
+    for index in range(5):
+        created = await client.post(
+            f"/api/v1/projects/{pid}/attachments",
+            json={
+                "filename": f"cursor-{index}.url",
+                "url": f"https://example.com/cursor-{index}",
+            },
+        )
+        original_ids.append(created.json()["id"])
+
+    first = (
+        await client.get(
+            f"/api/v1/projects/{pid}/attachments/directory",
+            params={"q": "cursor-", "limit": 2, "highlight_id": original_ids[0]},
+        )
+    ).json()
+    assert first["total"] == 5
+    assert len(first["items"]) == 2
+    assert first["next_cursor_created_at"] is not None
+    assert first["next_cursor_id"] is not None
+    assert first["highlight_item"]["id"] == original_ids[0]
+
+    inserted = await client.post(
+        f"/api/v1/projects/{pid}/attachments",
+        json={"filename": "cursor-new.url", "url": "https://example.com/cursor-new"},
+    )
+    assert inserted.status_code == 201
+
+    second = (
+        await client.get(
+            f"/api/v1/projects/{pid}/attachments/directory",
+            params={
+                "q": "cursor-",
+                "limit": 2,
+                "cursor_created_at": first["next_cursor_created_at"],
+                "cursor_id": first["next_cursor_id"],
+            },
+        )
+    ).json()
+    assert second["total"] == 6
+    assert not ({row["id"] for row in first["items"]} & {row["id"] for row in second["items"]})
+    assert inserted.json()["id"] not in {row["id"] for row in second["items"]}
+    assert second["highlight_item"] is None
+
+
+async def test_attachment_directory_rejects_half_cursor(client, project):
+    response = await client.get(
+        f"/api/v1/projects/{project['id']}/attachments/directory",
+        params={"cursor_created_at": "2026-07-22T00:00:00Z"},
+    )
+    assert response.status_code == 422
 
 
 async def test_project_storage_snapshot(client, project, foreign_project):

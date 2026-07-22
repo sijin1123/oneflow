@@ -12,7 +12,7 @@ import {
   Trash2,
   Upload,
 } from 'lucide-react'
-import { useEffect, useRef, useState, type RefObject } from 'react'
+import { useDeferredValue, useEffect, useRef, useState, type RefObject } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
 
 import { ReadOnlyNotice } from '@/components/shell/ReadOnlyNotice'
@@ -33,7 +33,8 @@ import { cn } from '@/lib/utils'
 import {
   downloadUrl,
   type Attachment,
-  useAttachments,
+  type AttachmentDirectoryScope,
+  useAttachmentDirectory,
   useCreateAttachment,
   useDeleteAttachment,
   useRebuildAttachmentSearchIndex,
@@ -41,6 +42,13 @@ import {
 } from './api'
 
 const HTTP_URL_RE = /^https?:\/\/.+/i
+const DIRECTORY_SCOPES: AttachmentDirectoryScope[] = [
+  'all',
+  'files',
+  'links',
+  'linked',
+  'pending',
+]
 
 function fmtSize(bytes: number | null): string {
   if (bytes === null) return '-'
@@ -55,7 +63,20 @@ function fmtDate(value: string): string {
 
 export function FilesPage() {
   const { projectId } = useParams() as { projectId: string }
-  const { data, isPending, isError, error, refetch } = useAttachments(projectId)
+  const [searchParams, setSearchParams] = useSearchParams()
+  const query = searchParams.get('q') ?? ''
+  const scopeValue = searchParams.get('scope')
+  const scope = DIRECTORY_SCOPES.includes(scopeValue as AttachmentDirectoryScope)
+    ? (scopeValue as AttachmentDirectoryScope)
+    : 'all'
+  const highlightedFileId = searchParams.get('file')
+  const deferredQuery = useDeferredValue(query.trim())
+  const directory = useAttachmentDirectory({
+    projectId,
+    q: deferredQuery,
+    scope,
+    highlightId: highlightedFileId,
+  })
   const project = useProject(projectId)
   const create = useCreateAttachment(projectId)
   const del = useDeleteAttachment(projectId)
@@ -68,9 +89,6 @@ export function FilesPage() {
   const [filename, setFilename] = useState('')
   const [url, setUrl] = useState('')
   const [anchor, setAnchor] = useState('')
-  const [query, setQuery] = useState('')
-  const [searchParams] = useSearchParams()
-  const highlightedFileId = searchParams.get('file')
   const { data: wps } = useWorkPackages(projectId, {})
   const wikiEnabled = capabilities.data?.wiki.enabled === true
   const { data: docs } = useDocuments(projectId, 'shared', wikiEnabled)
@@ -82,35 +100,45 @@ export function FilesPage() {
   const archived = project.data?.archived_at !== null && project.data?.archived_at !== undefined
   const canMutate = canWrite && !archived
 
-  const items = data?.items ?? []
-  const fileCount = items.filter((a) => a.has_file).length
-  const indexedFileCount = items.filter(
-    (a) => a.has_file && a.search_index_status === 'indexed',
-  ).length
-  const pendingIndexCount = items.filter(
-    (a) => a.has_file && (a.search_index_status ?? 'pending') === 'pending',
-  ).length
-  const linkCount = items.length - fileCount
-  const linkedCount = items.filter((a) => a.work_package_id || a.document_id).length
-  const usedBytes = items.reduce((total, a) => total + (a.size_bytes ?? 0), 0)
-  const q = query.trim().toLowerCase()
-  const visible = items.filter((a) => {
-    if (!q) return true
-    return `${a.filename} ${anchorLabel(a, workItems, documents)}`.toLowerCase().includes(q)
-  })
+  const pages = directory.data?.pages ?? []
+  const pageItems = Array.from(
+    new Map(pages.flatMap((page) => page.items).map((item) => [item.id, item])).values(),
+  )
+  const highlightedItem = pages[0]?.highlight_item ?? null
+  const items = highlightedItem
+    ? [highlightedItem, ...pageItems.filter((item) => item.id !== highlightedItem.id)]
+    : pageItems
+  const summary = pages[0]?.summary ?? {
+    total: 0,
+    file_count: 0,
+    link_count: 0,
+    linked_count: 0,
+    indexed_file_count: 0,
+    pending_index_count: 0,
+    used_bytes: 0,
+  }
+  const filteredTotal = pages[0]?.total ?? 0
 
   const err = create.error instanceof ApiError ? create.error.message : null
   const urlTrimmed = url.trim()
   const urlValid = urlTrimmed === '' || HTTP_URL_RE.test(urlTrimmed)
 
   useEffect(() => {
-    if (!highlightedFileId || isPending) return
+    if (!highlightedFileId || directory.isPending) return
     requestAnimationFrame(() => {
       document
         .getElementById(`attachment-${highlightedFileId}`)
         ?.scrollIntoView({ block: 'center', behavior: 'smooth' })
     })
-  }, [highlightedFileId, isPending])
+  }, [directory.isPending, highlightedFileId, items.length])
+
+  const setDirectoryParam = (key: 'q' | 'scope', value: string | null) => {
+    const next = new URLSearchParams(searchParams)
+    next.delete('file')
+    if (value) next.set(key, value)
+    else next.delete(key)
+    setSearchParams(next, { replace: true })
+  }
 
   const add = () => {
     if (!filename.trim() || !urlValid || urlTrimmed === '' || create.isPending) return
@@ -148,17 +176,17 @@ export function FilesPage() {
           <div className="flex min-w-0 flex-wrap items-center gap-2">
             {project.data ? <Badge variant="outline">{project.data.key}</Badge> : null}
             <Badge variant={archived ? 'outline' : 'accent'}>{archived ? '보관됨' : '활성'}</Badge>
-            <Badge variant="outline">파일 {data?.total ?? 0}</Badge>
+            <Badge variant="outline">파일 {summary.total}</Badge>
           </div>
         </div>
       </header>
 
       {!canWrite ? <ReadOnlyNotice /> : null}
 
-      {isPending ? (
+      {directory.isPending ? (
         <ListSkeleton />
-      ) : isError ? (
-        <ErrorState error={error} onRetry={() => refetch()} />
+      ) : directory.isError && !directory.data ? (
+        <ErrorState error={directory.error} onRetry={() => directory.refetch()} />
       ) : (
         <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1fr)_18rem]">
           <section aria-label="파일 목록" className="min-w-0 space-y-3">
@@ -192,7 +220,7 @@ export function FilesPage() {
               />
             ) : null}
 
-            {data.total === 0 ? (
+            {summary.total === 0 ? (
               <EmptyState
                 title="등록된 파일이 없습니다"
                 hint="파일 링크를 추가하거나 업로드해 프로젝트 자료를 모아 보세요."
@@ -200,7 +228,7 @@ export function FilesPage() {
               />
             ) : (
               <>
-                <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center">
+                <div className="grid min-w-0 gap-2 sm:grid-cols-[minmax(0,1fr)_10rem_auto] sm:items-center">
                   <label className="relative block min-w-0 flex-1">
                     <Search
                       size={14}
@@ -209,13 +237,30 @@ export function FilesPage() {
                     />
                     <Input
                       value={query}
-                      onChange={(e) => setQuery(e.target.value)}
+                      onChange={(e) => setDirectoryParam('q', e.target.value || null)}
                       placeholder="파일 이름 또는 연결 대상 검색"
                       aria-label="파일 검색"
                       className="pl-8"
                     />
                   </label>
-                  {canMutate && pendingIndexCount > 0 ? (
+                  <Select
+                    aria-label="파일 범위"
+                    value={scope}
+                    onChange={(event) =>
+                      setDirectoryParam(
+                        'scope',
+                        event.target.value === 'all' ? null : event.target.value,
+                      )
+                    }
+                    className="h-8 min-w-0 text-xs"
+                  >
+                    <option value="all">전체</option>
+                    <option value="files">업로드</option>
+                    <option value="links">외부 링크</option>
+                    <option value="linked">연결됨</option>
+                    <option value="pending">검색 준비 필요</option>
+                  </Select>
+                  {canMutate && summary.pending_index_count > 0 ? (
                     <Button
                       type="button"
                       variant="outline"
@@ -226,10 +271,19 @@ export function FilesPage() {
                       <FileSearch size={13} />
                       {rebuildSearch.isPending
                         ? '본문 검색 준비 중'
-                        : `본문 검색 준비 ${pendingIndexCount}건`}
+                        : `본문 검색 준비 ${summary.pending_index_count}건`}
                     </Button>
                   ) : null}
                 </div>
+                {query.trim() !== deferredQuery ? (
+                  <p role="status" className="text-xs text-of-muted">
+                    검색 반영 중
+                  </p>
+                ) : directory.isFetching && !directory.isFetchingNextPage ? (
+                  <p role="status" className="text-xs text-of-muted">
+                    목록 갱신 중
+                  </p>
+                ) : null}
                 {rebuildSearch.isError ? (
                   <p role="alert" className="text-xs text-of-danger">
                     파일 본문 검색 준비에 실패했습니다. 다시 시도해 주세요.
@@ -244,15 +298,16 @@ export function FilesPage() {
                   </p>
                 ) : null}
 
-                {visible.length === 0 ? (
+                {items.length === 0 ? (
                   <EmptyState
-                    title="검색 결과가 없습니다"
-                    hint="다른 파일명이나 연결 대상으로 다시 검색하세요."
+                    title="조건에 맞는 파일이 없습니다"
+                    hint="검색어나 파일 범위를 조정해 다시 찾아보세요."
                     className="min-h-[220px] rounded-of border border-of-border bg-of-surface"
                   />
                 ) : (
-                  <ul className="min-w-0 divide-y divide-of-border overflow-hidden rounded-of border border-of-border bg-of-surface">
-                    {visible.map((att) => (
+                  <>
+                    <ul className="min-w-0 divide-y divide-of-border overflow-hidden rounded-of border border-of-border bg-of-surface">
+                    {items.map((att) => (
                       <li
                         id={`attachment-${att.id}`}
                         key={att.id}
@@ -270,6 +325,9 @@ export function FilesPage() {
                             <div className="min-w-0">
                               <AttachmentLink attachment={att} />
                               <div className="mt-1 flex min-w-0 flex-wrap items-center gap-2 text-xs text-of-muted">
+                                {highlightedItem?.id === att.id ? (
+                                  <Badge variant="accent">직접 연 파일</Badge>
+                                ) : null}
                                 <span>{att.has_file ? '업로드 파일' : '외부 링크'}</span>
                                 <span>{fmtSize(att.size_bytes)}</span>
                                 <span>{fmtDate(att.created_at)}</span>
@@ -297,22 +355,56 @@ export function FilesPage() {
                       </li>
                     ))}
                   </ul>
+                    <footer className="flex min-w-0 flex-col items-center gap-2 py-2 sm:flex-row sm:justify-between">
+                      <p className="text-xs text-of-muted" aria-live="polite">
+                        {pageItems.length} / {filteredTotal}개 표시
+                        {highlightedItem ? ' · 직접 연 파일 1개' : ''}
+                      </p>
+                      <div className="flex min-w-0 flex-col items-center gap-2 sm:items-end">
+                        {directory.hasNextPage ? (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            disabled={directory.isFetchingNextPage}
+                            aria-describedby={
+                              directory.isFetchNextPageError
+                                ? 'files-directory-load-more-error'
+                                : undefined
+                            }
+                            onClick={() => void directory.fetchNextPage()}
+                          >
+                            {directory.isFetchingNextPage ? '불러오는 중...' : '더 불러오기'}
+                          </Button>
+                        ) : null}
+                        {directory.isFetchNextPageError ? (
+                          <p
+                            id="files-directory-load-more-error"
+                            role="alert"
+                            className="text-xs text-of-danger"
+                          >
+                            추가 파일을 불러오지 못했습니다. 다시 시도해 주세요.
+                          </p>
+                        ) : null}
+                      </div>
+                    </footer>
+                  </>
                 )}
               </>
             )}
           </section>
 
           <aside aria-label="파일 요약" className="grid min-w-0 gap-2 self-start">
-            <SummaryTile icon={HardDrive} label="전체 파일" value={String(data.total)} />
-            <SummaryTile icon={FileUp} label="업로드" value={String(fileCount)} />
+            <SummaryTile icon={HardDrive} label="전체 파일" value={String(summary.total)} />
+            <SummaryTile icon={FileUp} label="업로드" value={String(summary.file_count)} />
             <SummaryTile
               icon={FileSearch}
               label="본문 검색"
-              value={`${indexedFileCount}/${fileCount}`}
+              value={`${summary.indexed_file_count}/${summary.file_count}`}
             />
-            <SummaryTile icon={Link2} label="외부 링크" value={String(linkCount)} />
-            <SummaryTile icon={Paperclip} label="연결됨" value={String(linkedCount)} />
-            <SummaryTile icon={Database} label="사용량" value={fmtSize(usedBytes)} />
+            <SummaryTile icon={Link2} label="외부 링크" value={String(summary.link_count)} />
+            <SummaryTile icon={Paperclip} label="연결됨" value={String(summary.linked_count)} />
+            <SummaryTile icon={Database} label="사용량" value={fmtSize(summary.used_bytes)} />
           </aside>
         </div>
       )}
@@ -515,15 +607,20 @@ function SummaryTile({
 }
 
 function anchorLabel(
-  attachment: Attachment,
+  attachment: Attachment & {
+    work_package_subject?: string | null
+    document_title?: string | null
+  },
   workItems: Array<{ id: string; subject: string }>,
   documents: Array<{ id: string; title: string }>,
 ): string {
   if (attachment.work_package_id) {
+    if (attachment.work_package_subject) return `작업: ${attachment.work_package_subject}`
     const wp = workItems.find((w) => w.id === attachment.work_package_id)
     return wp ? `작업: ${wp.subject}` : '작업에 연결됨'
   }
   if (attachment.document_id) {
+    if (attachment.document_title) return `문서: ${attachment.document_title}`
     const doc = documents.find((d) => d.id === attachment.document_id)
     return doc ? `문서: ${doc.title}` : '문서에 연결됨'
   }

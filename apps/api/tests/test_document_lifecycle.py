@@ -151,6 +151,13 @@ async def test_private_links_and_attachments_do_not_leak(client, app, project, o
     assert attachment.status_code == 201
     broad = await client.get(f"/api/v1/projects/{project['id']}/attachments")
     assert attachment.json()["id"] not in {item["id"] for item in broad.json()["items"]}
+    directory = await client.get(
+        f"/api/v1/projects/{project['id']}/attachments/directory",
+        params={"q": "private.txt", "highlight_id": attachment.json()["id"]},
+    )
+    assert directory.json()["total"] == 0
+    assert directory.json()["summary"]["total"] == 0
+    assert directory.json()["highlight_item"] is None
     direct = await client.get(
         f"/api/v1/projects/{project['id']}/attachments?document_id={private['id']}"
     )

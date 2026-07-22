@@ -1,4 +1,10 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import {
+  keepPreviousData,
+  useInfiniteQuery,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query'
 
 import { ApiError, BASE_URL, api } from '@/lib/api'
 
@@ -26,6 +32,80 @@ export type Attachment = {
 }
 
 export type AttachmentList = { items: Attachment[]; total: number }
+
+export type AttachmentDirectoryItem = Attachment & {
+  work_package_subject: string | null
+  document_title: string | null
+}
+
+export type AttachmentDirectoryScope = 'all' | 'files' | 'links' | 'linked' | 'pending'
+
+export type AttachmentDirectorySummary = {
+  total: number
+  file_count: number
+  link_count: number
+  linked_count: number
+  indexed_file_count: number
+  pending_index_count: number
+  used_bytes: number
+}
+
+export type AttachmentDirectoryList = {
+  items: AttachmentDirectoryItem[]
+  total: number
+  summary: AttachmentDirectorySummary
+  next_cursor_created_at: string | null
+  next_cursor_id: string | null
+  highlight_item: AttachmentDirectoryItem | null
+}
+
+type AttachmentDirectoryCursor = {
+  createdAt: string
+  id: string
+}
+
+const ATTACHMENT_DIRECTORY_PAGE_SIZE = 50
+
+export function useAttachmentDirectory({
+  projectId,
+  q,
+  scope,
+  highlightId,
+}: {
+  projectId: string
+  q: string
+  scope: AttachmentDirectoryScope
+  highlightId: string | null
+}) {
+  return useInfiniteQuery({
+    queryKey: ['attachments', projectId, 'directory', { q, scope, highlightId }],
+    initialPageParam: null as AttachmentDirectoryCursor | null,
+    queryFn: ({ pageParam }) => {
+      const params = new URLSearchParams({
+        limit: String(ATTACHMENT_DIRECTORY_PAGE_SIZE),
+        scope,
+      })
+      if (q) params.set('q', q)
+      if (highlightId) params.set('highlight_id', highlightId)
+      if (pageParam) {
+        params.set('cursor_created_at', pageParam.createdAt)
+        params.set('cursor_id', pageParam.id)
+      }
+      return api<AttachmentDirectoryList>(
+        `/api/v1/projects/${projectId}/attachments/directory?${params.toString()}`,
+      )
+    },
+    getNextPageParam: (lastPage) =>
+      lastPage.next_cursor_created_at && lastPage.next_cursor_id
+        ? {
+            createdAt: lastPage.next_cursor_created_at,
+            id: lastPage.next_cursor_id,
+          }
+        : undefined,
+    placeholderData: keepPreviousData,
+    retry: false,
+  })
+}
 
 export type AttachmentSearchReindexResult = {
   processed: number
