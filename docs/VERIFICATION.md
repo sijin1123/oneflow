@@ -3229,3 +3229,14 @@ Chromium typed mock fixture에서 1440x960과 390x844 viewport를 사용했다. 
 - **증적**: `docs/screenshots/redevelopment/project-health-history-ui/{desktop,mobile}.png`과 README에 실제 Chromium 상태 이력 surface를 보존한다. E2E는 actor image 요청 1회와 decode width, immutable/fallback names, status/note/time, loading/error/retry와 mobile horizontal overflow를 검사한다.
 
 ---
+
+# UI-208 Intake Decision History Identity Avatars 검증 (2026-07-22)
+
+- **UI 변경**: Intake 큐의 판정 이력을 공통 `Avatar` 기반 compact timeline으로 재구성했다. 판정 당시 이름·시각을 상태 전이, 사유, 보류일보다 먼저 읽히도록 정렬하고, 저장 이미지가 없거나 읽기에 실패하면 같은 불변 이름의 initials fallback을 사용한다. 기존 지연 조회, 접기/펼치기, loading/error/retry/empty와 desktop/mobile 밀도는 유지한다.
+- **기능/API 반영**: migration `0120`은 Intake 판정 이력에 판정 시점 이름과 프로필 이미지 storage key/content type snapshot 및 live-key index를 추가하고 기존 이름을 backfill한다. 성공한 CAS 판정 transaction에서만 identity를 capture하며 목록은 mutable `users.display_name` join을 제거한다. event-scoped 이미지 GET은 `intake.triage` 권한자 또는 본인 제출 이력을 보는 현재 프로젝트 멤버에게 exact version만 `private, no-store`로 반환한다. 잘못된 project/item/history 결합, 타인 제출 이력, stale version과 missing blob은 404다.
+- **권한/보존**: 프로필 교체·삭제 및 계정 삭제 뒤에도 판정 당시 이름과 참조 blob을 보존하고 storage sweep live set에 포함한다. 계정 FK가 `NULL`이 된 이력도 snapshot identity를 유지한다. 현재 프로필 URL이나 공개 image endpoint를 과거 판정 이력에 재사용하지 않았다.
+- **이연 항목**: 없음. 이번 Intake history surface의 control은 모두 기존 query/mutation 또는 실제 이미지 응답에 연결돼 있으며 mock/dead control이나 장식용 avatar가 없다. 신규 환경변수, dependency 또는 Settings UI 변경도 없다.
+- **검증**: migration `0119 -> 0120 -> 0119 -> 0120`, constraint-name·Intake history focused API **7 PASS**, 전체 API **854 PASS**(기존 Alembic 경고 1건), Ruff/format **442 files**, OpenAPI generation/drift, typecheck, lint(기존 Fast Refresh warning 4건), production build(기존 large chunk warning), unit **108 PASS**, component **9 PASS**, focused E2E **1 PASS**, 최종 2-worker full E2E **354 PASS + opt-in visual QA 1 skip**, clean-room frontend **162**/backend **45**, npm/pip audit 0 vulnerabilities와 diff check가 PASS했다. 첫 full E2E의 기존 Quick Dock motion 시나리오는 병렬 부하에서 1회 흔들렸으나 단독 반복 **5/5 PASS**였다. 다음 full E2E가 드러낸 기존 문서 복원 테스트의 request/route-handler 관측 경쟁은 응답 완료 기준으로 안정화했고 해당 시나리오 반복 **5/5 PASS** 후 전체를 재실행해 완주했다.
+- **증적**: `docs/screenshots/redevelopment/intake-decision-history-ui/{desktop,mobile}.png`과 README에 실제 Chromium 판정 이력 surface를 보존한다. E2E는 지연 조회, actor image 요청·decode, 전이/사유/보류일/시각, cache 재사용과 390px horizontal overflow를 검사한다.
+
+---

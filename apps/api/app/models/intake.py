@@ -71,11 +71,22 @@ class IntakeDecisionHistory(Base):
             "status IN ('accepted', 'declined', 'snoozed', 'duplicate')",
             name="status_allowed",
         ),
+        CheckConstraint(
+            "(decided_by_profile_image_storage_key IS NULL "
+            "AND decided_by_profile_image_content_type IS NULL) OR "
+            "(decided_by_profile_image_storage_key IS NOT NULL "
+            "AND decided_by_profile_image_content_type IS NOT NULL)",
+            name="decided_by_image_metadata_complete",
+        ),
         Index(
             "ix_intake_decision_history_item_created",
             "intake_item_id",
             "created_at",
             "id",
+        ),
+        Index(
+            "ix_intake_decision_history_decided_by_image_key",
+            "decided_by_profile_image_storage_key",
         ),
     )
 
@@ -90,6 +101,17 @@ class IntakeDecisionHistory(Base):
     decided_by: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
+    decided_by_name_snapshot: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    decided_by_profile_image_storage_key: Mapped[str | None] = mapped_column(
+        String(80), nullable=True
+    )
+    decided_by_profile_image_content_type: Mapped[str | None] = mapped_column(
+        String(32), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.clock_timestamp()
     )
+
+    @property
+    def decided_by_name(self) -> str | None:
+        return self.decided_by_name_snapshot

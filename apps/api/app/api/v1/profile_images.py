@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.work_packages import require_wp_member
 from app.core.auth import get_current_user
-from app.core.authz import require_member
+from app.core.authz import member_has_permission, require_member
 from app.core.config import Settings, get_settings
 from app.db.session import get_session
 from app.models.activity import Activity
@@ -24,6 +24,7 @@ from app.models.comment import WorkPackageComment
 from app.models.document import DocumentActivity, DocumentRevision, ProjectDocument
 from app.models.document_comment import ProjectDocumentComment
 from app.models.initiative import Initiative, InitiativeActivity, InitiativeProject
+from app.models.intake import IntakeDecisionHistory, IntakeItem
 from app.models.member import ProjectMember
 from app.models.project_health_history import ProjectHealthHistory
 from app.models.user import User
@@ -201,6 +202,7 @@ async def _profile_image_is_referenced(session: AsyncSession, storage_key: str) 
         document_activity_reference,
         document_revision_reference,
         project_health_history_reference,
+        intake_decision_history_reference,
     ) = (
         await session.execute(
             select(
@@ -215,6 +217,9 @@ async def _profile_image_is_referenced(session: AsyncSession, storage_key: str) 
                 exists().where(
                     ProjectHealthHistory.changed_by_profile_image_storage_key == storage_key
                 ),
+                exists().where(
+                    IntakeDecisionHistory.decided_by_profile_image_storage_key == storage_key
+                ),
             )
         )
     ).one()
@@ -226,6 +231,7 @@ async def _profile_image_is_referenced(session: AsyncSession, storage_key: str) 
         or document_activity_reference
         or document_revision_reference
         or project_health_history_reference
+        or intake_decision_history_reference
     )
 
 
@@ -294,6 +300,43 @@ async def get_project_health_history_actor_profile_image(
         raise HTTPException(
             status_code=404,
             detail="project health history actor image is unavailable",
+        )
+    return await _stored_profile_image_response(
+        snapshot[0], snapshot[1], version, settings, cache_control="private, no-store"
+    )
+
+
+@router.get("/projects/{project_id}/intake/{item_id}/history/{history_id}/actor-image")
+async def get_intake_decision_history_actor_profile_image(
+    project_id: uuid.UUID,
+    item_id: uuid.UUID,
+    history_id: uuid.UUID,
+    version: uuid.UUID | None = None,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+    settings: Settings = Depends(get_settings),
+) -> Response:
+    await require_member(session, project_id, user)
+    can_triage = await member_has_permission(session, project_id, user.id, "intake.triage")
+    query = (
+        select(
+            IntakeDecisionHistory.decided_by_profile_image_storage_key,
+            IntakeDecisionHistory.decided_by_profile_image_content_type,
+        )
+        .join(IntakeItem, IntakeItem.id == IntakeDecisionHistory.intake_item_id)
+        .where(
+            IntakeDecisionHistory.id == history_id,
+            IntakeDecisionHistory.intake_item_id == item_id,
+            IntakeItem.project_id == project_id,
+        )
+    )
+    if not can_triage:
+        query = query.where(IntakeItem.submitted_by == user.id)
+    snapshot = (await session.execute(query)).one_or_none()
+    if snapshot is None or snapshot[0] is None or snapshot[1] is None:
+        raise HTTPException(
+            status_code=404,
+            detail="intake decision history actor image is unavailable",
         )
     return await _stored_profile_image_response(
         snapshot[0], snapshot[1], version, settings, cache_control="private, no-store"
