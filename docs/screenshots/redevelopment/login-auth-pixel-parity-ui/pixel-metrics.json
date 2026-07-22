@@ -1,0 +1,29 @@
+{
+  "reference": "apps/web/src/assets/generated/oneflow-login-origin-reference.png",
+  "baseline": "docs/screenshots/redevelopment/login-compact-origin-ui/desktop-1448x1086.png",
+  "current": "docs/screenshots/redevelopment/login-auth-pixel-parity-ui/desktop-1448x1086.png",
+  "viewport": {
+    "width": 1448,
+    "height": 1086
+  },
+  "metric": "RGB mean absolute error",
+  "baselineMae": {
+    "full": 1.311487,
+    "story": 0.012311,
+    "auth": 2.880005,
+    "heading": 12.82806,
+    "inputs": 3.837576,
+    "providers": 7.853701,
+    "footer": 2.504122
+  },
+  "currentMae": {
+    "full": 1.283062,
+    "story": 0.012177,
+    "auth": 2.817423,
+    "heading": 12.750221,
+    "inputs": 3.575763,
+    "providers": 7.60898,
+    "footer": 2.504122
+  },
+  "stableDesktopSha256": "530ac3459610128d6e6189f9c3482485c9b5296e1b3b5ba3099343545f3fb0fe"
+}
