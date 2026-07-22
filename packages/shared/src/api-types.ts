@@ -7951,6 +7951,21 @@ export interface components {
             /** Updated At */
             updated_at: string | null;
         };
+        /** ProjectDirectorySummary */
+        ProjectDirectorySummary: {
+            /** Active */
+            active: number;
+            /** Archived */
+            archived: number;
+            /** Initiatives */
+            initiatives: number;
+            /** Open Work Packages */
+            open_work_packages: number;
+            /** Overdue Work Packages */
+            overdue_work_packages: number;
+            /** Projects */
+            projects: number;
+        };
         /** ProjectHealthHistoryList */
         ProjectHealthHistoryList: {
             /** Items */
@@ -8004,6 +8019,7 @@ export interface components {
         ProjectList: {
             /** Items */
             items: components["schemas"]["ProjectListItem"][];
+            summary: components["schemas"]["ProjectDirectorySummary"];
             /** Total */
             total: number;
         };
@@ -16022,6 +16038,9 @@ export interface operations {
                 limit?: number;
                 offset?: number;
                 include_archived?: boolean;
+                q?: string | null;
+                sort_key?: "default" | "name" | "work_package_count" | "open_work_package_count" | "overdue_count" | "member_count" | "health";
+                sort_direction?: "asc" | "desc";
             };
             header?: {
                 authorization?: string | null;

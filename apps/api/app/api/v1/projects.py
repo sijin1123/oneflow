@@ -1,9 +1,10 @@
 import uuid
+from typing import Literal
 
 from anyio import CapacityLimiter, to_thread
 from fastapi import APIRouter, Depends, HTTPException, Query
 from PIL import Image, ImageSequence, UnidentifiedImageError
-from sqlalchemy import func, select, text
+from sqlalchemy import case, func, or_, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -25,6 +26,7 @@ from app.models.work_package import WP_CLOSED_STATUSES, WorkPackage
 from app.schemas.project import (
     ProjectCreate,
     ProjectCreateResponse,
+    ProjectDirectorySummary,
     ProjectHealthHistoryList,
     ProjectHealthHistoryRead,
     ProjectInitiativeRef,
@@ -96,21 +98,141 @@ async def list_projects(
     limit: int = Query(default=200, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
     include_archived: bool = Query(default=False),
+    q: str | None = Query(default=None, max_length=120),
+    sort_key: Literal[
+        "default",
+        "name",
+        "work_package_count",
+        "open_work_package_count",
+        "overdue_count",
+        "member_count",
+        "health",
+    ] = Query(default="default"),
+    sort_direction: Literal["asc", "desc"] = Query(default="asc"),
     session: AsyncSession = Depends(get_session),
     user: User = Depends(get_current_user),
 ) -> ProjectList:
     base = select(Project).where(Project.id.in_(_member_project_ids(user)))
     if not include_archived:
         base = base.where(Project.archived_at.is_(None))
-    total = (await session.execute(select(func.count()).select_from(base.subquery()))).scalar_one()
-    rows = (
-        (
-            await session.execute(
-                base.order_by(Project.created_at.asc(), Project.id.asc())
-                .limit(limit)
-                .offset(offset)
+
+    # Directory summary intentionally covers the complete authorized archive
+    # scope before text filtering, matching the persistent header semantics.
+    scope = base.subquery()
+    scope_ids = select(scope.c.id)
+    project_summary = (
+        await session.execute(
+            select(
+                func.count(scope.c.id),
+                func.count(scope.c.id).filter(scope.c.archived_at.is_(None)),
+                func.count(scope.c.id).filter(scope.c.archived_at.is_not(None)),
             )
         )
+    ).one()
+    today_utc = utc_today()
+    open_filter = WorkPackage.status.notin_(WP_CLOSED_STATUSES)
+    work_summary = (
+        await session.execute(
+            select(
+                func.count().filter(open_filter),
+                func.count().filter(open_filter, WorkPackage.due_date < today_utc),
+            ).where(WorkPackage.project_id.in_(scope_ids))
+        )
+    ).one()
+    initiatives_enabled = await feature_enabled(session, INITIATIVES_FEATURE)
+    initiative_count = 0
+    if initiatives_enabled:
+        initiative_count = (
+            await session.execute(
+                select(func.count()).where(InitiativeProject.project_id.in_(scope_ids))
+            )
+        ).scalar_one()
+    summary = ProjectDirectorySummary(
+        projects=project_summary[0],
+        active=project_summary[1],
+        archived=project_summary[2],
+        open_work_packages=work_summary[0],
+        overdue_work_packages=work_summary[1],
+        initiatives=initiative_count,
+    )
+
+    needle = q.strip() if q else ""
+    if needle:
+        matches = or_(
+            Project.key.icontains(needle, autoescape=True),
+            Project.name.icontains(needle, autoescape=True),
+            Project.description.icontains(needle, autoescape=True),
+        )
+        if initiatives_enabled:
+            matching_initiative_projects = (
+                select(InitiativeProject.project_id)
+                .join(Initiative, InitiativeProject.initiative_id == Initiative.id)
+                .where(Initiative.name.icontains(needle, autoescape=True))
+            )
+            matches = or_(matches, Project.id.in_(matching_initiative_projects))
+        base = base.where(matches)
+
+    total = (await session.execute(select(func.count()).select_from(base.subquery()))).scalar_one()
+
+    name_order = func.lower(Project.name)
+    if sort_key == "default":
+        ordering = (Project.created_at.asc(), Project.id.asc())
+    elif sort_key == "name":
+        primary = name_order.desc() if sort_direction == "desc" else name_order.asc()
+        ordering = (primary, Project.id.asc())
+    elif sort_key == "health":
+        health_rank = case(
+            (Project.health == "on_track", 0),
+            (Project.health == "at_risk", 1),
+            (Project.health == "off_track", 2),
+            else_=3,
+        )
+        primary = health_rank.desc() if sort_direction == "desc" else health_rank.asc()
+        ordering = (Project.health.is_(None).asc(), primary, name_order.asc(), Project.id.asc())
+    else:
+        work_total = (
+            select(func.count())
+            .select_from(WorkPackage)
+            .where(WorkPackage.project_id == Project.id)
+            .correlate(Project)
+            .scalar_subquery()
+        )
+        work_open = (
+            select(func.count())
+            .select_from(WorkPackage)
+            .where(WorkPackage.project_id == Project.id, open_filter)
+            .correlate(Project)
+            .scalar_subquery()
+        )
+        work_overdue = (
+            select(func.count())
+            .select_from(WorkPackage)
+            .where(
+                WorkPackage.project_id == Project.id,
+                open_filter,
+                WorkPackage.due_date < today_utc,
+            )
+            .correlate(Project)
+            .scalar_subquery()
+        )
+        members = (
+            select(func.count())
+            .select_from(ProjectMember)
+            .where(ProjectMember.project_id == Project.id)
+            .correlate(Project)
+            .scalar_subquery()
+        )
+        metric = {
+            "work_package_count": work_total,
+            "open_work_package_count": work_open,
+            "overdue_count": work_overdue,
+            "member_count": members,
+        }[sort_key]
+        primary = metric.desc() if sort_direction == "desc" else metric.asc()
+        ordering = (primary, name_order.asc(), Project.id.asc())
+
+    rows = (
+        (await session.execute(base.order_by(*ordering).limit(limit).offset(offset)))
         .scalars()
         .all()
     )
@@ -122,8 +244,6 @@ async def list_projects(
         # Rollups share the visible scope by construction (project_id IN the
         # returned ids). utc_today binds from the API layer — never the DB
         # session timezone (v22.1 R1-②).
-        today_utc = utc_today()
-        open_filter = WorkPackage.status.notin_(WP_CLOSED_STATUSES)
         wp_rows = (
             await session.execute(
                 select(
@@ -161,7 +281,7 @@ async def list_projects(
     # many-to-many never joins into the row/count queries (no distortion).
     # Connection implies visibility (every listed project is the caller's).
     ini_agg: dict = {}
-    if ids and await feature_enabled(session, INITIATIVES_FEATURE):
+    if ids and initiatives_enabled:
         ini_rows = (
             await session.execute(
                 select(InitiativeProject.project_id, Initiative.id, Initiative.name)
@@ -188,7 +308,7 @@ async def list_projects(
         item.initiatives = connected[:INITIATIVE_ROLLUP_CAP]
         item.initiative_overflow = max(0, len(connected) - INITIATIVE_ROLLUP_CAP)
         items.append(item)
-    return ProjectList(items=items, total=total)
+    return ProjectList(items=items, total=total, summary=summary)
 
 
 @router.post("", response_model=ProjectCreateResponse, status_code=201)

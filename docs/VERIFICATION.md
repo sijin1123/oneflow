@@ -3284,3 +3284,13 @@ Chromium typed mock fixture에서 1440x960과 390x844 viewport를 사용했다. 
 - **증적**: `docs/screenshots/redevelopment/inbox-pagination-ui/{desktop,mobile}.png`과 README에 실제 Chromium 초기 페이지, 추가 페이지 재시도, 필터링된 mobile Inbox를 보존한다.
 
 ---
+
+# UI-213 Project Directory Server Pagination 검증 (2026-07-22)
+
+- **UI 변경**: `/projects` 디렉터리를 URL 기반 검색(`q`)·보관 범위(`archived=1`)와 서버 정렬에 연결하고, `loaded / total`, 더 불러오기, 추가 페이지 loading/error/retry를 같은 surface에 통합했다. 필터 전환 중 기존 결과를 유지하되 갱신 실패를 숨기지 않으며, 검색 입력은 API의 120자 계약을 공유한다. 데스크톱 카드와 `390x844` 모바일 생성·템플릿 선택 흐름에서 가로 넘침이 없다.
+- **기능/API 반영**: `GET /api/v1/projects`에 `q`, `sort_key`, `sort_direction`을 추가하고 권한·보관 범위 안에서 key/name/description/initiative를 검색한다. 전체 authorized scope의 프로젝트·활성·보관·열린 작업·기한 초과·initiative 요약을 페이지와 독립적으로 반환하며, rollup/member/health 정렬은 결정적 tie-breaker를 사용한다. Sidebar, 템플릿, 전역 project option은 200건 기본 응답 뒤 남은 페이지를 500건 단위로 모두 읽어 기존 전역 선택지가 조용히 잘리지 않게 했다. 신규 DB migration, 환경변수, dependency 또는 Settings UI 변경은 없다.
+- **이연 항목**: 없음. 검색, 정렬, 보관 범위, 다음 페이지 실패·재시도와 생성 템플릿 option은 모두 실제 API/query 또는 기존 mutation에 연결되며 mock/dead control은 없다.
+- **검증**: 검색 literal escape·summary·정렬·offset을 포함한 API focused **6 PASS**, 전체 API **859 PASS**(기존 Alembic warning 1건), Ruff PASS, OpenAPI generation/drift PASS, typecheck PASS, lint PASS(기존 Fast Refresh warning 4건), production build PASS(기존 large chunk warning), unit **108 PASS**, component **9 PASS**, 프로젝트 디렉터리 focused E2E **9 PASS**, 신규 pagination 시나리오 재검증 **1 PASS**다. CI 모드 전체 E2E는 **356 PASS + opt-in visual QA 1 skip**로 완주했고 기존 DHTMLX timeline 2건만 병렬 부하에서 첫 시도 후 재시도 통과했다. 두 시나리오는 앞선 단독 반복에서도 통과했다. Clean-room frontend **161**/backend **45**, npm audit 0 vulnerabilities와 diff check가 PASS했다.
+- **증적**: `docs/screenshots/redevelopment/project-directory-pagination-ui/{desktop,mobile}.png`과 README에 실제 Chromium 초기 2/4 페이지 상태와 URL 검색·보관·생성 흐름을 보존한다.
+
+---

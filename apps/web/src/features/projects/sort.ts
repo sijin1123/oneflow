@@ -1,6 +1,6 @@
-/* Client-side project list sorting (Pass 47 PR-BM). The list API returns
-   every visible project (no pagination), so sorting is a display concern —
-   server sorting is a redesign for when pagination lands (recorded). */
+/* Pure comparator retained for preference/unit coverage. The paginated
+   directory delegates production ordering to the API so page boundaries stay
+   deterministic. */
 
 import type { ProjectHealth, ProjectListItem } from './types'
 
