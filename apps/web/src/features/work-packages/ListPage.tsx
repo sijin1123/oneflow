@@ -342,7 +342,7 @@ export function ListPage() {
       <section aria-label="작업 화면 제어" className="border-b border-of-border bg-of-surface">
         <div className="flex min-w-0 flex-col gap-2 px-4 py-2 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex min-w-0 items-center gap-2">
-            <h1 className="truncate text-sm font-semibold">Work Packages</h1>
+            <h1 className="truncate text-sm font-semibold">Work items</h1>
             {data ? <Badge variant="outline">{data.total}</Badge> : null}
           </div>
 

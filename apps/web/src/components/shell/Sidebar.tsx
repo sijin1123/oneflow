@@ -179,7 +179,7 @@ export const projectNavSections: Array<{ label: string; items: ProjectNavItem[] 
   {
     label: '작업',
     items: [
-      { path: 'work-packages', label: 'Work Packages', icon: List },
+      { path: 'work-packages', label: 'Work items', icon: List },
       { path: 'board', label: 'Board', icon: SquareKanban },
       { path: 'backlog', label: 'Backlog', icon: ClipboardList },
       { path: 'tree', label: 'Hierarchy', icon: ListTree },
