@@ -16043,30 +16043,34 @@ test('문서 코멘트 멘션은 member picker와 Document Inbox deep link를 �
     fullPage: true,
   })
 
-  await page.route('**/api/v1/me/notifications', (route) =>
-    route.fulfill({
-      json: {
-        items: [
-          {
-            id: 'document-notification',
-            kind: 'document_mention',
-            project_id: project.id,
-            initiative_id: null,
-            document_id: 'd1',
-            work_package_id: null,
-            intake_item_id: null,
-            work_package_subject: null,
-            initiative_name: null,
-            document_title: '멘션 검토 문서',
-            actor_name: 'Alex Kim',
-            read: false,
-            created_at: '2026-07-16T00:00:00Z',
-          },
-        ],
-        total: 1,
-        unread: 1,
+  const documentInbox = {
+    items: [
+      {
+        id: 'document-notification',
+        kind: 'document_mention',
+        project_id: project.id,
+        initiative_id: null,
+        document_id: 'd1',
+        work_package_id: null,
+        intake_item_id: null,
+        work_package_subject: null,
+        initiative_name: null,
+        document_title: '멘션 검토 문서',
+        actor_name: 'Alex Kim',
+        read: false,
+        created_at: '2026-07-16T00:00:00Z',
       },
-    }),
+    ],
+    total: 1,
+    unread: 1,
+    next_cursor_created_at: null,
+    next_cursor_id: null,
+  }
+  await page.route('**/api/v1/me/notifications', (route) =>
+    route.fulfill({ json: documentInbox }),
+  )
+  await page.route('**/api/v1/me/notifications?**', (route) =>
+    route.fulfill({ json: documentInbox }),
   )
   await page.setViewportSize({ width: 390, height: 844 })
   await page.goto('/inbox')
