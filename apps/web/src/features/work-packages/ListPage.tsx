@@ -646,7 +646,11 @@ export function ListPage() {
         <EmptyState
           title="조건에 맞는 작업이 없습니다"
           hint="검색이나 필터를 조정해 다른 작업을 찾아보세요."
-        />
+        >
+          <Button size="sm" variant="outline" aria-label="현재 보기 초기화" onClick={clearViewControls}>
+            <RotateCcw size={13} /> 현재 보기 초기화
+          </Button>
+        </EmptyState>
       ) : data.total === 0 ? (
         <EmptyState
           title="아직 작업이 없습니다"
