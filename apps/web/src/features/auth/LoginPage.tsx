@@ -5,6 +5,7 @@ import {
   CheckCircle2,
   ChevronDown,
   Eye,
+  EyeOff,
   Globe2,
   Loader2,
   LockKeyhole,
@@ -543,9 +544,7 @@ export function LoginPage() {
                   {showPassword ? (
                     <Eye aria-hidden="true" />
                   ) : (
-                    <span className="of-login-password-hidden-icon" aria-hidden="true">
-                      <Eye />
-                    </span>
+                    <EyeOff className="of-login-password-hidden-icon" aria-hidden="true" />
                   )}
                 </button>
               </span>
