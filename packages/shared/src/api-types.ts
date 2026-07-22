@@ -2146,6 +2146,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{project_id}/attachments/directory": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Attachment Directory
+         * @description Bounded Files-directory discovery over the complete authorized scope.
+         *
+         *     Work-package and document detail consumers deliberately keep using the
+         *     legacy unpaged endpoint; paging this directory must never hide an anchored
+         *     attachment from its owning detail surface.
+         */
+        get: operations["list_attachment_directory_api_v1_projects__project_id__attachments_directory_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{project_id}/attachments/search-index/rebuild": {
         parameters: {
             query?: never;
@@ -4539,6 +4563,84 @@ export interface components {
             url: string;
             /** Work Package Id */
             work_package_id?: string | null;
+        };
+        /** AttachmentDirectoryItem */
+        AttachmentDirectoryItem: {
+            /** Content Type */
+            content_type: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Document Id */
+            document_id?: string | null;
+            /** Document Title */
+            document_title?: string | null;
+            /** Filename */
+            filename: string;
+            /**
+             * Has File
+             * @default false
+             */
+            has_file: boolean;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            /**
+             * Search Index Status
+             * @enum {string}
+             */
+            search_index_status: "not_applicable" | "pending" | "indexed" | "unsupported" | "too_large" | "invalid_text" | "missing_blob";
+            /** Search Indexed At */
+            search_indexed_at: string | null;
+            /** Size Bytes */
+            size_bytes: number | null;
+            /** Uploaded By */
+            uploaded_by: string | null;
+            /** Url */
+            url: string;
+            /** Work Package Id */
+            work_package_id?: string | null;
+            /** Work Package Subject */
+            work_package_subject?: string | null;
+        };
+        /** AttachmentDirectoryList */
+        AttachmentDirectoryList: {
+            highlight_item?: components["schemas"]["AttachmentDirectoryItem"] | null;
+            /** Items */
+            items: components["schemas"]["AttachmentDirectoryItem"][];
+            /** Next Cursor Created At */
+            next_cursor_created_at?: string | null;
+            /** Next Cursor Id */
+            next_cursor_id?: string | null;
+            summary: components["schemas"]["AttachmentDirectorySummary"];
+            /** Total */
+            total: number;
+        };
+        /** AttachmentDirectorySummary */
+        AttachmentDirectorySummary: {
+            /** File Count */
+            file_count: number;
+            /** Indexed File Count */
+            indexed_file_count: number;
+            /** Link Count */
+            link_count: number;
+            /** Linked Count */
+            linked_count: number;
+            /** Pending Index Count */
+            pending_index_count: number;
+            /** Total */
+            total: number;
+            /** Used Bytes */
+            used_bytes: number;
         };
         /** AttachmentList */
         AttachmentList: {
@@ -16345,6 +16447,48 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AttachmentRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_attachment_directory_api_v1_projects__project_id__attachments_directory_get: {
+        parameters: {
+            query?: {
+                q?: string;
+                scope?: "all" | "files" | "links" | "linked" | "pending";
+                limit?: number;
+                cursor_created_at?: string | null;
+                cursor_id?: string | null;
+                highlight_id?: string | null;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AttachmentDirectoryList"];
                 };
             };
             /** @description Validation Error */

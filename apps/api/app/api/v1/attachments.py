@@ -9,11 +9,13 @@ import contextlib
 import re
 import unicodedata
 import uuid
+from datetime import datetime
+from typing import Literal
 from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from fastapi.responses import FileResponse
-from sqlalchemy import func, or_, select, text
+from sqlalchemy import and_, func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import get_current_user
@@ -33,6 +35,9 @@ from app.models.user import User
 from app.models.work_package import WorkPackage
 from app.schemas.attachment import (
     AttachmentCreate,
+    AttachmentDirectoryItem,
+    AttachmentDirectoryList,
+    AttachmentDirectorySummary,
     AttachmentList,
     AttachmentRead,
     AttachmentSearchReindexResult,
@@ -66,6 +71,18 @@ def _read(att: Attachment) -> AttachmentRead:
     read = AttachmentRead.model_validate(att)
     read.has_file = att.storage_key is not None
     return read
+
+
+def _directory_read(
+    att: Attachment,
+    work_package_subject: str | None,
+    document_title: str | None,
+) -> AttachmentDirectoryItem:
+    return AttachmentDirectoryItem(
+        **_read(att).model_dump(),
+        work_package_subject=work_package_subject,
+        document_title=document_title,
+    )
 
 
 def _visible_attachment_clause(
@@ -172,6 +189,167 @@ async def list_attachments(
         .all()
     )
     return AttachmentList(items=[_read(r) for r in rows], total=len(rows))
+
+
+@router.get(
+    "/projects/{project_id}/attachments/directory",
+    response_model=AttachmentDirectoryList,
+)
+async def list_attachment_directory(
+    project_id: uuid.UUID,
+    q: str = Query(default="", max_length=200),
+    scope: Literal["all", "files", "links", "linked", "pending"] = Query(default="all"),
+    limit: int = Query(default=50, ge=1, le=100),
+    cursor_created_at: datetime | None = Query(default=None),
+    cursor_id: uuid.UUID | None = Query(default=None),
+    highlight_id: uuid.UUID | None = Query(default=None),
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+) -> AttachmentDirectoryList:
+    """Bounded Files-directory discovery over the complete authorized scope.
+
+    Work-package and document detail consumers deliberately keep using the
+    legacy unpaged endpoint; paging this directory must never hide an anchored
+    attachment from its owning detail surface.
+    """
+    await require_member(session, project_id, user)
+    if (cursor_created_at is None) != (cursor_id is None):
+        raise HTTPException(
+            status_code=422,
+            detail="cursor_created_at and cursor_id must be provided together",
+        )
+
+    wiki_is_enabled = await feature_enabled(session)
+    visible = _visible_attachment_clause(
+        project_id,
+        user.id,
+        wiki_enabled=wiki_is_enabled,
+    )
+    authorized_conditions = [Attachment.project_id == project_id, visible]
+
+    aggregate = (
+        await session.execute(
+            select(
+                func.count(Attachment.id),
+                func.count(Attachment.id).filter(Attachment.storage_key.is_not(None)),
+                func.count(Attachment.id).filter(Attachment.storage_key.is_(None)),
+                func.count(Attachment.id).filter(
+                    or_(
+                        Attachment.work_package_id.is_not(None),
+                        Attachment.document_id.is_not(None),
+                    )
+                ),
+                func.count(Attachment.id).filter(
+                    Attachment.storage_key.is_not(None),
+                    Attachment.search_index_status == "indexed",
+                ),
+                func.count(Attachment.id).filter(
+                    Attachment.storage_key.is_not(None),
+                    Attachment.search_index_status == "pending",
+                ),
+                func.coalesce(
+                    func.sum(Attachment.size_bytes).filter(Attachment.storage_key.is_not(None)),
+                    0,
+                ),
+            ).where(*authorized_conditions)
+        )
+    ).one()
+    summary = AttachmentDirectorySummary(
+        total=aggregate[0],
+        file_count=aggregate[1],
+        link_count=aggregate[2],
+        linked_count=aggregate[3],
+        indexed_file_count=aggregate[4],
+        pending_index_count=aggregate[5],
+        used_bytes=aggregate[6],
+    )
+
+    filtered_conditions = list(authorized_conditions)
+    needle = q.strip()
+    if needle:
+        matching_work_packages = select(WorkPackage.id).where(
+            WorkPackage.project_id == project_id,
+            WorkPackage.subject.icontains(needle, autoescape=True),
+        )
+        matching_documents = select(ProjectDocument.id).where(
+            ProjectDocument.project_id == project_id,
+            ProjectDocument.title.icontains(needle, autoescape=True),
+        )
+        filtered_conditions.append(
+            or_(
+                Attachment.filename.icontains(needle, autoescape=True),
+                Attachment.work_package_id.in_(matching_work_packages),
+                Attachment.document_id.in_(matching_documents),
+            )
+        )
+    if scope == "files":
+        filtered_conditions.append(Attachment.storage_key.is_not(None))
+    elif scope == "links":
+        filtered_conditions.append(Attachment.storage_key.is_(None))
+    elif scope == "linked":
+        filtered_conditions.append(
+            or_(
+                Attachment.work_package_id.is_not(None),
+                Attachment.document_id.is_not(None),
+            )
+        )
+    elif scope == "pending":
+        filtered_conditions.extend(
+            [
+                Attachment.storage_key.is_not(None),
+                Attachment.search_index_status == "pending",
+            ]
+        )
+
+    total = (
+        await session.execute(select(func.count(Attachment.id)).where(*filtered_conditions))
+    ).scalar_one()
+    page_conditions = list(filtered_conditions)
+    if cursor_created_at is not None and cursor_id is not None:
+        page_conditions.append(
+            or_(
+                Attachment.created_at < cursor_created_at,
+                and_(
+                    Attachment.created_at == cursor_created_at,
+                    Attachment.id > cursor_id,
+                ),
+            )
+        )
+    raw_rows = (
+        await session.execute(
+            select(Attachment, WorkPackage.subject, ProjectDocument.title)
+            .outerjoin(WorkPackage, WorkPackage.id == Attachment.work_package_id)
+            .outerjoin(ProjectDocument, ProjectDocument.id == Attachment.document_id)
+            .where(*page_conditions)
+            .order_by(Attachment.created_at.desc(), Attachment.id.asc())
+            .limit(limit + 1)
+        )
+    ).all()
+    has_more = len(raw_rows) > limit
+    rows = raw_rows[:limit]
+    cursor_attachment = rows[-1][0] if has_more else None
+
+    highlight_item = None
+    if highlight_id is not None and cursor_created_at is None:
+        highlighted = (
+            await session.execute(
+                select(Attachment, WorkPackage.subject, ProjectDocument.title)
+                .outerjoin(WorkPackage, WorkPackage.id == Attachment.work_package_id)
+                .outerjoin(ProjectDocument, ProjectDocument.id == Attachment.document_id)
+                .where(*authorized_conditions, Attachment.id == highlight_id)
+            )
+        ).one_or_none()
+        if highlighted is not None and all(row[0].id != highlighted[0].id for row in rows):
+            highlight_item = _directory_read(*highlighted)
+
+    return AttachmentDirectoryList(
+        items=[_directory_read(*row) for row in rows],
+        total=total,
+        summary=summary,
+        next_cursor_created_at=cursor_attachment.created_at if cursor_attachment else None,
+        next_cursor_id=cursor_attachment.id if cursor_attachment else None,
+        highlight_item=highlight_item,
+    )
 
 
 @router.post("/projects/{project_id}/attachments", response_model=AttachmentRead, status_code=201)

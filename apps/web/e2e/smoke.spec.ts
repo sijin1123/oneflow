@@ -38,6 +38,10 @@ import type { WorkspaceProjectPhaseDefinitions } from '../src/features/workspace
 import type { MyActivityList, MyWorkItemList } from '../src/features/my-work/api'
 import type { WorkspaceQuickLink } from '../src/features/my-work/quickLinksApi'
 import type {
+  AttachmentDirectoryItem,
+  AttachmentDirectoryList,
+} from '../src/features/attachments/api'
+import type {
   ProjectRole,
   ProjectRoleEvent,
 } from '../src/features/project-roles/contract'
@@ -119,6 +123,48 @@ const projectRollups = {
   initiative_overflow: 0,
 }
 const projects: ProjectList = { items: [{ ...project, ...projectRollups }], total: 1 }
+
+type AttachmentDirectoryFixture = Partial<AttachmentDirectoryItem> &
+  Pick<
+    AttachmentDirectoryItem,
+    'id' | 'project_id' | 'filename' | 'url' | 'has_file' | 'created_at'
+  >
+
+function attachmentDirectory(
+  fixtures: AttachmentDirectoryFixture[],
+  options: Partial<AttachmentDirectoryList> = {},
+): AttachmentDirectoryList {
+  const items = fixtures.map((item) => ({
+    work_package_id: null,
+    document_id: null,
+    work_package_subject: null,
+    document_title: null,
+    content_type: null,
+    size_bytes: null,
+    search_index_status: item.has_file ? ('pending' as const) : ('not_applicable' as const),
+    search_indexed_at: null,
+    uploaded_by: null,
+    ...item,
+  }))
+  const files = items.filter((item) => item.has_file)
+  return {
+    items,
+    total: items.length,
+    summary: {
+      total: items.length,
+      file_count: files.length,
+      link_count: items.length - files.length,
+      linked_count: items.filter((item) => item.work_package_id || item.document_id).length,
+      indexed_file_count: files.filter((item) => item.search_index_status === 'indexed').length,
+      pending_index_count: files.filter((item) => item.search_index_status === 'pending').length,
+      used_bytes: files.reduce((total, item) => total + (item.size_bytes ?? 0), 0),
+    },
+    next_cursor_created_at: null,
+    next_cursor_id: null,
+    highlight_item: null,
+    ...options,
+  }
+}
 
 function projectListItem(
   id: string,
@@ -815,7 +861,11 @@ async function mockApi(page: Page, opts: { conflictOnPatch?: boolean } = {}) {
   )
   // The drawer attachments section reads anchored files.
   await page.route('**/api/v1/projects/*/attachments**', (route) =>
-    route.fulfill({ json: { items: [], total: 0 } }),
+    route.fulfill({
+      json: new URL(route.request().url()).pathname.endsWith('/attachments/directory')
+        ? attachmentDirectory([])
+        : { items: [], total: 0 },
+    }),
   )
   // The intake page reads the queue.
   await page.route('**/api/v1/projects/*/intake', (route) =>
@@ -1978,13 +2028,11 @@ test('사이드바 너비와 프로젝트 탐색 모드는 조절·저장되고 
 
   const separator = page.getByRole('separator', { name: '사이드바 너비 조절' })
   await expect(separator).toHaveAttribute('aria-valuenow', '248')
-  await separator.focus()
-  await page.keyboard.press('ArrowRight')
+  await separator.press('ArrowRight')
   await expect(separator).toHaveAttribute('aria-valuenow', '256')
-  await page.keyboard.press('End')
+  await separator.press('End')
   await expect(separator).toHaveAttribute('aria-valuenow', '420')
-  await separator.focus()
-  await page.keyboard.press('Home')
+  await separator.press('Home')
   await expect(separator).toHaveAttribute('aria-valuenow', '220')
   await page.waitForTimeout(250)
 
@@ -2442,8 +2490,26 @@ test('Quick Dock은 phase 시작 icon 전환과 실제 높이 fold를 같은 tim
     for (const animation of element.getAnimations({ subtree: true })) animation.finish()
   })
   await expect(dock).toHaveAttribute('data-phase', 'open')
-  await dock.getByRole('button', { name: '빠른 도구 닫기' }).click()
-  await expect(dock.getByTestId('quick-dock-actions')).toHaveCSS('animation-name', 'of-dock-actions-exit')
+  const defaultClosingMotion = await dock.evaluate(async (element) => {
+    element.querySelector<HTMLButtonElement>('[data-testid="quick-dock-toggle"]')!.click()
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+    const phaseAnimations = element.getAnimations({ subtree: true })
+      .filter((animation) => animation.id.startsWith('of-dock-phase-closing-'))
+    for (const animation of phaseAnimations) animation.pause()
+    const actions = element.querySelector<HTMLElement>('[data-testid="quick-dock-actions"]')!
+    return {
+      phase: element.getAttribute('data-phase'),
+      actionAnimationName: getComputedStyle(actions).animationName,
+      actionAnimationDuration: getComputedStyle(actions).animationDuration,
+      phaseAnimationCount: phaseAnimations.length,
+    }
+  })
+  expect(defaultClosingMotion).toEqual({
+    phase: 'closing',
+    actionAnimationName: 'of-dock-actions-exit',
+    actionAnimationDuration: '0.3s',
+    phaseAnimationCount: 3,
+  })
   await dock.evaluate((element) => {
     for (const animation of element.getAnimations({ subtree: true })) animation.finish()
   })
@@ -11625,11 +11691,11 @@ test('파일 업로드가 raw body POST로 나가고 다운로드 링크가 생�
       },
     })
   })
-  await page.route(`**/api/v1/projects/${project.id}/attachments`, (route) =>
+  await page.route(`**/api/v1/projects/${project.id}/attachments/directory**`, (route) =>
     route.fulfill({
-      json: uploaded
-        ? {
-            items: [
+      json: attachmentDirectory(
+        uploaded
+          ? [
               {
                 id: 'att-up',
                 project_id: project.id,
@@ -11641,10 +11707,9 @@ test('파일 업로드가 raw body POST로 나가고 다운로드 링크가 생�
                 uploaded_by: 'u-dev',
                 created_at: '2026-07-07T00:00:00Z',
               },
-            ],
-            total: 1,
-          }
-        : { items: [], total: 0 },
+            ]
+          : [],
+      ),
     }),
   )
 
@@ -13408,28 +13473,25 @@ test('전체 검색이 그룹 결과를 보여주고 문서로 이동한다', as
   await page.route('**/api/v1/documents/d-77/work-package-links', (route) =>
     route.fulfill({ json: { items: [], total: 0 } }),
   )
-  await page.route(`**/api/v1/projects/${project.id}/attachments**`, (route) =>
+  await page.route(`**/api/v1/projects/${project.id}/attachments/directory**`, (route) =>
     route.fulfill({
-      json: {
-        items: [
-          {
-            id: 'file-77',
-            project_id: project.id,
-            work_package_id: null,
-            document_id: null,
-            filename: '배포 체크리스트.txt',
-            content_type: 'text/plain',
-            size_bytes: 128,
-            url: 'oneflow://attachments/file-77',
-            has_file: true,
-            search_index_status: 'indexed',
-            search_indexed_at: '2026-07-16T00:00:00Z',
-            uploaded_by: 'u-dev',
-            created_at: '2026-07-16T00:00:00Z',
-          },
-        ],
-        total: 1,
-      },
+      json: attachmentDirectory([
+        {
+          id: 'file-77',
+          project_id: project.id,
+          work_package_id: null,
+          document_id: null,
+          filename: '배포 체크리스트.txt',
+          content_type: 'text/plain',
+          size_bytes: 128,
+          url: 'oneflow://attachments/file-77',
+          has_file: true,
+          search_index_status: 'indexed',
+          search_indexed_at: '2026-07-16T00:00:00Z',
+          uploaded_by: 'u-dev',
+          created_at: '2026-07-16T00:00:00Z',
+        },
+      ]),
     }),
   )
 
@@ -13564,10 +13626,9 @@ test('파일 표면에서 legacy 본문 인덱스를 실제로 준비하고 상�
       })
     },
   )
-  await page.route(`**/api/v1/projects/${project.id}/attachments`, (route) =>
+  await page.route(`**/api/v1/projects/${project.id}/attachments/directory**`, (route) =>
     route.fulfill({
-      json: {
-        items: [
+      json: attachmentDirectory([
           {
             id: 'legacy-file',
             project_id: project.id,
@@ -13583,9 +13644,7 @@ test('파일 표면에서 legacy 본문 인덱스를 실제로 준비하고 상�
             uploaded_by: 'u-dev',
             created_at: '2026-07-01T00:00:00Z',
           },
-        ],
-        total: 1,
-      },
+        ]),
     }),
   )
 
@@ -13602,7 +13661,7 @@ test('파일 표면에서 legacy 본문 인덱스를 실제로 준비하고 상�
   await page.getByRole('button', { name: '본문 검색 준비 1건' }).click()
   await rebuild
 
-  await expect(page.getByRole('status')).toHaveText('1건 확인 · 1건 검색 가능')
+  await expect(page.getByText('1건 확인 · 1건 검색 가능', { exact: true })).toBeVisible()
   await expect(page.getByText('검색 가능', { exact: true })).toBeVisible()
   await expect(page.getByRole('button', { name: '본문 검색 준비 1건' })).toHaveCount(0)
   await expect
@@ -13814,10 +13873,9 @@ test('커맨드 팔레트 파일 결과는 실제 Files 표면으로 이동한�
       },
     }),
   )
-  await page.route(`**/api/v1/projects/${project.id}/attachments**`, (route) =>
+  await page.route(`**/api/v1/projects/${project.id}/attachments/directory**`, (route) =>
     route.fulfill({
-      json: {
-        items: [
+      json: attachmentDirectory([
           {
             id: 'palette-file',
             project_id: project.id,
@@ -13833,9 +13891,7 @@ test('커맨드 팔레트 파일 결과는 실제 Files 표면으로 이동한�
             uploaded_by: 'u-dev',
             created_at: '2026-07-16T00:00:00Z',
           },
-        ],
-        total: 1,
-      },
+        ]),
     }),
   )
   await page.goto('/projects')
@@ -14614,7 +14670,13 @@ test('상세 헤더 일정은 409·권한·검증·서버 오류에서 서버값
     await trigger.click()
     const picker = page.getByRole('dialog', { name: '시작일 선택' })
     await picker.getByLabel('시작일 입력').fill('2026-07-02')
+    const patchResponse = page.waitForResponse(
+      (response) =>
+        response.request().method() === 'PATCH' &&
+        response.url().endsWith(`/work-packages/${wpA.id}`),
+    )
     await picker.getByRole('button', { name: '적용' }).click()
+    await patchResponse
   }
 
   await changeStart()
@@ -17268,10 +17330,9 @@ test('후속 회의를 만들면 아젠다·미결 항목을 들고 새 회의�
 test('뷰어 파일 페이지는 업로드·링크·삭제가 없고 안내 1개만 보인다', async ({ page }) => {
   await mockApi(page)
   await asViewer(page)
-  await page.route(`**/api/v1/projects/${project.id}/attachments`, (route) =>
+  await page.route(`**/api/v1/projects/${project.id}/attachments/directory**`, (route) =>
     route.fulfill({
-      json: {
-        items: [
+      json: attachmentDirectory([
           {
             id: 'f1',
             project_id: project.id,
@@ -17285,9 +17346,7 @@ test('뷰어 파일 페이지는 업로드·링크·삭제가 없고 안내 1개
             uploaded_by: null,
             created_at: '2026-07-01T00:00:00Z',
           },
-        ],
-        total: 1,
-      },
+        ]),
     }),
   )
 
@@ -17328,28 +17387,28 @@ test('뷰어 드로어 하위 섹션은 시간·비용·관계·커스텀값 편
 
 test('파일 페이지가 링크를 보여주고 새 파일 링크를 추가한다', async ({ page }) => {
   await mockApi(page)
+  await page.route(`**/api/v1/projects/${project.id}/attachments/directory**`, (route) =>
+    route.fulfill({
+      json: attachmentDirectory([
+        {
+          id: 'f1',
+          project_id: project.id,
+          filename: '설계서.pdf',
+          url: 'https://files.example.com/a.pdf',
+          content_type: 'application/pdf',
+          size_bytes: 20480,
+          has_file: false,
+          created_at: '2026-07-01T00:00:00Z',
+        },
+      ]),
+    }),
+  )
   await page.route(`**/api/v1/projects/${project.id}/attachments`, async (route) => {
     if (route.request().method() === 'POST') {
       await route.fulfill({ status: 201, json: { id: 'f-new' } })
       return
     }
-    await route.fulfill({
-      json: {
-        items: [
-          {
-            id: 'f1',
-            project_id: project.id,
-            filename: '설계서.pdf',
-            url: 'https://files.example.com/a.pdf',
-            content_type: 'application/pdf',
-            size_bytes: 20480,
-            uploaded_by: null,
-            created_at: '2026-07-01T00:00:00Z',
-          },
-        ],
-        total: 1,
-      },
-    })
+    await route.fulfill({ json: { items: [], total: 0 } })
   })
 
   await page.goto(`/projects/${project.id}/files`)
@@ -17399,41 +17458,46 @@ test('파일 페이지는 스토리지 허브와 모바일 안전 목록을 보�
       },
     }),
   )
-  await page.route(`**/api/v1/projects/${project.id}/attachments`, (route) =>
-    route.fulfill({
-      json: {
-        items: [
-          {
-            id: 'file-upload',
-            project_id: project.id,
-            filename: '설계서.txt',
-            url: 'oneflow://attachments/file-upload',
-            content_type: 'text/plain',
-            size_bytes: 1100,
-            work_package_id: wpA.id,
-            document_id: null,
-            has_file: true,
-            uploaded_by: 'u-dev',
-            created_at: '2026-07-07T00:00:00Z',
-          },
-          {
-            id: 'file-link',
-            project_id: project.id,
-            filename: '온보딩 위키 링크',
-            url: 'https://files.example.com/wiki',
-            content_type: null,
-            size_bytes: null,
-            work_package_id: null,
-            document_id: 'doc-file',
-            has_file: false,
-            uploaded_by: null,
-            created_at: '2026-07-08T00:00:00Z',
-          },
-        ],
-        total: 2,
+  await page.route(`**/api/v1/projects/${project.id}/attachments/directory**`, (route) => {
+    const query = new URL(route.request().url()).searchParams.get('q')
+    const fixtures: AttachmentDirectoryFixture[] = [
+      {
+        id: 'file-upload',
+        project_id: project.id,
+        filename: '설계서.txt',
+        url: 'oneflow://attachments/file-upload',
+        content_type: 'text/plain',
+        size_bytes: 1100,
+        work_package_id: wpA.id,
+        document_id: null,
+        work_package_subject: '워크패키지 API 구현',
+        has_file: true,
+        uploaded_by: 'u-dev',
+        created_at: '2026-07-07T00:00:00Z',
       },
-    }),
-  )
+      {
+        id: 'file-link',
+        project_id: project.id,
+        filename: '온보딩 위키 링크',
+        url: 'https://files.example.com/wiki',
+        content_type: null,
+        size_bytes: null,
+        work_package_id: null,
+        document_id: 'doc-file',
+        document_title: '온보딩 위키',
+        has_file: false,
+        uploaded_by: null,
+        created_at: '2026-07-08T00:00:00Z',
+      },
+    ]
+    return route.fulfill({
+      json: attachmentDirectory(
+        query === '위키'
+          ? fixtures.filter((item) => item.filename.includes('위키'))
+          : fixtures,
+      ),
+    })
+  })
 
   await page.goto(`/projects/${project.id}/files`)
   await expect(page.getByText('Storage surface')).toBeVisible()
@@ -17447,6 +17511,128 @@ test('파일 페이지는 스토리지 허브와 모바일 안전 목록을 보�
   await page.screenshot({
     path: '../../docs/screenshots/redevelopment/files-ui/mobile-list.png',
     fullPage: true,
+  })
+})
+
+test('Files 디렉터리는 직접 파일과 서버 검색·범위·누적 로딩 오류를 보존한다', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 800 })
+  await mockApi(page)
+  const summary = {
+    total: 3,
+    file_count: 2,
+    link_count: 1,
+    linked_count: 1,
+    indexed_file_count: 1,
+    pending_index_count: 1,
+    used_bytes: 3072,
+  }
+  const newest: AttachmentDirectoryFixture = {
+    id: 'file-newest',
+    project_id: project.id,
+    filename: '릴리스 계획.txt',
+    url: 'oneflow://attachments/file-newest',
+    has_file: true,
+    content_type: 'text/plain',
+    size_bytes: 1024,
+    search_index_status: 'indexed',
+    search_indexed_at: '2026-07-22T02:00:00Z',
+    created_at: '2026-07-22T02:00:00Z',
+  }
+  const wikiLink: AttachmentDirectoryFixture = {
+    id: 'file-wiki-link',
+    project_id: project.id,
+    filename: '온보딩 위키 링크',
+    url: 'https://example.com/wiki',
+    has_file: false,
+    document_id: 'doc-file',
+    document_title: '온보딩 위키',
+    created_at: '2026-07-22T01:00:00Z',
+  }
+  const older: AttachmentDirectoryFixture = {
+    id: 'file-older',
+    project_id: project.id,
+    filename: '초기 설계.txt',
+    url: 'oneflow://attachments/file-older',
+    has_file: true,
+    content_type: 'text/plain',
+    size_bytes: 2048,
+    search_index_status: 'pending',
+    created_at: '2026-07-21T01:00:00Z',
+  }
+  let nextPageAttempts = 0
+  await page.route(`**/api/v1/projects/${project.id}/attachments/directory**`, (route) => {
+    const params = new URL(route.request().url()).searchParams
+    if (params.has('cursor_created_at')) {
+      nextPageAttempts += 1
+      if (nextPageAttempts === 1) {
+        return route.fulfill({ status: 503, json: { detail: 'temporary file failure' } })
+      }
+      return route.fulfill({
+        json: attachmentDirectory([older], { total: 3, summary }),
+      })
+    }
+    if (params.get('q') === '위키') {
+      return route.fulfill({
+        json: attachmentDirectory([wikiLink], { total: 1, summary }),
+      })
+    }
+    return route.fulfill({
+      json: attachmentDirectory([newest, wikiLink], {
+        total: 3,
+        summary,
+        next_cursor_created_at: '2026-07-22T01:00:00Z',
+        next_cursor_id: wikiLink.id,
+        highlight_item: {
+          work_package_id: null,
+          document_id: null,
+          work_package_subject: null,
+          document_title: null,
+          content_type: null,
+          size_bytes: null,
+          search_index_status: 'pending',
+          search_indexed_at: null,
+          uploaded_by: null,
+          ...older,
+        },
+      }),
+    })
+  })
+
+  await page.goto(`/projects/${project.id}/files?file=${older.id}`)
+  await expect(page.getByText('직접 연 파일', { exact: true })).toBeVisible()
+  await expect(page.getByRole('link', { name: /초기 설계\.txt/ })).toBeVisible()
+  await expect(page.getByText('2 / 3개 표시 · 직접 연 파일 1개')).toBeVisible()
+
+  await page.getByRole('button', { name: '더 불러오기' }).click()
+  await expect(page.getByRole('alert')).toContainText('추가 파일을 불러오지 못했습니다')
+  await expect(page.getByRole('link', { name: /릴리스 계획\.txt/ })).toBeVisible()
+  await page.getByRole('button', { name: '더 불러오기' }).click()
+  await expect(page.getByText('3 / 3개 표시 · 직접 연 파일 1개')).toBeVisible()
+  expect(nextPageAttempts).toBe(2)
+
+  await page.getByLabel('파일 검색').fill('위키')
+  await expect
+    .poll(() => new URL(page.url()).searchParams.get('q'))
+    .toBe('위키')
+  await expect(page.getByRole('link', { name: /온보딩 위키 링크/ })).toBeVisible()
+  await expect(page.getByRole('link', { name: /릴리스 계획\.txt/ })).toHaveCount(0)
+  await expect.poll(() => new URL(page.url()).searchParams.get('file')).toBeNull()
+
+  await page.getByLabel('파일 범위').selectOption('links')
+  await expect.poll(() => new URL(page.url()).searchParams.get('scope')).toBe('links')
+  await expect(page.getByText('1 / 1개 표시')).toBeVisible()
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/files-directory-pagination-ui/desktop.png',
+  })
+
+  await page.setViewportSize({ width: 390, height: 844 })
+  await expect(page.getByLabel('파일 범위')).toBeVisible()
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/files-directory-pagination-ui/mobile.png',
   })
 })
 
