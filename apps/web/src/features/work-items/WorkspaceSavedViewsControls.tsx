@@ -46,7 +46,7 @@ export function WorkspaceSavedViewsControls({
 
   const optionLabel = useMemo(() => {
     if (views.isPending) return '불러오는 중'
-    if (views.isError) return '저장 뷰 불러오기 실패'
+    if (views.isError) return '불러오기 실패'
     if (!views.data?.items.length) return '저장된 뷰 없음'
     return '저장 뷰 선택'
   }, [views.data?.items.length, views.isError, views.isPending])
@@ -101,7 +101,7 @@ export function WorkspaceSavedViewsControls({
         aria-label="저장 뷰"
         value={active?.id ?? ''}
         disabled={views.isPending || views.isError || !views.data?.items.length || busy}
-        className="h-8 max-w-44 rounded-of border border-of-border bg-of-surface px-2 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus disabled:opacity-60"
+        className="h-7 max-w-36 rounded-of border border-of-border bg-of-surface px-2 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus disabled:opacity-60 sm:max-w-40"
         onChange={(event) => {
           const view = views.data?.items.find((item) => item.id === event.target.value)
           if (view) {
@@ -116,7 +116,7 @@ export function WorkspaceSavedViewsControls({
       </select>
 
       {views.isError ? (
-        <Button type="button" variant="outline" size="icon" aria-label="저장 뷰 다시 불러오기" onClick={() => views.refetch()}>
+        <Button type="button" variant="outline" size="icon" className="h-7 w-7" aria-label="저장 뷰 다시 불러오기" onClick={() => views.refetch()}>
           <RefreshCw size={13} />
         </Button>
       ) : null}
@@ -124,14 +124,14 @@ export function WorkspaceSavedViewsControls({
       {active ? (
         <>
           {dirty ? (
-            <Button type="button" variant="ghost" size="sm" disabled={busy} onClick={() => onApply(active)}>
-              <RotateCcw size={13} /> 되돌리기
+            <Button type="button" variant="ghost" size="icon" className="h-7 w-7" aria-label="되돌리기" title="되돌리기" disabled={busy} onClick={() => onApply(active)}>
+              <RotateCcw size={13} />
             </Button>
           ) : null}
-          <Button type="button" variant="outline" size="sm" disabled={!dirty || busy} onClick={updateActive}>
-            <Save size={13} /> {dirty ? '갱신' : '저장됨'}
+          <Button type="button" variant="outline" size="icon" className="h-7 w-7" aria-label={dirty ? '갱신' : '저장됨'} title={dirty ? '갱신' : '저장됨'} disabled={!dirty || busy} onClick={updateActive}>
+            <Save size={13} />
           </Button>
-          <Button type="button" variant="ghost" size="icon" aria-label="현재 저장 뷰 삭제" disabled={busy} onClick={deleteActive}>
+          <Button type="button" variant="ghost" size="icon" className="h-7 w-7" aria-label="현재 저장 뷰 삭제" title="현재 저장 뷰 삭제" disabled={busy} onClick={deleteActive}>
             <Trash2 size={13} />
           </Button>
         </>
@@ -143,8 +143,8 @@ export function WorkspaceSavedViewsControls({
         if (open) setError('')
       }}>
         <Dialog.Trigger asChild>
-          <Button type="button" size="sm" disabled={atLimit || busy} title={atLimit ? '저장 뷰는 50개까지 만들 수 있습니다.' : undefined}>
-            <Plus size={13} /> Add view
+          <Button type="button" size="sm" aria-label="Add view" disabled={atLimit || busy} title={atLimit ? '저장 뷰는 50개까지 만들 수 있습니다.' : 'Add view'}>
+            <Plus size={13} /> <span className="hidden 2xl:inline">Add view</span>
           </Button>
         </Dialog.Trigger>
         <Dialog.Portal>
