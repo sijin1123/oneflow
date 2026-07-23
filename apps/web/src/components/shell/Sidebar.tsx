@@ -37,6 +37,7 @@ import {
   Paperclip,
   PanelLeftClose,
   Plus,
+  RefreshCw,
   Search,
   Settings,
   ShieldCheck,
@@ -63,6 +64,7 @@ import { ProjectActionsMenu } from '@/features/projects/ProjectActionsMenu'
 import { useWorkspaceCapabilities } from '@/features/workspace-features/api'
 import { useWorkspaceProfile } from '@/features/workspace-profile/api'
 import { WorkspaceLogo } from '@/features/workspace-profile/WorkspaceLogo'
+import { Skeleton } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
 
 import {
@@ -225,6 +227,54 @@ const projectLinkClass = (isActive: boolean) =>
 
 function SectionLabel({ children }: { children: string }) {
   return <p className="px-2 pb-1 text-[11px] font-medium text-of-muted">{children}</p>
+}
+
+const settingsLoadingGroups = [
+  { label: '워크스페이스', rows: 8 },
+  { label: '기능', rows: 5 },
+  { label: '개발자 도구', rows: 2 },
+] as const
+
+function SettingsAdminNavigationSkeleton() {
+  return (
+    <div role="status" aria-busy="true" aria-label="관리자 내비게이션 불러오는 중" className="space-y-4">
+      <span className="sr-only">관리자 내비게이션을 불러오는 중입니다.</span>
+      {settingsLoadingGroups.map((group) => (
+        <div key={group.label}>
+          <SectionLabel>{group.label}</SectionLabel>
+          <div aria-hidden="true" className="space-y-0.5">
+            {Array.from({ length: group.rows }, (_, index) => (
+              <div key={index} className="flex min-h-8 items-center gap-2 px-2">
+                <Skeleton className="h-3.5 w-3.5 shrink-0 motion-reduce:animate-none" />
+                <Skeleton
+                  className={cn(
+                    'h-3 motion-reduce:animate-none',
+                    index % 3 === 0 ? 'w-20' : index % 3 === 1 ? 'w-24' : 'w-16',
+                  )}
+                />
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function SettingsIdentityError({ onRetry }: { onRetry: () => void }) {
+  return (
+    <div role="alert" className="mx-1 rounded-of border border-of-danger/20 bg-of-danger-soft/45 px-3 py-3">
+      <p className="text-xs font-medium text-of-text">권한 정보를 불러오지 못했습니다</p>
+      <p className="mt-1 text-[11px] leading-4 text-of-muted">관리 메뉴를 표시하려면 계정 정보를 다시 확인해 주세요.</p>
+      <button
+        type="button"
+        className="mt-2 inline-flex h-7 items-center gap-1.5 rounded-of border border-of-border bg-of-surface px-2 text-xs font-medium text-of-text hover:bg-of-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus"
+        onClick={onRetry}
+      >
+        <RefreshCw size={12} aria-hidden="true" /> 다시 시도
+      </button>
+    </div>
+  )
 }
 
 function NewWorkItemButton({ projectId, onNavigate }: { projectId: string; onNavigate?: () => void }) {
@@ -797,7 +847,11 @@ function SidebarContent({
                   <span>내 계정</span>
                 </NavLink>
               </div>
-              {me.data?.is_admin ? (
+              {me.isPending ? (
+                <SettingsAdminNavigationSkeleton />
+              ) : me.isError ? (
+                <SettingsIdentityError onRetry={() => void me.refetch()} />
+              ) : me.data?.is_admin ? (
                 <>
                   <div>
                     <SectionLabel>워크스페이스</SectionLabel>
