@@ -1,0 +1,18 @@
+{
+  "native": {
+    "width": 1448,
+    "height": 1086,
+    "mae": 0,
+    "rms": 0,
+    "changed_over_2_pct": 0,
+    "max_channel_delta": 0
+  },
+  "compact": {
+    "width": 960,
+    "height": 720,
+    "mae": 0.004,
+    "rms": 0.1303,
+    "changed_over_2_pct": 0.0551,
+    "max_channel_delta": 14
+  }
+}
