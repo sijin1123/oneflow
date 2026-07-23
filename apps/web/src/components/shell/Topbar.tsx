@@ -1,9 +1,10 @@
-import { Check, ChevronDown, LogOut, MailPlus, Menu, Rocket, Settings, SlidersHorizontal, Users } from 'lucide-react'
+import { Check, ChevronDown, LogOut, MailPlus, Menu, RefreshCw, Rocket, Settings, SlidersHorizontal, Users } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 
 import { Avatar } from '@/components/ui/avatar'
 import { IconButton } from '@/components/ui/icon-button'
+import { Skeleton } from '@/components/ui/skeleton'
 import { useLogout } from '@/features/auth/api'
 import { profileImageSrc, useMe } from '@/features/members/api'
 import { NotificationBell } from '@/features/notifications/NotificationBell'
@@ -164,6 +165,29 @@ function AccountMenu({ open, onOpenChange }: { open: boolean; onOpenChange: (ope
     }
   }, [onOpenChange, open])
 
+  if (me.isPending) {
+    return (
+      <div
+        role="status"
+        aria-busy="true"
+        aria-label="계정 정보 불러오는 중"
+        className="flex h-7 w-7 shrink-0 items-center justify-center"
+      >
+        <Skeleton aria-hidden="true" className="h-7 w-7 rounded-full motion-reduce:animate-none" />
+      </div>
+    )
+  }
+  if (me.isError) {
+    return (
+      <IconButton
+        label="계정 정보 다시 시도"
+        className="shrink-0 text-of-danger"
+        onClick={() => void me.refetch()}
+      >
+        <RefreshCw size={14} aria-hidden="true" />
+      </IconButton>
+    )
+  }
   if (!me.data) return null
   return (
     <div className="relative">
