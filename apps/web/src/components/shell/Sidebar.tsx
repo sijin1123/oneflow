@@ -53,7 +53,14 @@ import {
   X,
   type LucideIcon,
 } from 'lucide-react'
-import { useCallback, useEffect, useRef, useState, type AnimationEvent as ReactAnimationEvent } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type AnimationEvent as ReactAnimationEvent,
+} from 'react'
 import { Link, NavLink, useLocation, useNavigate, useParams } from 'react-router-dom'
 
 import { useAuthConfig } from '@/features/auth/api'
@@ -275,6 +282,42 @@ function SettingsIdentityError({ onRetry }: { onRetry: () => void }) {
       </button>
     </div>
   )
+}
+
+function useRevealActiveSettingsLink({
+  enabled,
+  pathname,
+  ready,
+}: {
+  enabled: boolean
+  pathname: string
+  ready: boolean
+}) {
+  const navigationRef = useRef<HTMLElement>(null)
+
+  useLayoutEffect(() => {
+    if (!enabled || !ready) return
+    const navigation = navigationRef.current
+    const activeLink = Array.from(navigation?.querySelectorAll<HTMLAnchorElement>('a[href]') ?? [])
+      .find((link) => new URL(link.href).pathname === pathname)
+    if (!navigation || !activeLink) return
+
+    const reveal = () => {
+      const navigationRect = navigation.getBoundingClientRect()
+      const activeLinkRect = activeLink.getBoundingClientRect()
+      if (activeLinkRect.top < navigationRect.top) {
+        navigation.scrollTop -= navigationRect.top - activeLinkRect.top
+      } else if (activeLinkRect.bottom > navigationRect.bottom) {
+        navigation.scrollTop += activeLinkRect.bottom - navigationRect.bottom
+      }
+    }
+
+    reveal()
+    const frame = window.requestAnimationFrame(reveal)
+    return () => window.cancelAnimationFrame(frame)
+  }, [enabled, pathname, ready])
+
+  return navigationRef
 }
 
 function NewWorkItemButton({ projectId, onNavigate }: { projectId: string; onNavigate?: () => void }) {
@@ -701,6 +744,11 @@ function SidebarContent({
   const wikiProjectId = projectId ?? selectedProject?.id
   const aiMode = location.pathname === '/ai'
   const settingsMode = location.pathname === '/settings' || location.pathname.startsWith('/admin')
+  const settingsNavigationRef = useRevealActiveSettingsLink({
+    enabled: settingsMode,
+    pathname: location.pathname,
+    ready: !me.isPending && !me.isError,
+  })
   const rawWikiBucket = new URLSearchParams(location.search).get('bucket')
   const wikiBucket = rawWikiBucket === 'private' || rawWikiBucket === 'archived'
     ? rawWikiBucket
@@ -838,7 +886,11 @@ function SidebarContent({
         ) : null}
 
         {settingsMode ? (
-          <nav className="of-scrollbar flex-1 overflow-y-auto px-2 pb-3" aria-label="설정 컨텍스트 내비게이션">
+          <nav
+            ref={settingsNavigationRef}
+            className="of-scrollbar flex-1 overflow-y-auto px-2 pb-3"
+            aria-label="설정 컨텍스트 내비게이션"
+          >
             <div className="space-y-4">
               <div>
                 <SectionLabel>개인</SectionLabel>
