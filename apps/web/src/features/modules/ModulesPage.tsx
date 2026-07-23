@@ -1,7 +1,9 @@
-import { MoreHorizontal } from 'lucide-react'
-import { useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import * as Dialog from '@radix-ui/react-dialog'
+import { Columns3, List, MoreHorizontal, Plus, Search, Timeline, X } from 'lucide-react'
+import { type FormEvent, type RefObject, useMemo, useRef, useState } from 'react'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 
+import { FrameContextActions } from '@/components/shell/FrameContextActions'
 import { EmptyState, ErrorState, ListSkeleton } from '@/components/shell/states'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -9,9 +11,9 @@ import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { useMe, useMemberNames, useMembers } from '@/features/members/api'
 import type { Member } from '@/features/members/types'
-import { PlanningSurface } from '@/features/planning/PlanningSurface'
 import { dayIndex, pct } from '@/features/work-packages/timeline'
 import { todayISO } from '@/lib/datetime'
+import { cn } from '@/lib/utils'
 
 import {
   MODULE_STATE_LABELS,
@@ -312,6 +314,22 @@ const LAYOUT_STORAGE_KEY = 'oneflow.modules.layout.v1'
 
 type ModuleLayout = 'list' | 'gallery' | 'timeline'
 
+const LAYOUTS: Array<{
+  value: ModuleLayout
+  label: string
+  icon: typeof List
+}> = [
+  { value: 'list', label: '목록', icon: List },
+  { value: 'gallery', label: '갤러리', icon: Columns3 },
+  { value: 'timeline', label: '타임라인', icon: Timeline },
+]
+
+type ModuleStateFilter = ModuleState | 'all'
+
+function stateFilterFrom(value: string | null): ModuleStateFilter {
+  return value && STATE_ORDER.includes(value as ModuleState) ? (value as ModuleState) : 'all'
+}
+
 /** Broken values fall back to list (#97 contract). */
 function loadLayout(): ModuleLayout {
   try {
@@ -328,6 +346,126 @@ function saveLayout(layout: ModuleLayout) {
   } catch {
     // private mode / quota — in-memory only
   }
+}
+
+function ModuleCreateDialog({
+  open,
+  projectId,
+  members,
+  returnFocusRef,
+  onOpenChange,
+}: {
+  open: boolean
+  projectId: string
+  members: Member[]
+  returnFocusRef: RefObject<HTMLButtonElement | null>
+  onOpenChange: (open: boolean) => void
+}) {
+  const create = useCreateModule(projectId)
+  const [name, setName] = useState('')
+  const [lead, setLead] = useState('')
+
+  const close = () => {
+    if (create.isPending) return
+    create.reset()
+    setName('')
+    setLead('')
+    onOpenChange(false)
+  }
+
+  const submit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    if (!name.trim() || create.isPending) return
+    create.mutate(
+      { name: name.trim(), lead_id: lead || null },
+      { onSuccess: close },
+    )
+  }
+
+  return (
+    <Dialog.Root
+      open={open}
+      onOpenChange={(next) => {
+        if (!next) close()
+      }}
+    >
+      <Dialog.Portal>
+        <Dialog.Overlay className="fixed inset-0 z-80 bg-black/35 backdrop-blur-[1px] data-[state=closed]:animate-out data-[state=closed]:fade-out data-[state=open]:animate-in data-[state=open]:fade-in motion-reduce:animate-none" />
+        <Dialog.Content
+          className="fixed left-1/2 top-1/2 z-81 w-[min(30rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 rounded-of border border-of-border bg-of-surface shadow-xl data-[state=closed]:animate-out data-[state=closed]:fade-out data-[state=closed]:zoom-out-95 data-[state=open]:animate-in data-[state=open]:fade-in data-[state=open]:zoom-in-95 motion-reduce:animate-none"
+          onCloseAutoFocus={(event) => {
+            event.preventDefault()
+            returnFocusRef.current?.focus()
+          }}
+        >
+          <form onSubmit={submit}>
+            <div className="border-b border-of-border px-5 py-4">
+              <Dialog.Title className="text-base font-semibold">모듈 추가</Dialog.Title>
+              <Dialog.Description className="mt-1 text-xs leading-5 text-of-muted">
+                기능이나 릴리스 범위를 만들고 선택적으로 리드를 지정합니다.
+              </Dialog.Description>
+            </div>
+            <div className="space-y-4 px-5 py-4">
+              <label className="block text-xs font-medium">
+                이름
+                <Input
+                  autoFocus
+                  value={name}
+                  onChange={(event) => setName(event.target.value)}
+                  placeholder="예: 결제 안정화"
+                  aria-label="새 모듈 이름"
+                  className="mt-1"
+                />
+              </label>
+              <label className="block text-xs font-medium">
+                리드
+                <Select
+                  aria-label="새 모듈 리드"
+                  className="mt-1"
+                  value={lead}
+                  onChange={(event) => setLead(event.target.value)}
+                >
+                  <option value="">리드 없음</option>
+                  {members.map((member) => (
+                    <option key={member.user_id} value={member.user_id}>
+                      {member.display_name}
+                    </option>
+                  ))}
+                </Select>
+              </label>
+              {create.isError ? (
+                <p role="alert" className="text-xs text-of-danger">
+                  생성하지 못했습니다. 잠시 후 다시 시도하세요.
+                </p>
+              ) : null}
+            </div>
+            <div className="flex justify-end gap-2 border-t border-of-border px-5 py-3">
+              <Button type="button" variant="outline" disabled={create.isPending} onClick={close}>
+                취소
+              </Button>
+              <Button
+                type="submit"
+                disabled={!name.trim() || create.isPending}
+                aria-busy={create.isPending}
+              >
+                <Plus size={14} />
+                {create.isPending ? '추가 중' : '모듈 추가'}
+              </Button>
+            </div>
+          </form>
+          <button
+            type="button"
+            aria-label="모듈 추가 창 닫기"
+            disabled={create.isPending}
+            className="absolute right-3 top-3 grid size-8 place-items-center rounded-of text-of-muted hover:bg-of-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus"
+            onClick={close}
+          >
+            <X size={15} />
+          </button>
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
+  )
 }
 
 /* Gallery card (Pass 56): the same data as the row, arranged for scanning. */
@@ -431,188 +569,249 @@ function ModuleTimeline({ modules, projectId }: { modules: ProjectModule[]; proj
 
 export function ModulesPage() {
   const { projectId } = useParams() as { projectId: string }
+  const [params, setParams] = useSearchParams()
   const modules = useModules(projectId)
   const me = useMe()
   const members = useMembers(projectId)
-
-  const [name, setName] = useState('')
-  const [lead, setLead] = useState('')
+  const [createOpen, setCreateOpen] = useState(false)
+  const createTriggerRef = useRef<HTMLButtonElement>(null)
   const [layout, setLayout] = useState<ModuleLayout>(loadLayout)
   const changeLayout = (next: ModuleLayout) => {
     setLayout(next)
     saveLayout(next)
   }
-  const create = useCreateModule(projectId)
   const [actionMessage, setActionMessage] = useState<{
     text: string
     tone: 'info' | 'success' | 'error'
   } | null>(null)
-  const description =
-    '기능이나 릴리스 단위의 작업 묶음을 관리하고, 범위 상태를 계획 화면에서 이어 봅니다.'
-
-  if (modules.isPending || members.isPending) {
-    return (
-      <PlanningSurface projectId={projectId} active="modules" title="모듈" description={description}>
-        <ListSkeleton />
-      </PlanningSurface>
-    )
-  }
-  if (modules.isError) {
-    return (
-      <PlanningSurface projectId={projectId} active="modules" title="모듈" description={description}>
-        <ErrorState error={modules.error} onRetry={() => modules.refetch()} />
-      </PlanningSurface>
-    )
-  }
 
   const myRole = members.data?.items.find((m) => m.user_id === me.data?.id)?.role
   const isOwner = myRole === 'owner'
-  const items = modules.data.items
-  const inFlight = items.filter((module) => module.state === 'in_progress').length
-  const scoped = items.reduce((total, module) => total + module.work_package_count, 0)
-  const done = items.reduce((total, module) => total + module.done_work_package_count, 0)
-  const participants = items.reduce((total, module) => total + module.member_count, 0)
+  const items = useMemo(() => modules.data?.items ?? [], [modules.data?.items])
+  const query = params.get('q')?.trim() ?? ''
+  const stateFilter = stateFilterFrom(params.get('state'))
+  const visibleItems = useMemo(
+    () =>
+      items.filter(
+        (module) =>
+          (stateFilter === 'all' || module.state === stateFilter) &&
+          (!query || module.name.toLocaleLowerCase().includes(query.toLocaleLowerCase())),
+      ),
+    [items, query, stateFilter],
+  )
+
+  const updateParams = (next: Record<string, string | null>) => {
+    const copy = new URLSearchParams(params)
+    Object.entries(next).forEach(([key, value]) => {
+      if (value) copy.set(key, value)
+      else copy.delete(key)
+    })
+    setParams(copy, { replace: true })
+  }
 
   return (
-    <PlanningSurface
-      projectId={projectId}
-      active="modules"
-      title="모듈"
-      description={description}
-      metrics={[
-        { label: '모듈', value: items.length, hint: '전체 범위' },
-        { label: '진행 중', value: inFlight, hint: '활성 모듈' },
-        { label: '작업 범위', value: scoped, hint: `${done}건 완료` },
-        { label: '참여자', value: participants, hint: '모듈 멤버 합계' },
-      ]}
-    >
-      <div className="space-y-5">
-        <div className="flex flex-wrap items-center justify-between gap-2 rounded-of border border-of-border bg-of-surface px-3 py-2">
-          <p className="text-xs text-of-muted">보기 방식</p>
-        <div className="flex shrink-0 items-center gap-1 text-xs">
-          {(['list', 'gallery', 'timeline'] as const).map((l) => (
-            <button
-              key={l}
-              type="button"
-              aria-pressed={layout === l}
-              className={`rounded-of border px-2 py-1 ${
-                layout === l
-                  ? 'border-of-accent bg-of-accent-soft text-of-accent'
-                  : 'border-of-border text-of-muted hover:bg-of-surface-2'
-              }`}
-              onClick={() => changeLayout(l)}
-            >
-              {l === 'list' ? '목록' : l === 'gallery' ? '갤러리' : '타임라인'}
-            </button>
-          ))}
-        </div>
-        </div>
-        {actionMessage ? (
-        <p
-          role={actionMessage.tone === 'error' ? 'alert' : 'status'}
-          className={
-            actionMessage.tone === 'error'
-              ? 'mb-3 text-xs text-of-danger'
-              : 'mb-3 text-xs text-of-muted'
-          }
-        >
-          {actionMessage.text}
-        </p>
-        ) : null}
-
+    <div className="flex h-full min-w-0 flex-col bg-of-surface">
+      <h1 className="sr-only">Modules</h1>
+      <FrameContextActions>
         {isOwner ? (
-        <div className="flex flex-wrap items-center gap-2 rounded-of border border-of-border bg-of-surface p-3">
-          <Input
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="모듈 이름"
-            aria-label="새 모듈 이름"
-            className="h-8 w-44 text-xs"
-          />
-          <Select
-            aria-label="새 모듈 리드"
-            className="h-8 w-36 text-xs"
-            value={lead}
-            onChange={(e) => setLead(e.target.value)}
+          <Button
+            ref={createTriggerRef}
+            type="button"
+            size="sm"
+            onClick={() => setCreateOpen(true)}
           >
-            <option value="">리드 없음</option>
-            {members.data?.items.map((m) => (
-              <option key={m.user_id} value={m.user_id}>
-                {m.display_name}
+            <Plus size={14} />
+            모듈 추가
+          </Button>
+        ) : null}
+      </FrameContextActions>
+
+      <div className="flex min-h-11 shrink-0 flex-wrap items-center justify-between gap-2 border-b border-of-border px-3 py-1">
+        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+          <label className="relative min-w-36 flex-1 sm:max-w-56">
+            <span className="sr-only">모듈 검색</span>
+            <Search
+              size={13}
+              className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-of-muted"
+            />
+            <Input
+              value={query}
+              aria-label="모듈 검색"
+              placeholder="모듈 검색"
+              className="h-7 pl-7 pr-7 text-xs"
+              onChange={(event) => updateParams({ q: event.target.value || null })}
+            />
+            {query ? (
+              <button
+                type="button"
+                aria-label="모듈 검색 지우기"
+                className="absolute right-1 top-1/2 grid size-5 -translate-y-1/2 place-items-center rounded-of text-of-muted hover:bg-of-surface-hover"
+                onClick={() => updateParams({ q: null })}
+              >
+                <X size={12} />
+              </button>
+            ) : null}
+          </label>
+          <Select
+            aria-label="모듈 상태 필터"
+            className="h-7 w-28 text-xs"
+            value={stateFilter}
+            onChange={(event) =>
+              updateParams({ state: event.target.value === 'all' ? null : event.target.value })
+            }
+          >
+            <option value="all">모든 상태</option>
+            {STATE_ORDER.map((state) => (
+              <option key={state} value={state}>
+                {MODULE_STATE_LABELS[state]}
               </option>
             ))}
           </Select>
-          <Button
-            size="sm"
-            disabled={!name.trim() || create.isPending}
-            onClick={() =>
-              create.mutate(
-                { name: name.trim(), lead_id: lead || null },
-                {
-                  onSuccess: () => {
-                    setName('')
-                    setLead('')
-                  },
-                },
-              )
-            }
-          >
-            모듈 추가
-          </Button>
-          {create.isError ? (
-            <p role="alert" className="w-full text-xs text-of-danger">
-              생성하지 못했습니다.
-            </p>
-          ) : null}
+          <span className="shrink-0 text-[11px] tabular-nums text-of-muted">
+            {visibleItems.length}/{items.length}
+          </span>
         </div>
-        ) : null}
 
-        {items.length === 0 ? (
-        <EmptyState
-          title="모듈이 없습니다"
-          hint={isOwner ? '위에서 첫 모듈을 만들어 보세요.' : '소유자가 모듈을 만들 수 있습니다.'}
-        />
-        ) : (
-        <div className="space-y-5">
-          {layout === 'timeline' ? (
-            <ModuleTimeline modules={items} projectId={projectId} />
-          ) : null}
-          {layout !== 'timeline' &&
-            STATE_ORDER.map((state) => {
-            const group = items.filter((m) => m.state === state)
-            if (group.length === 0) return null
+        <div className="flex shrink-0 items-center rounded-of border border-of-border bg-of-surface-2 p-0.5">
+          {LAYOUTS.map((item) => {
+            const Icon = item.icon
             return (
-              <section key={state} aria-label={MODULE_STATE_LABELS[state]}>
-                <h2 className="mb-1.5 text-sm font-semibold">
-                  {MODULE_STATE_LABELS[state]}{' '}
-                  <span className="text-xs font-normal text-of-muted">{group.length}</span>
-                </h2>
-                {layout === 'gallery' ? (
-                  <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                    {group.map((m) => (
-                      <ModuleCard key={m.id} module={m} projectId={projectId} />
-                    ))}
-                  </ul>
-                ) : (
-                  <ul className="divide-y divide-of-border overflow-hidden rounded-of border border-of-border bg-of-surface">
-                    {group.map((m) => (
-                      <ModuleRow
-                        key={m.id}
-                        module={m}
-                        isOwner={isOwner}
-                        projectId={projectId}
-                        members={members.data?.items ?? []}
-                        onMessage={(text, tone = 'info') => setActionMessage({ text, tone })}
-                      />
-                    ))}
-                  </ul>
+              <button
+                key={item.value}
+                type="button"
+                aria-label={item.label}
+                aria-pressed={layout === item.value}
+                title={item.label}
+                className={cn(
+                  'grid size-7 place-items-center rounded-of text-of-muted hover:bg-of-surface-hover hover:text-of-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus',
+                  layout === item.value && 'bg-of-surface text-of-text shadow-sm',
                 )}
-              </section>
+                onClick={() => changeLayout(item.value)}
+              >
+                <Icon size={14} />
+              </button>
             )
           })}
         </div>
-        )}
       </div>
-    </PlanningSurface>
+
+      <main
+        data-testid="modules-scroll"
+        className="of-scrollbar min-h-0 flex-1 overflow-y-auto p-3 sm:p-5"
+      >
+        <div className="mx-auto max-w-6xl space-y-4">
+          {modules.isPending || members.isPending ? <ListSkeleton /> : null}
+          {modules.isError || members.isError ? (
+            <ErrorState
+              error={modules.error ?? members.error}
+              onRetry={() => {
+                void modules.refetch()
+                void members.refetch()
+              }}
+            />
+          ) : null}
+
+          {actionMessage ? (
+            <p
+              role={actionMessage.tone === 'error' ? 'alert' : 'status'}
+              className={cn(
+                'rounded-of border bg-of-surface px-3 py-2 text-xs',
+                actionMessage.tone === 'error'
+                  ? 'border-of-danger/30 text-of-danger'
+                  : 'border-of-border text-of-muted',
+              )}
+            >
+              {actionMessage.text}
+            </p>
+          ) : null}
+
+          {!modules.isPending &&
+            !members.isPending &&
+            !modules.isError &&
+            !members.isError ? (
+            visibleItems.length === 0 ? (
+              <EmptyState
+                title={query || stateFilter !== 'all' ? '조건에 맞는 모듈이 없습니다' : '모듈이 없습니다'}
+                hint={
+                  query || stateFilter !== 'all'
+                    ? '검색어나 상태 필터를 조정해 보세요.'
+                    : isOwner
+                      ? '모듈 추가에서 첫 기능 범위를 만들어 보세요.'
+                      : '프로젝트 소유자가 모듈을 만들 수 있습니다.'
+                }
+              >
+                {query || stateFilter !== 'all' ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => updateParams({ q: null, state: null })}
+                  >
+                    필터 지우기
+                  </Button>
+                ) : null}
+              </EmptyState>
+            ) : (
+              <div className="space-y-5">
+                {layout === 'timeline' ? (
+                  <ModuleTimeline modules={visibleItems} projectId={projectId} />
+                ) : null}
+                {layout !== 'timeline' &&
+                  STATE_ORDER.map((state) => {
+                    const group = visibleItems.filter((module) => module.state === state)
+                    if (group.length === 0) return null
+                    return (
+                      <section key={state} aria-label={MODULE_STATE_LABELS[state]}>
+                        <h2 className="mb-1.5 text-sm font-semibold">
+                          {MODULE_STATE_LABELS[state]}{' '}
+                          <span className="text-xs font-normal text-of-muted">
+                            {group.length}
+                          </span>
+                        </h2>
+                        {layout === 'gallery' ? (
+                          <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                            {group.map((module) => (
+                              <ModuleCard
+                                key={module.id}
+                                module={module}
+                                projectId={projectId}
+                              />
+                            ))}
+                          </ul>
+                        ) : (
+                          <ul className="divide-y divide-of-border overflow-hidden rounded-of border border-of-border bg-of-surface">
+                            {group.map((module) => (
+                              <ModuleRow
+                                key={module.id}
+                                module={module}
+                                isOwner={isOwner}
+                                projectId={projectId}
+                                members={members.data?.items ?? []}
+                                onMessage={(text, tone = 'info') =>
+                                  setActionMessage({ text, tone })
+                                }
+                              />
+                            ))}
+                          </ul>
+                        )}
+                      </section>
+                    )
+                  })}
+              </div>
+            )
+          ) : null}
+        </div>
+      </main>
+
+      {isOwner ? (
+        <ModuleCreateDialog
+          open={createOpen}
+          projectId={projectId}
+          members={members.data?.items ?? []}
+          returnFocusRef={createTriggerRef}
+          onOpenChange={setCreateOpen}
+        />
+      ) : null}
+    </div>
   )
 }
