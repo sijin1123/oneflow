@@ -23,6 +23,7 @@ export function CycleItemActions({
   trigger,
   top,
   left,
+  burndownOpen,
   onOpenWorkItems,
   onEdit,
   onToggleBurndown,
@@ -36,6 +37,7 @@ export function CycleItemActions({
   trigger: HTMLButtonElement
   top: number
   left: number
+  burndownOpen: boolean
   onOpenWorkItems: (cycleId: string) => void
   onEdit: () => void
   onToggleBurndown: () => void
@@ -118,7 +120,7 @@ export function CycleItemActions({
           closeMenu(false)
         }}
       >
-        <ChartNoAxesColumn size={13} /> 번다운 보기
+        <ChartNoAxesColumn size={13} /> {burndownOpen ? '번다운 숨기기' : '번다운 보기'}
       </MenuButton>
       <div className="my-1 h-px bg-of-border" />
       {isOwner ? (
