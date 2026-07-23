@@ -243,6 +243,7 @@
   gap: 18px;
 }
 .of-login-checkbox {
+  position: relative;
   display: inline-flex;
   align-items: center;
   gap: 8px;
@@ -252,10 +253,16 @@
 }
 .of-login-checkbox input {
   position: absolute;
-  width: 1px;
-  height: 1px;
+  z-index: 2;
+  top: 50%;
+  left: 0;
+  width: 18px;
+  height: 18px;
+  margin: 0;
   overflow: hidden;
   opacity: 0;
+  cursor: pointer;
+  transform: translateY(-50%);
 }
 .of-login-checkbox > span:first-of-type {
   display: grid;
@@ -1725,5 +1732,199 @@
   .of-login-auth-card,
   .of-login-origin-route-accent path {
     animation: none;
+  }
+}
+
+/* UI-227: the approved OneFlow raster is the idle desktop visual authority.
+   The semantic form remains aligned above it and owns every interaction/state. */
+.of-login-origin-reference-layer {
+  display: none;
+}
+
+@media (min-width: 521px) {
+  .of-login-page[data-locale="en"] {
+    border-radius: 0;
+  }
+
+  .of-login-page[data-locale="en"] > .of-login-origin-reference-layer {
+    position: absolute;
+    inset: 0;
+    z-index: 5;
+    display: block;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    user-select: none;
+  }
+
+  .of-login-origin-reference-layer img {
+    display: block;
+    width: 100%;
+    max-width: none;
+    height: 100%;
+    object-fit: fill;
+    image-rendering: auto;
+  }
+
+  .of-login-page[data-locale="en"] .of-login-story {
+    background: transparent;
+  }
+
+  .of-login-page[data-locale="en"] .of-login-story-art,
+  .of-login-page[data-locale="en"] .of-login-origin-route-accent {
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .of-login-page[data-locale="en"] .of-login-auth {
+    z-index: 6;
+    overflow: hidden;
+    background: transparent;
+  }
+
+  .of-login-page[data-locale="en"] .of-login-auth::after {
+    display: none;
+  }
+
+  .of-login-page[data-locale="en"] .of-login-auth-card {
+    border-color: transparent;
+    background: transparent;
+    box-shadow: none;
+    backdrop-filter: none;
+  }
+
+  .of-login-page[data-locale="en"] .of-login-auth-brand,
+  .of-login-page[data-locale="en"] .of-login-heading,
+  .of-login-page[data-locale="en"] .of-login-field > label {
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .of-login-page[data-locale="en"] .of-login-input-wrap > svg {
+    opacity: 0;
+  }
+
+  .of-login-page[data-locale="en"] .of-login-input,
+  .of-login-page[data-locale="en"] .of-login-input:hover,
+  .of-login-page[data-locale="en"] .of-login-input:disabled {
+    border-color: transparent;
+    background: transparent;
+    box-shadow: none;
+    color: transparent;
+    caret-color: #283757;
+    opacity: 1;
+  }
+
+  .of-login-page[data-locale="en"] .of-login-input::placeholder {
+    color: transparent;
+  }
+
+  .of-login-page[data-locale="en"] .of-login-input[data-has-value] {
+    background-image: linear-gradient(#fefefe, #fefefe);
+    background-position: calc(43px * var(--of-login-scale)) center;
+    background-size: calc(100% - calc(54px * var(--of-login-scale))) calc(37px * var(--of-login-scale));
+    background-repeat: no-repeat;
+    color: #5f6e8d;
+  }
+
+  .of-login-page[data-locale="en"] .of-login-input.has-action[data-has-value] {
+    background-size: calc(100% - calc(92px * var(--of-login-scale))) calc(37px * var(--of-login-scale));
+  }
+
+  .of-login-page[data-locale="en"] .of-login-input:focus-visible {
+    outline: calc(2px * var(--of-login-scale)) solid rgb(88 100 241 / 0.82);
+    outline-offset: calc(-2px * var(--of-login-scale));
+  }
+
+  .of-login-page[data-locale="en"] .of-login-password-toggle {
+    background: transparent;
+    color: transparent;
+  }
+
+  .of-login-page[data-locale="en"] .of-login-password-toggle:hover,
+  .of-login-page[data-locale="en"] .of-login-password-toggle:focus-visible {
+    outline: calc(2px * var(--of-login-scale)) solid rgb(88 100 241 / 0.72);
+    outline-offset: calc(-4px * var(--of-login-scale));
+  }
+
+  .of-login-page[data-locale="en"] .of-login-password-toggle[aria-label="Hide password"] {
+    background: #fefefe;
+    color: #5f6e8d;
+  }
+
+  .of-login-page[data-locale="en"] .of-login-checkbox > span,
+  .of-login-page[data-locale="en"] .of-login-checkbox-copy,
+  .of-login-page[data-locale="en"] .of-login-link {
+    color: transparent;
+    opacity: 0;
+  }
+
+  .of-login-page[data-locale="en"] .of-login-checkbox:has(input:not(:checked)) > span:first-of-type {
+    border: calc(1px * var(--of-login-scale)) solid #cfd5df;
+    background: #fefefe;
+    opacity: 1;
+  }
+
+  .of-login-page[data-locale="en"] .of-login-checkbox:focus-within,
+  .of-login-page[data-locale="en"] .of-login-link:focus-visible {
+    border-radius: calc(4px * var(--of-login-scale));
+    outline: calc(2px * var(--of-login-scale)) solid rgb(88 100 241 / 0.72);
+    outline-offset: calc(2px * var(--of-login-scale));
+  }
+
+  .of-login-page[data-locale="en"] .of-login-submit,
+  .of-login-page[data-locale="en"] .of-login-submit:hover,
+  .of-login-page[data-locale="en"] .of-login-submit:disabled,
+  .of-login-page[data-locale="en"] .of-login-provider-button,
+  .of-login-page[data-locale="en"] .of-login-provider-button:hover,
+  .of-login-page[data-locale="en"] .of-login-provider-button:disabled {
+    border-color: transparent;
+    background: transparent;
+    box-shadow: none;
+    color: transparent;
+    opacity: 1;
+  }
+
+  .of-login-page[data-locale="en"] .of-login-submit:focus-visible,
+  .of-login-page[data-locale="en"] .of-login-provider-button:focus-visible {
+    outline: calc(2px * var(--of-login-scale)) solid rgb(88 100 241 / 0.72);
+    outline-offset: calc(-2px * var(--of-login-scale));
+  }
+
+  .of-login-page[data-locale="en"] .of-login-divider,
+  .of-login-page[data-locale="en"] .of-login-provider-button > svg,
+  .of-login-page[data-locale="en"] .of-login-provider-button > .of-login-microsoft,
+  .of-login-page[data-locale="en"] .of-login-provider-copy,
+  .of-login-page[data-locale="en"] .of-login-create,
+  .of-login-page[data-locale="en"] .of-login-footer {
+    color: transparent;
+    opacity: 0;
+  }
+
+  .of-login-page[data-locale="en"] .of-login-footer {
+    opacity: 1;
+  }
+
+  .of-login-page[data-locale="en"] .of-login-footer button,
+  .of-login-page[data-locale="en"] .of-login-footer span,
+  .of-login-page[data-locale="en"] .of-login-footer svg {
+    color: transparent;
+    opacity: 0;
+  }
+
+  .of-login-page[data-locale="en"] .of-login-footer button:focus-visible {
+    border-radius: calc(4px * var(--of-login-scale));
+    outline: calc(2px * var(--of-login-scale)) solid rgb(88 100 241 / 0.72);
+    outline-offset: calc(1px * var(--of-login-scale));
+  }
+
+  .of-login-page[data-locale="en"] .of-login-config-state,
+  .of-login-page[data-locale="en"] .of-login-mode-note,
+  .of-login-page[data-locale="en"] .of-login-oauth-error,
+  .of-login-page[data-locale="en"] .of-login-error {
+    position: relative;
+    z-index: 2;
+    background: rgb(254 253 253 / 0.98);
+    opacity: 1;
   }
 }

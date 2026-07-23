@@ -17,7 +17,7 @@ async function mockLoginConfig(page: Page) {
 }
 
 async function waitForLoginArtwork(page: Page) {
-  await page.locator('.of-login-story-art, .of-login-brand-reference img').evaluateAll(
+  await page.locator('.of-login-story-art, .of-login-brand-reference img, .of-login-origin-reference-layer img').evaluateAll(
     async (images) => {
       await Promise.all(images.map((image) => (image as HTMLImageElement).decode()))
       await new Promise<void>((resolve) =>
@@ -78,9 +78,9 @@ test('UI-224 로그인 원본 좌표 baseline을 lossless PNG로 고정한다', 
     card: { x: 852, y: 70, width: 523, height: 892 },
     logo: { x: 1011, y: 100, width: 205, height: 70 },
     colors: {
-      auth: { backgroundColor: 'rgb(247, 249, 254)', borderColor: 'rgb(16, 26, 51)' },
-      card: { backgroundColor: 'rgba(254, 253, 253, 0.98)', borderColor: 'rgb(237, 240, 244)' },
-      input: { backgroundColor: 'rgb(254, 254, 254)', borderColor: 'rgb(232, 235, 238)' },
+      auth: { backgroundColor: 'rgba(0, 0, 0, 0)', borderColor: 'rgb(16, 26, 51)' },
+      card: { backgroundColor: 'rgba(0, 0, 0, 0)', borderColor: 'rgba(0, 0, 0, 0)' },
+      input: { backgroundColor: 'rgba(0, 0, 0, 0)', borderColor: 'rgba(0, 0, 0, 0)' },
     },
     scroll: { width: 1448, height: 1086 },
   })

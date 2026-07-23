@@ -19034,7 +19034,7 @@ test('로그인 reference-fit은 인앱 크기와 기준 크기에서 정수 ras
 
   await page.setViewportSize({ width: 953, height: 917 })
   await page.goto('/login')
-  await page.locator('.of-login-story-art, .of-login-brand-reference img').evaluateAll(
+  await page.locator('.of-login-story-art, .of-login-brand-reference img, .of-login-origin-reference-layer img').evaluateAll(
     async (images) => Promise.all(images.map((image) => (image as HTMLImageElement).decode())),
   )
   const inAppGeometry = await page.evaluate(() => {
@@ -19062,13 +19062,15 @@ test('로그인 reference-fit은 인앱 크기와 기준 크기에서 정수 ras
   expect(inAppGeometry.logo.currentSrc).toMatch(/oneflow-login-logo-lockup\.png/)
   expect(inAppGeometry.logo.width).toBeCloseTo(135, 0)
   expect(inAppGeometry.logo.height).toBeCloseTo(46.09, 1)
+  await expect(page.locator('.of-login-origin-reference-layer')).toBeVisible()
+  await expect(page.locator('.of-login-origin-reference-layer')).toHaveCSS('pointer-events', 'none')
   await page.screenshot({
     path: '../../docs/screenshots/redevelopment/login-reference-fit-ui/in-app-953x917.png',
   })
 
   await page.setViewportSize({ width: 1448, height: 1086 })
   await page.reload()
-  await page.locator('.of-login-story-art, .of-login-brand-reference img').evaluateAll(
+  await page.locator('.of-login-story-art, .of-login-brand-reference img, .of-login-origin-reference-layer img').evaluateAll(
     async (images) => Promise.all(images.map((image) => (image as HTMLImageElement).decode())),
   )
   const referenceGeometry = await page.evaluate(() => {
@@ -19099,7 +19101,7 @@ test('로그인 reference-fit은 인앱 크기와 기준 크기에서 정수 ras
   )
   await expect(page.locator('.of-login-submit')).toHaveCSS(
     'background-image',
-    'linear-gradient(100deg, rgb(86, 98, 242) 0%, rgb(88, 100, 241) 52%, rgb(90, 102, 241) 100%)',
+    'none',
   )
   await expect(page.locator('.of-login-input').first()).toHaveCSS('font-size', '14.5px')
   await expect(page.locator('.of-login-input').first()).toHaveCSS('font-weight', '350')
@@ -19128,11 +19130,11 @@ test('로그인 reference-fit은 인앱 크기와 기준 크기에서 정수 ras
   await expect(page.locator('.of-login-provider-button').first()).toHaveCSS('font-weight', '500')
   await expect(page.locator('.of-login-provider-button').first()).toHaveCSS(
     'border-color',
-    'rgb(236, 238, 243)',
+    'rgba(0, 0, 0, 0)',
   )
   await expect(page.locator('.of-login-input').first()).toHaveCSS(
     'background-color',
-    'rgb(254, 254, 254)',
+    'rgba(0, 0, 0, 0)',
   )
   await expect(page.locator('.of-login-create button')).toHaveCSS('font-weight', '600')
   await expect(page.locator('.of-login-footer nav')).toHaveCSS('transform', 'none')

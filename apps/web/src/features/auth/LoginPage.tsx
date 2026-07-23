@@ -19,6 +19,8 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 
 import loginLogoLockup from '@/assets/generated/oneflow-login-logo-lockup.png'
 import loginLogoLockup2x from '@/assets/generated/oneflow-login-logo-lockup@2x.png'
+import loginOriginReference from '@/assets/generated/oneflow-login-origin-reference.png'
+import loginOriginReference2x from '@/assets/generated/oneflow-login-origin-reference@2x.png'
 import loginStoryReference from '@/assets/generated/oneflow-login-story-reference.png'
 import loginStoryReference495 from '@/assets/generated/oneflow-login-story-reference-495x679.png'
 import loginStoryReference525 from '@/assets/generated/oneflow-login-story-reference-525x720.png'
@@ -195,6 +197,21 @@ function StoryPanel() {
         <path d="M684 543C744 550 769 583 745 615C724 640 682 632 641 645C603 657 574 672 558 675C524 682 515 724 496 758" />
       </svg>
     </section>
+  )
+}
+
+function OriginReferenceLayer() {
+  return (
+    <picture className="of-login-origin-reference-layer" aria-hidden="true">
+      <img
+        src={loginOriginReference}
+        srcSet={`${loginOriginReference} 1x, ${loginOriginReference2x} 2x`}
+        width="1448"
+        height="1086"
+        alt=""
+        draggable="false"
+      />
+    </picture>
   )
 }
 
@@ -477,6 +494,7 @@ export function LoginPage() {
         className="of-login-page"
         data-locale={locale}
       >
+        <OriginReferenceLayer />
         <StoryPanel />
         <main className="of-login-auth" aria-labelledby="login-title">
         <section className="of-login-auth-card">
@@ -514,6 +532,7 @@ export function LoginPage() {
                   autoCapitalize="none"
                   spellCheck={false}
                   value={email}
+                  data-has-value={email ? true : undefined}
                   onChange={(event) => { setEmail(event.target.value); setValidationError(null); login.reset() }}
                   placeholder="you@company.com"
                   disabled={!formEnabled || login.isPending}
@@ -533,6 +552,7 @@ export function LoginPage() {
                   type={showPassword ? 'text' : 'password'}
                   autoComplete="current-password"
                   value={password}
+                  data-has-value={password ? true : undefined}
                   onChange={(event) => { setPassword(event.target.value); setValidationError(null); login.reset() }}
                   placeholder={authMode === 'oidc' ? text.passwordProvider : text.passwordPlaceholder}
                   disabled={!formEnabled || !passwordRequired || login.isPending}
