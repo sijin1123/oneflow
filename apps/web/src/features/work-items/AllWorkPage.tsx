@@ -6,7 +6,6 @@ import {
   ChevronRight,
   Columns3,
   Filter,
-  ListChecks,
   RefreshCw,
   RotateCcw,
   Search,
@@ -16,12 +15,13 @@ import {
 import { type DragEvent, type FormEvent, type ReactNode, useEffect, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 
+import { FrameContextActions } from '@/components/shell/FrameContextActions'
 import { EmptyState, ErrorState, ListSkeleton } from '@/components/shell/states'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { DataGrid, DataGridFrame, type GridDensity } from '@/components/ui/data-grid'
 import { Input } from '@/components/ui/input'
-import { PageHeader, Toolbar } from '@/components/ui/surface'
+import { Toolbar } from '@/components/ui/surface'
 import {
   type SearchResultItem,
   type WorkspaceWorkItemSort,
@@ -120,7 +120,7 @@ export function AllWorkPage() {
   const [input, setInput] = useState(q)
   const [pqlDraft, setPqlDraft] = useState(pql)
   const [filtersOpen, setFiltersOpen] = useState(
-    state !== 'all' || priority !== 'all' || filterMode === 'pql',
+    Boolean(q) || state !== 'all' || priority !== 'all' || filterMode === 'pql',
   )
   const [pendingBoardMove, setPendingBoardMove] = useState<PendingBoardMove | null>(null)
   const [lastBoardMove, setLastBoardMove] = useState<BoardMoveRequest | null>(null)
@@ -216,6 +216,7 @@ export function AllWorkPage() {
   const scopeLabel = SCOPES.find((item) => item.value === scope)?.label ?? SCOPES[0].label
   const basicFilterCount = Number(state !== 'all') + Number(priority !== 'all')
   const activeFilterCount = filterMode === 'pql' ? Number(Boolean(pql)) : basicFilterCount
+  const activeControlCount = activeFilterCount + Number(Boolean(q))
   const countText = data
     ? `${data.total}건${data.total > data.items.length ? ` · ${returnedFrom}-${returnedTo}` : ''}`
     : ' '
@@ -317,60 +318,35 @@ export function AllWorkPage() {
 
   return (
     <div className="flex h-full min-w-0 flex-col bg-of-surface">
-      <PageHeader
-        icon={<ListChecks />}
-        title="All work items"
-        eyebrow="Views"
-        description={(
-          <span aria-live="polite">
+      <h1 className="sr-only">All work items</h1>
+      <FrameContextActions>
+        <section
+          aria-label="Workspace Views 제어"
+          data-testid="workspace-views-frame-actions"
+          className="flex min-w-0 flex-1 flex-wrap items-center justify-end gap-1 lg:flex-nowrap"
+        >
+          <label className="relative w-40 shrink-0">
+            <span className="sr-only">작업 범위</span>
+            <select
+              aria-label="작업 범위"
+              value={scope}
+              className="h-7 w-full appearance-none rounded-of border border-of-border bg-of-surface px-2 pr-12 text-xs font-medium text-of-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus"
+              onChange={(event) => updateParams({ scope: event.target.value })}
+            >
+              {SCOPES.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
+            </select>
+            <Badge variant="neutral" className="pointer-events-none absolute right-6 top-1/2 -translate-y-1/2">
+              {data?.total ?? '…'}
+            </Badge>
+            <ChevronRight size={12} className="pointer-events-none absolute right-1.5 top-1/2 -translate-y-1/2 rotate-90 text-of-muted" />
+          </label>
+          <span
+            aria-live="polite"
+            className="sr-only"
+          >
             {countText}{query.isFetching && !query.isPending ? ' · 업데이트 중' : ''}
           </span>
-        )}
-      />
-
-      <Toolbar className="flex-wrap gap-2 border-b-0 py-2">
-        <label className="relative min-w-44">
-          <span className="sr-only">작업 범위</span>
-          <select
-            aria-label="작업 범위"
-            value={scope}
-            className="h-8 w-full appearance-none rounded-of border border-of-border bg-of-surface px-2 pr-8 text-xs font-medium text-of-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus"
-            onChange={(event) => updateParams({ scope: event.target.value })}
-          >
-            {SCOPES.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
-          </select>
-          <Badge variant="neutral" className="pointer-events-none absolute right-7 top-1/2 -translate-y-1/2">
-            {data?.total ?? '…'}
-          </Badge>
-          <ChevronRight size={12} className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 rotate-90 text-of-muted" />
-        </label>
-
-        <form onSubmit={submit} className="flex min-w-[15rem] flex-1 gap-2">
-          <div className="relative min-w-0 flex-1">
-            <Search size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-of-muted" />
-            <Input
-              value={input}
-              onChange={(event) => setInput(event.target.value)}
-              placeholder="작업 검색"
-              aria-label="전체 작업 검색어"
-              className="h-8 pl-8 pr-7 text-xs"
-            />
-            {input ? (
-              <button
-                type="button"
-                aria-label="입력 지우기"
-                className="absolute right-1 top-1/2 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-of text-of-muted hover:bg-of-surface-hover hover:text-of-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus"
-                onClick={clearSearch}
-              >
-                <X size={12} />
-              </button>
-            ) : null}
-          </div>
-          <Button type="submit" size="sm"><Search size={13} /> 검색</Button>
-        </form>
-
-        <div className="flex w-full min-w-0 flex-wrap items-center gap-1 lg:w-auto lg:justify-end">
-          <div className="flex h-8 items-center rounded-of border border-of-border bg-of-surface-2 p-0.5" aria-label="레이아웃" role="group">
+          <div className="flex h-7 shrink-0 items-center rounded-of border border-of-border bg-of-surface-2 p-0.5" aria-label="레이아웃" role="group">
             <LayoutButton active={layout === 'board'} label="Board" onClick={() => switchLayout('board')}>
               <Columns3 size={14} />
             </LayoutButton>
@@ -386,12 +362,13 @@ export function AllWorkPage() {
           </div>
           <Button
             type="button"
-            variant={filtersOpen || activeFilterCount > 0 ? 'secondary' : 'outline'}
+            variant={filtersOpen || activeControlCount > 0 ? 'secondary' : 'outline'}
             size="sm"
             aria-expanded={filtersOpen}
+            aria-controls="workspace-work-item-filters"
             onClick={() => setFiltersOpen((open) => !open)}
           >
-            <Filter size={13} /> 필터{activeFilterCount > 0 ? ` ${activeFilterCount}` : ''}
+            <Filter size={13} /> 필터{activeControlCount > 0 ? ` ${activeControlCount}` : ''}
           </Button>
           <WorkspaceAnalyticsDialog
             q={q}
@@ -429,16 +406,43 @@ export function AllWorkPage() {
             variant="outline"
             size="icon"
             aria-label="전체 작업 새로고침"
-            className="h-8 w-8"
+            className="h-7 w-7"
             onClick={() => query.refetch()}
           >
             <RefreshCw size={13} className={query.isFetching ? 'animate-spin' : undefined} />
           </Button>
-        </div>
-      </Toolbar>
+        </section>
+      </FrameContextActions>
 
       {filtersOpen ? (
-        <Toolbar aria-label="작업 필터" className="block py-2">
+        <Toolbar
+          id="workspace-work-item-filters"
+          aria-label="작업 필터"
+          className="animate-in block py-2 fade-in slide-in-from-top-1 duration-150 motion-reduce:animate-none"
+        >
+          <form onSubmit={submit} className="mb-2 flex min-w-0 gap-2 sm:max-w-md">
+            <div className="relative min-w-0 flex-1">
+              <Search size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-of-muted" />
+              <Input
+                value={input}
+                onChange={(event) => setInput(event.target.value)}
+                placeholder="작업 검색"
+                aria-label="전체 작업 검색어"
+                className="h-7 pl-8 pr-7 text-xs"
+              />
+              {input ? (
+                <button
+                  type="button"
+                  aria-label="입력 지우기"
+                  className="absolute right-1 top-1/2 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-of text-of-muted hover:bg-of-surface-hover hover:text-of-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus"
+                  onClick={clearSearch}
+                >
+                  <X size={12} />
+                </button>
+              ) : null}
+            </div>
+            <Button type="submit" size="sm"><Search size={13} /> 검색</Button>
+          </form>
           <WorkspacePqlEditor
             mode={filterMode}
             draft={pqlDraft}

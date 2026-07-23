@@ -56,7 +56,7 @@ export function WorkspaceAnalyticsDialog({
     <Dialog.Root open={open} onOpenChange={setOpen}>
       <Dialog.Trigger asChild>
         <Button type="button" variant="outline" size="sm" aria-label="작업 분석 열기">
-          <BarChart3 size={13} /> 분석
+          <BarChart3 size={13} /> <span className="hidden 2xl:inline">분석</span>
         </Button>
       </Dialog.Trigger>
       <Dialog.Portal>

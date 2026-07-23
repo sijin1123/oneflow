@@ -92,7 +92,7 @@ export function WorkspaceDisplayMenu({
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button ref={triggerRef} type="button" variant="outline" size="sm" aria-label="Display">
-          <Settings2 size={13} /> Display
+          <Settings2 size={13} /> <span className="hidden 2xl:inline">Display</span>
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="of-scrollbar max-h-[min(32rem,calc(100vh-6rem))] w-64 overflow-y-auto">
