@@ -1140,6 +1140,19 @@ async function expectNoHorizontalOverflow(page: Page) {
     .toBe(true)
 }
 
+async function expectLinkInsideScroller(scroller: Locator, href: string) {
+  await expect
+    .poll(() => scroller.evaluate((element, targetHref) => {
+      const link = Array.from(element.querySelectorAll<HTMLAnchorElement>('a[href]'))
+        .find((candidate) => new URL(candidate.href).pathname === targetHref)
+      if (!link) return false
+      const scrollerRect = element.getBoundingClientRect()
+      const linkRect = link.getBoundingClientRect()
+      return linkRect.top >= scrollerRect.top && linkRect.bottom <= scrollerRect.bottom
+    }, href))
+    .toBe(true)
+}
+
 async function openProjectWorkItemTool(page: Page, name: '저장 뷰 관리' | '내보내기' | '가져오기') {
   await page.getByRole('button', { name: '작업 도구 더 보기' }).click()
   await page.getByRole('menuitem', { name, exact: true }).click()
@@ -21863,6 +21876,7 @@ test('관리자 direct route는 identity pending 동안 shell geometry를 비상
   await expect(settingsNav).toContainText('기능')
   await expect(settingsNav).toContainText('개발자 도구')
   const pendingDeveloperTools = await settingsNav.getByText('개발자 도구', { exact: true }).boundingBox()
+  const pendingSettingsScrollTop = await settingsNav.evaluate((element) => element.scrollTop)
   expect(pendingDeveloperTools).not.toBeNull()
 
   releaseIdentity?.()
@@ -21870,8 +21884,11 @@ test('관리자 direct route는 identity pending 동안 shell geometry를 비상
   await expect(settingsNav.getByRole('link', { name: '연결 및 통합' })).toHaveAttribute('aria-current', 'page')
   await expect(settingsNav.getByRole('status', { name: '관리자 내비게이션 불러오는 중' })).toHaveCount(0)
   const readyDeveloperTools = await settingsNav.getByText('개발자 도구', { exact: true }).boundingBox()
+  const readySettingsScrollTop = await settingsNav.evaluate((element) => element.scrollTop)
   expect(readyDeveloperTools).not.toBeNull()
-  expect(Math.abs(readyDeveloperTools!.y - pendingDeveloperTools!.y)).toBeLessThanOrEqual(4)
+  expect(Math.abs(
+    readyDeveloperTools!.y + readySettingsScrollTop - pendingDeveloperTools!.y - pendingSettingsScrollTop,
+  )).toBeLessThanOrEqual(4)
   await expectNoHorizontalOverflow(page)
 })
 
@@ -21941,6 +21958,43 @@ test('identity 오류 shell은 비인가 링크 없이 재시도해 관리자 na
   await expect(settingsNav.getByRole('link', { name: '사용자' })).toHaveAttribute('aria-current', 'page')
   await expect(page.getByRole('button', { name: '계정 메뉴' })).toBeVisible()
   await expect.poll(() => identityReads).toBe(2)
+})
+
+test('관리자 설정 direct route는 활성 메뉴를 scroll area 안에 드러낸다', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 720 })
+  await mockApi(page)
+
+  await page.goto('/admin/integrations')
+  const settingsNav = page.getByRole('navigation', { name: '설정 컨텍스트 내비게이션' })
+  const integrationsLink = settingsNav.getByRole('link', { name: '연결 및 통합' })
+  await expect(integrationsLink).toHaveAttribute('aria-current', 'page')
+  await expectLinkInsideScroller(settingsNav, '/admin/integrations')
+  expect(await settingsNav.evaluate((element) => element.scrollTop)).toBeGreaterThan(0)
+  await expect(integrationsLink).not.toBeFocused()
+
+  await page.goto('/admin/overview')
+  const overviewLink = settingsNav.getByRole('link', { name: '개요' })
+  await expect(overviewLink).toHaveAttribute('aria-current', 'page')
+  await expectLinkInsideScroller(settingsNav, '/admin/overview')
+  expect(await settingsNav.evaluate((element) => element.scrollTop)).toBe(0)
+  await expect(overviewLink).not.toBeFocused()
+  await expectNoHorizontalOverflow(page)
+})
+
+test('모바일 설정 drawer는 깊은 경로의 활성 메뉴를 열자마자 보여 준다', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 640 })
+  await mockApi(page)
+  await page.goto('/admin/integrations')
+  await page.getByRole('button', { name: '사이드바 열기' }).click()
+
+  const settingsNav = page.getByRole('dialog', { name: '모바일 내비게이션' })
+    .getByRole('navigation', { name: '설정 컨텍스트 내비게이션' })
+  const integrationsLink = settingsNav.getByRole('link', { name: '연결 및 통합' })
+  await expect(integrationsLink).toHaveAttribute('aria-current', 'page')
+  await expectLinkInsideScroller(settingsNav, '/admin/integrations')
+  expect(await settingsNav.evaluate((element) => element.scrollTop)).toBeGreaterThan(0)
+  await expect(integrationsLink).not.toBeFocused()
+  await expectNoHorizontalOverflow(page)
 })
 
 
