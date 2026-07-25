@@ -46,7 +46,7 @@ const projectRouteLabels: Array<{ suffix: string; title: string; parent: string;
   { suffix: '/modules', title: 'Modules', parent: '계획', parentPath: 'timeline' },
   { suffix: '/intake', title: 'Intake', parent: '계획', parentPath: 'timeline' },
   { suffix: '/dashboard', title: 'Dashboard', parent: '협업', parentPath: 'dashboard' },
-  { suffix: '/documents', title: 'Wiki', parent: '문서', parentPath: 'documents' },
+  { suffix: '/documents', title: 'Pages', parent: '협업', parentPath: 'documents' },
   { suffix: '/meetings', title: 'Meetings', parent: '협업', parentPath: 'dashboard' },
   { suffix: '/files', title: 'Files', parent: '협업', parentPath: 'dashboard' },
   { suffix: '/settings', title: 'Settings', parent: '운영', parentPath: 'settings' },
@@ -83,7 +83,7 @@ export function getShellContext(
     if (pathname.includes('/work-packages/')) {
       nestedRoute = { title: 'Work item', parent: '작업', parentPath: 'work-packages' }
     } else if (pathname.includes('/documents/')) {
-      nestedRoute = { title: 'Wiki Page', parent: '문서', parentPath: 'documents' }
+      nestedRoute = { title: 'Page', parent: '협업', parentPath: 'documents' }
     } else if (pathname.includes('/meetings/')) {
       nestedRoute = { title: 'Meeting', parent: '협업', parentPath: 'dashboard' }
     }

@@ -189,19 +189,20 @@ export const projectNavSections: Array<{ label: string; items: ProjectNavItem[] 
     label: '작업',
     items: [
       { path: 'work-packages', label: 'Work items', icon: List },
-      { path: 'board', label: 'Board', icon: SquareKanban },
-      { path: 'backlog', label: 'Backlog', icon: ClipboardList },
-      { path: 'tree', label: 'Hierarchy', icon: ListTree },
+      { path: 'cycles', label: 'Cycles', icon: IterationCcw },
+      { path: 'modules', label: 'Modules', icon: Boxes },
       { path: 'views', label: 'Views', icon: Bookmark },
+      { path: 'documents', label: 'Pages', icon: FileText },
     ],
   },
   {
     label: '계획',
     items: [
+      { path: 'board', label: 'Board', icon: SquareKanban },
+      { path: 'backlog', label: 'Backlog', icon: ClipboardList },
+      { path: 'tree', label: 'Hierarchy', icon: ListTree },
       { path: 'timeline', label: 'Timeline', icon: CalendarRange },
       { path: 'calendar', label: 'Calendar', icon: CalendarDays },
-      { path: 'cycles', label: 'Cycles', icon: IterationCcw },
-      { path: 'modules', label: 'Modules', icon: Boxes },
       { path: 'intake', label: 'Intake', icon: ClipboardList },
     ],
   },
@@ -209,7 +210,6 @@ export const projectNavSections: Array<{ label: string; items: ProjectNavItem[] 
     label: '협업',
     items: [
       { path: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-      { path: 'documents', label: 'Documents', icon: FileText },
       { path: 'meetings', label: 'Meetings', icon: CalendarClock },
       { path: 'files', label: 'Files', icon: Paperclip },
     ],
@@ -284,14 +284,16 @@ function SettingsIdentityError({ onRetry }: { onRetry: () => void }) {
   )
 }
 
-function useRevealActiveSettingsLink({
+function useRevealActiveNavigationLink({
   enabled,
   pathname,
   ready,
+  revealKey = '',
 }: {
   enabled: boolean
   pathname: string
   ready: boolean
+  revealKey?: string
 }) {
   const navigationRef = useRef<HTMLElement>(null)
 
@@ -314,8 +316,12 @@ function useRevealActiveSettingsLink({
 
     reveal()
     const frame = window.requestAnimationFrame(reveal)
-    return () => window.cancelAnimationFrame(frame)
-  }, [enabled, pathname, ready])
+    const restoreFrame = window.setTimeout(reveal, 80)
+    return () => {
+      window.cancelAnimationFrame(frame)
+      window.clearTimeout(restoreFrame)
+    }
+  }, [enabled, pathname, ready, revealKey])
 
   return navigationRef
 }
@@ -596,7 +602,7 @@ function GlobalRail({
   onNavigate?: () => void
 }) {
   const location = useLocation()
-  const wikiActive = location.pathname === '/wiki' || location.pathname.includes('/documents')
+  const wikiActive = location.pathname === '/wiki'
   const aiActive = location.pathname === '/ai'
   const settingsActive =
     location.pathname === '/settings' || location.pathname.startsWith('/admin')
@@ -740,14 +746,24 @@ function SidebarContent({
   const wikiEnabled = capabilities.data?.wiki.enabled === true
   const settingsHref = me.data?.is_admin ? '/admin' : '/settings'
   const location = useLocation()
-  const wikiMode = location.pathname === '/wiki' || location.pathname.includes('/documents')
-  const wikiProjectId = projectId ?? selectedProject?.id
+  const wikiMode = location.pathname === '/wiki'
   const aiMode = location.pathname === '/ai'
   const settingsMode = location.pathname === '/settings' || location.pathname.startsWith('/admin')
-  const settingsNavigationRef = useRevealActiveSettingsLink({
+  const settingsNavigationRef = useRevealActiveNavigationLink({
     enabled: settingsMode,
     pathname: location.pathname,
     ready: !me.isPending && !me.isError,
+  })
+  const projectsNavigationRef = useRevealActiveNavigationLink({
+    enabled: Boolean(projectId) && !wikiMode && !aiMode && !settingsMode,
+    pathname: location.pathname,
+    ready: data !== undefined && capabilities.data !== undefined,
+    revealKey: [
+      preferences.projectDisclosureInitialized,
+      preferences.projectNavigation,
+      preferences.expandedProjectIds.join(','),
+      wikiEnabled,
+    ].join(':'),
   })
   const rawWikiBucket = new URLSearchParams(location.search).get('bucket')
   const wikiBucket = rawWikiBucket === 'private' || rawWikiBucket === 'archived'
@@ -888,7 +904,7 @@ function SidebarContent({
         {settingsMode ? (
           <nav
             ref={settingsNavigationRef}
-            className="of-scrollbar flex-1 overflow-y-auto px-2 pb-3"
+            className="of-scrollbar min-h-0 flex-1 overflow-y-auto px-2 pb-3"
             aria-label="설정 컨텍스트 내비게이션"
           >
             <div className="space-y-4">
@@ -940,7 +956,7 @@ function SidebarContent({
             </div>
           </nav>
         ) : aiMode ? (
-          <nav className="of-scrollbar flex-1 overflow-y-auto px-2 pb-3" aria-label="AI 컨텍스트 내비게이션">
+          <nav className="of-scrollbar min-h-0 flex-1 overflow-y-auto px-2 pb-3" aria-label="AI 컨텍스트 내비게이션">
             <div className="space-y-4">
               <div>
                 <SectionLabel>AI workspace</SectionLabel>
@@ -956,7 +972,7 @@ function SidebarContent({
             </div>
           </nav>
         ) : wikiMode ? (
-          <nav className="of-scrollbar flex-1 overflow-y-auto px-2 pb-3" aria-label="Wiki 컨텍스트 내비게이션">
+          <nav className="of-scrollbar min-h-0 flex-1 overflow-y-auto px-2 pb-3" aria-label="Wiki 컨텍스트 내비게이션">
             <div className="space-y-4">
               <div>
                 <SectionLabel>문서 범위</SectionLabel>
@@ -967,12 +983,7 @@ function SidebarContent({
                     { key: 'archived', label: '보관됨', icon: Archive },
                   ].map((item) => {
                     const Icon = item.icon
-                    const wikiRoot = location.pathname === '/wiki'
-                    const href = wikiRoot
-                      ? item.key === 'shared' ? '/wiki' : `/wiki?bucket=${item.key}`
-                      : item.key === 'shared'
-                        ? `/projects/${wikiProjectId}/documents`
-                        : `/projects/${wikiProjectId}/documents?bucket=${item.key}`
+                    const href = item.key === 'shared' ? '/wiki' : `/wiki?bucket=${item.key}`
                     return (
                       <Link
                         key={item.key}
@@ -1016,7 +1027,11 @@ function SidebarContent({
             </div>
           </nav>
         ) : (
-        <nav className="of-scrollbar flex-1 overflow-y-auto px-2 pb-3" aria-label="Projects 컨텍스트 내비게이션">
+        <nav
+          ref={projectsNavigationRef}
+          className="of-scrollbar min-h-0 flex-1 overflow-y-auto px-2 pb-3"
+          aria-label="Projects 컨텍스트 내비게이션"
+        >
           <div className="space-y-4">
             <div className="space-y-0.5">
               {visiblePrimaryNav.map((item) => {
@@ -1135,30 +1150,24 @@ function SidebarContent({
                         </button>
                       </div>
                       {expanded && preferences.projectNavigation === 'accordion' ? (
-                        <div className="mt-1 space-y-2 border-l border-of-border-subtle pl-2">
-                          {projectNavSections.map((section) => (
-                            <div key={section.label}>
-                              <p className="px-2 pb-1 text-[10px] font-medium text-of-muted">{section.label}</p>
-                              <div className="space-y-0.5">
-                                {section.items
-                                  .filter((item) => item.path !== 'documents' || wikiEnabled)
-                                  .map((item) => {
-                                    const Icon = item.icon
-                                    return (
-                                      <NavLink
-                                        key={item.path}
-                                        to={`/projects/${project.id}/${item.path}`}
-                                        className={navLinkClass}
-                                        onClick={onNavigate}
-                                      >
-                                        <Icon />
-                                        <span className="truncate">{item.label}</span>
-                                      </NavLink>
-                                    )
-                                  })}
-                              </div>
-                            </div>
-                          ))}
+                        <div className="mt-1 space-y-0.5 border-l border-of-border-subtle pl-2">
+                          {projectNavSections
+                            .flatMap((section) => section.items)
+                            .filter((item) => item.path !== 'documents' || wikiEnabled)
+                            .map((item) => {
+                              const Icon = item.icon
+                              return (
+                                <NavLink
+                                  key={item.path}
+                                  to={`/projects/${project.id}/${item.path}`}
+                                  className={navLinkClass}
+                                  onClick={onNavigate}
+                                >
+                                  <Icon />
+                                  <span className="truncate">{item.label}</span>
+                                </NavLink>
+                              )
+                            })}
                         </div>
                       ) : null}
                     </div>
