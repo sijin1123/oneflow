@@ -1,6 +1,7 @@
 import { ChevronRight, FolderKanban, House, PanelLeftOpen, Rocket, Settings, StickyNote } from 'lucide-react'
 import { Link, useLocation, useParams } from 'react-router-dom'
 
+import { useDocument } from '@/features/documents/api'
 import { useProjects } from '@/features/projects/api'
 import { useWorkspaceProfile } from '@/features/workspace-profile/api'
 
@@ -13,12 +14,14 @@ export function FrameContextBar({
   sidebarCollapsed: boolean
   onExpandSidebar: () => void
 }) {
-  const { projectId } = useParams()
+  const { projectId, docId } = useParams()
   const location = useLocation()
   const { data } = useProjects()
+  const document = useDocument(docId ?? null)
   const workspaceProfile = useWorkspaceProfile()
   const project = data?.items.find((item) => item.id === projectId)
   const isProjectDirectory = location.pathname === '/projects'
+  const isDocumentDetail = Boolean(projectId && docId)
   const context = getShellContext(
     location.pathname,
     location.search,
@@ -26,6 +29,11 @@ export function FrameContextBar({
     projectId,
     project?.name,
   )
+  const scope = isDocumentDetail ? (project?.name ?? context.scope) : context.scope
+  const scopeHref = isDocumentDetail ? `/projects/${projectId}/overview` : context.scopeHref
+  const parent = isDocumentDetail ? 'Pages' : context.parent
+  const parentHref = isDocumentDetail ? `/projects/${projectId}/documents` : context.parentHref
+  const title = isDocumentDetail ? (document.data?.title ?? '페이지') : context.title
   const PageIcon = location.pathname === '/my'
     ? House
     : location.pathname === '/get-started'
@@ -53,11 +61,11 @@ export function FrameContextBar({
           <PageIcon size={15} className="shrink-0 text-of-muted" aria-label="현재 페이지 아이콘" />
           <div className="min-w-0">
             <nav className="hidden min-w-0 items-center gap-1 text-[10px] text-of-muted sm:flex" aria-label="현재 위치">
-              <Link to={context.scopeHref} className="truncate rounded-[2px] hover:text-of-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus">{context.scope}</Link>
+              <Link to={scopeHref} className="truncate rounded-[2px] hover:text-of-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus">{scope}</Link>
               <ChevronRight size={10} className="shrink-0" aria-hidden="true" />
-              <Link to={context.parentHref} className="truncate rounded-[2px] hover:text-of-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus">{context.parent}</Link>
+              <Link to={parentHref} className="truncate rounded-[2px] hover:text-of-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus">{parent}</Link>
             </nav>
-            <p aria-current="page" className="truncate text-sm font-semibold leading-5">{context.title}</p>
+            <p aria-current="page" className="truncate text-sm font-semibold leading-5">{title}</p>
             {isProjectDirectory ? (
               <p className="truncate text-[10px] leading-3 text-of-muted">
                 워크스페이스 디렉터리 · {data ? `${data.total}개 프로젝트` : '불러오는 중'}
