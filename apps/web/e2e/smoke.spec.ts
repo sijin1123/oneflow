@@ -2930,46 +2930,35 @@ test('Settings rail은 권한별 설정 navigation과 중앙 form을 중복 없�
   await page.screenshot({ path: '../../docs/screenshots/redevelopment/settings-central-composition-ui/mobile.png' })
 })
 
-test('Wiki rail은 전용 context navigation과 중앙 lifecycle surface를 연다', async ({ page }) => {
+test('Project Pages는 Projects context navigation 안에서 중앙 lifecycle surface를 연다', async ({ page }) => {
   await mockApi(page)
   await page.goto(`/projects/${project.id}/documents`)
 
   const globalNav = page.getByRole('navigation', { name: '글로벌 내비게이션' })
-  await expect(globalNav.getByRole('link', { name: 'Wiki' })).toHaveAttribute('aria-current', 'page')
+  await expect(globalNav.getByRole('link', { name: 'Projects' })).toHaveAttribute('aria-current', 'page')
+  await expect(globalNav.getByRole('link', { name: 'Wiki' })).not.toHaveAttribute('aria-current', 'page')
 
-  const wikiNav = page.getByRole('navigation', { name: 'Wiki 컨텍스트 내비게이션' })
-  await expect(wikiNav.getByRole('link', { name: '공유' })).toHaveAttribute(
+  const projectsNav = page.getByRole('navigation', { name: 'Projects 컨텍스트 내비게이션' })
+  await expect(projectsNav.getByRole('link', { name: 'Pages' })).toHaveAttribute(
     'href',
     `/projects/${project.id}/documents`,
   )
-  await expect(wikiNav.getByRole('link', { name: '비공개' })).toHaveAttribute(
-    'href',
-    `/projects/${project.id}/documents?bucket=private`,
+  await expect(projectsNav.getByRole('link', { name: 'Pages' })).toHaveAttribute(
+    'aria-current',
+    'page',
   )
-  await expect(wikiNav.getByRole('link', { name: '보관됨' })).toHaveAttribute(
-    'href',
-    `/projects/${project.id}/documents?bucket=archived`,
-  )
-  await expect(wikiNav.getByRole('link', { name: project.name })).toBeVisible()
-  await expect(wikiNav.getByRole('button', { name: '새 작업' })).toHaveCount(0)
+  await expect(projectsNav.getByRole('button', { name: '새 작업' })).toHaveCount(0)
 
   const main = page.getByRole('main')
-  await expect(main.getByRole('heading', { name: 'Wiki' })).toBeVisible()
-  await expect(main.getByLabel('문서 제목 검색')).toBeVisible()
-  await expect(main.getByText('공유 문서가 없습니다')).toBeVisible()
-
-  await page.screenshot({
-    path: '../../docs/screenshots/redevelopment/wiki-central-composition-ui/desktop.png',
-  })
+  await expect(main.getByRole('heading', { name: 'Pages' })).toBeAttached()
+  await expect(main.getByLabel('페이지 검색')).toBeVisible()
+  await expect(main.getByText('공개 페이지가 없습니다')).toBeVisible()
 
   await page.setViewportSize({ width: 390, height: 844 })
   await expectNoHorizontalOverflow(page)
   await page.getByRole('button', { name: '사이드바 열기' }).click()
   const mobileNav = page.getByRole('dialog', { name: '모바일 내비게이션' })
-  await expect(mobileNav.getByRole('navigation', { name: 'Wiki 컨텍스트 내비게이션' })).toBeVisible()
-  await page.screenshot({
-    path: '../../docs/screenshots/redevelopment/wiki-central-composition-ui/mobile.png',
-  })
+  await expect(mobileNav.getByRole('navigation', { name: 'Projects 컨텍스트 내비게이션' })).toBeVisible()
 })
 
 test('Wiki global app은 capability와 무관하게 표시되고 비활성 상태를 안내한다', async ({ page }) => {
@@ -15737,6 +15726,159 @@ test('뷰어 인테이크는 제출 폼 대신 읽기 전용 안내를 본다', 
   expect(submitPosts).toBe(0)
 })
 
+test('UI-231 Project Pages 디렉터리는 범위·검색·정렬·생성을 실제 상태로 연결한다', async ({
+  page,
+}) => {
+  await mockApi(page)
+  await page.setViewportSize({ width: 1280, height: 720 })
+  const pages = [
+    {
+      id: 'page-root',
+      project_id: project.id,
+      parent_id: null,
+      title: '제품 설계',
+      body: '',
+      author_id: 'me-1',
+      visibility: 'shared',
+      archived_at: null,
+      archived_by_user_id: null,
+      archived_by_name: null,
+      version: 1,
+      created_at: '2026-07-01T00:00:00Z',
+      updated_at: '2026-07-05T00:00:00Z',
+    },
+    {
+      id: 'page-child',
+      project_id: project.id,
+      parent_id: 'page-root',
+      title: 'API 설계',
+      body: '',
+      author_id: 'me-1',
+      visibility: 'shared',
+      archived_at: null,
+      archived_by_user_id: null,
+      archived_by_name: null,
+      version: 1,
+      created_at: '2026-07-02T00:00:00Z',
+      updated_at: '2026-07-04T00:00:00Z',
+    },
+    {
+      id: 'page-notes',
+      project_id: project.id,
+      parent_id: null,
+      title: '회의 메모',
+      body: '',
+      author_id: 'me-1',
+      visibility: 'shared',
+      archived_at: null,
+      archived_by_user_id: null,
+      archived_by_name: null,
+      version: 1,
+      created_at: '2026-07-03T00:00:00Z',
+      updated_at: '2026-07-03T00:00:00Z',
+    },
+  ]
+  const privatePage = {
+    ...pages[0],
+    id: 'page-private',
+    title: '개인 초안',
+    visibility: 'private',
+  }
+  let createPayload: { title: string; visibility: string } | null = null
+  await page.route(`**/api/v1/projects/${project.id}/documents**`, async (route) => {
+    if (route.request().method() === 'POST') {
+      createPayload = route.request().postDataJSON() as { title: string; visibility: string }
+      await route.fulfill({
+        status: 201,
+        json: { ...privatePage, id: 'page-created', title: createPayload.title },
+      })
+      return
+    }
+    const bucket = new URL(route.request().url()).searchParams.get('bucket')
+    const items = bucket === 'private' ? [privatePage] : bucket === 'archived' ? [] : pages
+    await route.fulfill({ json: { items, total: items.length } })
+  })
+
+  await page.goto(`/projects/${project.id}/documents`)
+  await expect(page.getByRole('heading', { name: 'Pages' })).toBeAttached()
+  await expect(page.getByRole('main').getByText('Wiki', { exact: true })).toHaveCount(0)
+  await expect(
+    page
+      .getByRole('navigation', { name: '글로벌 내비게이션' })
+      .getByRole('link', { name: 'Projects' }),
+  ).toHaveAttribute('aria-current', 'page')
+  await expect(
+    page
+      .getByRole('navigation', { name: 'Projects 컨텍스트 내비게이션' })
+      .getByRole('link', { name: 'Pages' }),
+  ).toHaveAttribute('aria-current', 'page')
+  await expect(page.getByRole('button', { name: /제품 설계/ })).toBeVisible()
+  await expect(page.getByText('하위 1')).toBeVisible()
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/project-pages-surface-ui-231/desktop-1280x720.png',
+    fullPage: true,
+  })
+
+  await page.getByLabel('페이지 검색').fill('회의')
+  await expect(page).toHaveURL(/q=/)
+  await expect(page.getByRole('button', { name: /회의 메모/ })).toBeVisible()
+  await expect(page.getByRole('button', { name: /제품 설계/ })).toHaveCount(0)
+  await page.getByLabel('페이지 정렬').selectOption('title_desc')
+  await expect(page).toHaveURL(/sort=title_desc/)
+  await page.getByRole('button', { name: '페이지 검색 지우기' }).click()
+
+  await page.getByRole('button', { name: '비공개', exact: true }).click()
+  await expect(page).toHaveURL(/bucket=private/)
+  await expect(page.getByRole('button', { name: /개인 초안/ })).toBeVisible()
+
+  await page.setViewportSize({ width: 390, height: 844 })
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/project-pages-surface-ui-231/mobile-390x844.png',
+    fullPage: true,
+  })
+
+  const createRequest = page.waitForRequest(
+    (request) =>
+      request.method() === 'POST' &&
+      request.url().includes(`/projects/${project.id}/documents`),
+  )
+  await page.getByRole('button', { name: '페이지 추가', exact: true }).first().click()
+  await createRequest
+  await expect(page).toHaveURL(`/projects/${project.id}/documents/page-created`)
+  expect(createPayload).toEqual({ title: '제목 없는 페이지', visibility: 'private' })
+})
+
+test('UI-231 Project Pages 뷰어는 모바일에서 읽기 전용 디렉터리만 본다', async ({ page }) => {
+  await mockApi(page)
+  await asViewer(page)
+  await page.setViewportSize({ width: 390, height: 844 })
+  const viewerPage = {
+    id: 'viewer-page',
+    project_id: project.id,
+    parent_id: null,
+    title: '공개 가이드',
+    body: '',
+    author_id: 'me-1',
+    visibility: 'shared',
+    archived_at: null,
+    archived_by_user_id: null,
+    archived_by_name: null,
+    version: 1,
+    created_at: '2026-07-01T00:00:00Z',
+    updated_at: '2026-07-05T00:00:00Z',
+  }
+  await page.route(`**/api/v1/projects/${project.id}/documents**`, (route) =>
+    route.fulfill({ json: { items: [viewerPage], total: 1 } }),
+  )
+
+  await page.goto(`/projects/${project.id}/documents`)
+  await expect(page.getByText('읽기 전용입니다', { exact: false })).toBeVisible()
+  await expect(page.getByRole('button', { name: '페이지 추가', exact: true })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: /공개 가이드/ })).toBeVisible()
+  await expectNoHorizontalOverflow(page)
+})
+
 test('문서 목록에서 문서를 열면 편집기가 제목과 본문을 보여준다', async ({ page }) => {
   await mockApi(page)
   const doc = {
@@ -16591,9 +16733,9 @@ test('문서 트리가 계층을 들여쓰기로 보여주고 상위 페이지 �
   })
 
   await page.goto(`/projects/${project.id}/documents`)
-  await expect(page.getByRole('main').getByRole('heading', { name: 'Wiki' })).toBeVisible()
-  await expect(page.getByLabel('문서 요약').getByText('전체 문서')).toBeVisible()
-  await expect(page.getByLabel('문서 요약').getByText('하위 문서')).toBeVisible()
+  await expect(page.getByRole('main').getByRole('heading', { name: 'Pages' })).toBeAttached()
+  await expect(page.getByText('3/3')).toBeVisible()
+  await expect(page.getByLabel('문서 요약')).toHaveCount(0)
   await expectNoHorizontalOverflow(page)
   await page.screenshot({
     path: '../../docs/screenshots/redevelopment/documents-ui/mobile-list.png',
@@ -17053,11 +17195,11 @@ test('Wiki lifecycle은 비공개 생성과 보관·복원을 모바일에서 �
   })
 
   await page.goto(`/projects/${project.id}/documents?bucket=private`)
-  await expect(page.getByText('비공개 문서가 없습니다')).toBeVisible()
+  await expect(page.getByText('비공개 페이지가 없습니다')).toBeVisible()
   const createRequest = page.waitForRequest(
     (request) => request.method() === 'POST' && request.url().includes('/documents'),
   )
-  await page.getByRole('button', { name: '새 문서' }).first().click()
+  await page.getByRole('button', { name: '페이지 추가', exact: true }).first().click()
   expect(((await createRequest).postDataJSON() as { visibility: string }).visibility).toBe('private')
   await expect(page.getByLabel('문서 공개 범위')).toHaveValue('private')
 
@@ -24320,14 +24462,14 @@ test('Wiki 설정은 navigation과 API surface를 함께 끄고 데이터 보존
   let toggle = page.getByRole('switch', { name: '프로젝트 Wiki 사용' })
   await expect(toggle).toBeChecked()
   await page.goto(`/projects/${project.id}/work-packages`)
-  await expect(page.getByRole('link', { name: 'Documents' }).first()).toBeVisible()
+  await expect(page.getByRole('link', { name: 'Pages' }).first()).toBeVisible()
   await page.goto('/admin/wiki')
   toggle = page.getByRole('switch', { name: '프로젝트 Wiki 사용' })
 
   await toggle.click()
   await expect(toggle).not.toBeChecked()
   await expect(page.getByText('정책 revision 2')).toBeVisible()
-  await expect(page.getByRole('link', { name: 'Documents' })).toHaveCount(0)
+  await expect(page.getByRole('link', { name: 'Pages' })).toHaveCount(0)
   expect(wiki.requests).toEqual(['"1"'])
 
   await page.getByRole('button', { name: '전체 검색 열기' }).click()
