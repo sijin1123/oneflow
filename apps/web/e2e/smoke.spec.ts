@@ -1140,6 +1140,15 @@ async function expectNoHorizontalOverflow(page: Page) {
     .toBe(true)
 }
 
+async function openPageDetails(page: Page) {
+  const panel = page.getByLabel('문서 속성')
+  if (await panel.isVisible()) return
+  const trigger = page.getByRole('button', { name: '페이지 상세 열기' })
+  await expect(trigger).toBeVisible()
+  await trigger.click()
+  await expect(panel).toBeVisible()
+}
+
 async function expectLinkInsideScroller(scroller: Locator, href: string) {
   await expect
     .poll(() => scroller.evaluate((element, targetHref) => {
@@ -15649,6 +15658,7 @@ test('뷰어 문서 에디터는 제목·본문이 읽기 전용이고 저장·�
   await page.goto(`/projects/${project.id}/documents/d1`)
   await expect(page.getByLabel('문서 제목')).toHaveValue('팀 위키')
   await expect(page.getByText('읽기 전용입니다', { exact: false })).toBeVisible()
+  await openPageDetails(page)
   await expect(page.getByLabel('문서 제목')).toHaveAttribute('readonly', '')
   await expect(page.getByRole('button', { name: '저장' })).toHaveCount(0)
   await expect(page.getByLabel('문서 삭제')).toHaveCount(0)
@@ -15879,6 +15889,86 @@ test('UI-231 Project Pages 뷰어는 모바일에서 읽기 전용 디렉터리�
   await expectNoHorizontalOverflow(page)
 })
 
+test('UI-232 Page detail은 문서 캔버스와 실제 저장 상태·보조 패널을 통합한다', async ({
+  page,
+}) => {
+  await mockApi(page)
+  const doc = {
+    id: 'ui232-page',
+    project_id: project.id,
+    parent_id: null,
+    title: 'OneFlow UI 개편 설계',
+    body: '<h1>UI-first redevelopment</h1><p>행동과 정보 구조를 함께 구현합니다.</p>',
+    author_id: 'me-1',
+    visibility: 'shared' as const,
+    archived_at: null,
+    archived_by_user_id: null,
+    archived_by_name: null,
+    version: 3,
+    created_at: '2026-07-24T00:00:00Z',
+    updated_at: '2026-07-25T00:00:00Z',
+  }
+  await page.route(`**/api/v1/projects/${project.id}/documents**`, (route) =>
+    route.fulfill({ json: { items: [doc], total: 1 } }),
+  )
+  await page.route('**/api/v1/documents/ui232-page', (route) =>
+    route.fulfill({ json: doc }),
+  )
+  await page.route('**/api/v1/documents/ui232-page/comments**', (route) =>
+    route.fulfill({ json: { items: [], total: 0 } }),
+  )
+  await page.route('**/api/v1/documents/ui232-page/work-package-links', (route) =>
+    route.fulfill({ json: { items: [], total: 0 } }),
+  )
+  await page.route(`**/api/v1/projects/${project.id}/attachments**`, (route) =>
+    route.fulfill({ json: { items: [], total: 0 } }),
+  )
+
+  await page.goto(`/projects/${project.id}/documents/ui232-page`)
+  const frame = page.getByTestId('frame-context-bar')
+  await expect(frame).toContainText(project.name)
+  await expect(frame.getByRole('link', { name: 'Pages' })).toBeVisible()
+  await expect(frame).toContainText(doc.title)
+  await expect(
+    frame.getByRole('status').filter({ hasText: '저장됨 · v3' }),
+  ).toBeVisible()
+  await expect(frame.getByRole('button', { name: '저장' })).toBeDisabled()
+  await expect(page.getByLabel('문서 제목')).toHaveValue(doc.title)
+  await expect(page.getByLabel('문서 본문')).toContainText('행동과 정보 구조')
+  await expect(page.getByLabel('문서 속성')).toHaveCount(0)
+
+  await page.getByLabel('문서 제목').fill('OneFlow UI 개편 설계 2')
+  await expect(frame.getByText('저장되지 않음', { exact: true })).toBeVisible()
+  await expect(frame.getByRole('button', { name: '저장' })).toBeEnabled()
+  await page.getByLabel('문서 제목').fill(doc.title)
+  await expect(frame.getByRole('button', { name: '저장' })).toBeDisabled()
+
+  await openPageDetails(page)
+  await expect(page.getByRole('tablist', { name: '문서 상세 보기' })).toBeVisible()
+  await expect(page.getByLabel('상위 페이지')).toBeVisible()
+  await page.getByRole('button', { name: '페이지 상세 닫기' }).click()
+  await expect(page.getByLabel('문서 속성')).toHaveCount(0)
+  await expectNoHorizontalOverflow(page)
+
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/page-detail-surface-ui-232/desktop-1280x720.png',
+    fullPage: true,
+  })
+  await page.setViewportSize({ width: 390, height: 844 })
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/page-detail-surface-ui-232/mobile-390x844.png',
+    fullPage: true,
+  })
+  await openPageDetails(page)
+  await expect(page.getByRole('tablist', { name: '문서 상세 보기' })).toBeVisible()
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/page-detail-surface-ui-232/mobile-panel-390x844.png',
+    fullPage: false,
+  })
+})
+
 test('문서 목록에서 문서를 열면 편집기가 제목과 본문을 보여준다', async ({ page }) => {
   await mockApi(page)
   const doc = {
@@ -15973,6 +16063,7 @@ test('문서 목록에서 문서를 열면 편집기가 제목과 본문을 보�
   // editor page: title input prefilled, lazy Tiptap body editor visible
   await expect(page.getByLabel('문서 제목')).toHaveValue('팀 위키')
   await expect(page.getByLabel('문서 본문')).toBeVisible()
+  await openPageDetails(page)
 
   // document-anchored attachment renders in the editor
   await expect(page.getByText('회의록.docx')).toBeVisible()
@@ -16079,6 +16170,7 @@ test('문서 코멘트는 최신 페이지를 먼저 읽고 이전 페이지 오
   })
 
   await page.goto(`/projects/${project.id}/documents/d1`)
+  await openPageDetails(page)
   await expect(page.getByText('코멘트 4건')).toBeVisible()
   await expect(page.getByText('2 / 4개 표시')).toBeVisible()
   await expect(page.getByText('가장 최신 코멘트')).toBeVisible()
@@ -16462,6 +16554,7 @@ test('문서 인라인·일반 코멘트 리액션은 quick/custom toggle과 읽
   })
 
   await page.goto(`/projects/${project.id}/documents/d1`)
+  await openPageDetails(page)
   const inlineThread = page.locator(`[id="document-comment-thread-${anchorId}"]`)
   await expect(inlineThread.getByLabel('Historical Writer', { exact: true })).toBeVisible()
   await expect(inlineThread.locator('img')).toHaveCount(1)
@@ -16565,6 +16658,7 @@ test('문서 코멘트 멘션은 member picker와 Document Inbox deep link를 �
   )
 
   await page.goto(`/projects/${project.id}/documents/d1`)
+  await openPageDetails(page)
   await page.getByLabel('새 코멘트').fill('Alex님 검토 부탁드립니다.')
   await page.getByLabel('Alex Kim 문서 멘션').check()
   const post = page.waitForRequest(
@@ -16751,8 +16845,8 @@ test('문서 트리가 계층을 들여쓰기로 보여주고 상위 페이지 �
 
   // editor: parent select excludes the doc itself and saves parent_id
   await page.getByRole('button', { name: /회의록/ }).click()
-  await expect(page.getByText('Document detail')).toBeVisible()
-  await expect(page.getByLabel('문서 속성')).toBeVisible()
+  await expect(page.getByTestId('frame-context-bar')).toContainText('회의록')
+  await openPageDetails(page)
   await expectNoHorizontalOverflow(page)
   await page.screenshot({
     path: '../../docs/screenshots/redevelopment/documents-ui/mobile-detail.png',
@@ -16858,6 +16952,7 @@ test('문서 상세 활동 탭은 실제 변경 이력과 재시도·페이지�
   )
 
   await page.goto(`/projects/${project.id}/documents/activity-doc-1`)
+  await openPageDetails(page)
   await page.getByRole('tab', { name: '활동' }).click()
   await expect(page.getByRole('status', { name: '문서 활동 불러오는 중' })).toBeVisible()
   await expect(page.getByRole('alert').getByText('활동을 불러오지 못했습니다.')).toBeVisible()
@@ -17038,6 +17133,7 @@ test('문서 버전 탭은 내용을 지연 조회·비교하고 현재 버전�
 
   await page.goto(`/projects/${project.id}/documents/version-doc-1`)
   expect(detailRequests).toBe(0)
+  await openPageDetails(page)
   await page.getByRole('tab', { name: '버전', exact: true }).click()
 
   await expect(page.getByRole('heading', { name: '버전', exact: true })).toBeVisible()
@@ -17112,7 +17208,9 @@ test('문서 버전 탭은 내용을 지연 조회·비교하고 현재 버전�
   await page.getByRole('button', { name: '이 버전 복원' }).click()
   await restoreResponse
   expect(restorePayload).toEqual({ expected_version: 4 })
-  await expect(page.getByRole('status')).toContainText('새 버전 5로 복원했습니다.')
+  await expect(
+    page.getByRole('status').filter({ hasText: '새 버전 5로 복원했습니다.' }),
+  ).toBeVisible()
   await expect(page.getByRole('button', { name: /버전 5.*현재/ })).toBeVisible()
 
   await page.getByRole('tablist', { name: '문서 상세 보기' }).evaluate((element) => {
@@ -17201,6 +17299,7 @@ test('Wiki lifecycle은 비공개 생성과 보관·복원을 모바일에서 �
   )
   await page.getByRole('button', { name: '페이지 추가', exact: true }).first().click()
   expect(((await createRequest).postDataJSON() as { visibility: string }).visibility).toBe('private')
+  await openPageDetails(page)
   await expect(page.getByLabel('문서 공개 범위')).toHaveValue('private')
 
   const archiveRequest = page.waitForRequest((request) => request.url().endsWith('/archive'))
@@ -17265,6 +17364,7 @@ test('문서 편집기에서 작업을 연결하고 드로어 페이지 섹션�
 
   // editor: pick a work package and link it — the POST carries its id
   await page.goto(`/projects/${project.id}/documents/d1`)
+  await openPageDetails(page)
   const section = page.getByRole('region', { name: '연결된 작업' })
   await expect(section.getByText('연결된 작업이 없습니다.')).toBeVisible()
   await section.getByLabel('연결할 작업').selectOption(wpA.id)

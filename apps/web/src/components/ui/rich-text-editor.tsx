@@ -8,15 +8,21 @@ import { EditorContent, useEditor } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import {
   Bold,
+  Code2,
   Image as ImageIcon,
   Italic,
   List,
   ListOrdered,
   MessageSquarePlus,
+  Quote,
+  Redo2,
   Send,
+  SeparatorHorizontal,
+  Strikethrough,
+  Undo2,
   X,
 } from 'lucide-react'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 
 import { cn } from '@/lib/utils'
 
@@ -33,10 +39,12 @@ type Props = {
   editable?: boolean
   /** Work-item descriptions use an explicit Save action instead of blur-save. */
   saveOnBlur?: boolean
-  /** Plain removes editor chrome for scan-first read surfaces. */
-  appearance?: 'framed' | 'plain'
+  /** Plain removes editor chrome for scan-first read surfaces. Document
+      provides a full-height page canvas while preserving the same commands. */
+  appearance?: 'framed' | 'plain' | 'document'
   /** Document-only inline comment integration. Other rich-text surfaces omit
       these props and retain the original editor behavior. */
+  documentHeader?: ReactNode
   activeCommentAnchorIds?: string[]
   activeCommentAnchorId?: string | null
   onCommentAnchorActivate?: (anchorId: string) => void
@@ -90,6 +98,7 @@ export function RichTextEditor({
   editable = true,
   saveOnBlur = true,
   appearance = 'framed',
+  documentHeader,
   activeCommentAnchorIds = [],
   activeCommentAnchorId = null,
   onCommentAnchorActivate,
@@ -122,10 +131,12 @@ export function RichTextEditor({
       attributes: {
         'aria-label': ariaLabel,
         class: cn(
-          'max-h-72 overflow-y-auto text-sm outline-none [&_ol]:list-decimal [&_ol]:pl-5 [&_ul]:list-disc [&_ul]:pl-5',
+          'text-sm outline-none [&_ol]:list-decimal [&_ol]:pl-5 [&_ul]:list-disc [&_ul]:pl-5',
           appearance === 'plain'
-            ? 'min-h-16 px-1 py-2 leading-6 [&_blockquote]:border-l-2 [&_blockquote]:border-of-border [&_blockquote]:pl-3 [&_h1]:text-lg [&_h1]:font-semibold [&_h2]:text-base [&_h2]:font-semibold [&_p+p]:mt-2'
-            : 'min-h-20 rounded-b-of px-2 py-1.5',
+            ? 'max-h-72 min-h-16 overflow-y-auto px-1 py-2 leading-6 [&_blockquote]:border-l-2 [&_blockquote]:border-of-border [&_blockquote]:pl-3 [&_h1]:text-lg [&_h1]:font-semibold [&_h2]:text-base [&_h2]:font-semibold [&_p+p]:mt-2'
+            : appearance === 'document'
+              ? 'mx-auto min-h-[calc(100vh-15rem)] w-full max-w-3xl px-5 pb-28 pt-4 text-[15px] leading-7 sm:px-10 [&_a]:text-of-accent [&_a]:underline [&_blockquote]:my-4 [&_blockquote]:border-l-2 [&_blockquote]:border-of-border [&_blockquote]:pl-4 [&_blockquote]:text-of-muted [&_h1]:mb-4 [&_h1]:mt-8 [&_h1]:text-2xl [&_h1]:font-semibold [&_h2]:mb-3 [&_h2]:mt-7 [&_h2]:text-xl [&_h2]:font-semibold [&_h3]:mb-2 [&_h3]:mt-6 [&_h3]:text-lg [&_h3]:font-semibold [&_hr]:my-6 [&_hr]:border-of-border [&_img]:my-5 [&_img]:rounded-of [&_p+p]:mt-3 [&_table]:my-5 [&_table]:w-full [&_table]:border-collapse [&_td]:border [&_td]:border-of-border [&_td]:p-2 [&_th]:border [&_th]:border-of-border [&_th]:bg-of-surface-2 [&_th]:p-2 [&_th]:text-left'
+              : 'max-h-72 min-h-20 overflow-y-auto rounded-b-of px-2 py-1.5',
         ),
       },
       handleClick: (_view, _position, event) => {
@@ -138,7 +149,9 @@ export function RichTextEditor({
         return false
       },
     },
-    onUpdate: ({ editor }) => onChange?.(editor.isEmpty ? '' : editor.getHTML()),
+    onUpdate: ({ editor }) => {
+      if (editor.isFocused) onChange?.(editor.isEmpty ? '' : editor.getHTML())
+    },
     onBlur: ({ editor }) => {
       if (saveOnBlur) onSave(editor.isEmpty ? '' : editor.getHTML())
     },
@@ -170,7 +183,7 @@ export function RichTextEditor({
   // Resync when the server value changes underneath us (e.g. a 409 reload).
   useEffect(() => {
     if (editor && !editor.isFocused && value !== editor.getHTML()) {
-      editor.commands.setContent(value || '')
+      editor.commands.setContent(value || '', false)
     }
   }, [value, editor])
 
@@ -276,11 +289,54 @@ export function RichTextEditor({
       className={cn(
         appearance === 'plain'
           ? 'bg-transparent'
-          : 'rounded-of border border-of-border bg-of-surface',
+          : appearance === 'document'
+            ? 'min-w-0 bg-transparent'
+            : 'rounded-of border border-of-border bg-of-surface',
       )}
     >
       {editable ? (
-      <div className="flex min-h-8 items-center gap-0.5 border-b border-of-border bg-of-surface-2/40 px-1 py-0.5">
+      <div
+        className={cn(
+          'flex min-h-8 items-center gap-0.5 overflow-x-auto border-b border-of-border px-1 py-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden',
+          appearance === 'document'
+            ? 'sticky top-0 z-10 bg-of-surface-raised/95 px-3 backdrop-blur'
+            : 'bg-of-surface-2/40',
+        )}
+      >
+        {appearance === 'document' ? (
+          <>
+            <label className="sr-only" htmlFor="document-text-style">
+              텍스트 스타일
+            </label>
+            <select
+              id="document-text-style"
+              aria-label="텍스트 스타일"
+              value={
+                editor.isActive('heading', { level: 1 })
+                  ? 'h1'
+                  : editor.isActive('heading', { level: 2 })
+                    ? 'h2'
+                    : editor.isActive('heading', { level: 3 })
+                      ? 'h3'
+                      : 'paragraph'
+              }
+              onChange={(event) => {
+                const chain = editor.chain().focus()
+                if (event.target.value === 'h1') chain.toggleHeading({ level: 1 }).run()
+                else if (event.target.value === 'h2') chain.toggleHeading({ level: 2 }).run()
+                else if (event.target.value === 'h3') chain.toggleHeading({ level: 3 }).run()
+                else chain.setParagraph().run()
+              }}
+              className="h-7 min-w-24 rounded-of border border-of-border bg-of-surface px-2 text-xs text-of-text outline-none focus-visible:ring-2 focus-visible:ring-of-focus"
+            >
+              <option value="paragraph">본문</option>
+              <option value="h1">제목 1</option>
+              <option value="h2">제목 2</option>
+              <option value="h3">제목 3</option>
+            </select>
+            <span className="mx-0.5 h-4 w-px shrink-0 bg-of-border" aria-hidden="true" />
+          </>
+        ) : null}
         <button
           type="button"
           aria-label="굵게"
@@ -297,6 +353,16 @@ export function RichTextEditor({
         >
           <Italic size={13} />
         </button>
+        {appearance === 'document' ? (
+          <button
+            type="button"
+            aria-label="취소선"
+            className={btn(editor.isActive('strike'))}
+            onClick={() => editor.chain().focus().toggleStrike().run()}
+          >
+            <Strikethrough size={13} />
+          </button>
+        ) : null}
         <button
           type="button"
           aria-label="글머리 목록"
@@ -313,6 +379,34 @@ export function RichTextEditor({
         >
           <ListOrdered size={13} />
         </button>
+        {appearance === 'document' ? (
+          <>
+            <button
+              type="button"
+              aria-label="인용"
+              className={btn(editor.isActive('blockquote'))}
+              onClick={() => editor.chain().focus().toggleBlockquote().run()}
+            >
+              <Quote size={13} />
+            </button>
+            <button
+              type="button"
+              aria-label="코드 블록"
+              className={btn(editor.isActive('codeBlock'))}
+              onClick={() => editor.chain().focus().toggleCodeBlock().run()}
+            >
+              <Code2 size={13} />
+            </button>
+            <button
+              type="button"
+              aria-label="구분선"
+              className={btn(false)}
+              onClick={() => editor.chain().focus().setHorizontalRule().run()}
+            >
+              <SeparatorHorizontal size={13} />
+            </button>
+          </>
+        ) : null}
         {onImageUpload ? (
           <>
             <button
@@ -361,6 +455,29 @@ export function RichTextEditor({
               onClick={openCommentComposer}
             >
               <MessageSquarePlus size={13} />
+            </button>
+          </>
+        ) : null}
+        {appearance === 'document' ? (
+          <>
+            <span className="mx-0.5 h-4 w-px shrink-0 bg-of-border" aria-hidden="true" />
+            <button
+              type="button"
+              aria-label="실행 취소"
+              className={cn(btn(false), 'disabled:opacity-40')}
+              disabled={!editor.can().chain().focus().undo().run()}
+              onClick={() => editor.chain().focus().undo().run()}
+            >
+              <Undo2 size={13} />
+            </button>
+            <button
+              type="button"
+              aria-label="다시 실행"
+              className={cn(btn(false), 'disabled:opacity-40')}
+              disabled={!editor.can().chain().focus().redo().run()}
+              onClick={() => editor.chain().focus().redo().run()}
+            >
+              <Redo2 size={13} />
             </button>
           </>
         ) : null}
@@ -459,6 +576,7 @@ export function RichTextEditor({
           ) : null}
         </div>
       ) : null}
+      {documentHeader}
       <EditorContent editor={editor} />
     </div>
   )

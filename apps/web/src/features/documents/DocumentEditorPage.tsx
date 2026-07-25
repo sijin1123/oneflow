@@ -1,12 +1,14 @@
 import {
   Archive,
-  ArrowLeft,
   Clock3,
   FileText,
   FolderTree,
   History,
   LoaderCircle,
   MessageSquareText,
+  MoreHorizontal,
+  PanelRightClose,
+  PanelRightOpen,
   Quote,
   RotateCcw,
   Save,
@@ -25,12 +27,19 @@ import {
 } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 
+import { FrameContextActions } from '@/components/shell/FrameContextActions'
 import { ReadOnlyNotice } from '@/components/shell/ReadOnlyNotice'
 import { ErrorState, ListSkeleton } from '@/components/shell/states'
 import { Badge } from '@/components/ui/badge'
 import { Avatar } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import { CommentReactionBar } from '@/components/ui/comment-reactions'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { useUploadAttachment } from '@/features/attachments/api'
@@ -117,7 +126,9 @@ export function DocumentEditorPage() {
   const [parentId, setParentId] = useState<string | null>(null)
   const [visibility, setVisibility] = useState<'shared' | 'private'>('shared')
   const [detailTab, setDetailTab] = useState<'comments' | 'activity' | 'versions'>('comments')
+  const [detailsOpen, setDetailsOpen] = useState(false)
   const [activeCommentAnchorId, setActiveCommentAnchorId] = useState<string | null>(null)
+  const titleRef = useRef<HTMLTextAreaElement>(null)
   const upload = useUploadAttachment(projectId)
   const canWrite = useCanWrite(projectId)
   const activeCommentAnchorIds = useMemo(
@@ -145,6 +156,13 @@ export function DocumentEditorPage() {
       setVisibility(doc.visibility ?? 'shared')
     }
   }, [doc])
+
+  useEffect(() => {
+    const element = titleRef.current
+    if (!element) return
+    element.style.height = '0px'
+    element.style.height = `${element.scrollHeight}px`
+  }, [title])
 
   const dirty =
     !!doc &&
@@ -199,6 +217,8 @@ export function DocumentEditorPage() {
   const otherError =
     update.error instanceof ApiError && update.error.status !== 409 ? update.error.message : null
   const activateThread = (anchorId: string) => {
+    setDetailsOpen(true)
+    setDetailTab('comments')
     setActiveCommentAnchorId(anchorId)
     requestAnimationFrame(() => {
       document.getElementById(`document-comment-thread-${anchorId}`)?.scrollIntoView({
@@ -217,64 +237,36 @@ export function DocumentEditorPage() {
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-6xl min-w-0 flex-col gap-4 px-4 py-5 sm:px-6">
-      <header className="border-b border-of-border pb-4">
-        <div className="mb-3 flex min-w-0 items-center gap-2">
-          <button
-            type="button"
-            aria-label="문서 목록"
-            className="rounded-of p-1.5 text-of-muted hover:bg-of-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus"
-            onClick={() => navigate(`/projects/${projectId}/documents`)}
+    <div className="flex min-h-full min-w-0 flex-col bg-of-surface">
+      <FrameContextActions>
+        <span
+          role="status"
+          aria-live="polite"
+          className={`hidden items-center gap-1.5 whitespace-nowrap px-1 text-[11px] sm:flex ${
+            dirty ? 'text-of-text' : 'text-of-muted'
+          }`}
+        >
+          {update.isPending ? (
+            <>
+              <LoaderCircle size={12} className="animate-spin" aria-hidden="true" /> 저장 중
+            </>
+          ) : dirty ? (
+            '저장되지 않음'
+          ) : (
+            `저장됨 · v${doc.version}`
+          )}
+        </span>
+        {editable ? (
+          <Button
+            size="sm"
+            disabled={!dirty || !title.trim() || update.isPending}
+            onClick={save}
           >
-            <ArrowLeft size={16} />
-          </button>
-          <div className="min-w-0 flex-1">
-            <p className="text-[11px] font-medium uppercase text-of-muted">Document detail</p>
-            <p className="truncate text-xs text-of-muted">{project.data?.name ?? '프로젝트'}</p>
-          </div>
-          <div className="hidden shrink-0 flex-wrap items-center gap-2 sm:flex">
-            <Badge variant={editable ? 'accent' : 'outline'}>
-              {editable ? '편집 가능' : '읽기 전용'}
-            </Badge>
-            <Badge variant={documentArchived || archived ? 'outline' : 'neutral'}>
-              {documentArchived ? '문서 보관됨' : archived ? '프로젝트 보관됨' : `v${doc.version}`}
-            </Badge>
-          </div>
-        </div>
-
-        <div className="grid min-w-0 gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
-          <Input
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            readOnly={!editable}
-            aria-label="문서 제목"
-            className="h-10 min-w-0 text-base font-semibold"
-          />
-          {editable ? (
-            <div className="flex min-w-0 flex-wrap items-center gap-2">
-              <Button size="sm" disabled={!title.trim() || update.isPending} onClick={save}>
-                <Save size={14} /> 저장
-              </Button>
-              <button
-                type="button"
-                aria-label="문서 삭제"
-                className="rounded-of p-1.5 text-of-muted hover:bg-of-surface-2 hover:text-of-danger focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus"
-                onClick={remove}
-              >
-                <Trash2 size={15} />
-              </button>
-              {canManageLifecycle ? (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={lifecycle.isPending}
-                  onClick={() => lifecycle.mutate({ docId: doc.id, expectedVersion: lifecycleVersion, archived: true })}
-                >
-                  <Archive size={14} /> 보관
-                </Button>
-              ) : null}
-            </div>
-          ) : documentArchived && canManageLifecycle ? (
+            <Save size={14} /> 저장
+          </Button>
+        ) : null}
+        {canManageLifecycle ? (
+          documentArchived ? (
             <Button
               variant="outline"
               size="sm"
@@ -283,43 +275,119 @@ export function DocumentEditorPage() {
             >
               <RotateCcw size={14} /> 복원
             </Button>
-          ) : null}
-        </div>
-      </header>
+          ) : (
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={lifecycle.isPending}
+              onClick={() =>
+                lifecycle.mutate({
+                  docId: doc.id,
+                  expectedVersion: lifecycleVersion,
+                  archived: true,
+                })
+              }
+            >
+              <Archive size={14} /> 보관
+            </Button>
+          )
+        ) : null}
+        <Button
+          variant="ghost"
+          size="icon"
+          aria-label={detailsOpen ? '페이지 상세 닫기' : '페이지 상세 열기'}
+          title={detailsOpen ? '페이지 상세 닫기' : '페이지 상세 열기'}
+          aria-expanded={detailsOpen}
+          onClick={() => setDetailsOpen((open) => !open)}
+        >
+          {detailsOpen ? <PanelRightClose size={15} /> : <PanelRightOpen size={15} />}
+        </Button>
+        {editable ? (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" aria-label="페이지 작업 더 보기">
+                <MoreHorizontal size={15} />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem
+                className="flex items-center gap-2 text-of-danger"
+                onSelect={remove}
+              >
+                <Trash2 size={14} /> 문서 삭제
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        ) : null}
+      </FrameContextActions>
 
-      {!editable ? <ReadOnlyNotice /> : null}
+      <div
+        className={`grid min-h-0 min-w-0 flex-1 ${
+          detailsOpen ? 'xl:grid-cols-[minmax(0,1fr)_22rem]' : 'grid-cols-1'
+        }`}
+      >
+        <main className="min-w-0">
+          <div className="mx-auto w-full max-w-3xl px-5 pt-4 sm:px-10">
+            {!editable ? <ReadOnlyNotice /> : null}
+            {conflict ? (
+              <p role="alert" className="rounded-of border border-of-danger/30 bg-of-danger/5 px-3 py-2 text-xs text-of-danger">
+                다른 사용자가 먼저 수정했습니다. 작성 중인 내용은 유지했으니, 다시 저장하면 최신 내용 위에 덮어씁니다.
+              </p>
+            ) : null}
+            {otherError ? (
+              <p role="alert" className="rounded-of border border-of-danger/30 bg-of-danger/5 px-3 py-2 text-xs text-of-danger">
+                저장하지 못했습니다: {otherError}
+              </p>
+            ) : null}
+            {lifecycleConflict ? (
+              <p role="alert" className="rounded-of border border-of-danger/30 bg-of-danger/5 px-3 py-2 text-xs text-of-danger">
+                문서 상태가 먼저 변경되었습니다. 같은 작업을 다시 실행하면 최신 버전을 기준으로 처리합니다.
+              </p>
+            ) : lifecycle.error instanceof ApiError ? (
+              <p role="alert" className="rounded-of border border-of-danger/30 bg-of-danger/5 px-3 py-2 text-xs text-of-danger">
+                문서 상태를 변경하지 못했습니다: {lifecycle.error.message}
+              </p>
+            ) : null}
+          </div>
 
-      {conflict ? (
-        <p role="alert" className="rounded-of border border-of-danger/30 bg-of-danger/5 px-3 py-2 text-xs text-of-danger">
-          다른 사용자가 먼저 수정했습니다. 작성 중인 내용은 유지했으니, 다시 저장하면 최신 내용 위에 덮어씁니다.
-        </p>
-      ) : null}
-      {otherError ? (
-        <p role="alert" className="rounded-of border border-of-danger/30 bg-of-danger/5 px-3 py-2 text-xs text-of-danger">
-          저장하지 못했습니다: {otherError}
-        </p>
-      ) : null}
-      {lifecycleConflict ? (
-        <p role="alert" className="rounded-of border border-of-danger/30 bg-of-danger/5 px-3 py-2 text-xs text-of-danger">
-          문서 상태가 먼저 변경되었습니다. 같은 작업을 다시 실행하면 최신 버전을 기준으로 처리합니다.
-        </p>
-      ) : lifecycle.error instanceof ApiError ? (
-        <p role="alert" className="rounded-of border border-of-danger/30 bg-of-danger/5 px-3 py-2 text-xs text-of-danger">
-          문서 상태를 변경하지 못했습니다: {lifecycle.error.message}
-        </p>
-      ) : null}
-
-      <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1fr)_20rem]">
-        <main className="min-w-0 space-y-4">
           <section aria-label="문서 내용" className="min-w-0">
             <Suspense
-              fallback={<div className="h-64 rounded-of border border-of-border bg-of-surface-2/40" />}
+              fallback={<div className="mx-auto mt-4 h-64 w-full max-w-3xl bg-of-surface-2/40" />}
             >
               <RichTextEditor
-                value={doc.body ?? ''}
+                value={body}
                 ariaLabel="문서 본문"
                 editable={editable}
                 onSave={setBody}
+                onChange={setBody}
+                saveOnBlur={false}
+                appearance="document"
+                documentHeader={
+                  <div className="mx-auto w-full max-w-3xl px-5 pt-16 sm:px-10 sm:pt-20">
+                    <textarea
+                      ref={titleRef}
+                      value={title}
+                      onChange={(event) => setTitle(event.target.value)}
+                      readOnly={!editable}
+                      rows={1}
+                      aria-label="문서 제목"
+                      placeholder="제목 없음"
+                      className="block max-h-40 min-h-11 w-full resize-none overflow-y-auto border-0 bg-transparent p-0 text-3xl font-semibold leading-tight text-of-text outline-none placeholder:text-of-muted/60 focus-visible:ring-0 sm:text-4xl"
+                    />
+                    <div className="mt-3 flex min-w-0 flex-wrap items-center gap-2 text-[11px] text-of-muted">
+                      <span>{project.data?.name ?? '프로젝트'}</span>
+                      <span aria-hidden="true">·</span>
+                      <span>{parentTitle}</span>
+                      <span aria-hidden="true">·</span>
+                      <span>{formatDateTime(doc.updated_at)}</span>
+                      {documentArchived || archived ? (
+                        <Badge variant="outline">
+                          {documentArchived ? '문서 보관됨' : '프로젝트 보관됨'}
+                        </Badge>
+                      ) : null}
+                    </div>
+                  </div>
+                }
                 activeCommentAnchorIds={activeCommentAnchorIds}
                 activeCommentAnchorId={activeCommentAnchorId}
                 onCommentAnchorActivate={activateThread}
@@ -341,6 +409,8 @@ export function DocumentEditorPage() {
                             inlineCommentConflict?.current.version ?? doc.version,
                           document_body: documentBody,
                         })
+                        setDetailsOpen(true)
+                        setDetailTab('comments')
                         setActiveCommentAnchorId(anchorId)
                       }
                     : undefined
@@ -357,132 +427,148 @@ export function DocumentEditorPage() {
               />
             </Suspense>
           </section>
-
-          <div
-            role="tablist"
-            aria-label="문서 상세 보기"
-            className="inline-flex h-8 w-fit items-center gap-0.5 rounded-of border border-of-border bg-of-surface p-0.5"
-          >
-            <button
-              type="button"
-              role="tab"
-              aria-selected={detailTab === 'comments'}
-              className={`flex h-7 items-center gap-1.5 rounded-of px-2.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus ${
-                detailTab === 'comments'
-                  ? 'bg-of-surface-2 text-of-text shadow-sm'
-                  : 'text-of-muted hover:bg-of-surface-hover hover:text-of-text'
-              }`}
-              onClick={() => setDetailTab('comments')}
-            >
-              <MessageSquareText size={13} aria-hidden="true" /> 댓글
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={detailTab === 'activity'}
-              className={`flex h-7 items-center gap-1.5 rounded-of px-2.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus ${
-                detailTab === 'activity'
-                  ? 'bg-of-surface-2 text-of-text shadow-sm'
-                  : 'text-of-muted hover:bg-of-surface-hover hover:text-of-text'
-              }`}
-              onClick={() => setDetailTab('activity')}
-            >
-              <History size={13} aria-hidden="true" /> 활동
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={detailTab === 'versions'}
-              className={`flex h-7 items-center gap-1.5 rounded-of px-2.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus ${
-                detailTab === 'versions'
-                  ? 'bg-of-surface-2 text-of-text shadow-sm'
-                  : 'text-of-muted hover:bg-of-surface-hover hover:text-of-text'
-              }`}
-              onClick={() => setDetailTab('versions')}
-            >
-              <RotateCcw size={13} aria-hidden="true" /> 버전
-            </button>
-          </div>
-
-          {detailTab === 'comments' ? (
-            <DocumentComments
-              doc={doc}
-              projectId={projectId}
-              canWrite={editable}
-              data={commentData}
-              isPending={comments.isPending}
-              isError={comments.isError && !comments.data}
-              onRetry={() => comments.refetch()}
-              hasNextPage={comments.hasNextPage}
-              isFetchingNextPage={comments.isFetchingNextPage}
-              isNextPageError={comments.isFetchNextPageError}
-              hasLoadedOlderPage={(comments.data?.pages.length ?? 0) > 1}
-              onLoadMore={() => comments.fetchNextPage()}
-              activeAnchorId={activeCommentAnchorId}
-              onActivateAnchor={activateBodyAnchor}
-            />
-          ) : detailTab === 'activity' ? (
-            <DocumentActivityPanel docId={doc.id} />
-          ) : (
-            <DocumentVersionPanel doc={doc} projectId={projectId} canRestore={editable} />
-          )}
         </main>
 
-        <aside aria-label="문서 속성" className="grid min-w-0 gap-3 self-start">
-          <section aria-label="문서 메타" className="rounded-of border border-of-border bg-of-surface p-3">
-            <div className="mb-3 flex items-center gap-2">
-              <FileText size={15} className="text-of-muted" aria-hidden="true" />
-              <h2 className="text-sm font-semibold">속성</h2>
-            </div>
-            <div className="grid gap-3 text-xs">
-              <label className="grid gap-1">
-                <span className="font-medium text-of-muted">상위 페이지</span>
-                <Select
-                  id="doc-parent"
-                  className="h-8 min-w-0 text-xs"
-                  value={parentId ?? ''}
-                  disabled={!editable}
-                  onChange={(e) => setParentId(e.target.value === '' ? null : e.target.value)}
-                  aria-label="상위 페이지"
+        {detailsOpen ? (
+          <aside
+            aria-label="문서 속성"
+            className="fixed inset-x-0 bottom-0 top-[8.5rem] z-30 min-w-0 border-t border-of-border bg-of-surface-raised xl:static xl:z-auto xl:border-l xl:border-t-0"
+          >
+            <div className="grid h-full min-w-0 gap-3 overflow-y-auto p-3 xl:sticky xl:top-0 xl:max-h-[calc(100vh-7rem)]">
+              <div
+                role="tablist"
+                aria-label="문서 상세 보기"
+                className="grid h-8 grid-cols-3 items-center gap-0.5 rounded-of bg-of-surface-2 p-0.5"
+              >
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={detailTab === 'comments'}
+                  className={`flex h-7 items-center gap-1.5 rounded-of px-2.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus ${
+                    detailTab === 'comments'
+                      ? 'bg-of-surface-2 text-of-text shadow-sm'
+                      : 'text-of-muted hover:bg-of-surface-hover hover:text-of-text'
+                  }`}
+                  onClick={() => setDetailTab('comments')}
                 >
-                  <option value="">(없음 — 최상위)</option>
-                  {parentOptions.map((d) => (
-                    <option key={d.id} value={d.id}>
-                      {d.title}
-                    </option>
-                  ))}
-                </Select>
-              </label>
-              <label className="grid gap-1">
-                <span className="font-medium text-of-muted">공개 범위</span>
-                <Select
-                  value={visibility}
-                  disabled={!editable || doc.author_id !== me.data?.id}
-                  onChange={(event) => setVisibility(event.target.value as 'shared' | 'private')}
-                  aria-label="문서 공개 범위"
+                  <MessageSquareText size={13} aria-hidden="true" /> 댓글
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={detailTab === 'activity'}
+                  className={`flex h-7 items-center gap-1.5 rounded-of px-2.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus ${
+                    detailTab === 'activity'
+                      ? 'bg-of-surface-2 text-of-text shadow-sm'
+                      : 'text-of-muted hover:bg-of-surface-hover hover:text-of-text'
+                  }`}
+                  onClick={() => setDetailTab('activity')}
                 >
-                  <option value="shared">프로젝트 공유</option>
-                  <option value="private">나만 보기</option>
-                </Select>
-              </label>
-              <div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-2 text-of-muted">
-                <FolderTree size={14} aria-hidden="true" />
-                <span className="truncate">{parentTitle}</span>
+                  <History size={13} aria-hidden="true" /> 활동
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={detailTab === 'versions'}
+                  className={`flex h-7 items-center gap-1.5 rounded-of px-2.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus ${
+                    detailTab === 'versions'
+                      ? 'bg-of-surface-2 text-of-text shadow-sm'
+                      : 'text-of-muted hover:bg-of-surface-hover hover:text-of-text'
+                  }`}
+                  onClick={() => setDetailTab('versions')}
+                >
+                  <RotateCcw size={13} aria-hidden="true" /> 버전
+                </button>
               </div>
-              <div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-2 text-of-muted">
-                <Clock3 size={14} aria-hidden="true" />
-                <span className="truncate">{formatDateTime(doc.updated_at)}</span>
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <Badge variant="outline">버전 {doc.version}</Badge>
-                {doc.author_id ? <Badge variant="outline">작성자 있음</Badge> : null}
-              </div>
-            </div>
-          </section>
 
-          <LinkedWorkPackagesSection docId={doc.id} projectId={projectId} canWrite={editable} />
-          <DocumentAttachments docId={doc.id} projectId={projectId} />
-        </aside>
+              {detailTab === 'comments' ? (
+                <DocumentComments
+                  doc={doc}
+                  projectId={projectId}
+                  canWrite={editable}
+                  data={commentData}
+                  isPending={comments.isPending}
+                  isError={comments.isError && !comments.data}
+                  onRetry={() => comments.refetch()}
+                  hasNextPage={comments.hasNextPage}
+                  isFetchingNextPage={comments.isFetchingNextPage}
+                  isNextPageError={comments.isFetchNextPageError}
+                  hasLoadedOlderPage={(comments.data?.pages.length ?? 0) > 1}
+                  onLoadMore={() => comments.fetchNextPage()}
+                  activeAnchorId={activeCommentAnchorId}
+                  onActivateAnchor={activateBodyAnchor}
+                />
+              ) : detailTab === 'activity' ? (
+                <DocumentActivityPanel docId={doc.id} />
+              ) : (
+                <DocumentVersionPanel doc={doc} projectId={projectId} canRestore={editable} />
+              )}
+
+              <section
+                aria-label="문서 메타"
+                className="rounded-of border border-of-border bg-of-surface p-3"
+              >
+                <div className="mb-3 flex items-center gap-2">
+                  <FileText size={15} className="text-of-muted" aria-hidden="true" />
+                  <h2 className="text-sm font-semibold">속성</h2>
+                </div>
+                <div className="grid gap-3 text-xs">
+                  <label className="grid gap-1">
+                    <span className="font-medium text-of-muted">상위 페이지</span>
+                    <Select
+                      id="doc-parent"
+                      className="h-8 min-w-0 text-xs"
+                      value={parentId ?? ''}
+                      disabled={!editable}
+                      onChange={(e) => setParentId(e.target.value === '' ? null : e.target.value)}
+                      aria-label="상위 페이지"
+                    >
+                      <option value="">(없음 — 최상위)</option>
+                      {parentOptions.map((d) => (
+                        <option key={d.id} value={d.id}>
+                          {d.title}
+                        </option>
+                      ))}
+                    </Select>
+                  </label>
+                  <label className="grid gap-1">
+                    <span className="font-medium text-of-muted">공개 범위</span>
+                    <Select
+                      value={visibility}
+                      disabled={!editable || doc.author_id !== me.data?.id}
+                      onChange={(event) =>
+                        setVisibility(event.target.value as 'shared' | 'private')
+                      }
+                      aria-label="문서 공개 범위"
+                    >
+                      <option value="shared">프로젝트 공유</option>
+                      <option value="private">나만 보기</option>
+                    </Select>
+                  </label>
+                  <div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-2 text-of-muted">
+                    <FolderTree size={14} aria-hidden="true" />
+                    <span className="truncate">{parentTitle}</span>
+                  </div>
+                  <div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-2 text-of-muted">
+                    <Clock3 size={14} aria-hidden="true" />
+                    <span className="truncate">{formatDateTime(doc.updated_at)}</span>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge variant="outline">버전 {doc.version}</Badge>
+                    {doc.author_id ? <Badge variant="outline">작성자 있음</Badge> : null}
+                  </div>
+                </div>
+              </section>
+
+              <LinkedWorkPackagesSection
+                docId={doc.id}
+                projectId={projectId}
+                canWrite={editable}
+              />
+              <DocumentAttachments docId={doc.id} projectId={projectId} />
+            </div>
+          </aside>
+        ) : null}
       </div>
     </div>
   )
