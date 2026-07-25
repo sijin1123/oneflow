@@ -14226,7 +14226,7 @@ test('저장 뷰 관리 surface는 모바일에서 활성·잠금·저장 흐름
 })
 
 test('Project Views directory는 생성·공유 뷰 열기·소유자 관리를 연결한다', async ({ page }) => {
-  await page.setViewportSize({ width: 390, height: 844 })
+  await page.setViewportSize({ width: 1440, height: 900 })
   await mockApi(page)
   let ownedLocked = false
   const items = [
@@ -14284,9 +14284,34 @@ test('Project Views directory는 생성·공유 뷰 열기·소유자 관리를 
   })
 
   await page.goto(`/projects/${project.id}/views`)
-  await expect(page.getByRole('heading', { name: '프로젝트 뷰' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '프로젝트 뷰' })).toHaveCount(1)
+  await expect(page.getByTestId('frame-context-bar')).toContainText('Views')
   await expect(page.getByText('Alex Kim님이 공유')).toBeVisible()
-  await expect(page.getByRole('button', { name: '잠금' })).toHaveCount(1)
+  await expect(page.getByRole('button', { name: '내 일정 잠금' })).toHaveCount(1)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/project-views-ui/desktop.png',
+    fullPage: true,
+  })
+  await page.getByRole('button', { name: '필터' }).click()
+  await page.getByLabel('프로젝트 뷰 레이아웃 필터').selectOption('board')
+  await expect(page).toHaveURL(/layout=board/)
+  await expect(page.getByRole('link', { name: '팀 보드 열기' })).toBeVisible()
+  await expect(page.getByRole('link', { name: '내 일정 열기' })).toBeHidden()
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/project-views-ui/desktop-filter.png',
+    fullPage: true,
+  })
+  await page.getByLabel('프로젝트 뷰 필터 초기화').click()
+  await page.getByRole('button', { name: '공유됨' }).click()
+  await expect(page).toHaveURL(/scope=shared/)
+  await expect(page.getByRole('link', { name: '팀 보드 열기' })).toBeVisible()
+  await expect(page.getByRole('link', { name: '내 일정 열기' })).toBeHidden()
+  await page.getByRole('button', { name: '전체', exact: true }).click()
+  await page.getByLabel('프로젝트 뷰 검색').fill('팀')
+  await expect(page).toHaveURL(/q=%ED%8C%80/)
+  await expect(page.getByRole('link', { name: '팀 보드 열기' })).toBeVisible()
+  await expect(page.getByRole('link', { name: '내 일정 열기' })).toBeHidden()
+  await page.getByLabel('프로젝트 뷰 검색 지우기').click()
   await page.getByRole('link', { name: '팀 보드 열기' }).click()
   await expect(page).toHaveURL(
     new RegExp(`/projects/${project.id}/board\\?status=todo&sort=subject`),
@@ -14294,6 +14319,11 @@ test('Project Views directory는 생성·공유 뷰 열기·소유자 관리를 
 
   await page.goto(`/projects/${project.id}/views`)
   await page.getByRole('button', { name: '뷰 만들기' }).click()
+  await expect(page.getByRole('dialog')).toBeVisible()
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/project-views-ui/desktop-create-dialog.png',
+    fullPage: true,
+  })
   await page.getByLabel('뷰 이름').fill('주간 캘린더')
   await page.getByLabel('레이아웃').selectOption('calendar')
   await page.getByRole('checkbox', { name: '팀과 공유' }).check()
@@ -14311,8 +14341,9 @@ test('Project Views directory는 생성·공유 뷰 열기·소유자 관리를 
   const patch = page.waitForRequest(
     (request) => request.method() === 'PATCH' && request.url().endsWith('/view-owned'),
   )
-  await page.getByRole('button', { name: '잠금' }).click()
+  await page.getByRole('button', { name: '내 일정 잠금' }).click()
   expect((await patch).postDataJSON()).toEqual({ is_locked: true })
+  await page.setViewportSize({ width: 390, height: 844 })
   await expectNoHorizontalOverflow(page)
   await page.screenshot({
     path: '../../docs/screenshots/redevelopment/project-views-ui/mobile.png',
