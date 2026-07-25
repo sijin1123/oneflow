@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 export const SIDEBAR_PREFERENCES_STORAGE_KEY = 'oneflow.sidebar.preferences.v1'
 
@@ -150,8 +150,16 @@ function samePreferences(left: SidebarPreferences, right: SidebarPreferences) {
 
 export function useSidebarPreferences() {
   const [preferences, setPreferences] = useState(readSidebarPreferences)
+  // An externally received snapshot renders locally but must not be echoed back
+  // by another hook consumer, which could revive stale rapid interactions.
+  const externalSyncPending = useRef<SidebarPreferences | null>(null)
 
   useEffect(() => {
+    const external = externalSyncPending.current
+    externalSyncPending.current = null
+    if (external && samePreferences(external, preferences)) {
+      return
+    }
     try {
       window.localStorage.setItem(SIDEBAR_PREFERENCES_STORAGE_KEY, JSON.stringify(preferences))
     } catch {
@@ -162,13 +170,21 @@ export function useSidebarPreferences() {
 
   useEffect(() => {
     const syncSameTab = (next: SidebarPreferences) => {
-      setPreferences((current) => (samePreferences(current, next) ? current : next))
+      setPreferences((current) => {
+        if (samePreferences(current, next)) return current
+        externalSyncPending.current = next
+        return next
+      })
     }
     sameTabSubscribers.add(syncSameTab)
     const syncPreferences = (event: StorageEvent) => {
       if (event.key !== null && event.key !== SIDEBAR_PREFERENCES_STORAGE_KEY) return
       const next = parseSidebarPreferences(event.newValue)
-      setPreferences((current) => (samePreferences(current, next) ? current : next))
+      setPreferences((current) => {
+        if (samePreferences(current, next)) return current
+        externalSyncPending.current = next
+        return next
+      })
     }
     window.addEventListener('storage', syncPreferences)
     return () => {
