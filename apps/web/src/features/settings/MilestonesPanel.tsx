@@ -1,8 +1,26 @@
-import { CalendarDays, ExternalLink, Lock, Pencil, Save, Trash2 } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import {
+  CalendarDays,
+  CheckCircle2,
+  ExternalLink,
+  Flag,
+  LoaderCircle,
+  Lock,
+  LockKeyhole,
+  Pencil,
+  Plus,
+  RefreshCw,
+  Save,
+  Trash2,
+} from 'lucide-react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
-import { InlineActionMenu, type InlineActionMenuItem } from '@/components/ui/action-menu'
+import { EmptyState, ErrorState, ListSkeleton } from '@/components/shell/states'
+import {
+  InlineActionMenu,
+  type InlineActionMenuItem,
+} from '@/components/ui/action-menu'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
@@ -12,12 +30,35 @@ import {
   useMilestones,
   useUpdateMilestone,
 } from '@/features/milestones/api'
+import { useProject } from '@/features/projects/api'
 import { confirmDestructive } from '@/lib/guards'
+import { cn } from '@/lib/utils'
 
-function ProgressBar({ milestone }: { milestone: Milestone }) {
+type MilestoneInput = { name: string; due_date: string | null }
+type MilestoneUpdateInput = MilestoneInput & { milestoneId: string }
+
+function milestoneProgress(milestone: Milestone) {
   const total = milestone.work_package_count ?? 0
   const done = milestone.done_work_package_count ?? 0
-  const percent = total === 0 ? 0 : Math.round((done / total) * 100)
+  return {
+    total,
+    done,
+    percent: total === 0 ? 0 : Math.round((done / total) * 100),
+  }
+}
+
+function isOverdue(milestone: Milestone) {
+  if (!milestone.due_date) return false
+  const { total, done } = milestoneProgress(milestone)
+  const complete = total > 0 && done >= total
+  return (
+    !complete &&
+    new Date(`${milestone.due_date}T23:59:59`).getTime() < Date.now()
+  )
+}
+
+function ProgressBar({ milestone }: { milestone: Milestone }) {
+  const { total, done, percent } = milestoneProgress(milestone)
   return (
     <div className="flex min-w-0 items-center gap-2">
       <div
@@ -26,11 +67,14 @@ function ProgressBar({ milestone }: { milestone: Milestone }) {
         aria-valuenow={percent}
         aria-valuemin={0}
         aria-valuemax={100}
-        className="h-1.5 w-20 shrink-0 overflow-hidden rounded-full bg-of-surface-2 sm:w-24"
+        className="h-1.5 min-w-16 flex-1 overflow-hidden rounded-full bg-of-surface-2 sm:w-24 sm:flex-none"
       >
-        <span className="block h-full rounded-full bg-of-accent" style={{ width: `${percent}%` }} />
+        <span
+          className="block h-full rounded-full bg-of-accent"
+          style={{ width: `${percent}%` }}
+        />
       </div>
-      <span className="shrink-0 text-[11px] text-of-muted">
+      <span className="shrink-0 text-[11px] tabular-nums text-of-muted">
         {done}/{total}
       </span>
     </div>
@@ -39,13 +83,13 @@ function ProgressBar({ milestone }: { milestone: Milestone }) {
 
 function MilestoneActions({
   milestone,
-  isOwner,
+  canEdit,
   onOpenWork,
   onEdit,
   onDelete,
 }: {
   milestone: Milestone
-  isOwner: boolean
+  canEdit: boolean
   onOpenWork: () => void
   onEdit: () => void
   onDelete: () => void
@@ -57,7 +101,7 @@ function MilestoneActions({
       icon: <ExternalLink size={14} />,
       onSelect: onOpenWork,
     },
-    ...(isOwner
+    ...(canEdit
       ? [
           {
             label: '편집',
@@ -96,11 +140,13 @@ function MilestoneActions({
 function MilestoneRow({
   milestone,
   projectId,
-  isOwner,
+  canEdit,
+  onDirtyChange,
 }: {
   milestone: Milestone
   projectId: string
-  isOwner: boolean
+  canEdit: boolean
+  onDirtyChange: (milestoneId: string, dirty: boolean) => void
 }) {
   const navigate = useNavigate()
   const updateMilestone = useUpdateMilestone(projectId)
@@ -108,105 +154,217 @@ function MilestoneRow({
   const [editing, setEditing] = useState(false)
   const [name, setName] = useState(milestone.name)
   const [dueDate, setDueDate] = useState(milestone.due_date ?? '')
+  const [updateRetry, setUpdateRetry] = useState<MilestoneUpdateInput | null>(
+    null,
+  )
+  const [deleteRetry, setDeleteRetry] = useState<string | null>(null)
+  const [message, setMessage] = useState('')
+  const dirty =
+    editing &&
+    (name.trim() !== milestone.name || dueDate !== (milestone.due_date ?? ''))
+
+  useEffect(() => {
+    onDirtyChange(milestone.id, dirty)
+  }, [dirty, milestone.id, onDirtyChange])
+  useEffect(
+    () => () => {
+      onDirtyChange(milestone.id, false)
+    },
+    [milestone.id, onDirtyChange],
+  )
+
+  const openWork = () =>
+    navigate(
+      `/projects/${projectId}/work-packages?milestone_id=${milestone.id}`,
+    )
 
   const resetDraft = () => {
     setName(milestone.name)
     setDueDate(milestone.due_date ?? '')
     setEditing(false)
+    setUpdateRetry(null)
+    updateMilestone.reset()
   }
+
+  const updateDraft = (field: 'name' | 'dueDate', value: string) => {
+    if (field === 'name') setName(value)
+    else setDueDate(value)
+    setUpdateRetry(null)
+    setMessage('')
+    updateMilestone.reset()
+  }
+
+  const submitUpdate = (input: MilestoneUpdateInput) => {
+    setMessage('')
+    setUpdateRetry(input)
+    updateMilestone.mutate(input, {
+      onSuccess: (saved) => {
+        setName(saved.name)
+        setDueDate(saved.due_date ?? '')
+        setEditing(false)
+        setUpdateRetry(null)
+        setMessage('마일스톤을 저장했습니다.')
+      },
+    })
+  }
+
+  const submitDelete = (milestoneId: string) => {
+    setMessage('')
+    setDeleteRetry(milestoneId)
+    deleteMilestone.mutate(milestoneId, {
+      onSuccess: () => {
+        setDeleteRetry(null)
+        setMessage('마일스톤을 삭제했습니다.')
+      },
+    })
+  }
+
   const deleteMessage = `'${milestone.name}' 마일스톤을 삭제할까요?\n연결된 작업 ${
     milestone.work_package_count ?? 0
   }건은 삭제되지 않고 배정만 해제됩니다.`
 
-  if (editing) {
-    return (
-      <li className="rounded-of border border-of-border bg-of-surface px-2 py-2 text-xs">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+  return (
+    <li className="min-w-0 border-b border-of-border last:border-b-0">
+      {editing ? (
+        <div className="grid min-w-0 gap-2 bg-of-surface-2/45 px-3 py-3 sm:grid-cols-[minmax(0,1fr)_9rem_auto] sm:items-start">
           <Input
             value={name}
-            onChange={(event) => setName(event.target.value)}
+            onChange={(event) => updateDraft('name', event.target.value)}
             aria-label="마일스톤 이름 편집"
-            className="h-8 min-w-0 flex-1 text-xs"
+            className="h-8 min-w-0 text-xs"
           />
           <Input
             type="date"
             value={dueDate}
-            onChange={(event) => setDueDate(event.target.value)}
+            onChange={(event) => updateDraft('dueDate', event.target.value)}
             aria-label="마일스톤 기한 편집"
-            className="h-8 sm:w-36"
+            className="h-8"
           />
           <div className="flex items-center gap-2">
             <Button
               size="sm"
               disabled={!name.trim() || updateMilestone.isPending}
               onClick={() =>
-                updateMilestone.mutate(
-                  {
-                    milestoneId: milestone.id,
-                    name: name.trim(),
-                    due_date: dueDate || null,
-                  },
-                  { onSuccess: () => setEditing(false) },
-                )
+                submitUpdate({
+                  milestoneId: milestone.id,
+                  name: name.trim(),
+                  due_date: dueDate || null,
+                })
               }
             >
-              <Save size={14} />
-              저장
+              {updateMilestone.isPending ? (
+                <LoaderCircle
+                  size={14}
+                  className="animate-spin"
+                  aria-hidden="true"
+                />
+              ) : (
+                <Save size={14} aria-hidden="true" />
+              )}
+              {updateMilestone.isPending ? '저장 중' : '저장'}
             </Button>
             <Button size="sm" variant="outline" onClick={resetDraft}>
               취소
             </Button>
           </div>
+          {updateMilestone.isError ? (
+            <div
+              role="alert"
+              className="flex min-w-0 flex-col gap-2 text-xs text-of-danger sm:col-span-3 sm:flex-row sm:items-center sm:justify-between"
+            >
+              <span>저장하지 못했습니다. 입력 내용은 유지됩니다.</span>
+              {updateRetry ? (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={updateMilestone.isPending}
+                  onClick={() => submitUpdate(updateRetry)}
+                >
+                  <RefreshCw size={13} aria-hidden="true" /> 같은 내용으로 다시
+                  시도
+                </Button>
+              ) : null}
+            </div>
+          ) : null}
         </div>
-        {updateMilestone.isError ? (
-          <p role="alert" className="mt-1 text-xs text-of-danger">
-            저장하지 못했습니다. 이름과 기한을 확인하세요.
-          </p>
-        ) : null}
-      </li>
-    )
-  }
-
-  return (
-    <li className="rounded-of border border-of-border bg-of-surface px-2 py-2 text-xs">
-      <div className="flex min-w-0 items-center gap-2">
-        <button
-          type="button"
-          className="min-w-0 flex-1 truncate text-left text-[13px] font-medium hover:text-of-accent hover:underline"
-          onClick={() =>
-            navigate(`/projects/${projectId}/work-packages?milestone_id=${milestone.id}`)
-          }
-        >
-          {milestone.name}
-        </button>
-        <span className="hidden shrink-0 items-center gap-1 text-[11px] text-of-muted sm:inline-flex">
-          <CalendarDays size={13} />
-          {milestone.due_date ?? '기한 없음'}
-        </span>
-        <ProgressBar milestone={milestone} />
-        <MilestoneActions
-          milestone={milestone}
-          isOwner={isOwner}
-          onOpenWork={() =>
-            navigate(`/projects/${projectId}/work-packages?milestone_id=${milestone.id}`)
-          }
-          onEdit={() => {
-            setName(milestone.name)
-            setDueDate(milestone.due_date ?? '')
-            setEditing(true)
-          }}
-          onDelete={() => {
-            if (confirmDestructive(deleteMessage)) deleteMilestone.mutate(milestone.id)
-          }}
-        />
-      </div>
-      <div className="mt-1 flex items-center gap-1 text-[11px] text-of-muted sm:hidden">
-        <CalendarDays size={13} />
-        {milestone.due_date ?? '기한 없음'}
-      </div>
+      ) : (
+        <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2 px-3 py-3 sm:grid-cols-[minmax(0,1fr)_9rem_8rem_auto]">
+          <button
+            type="button"
+            className="flex min-w-0 items-center gap-2 text-left hover:text-of-accent"
+            onClick={openWork}
+          >
+            <span
+              className={cn(
+                'flex h-7 w-7 shrink-0 items-center justify-center rounded-of border',
+                isOverdue(milestone)
+                  ? 'border-of-warning/30 bg-of-warning-soft text-of-warning'
+                  : 'border-of-border bg-of-surface-2 text-of-muted',
+              )}
+            >
+              <Flag size={14} aria-hidden="true" />
+            </span>
+            <span className="min-w-0">
+              <span className="block truncate text-[13px] font-medium">
+                {milestone.name}
+              </span>
+              <span className="mt-0.5 block text-[10px] text-of-muted sm:hidden">
+                {milestone.due_date ?? '기한 없음'}
+              </span>
+            </span>
+          </button>
+          <span
+            className={cn(
+              'hidden items-center gap-1 text-[11px] tabular-nums sm:flex',
+              isOverdue(milestone) ? 'text-of-warning' : 'text-of-muted',
+            )}
+          >
+            <CalendarDays size={13} aria-hidden="true" />
+            {milestone.due_date ?? '기한 없음'}
+          </span>
+          <ProgressBar milestone={milestone} />
+          <MilestoneActions
+            milestone={milestone}
+            canEdit={canEdit}
+            onOpenWork={openWork}
+            onEdit={() => {
+              setName(milestone.name)
+              setDueDate(milestone.due_date ?? '')
+              setMessage('')
+              setEditing(true)
+            }}
+            onDelete={() => {
+              if (confirmDestructive(deleteMessage)) submitDelete(milestone.id)
+            }}
+          />
+        </div>
+      )}
       {deleteMilestone.isError ? (
-        <p role="alert" className="mt-1 text-xs text-of-danger">
-          삭제하지 못했습니다. 권한 또는 연결 상태를 확인하세요.
+        <div
+          role="alert"
+          className="flex min-w-0 flex-col gap-2 border-t border-of-danger/15 bg-of-danger-soft/35 px-3 py-2 text-xs text-of-danger sm:flex-row sm:items-center sm:justify-between"
+        >
+          <span>
+            삭제하지 못했습니다. 연결 상태를 확인한 뒤 다시 시도하세요.
+          </span>
+          {deleteRetry ? (
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={deleteMilestone.isPending}
+              onClick={() => submitDelete(deleteRetry)}
+            >
+              <RefreshCw size={13} aria-hidden="true" /> 삭제 다시 시도
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
+      {message ? (
+        <p
+          role="status"
+          className="border-t border-of-success/15 bg-of-success-soft/35 px-3 py-2 text-xs text-of-success"
+        >
+          {message}
         </p>
       ) : null}
     </li>
@@ -215,95 +373,266 @@ function MilestoneRow({
 
 export function MilestonesPanel({
   projectId,
-  isOwner,
+  canManage,
   onDirtyChange,
 }: {
   projectId: string
-  isOwner: boolean
+  canManage: boolean
   onDirtyChange: (dirty: boolean) => void
 }) {
+  const project = useProject(projectId)
   const milestones = useMilestones(projectId)
   const createMilestone = useCreateMilestone(projectId)
-
   const [msName, setMsName] = useState('')
   const [msDue, setMsDue] = useState('')
+  const [createRetry, setCreateRetry] = useState<MilestoneInput | null>(null)
+  const [createMessage, setCreateMessage] = useState('')
+  const [dirtyRows, setDirtyRows] = useState<Set<string>>(new Set())
+  const canEdit = canManage && !project.data?.archived_at
+  const createDirty = msName.trim() !== '' || msDue !== ''
 
-  const dirty = msName.trim() !== '' || msDue !== ''
+  const markRowDirty = useCallback((milestoneId: string, dirty: boolean) => {
+    setDirtyRows((current) => {
+      const next = new Set(current)
+      if (dirty) next.add(milestoneId)
+      else next.delete(milestoneId)
+      return next
+    })
+  }, [])
+
   useEffect(() => {
-    onDirtyChange(dirty)
-  }, [dirty, onDirtyChange])
+    onDirtyChange(createDirty || dirtyRows.size > 0)
+  }, [createDirty, dirtyRows, onDirtyChange])
   useEffect(() => () => onDirtyChange(false), [onDirtyChange])
 
+  const summary = useMemo(() => {
+    const items = milestones.data?.items ?? []
+    return items.reduce(
+      (total, milestone) => {
+        const progress = milestoneProgress(milestone)
+        total.work += progress.total
+        total.done += progress.done
+        if (isOverdue(milestone)) total.overdue += 1
+        return total
+      },
+      { work: 0, done: 0, overdue: 0 },
+    )
+  }, [milestones.data?.items])
+
+  const updateCreateDraft = (field: 'name' | 'dueDate', value: string) => {
+    if (field === 'name') setMsName(value)
+    else setMsDue(value)
+    setCreateRetry(null)
+    setCreateMessage('')
+    createMilestone.reset()
+  }
+
+  const submitCreate = (input: MilestoneInput) => {
+    setCreateMessage('')
+    setCreateRetry(input)
+    createMilestone.mutate(input, {
+      onSuccess: () => {
+        setMsName('')
+        setMsDue('')
+        setCreateRetry(null)
+        setCreateMessage('마일스톤을 추가했습니다.')
+      },
+    })
+  }
+
+  if (milestones.isPending || project.isPending) {
+    return (
+      <section aria-label="마일스톤 설정" className="min-w-0">
+        <ListSkeleton rows={5} />
+      </section>
+    )
+  }
+  if (milestones.isError) {
+    return (
+      <ErrorState
+        error={milestones.error}
+        onRetry={() => void milestones.refetch()}
+      />
+    )
+  }
+  if (project.isError) {
+    return (
+      <ErrorState
+        error={project.error}
+        onRetry={() => void project.refetch()}
+      />
+    )
+  }
+
   return (
-    <div className="space-y-3 rounded-of border border-of-border bg-of-surface p-3">
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <p className="text-xs font-medium">마일스톤</p>
-          <p className="text-[11px] text-of-muted">릴리스 기준점, 기한, 진행률과 연결 작업을 관리합니다.</p>
+    <section
+      aria-label="마일스톤 설정"
+      className="min-w-0 overflow-hidden rounded-of border border-of-border bg-of-surface"
+    >
+      <header className="flex min-w-0 flex-col gap-3 px-4 py-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
+          <p className="text-[11px] font-medium uppercase text-of-muted">
+            Project milestones
+          </p>
+          <h2 className="mt-1 flex items-center gap-2 text-sm font-semibold">
+            <Flag size={15} aria-hidden="true" /> 릴리스 기준점
+          </h2>
+          <p className="mt-1 max-w-2xl text-xs leading-5 text-of-muted">
+            기한과 연결 작업의 진행률을 한 곳에서 확인하고 관리합니다.
+          </p>
         </div>
-        <span className="shrink-0 rounded-full bg-of-surface-2 px-2 py-0.5 text-[11px] text-of-muted">
-          {milestones.data?.total ?? 0}개
-        </span>
-      </div>
-      {milestones.isPending ? (
-        <p className="rounded-of border border-dashed border-of-border px-3 py-2 text-xs text-of-muted">
-          마일스톤을 불러오는 중입니다.
-        </p>
-      ) : milestones.data && milestones.data.total > 0 ? (
-        <ul className="space-y-1.5">
-          {milestones.data.items.map((milestone) => (
-            <MilestoneRow
-              key={milestone.id}
-              milestone={milestone}
-              projectId={projectId}
-              isOwner={isOwner}
-            />
-          ))}
-        </ul>
-      ) : (
-        <p className="rounded-of border border-dashed border-of-border px-3 py-2 text-xs text-of-muted">
-          마일스톤이 없습니다.
-        </p>
-      )}
-      {isOwner ? (
-        <div className="flex flex-col gap-2 border-t border-of-border pt-3 sm:flex-row sm:items-center">
-          <Input
-            value={msName}
-            onChange={(event) => setMsName(event.target.value)}
-            placeholder="마일스톤 이름"
-            aria-label="마일스톤 이름"
-            className="h-8 min-w-0 flex-1 text-xs"
-          />
-          <Input
-            type="date"
-            value={msDue}
-            onChange={(event) => setMsDue(event.target.value)}
-            aria-label="마일스톤 기한"
-            className="h-8 sm:w-36"
-          />
-          <Button
-            size="sm"
-            disabled={!msName.trim() || createMilestone.isPending}
-            onClick={() =>
-              createMilestone.mutate(
-                { name: msName.trim(), due_date: msDue || null },
-                {
-                  onSuccess: () => {
-                    setMsName('')
-                    setMsDue('')
-                  },
-                },
-              )
-            }
+        <Badge variant={canEdit ? 'accent' : 'outline'} className="self-start">
+          {canEdit ? (
+            `${milestones.data.total}개 관리 중`
+          ) : (
+            <>
+              <LockKeyhole size={12} aria-hidden="true" /> 읽기 전용
+            </>
+          )}
+        </Badge>
+      </header>
+
+      <div
+        role="list"
+        aria-label="마일스톤 요약"
+        className="grid grid-cols-3 gap-px border-y border-of-border bg-of-border"
+      >
+        <div role="listitem" className="min-w-0 bg-of-surface-2/55 px-3 py-2.5">
+          <p className="text-[10px] text-of-muted">마일스톤</p>
+          <p className="mt-1 text-sm font-semibold tabular-nums">
+            {milestones.data.total}
+          </p>
+        </div>
+        <div role="listitem" className="min-w-0 bg-of-surface-2/55 px-3 py-2.5">
+          <p className="text-[10px] text-of-muted">연결 작업 완료</p>
+          <p className="mt-1 text-sm font-semibold tabular-nums">
+            {summary.done}/{summary.work}
+          </p>
+        </div>
+        <div role="listitem" className="min-w-0 bg-of-surface-2/55 px-3 py-2.5">
+          <p className="text-[10px] text-of-muted">기한 초과</p>
+          <p
+            className={cn(
+              'mt-1 text-sm font-semibold tabular-nums',
+              summary.overdue > 0 && 'text-of-warning',
+            )}
           >
-            추가
-          </Button>
+            {summary.overdue}
+          </p>
+        </div>
+      </div>
+
+      {project.data.archived_at ? (
+        <p className="border-b border-of-warning/40 bg-of-warning/5 px-4 py-2 text-xs leading-5 text-of-muted">
+          보관된 프로젝트의 마일스톤은 조회할 수 있지만 변경할 수 없습니다.
+        </p>
+      ) : null}
+
+      {canEdit ? (
+        <div className="border-b border-of-border bg-of-surface-2/35 px-3 py-3">
+          <div className="grid min-w-0 gap-2 sm:grid-cols-[minmax(0,1fr)_9rem_auto] sm:items-start">
+            <Input
+              value={msName}
+              onChange={(event) =>
+                updateCreateDraft('name', event.target.value)
+              }
+              placeholder="새 마일스톤 이름"
+              aria-label="마일스톤 이름"
+              className="h-8 min-w-0 text-xs"
+            />
+            <Input
+              type="date"
+              value={msDue}
+              onChange={(event) =>
+                updateCreateDraft('dueDate', event.target.value)
+              }
+              aria-label="마일스톤 기한"
+              className="h-8"
+            />
+            <Button
+              size="sm"
+              disabled={!msName.trim() || createMilestone.isPending}
+              onClick={() =>
+                submitCreate({ name: msName.trim(), due_date: msDue || null })
+              }
+            >
+              {createMilestone.isPending ? (
+                <LoaderCircle
+                  size={14}
+                  className="animate-spin"
+                  aria-hidden="true"
+                />
+              ) : (
+                <Plus size={14} aria-hidden="true" />
+              )}
+              {createMilestone.isPending ? '추가 중' : '추가'}
+            </Button>
+          </div>
+          {createMilestone.isError ? (
+            <div
+              role="alert"
+              className="mt-2 flex min-w-0 flex-col gap-2 text-xs text-of-danger sm:flex-row sm:items-center sm:justify-between"
+            >
+              <span>추가하지 못했습니다. 입력 내용은 유지됩니다.</span>
+              {createRetry ? (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={createMilestone.isPending}
+                  onClick={() => submitCreate(createRetry)}
+                >
+                  <RefreshCw size={13} aria-hidden="true" /> 같은 내용으로 다시
+                  시도
+                </Button>
+              ) : null}
+            </div>
+          ) : null}
+          {createMessage ? (
+            <p
+              role="status"
+              className="mt-2 flex items-center gap-1 text-xs text-of-success"
+            >
+              <CheckCircle2 size={13} aria-hidden="true" /> {createMessage}
+            </p>
+          ) : null}
         </div>
       ) : (
-        <p className="rounded-of bg-of-surface-2 px-3 py-2 text-xs text-of-muted">
+        <p className="border-b border-of-border bg-of-surface-2/45 px-4 py-2 text-xs text-of-muted">
           쓰기 권한이 없어 마일스톤 변경 작업은 숨겨졌습니다.
         </p>
       )}
-    </div>
+
+      {milestones.data.total > 0 ? (
+        <>
+          <div className="hidden grid-cols-[minmax(0,1fr)_9rem_8rem_2rem] gap-3 border-b border-of-border bg-of-surface-2/30 px-3 py-2 text-[10px] font-medium uppercase text-of-muted sm:grid">
+            <span>마일스톤</span>
+            <span>기한</span>
+            <span>진행률</span>
+            <span className="sr-only">작업</span>
+          </div>
+          <ul aria-label="마일스톤 목록" className="min-w-0">
+            {milestones.data.items.map((milestone) => (
+              <MilestoneRow
+                key={milestone.id}
+                milestone={milestone}
+                projectId={projectId}
+                canEdit={canEdit}
+                onDirtyChange={markRowDirty}
+              />
+            ))}
+          </ul>
+        </>
+      ) : (
+        <EmptyState
+          title="마일스톤이 없습니다"
+          hint={
+            canEdit
+              ? '이름과 기한을 입력해 첫 릴리스 기준점을 만드세요.'
+              : '아직 등록된 릴리스 기준점이 없습니다.'
+          }
+          className="min-h-[190px] py-8"
+        />
+      )}
+    </section>
   )
 }

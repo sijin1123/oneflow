@@ -82,13 +82,14 @@ export function SettingsPage() {
 
   const myRole = members.data.items.find((m) => m.user_id === me.data?.id)?.role
   const isOwner = myRole === 'owner'
+  const canManageMilestones = myRole === 'owner' || myRole === 'member'
 
   return (
     <SettingsFrame
       eyebrow="Project settings"
       title="프로젝트 설정"
       description="프로젝트 기본 정보, 구성원, 워크플로우, 자동화, 스토리지와 위험 조치를 한 곳에서 관리합니다."
-      meta={isOwner ? '소유자 권한' : '읽기 전용'}
+      meta={isOwner ? '소유자 권한' : myRole === 'member' ? '멤버 권한' : '읽기 전용'}
     >
       <div className="flex min-w-0 flex-col gap-4 lg:flex-row">
         <SettingsTabList
@@ -121,7 +122,11 @@ export function SettingsPage() {
             <ProjectPhasesPanel projectId={projectId} isOwner={isOwner} onDirtyChange={onDirtyChange} />
           ) : null}
           {tab === 'milestones' ? (
-            <MilestonesPanel projectId={projectId} isOwner={isOwner} onDirtyChange={onDirtyChange} />
+            <MilestonesPanel
+              projectId={projectId}
+              canManage={canManageMilestones}
+              onDirtyChange={onDirtyChange}
+            />
           ) : null}
           {tab === 'fields' ? (
             <FieldsPanel projectId={projectId} isOwner={isOwner} onDirtyChange={onDirtyChange} />
