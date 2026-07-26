@@ -1,6 +1,8 @@
 import { useState } from 'react'
+import { RefreshCw } from 'lucide-react'
 
 import { Avatar } from '@/components/ui/avatar'
+import { Button } from '@/components/ui/button'
 import { Select } from '@/components/ui/select'
 import { profileImageSrc, useMembers } from '@/features/members/api'
 import { FIELD_LABELS } from '@/features/work-packages/activityLabels'
@@ -29,7 +31,10 @@ export function RecentActivity({ projectId }: { projectId: string }) {
   })
 
   return (
-    <div className="min-w-0 rounded-of border border-of-border bg-of-surface p-4">
+    <section
+      aria-label="최근 활동"
+      className="min-w-0 rounded-of border border-of-border bg-of-surface p-4"
+    >
       <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <h2 className="text-sm font-semibold">최근 활동</h2>
         <div className="grid min-w-0 grid-cols-1 gap-1.5 sm:flex sm:items-center">
@@ -48,6 +53,7 @@ export function RecentActivity({ projectId }: { projectId: string }) {
             aria-label="활동 멤버"
             className="h-7 w-full text-[11px] sm:w-24"
             value={actor}
+            disabled={members.isPending || members.isError}
             onChange={(e) => setActor(e.target.value)}
           >
             <option value="">전체 멤버</option>
@@ -69,9 +75,18 @@ export function RecentActivity({ projectId }: { projectId: string }) {
         </div>
       </div>
       {activities.isPending ? (
-        <p className="text-xs text-of-muted">불러오는 중…</p>
+        <p role="status" className="text-xs text-of-muted">활동을 불러오는 중…</p>
       ) : activities.isError ? (
-        <p className="text-xs text-of-danger">활동을 불러오지 못했습니다.</p>
+        <div
+          role="alert"
+          className="flex flex-col gap-2 border-y border-of-danger/15 bg-of-danger-soft px-3 py-2 text-xs text-of-danger sm:flex-row sm:items-center sm:justify-between"
+        >
+          <span>활동을 불러오지 못했습니다.</span>
+          <Button type="button" size="sm" variant="outline" onClick={() => void activities.refetch()}>
+            <RefreshCw size={13} aria-hidden="true" />
+            다시 시도
+          </Button>
+        </div>
       ) : activities.data.total === 0 ? (
         <p className="text-xs text-of-muted">조건에 맞는 활동이 없습니다.</p>
       ) : (
@@ -100,6 +115,16 @@ export function RecentActivity({ projectId }: { projectId: string }) {
           ) : null}
         </>
       )}
-    </div>
+      {members.isError ? (
+        <div className="mt-3 flex items-center justify-between gap-2 border-t border-of-border-subtle pt-2">
+          <p role="alert" className="text-[11px] text-of-muted">
+            멤버 필터를 불러오지 못했습니다.
+          </p>
+          <Button type="button" size="sm" variant="ghost" onClick={() => void members.refetch()}>
+            다시 시도
+          </Button>
+        </div>
+      ) : null}
+    </section>
   )
 }
