@@ -7512,6 +7512,9 @@ test('프로젝트 팀 표면은 모바일에서 멤버 카드와 권한 카드�
 
 test('설정 탭: 딥링크·미저장 가드·뒤로가기가 동작한다', async ({ page }) => {
   await page.route('**/api/v1/projects', (route) => route.fulfill({ json: projects }))
+  await page.route(`**/api/v1/projects/${project.id}`, (route) =>
+    route.fulfill({ json: project }),
+  )
   await page.route('**/api/v1/me', (route) =>
     route.fulfill({
       json: { id: 'me-1', email: 'dev@oneflow.local', display_name: 'Dev User', is_active: true },
@@ -19075,8 +19078,14 @@ test('마일스톤 패널이 행 작업 메뉴·편집·삭제 확인·필터 �
 
   await page.goto(`/projects/${project.id}/settings?tab=milestones`)
   await expect(page.getByText('1차 출시')).toBeVisible()
-  await expect(page.getByText('3/4')).toBeVisible()
+  await expect(
+    page.getByRole('list', { name: '마일스톤 목록' }).getByText('3/4'),
+  ).toBeVisible()
   await expect(page.getByRole('progressbar', { name: '1차 출시 진행률' })).toBeVisible()
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/project-settings-milestones-ui-247/desktop.png',
+    fullPage: true,
+  })
 
   const milestoneMenuTrigger = page.getByLabel('1차 출시 마일스톤 작업')
   const milestoneMenu = page.getByRole('menu', { name: '1차 출시 마일스톤 작업 메뉴' })
@@ -19150,6 +19159,9 @@ test('마일스톤 행 작업 메뉴가 모바일 폭 안에 머물고 읽기 �
       },
     }),
   )
+  await page.route(`**/api/v1/projects/${project.id}`, (route) =>
+    route.fulfill({ json: { ...project, archived_at: '2026-07-20T00:00:00Z' } }),
+  )
   await page.route(`**/api/v1/projects/${project.id}/milestones`, (route) =>
     route.fulfill({
       json: {
@@ -19173,6 +19185,15 @@ test('마일스톤 행 작업 메뉴가 모바일 폭 안에 머물고 읽기 �
 
   await page.goto(`/projects/${project.id}/settings?tab=milestones`)
   await expect(page.getByText('쓰기 권한이 없어 마일스톤 변경 작업은 숨겨졌습니다.')).toBeVisible()
+  await expect(
+    page.getByText('보관된 프로젝트의 마일스톤은 조회할 수 있지만 변경할 수 없습니다.'),
+  ).toBeVisible()
+  await page.getByRole('heading', { name: '릴리스 기준점' }).scrollIntoViewIfNeeded()
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/project-settings-milestones-ui-247/mobile.png',
+    fullPage: true,
+  })
   await page.getByLabel('모바일 출시 마일스톤 작업').click()
   const menu = page.getByRole('menu', { name: '모바일 출시 마일스톤 작업 메뉴' })
   await expect(menu).toBeVisible()
@@ -19189,6 +19210,156 @@ test('마일스톤 행 작업 메뉴가 모바일 폭 안에 머물고 읽기 �
     path: '../../docs/screenshots/redevelopment/milestone-item-actions-ui/mobile.png',
     fullPage: true,
   })
+})
+
+test('일반 멤버는 milestone.write 계약에 따라 마일스톤을 관리한다', async ({ page }) => {
+  await mockApi(page)
+  await page.route('**/api/v1/me', (route) =>
+    route.fulfill({
+      json: { id: 'me-1', email: 'member@oneflow.local', display_name: 'Member', is_active: true },
+    }),
+  )
+  await page.route(`**/api/v1/projects/${project.id}/members`, (route) =>
+    route.fulfill({
+      json: {
+        items: [
+          { user_id: 'me-1', email: 'member@oneflow.local', display_name: 'Member', role: 'member' },
+        ],
+        total: 1,
+      },
+    }),
+  )
+  await page.route(`**/api/v1/projects/${project.id}/milestones`, (route) =>
+    route.fulfill({ json: { items: [], total: 0 } }),
+  )
+
+  await page.goto(`/projects/${project.id}/settings?tab=milestones`)
+  await expect(page.getByText('멤버 권한')).toBeVisible()
+  await expect(page.getByText('0개 관리 중')).toBeVisible()
+  await expect(page.getByLabel('마일스톤 이름')).toBeVisible()
+  await expect(page.getByText('쓰기 권한이 없어 마일스톤 변경 작업은 숨겨졌습니다.')).toHaveCount(0)
+})
+
+test('마일스톤 생성·수정·삭제 실패가 초안을 유지하고 같은 요청으로 복구된다', async ({ page }) => {
+  await mockApi(page)
+  let milestone: Milestone = {
+    id: 'ms-1',
+    project_id: project.id,
+    name: '1차 출시',
+    description: null,
+    due_date: '2026-08-01',
+    work_package_count: 4,
+    done_work_package_count: 3,
+    created_at: '2026-07-01T00:00:00Z',
+    updated_at: '2026-07-01T00:00:00Z',
+  }
+  let items = [milestone]
+  let createAttempts = 0
+  let updateAttempts = 0
+  let deleteAttempts = 0
+
+  await page.route(`**/api/v1/projects/${project.id}/milestones`, async (route) => {
+    if (route.request().method() === 'POST') {
+      createAttempts += 1
+      if (createAttempts === 1) {
+        await route.fulfill({ status: 500, json: { detail: 'temporary create failure' } })
+        return
+      }
+      const input = route.request().postDataJSON() as { name: string; due_date: string | null }
+      const created: Milestone = {
+        ...milestone,
+        id: 'ms-2',
+        name: input.name,
+        due_date: input.due_date,
+        work_package_count: 0,
+        done_work_package_count: 0,
+      }
+      items = [...items, created]
+      await route.fulfill({ status: 201, json: created })
+      return
+    }
+    await route.fulfill({ json: { items, total: items.length } })
+  })
+  await page.route(`**/api/v1/projects/${project.id}/milestones/ms-1`, async (route) => {
+    if (route.request().method() === 'PATCH') {
+      updateAttempts += 1
+      if (updateAttempts === 1) {
+        await route.fulfill({ status: 500, json: { detail: 'temporary update failure' } })
+        return
+      }
+      const input = route.request().postDataJSON() as { name: string; due_date: string | null }
+      milestone = { ...milestone, ...input }
+      items = items.map((item) => (item.id === milestone.id ? milestone : item))
+      await route.fulfill({ json: milestone })
+      return
+    }
+    if (route.request().method() === 'DELETE') {
+      deleteAttempts += 1
+      if (deleteAttempts === 1) {
+        await route.fulfill({ status: 500, json: { detail: 'temporary delete failure' } })
+        return
+      }
+      await route.fulfill({ status: 204 })
+      return
+    }
+    await route.fulfill({ status: 405 })
+  })
+
+  await page.goto(`/projects/${project.id}/settings?tab=milestones`)
+  await page.getByLabel('마일스톤 이름').fill('2차 출시')
+  await page.getByLabel('마일스톤 기한').fill('2026-09-01')
+  await page.getByRole('button', { name: '추가', exact: true }).click()
+  await expect(page.getByRole('alert')).toContainText('입력 내용은 유지됩니다')
+  await expect(page.getByLabel('마일스톤 이름')).toHaveValue('2차 출시')
+  await page.getByRole('button', { name: '같은 내용으로 다시 시도' }).click()
+  await expect(page.getByText('2차 출시')).toBeVisible()
+  expect(createAttempts).toBe(2)
+
+  await page.getByLabel('1차 출시 마일스톤 작업').click()
+  await page.getByLabel('1차 출시 편집').click()
+  await page.getByLabel('마일스톤 이름 편집').fill('1차 GA')
+  let dismissedDirtyPrompt = false
+  page.once('dialog', (dialog) => {
+    dismissedDirtyPrompt = true
+    void dialog.dismiss()
+  })
+  await page.getByRole('tab', { name: '멤버' }).click()
+  await expect.poll(() => dismissedDirtyPrompt).toBe(true)
+  await expect(page.getByLabel('마일스톤 이름 편집')).toHaveValue('1차 GA')
+  await page.getByRole('button', { name: '저장', exact: true }).click()
+  await expect(page.getByRole('alert')).toContainText('입력 내용은 유지됩니다')
+  await page.getByRole('button', { name: '같은 내용으로 다시 시도' }).click()
+  await expect(page.getByText('1차 GA')).toBeVisible()
+  expect(updateAttempts).toBe(2)
+
+  page.once('dialog', (dialog) => void dialog.accept())
+  await page.getByLabel('1차 GA 마일스톤 작업').click()
+  await page.getByLabel('1차 GA 삭제').click()
+  await expect(page.getByRole('alert')).toContainText('삭제하지 못했습니다')
+  await page.getByRole('button', { name: '삭제 다시 시도' }).click()
+  await expect(page.getByText('마일스톤을 삭제했습니다.')).toBeVisible()
+  expect(deleteAttempts).toBe(2)
+})
+
+test('마일스톤 조회 실패가 오류 상태와 재시도를 제공한다', async ({ page }) => {
+  await mockApi(page)
+  let attempts = 0
+  let allowSuccess = false
+  await page.route(`**/api/v1/projects/${project.id}/milestones`, async (route) => {
+    attempts += 1
+    if (!allowSuccess) {
+      await route.fulfill({ status: 503, json: { detail: 'milestone service unavailable' } })
+      return
+    }
+    await route.fulfill({ json: { items: [], total: 0 } })
+  })
+
+  await page.goto(`/projects/${project.id}/settings?tab=milestones`)
+  await expect(page.getByRole('alert')).toContainText('데이터를 불러오지 못했습니다')
+  allowSuccess = true
+  await page.getByRole('button', { name: '다시 시도' }).click()
+  await expect(page.getByText('마일스톤이 없습니다')).toBeVisible()
+  expect(attempts).toBeGreaterThanOrEqual(2)
 })
 
 test('시스템 상태 페이지가 실제 준비 상태를 새로고침하고 안전 진단을 복사한다', async ({ page }) => {
