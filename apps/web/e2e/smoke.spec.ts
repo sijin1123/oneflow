@@ -10901,34 +10901,136 @@ test('운영 허브는 데이터 이전 이력과 고정 export 파일을 제공
   })
 })
 
-test('위험 구역에서 보관 확인 후 POST /archive를 보낸다', async ({ page }) => {
+test('위험 구역은 확인 dialog에서 실패한 보관을 같은 요청으로 재시도한다', async ({ page }) => {
   await mockApi(page)
-  await page.route('**/api/v1/me', (route) =>
-    route.fulfill({
-      json: { id: 'me-1', email: 'dev@oneflow.local', display_name: 'Dev User', is_active: true },
-    }),
-  )
+  let currentProject: Project = { ...project }
+  let archiveAttempts = 0
   await page.route(`**/api/v1/projects/${project.id}`, (route) =>
-    route.fulfill({ json: project }),
+    route.fulfill({ json: currentProject }),
   )
-  await page.route(`**/api/v1/projects/${project.id}/archive`, (route) =>
-    route.fulfill({ json: { ...project, archived_at: '2026-07-06T00:00:00Z' } }),
-  )
+  await page.route(`**/api/v1/projects/${project.id}/archive`, async (route) => {
+    archiveAttempts += 1
+    if (archiveAttempts === 1) {
+      await route.fulfill({
+        status: 503,
+        json: { detail: 'archive unavailable' },
+      })
+      return
+    }
+    currentProject = { ...project, archived_at: '2026-07-06T00:00:00Z' }
+    await route.fulfill({ json: currentProject })
+  })
 
   await page.goto(`/projects/${project.id}/settings?tab=danger`)
-  await expect(page.getByRole('tab', { name: '위험 구역' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '프로젝트 보관' })).toBeVisible()
+  await expect(page.getByText('활성 · 변경 가능')).toBeVisible()
 
-  const dialogs: string[] = []
-  page.once('dialog', (d) => {
-    dialogs.push(d.message())
-    void d.accept()
+  const actionButton = page.getByRole('button', { name: '프로젝트 보관' })
+  await actionButton.click()
+  const dialog = page.getByRole('dialog')
+  await expect(dialog.getByRole('heading', { name: '프로젝트를 보관할까요?' })).toBeVisible()
+  await expect(dialog).toContainText('데이터는 삭제되지 않습니다')
+  await page.waitForTimeout(350)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/project-settings-danger-ui-251/desktop-confirm.png',
   })
-  const post = page.waitForRequest(
-    (r) => r.method() === 'POST' && r.url().includes('/archive'),
+
+  await dialog.getByRole('button', { name: '프로젝트 보관' }).click()
+  await expect(dialog.getByRole('alert')).toContainText('archive unavailable')
+  expect(archiveAttempts).toBe(1)
+
+  await dialog.getByRole('button', { name: '보관 다시 시도' }).click()
+  await expect(dialog).toBeHidden()
+  await expect(page.getByText('보관됨 · 읽기 전용')).toBeVisible()
+  await expect(page.getByRole('status')).toContainText(
+    '프로젝트를 보관했습니다',
   )
-  await page.getByRole('button', { name: '프로젝트 보관' }).click()
-  await post
-  expect(dialogs[0]).toContain('보관할까요')
+  await expect(page.getByRole('button', { name: '프로젝트 복원' })).toBeFocused()
+  expect(archiveAttempts).toBe(2)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/project-settings-danger-ui-251/desktop.png',
+  })
+})
+
+test('위험 구역은 실패한 복원을 보존하고 정확히 다시 실행한다', async ({ page }) => {
+  await mockApi(page)
+  let currentProject: Project = {
+    ...project,
+    archived_at: '2026-07-06T00:00:00Z',
+  }
+  let restoreAttempts = 0
+  await page.route(`**/api/v1/projects/${project.id}`, (route) =>
+    route.fulfill({ json: currentProject }),
+  )
+  await page.route(`**/api/v1/projects/${project.id}/unarchive`, async (route) => {
+    restoreAttempts += 1
+    if (restoreAttempts === 1) {
+      await route.fulfill({
+        status: 409,
+        json: { detail: 'restore conflict' },
+      })
+      return
+    }
+    currentProject = { ...project }
+    await route.fulfill({ json: currentProject })
+  })
+
+  await page.goto(`/projects/${project.id}/settings?tab=danger`)
+  await page.getByRole('button', { name: '프로젝트 복원' }).click()
+  await expect(page.getByRole('alert')).toContainText('restore conflict')
+  expect(restoreAttempts).toBe(1)
+
+  await page.getByRole('button', { name: '복원 다시 시도' }).click()
+  await expect(page.getByText('활성 · 변경 가능')).toBeVisible()
+  await expect(page.getByRole('status')).toContainText(
+    '프로젝트를 복원했습니다',
+  )
+  expect(restoreAttempts).toBe(2)
+})
+
+test('위험 구역은 조회 오류를 복구하고 모바일 멤버에게 읽기 전용이다', async ({ page }) => {
+  await mockApi(page)
+  let projectAttempts = 0
+  await page.route(`**/api/v1/projects/${project.id}/members`, (route) =>
+    route.fulfill({
+      json: {
+        items: [
+          {
+            user_id: 'me-1',
+            email: 'dev@oneflow.local',
+            display_name: 'Dev User',
+            role: 'member',
+          },
+        ],
+        total: 1,
+      },
+    }),
+  )
+  await page.route(`**/api/v1/projects/${project.id}`, async (route) => {
+    projectAttempts += 1
+    if (projectAttempts <= 2) {
+      await route.fulfill({
+        status: 503,
+        json: { detail: 'project unavailable' },
+      })
+      return
+    }
+    await route.fulfill({ json: project })
+  })
+
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto(`/projects/${project.id}/settings?tab=danger`)
+  await expect(page.getByText('데이터를 불러오지 못했습니다')).toBeVisible()
+  await page.getByRole('button', { name: '다시 시도' }).click()
+
+  await expect(page.getByRole('heading', { name: '프로젝트 보관' })).toBeVisible()
+  await expect(page.getByText('프로젝트 소유자만 보관하거나 복원할 수 있습니다.')).toBeVisible()
+  await expect(page.getByRole('button', { name: '프로젝트 보관' })).toHaveCount(0)
+  await expectNoHorizontalOverflow(page)
+  expect(projectAttempts).toBe(3)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/project-settings-danger-ui-251/mobile.png',
+  })
 })
 
 test('인테이크 큐에서 소유자가 수락하면 triage POST가 간다', async ({ page }) => {
