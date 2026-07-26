@@ -7506,6 +7506,123 @@ test('설정 탭: 딥링크·미저장 가드·뒤로가기가 동작한다', as
   expect(dialogCount).toBe(2)
 })
 
+test('프로젝트 일반 설정은 기본 정보와 예산을 독립 저장하고 실패한 예산을 재시도한다', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await mockApi(page)
+  let current: Project = {
+    ...project,
+    budget: 25_000_000,
+    health: 'on_track',
+    health_note: '계획대로 진행 중',
+    health_updated_by: 'me-1',
+    health_updated_at: '2026-07-20T00:00:00Z',
+  }
+  let budgetAttempts = 0
+  await page.route(`**/api/v1/projects/${project.id}`, async (route) => {
+    if (route.request().method() !== 'PATCH') {
+      await route.fulfill({ json: current })
+      return
+    }
+    const sent = route.request().postDataJSON() as Partial<Project>
+    if ('budget' in sent) {
+      budgetAttempts += 1
+      if (budgetAttempts === 1) {
+        await route.fulfill({
+          status: 503,
+          json: { detail: '예산 저장 서비스가 잠시 응답하지 않습니다.' },
+        })
+        return
+      }
+    }
+    current = {
+      ...current,
+      ...sent,
+      updated_at: '2026-07-26T00:00:00Z',
+    }
+    await route.fulfill({ json: current })
+  })
+
+  await page.goto(`/projects/${project.id}/settings`)
+  const panel = page.getByRole('region', { name: '프로젝트 일반 설정' })
+  await expect(panel.getByText('ONE', { exact: true }).first()).toBeVisible()
+  await expect(panel.getByLabel('프로젝트 키')).toBeDisabled()
+  await expect(panel.getByLabel('프로젝트 설명')).toHaveValue('데모 프로젝트')
+
+  await panel.getByLabel('프로젝트 이름').fill('OneFlow 재개발')
+  await panel.getByLabel('프로젝트 설명').fill('설정 화면에서 저장한 여러 줄 프로젝트 설명')
+  const identityPatch = page.waitForRequest(
+    (request) =>
+      request.method() === 'PATCH' &&
+      request.url().endsWith(`/projects/${project.id}`) &&
+      'name' in (request.postDataJSON() as object),
+  )
+  await panel.getByRole('button', { name: '기본 정보 저장' }).click()
+  expect((await identityPatch).postDataJSON()).toEqual({
+    name: 'OneFlow 재개발',
+    description: '설정 화면에서 저장한 여러 줄 프로젝트 설명',
+  })
+  await expect(panel.getByText('기본 정보를 저장했습니다.')).toBeVisible()
+  await expect(panel.getByRole('heading', { name: 'OneFlow 재개발' })).toBeVisible()
+  await expect(panel.getByRole('button', { name: '기본 정보 저장' })).toBeDisabled()
+
+  await panel.getByLabel('프로젝트 예산').fill('32000000')
+  const failedBudgetPatch = page.waitForRequest(
+    (request) =>
+      request.method() === 'PATCH' &&
+      request.url().endsWith(`/projects/${project.id}`) &&
+      'budget' in (request.postDataJSON() as object),
+  )
+  await panel.getByRole('button', { name: '예산 저장' }).click()
+  expect((await failedBudgetPatch).postDataJSON()).toEqual({ budget: 32_000_000 })
+  await expect(panel.getByText('예산 저장 서비스가 잠시 응답하지 않습니다.')).toBeVisible()
+
+  const retriedBudgetPatch = page.waitForRequest(
+    (request) =>
+      request.method() === 'PATCH' &&
+      request.url().endsWith(`/projects/${project.id}`) &&
+      'budget' in (request.postDataJSON() as object),
+  )
+  await panel.getByRole('button', { name: '다시 시도' }).click()
+  expect((await retriedBudgetPatch).postDataJSON()).toEqual({ budget: 32_000_000 })
+  await expect(panel.getByText('예산을 저장했습니다.')).toBeVisible()
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/project-settings-general-ui-243/desktop.png',
+    fullPage: true,
+  })
+})
+
+test('보관된 프로젝트 일반 설정은 모바일에서 읽기 전용 맥락과 레이아웃을 유지한다', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await mockApi(page)
+  const archivedProject: Project = {
+    ...project,
+    budget: 12_000_000,
+    health: 'at_risk',
+    health_note: '일정 점검 필요',
+    archived_at: '2026-07-25T00:00:00Z',
+  }
+  await page.route(`**/api/v1/projects/${project.id}`, (route) =>
+    route.fulfill({ json: archivedProject }),
+  )
+
+  await page.goto(`/projects/${project.id}/settings`)
+  const panel = page.getByRole('region', { name: '프로젝트 일반 설정' })
+  await expect(panel.getByText('보관됨 · 읽기 전용')).toBeVisible()
+  await expect(
+    panel.getByText('보관된 프로젝트는 모든 변경이 차단됩니다.', { exact: false }),
+  ).toBeVisible()
+  await expect(panel.getByLabel('프로젝트 이름')).toBeDisabled()
+  await expect(panel.getByLabel('프로젝트 설명')).toBeDisabled()
+  await expect(panel.getByLabel('프로젝트 예산')).toBeDisabled()
+  await expect(panel.getByLabel('프로젝트 상태')).toBeDisabled()
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/project-settings-general-ui-243/mobile.png',
+    fullPage: true,
+  })
+})
+
 test('내 작업 홈이 배정·기한임박·활동을 모아 보여주고 딥링크한다', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 })
   await mockApi(page)
