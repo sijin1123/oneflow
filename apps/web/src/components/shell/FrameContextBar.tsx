@@ -1,8 +1,9 @@
-import { ChevronRight, FolderKanban, House, PanelLeftOpen, Rocket, Settings, StickyNote } from 'lucide-react'
+import { ChevronRight, FolderKanban, House, ListChecks, PanelLeftOpen, Rocket, Settings, StickyNote } from 'lucide-react'
 import { Link, useLocation, useParams } from 'react-router-dom'
 
 import { useDocument } from '@/features/documents/api'
 import { useProjects } from '@/features/projects/api'
+import { useWorkPackage } from '@/features/work-packages/api'
 import { useWorkspaceProfile } from '@/features/workspace-profile/api'
 
 import { getShellContext } from './shell-context'
@@ -14,14 +15,16 @@ export function FrameContextBar({
   sidebarCollapsed: boolean
   onExpandSidebar: () => void
 }) {
-  const { projectId, docId } = useParams()
+  const { projectId, docId, wpId } = useParams()
   const location = useLocation()
   const { data } = useProjects()
   const document = useDocument(docId ?? null)
+  const workItem = useWorkPackage(wpId ?? null)
   const workspaceProfile = useWorkspaceProfile()
   const project = data?.items.find((item) => item.id === projectId)
   const isProjectDirectory = location.pathname === '/projects'
   const isDocumentDetail = Boolean(projectId && docId)
+  const isWorkItemDetail = Boolean(projectId && wpId)
   const context = getShellContext(
     location.pathname,
     location.search,
@@ -29,12 +32,22 @@ export function FrameContextBar({
     projectId,
     project?.name,
   )
-  const scope = isDocumentDetail ? (project?.name ?? context.scope) : context.scope
-  const scopeHref = isDocumentDetail ? `/projects/${projectId}/overview` : context.scopeHref
-  const parent = isDocumentDetail ? 'Pages' : context.parent
-  const parentHref = isDocumentDetail ? `/projects/${projectId}/documents` : context.parentHref
-  const title = isDocumentDetail ? (document.data?.title ?? '페이지') : context.title
-  const PageIcon = location.pathname === '/my'
+  const scope = isDocumentDetail || isWorkItemDetail ? (project?.name ?? context.scope) : context.scope
+  const scopeHref = isDocumentDetail || isWorkItemDetail ? `/projects/${projectId}/overview` : context.scopeHref
+  const parent = isDocumentDetail ? 'Pages' : isWorkItemDetail ? 'Work items' : context.parent
+  const parentHref = isDocumentDetail
+    ? `/projects/${projectId}/documents`
+    : isWorkItemDetail
+      ? `/projects/${projectId}/work-packages`
+      : context.parentHref
+  const title = isDocumentDetail
+    ? (document.data?.title ?? '페이지')
+    : isWorkItemDetail
+      ? (workItem.data ? `OF-${workItem.data.id.slice(0, 8).toUpperCase()}` : '작업')
+      : context.title
+  const PageIcon = isWorkItemDetail
+    ? ListChecks
+    : location.pathname === '/my'
     ? House
     : location.pathname === '/get-started'
       ? Rocket
