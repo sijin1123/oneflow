@@ -9411,11 +9411,50 @@ test('워크스페이스 일반 설정은 이름을 저장하고 shell identity�
   await page.getByRole('button', { name: '사이드바 열기' }).click()
   const mobileNav = page.getByRole('dialog', { name: '모바일 내비게이션' })
   await expect(mobileNav.getByText('Delivery Workspace')).toBeVisible()
+  await mobileNav.getByRole('button', { name: '사이드바 닫기' }).last().click()
+  await expect(page.getByRole('heading', { name: '일반 설정' })).toBeAttached()
   await expectNoHorizontalOverflow(page)
   await page.screenshot({
-    path: '../../docs/screenshots/redevelopment/workspace-general-settings-ui/mobile.png',
+    path: '../../docs/screenshots/redevelopment/settings-general-ui-239/mobile.png',
     fullPage: true,
   })
+})
+
+test('워크스페이스 일반 설정은 저장하지 않은 profile 변경을 이동 전에 보호한다', async ({ page }) => {
+  await mockApi(page)
+  const profile = {
+    id: 1,
+    name: 'OneFlow',
+    revision: 1,
+    logo_url: null,
+    logo_content_type: null,
+    logo_filename: null,
+    logo_width: null,
+    logo_height: null,
+    logo_byte_size: null,
+    updated_by_user_id: null,
+    updated_by_name: null,
+    updated_at: '2026-07-01T00:00:00Z',
+  }
+  await page.route('**/api/v1/workspace/profile', (route) => route.fulfill({ json: profile }))
+  await page.route('**/api/v1/admin/workspace/profile', (route) =>
+    route.fulfill({ json: profile, headers: { ETag: '"1"' } }),
+  )
+
+  await page.goto('/admin/general')
+  await page.getByLabel('워크스페이스 이름').fill('Unsaved workspace')
+  await page.evaluate(() => {
+    window.confirm = () => false
+  })
+  await page.getByRole('link', { name: '프로젝트 구성' }).click()
+  await expect(page).toHaveURL(/\/admin\/general$/)
+  await expect(page.getByLabel('워크스페이스 이름')).toHaveValue('Unsaved workspace')
+
+  await page.evaluate(() => {
+    window.confirm = () => true
+  })
+  await page.getByRole('link', { name: '프로젝트 구성' }).click()
+  await expect(page).toHaveURL(/\/admin\/project-configuration$/)
 })
 
 test('워크스페이스 로고는 미리보기·저장·shell 반영·삭제가 하나의 revision으로 동작한다', async ({ page }) => {
@@ -9497,6 +9536,12 @@ test('워크스페이스 로고는 미리보기·저장·shell 반영·삭제가
   await expect(
     page.getByRole('button', { name: '워크스페이스 전환' }).getByAltText('OneFlow 로고'),
   ).toBeVisible()
+  await expect(page.getByRole('heading', { name: '일반 설정' })).toBeAttached()
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/settings-general-ui-239/desktop.png',
+    fullPage: true,
+  })
 
   await page.getByRole('button', { name: '워크스페이스 전환' }).click()
   const workspaceMenu = page.getByRole('menu', { name: '워크스페이스' })

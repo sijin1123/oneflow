@@ -5,7 +5,7 @@ import { EmptyState, ErrorState, ListSkeleton } from '@/components/shell/states'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { SettingsFrame, SettingsSection } from '@/features/settings/SettingsShell'
+import { SettingsSection } from '@/features/settings/SettingsShell'
 import {
   useAdminWorkspaceProfile,
   useRemoveWorkspaceLogo,
@@ -15,7 +15,7 @@ import {
 import { WorkspaceLogo } from '@/features/workspace-profile/WorkspaceLogo'
 import { ApiError } from '@/lib/api'
 import { formatDateTime } from '@/lib/datetime'
-import { confirmDestructive } from '@/lib/guards'
+import { confirmDestructive, useUnsavedLocationPrompt } from '@/lib/guards'
 
 const WORKSPACE_LOGO_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp'])
 const WORKSPACE_LOGO_MAX_BYTES = 2 * 1024 * 1024
@@ -46,6 +46,13 @@ export function WorkspaceGeneralSettingsPage() {
     return () => URL.revokeObjectURL(next)
   }, [logoFile])
 
+  const trimmed = name.trim()
+  const changed = Boolean(profile.data && trimmed !== profile.data.name)
+  useUnsavedLocationPrompt(
+    changed || Boolean(logoFile),
+    '저장하지 않은 워크스페이스 변경을 버리고 이동할까요?',
+  )
+
   if (profile.isPending) return <ListSkeleton />
   if (profile.isError) {
     if (profile.error instanceof ApiError && profile.error.status === 403) {
@@ -54,23 +61,41 @@ export function WorkspaceGeneralSettingsPage() {
     return <ErrorState error={profile.error} onRetry={() => profile.refetch()} />
   }
 
-  const trimmed = name.trim()
-  const changed = trimmed !== profile.data.name
   const stale = update.error instanceof ApiError && update.error.status === 412
   const logoMutation = replaceLogo.isPending || removeLogo.isPending
   const logoError = replaceLogo.error ?? removeLogo.error
   const logoStale = logoError instanceof ApiError && logoError.status === 412
 
   return (
-    <SettingsFrame
-      eyebrow="Workspace administration"
-      title="일반"
-      description="OneFlow에서 표시할 워크스페이스 이름을 관리합니다."
-      meta={`revision ${profile.data.revision}`}
+    <section
+      aria-label="워크스페이스 일반 설정"
+      className="flex min-h-full min-w-0 flex-col overflow-hidden bg-of-bg"
     >
-      <SettingsSection title="워크스페이스 identity" description="앱 탐색과 관리 화면에 같은 이름이 표시됩니다.">
+      <h1 className="sr-only">일반 설정</h1>
+      <main className="of-scrollbar min-h-0 flex-1 overflow-y-auto">
+        <div className="mx-auto min-h-full w-full max-w-5xl bg-of-surface">
+          <div className="flex min-w-0 flex-wrap items-center gap-3 border-b border-of-border-subtle px-4 py-4 sm:px-5">
+            <WorkspaceLogo profile={profile.data} size="lg" />
+            <div className="min-w-0 flex-1">
+              <div className="flex min-w-0 flex-wrap items-center gap-2">
+                <p className="truncate text-base font-semibold">{profile.data.name}</p>
+                <Badge variant="accent">활성</Badge>
+              </div>
+              <p className="mt-0.5 text-xs text-of-muted">
+                워크스페이스 프로필 · revision {profile.data.revision}
+              </p>
+            </div>
+          </div>
+
+      <SettingsSection
+        title="워크스페이스 이름"
+        description="앱 탐색, 워크스페이스 메뉴와 관리 화면에 같은 이름이 표시됩니다."
+        ariaLabel="프로필 이름 편집"
+        framed={false}
+        className="border-b border-of-border-subtle"
+      >
         <form
-          className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1fr)_15rem]"
+          className="max-w-2xl"
           onSubmit={(event) => {
             event.preventDefault()
             if (!changed || !trimmed || trimmed.length > 80) return
@@ -122,16 +147,11 @@ export function WorkspaceGeneralSettingsPage() {
                   : '워크스페이스 이름을 저장하지 못했습니다.'}
               </p>
             ) : null}
-          </div>
-
-          <div className="flex min-w-0 items-center gap-3 rounded-of border border-of-border bg-of-subtle p-3">
-            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-of bg-of-accent text-sm font-bold text-white">
-              {trimmed.slice(0, 2).toUpperCase() || 'OF'}
-            </span>
-            <div className="min-w-0">
-              <p className="truncate text-sm font-medium">{trimmed || profile.data.name}</p>
-              <p className="text-[11px] text-of-muted">OneFlow workspace</p>
-            </div>
+            {update.isSuccess && !changed ? (
+              <p className="mt-3 text-xs text-of-success" role="status">
+                워크스페이스 이름을 저장했습니다.
+              </p>
+            ) : null}
           </div>
         </form>
       </SettingsSection>
@@ -139,8 +159,17 @@ export function WorkspaceGeneralSettingsPage() {
       <SettingsSection
         title="워크스페이스 로고"
         description="저장한 로고는 상단 바, 사이드바와 워크스페이스 메뉴에 즉시 반영됩니다."
+        framed={false}
+        className="border-b border-of-border-subtle"
       >
-        <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1fr)_15rem]">
+        <div className="grid min-w-0 gap-4 sm:grid-cols-[5rem_minmax(0,1fr)] sm:items-start">
+          <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-of border border-of-border-subtle bg-white">
+            {logoPreviewUrl ? (
+              <img src={logoPreviewUrl} alt="선택한 로고 미리보기" className="h-full w-full object-contain" />
+            ) : (
+              <WorkspaceLogo profile={profile.data} size="lg" />
+            )}
+          </div>
           <div className="min-w-0">
             <input
               ref={logoInputRef}
@@ -267,26 +296,14 @@ export function WorkspaceGeneralSettingsPage() {
               </p>
             ) : null}
           </div>
-
-          <div className="flex min-w-0 items-center gap-3 rounded-of border border-of-border bg-of-subtle p-3">
-            {logoPreviewUrl ? (
-              <span className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-of border border-of-border-subtle bg-white">
-                <img src={logoPreviewUrl} alt="선택한 로고 미리보기" className="h-full w-full object-contain" />
-              </span>
-            ) : (
-              <WorkspaceLogo profile={profile.data} size="lg" />
-            )}
-            <div className="min-w-0">
-              <p className="truncate text-sm font-medium">{profile.data.name}</p>
-              <p className="text-[11px] text-of-muted">
-                {logoPreviewUrl ? '저장 전 미리보기' : profile.data.logo_url ? '현재 로고' : '기본 로고'}
-              </p>
-            </div>
-          </div>
         </div>
       </SettingsSection>
 
-      <SettingsSection title="변경 기록" description="현재 identity revision과 최근 변경자를 확인합니다.">
+      <SettingsSection
+        title="변경 기록"
+        description="현재 profile revision과 최근 변경자를 확인합니다."
+        framed={false}
+      >
         <dl className="grid min-w-0 gap-3 text-xs sm:grid-cols-3">
           <div>
             <dt className="text-of-muted">상태</dt>
@@ -302,6 +319,8 @@ export function WorkspaceGeneralSettingsPage() {
           </div>
         </dl>
       </SettingsSection>
-    </SettingsFrame>
+        </div>
+      </main>
+    </section>
   )
 }
