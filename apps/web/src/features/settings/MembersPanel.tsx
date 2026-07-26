@@ -1,7 +1,10 @@
 import {
+  CheckCircle2,
+  CircleAlert,
   Crown,
   Eye,
   RotateCw,
+  Search,
   ShieldCheck,
   Trash2,
   UserPlus,
@@ -11,7 +14,7 @@ import {
 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 
-import { EmptyState } from '@/components/shell/states'
+import { EmptyState, ErrorState, ListSkeleton } from '@/components/shell/states'
 import { Avatar } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -92,32 +95,12 @@ function MemberAvatar({ member }: { member: Member }) {
   )
 }
 
-function TeamMetric({
-  icon: Icon,
-  label,
-  value,
-  tone = 'neutral',
-}: {
-  icon: LucideIcon
-  label: string
-  value: number
-  tone?: 'neutral' | 'accent'
-}) {
+function SummaryMetric({ label, value }: { label: string; value: number }) {
   return (
-    <div className="flex min-w-0 items-center gap-3 rounded-of border border-of-border bg-of-surface px-3 py-3">
-      <span
-        className={cn(
-          'flex h-8 w-8 shrink-0 items-center justify-center rounded-of',
-          tone === 'accent' ? 'bg-of-accent-soft text-of-accent' : 'bg-of-surface-2 text-of-muted',
-        )}
-      >
-        <Icon size={15} aria-hidden="true" />
-      </span>
-      <span className="min-w-0">
-        <span className="block text-[11px] text-of-muted">{label}</span>
-        <span className="block text-base font-semibold tabular-nums">{value}</span>
-      </span>
-    </div>
+    <span className="inline-flex items-baseline gap-1.5 whitespace-nowrap text-xs text-of-muted">
+      {label}
+      <strong className="font-semibold tabular-nums text-of-foreground">{value}</strong>
+    </span>
   )
 }
 
@@ -175,13 +158,26 @@ function PermissionCard({
 function PermissionsTable({ projectId }: { projectId: string }) {
   const mobileLayout = useMobileMembersLayout()
   const report = usePermissionReport(projectId)
-  if (!report.data) return null
+  if (report.isPending) {
+    return (
+      <section aria-label="권한" className="border-t border-of-border pt-4">
+        <ListSkeleton rows={4} className="min-h-48" />
+      </section>
+    )
+  }
+  if (report.isError || !report.data) {
+    return (
+      <section aria-label="권한" className="border-t border-of-border pt-4">
+        <ErrorState error={report.error} onRetry={() => report.refetch()} />
+      </section>
+    )
+  }
   const myRole = report.data.my_role
   const myCustomRole = report.data.my_custom_role
   const roleCol = (role: string) => (role === myRole ? 'bg-of-accent-soft/40 font-medium' : '')
 
   return (
-    <section aria-label="권한" className="rounded-of border border-of-border bg-of-surface p-4">
+    <section aria-label="권한" className="border-t border-of-border pt-4">
       <div className="mb-3 flex min-w-0 flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
           <h3 className="text-sm font-semibold">역할별 권한</h3>
@@ -270,8 +266,11 @@ function MemberControls({
   lastOwner,
   updatePending,
   removePending,
+  confirmingRemove,
   onRoleChange,
   onCustomRoleChange,
+  onRequestRemove,
+  onCancelRemove,
   onRemove,
 }: {
   member: Member
@@ -281,8 +280,11 @@ function MemberControls({
   lastOwner: boolean
   updatePending: boolean
   removePending: boolean
+  confirmingRemove: boolean
   onRoleChange: (role: BuiltInProjectRole) => void
   onCustomRoleChange: (customRoleId: string | null) => void
+  onRequestRemove: () => void
+  onCancelRemove: () => void
   onRemove: () => void
 }) {
   const assignedRole = member.custom_role_id
@@ -303,6 +305,23 @@ function MemberControls({
             {customRoleLabel}{unavailableAssignment ? ' · 보관됨' : ''}
           </Badge>
         ) : null}
+      </div>
+    )
+  }
+  if (confirmingRemove) {
+    return (
+      <div
+        role="group"
+        aria-label={`${member.display_name} 제거 확인`}
+        className="flex min-w-0 flex-wrap items-center justify-end gap-1.5"
+      >
+        <span className="text-xs text-of-danger">프로젝트에서 제거할까요?</span>
+        <Button size="sm" variant="ghost" disabled={removePending} onClick={onCancelRemove}>
+          취소
+        </Button>
+        <Button size="sm" variant="danger" disabled={removePending} onClick={onRemove}>
+          {removePending ? '제거 중' : '제거'}
+        </Button>
       </div>
     )
   }
@@ -343,7 +362,7 @@ function MemberControls({
         aria-label={`${member.display_name} 제거`}
         disabled={lastOwner || removePending}
         className="rounded-of p-1 text-of-muted hover:bg-of-surface-2 hover:text-of-danger disabled:opacity-30"
-        onClick={onRemove}
+        onClick={onRequestRemove}
       >
         <Trash2 size={14} aria-hidden="true" />
       </button>
@@ -371,6 +390,17 @@ export function MembersPanel({
   const [email, setEmail] = useState('')
   const [role, setRole] = useState<Member['role']>('member')
   const [customRoleId, setCustomRoleId] = useState('')
+  const [query, setQuery] = useState('')
+  const [roleFilter, setRoleFilter] = useState<'all' | Member['role']>('all')
+  const [confirmingRemoveId, setConfirmingRemoveId] = useState<string | null>(null)
+  const [updatingMemberIds, setUpdatingMemberIds] = useState<Set<string>>(() => new Set())
+  const [removingMemberIds, setRemovingMemberIds] = useState<Set<string>>(() => new Set())
+  const [notice, setNotice] = useState<string | null>(null)
+  const [retryAction, setRetryAction] = useState<
+    | { kind: 'update'; userId: string; input: { role: BuiltInProjectRole; custom_role_id: string | null } }
+    | { kind: 'remove'; userId: string }
+    | null
+  >(null)
 
   const dirty = email.trim() !== '' || role !== 'member' || customRoleId !== ''
   useEffect(() => {
@@ -389,11 +419,25 @@ export function MembersPanel({
       setCustomRoleId('')
     }
   }, [customRoleId, customRoles, roleCatalog.isSuccess])
-  if (!members.data) return null
+  if (members.isPending) return <ListSkeleton rows={7} />
+  if (members.isError || !members.data) {
+    return <ErrorState error={members.error} onRetry={() => members.refetch()} />
+  }
 
   const ownerCount = items.filter((m) => m.role === 'owner').length
   const memberCount = items.filter((m) => m.role === 'member').length
   const viewerCount = items.filter((m) => m.role === 'viewer').length
+  const normalizedQuery = query.trim().toLocaleLowerCase()
+  const visibleItems = items.filter((member) => {
+    const matchesRole = roleFilter === 'all' || member.role === roleFilter
+    const matchesQuery =
+      !normalizedQuery
+      || member.display_name.toLocaleLowerCase().includes(normalizedQuery)
+      || member.email.toLocaleLowerCase().includes(normalizedQuery)
+    return matchesRole && matchesQuery
+  })
+  const emailValue = email.trim()
+  const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailValue)
   const addErr =
     addMember.error instanceof ApiError ? addMember.error.message : addMember.isError ? '실패' : null
   const memberMutationError = updateRole.error ?? removeMember.error
@@ -403,19 +447,114 @@ export function MembersPanel({
       ? '멤버 역할을 변경하지 못했습니다.'
       : null
 
+  const updateMember = (
+    userId: string,
+    input: { role: BuiltInProjectRole; custom_role_id: string | null },
+  ) => {
+    setNotice(null)
+    setRetryAction(null)
+    setUpdatingMemberIds((current) => new Set(current).add(userId))
+    updateRole.mutate(
+      { userId, input },
+      {
+        onSuccess: (updated) => setNotice(`${updated.display_name}의 역할을 변경했습니다.`),
+        onError: () => setRetryAction({ kind: 'update', userId, input }),
+        onSettled: () =>
+          setUpdatingMemberIds((current) => {
+            const next = new Set(current)
+            next.delete(userId)
+            return next
+          }),
+      },
+    )
+  }
+
+  const removeProjectMember = (member: Member) => {
+    setNotice(null)
+    setRetryAction(null)
+    setRemovingMemberIds((current) => new Set(current).add(member.user_id))
+    removeMember.mutate(member.user_id, {
+      onSuccess: () => {
+        setConfirmingRemoveId(null)
+        setNotice(`${member.display_name}을(를) 프로젝트에서 제거했습니다.`)
+      },
+      onError: () => setRetryAction({ kind: 'remove', userId: member.user_id }),
+      onSettled: () =>
+        setRemovingMemberIds((current) => {
+          const next = new Set(current)
+          next.delete(member.user_id)
+          return next
+        }),
+    })
+  }
+
+  const retryLastAction = () => {
+    if (!retryAction) return
+    const target = items.find((member) => member.user_id === retryAction.userId)
+    if (retryAction.kind === 'update') {
+      updateMember(retryAction.userId, retryAction.input)
+    } else if (target) {
+      removeProjectMember(target)
+    }
+  }
+
   return (
     <div className="space-y-4">
-      <div className="grid min-w-0 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <TeamMetric icon={UsersRound} label="전체 멤버" value={members.data.total} />
-        <TeamMetric icon={Crown} label="소유자" value={ownerCount} tone="accent" />
-        <TeamMetric icon={UserRoundCheck} label="멤버" value={memberCount} />
-        <TeamMetric icon={Eye} label="뷰어" value={viewerCount} />
-      </div>
+      <section className="overflow-hidden rounded-of border border-of-border bg-of-surface">
+        <header className="flex min-w-0 flex-col gap-3 border-b border-of-border px-4 py-4 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0">
+            <p className="text-[11px] font-medium uppercase text-of-muted">Project access</p>
+            <div className="mt-1 flex min-w-0 items-center gap-2">
+              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-of bg-of-accent-soft text-of-accent">
+                <UsersRound size={14} aria-hidden="true" />
+              </span>
+              <div className="min-w-0">
+                <h2 className="text-sm font-semibold">프로젝트 멤버</h2>
+                <p className="mt-0.5 text-xs text-of-muted">
+                  구성원 역할과 프로젝트에서 시행되는 권한을 관리합니다.
+                </p>
+              </div>
+            </div>
+          </div>
+          <Badge variant={isOwner ? 'accent' : 'outline'} className="self-start">
+            {isOwner ? '소유자 편집 가능' : '읽기 전용'}
+          </Badge>
+        </header>
+
+        <div
+          aria-label="멤버 요약"
+          className="flex min-w-0 flex-wrap items-center gap-x-5 gap-y-2 border-b border-of-border bg-of-surface-2/50 px-4 py-2.5"
+        >
+          <SummaryMetric label="전체 멤버" value={members.data.total} />
+          <SummaryMetric label="소유자" value={ownerCount} />
+          <SummaryMetric label="멤버" value={memberCount} />
+          <SummaryMetric label="뷰어" value={viewerCount} />
+        </div>
 
       {isOwner ? (
-        <section
+        <form
           aria-label="멤버 추가"
-          className="rounded-of border border-of-border bg-of-surface p-4"
+          className="border-b border-of-border px-4 py-4"
+          onSubmit={(event) => {
+            event.preventDefault()
+            if (!emailValid || addMember.isPending) return
+            setNotice(null)
+            addMember.mutate(
+              {
+                email: emailValue,
+                role,
+                custom_role_id: role === 'member' && customRoleId ? customRoleId : null,
+              },
+              {
+                onSuccess: (created) => {
+                  setEmail('')
+                  setRole('member')
+                  setCustomRoleId('')
+                  setNotice(`${created.display_name}을(를) 프로젝트에 추가했습니다.`)
+                },
+              },
+            )
+          }}
         >
           <div className="mb-3 flex min-w-0 items-start gap-3">
             <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-of bg-of-accent-soft text-of-accent">
@@ -464,28 +603,16 @@ export function MembersPanel({
               ))}
             </Select>
             <Button
+              type="submit"
               size="sm"
-              disabled={!email.trim() || addMember.isPending}
-              onClick={() =>
-                addMember.mutate(
-                  {
-                    email: email.trim(),
-                    role,
-                    custom_role_id: role === 'member' && customRoleId ? customRoleId : null,
-                  },
-                  {
-                    onSuccess: () => {
-                      setEmail('')
-                      setRole('member')
-                      setCustomRoleId('')
-                    },
-                  },
-                )
-              }
+              disabled={!emailValid || addMember.isPending}
             >
-              추가
+              {addMember.isPending ? '추가 중' : '추가'}
             </Button>
           </div>
+          {emailValue && !emailValid ? (
+            <p className="mt-2 text-xs text-of-danger">올바른 이메일 주소를 입력하세요.</p>
+          ) : null}
           {addErr ? <p className="mt-2 text-xs text-of-danger">{addErr}</p> : null}
           {roleCatalog.isPending ? (
             <p className="mt-2 text-xs text-of-muted">커스텀 역할을 불러오는 중입니다.</p>
@@ -498,36 +625,80 @@ export function MembersPanel({
               </Button>
             </div>
           ) : null}
-        </section>
+        </form>
       ) : null}
 
-      {memberMutationMessage ? (
-        <p role="alert" className="rounded-of border border-of-danger/30 bg-of-danger/5 px-3 py-2 text-xs text-of-danger">
-          {memberMutationMessage}
-        </p>
-      ) : null}
+        {notice ? (
+          <p
+            role="status"
+            className="flex items-center gap-2 border-b border-of-border bg-of-success-soft px-4 py-2.5 text-xs text-of-success"
+          >
+            <CheckCircle2 size={14} aria-hidden="true" />
+            {notice}
+          </p>
+        ) : null}
+        {memberMutationMessage ? (
+          <div
+            role="alert"
+            className="flex min-w-0 flex-wrap items-center gap-2 border-b border-of-border bg-of-danger/5 px-4 py-2.5 text-xs text-of-danger"
+          >
+            <CircleAlert size={14} aria-hidden="true" />
+            <span className="min-w-0 flex-1">{memberMutationMessage}</span>
+            {retryAction ? (
+              <Button size="sm" variant="outline" onClick={retryLastAction}>
+                <RotateCw size={13} aria-hidden="true" /> 다시 시도
+              </Button>
+            ) : null}
+          </div>
+        ) : null}
 
-      <section
-        aria-label="팀 디렉터리"
-        className="rounded-of border border-of-border bg-of-surface p-4"
-      >
-        <div className="mb-3 flex min-w-0 flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+        <section aria-label="팀 디렉터리" className="px-4 py-4">
+        <div className="mb-3 flex min-w-0 flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div className="min-w-0">
             <h3 className="text-sm font-semibold">팀 디렉터리</h3>
             <p className="mt-1 text-xs leading-5 text-of-muted">
               프로젝트 역할과 현재 멤버를 확인합니다. 마지막 소유자는 보호됩니다.
             </p>
           </div>
-          <Badge variant={isOwner ? 'accent' : 'outline'} className="self-start">
-            {isOwner ? '소유자 편집 가능' : '읽기 전용'}
-          </Badge>
+          <div className="flex min-w-0 flex-col gap-2 sm:flex-row">
+            <label className="relative min-w-0">
+              <span className="sr-only">멤버 검색</span>
+              <Search
+                size={14}
+                aria-hidden="true"
+                className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-of-muted"
+              />
+              <Input
+                type="search"
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="이름 또는 이메일 검색"
+                className="h-8 min-w-0 pl-8 text-xs sm:w-52"
+              />
+            </label>
+            <Select
+              aria-label="멤버 역할 필터"
+              value={roleFilter}
+              onChange={(event) => setRoleFilter(event.target.value as typeof roleFilter)}
+              className="h-8 w-full text-xs sm:w-28"
+            >
+              <option value="all">모든 역할</option>
+              <option value="owner">소유자</option>
+              <option value="member">멤버</option>
+              <option value="viewer">뷰어</option>
+            </Select>
+          </div>
         </div>
 
-        {items.length === 0 ? (
-          <EmptyState title="멤버가 없습니다" className="min-h-[12rem]" />
+        {visibleItems.length === 0 ? (
+          <EmptyState
+            title={items.length === 0 ? '멤버가 없습니다' : '조건에 맞는 멤버가 없습니다'}
+            hint={items.length === 0 ? undefined : '검색어나 역할 필터를 변경해 보세요.'}
+            className="min-h-[12rem]"
+          />
         ) : !mobileLayout ? (
           <ul className="divide-y divide-of-border overflow-hidden rounded-of border border-of-border bg-of-surface">
-            {items.map((m) => {
+            {visibleItems.map((m) => {
               const lastOwner = m.role === 'owner' && ownerCount <= 1
               return (
                 <li key={m.user_id} className="flex min-w-0 items-center gap-3 px-4 py-3">
@@ -551,20 +722,24 @@ export function MembersPanel({
                     catalogReady={roleCatalog.isSuccess}
                     isOwner={isOwner}
                     lastOwner={lastOwner}
-                    updatePending={updateRole.isPending}
-                    removePending={removeMember.isPending}
-                    onRoleChange={(nextRole) => updateRole.mutate({
-                      userId: m.user_id,
-                      input: {
+                    updatePending={updatingMemberIds.has(m.user_id)}
+                    removePending={removingMemberIds.has(m.user_id)}
+                    confirmingRemove={confirmingRemoveId === m.user_id}
+                    onRoleChange={(nextRole) =>
+                      updateMember(m.user_id, {
                         role: nextRole,
                         custom_role_id: nextRole === 'member' ? (m.custom_role_id ?? null) : null,
-                      },
-                    })}
-                    onCustomRoleChange={(nextCustomRoleId) => updateRole.mutate({
-                      userId: m.user_id,
-                      input: { role: 'member', custom_role_id: nextCustomRoleId },
-                    })}
-                    onRemove={() => removeMember.mutate(m.user_id)}
+                      })
+                    }
+                    onCustomRoleChange={(nextCustomRoleId) =>
+                      updateMember(m.user_id, {
+                        role: 'member',
+                        custom_role_id: nextCustomRoleId,
+                      })
+                    }
+                    onRequestRemove={() => setConfirmingRemoveId(m.user_id)}
+                    onCancelRemove={() => setConfirmingRemoveId(null)}
+                    onRemove={() => removeProjectMember(m)}
                   />
                 </li>
               )
@@ -572,7 +747,7 @@ export function MembersPanel({
           </ul>
         ) : (
           <ul className="grid gap-2" aria-label="멤버 카드 목록">
-            {items.map((m) => {
+            {visibleItems.map((m) => {
               const lastOwner = m.role === 'owner' && ownerCount <= 1
               return (
                 <li key={m.user_id} className="rounded-of border border-of-border bg-of-surface p-3">
@@ -598,20 +773,24 @@ export function MembersPanel({
                       catalogReady={roleCatalog.isSuccess}
                       isOwner={isOwner}
                       lastOwner={lastOwner}
-                      updatePending={updateRole.isPending}
-                      removePending={removeMember.isPending}
-                      onRoleChange={(nextRole) => updateRole.mutate({
-                        userId: m.user_id,
-                        input: {
+                      updatePending={updatingMemberIds.has(m.user_id)}
+                      removePending={removingMemberIds.has(m.user_id)}
+                      confirmingRemove={confirmingRemoveId === m.user_id}
+                      onRoleChange={(nextRole) =>
+                        updateMember(m.user_id, {
                           role: nextRole,
                           custom_role_id: nextRole === 'member' ? (m.custom_role_id ?? null) : null,
-                        },
-                      })}
-                      onCustomRoleChange={(nextCustomRoleId) => updateRole.mutate({
-                        userId: m.user_id,
-                        input: { role: 'member', custom_role_id: nextCustomRoleId },
-                      })}
-                      onRemove={() => removeMember.mutate(m.user_id)}
+                        })
+                      }
+                      onCustomRoleChange={(nextCustomRoleId) =>
+                        updateMember(m.user_id, {
+                          role: 'member',
+                          custom_role_id: nextCustomRoleId,
+                        })
+                      }
+                      onRequestRemove={() => setConfirmingRemoveId(m.user_id)}
+                      onCancelRemove={() => setConfirmingRemoveId(null)}
+                      onRemove={() => removeProjectMember(m)}
                     />
                   </div>
                 </li>
@@ -619,6 +798,7 @@ export function MembersPanel({
             })}
           </ul>
         )}
+        </section>
       </section>
 
       <PermissionsTable projectId={projectId} />
