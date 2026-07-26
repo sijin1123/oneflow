@@ -132,7 +132,11 @@ export function SettingsPage() {
             <FieldsPanel projectId={projectId} isOwner={isOwner} onDirtyChange={onDirtyChange} />
           ) : null}
           {tab === 'automation' ? (
-            <AutomationManager projectId={projectId} isOwner={isOwner} />
+            <AutomationManager
+              projectId={projectId}
+              isOwner={isOwner}
+              onDirtyChange={onDirtyChange}
+            />
           ) : null}
           {tab === 'storage' ? <StoragePanel projectId={projectId} /> : null}
           {tab === 'danger' ? <DangerPanel isOwner={isOwner} /> : null}

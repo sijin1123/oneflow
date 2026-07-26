@@ -13172,6 +13172,12 @@ test('타입 관리 액션 메뉴에서 라벨을 바꾸고 비활성화하면 P
     if (sent.is_active !== undefined) types[1].is_active = sent.is_active
     await route.fulfill({ json: { ...types[1] } })
   })
+  await page.route(`**/api/v1/projects/${project.id}/automation-rules`, (route) =>
+    route.fulfill({ json: { items: [], total: 0 } }),
+  )
+  await page.route(`**/api/v1/projects/${project.id}/automation-rules/runs**`, (route) =>
+    route.fulfill({ json: { items: [], total: 0 } }),
+  )
 
   await page.goto(`/projects/${project.id}/settings?tab=workflow`)
   await expect(page.getByText('워크 아이템 타입')).toBeVisible()
@@ -13196,8 +13202,10 @@ test('타입 관리 액션 메뉴에서 라벨을 바꾸고 비활성화하면 P
   await page.getByRole('tab', { name: '필드' }).click()
   await expect(page.getByLabel('사용자 스토리 타입에 적용')).toBeVisible()
   await page.getByRole('tab', { name: '자동화' }).click()
+  await page.getByRole('button', { name: '새 규칙' }).click()
   await page.getByLabel('트리거 종류').selectOption('type_changed_to')
   await expect(page.getByLabel('트리거 값').locator('option', { hasText: '사용자 스토리' })).toHaveCount(1)
+  await page.getByRole('button', { name: '작성 닫기' }).click()
   await page.getByRole('tab', { name: '워크플로우' }).click()
 
   await page.getByLabel('bug 타입 작업').click()
@@ -15936,6 +15944,9 @@ test('설정에서 자동화 규칙을 보여주고 새 규칙을 추가한다',
   await page.route(`**/api/v1/projects/${project.id}/statuses`, (route) =>
     route.fulfill({ json: { items: [], total: 0 } }),
   )
+  await page.route(`**/api/v1/projects/${project.id}/types`, (route) =>
+    route.fulfill({ json: { items: [], total: 0 } }),
+  )
   await page.route(`**/api/v1/projects/${project.id}/members`, (route) =>
     route.fulfill({
       json: {
@@ -16018,7 +16029,7 @@ test('설정에서 자동화 규칙을 보여주고 새 규칙을 추가한다',
   await expect(page.getByText(/상태가 '검토 중'.*우선순위를 '긴급'/)).toBeVisible()
 
   // fire-audit surface renders per rule
-  await expect(page.getByText('발화 3회', { exact: false })).toBeVisible()
+  await expect(page.getByText('3회 실행', { exact: false })).toBeVisible()
 
   // action-menu edit sends the changed value through PATCH
   await page.getByLabel('검수 시 긴급 자동화 규칙 작업').click()
@@ -16046,11 +16057,13 @@ test('설정에서 자동화 규칙을 보여주고 새 규칙을 추가한다',
   await deleteReq
 
   // execution log renders behind the details toggle
-  await page.getByText('실행 로그', { exact: false }).click()
-  await expect(page.getByText("'워크패키지 API 구현'의 우선순위 none → urgent", { exact: false })).toBeVisible()
+  await page.getByText('실행 이력', { exact: false }).click()
+  await expect(page.getByText(/워크패키지 API 구현.*우선순위 없음 → 긴급/)).toBeVisible()
 
   // set_assignee action: switching the kind swaps in the member select and
   // the POST carries the member uuid
+  await page.getByRole('button', { name: '새 규칙' }).click()
+  await page.getByLabel('새 규칙 이름').fill('검수 담당자 지정')
   await page.getByLabel('액션 종류').selectOption('set_assignee')
   await page.getByLabel('지정할 담당자').selectOption('me-1')
   const post = page.waitForRequest(
@@ -16063,6 +16076,8 @@ test('설정에서 자동화 규칙을 보여주고 새 규칙을 추가한다',
 
   // Type trigger (Pass 41): switching the trigger kind swaps the value
   // vocabulary and the POST carries the new trigger pair.
+  await page.getByRole('button', { name: '새 규칙' }).click()
+  await page.getByLabel('새 규칙 이름').fill('버그 우선순위 설정')
   await page.getByLabel('트리거 종류').selectOption('type_changed_to')
   await page.getByLabel('트리거 값').selectOption('bug')
   await page.getByLabel('액션 종류').selectOption('set_priority')
@@ -16095,6 +16110,9 @@ test('자동화 AND 보조 조건: 요약을 표시하고 조건을 담아 POST�
     route.fulfill({ json: { items: [], total: 0 } }),
   )
   await page.route(`**/api/v1/projects/${project.id}/statuses`, (route) =>
+    route.fulfill({ json: { items: [], total: 0 } }),
+  )
+  await page.route(`**/api/v1/projects/${project.id}/types`, (route) =>
     route.fulfill({ json: { items: [], total: 0 } }),
   )
   await page.route(`**/api/v1/projects/${project.id}/members`, (route) =>
@@ -16141,9 +16159,11 @@ test('자동화 AND 보조 조건: 요약을 표시하고 조건을 담아 POST�
   await page.goto(`/projects/${project.id}/settings`)
   await page.getByRole('tab', { name: '자동화' }).click()
   // The conditional rule summary shows the AND clause.
-  await expect(page.getByText(/그리고 타입이\(가\) '버그'일 때/)).toBeVisible()
+  await expect(page.getByText(/그리고 타입이 '버그'일 때/)).toBeVisible()
 
   // Setting a secondary condition carries it into the POST.
+  await page.getByRole('button', { name: '새 규칙' }).click()
+  await page.getByLabel('새 규칙 이름').fill('검수 버그 긴급')
   await page.getByLabel('보조 조건 필드').selectOption('type')
   await page.getByLabel('보조 조건 값').selectOption('bug')
   const post = page.waitForRequest(
@@ -16158,6 +16178,8 @@ test('자동화 AND 보조 조건: 요약을 표시하고 조건을 담아 POST�
   expect(sent.condition_value).toBe('bug')
 
   // Regression: '조건 없음' sends null condition (legacy unconditional rule).
+  await page.getByRole('button', { name: '새 규칙' }).click()
+  await page.getByLabel('새 규칙 이름').fill('검수 기본 긴급')
   await page.getByLabel('보조 조건 필드').selectOption('')
   const plain = page.waitForRequest(
     (r) => r.method() === 'POST' && r.url().includes('/automation-rules'),
@@ -16184,6 +16206,9 @@ test('자동화 규칙 우선순위: 아래로 이동하면 순서를 담아 PUT
     route.fulfill({ json: { items: [], total: 0 } }),
   )
   await page.route(`**/api/v1/projects/${project.id}/statuses`, (route) =>
+    route.fulfill({ json: { items: [], total: 0 } }),
+  )
+  await page.route(`**/api/v1/projects/${project.id}/types`, (route) =>
     route.fulfill({ json: { items: [], total: 0 } }),
   )
   await page.route(`**/api/v1/projects/${project.id}/members`, (route) =>
@@ -16226,13 +16251,12 @@ test('자동화 규칙 우선순위: 아래로 이동하면 순서를 담아 PUT
   await page.goto(`/projects/${project.id}/settings`)
   await page.getByRole('tab', { name: '자동화' }).click()
   // The topmost rule (r1) renders first; the priority hint is shown.
-  await expect(page.getByText(/위에 있는 규칙이 먼저 적용됩니다/)).toBeVisible()
+  await expect(page.getByText(/같은 구체성에서는 위 규칙이 먼저 적용됩니다/)).toBeVisible()
 
   // Moving the top rule down sends the full reordered id list.
   const put = page.waitForRequest(
     (r) => r.method() === 'PUT' && r.url().includes('/automation-rules/order'),
   )
-  await page.getByLabel('긴급 규칙 자동화 규칙 작업').click()
   await page.getByLabel('긴급 규칙 아래로').click()
   const sent = (await put).postDataJSON() as { ordered_ids: string[] }
   expect(sent.ordered_ids).toEqual(['r2', 'r1'])
@@ -16309,6 +16333,26 @@ test('프로젝트 governance 표면은 모바일에서 워크플로우와 자�
   await page.route(`**/api/v1/projects/${project.id}/automation-rules/runs**`, (route) =>
     route.fulfill({ json: { items: [], total: 0 } }),
   )
+  await page.route(`**/api/v1/projects/${project.id}/permissions`, (route) =>
+    route.fulfill({
+      json: {
+        my_role: 'viewer',
+        my_custom_role: null,
+        verbs: [
+          {
+            key: 'automation.manage',
+            label: '자동화 관리',
+            owner: 'always',
+            member: 'never',
+            viewer: 'never',
+            effective: 'never',
+            condition: null,
+            note: null,
+          },
+        ],
+      },
+    }),
+  )
 
   await page.goto(`/projects/${project.id}/settings?tab=workflow`)
   const workflowGovernance = page.getByRole('region', { name: '워크플로우 거버넌스' })
@@ -16330,7 +16374,7 @@ test('프로젝트 governance 표면은 모바일에서 워크플로우와 자�
 
   await page.getByRole('tab', { name: '자동화' }).click()
   await expect(page.getByRole('region', { name: '자동화 규칙' })).toContainText('검수 시 긴급')
-  await expect(page.getByText(/그리고 타입이\(가\) '버그'일 때/)).toBeVisible()
+  await expect(page.getByText(/그리고 타입이 '버그'일 때/)).toBeVisible()
   await expectNoHorizontalOverflow(page)
   await page.screenshot({
     path: '../../docs/screenshots/redevelopment/governance-ui/mobile-automation.png',
@@ -16356,6 +16400,9 @@ test('모바일 자동화 규칙 액션 메뉴는 읽기 전용 상태를 안전
     route.fulfill({ json: { items: [], total: 0 } }),
   )
   await page.route(`**/api/v1/projects/${project.id}/statuses`, (route) =>
+    route.fulfill({ json: { items: [], total: 0 } }),
+  )
+  await page.route(`**/api/v1/projects/${project.id}/types`, (route) =>
     route.fulfill({ json: { items: [], total: 0 } }),
   )
   await page.route(`**/api/v1/projects/${project.id}/members`, (route) =>
@@ -16396,6 +16443,26 @@ test('모바일 자동화 규칙 액션 메뉴는 읽기 전용 상태를 안전
   await page.route(`**/api/v1/projects/${project.id}/automation-rules/runs**`, (route) =>
     route.fulfill({ json: { items: [], total: 0 } }),
   )
+  await page.route(`**/api/v1/projects/${project.id}/permissions`, (route) =>
+    route.fulfill({
+      json: {
+        my_role: 'viewer',
+        my_custom_role: null,
+        verbs: [
+          {
+            key: 'automation.manage',
+            label: '자동화 관리',
+            owner: 'always',
+            member: 'never',
+            viewer: 'never',
+            effective: 'never',
+            condition: null,
+            note: null,
+          },
+        ],
+      },
+    }),
+  )
 
   await page.goto(`/projects/${project.id}/settings?tab=automation`)
   await page.getByLabel('검수 시 긴급 자동화 규칙 작업').click()
@@ -16410,6 +16477,315 @@ test('모바일 자동화 규칙 액션 메뉴는 읽기 전용 상태를 안전
     path: '../../docs/screenshots/redevelopment/automation-rule-actions-ui/mobile.png',
     fullPage: true,
   })
+})
+
+test('자동화 위임 권한은 소유자가 아닌 멤버에게 관리 surface를 연다', async ({ page }) => {
+  await mockApi(page)
+  await page.route(`**/api/v1/projects/${project.id}/members`, (route) =>
+    route.fulfill({
+      json: {
+        items: [
+          {
+            user_id: 'me-1',
+            email: 'dev@oneflow.local',
+            display_name: 'Dev User',
+            role: 'member',
+          },
+          {
+            user_id: 'u-viewer',
+            email: 'viewer@oneflow.local',
+            display_name: 'Viewer',
+            role: 'viewer',
+          },
+        ],
+        total: 2,
+      },
+    }),
+  )
+  await page.route(`**/api/v1/projects/${project.id}/permissions`, (route) =>
+    route.fulfill({
+      json: {
+        my_role: 'member',
+        my_custom_role: {
+          id: 'role-automation',
+          name: 'Automation manager',
+          archived: false,
+          permissions: ['automation.manage'],
+        },
+        verbs: [
+          {
+            key: 'automation.manage',
+            label: '자동화 관리',
+            owner: 'always',
+            member: 'never',
+            viewer: 'never',
+            effective: 'always',
+            condition: null,
+            note: 'Automation manager 역할로 위임됨',
+          },
+        ],
+      },
+    }),
+  )
+  const postedBodies: Array<Record<string, unknown>> = []
+  const createdRules: Array<Record<string, unknown>> = []
+  await page.route(`**/api/v1/projects/${project.id}/automation-rules`, async (route) => {
+    if (route.request().method() === 'POST') {
+      const posted = route.request().postDataJSON() as Record<string, unknown>
+      postedBodies.push(posted)
+      const created = {
+        id: 'r-delegated',
+        project_id: project.id,
+        position: 0,
+        last_fired_at: null,
+        fired_count: 0,
+        created_at: '2026-07-26T00:00:00Z',
+        ...posted,
+      }
+      createdRules.push(created)
+      await route.fulfill({
+        status: 201,
+        json: created,
+      })
+      return
+    }
+    await route.fulfill({ json: { items: createdRules, total: createdRules.length } })
+  })
+  await page.route(`**/api/v1/projects/${project.id}/automation-rules/runs**`, (route) =>
+    route.fulfill({ json: { items: [], total: 0 } }),
+  )
+
+  await page.goto(`/projects/${project.id}/settings?tab=automation`)
+  const automation = page.getByRole('region', { name: '자동화 규칙' })
+  await expect(automation.getByText('0개 관리 중')).toBeVisible()
+  await automation.getByRole('button', { name: '새 규칙' }).click()
+  await automation.getByLabel('새 규칙 이름').fill('위임된 자동화')
+  await automation.getByLabel('액션 종류').selectOption('set_assignee')
+  await expect(automation.getByLabel('지정할 담당자').locator('option')).toHaveCount(1)
+  await automation.getByRole('button', { name: '규칙 추가' }).click()
+  await expect(automation.getByText('자동화 규칙을 추가했습니다.')).toBeVisible()
+  await expect(automation.getByText('위임된 자동화')).toBeVisible()
+  expect(postedBodies[0]?.action_type).toBe('set_assignee')
+  expect(postedBodies[0]?.action_value).toBe('me-1')
+
+  await page.setViewportSize({ width: 1440, height: 1000 })
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/project-settings-automation-ui-249/desktop.png',
+    fullPage: true,
+  })
+  await page.setViewportSize({ width: 390, height: 844 })
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/project-settings-automation-ui-249/mobile.png',
+    fullPage: true,
+  })
+})
+
+test('보관된 프로젝트의 자동화는 실행 이력만 읽고 모든 변경을 잠근다', async ({ page }) => {
+  await mockApi(page)
+  await page.route(`**/api/v1/projects/${project.id}`, (route) =>
+    route.fulfill({ json: { ...project, archived_at: '2026-07-26T00:00:00Z' } }),
+  )
+  await page.route(`**/api/v1/projects/${project.id}/automation-rules`, (route) =>
+    route.fulfill({
+      json: {
+        items: [
+          {
+            id: 'r-archived',
+            project_id: project.id,
+            name: '보관 규칙',
+            trigger_type: 'status_changed_to',
+            trigger_value: 'in_review',
+            action_type: 'set_priority',
+            action_value: 'urgent',
+            condition_field: null,
+            condition_value: null,
+            position: 0,
+            is_active: true,
+            last_fired_at: null,
+            fired_count: 0,
+            created_at: '2026-07-26T00:00:00Z',
+          },
+        ],
+        total: 1,
+      },
+    }),
+  )
+  await page.route(`**/api/v1/projects/${project.id}/automation-rules/runs**`, (route) =>
+    route.fulfill({ json: { items: [], total: 0 } }),
+  )
+
+  await page.goto(`/projects/${project.id}/settings?tab=automation`)
+  const automation = page.getByRole('region', { name: '자동화 규칙' })
+  await expect(automation.getByText(/보관된 프로젝트의 규칙과 실행 이력/)).toBeVisible()
+  await expect(automation.getByRole('button', { name: '새 규칙' })).toHaveCount(0)
+  await expect(automation.getByLabel('보관 규칙 위로')).toBeDisabled()
+  await automation.getByLabel('보관 규칙 자동화 규칙 작업').click()
+  const menu = page.getByRole('menu', { name: '보관 규칙 자동화 규칙 작업 메뉴' })
+  await expect(menu.getByText('읽기 전용')).toBeVisible()
+  await expect(menu.getByLabel('보관 규칙 규칙 편집')).toHaveCount(0)
+})
+
+test('자동화 초기 조회 실패는 같은 surface에서 다시 불러온다', async ({ page }) => {
+  await mockApi(page)
+  let allowRules = false
+  await page.route(`**/api/v1/projects/${project.id}/automation-rules`, (route) =>
+    allowRules
+      ? route.fulfill({ json: { items: [], total: 0 } })
+      : route.fulfill({ status: 503, json: { detail: '규칙 조회 일시 실패' } }),
+  )
+  await page.route(`**/api/v1/projects/${project.id}/automation-rules/runs**`, (route) =>
+    route.fulfill({ json: { items: [], total: 0 } }),
+  )
+
+  await page.goto(`/projects/${project.id}/settings?tab=automation`)
+  await expect(page.getByText('데이터를 불러오지 못했습니다')).toBeVisible()
+  allowRules = true
+  await page.getByRole('button', { name: '다시 시도' }).click()
+  await expect(page.getByRole('region', { name: '자동화 규칙' })).toContainText('0개 관리 중')
+})
+
+test('자동화 편집·생성·정렬과 실행 이력은 입력을 보존해 정확히 재시도한다', async ({ page }) => {
+  await mockApi(page)
+  const rule = {
+    id: 'r-retry',
+    project_id: project.id,
+    name: '검수 시 긴급',
+    trigger_type: 'status_changed_to',
+    trigger_value: 'in_review',
+    action_type: 'set_priority',
+    action_value: 'urgent',
+    condition_field: null as string | null,
+    condition_value: null as string | null,
+    position: 0,
+    is_active: true,
+    last_fired_at: null,
+    fired_count: 0,
+    created_at: '2026-07-26T00:00:00Z',
+  }
+  const secondRule = {
+    ...rule,
+    id: 'r-second',
+    name: '완료 시 낮음',
+    trigger_value: 'done',
+    action_value: 'low',
+    position: 1,
+  }
+  const patchBodies: Array<Record<string, unknown>> = []
+  const createBodies: Array<Record<string, unknown>> = []
+  const reorderBodies: Array<{ ordered_ids: string[] }> = []
+  let runsAttempts = 0
+  let allowRunsSuccess = false
+
+  await page.route(`**/api/v1/projects/${project.id}/automation-rules`, async (route) => {
+    if (route.request().method() === 'POST') {
+      const body = route.request().postDataJSON() as Record<string, unknown>
+      createBodies.push(body)
+      if (createBodies.length === 1) {
+        await route.fulfill({ status: 503, json: { detail: '생성 일시 실패' } })
+        return
+      }
+      await route.fulfill({ status: 201, json: { ...rule, id: 'r-new', ...body } })
+      return
+    }
+    await route.fulfill({ json: { items: [rule, secondRule], total: 2 } })
+  })
+  await page.route(`**/api/v1/projects/${project.id}/automation-rules/r-retry`, async (route) => {
+    const body = route.request().postDataJSON() as Record<string, unknown>
+    patchBodies.push(body)
+    if (patchBodies.length === 1) {
+      await route.fulfill({ status: 503, json: { detail: '수정 일시 실패' } })
+      return
+    }
+    Object.assign(rule, body)
+    await route.fulfill({ json: rule })
+  })
+  await page.route(`**/api/v1/projects/${project.id}/automation-rules/order`, async (route) => {
+    const body = route.request().postDataJSON() as { ordered_ids: string[] }
+    reorderBodies.push(body)
+    if (reorderBodies.length === 1) {
+      await route.fulfill({ status: 503, json: { detail: '정렬 일시 실패' } })
+      return
+    }
+    await route.fulfill({ json: { items: [secondRule, rule], total: 2 } })
+  })
+  await page.route(`**/api/v1/projects/${project.id}/automation-rules/runs**`, async (route) => {
+    runsAttempts += 1
+    if (!allowRunsSuccess) {
+      await route.fulfill({ status: 503, json: { detail: '이력 일시 실패' } })
+      return
+    }
+    await route.fulfill({
+      json: {
+        items: [
+          {
+            id: 'run-retry',
+            rule_id: rule.id,
+            rule_name: rule.name,
+            work_package_id: wpA.id,
+            work_package_subject: wpA.subject,
+            field: 'priority',
+            old_value: 'high',
+            new_value: 'urgent',
+            actor_id: 'me-1',
+            created_at: '2026-07-26T00:00:00Z',
+          },
+        ],
+        total: 1,
+      },
+    })
+  })
+
+  await page.goto(`/projects/${project.id}/settings?tab=automation`)
+  const automation = page.getByRole('region', { name: '자동화 규칙' })
+  await automation.getByLabel('검수 시 긴급 자동화 규칙 작업').click()
+  await automation.getByLabel('검수 시 긴급 규칙 편집').click()
+  await automation.getByLabel('검수 시 긴급 보조 조건 필드 편집').selectOption('type')
+  await automation.getByLabel('검수 시 긴급 보조 조건 값 편집').selectOption('bug')
+
+  page.once('dialog', (dialog) => {
+    expect(dialog.message()).toContain('저장되지 않은 변경')
+    void dialog.dismiss()
+  })
+  await page.getByRole('tab', { name: '스토리지' }).click()
+  await expect(page.getByRole('tab', { name: '자동화' })).toHaveAttribute('aria-selected', 'true')
+
+  await automation.getByRole('button', { name: '저장' }).click()
+  await expect(automation.getByRole('alert')).toContainText('입력 내용은 유지됩니다')
+  await automation.getByRole('button', { name: '같은 내용으로 다시 시도' }).click()
+  await expect(automation.getByText('규칙을 저장했습니다.')).toBeVisible()
+  expect(patchBodies).toHaveLength(2)
+  expect(patchBodies[1]).toEqual(patchBodies[0])
+  expect(patchBodies[1]).toMatchObject({
+    condition_field: 'type',
+    condition_value: 'bug',
+  })
+
+  await automation.getByRole('button', { name: '새 규칙' }).click()
+  await automation.getByLabel('새 규칙 이름').fill('재시도 생성')
+  await automation.getByRole('button', { name: '규칙 추가' }).click()
+  await expect(automation.getByRole('alert')).toContainText('입력 내용은 유지됩니다')
+  await automation.getByRole('button', { name: '같은 내용으로 다시 시도' }).click()
+  await expect(automation.getByText('자동화 규칙을 추가했습니다.')).toBeVisible()
+  expect(createBodies).toHaveLength(2)
+  expect(createBodies[1]).toEqual(createBodies[0])
+
+  await automation.getByLabel('검수 시 긴급 아래로').click()
+  await expect(automation.getByRole('alert')).toContainText('현재 목록을 유지합니다')
+  await automation.getByRole('button', { name: '같은 순서로 다시 시도' }).click()
+  await expect(automation.getByText('규칙 우선순위를 저장했습니다.')).toBeVisible()
+  expect(reorderBodies).toHaveLength(2)
+  expect(reorderBodies[1]).toEqual(reorderBodies[0])
+
+  await automation.locator('summary').filter({ hasText: '실행 이력' }).click()
+  await expect(automation.getByRole('alert')).toContainText('실행 이력을 불러오지 못했습니다')
+  allowRunsSuccess = true
+  await automation.getByRole('button', { name: '다시 시도' }).click()
+  await expect(automation.getByRole('list', { name: '자동화 실행 이력' })).toContainText(
+    wpA.subject,
+  )
+  expect(runsAttempts).toBeGreaterThan(1)
 })
 
 test('AI 요약은 실제 POST로 생성하고 재생성 실패 시 마지막 성공값을 보존해 재시도한다', async ({ page }) => {
