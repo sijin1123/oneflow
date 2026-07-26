@@ -1,3 +1,4 @@
+import * as Dialog from '@radix-ui/react-dialog'
 import {
   Ban,
   CheckCircle2,
@@ -7,16 +8,17 @@ import {
   ShieldCheck,
   UserPlus,
   UsersRound,
+  X,
 } from 'lucide-react'
-import { Fragment, useDeferredValue, useEffect, useMemo, useState } from 'react'
+import { Fragment, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 
+import { FrameContextActions } from '@/components/shell/FrameContextActions'
 import { EmptyState, ErrorState, ListSkeleton } from '@/components/shell/states'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useMe } from '@/features/members/api'
-import { SettingsFrame, SettingsSection } from '@/features/settings/SettingsShell'
 import { ApiError } from '@/lib/api'
 import { cn } from '@/lib/utils'
 
@@ -52,37 +54,6 @@ function UserAvatar({ user }: { user: DirectoryUser }) {
     >
       {initials(user.display_name)}
     </span>
-  )
-}
-
-function DirectoryMetric({
-  icon: Icon,
-  label,
-  value,
-  tone = 'neutral',
-}: {
-  icon: typeof UsersRound
-  label: string
-  value: number
-  tone?: 'neutral' | 'accent' | 'danger'
-}) {
-  return (
-    <div className="flex min-w-0 items-center gap-3 rounded-of border border-of-border bg-of-surface px-3 py-3">
-      <span
-        className={cn(
-          'flex h-8 w-8 shrink-0 items-center justify-center rounded-of',
-          tone === 'accent' && 'bg-of-accent-soft text-of-accent',
-          tone === 'danger' && 'bg-of-danger/10 text-of-danger',
-          tone === 'neutral' && 'bg-of-surface-2 text-of-muted',
-        )}
-      >
-        <Icon size={15} aria-hidden="true" />
-      </span>
-      <span className="min-w-0">
-        <span className="block text-[11px] text-of-muted">{label}</span>
-        <span className="block text-base font-semibold tabular-nums">{value}</span>
-      </span>
-    </div>
   )
 }
 
@@ -160,9 +131,7 @@ function MembershipsPanel({ userId }: { userId: string }) {
               >
                 <span className="max-w-[12rem] truncate font-medium">{m.project_name}</span>
                 <span className="text-of-muted">· {ROLE_LABELS[m.role] ?? m.role}</span>
-                {m.archived ? (
-                  <span className="text-[10px] text-of-muted">(아카이브)</span>
-                ) : null}
+                {m.archived ? <span className="text-[10px] text-of-muted">(아카이브)</span> : null}
               </li>
             ))}
           </ul>
@@ -259,6 +228,7 @@ export function UsersPage() {
   const [email, setEmail] = useState('')
   const [name, setName] = useState('')
   const [expanded, setExpanded] = useState<string | null>(null)
+  const createTriggerRef = useRef<HTMLButtonElement | null>(null)
   const rawQuery = searchParams.get('q') ?? ''
   const query = rawQuery.slice(0, 120)
   const deferredQuery = useDeferredValue(query.trim())
@@ -362,283 +332,401 @@ export function UsersPage() {
     )
   }
 
+  const openCreate = () => {
+    create.reset()
+    setEmail('')
+    setName('')
+    setAdding(true)
+  }
+
   return (
-    <SettingsFrame
-      eyebrow="Workspace administration"
-      title={view === 'invites' ? '멤버 초대' : '사용자 관리'}
-      description={
-        view === 'invites'
-          ? '일회성 초대 링크를 발급하고 대기·수락·만료 상태를 관리합니다.'
-          : '워크스페이스 계정, 관리자 권한, 비활성화 상태와 프로젝트 멤버십을 관리합니다.'
-      }
-      meta={view === 'invites' ? `${totalUsers}명 참여` : `${totalUsers}명`}
-      actions={
-        view === 'directory' && !adding ? (
-          <Button size="sm" onClick={() => setAdding(true)}>
-            <UserPlus size={14} /> 새 사용자
-          </Button>
-        ) : null
-      }
+    <section
+      aria-label="워크스페이스 사용자 관리"
+      className="flex min-h-full min-w-0 flex-col bg-of-surface"
     >
-      <div role="tablist" aria-label="사용자 관리 보기" className="mb-4 flex min-w-0 items-center gap-1 border-b border-of-border pb-2">
-        <Button role="tab" aria-selected={view === 'directory'} variant={view === 'directory' ? 'default' : 'ghost'} size="sm" onClick={() => setView('directory')}>
-          <UsersRound size={14} /> 계정 디렉터리
+      <h1 className="sr-only">{view === 'invites' ? '멤버 초대' : '사용자 관리'}</h1>
+      <FrameContextActions>
+        <div
+          role="toolbar"
+          aria-label="사용자 관리 화면 제어"
+          className="flex items-center gap-1.5"
+        >
+          <span className="px-1 text-xs tabular-nums text-of-muted">{totalUsers}명</span>
+          {view === 'directory' ? (
+            <Button ref={createTriggerRef} size="sm" onClick={openCreate}>
+              <UserPlus size={14} aria-hidden="true" />새 사용자
+            </Button>
+          ) : null}
+        </div>
+      </FrameContextActions>
+
+      <div
+        role="tablist"
+        aria-label="사용자 관리 보기"
+        className="flex min-w-0 shrink-0 items-center gap-1 border-b border-of-border-subtle px-3 py-2"
+      >
+        <Button
+          role="tab"
+          aria-selected={view === 'directory'}
+          variant={view === 'directory' ? 'secondary' : 'ghost'}
+          size="sm"
+          onClick={() => setView('directory')}
+        >
+          <UsersRound size={14} aria-hidden="true" />
+          멤버
         </Button>
-        <Button role="tab" aria-selected={view === 'invites'} variant={view === 'invites' ? 'default' : 'ghost'} size="sm" onClick={() => setView('invites')}>
-          <Mail size={14} /> 워크스페이스 초대
+        <Button
+          role="tab"
+          aria-selected={view === 'invites'}
+          variant={view === 'invites' ? 'secondary' : 'ghost'}
+          size="sm"
+          onClick={() => setView('invites')}
+        >
+          <Mail size={14} aria-hidden="true" />
+          초대
         </Button>
       </div>
 
       {view === 'invites' ? (
-        <WorkspaceInvitationsPanel initialComposer={initialInviteComposer} />
+        <main className="of-scrollbar min-h-0 flex-1 overflow-y-auto bg-of-bg p-3 sm:p-4">
+          <WorkspaceInvitationsPanel initialComposer={initialInviteComposer} />
+        </main>
       ) : (
         <>
-      <div className="grid min-w-0 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <DirectoryMetric icon={UsersRound} label="전체 계정" value={totalUsers} />
-        <DirectoryMetric
-          icon={CheckCircle2}
-          label="활성 계정"
-          value={directorySummary.active}
-          tone="accent"
-        />
-        <DirectoryMetric icon={ShieldCheck} label="관리자" value={directorySummary.admins} />
-        <DirectoryMetric icon={Ban} label="비활성" value={directorySummary.inactive} tone="danger" />
-      </div>
-
-      {adding ? (
-        <SettingsSection
-          title="새 사용자"
-          description="사용자를 생성한 뒤 필요한 프로젝트 멤버십은 각 프로젝트 설정에서 부여합니다."
-          className="mb-4"
-        >
-          <div className="grid min-w-0 gap-2 md:grid-cols-[minmax(0,1fr)_minmax(0,0.8fr)_auto_auto] md:items-center">
-            <Input
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="이메일"
-              aria-label="새 사용자 이메일"
-              className="h-8 min-w-0 text-xs"
-            />
-            <Input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="표시 이름"
-              aria-label="새 사용자 이름"
-              className="h-8 min-w-0 text-xs"
-            />
-            <Button size="sm" disabled={!email.trim() || !name.trim() || create.isPending} onClick={submit}>
-              추가
-            </Button>
-            <Button variant="ghost" size="sm" onClick={() => setAdding(false)}>
-              취소
-            </Button>
-            {create.isError ? (
-              <span className="text-xs text-of-danger">
-                추가 실패 — 이메일 중복 또는 형식을 확인해 주세요.
-              </span>
-            ) : null}
-          </div>
-        </SettingsSection>
-      ) : null}
-
-      <SettingsSection
-        title="계정 디렉터리"
-        description="계정 상태, 관리자 권한, 소속 프로젝트를 한 화면에서 점검합니다."
-        actions={
-          <div className="relative w-full sm:w-64">
-            <Search
-              size={14}
-              className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-of-muted"
-              aria-hidden="true"
-            />
-            <Input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              maxLength={120}
-              aria-label="사용자 검색"
-              placeholder="이름 또는 이메일"
-              className="h-8 pl-8 text-xs"
-            />
-          </div>
-        }
-      >
-        <div
-          role="toolbar"
-          aria-label="사용자 디렉터리 보기"
-          className="mb-3 flex min-w-0 flex-wrap items-center gap-1"
-        >
-          {[
-            ['all', '전체'],
-            ['admins', '관리자'],
-            ['inactive', '비활성'],
-          ].map(([key, label]) => (
-            <Button
-              key={key}
-              variant={filter === key ? 'default' : 'ghost'}
-              size="sm"
-              aria-pressed={filter === key}
-              onClick={() => setFilter(key as UserDirectoryScope)}
+          <div
+            role="toolbar"
+            aria-label="사용자 디렉터리 보기"
+            className="flex min-w-0 shrink-0 flex-wrap items-center gap-2 border-b border-of-border-subtle px-3 py-2"
+          >
+            <label className="relative min-w-44 flex-1 sm:max-w-72">
+              <span className="sr-only">사용자 검색</span>
+              <Search
+                size={13}
+                className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-of-muted"
+                aria-hidden="true"
+              />
+              <Input
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                maxLength={120}
+                aria-label="사용자 검색"
+                placeholder="이름 또는 이메일 검색"
+                className="h-7 pl-7 text-xs"
+              />
+            </label>
+            <div className="flex items-center gap-1">
+              {(
+                [
+                  ['all', '전체'],
+                  ['admins', '관리자'],
+                  ['inactive', '비활성'],
+                ] as const
+              ).map(([key, label]) => (
+                <Button
+                  key={key}
+                  variant={filter === key ? 'secondary' : 'ghost'}
+                  size="sm"
+                  aria-pressed={filter === key}
+                  onClick={() => setFilter(key)}
+                >
+                  {label}
+                </Button>
+              ))}
+            </div>
+            <dl
+              aria-label="사용자 현황"
+              className="ml-auto hidden items-center gap-3 text-[11px] tabular-nums text-of-muted lg:flex"
             >
-              {label}
-            </Button>
-          ))}
-        </div>
-
-        {users.length === 0 ? (
-          <div className="rounded-of border border-dashed border-of-border bg-of-surface-2 px-3 py-8 text-center">
-            <p className="text-sm font-medium">조건에 맞는 사용자가 없습니다</p>
-            <p className="mt-1 text-xs text-of-muted">검색어나 상태 필터를 조정해 보세요.</p>
-          </div>
-        ) : (
-          <>
-            {!mobileLayout ? (
-              <div className="min-w-0 overflow-x-auto rounded-of border border-of-border bg-of-surface">
-                <table className="w-full min-w-[760px] border-collapse text-sm">
-                  <thead>
-                    <tr className="border-b border-of-border text-left text-xs text-of-muted">
-                      <th className="px-3 py-2 font-medium">이름</th>
-                      <th className="px-3 py-2 font-medium">상태</th>
-                      <th className="px-3 py-2 font-medium">이메일</th>
-                      <th className="w-28 px-3 py-2 font-medium">가입일</th>
-                      <th className="w-64 px-3 py-2 font-medium" aria-label="동작 열" />
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {users.map((u) => (
-                      <Fragment key={u.id}>
-                        <tr className="border-b border-of-border">
-                          <td className="px-3 py-2 font-medium">
-                            <div className="flex min-w-0 items-center gap-2">
-                              <UserAvatar user={u} />
-                              <div className="min-w-0">
-                                <button
-                                  type="button"
-                                  className="block max-w-[14rem] truncate text-left hover:text-of-accent hover:underline"
-                                  title="프로젝트 멤버십 보기"
-                                  onClick={() => setExpanded(expanded === u.id ? null : u.id)}
-                                >
-                                  {u.display_name}
-                                </button>
-                                {u.id === me.data?.id ? (
-                                  <span className="text-xs text-of-muted">(나)</span>
-                                ) : null}
-                              </div>
-                            </div>
-                          </td>
-                          <td className="px-3 py-2 text-xs">
-                            <UserBadges user={u} />
-                          </td>
-                          <td className="px-3 py-2 text-xs text-of-muted">
-                            <span className="inline-flex min-w-0 max-w-[16rem] items-center gap-1">
-                              <Mail size={12} className="shrink-0" aria-hidden="true" />
-                              <span className="truncate">{u.email}</span>
-                            </span>
-                          </td>
-                          <td className="px-3 py-2 text-xs text-of-muted">
-                            {u.created_at.slice(0, 10)}
-                          </td>
-                          <td className="px-3 py-2">
-                            <DirectoryActions
-                              user={u}
-                              currentUserId={me.data?.id}
-                              updatePending={update.isPending}
-                              lastActiveAdmin={isLastActiveAdmin(u)}
-                              onToggleActive={() =>
-                                update.mutate({ id: u.id, is_active: !u.is_active })
-                              }
-                              onToggleAdmin={() =>
-                                update.mutate({ id: u.id, is_admin: !u.is_admin })
-                              }
-                            />
-                          </td>
-                        </tr>
-                        {expanded === u.id ? <MembershipsRow userId={u.id} colSpan={5} /> : null}
-                      </Fragment>
-                    ))}
-                  </tbody>
-                </table>
+              <div>
+                <dt className="sr-only">활성 계정</dt>
+                <dd>활성 {directorySummary.active}</dd>
               </div>
-            ) : (
-              <ul className="grid min-w-0 gap-2" aria-label="사용자 카드 목록">
-                {users.map((u) => (
-                  <li key={u.id} className="rounded-of border border-of-border bg-of-surface p-3">
-                    <div className="flex min-w-0 items-start gap-2">
-                      <UserAvatar user={u} />
-                      <div className="min-w-0 flex-1">
-                        <button
-                          type="button"
-                          className="block max-w-full truncate text-left text-sm font-medium hover:text-of-accent hover:underline"
-                          title="프로젝트 멤버십 보기"
-                          onClick={() => setExpanded(expanded === u.id ? null : u.id)}
-                        >
-                          {u.display_name}
-                        </button>
-                        <p className="truncate text-xs text-of-muted">{u.email}</p>
-                      </div>
-                      {u.id === me.data?.id ? <Badge variant="outline">나</Badge> : null}
-                    </div>
-                    <div className="mt-3 flex min-w-0 flex-wrap items-center gap-2">
-                      <UserBadges user={u} />
-                      <span className="text-xs text-of-muted">가입 {u.created_at.slice(0, 10)}</span>
-                    </div>
-                    <div className="mt-3">
-                      <DirectoryActions
-                        user={u}
-                        currentUserId={me.data?.id}
-                        updatePending={update.isPending}
-                        lastActiveAdmin={isLastActiveAdmin(u)}
-                        onToggleActive={() => update.mutate({ id: u.id, is_active: !u.is_active })}
-                        onToggleAdmin={() => update.mutate({ id: u.id, is_admin: !u.is_admin })}
-                      />
-                    </div>
-                    {expanded === u.id ? (
-                      <div className="mt-3">
-                        <MembershipsPanel userId={u.id} />
-                      </div>
-                    ) : null}
-                  </li>
-                ))}
-              </ul>
-            )}
-            <footer className="mt-3 flex min-w-0 flex-col items-center gap-2 border-t border-of-border-subtle pt-3 sm:flex-row sm:justify-between">
-              <p className="text-xs text-of-muted" aria-live="polite">
-                {users.length} / {total}명 표시
+              <div>
+                <dt className="sr-only">관리자</dt>
+                <dd>관리자 {directorySummary.admins}</dd>
+              </div>
+              <div>
+                <dt className="sr-only">비활성 계정</dt>
+                <dd>비활성 {directorySummary.inactive}</dd>
+              </div>
+            </dl>
+          </div>
+
+          <main className="of-scrollbar min-h-0 flex-1 overflow-y-auto bg-of-bg">
+            {update.isError ? (
+              <p
+                role="alert"
+                className="border-b border-of-danger/30 bg-of-danger/5 px-4 py-2 text-xs text-of-danger"
+              >
+                계정 상태를 변경하지 못했습니다. 권한과 최신 상태를 확인한 뒤 다시 시도하세요.
               </p>
-              <div className="flex min-w-0 flex-col items-center gap-2 sm:items-end">
-                {hasNextPage ? (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={isFetchingNextPage}
-                    aria-describedby={
-                      isFetchNextPageError ? 'user-directory-load-more-error' : undefined
-                    }
-                    onClick={() => void fetchNextPage()}
+            ) : null}
+            {users.length === 0 ? (
+              <EmptyState
+                title="조건에 맞는 사용자가 없습니다"
+                hint="검색어나 상태 필터를 조정해 보세요."
+                className="min-h-full"
+              />
+            ) : (
+              <>
+                {!mobileLayout ? (
+                  <div className="min-w-0 overflow-x-auto bg-of-surface">
+                    <table className="w-full min-w-[760px] border-collapse text-sm">
+                      <thead>
+                        <tr className="border-b border-of-border-subtle bg-of-surface-2/70 text-left text-[11px] text-of-muted">
+                          <th className="px-4 py-2 font-medium">이름</th>
+                          <th className="px-3 py-2 font-medium">상태</th>
+                          <th className="px-3 py-2 font-medium">이메일</th>
+                          <th className="w-28 px-3 py-2 font-medium">가입일</th>
+                          <th className="w-64 px-4 py-2 font-medium" aria-label="동작 열" />
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {users.map((u) => (
+                          <Fragment key={u.id}>
+                            <tr className="border-b border-of-border-subtle hover:bg-of-surface-hover">
+                              <td className="px-4 py-2 font-medium">
+                                <div className="flex min-w-0 items-center gap-2">
+                                  <UserAvatar user={u} />
+                                  <div className="min-w-0">
+                                    <button
+                                      type="button"
+                                      className="block max-w-[14rem] truncate text-left hover:text-of-accent hover:underline"
+                                      title="프로젝트 멤버십 보기"
+                                      onClick={() => setExpanded(expanded === u.id ? null : u.id)}
+                                    >
+                                      {u.display_name}
+                                    </button>
+                                    {u.id === me.data?.id ? (
+                                      <span className="text-xs text-of-muted">(나)</span>
+                                    ) : null}
+                                  </div>
+                                </div>
+                              </td>
+                              <td className="px-3 py-2 text-xs">
+                                <UserBadges user={u} />
+                              </td>
+                              <td className="px-3 py-2 text-xs text-of-muted">
+                                <span className="inline-flex min-w-0 max-w-[16rem] items-center gap-1">
+                                  <Mail size={12} className="shrink-0" aria-hidden="true" />
+                                  <span className="truncate">{u.email}</span>
+                                </span>
+                              </td>
+                              <td className="px-3 py-2 text-xs text-of-muted">
+                                {u.created_at.slice(0, 10)}
+                              </td>
+                              <td className="px-4 py-2">
+                                <DirectoryActions
+                                  user={u}
+                                  currentUserId={me.data?.id}
+                                  updatePending={update.isPending}
+                                  lastActiveAdmin={isLastActiveAdmin(u)}
+                                  onToggleActive={() =>
+                                    update.mutate({
+                                      id: u.id,
+                                      is_active: !u.is_active,
+                                    })
+                                  }
+                                  onToggleAdmin={() =>
+                                    update.mutate({
+                                      id: u.id,
+                                      is_admin: !u.is_admin,
+                                    })
+                                  }
+                                />
+                              </td>
+                            </tr>
+                            {expanded === u.id ? (
+                              <MembershipsRow userId={u.id} colSpan={5} />
+                            ) : null}
+                          </Fragment>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <ul
+                    className="min-w-0 divide-y divide-of-border-subtle bg-of-surface"
+                    aria-label="사용자 카드 목록"
                   >
-                    {isFetchingNextPage ? '불러오는 중...' : '더 불러오기'}
-                  </Button>
-                ) : null}
-                {isFetchNextPageError ? (
-                  <p
-                    id="user-directory-load-more-error"
-                    role="alert"
-                    className="text-xs text-of-danger"
-                  >
-                    추가 사용자를 불러오지 못했습니다. 다시 시도해 주세요.
+                    {users.map((u) => (
+                      <li key={u.id} className="p-3">
+                        <div className="flex min-w-0 items-start gap-2">
+                          <UserAvatar user={u} />
+                          <div className="min-w-0 flex-1">
+                            <button
+                              type="button"
+                              className="block max-w-full truncate text-left text-sm font-medium hover:text-of-accent hover:underline"
+                              title="프로젝트 멤버십 보기"
+                              onClick={() => setExpanded(expanded === u.id ? null : u.id)}
+                            >
+                              {u.display_name}
+                            </button>
+                            <p className="truncate text-xs text-of-muted">{u.email}</p>
+                          </div>
+                          {u.id === me.data?.id ? <Badge variant="outline">나</Badge> : null}
+                        </div>
+                        <div className="mt-3 flex min-w-0 flex-wrap items-center gap-2">
+                          <UserBadges user={u} />
+                          <span className="text-xs text-of-muted">
+                            가입 {u.created_at.slice(0, 10)}
+                          </span>
+                        </div>
+                        <div className="mt-3">
+                          <DirectoryActions
+                            user={u}
+                            currentUserId={me.data?.id}
+                            updatePending={update.isPending}
+                            lastActiveAdmin={isLastActiveAdmin(u)}
+                            onToggleActive={() =>
+                              update.mutate({
+                                id: u.id,
+                                is_active: !u.is_active,
+                              })
+                            }
+                            onToggleAdmin={() => update.mutate({ id: u.id, is_admin: !u.is_admin })}
+                          />
+                        </div>
+                        {expanded === u.id ? (
+                          <div className="mt-3">
+                            <MembershipsPanel userId={u.id} />
+                          </div>
+                        ) : null}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                <footer className="flex min-w-0 flex-col items-center gap-2 border-t border-of-border-subtle bg-of-surface px-4 py-3 sm:flex-row sm:justify-between">
+                  <p className="text-xs text-of-muted" aria-live="polite">
+                    {users.length} / {total}명 표시
+                  </p>
+                  <div className="flex min-w-0 flex-col items-center gap-2 sm:items-end">
+                    {hasNextPage ? (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={isFetchingNextPage}
+                        aria-describedby={
+                          isFetchNextPageError ? 'user-directory-load-more-error' : undefined
+                        }
+                        onClick={() => void fetchNextPage()}
+                      >
+                        {isFetchingNextPage ? '불러오는 중...' : '더 불러오기'}
+                      </Button>
+                    ) : null}
+                    {isFetchNextPageError ? (
+                      <p
+                        id="user-directory-load-more-error"
+                        role="alert"
+                        className="text-xs text-of-danger"
+                      >
+                        추가 사용자를 불러오지 못했습니다. 다시 시도해 주세요.
+                      </p>
+                    ) : null}
+                  </div>
+                </footer>
+              </>
+            )}
+            <p className="border-t border-of-border-subtle px-4 py-3 text-[11px] leading-5 text-of-muted">
+              비활성화는 로그인과 API 접근만 차단합니다. 기존 프로젝트 멤버십·담당 배정·작성 이력은
+              유지됩니다.
+            </p>
+          </main>
+        </>
+      )}
+
+      <Dialog.Root
+        open={adding}
+        onOpenChange={(open) => {
+          if (create.isPending) return
+          setAdding(open)
+          if (!open) create.reset()
+        }}
+      >
+        <Dialog.Portal>
+          <Dialog.Overlay className="fixed inset-0 z-80 bg-black/35 backdrop-blur-[1px] data-[state=closed]:animate-out data-[state=closed]:fade-out data-[state=open]:animate-in data-[state=open]:fade-in motion-reduce:animate-none" />
+          <Dialog.Content
+            className="fixed left-1/2 top-1/2 z-81 w-[min(28rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 rounded-of border border-of-border bg-of-surface shadow-xl data-[state=closed]:animate-out data-[state=closed]:fade-out data-[state=closed]:zoom-out-95 data-[state=open]:animate-in data-[state=open]:fade-in data-[state=open]:zoom-in-95 motion-reduce:animate-none"
+            onCloseAutoFocus={(event) => {
+              event.preventDefault()
+              createTriggerRef.current?.focus()
+            }}
+          >
+            <form
+              onSubmit={(event) => {
+                event.preventDefault()
+                submit()
+              }}
+            >
+              <div className="border-b border-of-border px-5 py-4">
+                <Dialog.Title className="text-base font-semibold">새 사용자</Dialog.Title>
+                <Dialog.Description className="mt-1 text-xs leading-5 text-of-muted">
+                  계정을 만든 뒤 프로젝트별 역할은 각 프로젝트 설정에서 지정하세요.
+                </Dialog.Description>
+              </div>
+              <div className="space-y-4 px-5 py-4">
+                <label className="block">
+                  <span className="mb-1 block text-xs font-medium">이메일</span>
+                  <Input
+                    autoFocus
+                    type="email"
+                    value={email}
+                    onChange={(event) => {
+                      setEmail(event.target.value)
+                      create.reset()
+                    }}
+                    placeholder="name@company.com"
+                    aria-label="새 사용자 이메일"
+                  />
+                </label>
+                <label className="block">
+                  <span className="mb-1 block text-xs font-medium">표시 이름</span>
+                  <Input
+                    value={name}
+                    onChange={(event) => {
+                      setName(event.target.value)
+                      create.reset()
+                    }}
+                    placeholder="표시 이름"
+                    aria-label="새 사용자 이름"
+                  />
+                </label>
+                {create.isError ? (
+                  <p role="alert" className="text-xs text-of-danger">
+                    사용자를 추가하지 못했습니다. 이메일 형식과 중복 여부를 확인하세요.
                   </p>
                 ) : null}
               </div>
-            </footer>
-          </>
-        )}
-      </SettingsSection>
-
-      <p className="mt-3 text-xs text-of-muted">
-        비활성화는 로그인과 API 접근만 차단합니다. 기존 프로젝트 멤버십·담당 배정·작성 이력은
-        유지되며, 새 프로젝트 멤버로는 추가할 수 없습니다.
-      </p>
-        </>
-      )}
-    </SettingsFrame>
+              <div className="flex justify-end gap-2 border-t border-of-border px-5 py-3">
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={create.isPending}
+                  onClick={() => setAdding(false)}
+                >
+                  취소
+                </Button>
+                <Button
+                  type="submit"
+                  disabled={!email.trim() || !name.trim() || create.isPending}
+                  aria-busy={create.isPending}
+                >
+                  {create.isPending ? '추가 중' : '추가'}
+                </Button>
+              </div>
+            </form>
+            <button
+              type="button"
+              aria-label="새 사용자 창 닫기"
+              disabled={create.isPending}
+              className="absolute right-3 top-3 grid size-8 place-items-center rounded-of text-of-muted hover:bg-of-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus"
+              onClick={() => setAdding(false)}
+            >
+              <X size={15} aria-hidden="true" />
+            </button>
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>
+    </section>
   )
 }

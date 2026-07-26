@@ -2924,7 +2924,8 @@ test('Settings rail은 권한별 설정 navigation과 중앙 form을 중복 없�
   await expect(settingsNav.getByRole('link', { name: '연결 및 통합' })).toHaveAttribute('href', '/admin/integrations')
   await expect(settingsNav.getByRole('link', { name: 'Webhooks' })).toHaveAttribute('href', '/admin/webhooks')
   await expect(page.getByRole('button', { name: '새 작업' })).toHaveCount(0)
-  await expect(page.getByRole('heading', { name: '사용자 관리' })).toBeVisible()
+  await expect(page.getByRole('region', { name: '워크스페이스 사용자 관리' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '사용자 관리' })).toBeAttached()
   const breadcrumb = page.getByRole('navigation', { name: '현재 위치' })
   await expect(breadcrumb.getByRole('link', { name: '워크스페이스 설정' })).toHaveAttribute('href', '/admin/overview')
   await expect(page.getByTestId('frame-context-bar').getByText('사용자 관리', { exact: true })).toBeVisible()
@@ -10350,7 +10351,7 @@ test('settings/admin IA는 모바일 폭에서 표면별 탐색을 유지한다'
   })
 
   await page.goto('/admin/users')
-  await expect(page.getByRole('heading', { name: '사용자 관리' })).toBeVisible()
+  await expect(page.getByRole('region', { name: '워크스페이스 사용자 관리' })).toBeVisible()
   await expect(page.getByText('alex@oneflow.local')).toBeVisible()
   await page.getByRole('button', { name: '사이드바 열기' }).click()
   const workspaceSettings = page.getByRole('dialog', { name: '모바일 내비게이션' }).getByRole('navigation', { name: '설정 컨텍스트 내비게이션' })
@@ -19986,7 +19987,8 @@ test('Workspace 초대는 브랜드 메뉴에서 생성·복사·회전·취소�
   await page.getByRole('button', { name: '워크스페이스 전환' }).click()
   await page.getByRole('menuitem', { name: '멤버 초대', exact: true }).click()
   await expect(page).toHaveURL('/admin/users?view=invites')
-  await expect(page.getByRole('heading', { name: '멤버 초대' })).toBeVisible()
+  await expect(page.getByRole('region', { name: '워크스페이스 사용자 관리' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '멤버 초대' })).toBeAttached()
   await page.getByLabel('초대 이메일').fill('new.member@example.com')
   await page.getByLabel('초대 사용자 이름').fill('새 멤버')
   await page.getByRole('button', { name: '링크 만들기' }).click()
@@ -20004,13 +20006,13 @@ test('Workspace 초대는 브랜드 메뉴에서 생성·복사·회전·취소�
 
   await page.setViewportSize({ width: 1440, height: 900 })
   await page.screenshot({
-    path: '../../docs/screenshots/redevelopment/workspace-invitations-ui/desktop.png',
+    path: '../../docs/screenshots/redevelopment/settings-members-directory-ui-237/invitations-desktop.png',
     fullPage: true,
   })
   await page.setViewportSize({ width: 390, height: 844 })
   await expectNoHorizontalOverflow(page)
   await page.screenshot({
-    path: '../../docs/screenshots/redevelopment/workspace-invitations-ui/mobile.png',
+    path: '../../docs/screenshots/redevelopment/settings-members-directory-ui-237/invitations-mobile.png',
     fullPage: true,
   })
 })
@@ -20414,7 +20416,20 @@ test('관리자가 사용자 디렉터리에서 추가·비활성화를 수행�
   await expect(adminRow.getByRole('button', { name: '비활성화' })).toBeDisabled()
   await expect(adminRow.getByLabel('Dev User 관리자 권한')).toBeDisabled()
 
-  await page.getByRole('button', { name: '새 사용자' }).click()
+  const createTrigger = page.getByRole('button', { name: '새 사용자' })
+  await createTrigger.click()
+  const createDialog = page.getByRole('dialog', { name: '새 사용자' })
+  await expect(createDialog).toBeVisible()
+  await expect(page.getByLabel('새 사용자 이메일')).toBeFocused()
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/settings-members-directory-ui-237/create-dialog-desktop.png',
+    fullPage: true,
+  })
+  await page.keyboard.press('Escape')
+  await expect(createDialog).toBeHidden()
+  await expect(createTrigger).toBeFocused()
+
+  await createTrigger.click()
   await page.getByLabel('새 사용자 이메일').fill('b@corp.com')
   await page.getByLabel('새 사용자 이름').fill('신입')
   const post = page.waitForRequest(
@@ -20492,7 +20507,7 @@ test('사용자 디렉터리는 서버 검색·필터·추가 페이지와 전�
   expect(requests.some((url) => url.searchParams.get('offset') === '2')).toBe(true)
   await expectNoHorizontalOverflow(page)
   await page.screenshot({
-    path: '../../docs/screenshots/redevelopment/user-directory-ui/pagination-desktop.png',
+    path: '../../docs/screenshots/redevelopment/settings-members-directory-ui-237/pagination-desktop.png',
     fullPage: true,
   })
 
@@ -20654,7 +20669,7 @@ test('사용자 디렉터리는 모바일에서 계정 카드와 멤버십을 �
   await expectNoHorizontalOverflow(page)
   await page.evaluate(() => document.querySelector('main')?.scrollTo(0, 0))
   await page.screenshot({
-    path: '../../docs/screenshots/redevelopment/user-directory-ui/mobile.png',
+    path: '../../docs/screenshots/redevelopment/settings-members-directory-ui-237/mobile.png',
     fullPage: true,
   })
 })
