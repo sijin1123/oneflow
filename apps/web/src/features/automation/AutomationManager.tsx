@@ -1,23 +1,36 @@
 import {
+  Activity,
   Archive,
   Bot,
   CheckCircle2,
   ChevronDown,
   ChevronUp,
+  CircleDot,
   ListOrdered,
+  LoaderCircle,
+  Lock,
+  LockKeyhole,
   Pencil,
+  Plus,
+  RefreshCw,
   Save,
   Trash2,
 } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
 
-import { InlineActionMenu } from '@/components/ui/action-menu'
+import { EmptyState, ErrorState, ListSkeleton } from '@/components/shell/states'
+import {
+  InlineActionMenu,
+  type InlineActionMenuItem,
+} from '@/components/ui/action-menu'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
-import { useMembers } from '@/features/members/api'
+import { useMembers, usePermissionReport } from '@/features/members/api'
 import { useProjectTypeOptions } from '@/features/project-types/useProjectTypeOptions'
+import { useProject } from '@/features/projects/api'
 import {
   PRIORITY_LABELS,
   WP_PRIORITIES,
@@ -28,579 +41,1129 @@ import { useStatusLabels } from '@/features/work-packages/useStatusLabels'
 import { useTypeLabels } from '@/features/work-packages/useTypeLabels'
 import { formatDateTime } from '@/lib/datetime'
 import { confirmDestructive } from '@/lib/guards'
+import { cn } from '@/lib/utils'
 
 import {
   type AutomationRule,
+  type AutomationRuleInput,
+  type AutomationRuleUpdate,
   useAutomationRuleRuns,
   useAutomationRules,
   useCreateAutomationRule,
   useDeleteAutomationRule,
   useReorderAutomationRules,
-  useSetAutomationRuleActive,
+  useUpdateAutomationRule,
 } from './api'
 
 type TriggerType = 'status_changed_to' | 'type_changed_to' | 'priority_changed_to'
+type ActionType = 'set_priority' | 'set_assignee'
 type ConditionField = '' | 'status' | 'type' | 'priority'
-type RulePatch = {
-  id: string
-  is_active?: boolean
-  trigger_value?: string
-  action_value?: string
-  name?: string
+type ValueOption = readonly [string, string]
+
+const fieldSubject = (field: string) => {
+  if (field === 'type') return '타입이'
+  if (field === 'priority') return '우선순위가'
+  return '상태가'
 }
 
-const CONDITION_FIELD_LABELS: Record<string, string> = {
-  status: '상태',
-  type: '타입',
-  priority: '우선순위',
+const triggerTypeLabel = (triggerType: string) => {
+  if (triggerType === 'type_changed_to') return '타입 변경'
+  if (triggerType === 'priority_changed_to') return '우선순위 변경'
+  return '상태 변경'
 }
 
-/* Automation rules (PLAN §3 Phase 3 자동화): owners define status→priority rules
-   the backend applies inside the work-package PATCH transaction. */
-export function AutomationManager({ projectId, isOwner }: { projectId: string; isOwner: boolean }) {
-  const { data } = useAutomationRules(projectId)
-  const create = useCreateAutomationRule(projectId)
-  const setActive = useSetAutomationRuleActive(projectId)
-  const reorder = useReorderAutomationRules(projectId)
-  const del = useDeleteAutomationRule(projectId)
+const actionTypeLabel = (actionType: string) =>
+  actionType === 'set_assignee' ? '담당자 지정' : '우선순위 설정'
+
+function AutomationRuleRow({
+  projectId,
+  rule,
+  index,
+  total,
+  canEdit,
+  members,
+  triggerOptions,
+  conditionOptions,
+  ruleText,
+  reorderPending,
+  onMove,
+  onDirtyChange,
+}: {
+  projectId: string
+  rule: AutomationRule
+  index: number
+  total: number
+  canEdit: boolean
+  members: Array<{ user_id: string; display_name: string; role: string }>
+  triggerOptions: ValueOption[]
+  conditionOptions: (field: ConditionField) => ValueOption[]
+  ruleText: string
+  reorderPending: boolean
+  onMove: (index: number, delta: -1 | 1) => void
+  onDirtyChange: (ruleId: string, dirty: boolean) => void
+}) {
+  const update = useUpdateAutomationRule(projectId)
+  const remove = useDeleteAutomationRule(projectId)
+  const [editing, setEditing] = useState(false)
+  const [name, setName] = useState(rule.name)
+  const [triggerValue, setTriggerValue] = useState(rule.trigger_value)
+  const [actionValue, setActionValue] = useState(rule.action_value)
+  const [conditionField, setConditionField] = useState<ConditionField>(
+    (rule.condition_field ?? '') as ConditionField,
+  )
+  const [conditionValue, setConditionValue] = useState(rule.condition_value ?? '')
+  const [retryPatch, setRetryPatch] = useState<AutomationRuleUpdate | null>(null)
+  const [retryDelete, setRetryDelete] = useState(false)
+  const [failureLabel, setFailureLabel] = useState('')
+  const [message, setMessage] = useState('')
+  const writableMembers = members.filter((member) => member.role !== 'viewer')
+  const dirty =
+    editing &&
+    (name.trim() !== rule.name ||
+      triggerValue !== rule.trigger_value ||
+      actionValue !== rule.action_value ||
+      conditionField !== (rule.condition_field ?? '') ||
+      conditionValue !== (rule.condition_value ?? ''))
+
+  useEffect(() => setName(rule.name), [rule.name])
+  useEffect(() => setTriggerValue(rule.trigger_value), [rule.trigger_value])
+  useEffect(() => setActionValue(rule.action_value), [rule.action_value])
+  useEffect(
+    () => setConditionField((rule.condition_field ?? '') as ConditionField),
+    [rule.condition_field],
+  )
+  useEffect(() => setConditionValue(rule.condition_value ?? ''), [rule.condition_value])
+  useEffect(() => {
+    onDirtyChange(rule.id, dirty)
+  }, [dirty, onDirtyChange, rule.id])
+  useEffect(
+    () => () => {
+      onDirtyChange(rule.id, false)
+    },
+    [onDirtyChange, rule.id],
+  )
+
+  const resetDraft = () => {
+    setName(rule.name)
+    setTriggerValue(rule.trigger_value)
+    setActionValue(rule.action_value)
+    setConditionField((rule.condition_field ?? '') as ConditionField)
+    setConditionValue(rule.condition_value ?? '')
+    setEditing(false)
+    setRetryPatch(null)
+    setFailureLabel('')
+    update.reset()
+  }
+
+  const changeDraft = (change: () => void) => {
+    change()
+    setRetryPatch(null)
+    setFailureLabel('')
+    setMessage('')
+    update.reset()
+  }
+
+  const submitPatch = (
+    patch: AutomationRuleUpdate,
+    successMessage: string,
+    closeEditor = false,
+  ) => {
+    setMessage('')
+    setFailureLabel(successMessage.replace('했습니다.', '하지 못했습니다.'))
+    setRetryPatch(patch)
+    update.mutate(patch, {
+      onSuccess: (saved) => {
+        setName(saved.name)
+        setTriggerValue(saved.trigger_value)
+        setActionValue(saved.action_value)
+        setConditionField((saved.condition_field ?? '') as ConditionField)
+        setConditionValue(saved.condition_value ?? '')
+        if (closeEditor) setEditing(false)
+        setRetryPatch(null)
+        setFailureLabel('')
+        setMessage(successMessage)
+      },
+    })
+  }
+
+  const submitDelete = () => {
+    setMessage('')
+    setRetryDelete(true)
+    remove.mutate(rule.id, {
+      onSuccess: () => {
+        setRetryDelete(false)
+      },
+    })
+  }
+
+  const firedText =
+    rule.fired_count > 0
+      ? `${rule.fired_count}회 실행 · 마지막 ${formatDateTime(rule.last_fired_at ?? '')}`
+      : '아직 실행되지 않음'
+
+  const actionItems: InlineActionMenuItem[] = canEdit
+    ? [
+        {
+          label: '편집',
+          ariaLabel: `${rule.name} 규칙 편집`,
+          icon: <Pencil size={14} />,
+          onSelect: () => {
+            setMessage('')
+            setEditing(true)
+          },
+        },
+        {
+          label: rule.is_active ? '사용 중지' : '사용 시작',
+          ariaLabel: `${rule.name} 규칙 ${rule.is_active ? '사용 중지' : '사용 시작'}`,
+          icon: rule.is_active ? <Archive size={14} /> : <CheckCircle2 size={14} />,
+          onSelect: () =>
+            submitPatch(
+              { id: rule.id, is_active: !rule.is_active },
+              rule.is_active ? '규칙을 중지했습니다.' : '규칙을 시작했습니다.',
+            ),
+        },
+        {
+          label: '삭제',
+          ariaLabel: `${rule.name} 규칙 삭제`,
+          icon: <Trash2 size={14} />,
+          tone: 'danger',
+          onSelect: () => {
+            if (confirmDestructive(`'${rule.name}' 자동화 규칙을 삭제할까요?`)) {
+              submitDelete()
+            }
+          },
+        },
+      ]
+    : [
+        {
+          label: '쓰기 권한 없음',
+          ariaLabel: `${rule.name} 쓰기 권한 없음`,
+          icon: <Lock size={14} />,
+          disabled: true,
+          onSelect: () => undefined,
+        },
+      ]
+
+  return (
+    <li
+      className={cn(
+        'min-w-0 border-b border-of-border px-3 py-3 last:border-b-0',
+        !rule.is_active && 'bg-of-surface-2/35',
+      )}
+    >
+      {editing ? (
+        <div className="space-y-3">
+          <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center">
+            <Input
+              value={name}
+              maxLength={80}
+              aria-label={`${rule.name} 규칙 이름 편집`}
+              onChange={(event) => changeDraft(() => setName(event.target.value))}
+              className="h-8 min-w-0 flex-1 text-xs"
+            />
+            <Badge variant="outline" className="self-start whitespace-nowrap sm:self-auto">
+              {triggerTypeLabel(rule.trigger_type)} · {actionTypeLabel(rule.action_type)}
+            </Badge>
+          </div>
+          <div className="grid min-w-0 gap-2 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.35fr)_minmax(0,1fr)]">
+            <label className="min-w-0">
+              <span className="mb-1 block text-[10px] font-medium text-of-muted">WHEN</span>
+              <Select
+                aria-label={`${rule.name} 트리거 값 편집`}
+                className="h-8 min-w-0 w-full text-xs"
+                value={triggerValue}
+                onChange={(event) =>
+                  changeDraft(() => setTriggerValue(event.target.value))
+                }
+              >
+                {triggerOptions.map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
+              </Select>
+            </label>
+            <div className="grid min-w-0 grid-cols-2 gap-2">
+              <label className="min-w-0">
+                <span className="mb-1 block text-[10px] font-medium text-of-muted">AND</span>
+                <Select
+                  aria-label={`${rule.name} 보조 조건 필드 편집`}
+                  className="h-8 min-w-0 w-full text-xs"
+                  value={conditionField}
+                  onChange={(event) => {
+                    const next = event.target.value as ConditionField
+                    const nextOptions = conditionOptions(next)
+                    changeDraft(() => {
+                      setConditionField(next)
+                      setConditionValue(nextOptions[0]?.[0] ?? '')
+                    })
+                  }}
+                >
+                  <option value="">조건 없음</option>
+                  <option value="status">상태</option>
+                  <option value="type">타입</option>
+                  <option value="priority">우선순위</option>
+                </Select>
+              </label>
+              <label className="min-w-0">
+                <span className="mb-1 block text-[10px] font-medium text-of-muted">VALUE</span>
+                <Select
+                  aria-label={`${rule.name} 보조 조건 값 편집`}
+                  className="h-8 min-w-0 w-full text-xs"
+                  value={conditionValue}
+                  disabled={conditionField === ''}
+                  onChange={(event) =>
+                    changeDraft(() => setConditionValue(event.target.value))
+                  }
+                >
+                  {conditionField === '' ? <option value="">해당 없음</option> : null}
+                  {conditionOptions(conditionField).map(([value, label]) => (
+                    <option key={value} value={value}>
+                      {label}
+                    </option>
+                  ))}
+                </Select>
+              </label>
+            </div>
+            <label className="min-w-0">
+              <span className="mb-1 block text-[10px] font-medium text-of-muted">THEN</span>
+              <Select
+                aria-label={
+                  rule.action_type === 'set_assignee'
+                    ? `${rule.name} 담당자 값 편집`
+                    : `${rule.name} 우선순위 값 편집`
+                }
+                className="h-8 min-w-0 w-full text-xs"
+                value={actionValue}
+                onChange={(event) =>
+                  changeDraft(() => setActionValue(event.target.value))
+                }
+              >
+                {rule.action_type === 'set_assignee'
+                  ? writableMembers.map((member) => (
+                      <option key={member.user_id} value={member.user_id}>
+                        {member.display_name}
+                      </option>
+                    ))
+                  : WP_PRIORITIES.map((priority) => (
+                      <option key={priority} value={priority}>
+                        {PRIORITY_LABELS[priority]}
+                      </option>
+                    ))}
+              </Select>
+            </label>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              size="sm"
+              disabled={
+                update.isPending ||
+                !name.trim() ||
+                !triggerValue ||
+                !actionValue ||
+                (conditionField !== '' && !conditionValue)
+              }
+              onClick={() =>
+                submitPatch(
+                  {
+                    id: rule.id,
+                    name: name.trim(),
+                    trigger_value: triggerValue,
+                    action_value: actionValue,
+                    condition_field: conditionField || null,
+                    condition_value: conditionField ? conditionValue : null,
+                  },
+                  '규칙을 저장했습니다.',
+                  true,
+                )
+              }
+            >
+              {update.isPending ? (
+                <LoaderCircle size={14} className="animate-spin" aria-hidden="true" />
+              ) : (
+                <Save size={14} aria-hidden="true" />
+              )}
+              {update.isPending ? '저장 중' : '저장'}
+            </Button>
+            <Button size="sm" variant="outline" disabled={update.isPending} onClick={resetDraft}>
+              취소
+            </Button>
+            <p className="min-w-0 text-[11px] text-of-muted">
+              트리거와 액션 종류는 생성 후 고정되며 값과 AND 조건은 변경할 수 있습니다.
+            </p>
+          </div>
+        </div>
+      ) : (
+        <div className="flex min-w-0 items-start gap-2">
+          <div className="flex shrink-0 flex-col items-center gap-0.5">
+            <Button
+              size="icon"
+              variant="ghost"
+              title="위로 이동"
+              aria-label={`${rule.name} 위로`}
+              disabled={!canEdit || reorderPending || index === 0}
+              onClick={() => onMove(index, -1)}
+              className="h-6 w-6"
+            >
+              <ChevronUp size={13} aria-hidden="true" />
+            </Button>
+            <span className="text-[10px] font-semibold tabular-nums text-of-muted">
+              {index + 1}
+            </span>
+            <Button
+              size="icon"
+              variant="ghost"
+              title="아래로 이동"
+              aria-label={`${rule.name} 아래로`}
+              disabled={!canEdit || reorderPending || index === total - 1}
+              onClick={() => onMove(index, 1)}
+              className="h-6 w-6"
+            >
+              <ChevronDown size={13} aria-hidden="true" />
+            </Button>
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+              <span
+                className={cn(
+                  'min-w-0 truncate text-xs font-semibold',
+                  !rule.is_active && 'text-of-muted line-through',
+                )}
+              >
+                {rule.name}
+              </span>
+              <Badge variant={rule.is_active ? 'accent' : 'outline'}>
+                {rule.is_active ? '사용 중' : '중지'}
+              </Badge>
+              <Badge variant="outline">{triggerTypeLabel(rule.trigger_type)}</Badge>
+            </div>
+            <p
+              className={cn(
+                'mt-1 break-words text-xs leading-5 text-of-text',
+                !rule.is_active && 'text-of-muted',
+              )}
+            >
+              {ruleText}
+            </p>
+            <p className="mt-1 flex items-center gap-1 text-[11px] text-of-muted">
+              <Activity size={12} aria-hidden="true" /> {firedText}
+            </p>
+          </div>
+          <InlineActionMenu
+            label={`${rule.name} 자동화 규칙 작업`}
+            menuLabel={`${rule.name} 자동화 규칙 작업 메뉴`}
+            note={canEdit ? undefined : '읽기 전용'}
+            items={actionItems}
+          />
+        </div>
+      )}
+
+      {update.isError ? (
+        <div
+          role="alert"
+          className="mt-2 flex min-w-0 flex-col gap-2 rounded-of bg-of-danger-soft/40 px-2 py-2 text-xs text-of-danger sm:flex-row sm:items-center sm:justify-between"
+        >
+          <span>{failureLabel || '규칙을 변경하지 못했습니다.'} 입력 내용은 유지됩니다.</span>
+          {retryPatch ? (
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={update.isPending}
+              onClick={() =>
+                submitPatch(
+                  retryPatch,
+                  retryPatch.is_active === undefined
+                    ? '규칙을 저장했습니다.'
+                    : retryPatch.is_active
+                      ? '규칙을 시작했습니다.'
+                      : '규칙을 중지했습니다.',
+                  editing,
+                )
+              }
+            >
+              <RefreshCw size={13} aria-hidden="true" /> 같은 내용으로 다시 시도
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
+      {remove.isError ? (
+        <div
+          role="alert"
+          className="mt-2 flex min-w-0 flex-col gap-2 rounded-of bg-of-danger-soft/40 px-2 py-2 text-xs text-of-danger sm:flex-row sm:items-center sm:justify-between"
+        >
+          <span>규칙을 삭제하지 못했습니다.</span>
+          {retryDelete ? (
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={remove.isPending}
+              onClick={submitDelete}
+            >
+              <RefreshCw size={13} aria-hidden="true" /> 삭제 다시 시도
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
+      {message ? (
+        <p role="status" className="mt-2 text-[11px] text-of-success">
+          <CheckCircle2 size={12} className="mr-1 inline" aria-hidden="true" />
+          {message}
+        </p>
+      ) : null}
+    </li>
+  )
+}
+
+export function AutomationManager({
+  projectId,
+  isOwner,
+  onDirtyChange,
+}: {
+  projectId: string
+  isOwner: boolean
+  onDirtyChange: (dirty: boolean) => void
+}) {
+  const project = useProject(projectId)
+  const rules = useAutomationRules(projectId)
+  const runs = useAutomationRuleRuns(projectId)
+  const permissions = usePermissionReport(projectId, !isOwner)
+  const members = useMembers(projectId)
+  const projectTypes = useProjectTypeOptions(projectId)
   const statusLabel = useStatusLabels(projectId)
   const typeLabel = useTypeLabels(projectId)
-  const projectTypes = useProjectTypeOptions(projectId)
-  const members = useMembers(projectId)
-  const runs = useAutomationRuleRuns(projectId)
-
-  const memberName = (id: string | null) =>
-    members.data?.items.find((m) => m.user_id === id)?.display_name ?? '알 수 없음'
-
-  const triggerOptions = (triggerType: string): readonly (readonly [string, string])[] => {
-    if (triggerType === 'type_changed_to') {
-      return projectTypes.options.map((type) => [type.key, type.label] as const)
-    }
-    if (triggerType === 'priority_changed_to') {
-      return WP_PRIORITIES.map((p) => [p, PRIORITY_LABELS[p]] as const)
-    }
-    return WP_STATUSES.map((s) => [s, statusLabel(s)] as const)
-  }
-
-  const triggerText = (rule: AutomationRule): string => {
-    if (rule.trigger_type === 'type_changed_to') {
-      return `타입이 '${typeLabel(rule.trigger_value)}'(으)로 바뀌면`
-    }
-    if (rule.trigger_type === 'priority_changed_to') {
-      const p = PRIORITY_LABELS[rule.trigger_value as WpPriority] ?? rule.trigger_value
-      return `우선순위가 '${p}'(으)로 바뀌면`
-    }
-    return `상태가 '${statusLabel(rule.trigger_value)}'(으)로 바뀌면`
-  }
-
-  const conditionValueLabel = (field: string, value: string): string => {
-    if (field === 'status') return statusLabel(value)
-    if (field === 'type') return typeLabel(value)
-    return PRIORITY_LABELS[value as WpPriority] ?? value
-  }
-  const conditionText = (rule: AutomationRule): string => {
-    if (!rule.condition_field || !rule.condition_value) return ''
-    const f = CONDITION_FIELD_LABELS[rule.condition_field] ?? rule.condition_field
-    return ` (그리고 ${f}이(가) '${conditionValueLabel(rule.condition_field, rule.condition_value)}'일 때)`
-  }
-
-  const ruleText = (rule: AutomationRule): string => {
-    if (rule.action_type === 'set_assignee') {
-      return `${triggerText(rule)}${conditionText(rule)} → 담당자를 '${memberName(rule.action_value)}'(으)로 지정`
-    }
-    const priority = PRIORITY_LABELS[rule.action_value as WpPriority] ?? rule.action_value
-    return `${triggerText(rule)}${conditionText(rule)} → 우선순위를 '${priority}'(으)로 설정`
-  }
-
+  const create = useCreateAutomationRule(projectId)
+  const reorder = useReorderAutomationRules(projectId)
+  const [composerOpen, setComposerOpen] = useState(false)
+  const [name, setName] = useState('')
   const [triggerType, setTriggerType] = useState<TriggerType>('status_changed_to')
-  const [triggerValue, setTriggerValue] = useState<string>('in_review')
-  const [actionType, setActionType] = useState<'set_priority' | 'set_assignee'>('set_priority')
-  const [actionValue, setActionValue] = useState<string>('high')
-  // Optional AND secondary condition (Pass 81) — '' = none.
+  const [triggerValue, setTriggerValue] = useState('in_review')
+  const [actionType, setActionType] = useState<ActionType>('set_priority')
+  const [actionValue, setActionValue] = useState('high')
   const [conditionField, setConditionField] = useState<ConditionField>('')
-  const [conditionValue, setConditionValue] = useState<string>('')
-  useEffect(() => {
-    if (triggerType !== 'type_changed_to' || projectTypes.options.length === 0) return
-    if (!projectTypes.options.some((type) => type.key === triggerValue)) {
-      setTriggerValue(projectTypes.options[0].key)
-    }
-  }, [projectTypes.options, triggerType, triggerValue])
-  useEffect(() => {
-    if (conditionField !== 'type' || projectTypes.options.length === 0) return
-    if (!projectTypes.options.some((type) => type.key === conditionValue)) {
-      setConditionValue(projectTypes.options[0].key)
-    }
-  }, [conditionField, conditionValue, projectTypes.options])
-  const conditionValueOptions =
-    conditionField === 'type'
-      ? projectTypes.options.map((type) => [type.key, type.label] as const)
-      : conditionField === 'priority'
-        ? WP_PRIORITIES.map((p) => [p, PRIORITY_LABELS[p]] as const)
-        : WP_STATUSES.map((s) => [s, statusLabel(s)] as const)
+  const [conditionValue, setConditionValue] = useState('')
+  const [createRetry, setCreateRetry] = useState<AutomationRuleInput | null>(null)
+  const [reorderRetry, setReorderRetry] = useState<string[] | null>(null)
+  const [message, setMessage] = useState('')
+  const [dirtyRows, setDirtyRows] = useState<Set<string>>(new Set())
+  const automationPermission = permissions.data?.verbs.find(
+    (verb) => verb.key === 'automation.manage',
+  )?.effective
+  const canManage = isOwner || automationPermission === 'always'
+  const canEdit = canManage && !project.data?.archived_at
+  const writableMembers = (members.data?.items ?? []).filter(
+    (member) => member.role !== 'viewer',
+  )
 
-  // Reorder by swapping a rule with its neighbour and sending the full order
-  // (the /order contract rewrites 0..n-1). Topmost rule wins its field.
-  const move = (index: number, delta: number) => {
-    const items = data?.items ?? []
+  const statusOptions = useMemo<ValueOption[]>(
+    () => WP_STATUSES.map((status) => [status, statusLabel(status)] as const),
+    [statusLabel],
+  )
+  const typeOptions = useMemo<ValueOption[]>(
+    () => projectTypes.options.map((type) => [type.key, type.label] as const),
+    [projectTypes.options],
+  )
+  const priorityOptions = useMemo<ValueOption[]>(
+    () =>
+      WP_PRIORITIES.map(
+        (priority) => [priority, PRIORITY_LABELS[priority]] as const,
+      ),
+    [],
+  )
+
+  const optionsForTrigger = useCallback(
+    (value: string): ValueOption[] => {
+      if (value === 'type_changed_to') return typeOptions
+      if (value === 'priority_changed_to') return priorityOptions
+      return statusOptions
+    },
+    [priorityOptions, statusOptions, typeOptions],
+  )
+  const optionsForCondition = useCallback(
+    (field: ConditionField): ValueOption[] => {
+      if (field === 'type') return typeOptions
+      if (field === 'priority') return priorityOptions
+      if (field === 'status') return statusOptions
+      return []
+    },
+    [priorityOptions, statusOptions, typeOptions],
+  )
+  const memberName = useCallback(
+    (id: string | null) =>
+      members.data?.items.find((member) => member.user_id === id)?.display_name ??
+      (id ? '알 수 없음' : '미배정'),
+    [members.data?.items],
+  )
+  const valueLabel = useCallback(
+    (field: string, value: string) => {
+      if (field === 'status') return statusLabel(value)
+      if (field === 'type') return typeLabel(value)
+      return PRIORITY_LABELS[value as WpPriority] ?? value
+    },
+    [statusLabel, typeLabel],
+  )
+  const ruleText = useCallback(
+    (rule: AutomationRule) => {
+      const triggerKey = rule.trigger_type.replace('_changed_to', '')
+      const trigger = `${fieldSubject(triggerKey)} '${valueLabel(
+        triggerKey,
+        rule.trigger_value,
+      )}'으로 바뀌면`
+      const condition =
+        rule.condition_field && rule.condition_value
+          ? ` 그리고 ${fieldSubject(rule.condition_field)} '${valueLabel(
+              rule.condition_field,
+              rule.condition_value,
+            )}'일 때`
+          : ''
+      const action =
+        rule.action_type === 'set_assignee'
+          ? `담당자를 '${memberName(rule.action_value)}'로 지정`
+          : `우선순위를 '${valueLabel('priority', rule.action_value)}'로 설정`
+      return `${trigger}${condition} → ${action}`
+    },
+    [memberName, valueLabel],
+  )
+  const createDirty =
+    name.trim() !== '' ||
+    triggerType !== 'status_changed_to' ||
+    triggerValue !== 'in_review' ||
+    actionType !== 'set_priority' ||
+    actionValue !== 'high' ||
+    conditionField !== '' ||
+    conditionValue !== ''
+
+  const markRowDirty = useCallback((ruleId: string, dirty: boolean) => {
+    setDirtyRows((current) => {
+      const next = new Set(current)
+      if (dirty) next.add(ruleId)
+      else next.delete(ruleId)
+      return next
+    })
+  }, [])
+
+  useEffect(() => {
+    onDirtyChange(createDirty || dirtyRows.size > 0)
+  }, [createDirty, dirtyRows, onDirtyChange])
+  useEffect(() => () => onDirtyChange(false), [onDirtyChange])
+
+  const summary = useMemo(() => {
+    const items = rules.data?.items ?? []
+    return {
+      active: items.filter((rule) => rule.is_active).length,
+      inactive: items.filter((rule) => !rule.is_active).length,
+      fired: items.reduce((total, rule) => total + rule.fired_count, 0),
+    }
+  }, [rules.data?.items])
+
+  const resetComposer = () => {
+    setName('')
+    setTriggerType('status_changed_to')
+    setTriggerValue('in_review')
+    setActionType('set_priority')
+    setActionValue('high')
+    setConditionField('')
+    setConditionValue('')
+    setCreateRetry(null)
+    setComposerOpen(false)
+    create.reset()
+  }
+
+  const changeComposer = (change: () => void) => {
+    change()
+    setCreateRetry(null)
+    setMessage('')
+    create.reset()
+  }
+
+  const submitCreate = (input: AutomationRuleInput) => {
+    setMessage('')
+    setCreateRetry(input)
+    create.mutate(input, {
+      onSuccess: () => {
+        resetComposer()
+        setMessage('자동화 규칙을 추가했습니다.')
+      },
+    })
+  }
+
+  const submitReorder = (orderedIds: string[]) => {
+    setMessage('')
+    setReorderRetry(orderedIds)
+    reorder.mutate(orderedIds, {
+      onSuccess: () => {
+        setReorderRetry(null)
+        setMessage('규칙 우선순위를 저장했습니다.')
+      },
+    })
+  }
+
+  const move = (index: number, delta: -1 | 1) => {
+    const items = rules.data?.items ?? []
     const target = index + delta
     if (target < 0 || target >= items.length) return
-    const ids = items.map((r) => r.id)
+    const ids = items.map((rule) => rule.id)
     ;[ids[index], ids[target]] = [ids[target], ids[index]]
-    reorder.mutate(ids)
+    submitReorder(ids)
   }
 
-  const add = () => {
-    if (!triggerValue || !actionValue || (conditionField !== '' && !conditionValue)) return
-    const target =
-      actionType === 'set_priority'
-        ? PRIORITY_LABELS[actionValue as WpPriority]
-        : memberName(actionValue)
-    const triggerLabel =
-      triggerType === 'type_changed_to'
-        ? typeLabel(triggerValue)
-        : triggerType === 'priority_changed_to'
-          ? (PRIORITY_LABELS[triggerValue as WpPriority] ?? triggerValue)
-          : statusLabel(triggerValue)
-    const hasCondition = conditionField !== '' && conditionValue !== ''
-    create.mutate(
-      {
-        name: `${triggerLabel} → ${target}`,
-        trigger_type: triggerType,
-        trigger_value: triggerValue,
-        action_type: actionType,
-        action_value: actionValue,
-        condition_field: hasCondition ? conditionField : null,
-        condition_value: hasCondition ? conditionValue : null,
-        is_active: true,
-      },
-      {
-        onSuccess: () => {
-          setConditionField('')
-          setConditionValue('')
-        },
-      },
+  if (
+    rules.isPending ||
+    project.isPending ||
+    members.isPending ||
+    projectTypes.isPending ||
+    (!isOwner && permissions.isPending)
+  ) {
+    return (
+      <section aria-label="자동화 규칙" className="min-w-0">
+        <ListSkeleton rows={6} />
+      </section>
+    )
+  }
+  const failedQuery = [rules, project, members, projectTypes, permissions].find(
+    (query) => query.isError,
+  )
+  if (failedQuery?.isError) {
+    return (
+      <ErrorState
+        error={failedQuery.error}
+        onRetry={() => {
+          void rules.refetch()
+          void project.refetch()
+          void members.refetch()
+          void projectTypes.refetch()
+          if (!isOwner) void permissions.refetch()
+        }}
+      />
     )
   }
 
   return (
     <section
       aria-label="자동화 규칙"
-      className="space-y-3 rounded-of border border-of-border bg-of-surface p-4"
+      className="min-w-0 overflow-hidden rounded-of border border-of-border bg-of-surface"
     >
-      <div className="flex min-w-0 items-start gap-3">
-        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-of bg-of-accent-soft text-of-accent">
-          <Bot size={16} aria-hidden="true" />
-        </span>
-        <div className="min-w-0 flex-1">
-          <div className="flex min-w-0 flex-wrap items-center gap-2">
-            <h3 className="text-sm font-semibold">자동화 규칙</h3>
-            <Badge variant="outline">{data?.total ?? 0}개 규칙</Badge>
-            <Badge variant={isOwner ? 'accent' : 'outline'}>
-              {isOwner ? '소유자 편집 가능' : '읽기 전용'}
-            </Badge>
-          </div>
-          <p className="mt-1 text-xs leading-5 text-of-muted">
-            상태 변경 시 우선순위를 자동으로 설정합니다{isOwner ? '' : ' (소유자만 편집 가능)'}. 위에 있는
-            규칙이 먼저 적용됩니다(조건 있는 규칙이 조건 없는 규칙보다 우선).
+      <header className="flex min-w-0 flex-col gap-3 px-4 py-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
+          <p className="text-[11px] font-medium uppercase text-of-muted">
+            Project automation
           </p>
+          <h2 className="mt-1 flex items-center gap-2 text-sm font-semibold">
+            <Bot size={15} aria-hidden="true" /> 규칙과 실행 흐름
+          </h2>
+          <p className="mt-1 max-w-2xl text-xs leading-5 text-of-muted">
+            조건이 더 구체적인 규칙을 먼저 평가하고, 같은 구체성에서는 위 규칙이
+            먼저 적용됩니다.
+          </p>
+        </div>
+        <div className="flex shrink-0 flex-wrap items-center gap-2">
+          <Badge variant={canEdit ? 'accent' : 'outline'} className="whitespace-nowrap">
+            {canEdit ? (
+              `${rules.data?.total ?? 0}개 관리 중`
+            ) : (
+              <>
+                <LockKeyhole size={12} aria-hidden="true" /> 읽기 전용
+              </>
+            )}
+          </Badge>
+          {canEdit ? (
+            <Button
+              size="sm"
+              variant={composerOpen ? 'outline' : 'default'}
+              onClick={() => {
+                if (composerOpen) resetComposer()
+                else setComposerOpen(true)
+              }}
+            >
+              {composerOpen ? null : <Plus size={14} aria-hidden="true" />}
+              {composerOpen ? '작성 닫기' : '새 규칙'}
+            </Button>
+          ) : null}
+        </div>
+      </header>
+
+      <div
+        role="list"
+        aria-label="자동화 규칙 요약"
+        className="grid grid-cols-3 gap-px border-y border-of-border bg-of-border"
+      >
+        <div role="listitem" className="min-w-0 bg-of-surface-2/55 px-3 py-2.5">
+          <p className="text-[10px] text-of-muted">활성</p>
+          <p className="mt-1 text-sm font-semibold tabular-nums">{summary.active}</p>
+        </div>
+        <div role="listitem" className="min-w-0 bg-of-surface-2/55 px-3 py-2.5">
+          <p className="text-[10px] text-of-muted">중지</p>
+          <p className="mt-1 text-sm font-semibold tabular-nums">{summary.inactive}</p>
+        </div>
+        <div role="listitem" className="min-w-0 bg-of-surface-2/55 px-3 py-2.5">
+          <p className="text-[10px] text-of-muted">누적 실행</p>
+          <p className="mt-1 text-sm font-semibold tabular-nums">{summary.fired}</p>
         </div>
       </div>
 
-      {data && data.total > 0 ? (
-        <ul className="grid gap-2">
-          {data.items.map((rule, index) => (
-            <AutomationRuleRow
-              key={rule.id}
-              rule={rule}
-              ruleText={ruleText(rule)}
-              members={members.data?.items ?? []}
-              triggerOptions={triggerOptions(rule.trigger_type)}
-              isOwner={isOwner}
-              isFirst={index === 0}
-              isLast={index === data.items.length - 1}
-              reorderPending={reorder.isPending}
-              onUpdate={(patch) => setActive.mutate(patch)}
-              onMove={(delta) => move(index, delta)}
-              onDelete={() => {
-                if (confirmDestructive(`'${rule.name}' 자동화 규칙을 삭제할까요?`)) {
-                  del.mutate(rule.id)
-                }
-              }}
-            />
-          ))}
-        </ul>
-      ) : (
-        <p className="rounded-of border border-dashed border-of-border bg-of-surface-2 px-3 py-4 text-xs text-of-muted">
-          {data ? '규칙이 없습니다.' : '규칙을 불러오는 중입니다.'}
+      {project.data?.archived_at ? (
+        <p className="border-b border-of-warning/40 bg-of-warning/5 px-4 py-2 text-xs leading-5 text-of-muted">
+          보관된 프로젝트의 규칙과 실행 이력은 조회할 수 있지만 변경할 수 없습니다.
         </p>
-      )}
+      ) : null}
 
-      {isOwner ? (
-        <div className="rounded-of border border-of-border bg-of-surface-2 p-3">
-          <div className="mb-2 flex min-w-0 items-center gap-2">
+      {composerOpen && canEdit ? (
+        <div
+          aria-label="새 자동화 규칙"
+          className="space-y-3 border-b border-of-border bg-of-surface-2/35 px-3 py-3"
+        >
+          <div className="flex min-w-0 items-center gap-2">
             <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-of bg-of-surface text-of-muted">
               <ListOrdered size={14} aria-hidden="true" />
             </span>
             <div className="min-w-0">
-              <p className="text-xs font-semibold">새 규칙 만들기</p>
+              <p className="text-xs font-semibold">새 규칙 조합</p>
               <p className="text-[11px] text-of-muted">
-                트리거, 선택 조건, 액션을 한 줄로 조합합니다.
+                이름, 트리거, 선택 AND 조건과 실행 액션을 저장합니다.
               </p>
             </div>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <Select
-              aria-label="트리거 종류"
-              className="h-7 w-40 text-xs"
-              value={triggerType}
-              onChange={(e) => {
-                const next = e.target.value as TriggerType
-                setTriggerType(next)
-                // Reset the value to the new trigger's vocabulary (create-only:
-                // editing an existing rule never changes its trigger type).
-                setTriggerValue(
-                  next === 'type_changed_to'
-                    ? (projectTypes.options[0]?.key ?? '')
-                    : next === 'priority_changed_to'
-                      ? 'high'
-                      : 'in_review',
-                )
-              }}
-            >
-              <option value="status_changed_to">상태가 다음으로 변경</option>
-              <option value="type_changed_to">타입이 다음으로 변경</option>
-              <option value="priority_changed_to">우선순위가 다음으로 변경</option>
-            </Select>
-            <Select
-              aria-label="트리거 값"
-              className="h-7 w-28 text-xs"
-              value={triggerValue}
-              onChange={(e) => setTriggerValue(e.target.value)}
-            >
-              {triggerOptions(triggerType).map(([value, label]) => (
-                <option key={value} value={value}>
-                  {label}
-                </option>
-              ))}
-            </Select>
-            <span className="text-xs text-of-muted">→</span>
-            <Select
-              aria-label="액션 종류"
-              className="h-7 w-28 text-xs"
-              value={actionType}
-              onChange={(e) => {
-                const next = e.target.value as 'set_priority' | 'set_assignee'
-                setActionType(next)
-                setActionValue(next === 'set_priority' ? 'high' : '')
-              }}
-            >
-              <option value="set_priority">우선순위 설정</option>
-              <option value="set_assignee">담당자 지정</option>
-            </Select>
-            {actionType === 'set_priority' ? (
-            <Select
-              aria-label="설정 우선순위"
-              className="h-7 w-24 text-xs"
-              value={actionValue}
-              onChange={(e) => setActionValue(e.target.value)}
-            >
-              {WP_PRIORITIES.map((p) => (
-                <option key={p} value={p}>
-                  {PRIORITY_LABELS[p]}
-                </option>
-              ))}
-            </Select>
-          ) : (
-            <Select
-              aria-label="지정할 담당자"
-              className="h-7 w-32 text-xs"
-              value={actionValue}
-              onChange={(e) => setActionValue(e.target.value)}
-            >
-              <option value="">멤버 선택…</option>
-              {(members.data?.items ?? []).map((m) => (
-                <option key={m.user_id} value={m.user_id}>
-                  {m.display_name}
-                </option>
-              ))}
-            </Select>
-          )}
-          <span className="text-xs text-of-muted">그리고</span>
-          <Select
-            aria-label="보조 조건 필드"
-            className="h-7 w-28 text-xs"
-            value={conditionField}
-            onChange={(e) => {
-              const next = e.target.value as ConditionField
-              setConditionField(next)
-              // Reset the value to the first option of the new field's vocabulary.
-              setConditionValue(
-                next === ''
-                  ? ''
-                  : next === 'type'
-                    ? (projectTypes.options[0]?.key ?? '')
-                    : next === 'priority'
-                      ? 'high'
-                      : 'in_review',
-              )
-            }}
-          >
-            <option value="">조건 없음</option>
-            <option value="status">상태가</option>
-            <option value="type">타입이</option>
-            <option value="priority">우선순위가</option>
-          </Select>
-          {conditionField !== '' ? (
-            <Select
-              aria-label="보조 조건 값"
-              className="h-7 w-28 text-xs"
-              value={conditionValue}
-              onChange={(e) => setConditionValue(e.target.value)}
-            >
-              {conditionValueOptions.map(([value, label]) => (
-                <option key={value} value={value}>
-                  {label}
-                </option>
-              ))}
-            </Select>
+          <Input
+            value={name}
+            maxLength={80}
+            onChange={(event) => changeComposer(() => setName(event.target.value))}
+            placeholder="규칙 이름"
+            aria-label="새 규칙 이름"
+            className="h-8 min-w-0 text-xs"
+          />
+          <div className="grid min-w-0 gap-2 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.35fr)_minmax(0,1fr)]">
+            <div className="grid min-w-0 grid-cols-2 gap-2">
+              <label className="min-w-0">
+                <span className="mb-1 block text-[10px] font-medium text-of-muted">WHEN</span>
+                <Select
+                  aria-label="트리거 종류"
+                  className="h-8 min-w-0 w-full text-xs"
+                  value={triggerType}
+                  onChange={(event) => {
+                    const next = event.target.value as TriggerType
+                    const nextOptions = optionsForTrigger(next)
+                    changeComposer(() => {
+                      setTriggerType(next)
+                      setTriggerValue(nextOptions[0]?.[0] ?? '')
+                    })
+                  }}
+                >
+                  <option value="status_changed_to">상태 변경</option>
+                  <option value="type_changed_to">타입 변경</option>
+                  <option value="priority_changed_to">우선순위 변경</option>
+                </Select>
+              </label>
+              <label className="min-w-0">
+                <span className="mb-1 block text-[10px] font-medium text-of-muted">VALUE</span>
+                <Select
+                  aria-label="트리거 값"
+                  className="h-8 min-w-0 w-full text-xs"
+                  value={triggerValue}
+                  onChange={(event) =>
+                    changeComposer(() => setTriggerValue(event.target.value))
+                  }
+                >
+                  {optionsForTrigger(triggerType).map(([value, label]) => (
+                    <option key={value} value={value}>
+                      {label}
+                    </option>
+                  ))}
+                </Select>
+              </label>
+            </div>
+            <div className="grid min-w-0 grid-cols-2 gap-2">
+              <label className="min-w-0">
+                <span className="mb-1 block text-[10px] font-medium text-of-muted">AND</span>
+                <Select
+                  aria-label="보조 조건 필드"
+                  className="h-8 min-w-0 w-full text-xs"
+                  value={conditionField}
+                  onChange={(event) => {
+                    const next = event.target.value as ConditionField
+                    const nextOptions = optionsForCondition(next)
+                    changeComposer(() => {
+                      setConditionField(next)
+                      setConditionValue(nextOptions[0]?.[0] ?? '')
+                    })
+                  }}
+                >
+                  <option value="">조건 없음</option>
+                  <option value="status">상태</option>
+                  <option value="type">타입</option>
+                  <option value="priority">우선순위</option>
+                </Select>
+              </label>
+              <label className="min-w-0">
+                <span className="mb-1 block text-[10px] font-medium text-of-muted">VALUE</span>
+                <Select
+                  aria-label="보조 조건 값"
+                  className="h-8 min-w-0 w-full text-xs"
+                  value={conditionValue}
+                  disabled={conditionField === ''}
+                  onChange={(event) =>
+                    changeComposer(() => setConditionValue(event.target.value))
+                  }
+                >
+                  {conditionField === '' ? <option value="">해당 없음</option> : null}
+                  {optionsForCondition(conditionField).map(([value, label]) => (
+                    <option key={value} value={value}>
+                      {label}
+                    </option>
+                  ))}
+                </Select>
+              </label>
+            </div>
+            <div className="grid min-w-0 grid-cols-2 gap-2">
+              <label className="min-w-0">
+                <span className="mb-1 block text-[10px] font-medium text-of-muted">THEN</span>
+                <Select
+                  aria-label="액션 종류"
+                  className="h-8 min-w-0 w-full text-xs"
+                  value={actionType}
+                  onChange={(event) => {
+                    const next = event.target.value as ActionType
+                    changeComposer(() => {
+                      setActionType(next)
+                      setActionValue(
+                        next === 'set_priority'
+                          ? 'high'
+                          : (writableMembers[0]?.user_id ?? ''),
+                      )
+                    })
+                  }}
+                >
+                  <option value="set_priority">우선순위 설정</option>
+                  <option value="set_assignee">담당자 지정</option>
+                </Select>
+              </label>
+              <label className="min-w-0">
+                <span className="mb-1 block text-[10px] font-medium text-of-muted">VALUE</span>
+                <Select
+                  aria-label={actionType === 'set_assignee' ? '지정할 담당자' : '설정 우선순위'}
+                  className="h-8 min-w-0 w-full text-xs"
+                  value={actionValue}
+                  onChange={(event) =>
+                    changeComposer(() => setActionValue(event.target.value))
+                  }
+                >
+                  {actionType === 'set_assignee'
+                    ? writableMembers.map((member) => (
+                        <option key={member.user_id} value={member.user_id}>
+                          {member.display_name}
+                        </option>
+                      ))
+                    : priorityOptions.map(([value, label]) => (
+                        <option key={value} value={value}>
+                          {label}
+                        </option>
+                      ))}
+                </Select>
+              </label>
+            </div>
+          </div>
+          {actionType === 'set_assignee' && writableMembers.length === 0 ? (
+            <p className="text-[11px] text-of-danger">
+              담당자로 지정할 수 있는 소유자 또는 멤버가 없습니다.
+            </p>
           ) : null}
+          <div className="flex flex-wrap items-center gap-2">
             <Button
               size="sm"
               disabled={
                 create.isPending ||
+                !name.trim() ||
                 !triggerValue ||
                 !actionValue ||
                 (conditionField !== '' && !conditionValue)
               }
-              onClick={add}
+              onClick={() =>
+                submitCreate({
+                  name: name.trim(),
+                  trigger_type: triggerType,
+                  trigger_value: triggerValue,
+                  action_type: actionType,
+                  action_value: actionValue,
+                  condition_field: conditionField || null,
+                  condition_value: conditionField ? conditionValue : null,
+                  is_active: true,
+                })
+              }
             >
-              규칙 추가
+              {create.isPending ? (
+                <LoaderCircle size={14} className="animate-spin" aria-hidden="true" />
+              ) : (
+                <Plus size={14} aria-hidden="true" />
+              )}
+              {create.isPending ? '추가 중' : '규칙 추가'}
+            </Button>
+            <Button size="sm" variant="outline" disabled={create.isPending} onClick={resetComposer}>
+              취소
             </Button>
           </div>
+          {create.isError ? (
+            <div
+              role="alert"
+              className="flex min-w-0 flex-col gap-2 text-xs text-of-danger sm:flex-row sm:items-center sm:justify-between"
+            >
+              <span>규칙을 추가하지 못했습니다. 입력 내용은 유지됩니다.</span>
+              {createRetry ? (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={create.isPending}
+                  onClick={() => submitCreate(createRetry)}
+                >
+                  <RefreshCw size={13} aria-hidden="true" /> 같은 내용으로 다시 시도
+                </Button>
+              ) : null}
+            </div>
+          ) : null}
         </div>
       ) : null}
 
-      <details className="pt-1">
-        <summary className="cursor-pointer text-xs font-medium text-of-muted">
-          실행 로그{runs.data ? ` (${runs.data.total})` : ''}
-        </summary>
-        {runs.data && runs.data.total > 0 ? (
-          <ul className="mt-1.5 space-y-1">
-            {runs.data.items.map((run) => (
-              <li
-                key={run.id}
-                className="rounded-of border border-of-border px-2 py-1.5 text-[11px] text-of-muted"
-              >
-                <span className="font-medium text-of-fg">{run.rule_name}</span> · '
-                {run.work_package_subject}'의 {run.field === 'assignee_id' ? '담당자' : '우선순위'}{' '}
-                {run.field === 'assignee_id'
-                  ? `${memberName(run.old_value)} → ${memberName(run.new_value)}`
-                  : `${run.old_value ?? '없음'} → ${run.new_value ?? '없음'}`}
-                <span className="ml-1.5">{formatDateTime(run.created_at)}</span>
-              </li>
+      {!canEdit ? (
+        <p className="border-b border-of-border bg-of-surface-2/45 px-4 py-2 text-xs text-of-muted">
+          자동화 구성 권한이 없어 변경 작업은 숨겨졌습니다.
+        </p>
+      ) : null}
+
+      {reorder.isError ? (
+        <div
+          role="alert"
+          className="flex min-w-0 flex-col gap-2 border-b border-of-danger/15 bg-of-danger-soft/35 px-3 py-2 text-xs text-of-danger sm:flex-row sm:items-center sm:justify-between"
+        >
+          <span>규칙 우선순위를 저장하지 못했습니다. 현재 목록을 유지합니다.</span>
+          {reorderRetry ? (
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={reorder.isPending}
+              onClick={() => submitReorder(reorderRetry)}
+            >
+              <RefreshCw size={13} aria-hidden="true" /> 같은 순서로 다시 시도
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
+
+      {(rules.data?.total ?? 0) > 0 ? (
+        <>
+          <div className="hidden grid-cols-[3rem_minmax(0,1fr)_6rem_2rem] gap-2 border-b border-of-border bg-of-surface-2/30 px-3 py-2 text-[10px] font-medium uppercase text-of-muted sm:grid">
+            <span>우선</span>
+            <span>규칙</span>
+            <span>상태</span>
+            <span className="sr-only">작업</span>
+          </div>
+          <ul aria-label="자동화 규칙 목록" className="min-w-0">
+            {rules.data?.items.map((rule, index) => (
+              <AutomationRuleRow
+                key={rule.id}
+                projectId={projectId}
+                rule={rule}
+                index={index}
+                total={rules.data?.items.length ?? 0}
+                canEdit={canEdit}
+                members={members.data?.items ?? []}
+                triggerOptions={optionsForTrigger(rule.trigger_type)}
+                conditionOptions={optionsForCondition}
+                ruleText={ruleText(rule)}
+                reorderPending={reorder.isPending}
+                onMove={move}
+                onDirtyChange={markRowDirty}
+              />
             ))}
           </ul>
-        ) : (
-          <p className="mt-1.5 text-xs text-of-muted">아직 실행된 규칙이 없습니다.</p>
-        )}
-      </details>
-    </section>
-  )
-}
+        </>
+      ) : (
+        <EmptyState
+          title="자동화 규칙이 없습니다"
+          hint={
+            canEdit
+              ? '새 규칙을 열어 트리거와 액션을 연결하세요.'
+              : '아직 이 프로젝트에 정의된 자동화 규칙이 없습니다.'
+          }
+          className="min-h-[190px] py-8"
+        />
+      )}
 
-function AutomationRuleRow({
-  rule,
-  ruleText,
-  members,
-  triggerOptions,
-  isOwner,
-  isFirst,
-  isLast,
-  reorderPending,
-  onUpdate,
-  onMove,
-  onDelete,
-}: {
-  rule: AutomationRule
-  ruleText: string
-  members: Array<{ user_id: string; display_name: string }>
-  triggerOptions: readonly (readonly [string, string])[]
-  isOwner: boolean
-  isFirst: boolean
-  isLast: boolean
-  reorderPending: boolean
-  onUpdate: (patch: RulePatch) => void
-  onMove: (delta: -1 | 1) => void
-  onDelete: () => void
-}) {
-  const [editing, setEditing] = useState(false)
-  const [name, setName] = useState(rule.name)
-  const [triggerValue, setTriggerValue] = useState(rule.trigger_value)
-  const [actionValue, setActionValue] = useState(rule.action_value)
+      {message ? (
+        <p
+          role="status"
+          className="border-t border-of-success/15 bg-of-success-soft/35 px-3 py-2 text-xs text-of-success"
+        >
+          <CheckCircle2 size={13} className="mr-1 inline" aria-hidden="true" />
+          {message}
+        </p>
+      ) : null}
 
-  useEffect(() => setName(rule.name), [rule.name])
-  useEffect(() => setTriggerValue(rule.trigger_value), [rule.trigger_value])
-  useEffect(() => setActionValue(rule.action_value), [rule.action_value])
-
-  const firedText =
-    rule.fired_count > 0
-      ? `발화 ${rule.fired_count}회 · 마지막 ${formatDateTime(rule.last_fired_at ?? '')}`
-      : '아직 발화 없음'
-
-  if (editing) {
-    return (
-      <li className="rounded-of border border-of-border px-2 py-2 text-xs">
-        <div className="flex flex-col gap-2">
-          <div className="flex flex-col gap-2 lg:flex-row lg:items-center">
-            <Input
-              value={name}
-              aria-label={`${rule.name} 규칙 이름 편집`}
-              onChange={(event) => setName(event.target.value)}
-              className="h-7 min-w-0 flex-1 text-xs"
-            />
-            <Select
-              aria-label={`${rule.name} 트리거 값 편집`}
-              className="h-7 min-w-0 text-xs lg:w-32"
-              value={triggerValue}
-              onChange={(event) => setTriggerValue(event.target.value)}
+      <details className="group border-t border-of-border">
+        <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-3 text-xs font-semibold hover:bg-of-surface-2/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-of-accent">
+          <Activity size={14} aria-hidden="true" />
+          실행 이력
+          <Badge variant="outline">{runs.data?.total ?? 0}</Badge>
+          <ChevronDown
+            size={13}
+            className="ml-auto transition-transform group-open:rotate-180"
+            aria-hidden="true"
+          />
+        </summary>
+        <div className="border-t border-of-border bg-of-surface-2/20 px-3 py-3">
+          {runs.isPending ? (
+            <p className="flex items-center gap-2 text-xs text-of-muted">
+              <LoaderCircle size={13} className="animate-spin" aria-hidden="true" />
+              실행 이력을 불러오는 중입니다.
+            </p>
+          ) : runs.isError ? (
+            <div
+              role="alert"
+              className="flex min-w-0 flex-col gap-2 text-xs text-of-danger sm:flex-row sm:items-center sm:justify-between"
             >
-              {triggerOptions.map(([value, label]) => (
-                <option key={value} value={value}>
-                  {label}
-                </option>
-              ))}
-            </Select>
-            {rule.action_type === 'set_priority' ? (
-              <Select
-                aria-label={`${rule.name} 우선순위 값 편집`}
-                className="h-7 min-w-0 text-xs lg:w-28"
-                value={actionValue}
-                onChange={(event) => setActionValue(event.target.value)}
-              >
-                {WP_PRIORITIES.map((p) => (
-                  <option key={p} value={p}>
-                    {PRIORITY_LABELS[p]}
-                  </option>
-                ))}
-              </Select>
-            ) : (
-              <Select
-                aria-label={`${rule.name} 담당자 값 편집`}
-                className="h-7 min-w-0 text-xs lg:w-36"
-                value={actionValue}
-                onChange={(event) => setActionValue(event.target.value)}
-              >
-                {members.map((m) => (
-                  <option key={m.user_id} value={m.user_id}>
-                    {m.display_name}
-                  </option>
-                ))}
-              </Select>
-            )}
-            <div className="flex items-center gap-2">
-              <Button
-                size="sm"
-                disabled={!name.trim() || !actionValue}
-                onClick={() => {
-                  const trimmed = name.trim()
-                  if (trimmed && actionValue) {
-                    onUpdate({ id: rule.id, name: trimmed, trigger_value: triggerValue, action_value: actionValue })
-                  }
-                  setEditing(false)
-                }}
-              >
-                <Save size={14} />
-                저장
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => {
-                  setName(rule.name)
-                  setTriggerValue(rule.trigger_value)
-                  setActionValue(rule.action_value)
-                  setEditing(false)
-                }}
-              >
-                취소
+              <span>실행 이력을 불러오지 못했습니다.</span>
+              <Button size="sm" variant="outline" onClick={() => runs.refetch()}>
+                <RefreshCw size={13} aria-hidden="true" /> 다시 시도
               </Button>
             </div>
-          </div>
-          <p className="text-[11px] text-of-muted">{ruleText}</p>
+          ) : runs.data && runs.data.total > 0 ? (
+            <ul aria-label="자동화 실행 이력" className="space-y-1.5">
+              {runs.data.items.map((run) => (
+                <li
+                  key={run.id}
+                  className="flex min-w-0 flex-col gap-1 rounded-of border border-of-border bg-of-surface px-2.5 py-2 text-[11px] sm:flex-row sm:items-start sm:justify-between"
+                >
+                  <div className="min-w-0">
+                    <p className="font-medium text-of-fg">{run.rule_name}</p>
+                    <p className="mt-0.5 break-words text-of-muted">
+                      {run.work_package_id ? (
+                        <Link
+                          to={`/projects/${projectId}/work-packages/${run.work_package_id}`}
+                          className="text-of-accent hover:underline"
+                        >
+                          {run.work_package_subject}
+                        </Link>
+                      ) : (
+                        run.work_package_subject
+                      )}{' '}
+                      · {run.field === 'assignee_id' ? '담당자' : '우선순위'}{' '}
+                      {run.field === 'assignee_id'
+                        ? `${memberName(run.old_value)} → ${memberName(run.new_value)}`
+                        : `${valueLabel('priority', run.old_value ?? 'none')} → ${valueLabel(
+                            'priority',
+                            run.new_value ?? 'none',
+                          )}`}
+                    </p>
+                  </div>
+                  <span className="shrink-0 text-of-muted">
+                    {formatDateTime(run.created_at)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="flex items-center gap-2 text-xs text-of-muted">
+              <CircleDot size={13} aria-hidden="true" /> 아직 실행된 규칙이 없습니다.
+            </p>
+          )}
         </div>
-      </li>
-    )
-  }
-
-  return (
-    <li className="rounded-of border border-of-border px-2 py-2 text-xs">
-      <div className="flex min-w-0 items-start gap-2">
-        <div className="min-w-0 flex-1">
-          <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-            <span className={`min-w-0 truncate font-medium ${rule.is_active ? '' : 'text-of-muted line-through'}`}>
-              {rule.name}
-            </span>
-            <span
-              className={`rounded-full px-2 py-0.5 text-[10px] ${
-                rule.is_active ? 'bg-of-accent-soft text-of-accent' : 'bg-of-surface-2 text-of-muted'
-              }`}
-            >
-              {rule.is_active ? '사용 중' : '중지'}
-            </span>
-            <span className="rounded-full bg-of-surface-2 px-2 py-0.5 text-[10px] text-of-muted">
-              우선순위 {rule.position + 1}
-            </span>
-          </div>
-          <p className={`mt-1 leading-5 ${rule.is_active ? 'text-of-text' : 'text-of-muted line-through'}`}>
-            {ruleText}
-          </p>
-          <p className="mt-1 text-[11px] text-of-muted">{firedText}</p>
-        </div>
-        <InlineActionMenu
-          label={`${rule.name} 자동화 규칙 작업`}
-          menuLabel={`${rule.name} 자동화 규칙 작업 메뉴`}
-          note={isOwner ? undefined : '읽기 전용'}
-          items={
-            isOwner
-              ? [
-                  {
-                    label: '편집',
-                    ariaLabel: `${rule.name} 규칙 편집`,
-                    icon: <Pencil size={14} />,
-                    onSelect: () => setEditing(true),
-                  },
-                  {
-                    label: rule.is_active ? '사용 중지' : '사용 시작',
-                    ariaLabel: `${rule.name} 규칙 ${rule.is_active ? '사용 중지' : '사용 시작'}`,
-                    icon: rule.is_active ? <Archive size={14} /> : <CheckCircle2 size={14} />,
-                    onSelect: () => onUpdate({ id: rule.id, is_active: !rule.is_active }),
-                  },
-                  {
-                    label: '위로 이동',
-                    ariaLabel: `${rule.name} 위로`,
-                    icon: <ChevronUp size={14} />,
-                    disabled: isFirst || reorderPending,
-                    onSelect: () => onMove(-1),
-                  },
-                  {
-                    label: '아래로 이동',
-                    ariaLabel: `${rule.name} 아래로`,
-                    icon: <ChevronDown size={14} />,
-                    disabled: isLast || reorderPending,
-                    onSelect: () => onMove(1),
-                  },
-                  {
-                    label: '삭제',
-                    ariaLabel: `${rule.name} 규칙 삭제`,
-                    icon: <Trash2 size={14} />,
-                    tone: 'danger',
-                    onSelect: onDelete,
-                  },
-                ]
-              : []
-          }
-        />
-      </div>
-    </li>
+      </details>
+    </section>
   )
 }

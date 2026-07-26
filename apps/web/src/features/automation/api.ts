@@ -32,6 +32,16 @@ export type AutomationRuleInput = {
   is_active: boolean
 }
 
+export type AutomationRuleUpdate = {
+  id: string
+  name?: string
+  trigger_value?: string
+  action_value?: string
+  condition_field?: string | null
+  condition_value?: string | null
+  is_active?: boolean
+}
+
 export function useAutomationRules(projectId: string) {
   return useQuery({
     queryKey: ['automation-rules', projectId],
@@ -53,16 +63,10 @@ export function useCreateAutomationRule(projectId: string) {
   })
 }
 
-export function useSetAutomationRuleActive(projectId: string) {
+export function useUpdateAutomationRule(projectId: string) {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (input: {
-      id: string
-      is_active?: boolean
-      trigger_value?: string
-      action_value?: string
-      name?: string
-    }) => {
+    mutationFn: (input: AutomationRuleUpdate) => {
       const { id, ...patch } = input
       return api<AutomationRule>(`/api/v1/projects/${projectId}/automation-rules/${id}`, {
         method: 'PATCH',
