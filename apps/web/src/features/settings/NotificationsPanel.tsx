@@ -1,3 +1,14 @@
+import { useState } from 'react'
+import {
+  CalendarClock,
+  CircleAlert,
+  CircleCheck,
+  LoaderCircle,
+  MessageSquare,
+  RefreshCw,
+  Target,
+} from 'lucide-react'
+
 import {
   type NotificationSettings,
   type OverdueReminderDays,
@@ -5,36 +16,70 @@ import {
   useUpdateNotificationSettings,
 } from '@/features/notifications/api'
 import { Button } from '@/components/ui/button'
+import { Switch } from '@/components/ui/controls'
 import { Select } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
-import { RefreshCw } from 'lucide-react'
 
 type NotificationToggleKey = Exclude<keyof NotificationSettings, 'overdue_reminder_days'>
 
-const TOGGLES: Array<{ key: NotificationToggleKey; label: string; hint: string }> = [
-  { key: 'assigned', label: '배정 알림', hint: '작업이 나에게 배정되면 알립니다.' },
+const GROUPS: Array<{
+  key: string
+  label: string
+  hint: string
+  icon: typeof MessageSquare
+  items: Array<{ key: NotificationToggleKey; label: string; hint: string }>
+}> = [
   {
-    key: 'watched',
-    label: '워치 알림',
-    hint: '워치 중인 작업의 상태·담당자가 바뀌면 알립니다.',
+    key: 'collaboration',
+    label: '업무 협업',
+    hint: '내 작업과 대화에서 발생하는 변화를 선택합니다.',
+    icon: MessageSquare,
+    items: [
+      { key: 'assigned', label: '배정 알림', hint: '작업이 나에게 배정되면 알립니다.' },
+      {
+        key: 'watched',
+        label: '워치 알림',
+        hint: '워치 중인 작업의 상태·담당자가 바뀌면 알립니다.',
+      },
+      {
+        key: 'commented',
+        label: '댓글 알림',
+        hint: '워치 중인 작업에 댓글이 달리면 알립니다.',
+      },
+      { key: 'mention', label: '멘션 알림', hint: '댓글에서 나를 멘션하면 알립니다.' },
+    ],
   },
-  { key: 'commented', label: '댓글 알림', hint: '워치 중인 작업에 댓글이 달리면 알립니다.' },
-  { key: 'mention', label: '멘션 알림', hint: '댓글에서 나를 멘션하면 알립니다.' },
   {
-    key: 'due_alerts',
-    label: '기한 알림',
-    hint: '담당 작업 기한이 내일이거나 지나면 알립니다.',
+    key: 'planning',
+    label: '일정',
+    hint: '담당 작업의 기한과 초과 알림 간격을 관리합니다.',
+    icon: CalendarClock,
+    items: [
+      {
+        key: 'due_alerts',
+        label: '기한 알림',
+        hint: '담당 작업 기한이 내일이거나 지나면 알립니다.',
+      },
+    ],
   },
   {
-    key: 'intake',
-    label: '접수 판정 알림',
-    hint: '내가 제출한 접수 항목이 판정되면 알립니다.',
-  },
-  {
-    key: 'initiatives',
-    label: '이니셔티브 알림',
-    hint: '팔로우한 이니셔티브의 상태·헬스·소유권·전략 범위 변경을 알립니다.',
+    key: 'portfolio',
+    label: '포트폴리오',
+    hint: '접수 요청과 상위 계획의 중요한 변화를 선택합니다.',
+    icon: Target,
+    items: [
+      {
+        key: 'intake',
+        label: '접수 판정 알림',
+        hint: '내가 제출한 접수 항목이 판정되면 알립니다.',
+      },
+      {
+        key: 'initiatives',
+        label: '이니셔티브 알림',
+        hint: '팔로우한 이니셔티브의 상태·헬스·소유권·전략 범위 변경을 알립니다.',
+      },
+    ],
   },
 ]
 
@@ -71,6 +116,14 @@ const OVERDUE_CADENCES: Array<{
 export function NotificationsPanel({ framed = true }: { framed?: boolean }) {
   const settings = useNotificationSettings()
   const update = useUpdateNotificationSettings()
+  const [lastAttempt, setLastAttempt] = useState<Partial<NotificationSettings> | null>(null)
+
+  const save = (input: Partial<NotificationSettings>) => {
+    setLastAttempt(input)
+    update.mutate(input, {
+      onSuccess: () => setLastAttempt(null),
+    })
+  }
 
   if (settings.isPending) {
     return (
@@ -129,80 +182,130 @@ export function NotificationsPanel({ framed = true }: { framed?: boolean }) {
   return (
     <div
       className={cn(
-        'min-w-0 space-y-3',
+        'min-w-0',
         framed && 'rounded-of border border-of-border bg-of-surface p-3',
       )}
+      role="region"
+      aria-label="개인 알림 설정"
       aria-busy={update.isPending}
     >
-      <p className="text-xs font-medium">알림 설정 (내 계정)</p>
-      <p className="text-xs text-of-muted">
-        끄면 그 종류의 새 알림이 생성되지 않습니다. 이미 받은 알림은 그대로 남습니다.
+      <p className="border-b border-of-border-subtle pb-3 text-xs leading-5 text-of-muted">
+        선택한 이벤트만 새 알림으로 받습니다. 이미 받은 알림과 읽음 상태는 변경되지 않습니다.
       </p>
-      <ul className="divide-y divide-of-border-subtle border-y border-of-border-subtle">
-        {TOGGLES.map((t) => (
-          <li key={t.key} className="min-w-0 py-3">
-            <div className="flex min-w-0 items-start gap-3">
-              <input
-                id={`nt-${t.key}`}
-                type="checkbox"
-                checked={settings.data[t.key]}
-                disabled={update.isPending}
-                onChange={(e) => update.mutate({ [t.key]: e.target.checked })}
-                className="mt-0.5 h-3.5 w-3.5 shrink-0 accent-of-accent"
-              />
-              <label htmlFor={`nt-${t.key}`} className="min-w-0 text-xs leading-5">
-                <span className="font-medium text-of-text">{t.label}</span>
-                <span className="ml-1.5 text-of-muted">{t.hint}</span>
-              </label>
-            </div>
-            {t.key === 'due_alerts' ? (
-              <div className="ml-6 mt-3 grid min-w-0 gap-2 sm:grid-cols-[minmax(0,15rem)_minmax(0,1fr)] sm:items-start">
-                <div>
-                  <label
-                    htmlFor="nt-overdue-reminder-days"
-                    className="mb-1 block text-xs font-medium text-of-text"
+      <div className="divide-y divide-of-border-subtle">
+        {GROUPS.map((group) => {
+          const Icon = group.icon
+          return (
+            <section
+              key={group.key}
+              aria-labelledby={`notification-group-${group.key}`}
+              className="grid min-w-0 gap-3 py-4 md:grid-cols-[10rem_minmax(0,1fr)] md:gap-5"
+            >
+              <div className="flex min-w-0 items-start gap-2.5">
+                <span className="grid h-8 w-8 shrink-0 place-items-center rounded-of bg-of-surface-2 text-of-muted">
+                  <Icon size={15} aria-hidden="true" />
+                </span>
+                <div className="min-w-0">
+                  <h3
+                    id={`notification-group-${group.key}`}
+                    className="text-xs font-semibold text-of-text"
                   >
-                    초과 재알림
-                  </label>
-                  <Select
-                    id="nt-overdue-reminder-days"
-                    aria-label="초과 재알림 주기"
-                    value={settings.data.overdue_reminder_days}
-                    disabled={!settings.data.due_alerts || update.isPending}
-                    onChange={(event) =>
-                      update.mutate({
-                        overdue_reminder_days: Number(
-                          event.target.value,
-                        ) as OverdueReminderDays,
-                      })
-                    }
-                  >
-                    {OVERDUE_CADENCES.map((cadence) => (
-                      <option key={cadence.value} value={cadence.value}>
-                        {cadence.label}
-                      </option>
-                    ))}
-                  </Select>
+                    {group.label}
+                  </h3>
+                  <p className="mt-1 text-[11px] leading-4 text-of-muted">{group.hint}</p>
                 </div>
-                <p className="text-xs leading-5 text-of-muted sm:pt-5">
-                  {settings.data.due_alerts
-                    ? selectedCadence.hint
-                    : '기한 알림을 켜면 재알림 주기를 선택할 수 있습니다.'}
-                </p>
               </div>
-            ) : null}
-          </li>
-        ))}
-      </ul>
-      <div className="min-h-5" aria-live="polite">
+              <ul className="min-w-0 divide-y divide-of-border-subtle">
+                {group.items.map((item) => (
+                  <li key={item.key} className="min-w-0 py-3 first:pt-0 last:pb-0">
+                    <div className="flex min-w-0 items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-xs font-medium text-of-text">{item.label}</p>
+                        <p className="mt-0.5 text-[11px] leading-4 text-of-muted">{item.hint}</p>
+                      </div>
+                      <Switch
+                        checked={settings.data[item.key]}
+                        disabled={update.isPending}
+                        label={`${item.label} 사용`}
+                        onCheckedChange={(checked) => save({ [item.key]: checked })}
+                      />
+                    </div>
+                    {item.key === 'due_alerts' ? (
+                      <div className="mt-3 grid min-w-0 gap-2 border-l-2 border-of-border-subtle pl-3 sm:grid-cols-[minmax(0,14rem)_minmax(0,1fr)] sm:items-start">
+                        <div>
+                          <label
+                            htmlFor="nt-overdue-reminder-days"
+                            className="mb-1 block text-[11px] font-medium text-of-text"
+                          >
+                            초과 재알림
+                          </label>
+                          <Select
+                            id="nt-overdue-reminder-days"
+                            aria-label="초과 재알림 주기"
+                            value={settings.data.overdue_reminder_days}
+                            disabled={!settings.data.due_alerts || update.isPending}
+                            onChange={(event) =>
+                              save({
+                                overdue_reminder_days: Number(
+                                  event.target.value,
+                                ) as OverdueReminderDays,
+                              })
+                            }
+                          >
+                            {OVERDUE_CADENCES.map((cadence) => (
+                              <option key={cadence.value} value={cadence.value}>
+                                {cadence.label}
+                              </option>
+                            ))}
+                          </Select>
+                        </div>
+                        <p className="text-[11px] leading-4 text-of-muted sm:pt-5">
+                          {settings.data.due_alerts
+                            ? selectedCadence.hint
+                            : '기한 알림을 켜면 재알림 주기를 선택할 수 있습니다.'}
+                        </p>
+                      </div>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )
+        })}
+      </div>
+      <div
+        className="flex min-h-8 min-w-0 flex-wrap items-center gap-2 border-t border-of-border-subtle pt-3"
+        aria-live="polite"
+      >
         {update.isPending ? (
-          <p className="text-xs text-of-muted">변경사항을 저장하는 중입니다.</p>
+          <>
+            <LoaderCircle size={13} className="animate-spin text-of-muted" aria-hidden="true" />
+            <p className="text-xs text-of-muted">변경사항을 저장하는 중입니다.</p>
+          </>
         ) : update.isError ? (
-          <p role="alert" className="text-xs text-of-danger">
-            알림 설정을 저장하지 못했습니다. 다시 선택해 주세요.
-          </p>
+          <>
+            <CircleAlert size={13} className="text-of-danger" aria-hidden="true" />
+            <p role="alert" className="min-w-0 flex-1 text-xs text-of-danger">
+              알림 설정을 저장하지 못했습니다. 변경은 적용되지 않았습니다.
+            </p>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={!lastAttempt}
+              onClick={() => {
+                if (lastAttempt) save(lastAttempt)
+              }}
+            >
+              <RefreshCw size={13} aria-hidden="true" />
+              다시 시도
+            </Button>
+          </>
         ) : update.isSuccess ? (
-          <p className="text-xs text-of-success">알림 설정을 저장했습니다.</p>
+          <>
+            <CircleCheck size={13} className="text-of-success" aria-hidden="true" />
+            <p className="text-xs text-of-success">알림 설정을 저장했습니다.</p>
+          </>
         ) : null}
       </div>
     </div>
