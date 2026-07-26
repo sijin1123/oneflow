@@ -215,6 +215,9 @@ export function useUpdateProject(projectId: string) {
         method: 'PATCH',
         body: JSON.stringify(patch),
       }),
+    onSuccess: (project) => {
+      queryClient.setQueryData<Project>(['project', projectId], project)
+    },
     onSettled: () => {
       void queryClient.invalidateQueries({ queryKey: ['project', projectId] })
       void queryClient.invalidateQueries({ queryKey: ['project-health-history', projectId] })
