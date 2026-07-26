@@ -76,7 +76,16 @@ export function useCreateCustomField(projectId: string) {
 export function useUpdateCustomField(projectId: string) {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: ({ fieldId, ...input }: { fieldId: string; name?: string; is_active?: boolean }) =>
+    mutationFn: ({
+      fieldId,
+      ...input
+    }: {
+      fieldId: string
+      name?: string
+      options?: string[]
+      is_active?: boolean
+      applies_to?: string[] | null
+    }) =>
       api<CustomField>(`/api/v1/projects/${projectId}/custom-fields/${fieldId}`, {
         method: 'PATCH',
         body: JSON.stringify(input),
