@@ -24326,7 +24326,7 @@ test('로그인 지원 큐는 모바일 탐색과 실제 검토 수명주기를 
 
   await expectNoHorizontalOverflow(page)
   await page.screenshot({
-    path: '../../docs/screenshots/redevelopment/auth-assistance-admin-ui/mobile.png',
+    path: '../../docs/screenshots/redevelopment/settings-auth-assistance-ui-240/mobile.png',
     fullPage: true,
   })
 })
@@ -24368,9 +24368,10 @@ test('로그인 지원 큐는 충돌 복구·PII 삭제·canonical URL을 보장
   await page.getByLabel('로그인 지원 유형').selectOption('workspace_access')
   await expect(page).toHaveURL(/kind=workspace_access/)
   await expect(page.getByRole('table').getByText('개인정보 삭제됨')).toBeVisible()
+  await expect(page.getByRole('button', { name: '로그인 지원 요청 새로고침' })).toBeEnabled()
   await expectNoHorizontalOverflow(page)
   await page.screenshot({
-    path: '../../docs/screenshots/redevelopment/auth-assistance-admin-ui/desktop.png',
+    path: '../../docs/screenshots/redevelopment/settings-auth-assistance-ui-240/desktop.png',
     fullPage: true,
   })
 })

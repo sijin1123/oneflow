@@ -20,7 +20,6 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Select } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
-import { SettingsFrame, SettingsSection } from '@/features/settings/SettingsShell'
 import { ApiError } from '@/lib/api'
 
 import {
@@ -174,44 +173,64 @@ export function AuthAssistancePage() {
   const busy = triage.isPending || redact.isPending
 
   return (
-    <SettingsFrame
-      eyebrow="Workspace administration"
-      title="로그인 지원"
-      description="로그인 도움과 워크스페이스 접근 요청을 검토하고 최소한의 연락 정보를 수명주기에 맞춰 관리합니다."
-      meta={`${data.total}건`}
-      actions={
-        <Button type="button" size="icon" variant="outline" aria-label="로그인 지원 요청 새로고침" onClick={refresh} disabled={requests.isFetching || busy}>
+    <section
+      aria-label="로그인 지원 요청 관리"
+      className="flex min-h-full min-w-0 flex-col overflow-hidden bg-of-bg"
+    >
+      <h1 className="sr-only">로그인 지원</h1>
+      <div className="flex min-w-0 flex-wrap items-end gap-2 border-b border-of-border-subtle bg-of-surface px-3 py-3 sm:px-4">
+        <div className="min-w-0 basis-full sm:mr-auto sm:basis-auto">
+          <p className="text-xs font-medium">지원 요청</p>
+          <p className="mt-0.5 text-[11px] tabular-nums text-of-muted">{data.total}건</p>
+        </div>
+        <label className="min-w-0 text-[11px] font-medium text-of-muted">
+          <span className="sr-only">상태</span>
+          <Select
+            aria-label="로그인 지원 상태"
+            value={status}
+            className="h-8 min-h-8 w-32"
+            onChange={(event) => setParams({ status: event.target.value || null, offset: null })}
+          >
+            <option value="">전체 상태</option>
+            {STATUSES.map((value) => <option key={value} value={value}>{statusCopy[value].label}</option>)}
+          </Select>
+        </label>
+        <label className="min-w-0 text-[11px] font-medium text-of-muted">
+          <span className="sr-only">요청 유형</span>
+          <Select
+            aria-label="로그인 지원 유형"
+            value={kind}
+            className="h-8 min-h-8 w-40"
+            onChange={(event) => setParams({ kind: event.target.value || null, offset: null })}
+          >
+            <option value="">전체 유형</option>
+            {KINDS.map((value) => <option key={value} value={value}>{kindCopy[value]}</option>)}
+          </Select>
+        </label>
+        <Button
+          type="button"
+          size="icon"
+          variant="outline"
+          aria-label="로그인 지원 요청 새로고침"
+          onClick={refresh}
+          disabled={requests.isFetching || busy}
+        >
           <RefreshCw className={requests.isFetching ? 'animate-spin' : undefined} />
         </Button>
-      }
-    >
-      <SettingsSection title="요청 필터" description="상태와 요청 유형은 URL에 보존되어 새로고침과 공유 후에도 같은 범위를 유지합니다.">
-        <div className="grid gap-3 sm:grid-cols-2">
-          <label className="text-xs font-medium text-of-muted">
-            상태
-            <Select aria-label="로그인 지원 상태" value={status} className="mt-1 min-h-11" onChange={(event) => setParams({ status: event.target.value || null, offset: null })}>
-              <option value="">전체 상태</option>
-              {STATUSES.map((value) => <option key={value} value={value}>{statusCopy[value].label}</option>)}
-            </Select>
-          </label>
-          <label className="text-xs font-medium text-of-muted">
-            요청 유형
-            <Select aria-label="로그인 지원 유형" value={kind} className="mt-1 min-h-11" onChange={(event) => setParams({ kind: event.target.value || null, offset: null })}>
-              <option value="">전체 유형</option>
-              {KINDS.map((value) => <option key={value} value={value}>{kindCopy[value]}</option>)}
-            </Select>
-          </label>
-        </div>
-        {mutationError && !decision && !redaction ? <MutationFeedback error={mutationError} onRefresh={refresh} /> : null}
-      </SettingsSection>
+        {mutationError && !decision && !redaction ? (
+          <div className="basis-full">
+            <MutationFeedback error={mutationError} onRefresh={refresh} />
+          </div>
+        ) : null}
+      </div>
 
-      {data.total === 0 ? (
-        <EmptyState title="지원 요청이 없습니다" hint="필터를 바꾸거나 새 요청이 접수된 뒤 다시 확인하세요." />
-      ) : (
-        <>
-          <div className="hidden overflow-x-auto border border-of-border bg-of-surface md:block">
-            <table className="w-full min-w-[66rem] text-xs">
-              <thead>
+      <main className="of-scrollbar min-h-0 flex-1 overflow-auto bg-of-surface">
+        {data.total === 0 ? (
+          <EmptyState title="지원 요청이 없습니다" hint="필터를 바꾸거나 새 요청이 접수된 뒤 다시 확인하세요." />
+        ) : (
+          <>
+            <table className="hidden w-full min-w-[60rem] text-xs md:table">
+              <thead className="sticky top-0 z-10 bg-of-subtle">
                 <tr className="border-b border-of-border text-left text-[11px] text-of-muted">
                   <th className="px-3 py-2 font-medium">요청</th>
                   <th className="px-3 py-2 font-medium">연락처 / 내용</th>
@@ -220,9 +239,9 @@ export function AuthAssistancePage() {
                   <th className="px-3 py-2 text-right font-medium">작업</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-of-border">
+              <tbody className="divide-y divide-of-border-subtle">
                 {data.items.map((item) => (
-                  <tr key={item.id}>
+                  <tr key={item.id} className="transition-colors hover:bg-of-surface-hover">
                     <td className="px-3 py-3 align-top"><RequestIdentity item={item} /></td>
                     <td className="max-w-80 px-3 py-3 align-top"><ContactDetails item={item} /></td>
                     <td className="whitespace-nowrap px-3 py-3 align-top"><SubmissionDetails item={item} /></td>
@@ -232,22 +251,22 @@ export function AuthAssistancePage() {
                 ))}
               </tbody>
             </table>
-          </div>
-          <ul aria-label="모바일 로그인 지원 요청" className="grid gap-2 md:hidden">
-            {data.items.map((item) => (
-              <li key={item.id} className="border border-of-border bg-of-surface p-3 text-xs">
-                <div className="flex items-start justify-between gap-3"><RequestIdentity item={item} /><span className="shrink-0 text-[11px] text-of-muted">v{item.version}</span></div>
-                <div className="mt-3"><ContactDetails item={item} /></div>
-                <div className="mt-3 grid gap-3 border-t border-of-border-subtle pt-3 sm:grid-cols-2"><SubmissionDetails item={item} /><TriageDetails item={item} /></div>
-                <div className="mt-3 border-t border-of-border-subtle pt-3"><RequestActions item={item} busy={busy} onReview={() => { resetMutations(); triage.mutate({ id: item.id, status: 'in_review', expectedVersion: item.version }) }} onTerminal={(nextStatus, trigger) => { resetMutations(); setDecision({ item, status: nextStatus, trigger }); setNote('') }} onRedact={(trigger) => { resetMutations(); setRedaction({ item, trigger }) }} /></div>
-              </li>
-            ))}
-          </ul>
-        </>
-      )}
+            <ul aria-label="모바일 로그인 지원 요청" className="grid gap-2 p-3 md:hidden">
+              {data.items.map((item) => (
+                <li key={item.id} className="rounded-of border border-of-border bg-of-surface p-3 text-xs">
+                  <div className="flex items-start justify-between gap-3"><RequestIdentity item={item} /><span className="shrink-0 text-[11px] text-of-muted">v{item.version}</span></div>
+                  <div className="mt-3"><ContactDetails item={item} /></div>
+                  <div className="mt-3 grid gap-3 border-t border-of-border-subtle pt-3 sm:grid-cols-2"><SubmissionDetails item={item} /><TriageDetails item={item} /></div>
+                  <div className="mt-3 border-t border-of-border-subtle pt-3"><RequestActions item={item} busy={busy} onReview={() => { resetMutations(); triage.mutate({ id: item.id, status: 'in_review', expectedVersion: item.version }) }} onTerminal={(nextStatus, trigger) => { resetMutations(); setDecision({ item, status: nextStatus, trigger }); setNote('') }} onRedact={(trigger) => { resetMutations(); setRedaction({ item, trigger }) }} /></div>
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
+      </main>
 
       {offset > 0 || offset + data.items.length < data.total ? (
-        <nav aria-label="로그인 지원 요청 페이지" className="flex items-center justify-between gap-3">
+        <nav aria-label="로그인 지원 요청 페이지" className="flex items-center justify-between gap-3 border-t border-of-border-subtle bg-of-surface px-3 py-2">
           <span className="text-xs tabular-nums text-of-muted">{offset + 1}-{Math.min(offset + data.items.length, data.total)} / {data.total}</span>
           <div className="flex gap-1">
             <Button type="button" size="icon" variant="outline" aria-label="이전 로그인 지원 요청 페이지" disabled={offset === 0} onClick={() => setParams({ offset: offset > 50 ? String(offset - 50) : null })}><ChevronLeft /></Button>
@@ -258,7 +277,7 @@ export function AuthAssistancePage() {
 
       <DecisionDialog decision={decision} note={note} busy={triage.isPending} error={triage.error} onNoteChange={setNote} onClose={closeDecision} onRefresh={() => { closeDecision(); refresh() }} onSubmit={() => { if (!decision || !note.trim()) return; triage.mutate({ id: decision.item.id, status: decision.status, expectedVersion: decision.item.version, note: note.trim() }, { onSuccess: closeDecision }) }} />
       <RedactionDialog redaction={redaction} busy={redact.isPending} error={redact.error} onClose={closeRedaction} onRefresh={() => { closeRedaction(); refresh() }} onSubmit={() => { if (!redaction) return; redact.mutate(redaction.item.id, { onSuccess: closeRedaction }) }} />
-    </SettingsFrame>
+    </section>
   )
 }
 
