@@ -12689,6 +12689,7 @@ test('사이클 작업 메뉴는 viewer에게 쓰기 액션을 숨긴다', async
 
 test('상태 관리 액션 메뉴에서 라벨을 바꾸고 순서를 조정한다', async ({ page }) => {
   await mockApi(page)
+  let statusUpdateAttempts = 0
   const statuses = [
     { id: 's1', project_id: project.id, key: 'todo', name: '할 일', position: 0 },
     { id: 's2', project_id: project.id, key: 'in_progress', name: '진행 중', position: 1 },
@@ -12706,6 +12707,11 @@ test('상태 관리 액션 메뉴에서 라벨을 바꾸고 순서를 조정한�
   })
   await page.route(`**/api/v1/projects/${project.id}/statuses/s1`, async (route) => {
     const sent = route.request().postDataJSON() as { name: string }
+    statusUpdateAttempts += 1
+    if (statusUpdateAttempts === 1) {
+      await route.fulfill({ status: 503, json: { detail: '상태 저장 서비스를 사용할 수 없습니다.' } })
+      return
+    }
     statuses[0].name = sent.name
     await route.fulfill({ json: { ...statuses[0] } })
   })
@@ -12751,6 +12757,14 @@ test('상태 관리 액션 메뉴에서 라벨을 바꾸고 순서를 조정한�
   await page.getByLabel('todo 상태 이름 편집').fill('해야 할 일')
   await page.getByRole('button', { name: '저장' }).click()
   expect(((await patch).postDataJSON() as { name: string }).name).toBe('해야 할 일')
+  const statusRegion = page.getByRole('region', { name: '워크플로우 상태' })
+  await expect(statusRegion.getByRole('alert')).toContainText('상태 저장 서비스를 사용할 수 없습니다.')
+  const retryPatch = page.waitForRequest(
+    (request) => request.method() === 'PATCH' && request.url().includes('/statuses/s1'),
+  )
+  await statusRegion.getByRole('alert').getByRole('button', { name: '다시 시도' }).click()
+  expect((await retryPatch).postDataJSON()).toEqual({ name: '해야 할 일' })
+  await expect(statusRegion.getByRole('status')).toContainText('할 일 상태 이름을 저장했습니다.')
 
   await page.getByLabel('todo 상태 작업').click()
   const reorder = page.waitForRequest(
@@ -12765,6 +12779,7 @@ test('상태 관리 액션 메뉴에서 라벨을 바꾸고 순서를 조정한�
 
 test('타입 관리 액션 메뉴에서 라벨을 바꾸고 비활성화하면 PATCH가 간다', async ({ page }) => {
   await mockApi(page)
+  let createAttempts = 0
   await page.route('**/api/v1/me', (route) =>
     route.fulfill({
       json: { id: 'me-1', email: 'dev@oneflow.local', display_name: 'Dev User', is_active: true },
@@ -12772,6 +12787,24 @@ test('타입 관리 액션 메뉴에서 라벨을 바꾸고 비활성화하면 P
   )
   await page.route(`**/api/v1/projects/${project.id}`, (route) =>
     route.fulfill({ json: project }),
+  )
+  await page.route(`**/api/v1/projects/${project.id}/statuses`, (route) =>
+    route.fulfill({
+      json: {
+        items: [
+          { id: 's1', project_id: project.id, key: 'todo', name: '할 일', position: 0 },
+          {
+            id: 's2',
+            project_id: project.id,
+            key: 'in_review',
+            name: '검토 중',
+            position: 1,
+          },
+          { id: 's3', project_id: project.id, key: 'done', name: '완료', position: 2 },
+        ],
+        total: 3,
+      },
+    }),
   )
   const types = [
     {
@@ -12796,6 +12829,11 @@ test('타입 관리 액션 메뉴에서 라벨을 바꾸고 비활성화하면 P
   await page.route(`**/api/v1/projects/${project.id}/types`, async (route) => {
     if (route.request().method() === 'POST') {
       const body = route.request().postDataJSON() as { name: string }
+      createAttempts += 1
+      if (createAttempts === 1) {
+        await route.fulfill({ status: 503, json: { detail: '타입 저장 서비스를 사용할 수 없습니다.' } })
+        return
+      }
       const custom = {
         id: 'pt-3',
         project_id: project.id,
@@ -12809,6 +12847,14 @@ test('타입 관리 액션 메뉴에서 라벨을 바꾸고 비활성화하면 P
       await route.fulfill({ status: 201, json: custom })
       return
     }
+    await route.fulfill({ json: { items: types, total: types.length } })
+  })
+  await page.route(`**/api/v1/projects/${project.id}/types/order`, async (route) => {
+    const sent = route.request().postDataJSON() as { ordered_ids: string[] }
+    sent.ordered_ids.forEach((id, index) => {
+      const item = types.find((type) => type.id === id)
+      if (item) item.position = index
+    })
     await route.fulfill({ json: { items: types, total: types.length } })
   })
   await page.route(`**/api/v1/projects/${project.id}/types/pt-2`, async (route) => {
@@ -12827,6 +12873,14 @@ test('타입 관리 액션 메뉴에서 라벨을 바꾸고 비활성화하면 P
   await page.getByLabel('새 작업 타입 이름').fill('사용자 스토리')
   await page.getByRole('button', { name: '타입 추가' }).click()
   expect(((await created).postDataJSON() as { name: string }).name).toBe('사용자 스토리')
+  const typeRegion = page.getByRole('region', { name: '워크 아이템 타입' })
+  await expect(typeRegion.getByRole('alert')).toContainText('타입 저장 서비스를 사용할 수 없습니다.')
+  const retryCreate = page.waitForRequest(
+    (request) => request.method() === 'POST' && request.url().endsWith('/types'),
+  )
+  await typeRegion.getByRole('alert').getByRole('button', { name: '다시 시도' }).click()
+  expect((await retryCreate).postDataJSON()).toEqual({ name: '사용자 스토리' })
+  await expect(typeRegion.getByRole('status')).toContainText('사용자 스토리 타입을 추가했습니다.')
   await expect(page.getByText('사용자 스토리', { exact: true })).toBeVisible()
   await expect(page.getByText(/사용자 정의 · 활성/)).toBeVisible()
 
@@ -12836,6 +12890,15 @@ test('타입 관리 액션 메뉴에서 라벨을 바꾸고 비활성화하면 P
   await page.getByLabel('트리거 종류').selectOption('type_changed_to')
   await expect(page.getByLabel('트리거 값').locator('option', { hasText: '사용자 스토리' })).toHaveCount(1)
   await page.getByRole('tab', { name: '워크플로우' }).click()
+
+  await page.getByLabel('bug 타입 작업').click()
+  const reorderTypes = page.waitForRequest(
+    (request) => request.method() === 'PUT' && request.url().endsWith('/types/order'),
+  )
+  await page.getByLabel('bug 아래로').click()
+  expect((await reorderTypes).postDataJSON()).toEqual({
+    ordered_ids: ['pt-1', 'pt-3', 'pt-2'],
+  })
 
   await page.getByLabel('bug 타입 작업').click()
   await page.getByLabel('bug 타입 편집').click()
@@ -12857,6 +12920,10 @@ test('타입 관리 액션 메뉴에서 라벨을 바꾸고 비활성화하면 P
     path: '../../docs/screenshots/redevelopment/custom-work-item-types-ui/desktop.png',
     fullPage: true,
   })
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/project-settings-workflow-ui-245/desktop.png',
+    fullPage: true,
+  })
   await page.setViewportSize({ width: 390, height: 844 })
   await page.getByRole('region', { name: '워크 아이템 타입' }).scrollIntoViewIfNeeded()
   await expectNoHorizontalOverflow(page)
@@ -12864,6 +12931,59 @@ test('타입 관리 액션 메뉴에서 라벨을 바꾸고 비활성화하면 P
     path: '../../docs/screenshots/redevelopment/custom-work-item-types-ui/mobile.png',
     fullPage: true,
   })
+})
+
+test('워크플로우 설정은 상태와 타입 조회 실패를 각각 복구한다', async ({ page }) => {
+  await mockApi(page)
+  let statusAttempts = 0
+  let typeAttempts = 0
+  await page.route(`**/api/v1/projects/${project.id}/statuses`, async (route) => {
+    statusAttempts += 1
+    if (statusAttempts <= 2) {
+      await route.fulfill({ status: 503, json: { detail: '상태 목록을 불러오지 못했습니다.' } })
+      return
+    }
+    await route.fulfill({
+      json: {
+        items: [{ id: 's1', project_id: project.id, key: 'todo', name: '할 일', position: 0 }],
+        total: 1,
+      },
+    })
+  })
+  await page.route(`**/api/v1/projects/${project.id}/types`, async (route) => {
+    typeAttempts += 1
+    if (typeAttempts <= 2) {
+      await route.fulfill({ status: 503, json: { detail: '타입 목록을 불러오지 못했습니다.' } })
+      return
+    }
+    await route.fulfill({
+      json: {
+        items: [
+          {
+            id: 'pt-1',
+            project_id: project.id,
+            key: 'task',
+            name: '작업',
+            position: 0,
+            is_active: true,
+            is_builtin: true,
+          },
+        ],
+        total: 1,
+      },
+    })
+  })
+
+  await page.goto(`/projects/${project.id}/settings?tab=workflow`)
+  const statusRegion = page.getByRole('region', { name: '워크플로우 상태' })
+  const typeRegion = page.getByRole('region', { name: '워크 아이템 타입' })
+  await expect(statusRegion.getByRole('alert')).toContainText('상태 목록을 불러오지 못했습니다.')
+  await expect(typeRegion.getByRole('alert')).toContainText('타입 목록을 불러오지 못했습니다.')
+
+  await statusRegion.getByRole('button', { name: '다시 시도' }).click()
+  await expect(statusRegion.getByText('할 일', { exact: true })).toBeVisible()
+  await typeRegion.getByRole('button', { name: '다시 시도' }).click()
+  await expect(typeRegion.getByText('작업', { exact: true })).toBeVisible()
 })
 
 test('모바일 워크플로우 액션 메뉴는 읽기 전용 상태를 안전하게 보여준다', async ({ page }) => {
@@ -12891,7 +13011,15 @@ test('모바일 워크플로우 액션 메뉴는 읽기 전용 상태를 안전�
     route.fulfill({
       json: {
         items: [
-          { id: 'pt-1', project_id: project.id, key: 'task', name: '작업', position: 0, is_active: true },
+          {
+            id: 'pt-1',
+            project_id: project.id,
+            key: 'task',
+            name: '작업',
+            position: 0,
+            is_active: true,
+            is_builtin: true,
+          },
         ],
         total: 1,
       },
@@ -12907,6 +13035,12 @@ test('모바일 워크플로우 액션 메뉴는 읽기 전용 상태를 안전�
   const box = await menu.boundingBox()
   expect(box).not.toBeNull()
   expect((box?.x ?? 0) + (box?.width ?? 0)).toBeLessThanOrEqual(390)
+  await page.keyboard.press('Escape')
+  await expect(page.getByLabel('새 작업 타입 이름')).toHaveCount(0)
+  await page.getByLabel('task 타입 작업').click()
+  const typeMenu = page.getByRole('menu', { name: 'task 타입 작업 메뉴' })
+  await expect(typeMenu.getByText('읽기 전용')).toBeVisible()
+  await expect(typeMenu.getByLabel('task 타입 편집')).toHaveCount(0)
   await page.screenshot({
     path: '../../docs/screenshots/redevelopment/workflow-item-actions-ui/mobile.png',
     fullPage: true,
@@ -15804,8 +15938,24 @@ test('프로젝트 governance 표면은 모바일에서 워크플로우와 자�
     { id: 'ps-3', project_id: project.id, key: 'done', name: '완료', position: 2 },
   ]
   const types = [
-    { id: 'pt-1', project_id: project.id, key: 'task', name: '작업', position: 0, is_active: true },
-    { id: 'pt-2', project_id: project.id, key: 'bug', name: '버그', position: 1, is_active: true },
+    {
+      id: 'pt-1',
+      project_id: project.id,
+      key: 'task',
+      name: '작업',
+      position: 0,
+      is_active: true,
+      is_builtin: true,
+    },
+    {
+      id: 'pt-2',
+      project_id: project.id,
+      key: 'bug',
+      name: '버그',
+      position: 1,
+      is_active: true,
+      is_builtin: true,
+    },
     {
       id: 'pt-3',
       project_id: project.id,
@@ -15813,6 +15963,7 @@ test('프로젝트 governance 표면은 모바일에서 워크플로우와 자�
       name: '기능',
       position: 2,
       is_active: false,
+      is_builtin: true,
     },
   ]
   await page.route(`**/api/v1/projects/${project.id}/statuses`, (route) =>
@@ -15859,6 +16010,10 @@ test('프로젝트 governance 표면은 모바일에서 워크플로우와 자�
   await expect(page.getByLabel('in_review 상태 작업')).toBeVisible()
   await expect(page.getByRole('region', { name: '워크 아이템 타입' })).toContainText('2/3 활성')
   await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/project-settings-workflow-ui-245/mobile.png',
+    fullPage: true,
+  })
   await page.screenshot({
     path: '../../docs/screenshots/redevelopment/governance-ui/mobile-workflow.png',
     fullPage: true,
