@@ -42,8 +42,7 @@ import { WorkspaceSettingsShell } from '@/features/admin/WorkspaceSettingsShell'
 import { WorkspaceSettingsOverviewPage } from '@/features/admin/WorkspaceSettingsOverviewPage'
 import { WorkspaceGeneralSettingsPage } from '@/features/admin/WorkspaceGeneralSettingsPage'
 import { WorkspaceCalendarSettingsPage } from '@/features/admin/WorkspaceCalendarSettingsPage'
-import { WorkspacePhaseDefinitionsSettingsPage } from '@/features/admin/WorkspacePhaseDefinitionsSettingsPage'
-import { WorkspaceProjectRolesSettingsPage } from '@/features/admin/WorkspaceProjectRolesSettingsPage'
+import { WorkspaceProjectConfigurationPage } from '@/features/admin/WorkspaceProjectConfigurationPage'
 import { PersonalSettingsPage } from '@/features/settings/PersonalSettingsPage'
 import { SettingsPage } from '@/features/settings/SettingsPage'
 import { AllWorkPage } from '@/features/work-items/AllWorkPage'
@@ -117,8 +116,9 @@ export const router = createBrowserRouter([
           { path: 'overview', element: <WorkspaceSettingsOverviewPage /> },
           { path: 'general', element: <WorkspaceGeneralSettingsPage /> },
           { path: 'calendar', element: <WorkspaceCalendarSettingsPage /> },
-          { path: 'project-phases', element: <WorkspacePhaseDefinitionsSettingsPage /> },
-          { path: 'project-roles', element: <WorkspaceProjectRolesSettingsPage /> },
+          { path: 'project-configuration', element: <WorkspaceProjectConfigurationPage /> },
+          { path: 'project-phases', element: <Navigate to="/admin/project-configuration?tab=phases" replace /> },
+          { path: 'project-roles', element: <Navigate to="/admin/project-configuration?tab=roles" replace /> },
           { path: 'users', element: <UsersPage /> },
           { path: 'auth-assistance', element: <AuthAssistancePage /> },
           { path: 'integrations', element: <IntegrationsSettingsPage /> },

@@ -27,7 +27,7 @@ import type { ProjectRole, ProjectRoleEvent } from '@/features/project-roles/con
 import { SettingsFrame, SettingsSection } from '@/features/settings/SettingsShell'
 import { ApiError } from '@/lib/api'
 import { formatDateTime } from '@/lib/datetime'
-import { confirmDestructive, useUnsavedChangesPrompt } from '@/lib/guards'
+import { confirmDestructive, useUnsavedLocationPrompt } from '@/lib/guards'
 import { cn } from '@/lib/utils'
 
 type RoleDraft = {
@@ -106,7 +106,11 @@ function EventSummary({ event }: { event: ProjectRoleEvent }) {
   )
 }
 
-export function WorkspaceProjectRolesSettingsPage() {
+export function WorkspaceProjectRolesSettingsPage({
+  embedded = false,
+}: {
+  embedded?: boolean
+} = {}) {
   const [includeArchived, setIncludeArchived] = useState(false)
   const roles = useAdminProjectRoles(includeArchived)
   const capabilities = useProjectRoleCapabilities()
@@ -122,7 +126,7 @@ export function WorkspaceProjectRolesSettingsPage() {
   const updateRole = useUpdateProjectRole(selectedRole?.id ?? null)
   const setArchived = useSetProjectRoleArchived(selectedRole?.id ?? null)
 
-  useUnsavedChangesPrompt(dirty, '저장하지 않은 역할 변경을 버리고 이동할까요?')
+  useUnsavedLocationPrompt(dirty, '저장하지 않은 역할 변경을 버리고 이동할까요?')
 
   useEffect(() => {
     if (creating || roles.isPending) return
@@ -200,50 +204,14 @@ export function WorkspaceProjectRolesSettingsPage() {
     setArchived.reset()
   }
 
-  return (
-    <SettingsFrame
-      eyebrow="Workspace administration"
-      title="프로젝트 역할"
-      description="프로젝트 멤버에게 추가로 위임할 수 있는 작업 관리 권한을 역할로 묶어 관리합니다."
-      meta={`${activeRoles.length}개 활성 · 최대 50개`}
-      className="max-w-6xl"
-      actions={(
-        <Button
-          size="sm"
-          variant="outline"
-          disabled={roles.isFetching}
-          onClick={() => void roles.refetch()}
-        >
-          <RefreshCw size={13} className={roles.isFetching ? 'animate-spin' : undefined} />
-          새로고침
-        </Button>
-      )}
-    >
-      <SettingsSection
-        title="기본 역할 경계"
-        description="사용자 지정 역할은 멤버의 협업 권한 위에만 추가되며 소유자·멤버·뷰어의 시스템 경계를 바꾸지 않습니다."
-        actions={<ShieldCheck size={16} className="text-of-muted" aria-hidden="true" />}
-      >
-        <dl className="divide-y divide-of-border-subtle border-y border-of-border-subtle text-xs">
-          <div className="grid gap-1 py-3 sm:grid-cols-[7rem_minmax(0,1fr)]">
-            <dt className="font-medium">소유자</dt>
-            <dd className="text-of-muted">프로젝트 설정과 멤버십을 관리하며 마지막 소유자는 보호됩니다.</dd>
-          </div>
-          <div className="grid gap-1 py-3 sm:grid-cols-[7rem_minmax(0,1fr)]">
-            <dt className="font-medium">멤버</dt>
-            <dd className="text-of-muted">기본 협업 권한에 아래에서 선택한 7개 관리 capability만 추가할 수 있습니다.</dd>
-          </div>
-          <div className="grid gap-1 py-3 sm:grid-cols-[7rem_minmax(0,1fr)]">
-            <dt className="font-medium">뷰어</dt>
-            <dd className="text-of-muted">읽기 전용이며 사용자 지정 역할을 배정할 수 없습니다.</dd>
-          </div>
-        </dl>
-      </SettingsSection>
-
+  const content = (
+    <>
       <SettingsSection
         title="사용자 지정 프로젝트 역할"
         description="보관한 역할은 새 배정 목록에서 제외되지만 기존 멤버의 역할과 유효 권한은 명시적으로 재배정할 때까지 유지됩니다."
         ariaLabel="사용자 지정 프로젝트 역할 관리"
+        framed={!embedded}
+        className={embedded ? 'border-b border-of-border-subtle' : undefined}
         actions={(
           <div className="flex flex-wrap items-center gap-2">
             <label className="flex min-h-7 cursor-pointer items-center gap-2 text-xs text-of-muted">
@@ -506,12 +474,36 @@ export function WorkspaceProjectRolesSettingsPage() {
         </div>
       </SettingsSection>
 
+      <SettingsSection
+        title="기본 역할 경계"
+        description="사용자 지정 역할은 멤버의 협업 권한 위에만 추가되며 소유자·멤버·뷰어의 시스템 경계를 바꾸지 않습니다."
+        actions={<ShieldCheck size={16} className="text-of-muted" aria-hidden="true" />}
+        framed={!embedded}
+        className={embedded ? 'border-b border-of-border-subtle' : undefined}
+      >
+        <dl className="divide-y divide-of-border-subtle border-y border-of-border-subtle text-xs">
+          <div className="grid gap-1 py-3 sm:grid-cols-[7rem_minmax(0,1fr)]">
+            <dt className="font-medium">소유자</dt>
+            <dd className="text-of-muted">프로젝트 설정과 멤버십을 관리하며 마지막 소유자는 보호됩니다.</dd>
+          </div>
+          <div className="grid gap-1 py-3 sm:grid-cols-[7rem_minmax(0,1fr)]">
+            <dt className="font-medium">멤버</dt>
+            <dd className="text-of-muted">기본 협업 권한에 아래에서 선택한 7개 관리 capability만 추가할 수 있습니다.</dd>
+          </div>
+          <div className="grid gap-1 py-3 sm:grid-cols-[7rem_minmax(0,1fr)]">
+            <dt className="font-medium">뷰어</dt>
+            <dd className="text-of-muted">읽기 전용이며 사용자 지정 역할을 배정할 수 없습니다.</dd>
+          </div>
+        </dl>
+      </SettingsSection>
+
       {!creating && selectedRole ? (
         <SettingsSection
           title="변경 이력"
           description="역할 상태는 actor, revision과 당시 권한 snapshot으로 append-only 기록됩니다."
           actions={<History size={16} className="text-of-muted" aria-hidden="true" />}
           ariaLabel="프로젝트 역할 변경 이력"
+          framed={!embedded}
         >
           {events.isPending ? (
             <div className="py-8 text-center text-xs text-of-muted" role="status">변경 이력을 불러오는 중입니다.</div>
@@ -536,6 +528,49 @@ export function WorkspaceProjectRolesSettingsPage() {
           )}
         </SettingsSection>
       ) : null}
+    </>
+  )
+
+  if (embedded) {
+    return (
+      <div className="mx-auto w-full max-w-6xl bg-of-surface" data-project-configuration-panel="roles">
+        <div className="flex items-center justify-between border-b border-of-border-subtle px-4 py-2 text-[11px] text-of-muted sm:px-5">
+          <span>활성 {activeRoles.length}개 · 보관 {archivedRoles.length}개</span>
+          <Button
+            size="sm"
+            variant="ghost"
+            disabled={roles.isFetching}
+            onClick={() => void roles.refetch()}
+          >
+            <RefreshCw size={13} className={roles.isFetching ? 'animate-spin' : undefined} />
+            새로고침
+          </Button>
+        </div>
+        {content}
+      </div>
+    )
+  }
+
+  return (
+    <SettingsFrame
+      eyebrow="Workspace administration"
+      title="프로젝트 역할"
+      description="프로젝트 멤버에게 추가로 위임할 수 있는 작업 관리 권한을 역할로 묶어 관리합니다."
+      meta={`${activeRoles.length}개 활성 · 최대 50개`}
+      className="max-w-6xl"
+      actions={(
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={roles.isFetching}
+          onClick={() => void roles.refetch()}
+        >
+          <RefreshCw size={13} className={roles.isFetching ? 'animate-spin' : undefined} />
+          새로고침
+        </Button>
+      )}
+    >
+      {content}
     </SettingsFrame>
   )
 }

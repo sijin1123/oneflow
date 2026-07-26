@@ -40,7 +40,6 @@ import {
   RefreshCw,
   Search,
   Settings,
-  ShieldCheck,
   SlidersHorizontal,
   Sparkles,
   SquareActivity,
@@ -237,7 +236,7 @@ function SectionLabel({ children }: { children: string }) {
 }
 
 const settingsLoadingGroups = [
-  { label: '워크스페이스', rows: 8 },
+  { label: '워크스페이스', rows: 7 },
   { label: '기능', rows: 5 },
   { label: '개발자 도구', rows: 2 },
 ] as const
@@ -927,8 +926,7 @@ function SidebarContent({
                       <NavLink to="/admin/overview" className={navLinkClass} onClick={onNavigate}><LayoutDashboard /><span>개요</span></NavLink>
                       <NavLink to="/admin/general" className={navLinkClass} onClick={onNavigate}><Settings /><span>일반</span></NavLink>
                       <NavLink to="/admin/calendar" className={navLinkClass} onClick={onNavigate}><CalendarCheck2 /><span>근무 일정</span></NavLink>
-                      <NavLink to="/admin/project-phases" className={navLinkClass} onClick={onNavigate}><Workflow /><span>프로젝트 단계</span></NavLink>
-                      <NavLink to="/admin/project-roles" className={navLinkClass} onClick={onNavigate}><ShieldCheck /><span>프로젝트 역할</span></NavLink>
+                      <NavLink to="/admin/project-configuration" className={navLinkClass} onClick={onNavigate}><Workflow /><span>프로젝트 구성</span></NavLink>
                       <NavLink to="/admin/users" className={navLinkClass} onClick={onNavigate}><Users /><span>사용자</span></NavLink>
                       <NavLink to="/admin/auth-assistance" className={navLinkClass} onClick={onNavigate}><LifeBuoy /><span>로그인 지원</span></NavLink>
                       <NavLink to="/admin/worklogs" className={navLinkClass} onClick={onNavigate}><Clock3 /><span>Worklogs</span></NavLink>

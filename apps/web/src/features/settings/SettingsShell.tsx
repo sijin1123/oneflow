@@ -55,6 +55,7 @@ export function SettingsSection({
   children,
   className,
   ariaLabel,
+  framed = true,
 }: {
   title: string
   description?: string
@@ -62,11 +63,12 @@ export function SettingsSection({
   children: React.ReactNode
   className?: string
   ariaLabel?: string
+  framed?: boolean
 }) {
   return (
     <section
       aria-label={ariaLabel ?? title}
-      className={cn('of-surface p-4 sm:p-5', className)}
+      className={cn(framed ? 'of-surface p-4 sm:p-5' : 'p-4 sm:p-5', className)}
     >
       <div className="mb-3 flex min-w-0 flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
