@@ -8907,6 +8907,11 @@ test('개인 설정에서 알림 토글이 PUT을 보내고 구 딥링크가 리
     'aria-selected',
     'true',
   )
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/personal-notifications-ui-242/desktop.png',
+    fullPage: true,
+  })
 
   const put = page.waitForRequest(
     (r) => r.method() === 'PUT' && r.url().includes('/me/notification-settings'),
@@ -8950,8 +8955,18 @@ test('개인 설정에서 알림 토글이 PUT을 보내고 구 딥링크가 리
     fullPage: true,
   })
   await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto('/settings?tab=notifications')
+  await expect(page.getByRole('tab', { name: '알림' })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  )
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/personal-notifications-ui-242/mobile.png',
+    fullPage: true,
+  })
   await expect(page.getByLabel('초과 재알림 주기')).toBeVisible()
-  await page.getByText('알림 설정 (내 계정)').scrollIntoViewIfNeeded()
+  await page.getByLabel('개인 알림 설정').scrollIntoViewIfNeeded()
   await expectNoHorizontalOverflow(page)
   await page.screenshot({
     path: '../../docs/screenshots/redevelopment/overdue-reminders-ui/mobile.png',
@@ -9171,6 +9186,48 @@ test('개인 알림 설정은 로딩 오류와 재시도를 기능적으로 처�
   await page.getByRole('button', { name: '다시 시도' }).click()
   await expect(page.getByLabel('초과 재알림 주기')).toHaveValue('3')
   expect(attempts).toBe(2)
+})
+
+test('개인 알림 설정 저장 실패는 서버 상태를 보존하고 같은 변경을 재시도한다', async ({ page }) => {
+  await mockApi(page)
+  let putAttempts = 0
+  let notificationSettings = {
+    assigned: true,
+    watched: true,
+    commented: true,
+    mention: true,
+    due_alerts: true,
+    overdue_reminder_days: 3 as 0 | 3 | 7 | 14,
+    intake: true,
+    initiatives: true,
+  }
+  await page.route('**/api/v1/me/notification-settings', async (route) => {
+    if (route.request().method() !== 'PUT') {
+      await route.fulfill({ json: notificationSettings })
+      return
+    }
+    putAttempts += 1
+    const sent = route.request().postDataJSON() as Partial<typeof notificationSettings>
+    expect(sent).toEqual({ watched: false })
+    if (putAttempts === 1) {
+      await route.fulfill({ status: 503, json: { detail: 'temporary failure' } })
+      return
+    }
+    notificationSettings = { ...notificationSettings, ...sent }
+    await route.fulfill({ json: notificationSettings })
+  })
+
+  await page.goto('/settings?tab=notifications')
+  const watched = page.getByRole('switch', { name: '워치 알림 사용' })
+  await expect(watched).toBeChecked()
+  await watched.click()
+  await expect(page.getByRole('alert')).toContainText('변경은 적용되지 않았습니다.')
+  await expect(watched).toBeChecked()
+
+  await page.getByRole('button', { name: '다시 시도' }).click()
+  await expect(page.getByText('알림 설정을 저장했습니다.')).toBeVisible()
+  await expect(watched).not.toBeChecked()
+  expect(putAttempts).toBe(2)
 })
 
 test('개인 설정에서 액세스 토큰을 생성하고 폐기한다', async ({ page }) => {
@@ -10501,7 +10558,7 @@ test('settings/admin IA는 모바일 폭에서 표면별 탐색을 유지한다'
 
   await page.goto('/settings?tab=notifications')
   await expect(page.getByRole('heading', { name: '개인 설정' })).toBeVisible()
-  await expect(page.getByText('알림 설정 (내 계정)')).toBeVisible()
+  await expect(page.getByLabel('개인 알림 설정')).toBeVisible()
   await expectNoHorizontalOverflow(page)
   await page.screenshot({
     path: '../../docs/screenshots/redevelopment/settings-ia/personal-settings-mobile.png',
