@@ -6942,6 +6942,9 @@ test('뷰어 타임라인 항목 액션 메뉴는 쓰기 액션 없이 읽기 �
 })
 
 test('설정 화면에서 멤버를 보여주고 소유자가 멤버를 추가한다', async ({ page }) => {
+  let memberItems = [
+    { user_id: 'me-1', email: 'dev@oneflow.local', display_name: 'Dev User', role: 'owner' },
+  ]
   await page.route('**/api/v1/projects', (route) =>
     route.fulfill({ json: projects }),
   )
@@ -6973,26 +6976,40 @@ test('설정 화면에서 멤버를 보여주고 소유자가 멤버를 추가�
   await page.route(`**/api/v1/projects/${project.id}/members`, async (route) => {
     if (route.request().method() === 'POST') {
       const sent = route.request().postDataJSON() as { email: string; role: string }
+      const created = {
+        user_id: 'u2',
+        email: sent.email,
+        display_name: 'New',
+        role: sent.role,
+      }
+      memberItems = [...memberItems, created]
       await route.fulfill({
         status: 201,
-        json: { user_id: 'u2', email: sent.email, display_name: 'New', role: sent.role },
+        json: created,
       })
       return
     }
     await route.fulfill({
-      json: {
-        items: [
-          { user_id: 'me-1', email: 'dev@oneflow.local', display_name: 'Dev User', role: 'owner' },
-        ],
-        total: 1,
-      },
+      json: { items: memberItems, total: memberItems.length },
     })
   })
+  await page.route(`**/api/v1/projects/${project.id}/members/u2`, async (route) => {
+    expect(route.request().method()).toBe('DELETE')
+    memberItems = memberItems.filter((member) => member.user_id !== 'u2')
+    await route.fulfill({ status: 204, body: '' })
+  })
+  await page.route(`**/api/v1/projects/${project.id}/permissions`, (route) =>
+    route.fulfill({ json: { my_role: 'owner', my_custom_role: null, verbs: [] } }),
+  )
 
   await page.goto(`/projects/${project.id}/settings`)
   await page.getByRole('tab', { name: '멤버' }).click()
   await expect(page.getByText('dev@oneflow.local')).toBeVisible()
   await expect(page.getByText('(나)')).toBeVisible()
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/project-settings-members-ui-244/desktop.png',
+    fullPage: true,
+  })
 
   const addPost = page.waitForRequest(
     (req) => req.method() === 'POST' && req.url().includes(`/projects/${project.id}/members`),
@@ -7001,9 +7018,35 @@ test('설정 화면에서 멤버를 보여주고 소유자가 멤버를 추가�
   await page.getByRole('button', { name: '추가' }).click()
   const req = await addPost
   expect((req.postDataJSON() as { email: string }).email).toBe('alex@oneflow.local')
+  await expect(page.getByText('New을(를) 프로젝트에 추가했습니다.')).toBeVisible()
+  await expect(page.getByText('alex@oneflow.local')).toBeVisible()
+
+  await page.getByPlaceholder('이름 또는 이메일 검색').fill('alex')
+  await expect(page.getByText('dev@oneflow.local')).toHaveCount(0)
+  await page.getByPlaceholder('이름 또는 이메일 검색').fill('')
+  await page.getByLabel('멤버 역할 필터').selectOption('member')
+  await expect(page.getByText('alex@oneflow.local')).toBeVisible()
+  await expect(page.getByText('dev@oneflow.local')).toHaveCount(0)
+  await page.getByLabel('멤버 역할 필터').selectOption('all')
+
+  await page.getByRole('button', { name: 'New 제거' }).click()
+  const confirmation = page.getByRole('group', { name: 'New 제거 확인' })
+  await expect(confirmation).toContainText('프로젝트에서 제거할까요?')
+  await confirmation.getByRole('button', { name: '취소' }).click()
+  await expect(confirmation).toHaveCount(0)
+
+  await page.getByRole('button', { name: 'New 제거' }).click()
+  const deleteRequest = page.waitForRequest(
+    (request) => request.method() === 'DELETE' && request.url().endsWith('/members/u2'),
+  )
+  await page.getByRole('group', { name: 'New 제거 확인' }).getByRole('button', { name: '제거' }).click()
+  await deleteRequest
+  await expect(page.getByText('New을(를) 프로젝트에서 제거했습니다.')).toBeVisible()
+  await expect(page.getByText('alex@oneflow.local')).toHaveCount(0)
 })
 
 test('멤버 패널: 뷰어 옵션을 제공하고 역할 변경 payload를 보낸다', async ({ page }) => {
+  let updateAttempts = 0
   await page.route('**/api/v1/projects', (route) => route.fulfill({ json: projects }))
   await page.route('**/api/v1/me', (route) =>
     route.fulfill({
@@ -7030,11 +7073,15 @@ test('멤버 패널: 뷰어 옵션을 제공하고 역할 변경 payload를 보�
       },
     }),
   )
-  await page.route(`**/api/v1/projects/${project.id}/members/u-alex`, (route) =>
-    route.fulfill({
+  await page.route(`**/api/v1/projects/${project.id}/members/u-alex`, (route) => {
+    updateAttempts += 1
+    if (updateAttempts === 1) {
+      return route.fulfill({ status: 503, json: { detail: '역할 서비스를 사용할 수 없습니다.' } })
+    }
+    return route.fulfill({
       json: { user_id: 'u-alex', email: 'alex@oneflow.local', display_name: 'Alex Kim', role: 'viewer' },
-    }),
-  )
+    })
+  })
 
   await page.goto(`/projects/${project.id}/settings?tab=members`)
   await expect(page.getByText('alex@oneflow.local')).toBeVisible()
@@ -7048,6 +7095,15 @@ test('멤버 패널: 뷰어 옵션을 제공하고 역할 변경 payload를 보�
   await page.getByLabel('Alex Kim 역할').selectOption('viewer')
   const patchReq = await rolePatch
   expect((patchReq.postDataJSON() as { role: string }).role).toBe('viewer')
+  await expect(page.getByRole('alert')).toContainText('역할 서비스를 사용할 수 없습니다.')
+
+  const retryPatch = page.waitForRequest(
+    (req) => req.method() === 'PATCH' && req.url().includes(`/members/u-alex`),
+  )
+  await page.getByRole('alert').getByRole('button', { name: '다시 시도' }).click()
+  const retryReq = await retryPatch
+  expect(retryReq.postDataJSON()).toEqual({ role: 'viewer', custom_role_id: null })
+  await expect(page.getByText('Alex Kim의 역할을 변경했습니다.')).toBeVisible()
 })
 
 test('멤버 패널은 활성 커스텀 역할을 배정하고 보관된 기존 배정을 유지한다', async ({ page }) => {
@@ -7314,7 +7370,7 @@ test('커스텀 역할 멤버는 읽기 전용 배정명과 서버 계산 실효
   )
 
   await page.goto(`/projects/${project.id}/settings?tab=members`)
-  await expect(page.getByLabel('팀 디렉터리').getByText('읽기 전용')).toBeVisible()
+  await expect(page.getByText('읽기 전용').first()).toBeVisible()
   await expect(page.getByText('Delivery lead', { exact: true }).first()).toBeVisible()
   await expect(page.getByLabel('추가할 멤버 이메일')).toHaveCount(0)
   const permissions = page.getByRole('region', { name: '권한' })
@@ -7324,6 +7380,7 @@ test('커스텀 역할 멤버는 읽기 전용 배정명과 서버 계산 실효
 })
 
 test('멤버 패널: 역할별 권한 표를 렌더하고 내 역할 열을 강조한다', async ({ page }) => {
+  let permissionAttempts = 0
   await page.route('**/api/v1/projects', (route) => route.fulfill({ json: projects }))
   await page.route('**/api/v1/me', (route) =>
     route.fulfill({
@@ -7349,8 +7406,12 @@ test('멤버 패널: 역할별 권한 표를 렌더하고 내 역할 열을 강�
       },
     }),
   )
-  await page.route(`**/api/v1/projects/${project.id}/permissions`, (route) =>
-    route.fulfill({
+  await page.route(`**/api/v1/projects/${project.id}/permissions`, (route) => {
+    permissionAttempts += 1
+    if (permissionAttempts <= 2) {
+      return route.fulfill({ status: 503, json: { detail: '권한 보고서를 불러오지 못했습니다.' } })
+    }
+    return route.fulfill({
       json: {
         my_role: 'member',
         verbs: [
@@ -7374,11 +7435,13 @@ test('멤버 패널: 역할별 권한 표를 렌더하고 내 역할 열을 강�
           },
         ],
       },
-    }),
-  )
+    })
+  })
 
   await page.goto(`/projects/${project.id}/settings?tab=members`)
   const table = page.getByRole('region', { name: '권한' })
+  await expect(table.getByRole('alert')).toContainText('권한 보고서를 불러오지 못했습니다.')
+  await table.getByRole('button', { name: '다시 시도' }).click()
   await expect(table.getByText('멤버 추가·역할 변경·제거')).toBeVisible()
   await expect(table.getByText('조건부', { exact: true })).toHaveAttribute(
     'title',
@@ -7438,6 +7501,11 @@ test('프로젝트 팀 표면은 모바일에서 멤버 카드와 권한 카드�
   await page.getByLabel('멤버 카드 목록').scrollIntoViewIfNeeded()
   await page.screenshot({
     path: '../../docs/screenshots/redevelopment/team-members-ui/mobile.png',
+    fullPage: true,
+  })
+  await page.getByRole('heading', { name: '프로젝트 멤버' }).scrollIntoViewIfNeeded()
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/project-settings-members-ui-244/mobile.png',
     fullPage: true,
   })
 })
