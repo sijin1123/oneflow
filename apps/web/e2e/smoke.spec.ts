@@ -2921,6 +2921,7 @@ test('Settings rail은 권한별 설정 navigation과 중앙 form을 중복 없�
   await expect(settingsNav.getByRole('link', { name: '내 계정' })).toHaveAttribute('href', '/settings')
   await expect(settingsNav.getByRole('link', { name: '사용자' })).toHaveAttribute('aria-current', 'page')
   await expect(settingsNav.getByRole('link', { name: '개요' })).toHaveAttribute('href', '/admin/overview')
+  await expect(settingsNav.getByRole('link', { name: '프로젝트 구성' })).toHaveAttribute('href', '/admin/project-configuration')
   await expect(settingsNav.getByRole('link', { name: '연결 및 통합' })).toHaveAttribute('href', '/admin/integrations')
   await expect(settingsNav.getByRole('link', { name: 'Webhooks' })).toHaveAttribute('href', '/admin/webhooks')
   await expect(page.getByRole('button', { name: '새 작업' })).toHaveCount(0)
@@ -9711,6 +9712,71 @@ test('워크스페이스 근무 일정은 요일·휴일과 revision 충돌 복�
   })
 })
 
+test('프로젝트 구성은 기존 깊은 링크와 URL 탭을 하나의 설정 surface로 통합한다', async ({ page }) => {
+  await mockApi(page)
+  await page.route('**/api/v1/workspace/project-phase-definitions', (route) => route.fulfill({
+    json: {
+      items: [
+        { key: 'discover', name: '발견', color: 'sky', position: 0, retired: false, built_in: true },
+        { key: 'plan', name: '계획', color: 'indigo', position: 1, retired: false, built_in: true },
+      ],
+      revision: 1,
+      updated_by_user_id: null,
+      updated_by_name: null,
+      updated_at: '2026-07-01T00:00:00Z',
+    },
+  }))
+  await page.route('**/api/v1/workspace/project-role-capabilities', (route) => route.fulfill({
+    json: { items: [], total: 0 },
+  }))
+  await page.route('**/api/v1/admin/workspace/project-roles**', (route) => route.fulfill({
+    json: { items: [], total: 0 },
+  }))
+
+  await page.goto('/admin/project-phases')
+  await expect(page).toHaveURL(/\/admin\/project-configuration\?tab=phases$/)
+  await expect(page.getByRole('heading', { name: '프로젝트 구성' })).toBeAttached()
+  await expect(page.getByRole('tab', { name: '단계' })).toHaveAttribute('aria-selected', 'true')
+  await expect(page.getByRole('navigation', { name: '설정 컨텍스트 내비게이션' }).getByRole('link', { name: '프로젝트 구성' })).toHaveAttribute('aria-current', 'page')
+  await expect(page.locator('[data-project-configuration-panel="phases"]')).toBeVisible()
+
+  await page.getByLabel('단계 이름').first().fill('발견 준비')
+  await page.evaluate(() => {
+    window.confirm = () => false
+  })
+  await page.getByRole('tab', { name: '역할' }).click()
+  await expect(page).toHaveURL(/\/admin\/project-configuration\?tab=phases$/)
+  await expect(page.getByLabel('단계 이름').first()).toHaveValue('발견 준비')
+
+  await page.evaluate(() => {
+    window.confirm = () => true
+  })
+  await page.getByRole('tab', { name: '역할' }).click()
+  await expect(page).toHaveURL(/\/admin\/project-configuration\?tab=roles$/)
+  await expect(page.getByRole('tab', { name: '역할' })).toHaveAttribute('aria-selected', 'true')
+  await expect(page.locator('[data-project-configuration-panel="roles"]')).toBeVisible()
+
+  await page.getByRole('button', { name: '새 역할' }).click()
+  await page.getByLabel('역할 이름').fill('Release manager')
+  await page.evaluate(() => {
+    window.confirm = () => false
+  })
+  await page.getByRole('tab', { name: '단계' }).click()
+  await expect(page).toHaveURL(/\/admin\/project-configuration\?tab=roles$/)
+  await expect(page.getByLabel('역할 이름')).toHaveValue('Release manager')
+
+  await page.evaluate(() => {
+    window.confirm = () => true
+  })
+  await page.getByRole('tab', { name: '단계' }).click()
+  await expect(page).toHaveURL(/\/admin\/project-configuration\?tab=phases$/)
+
+  await page.goto('/admin/project-roles')
+  await expect(page).toHaveURL(/\/admin\/project-configuration\?tab=roles$/)
+  await expect(page.locator('[data-project-configuration-panel="roles"]')).toBeVisible()
+  await expectNoHorizontalOverflow(page)
+})
+
 test('워크스페이스 프로젝트 단계 정의는 충돌을 복구하고 프로젝트 전반에 반영된다', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 })
   await mockApi(page)
@@ -9803,7 +9869,7 @@ test('워크스페이스 프로젝트 단계 정의는 충돌을 복구하고 �
     route.fulfill({ json: projectPhases() }),
   )
 
-  await page.goto('/admin/project-phases')
+  await page.goto('/admin/project-configuration?tab=phases')
   const surface = page.getByRole('region', { name: '워크스페이스 프로젝트 단계 정의' })
   await surface.getByRole('button', { name: '계획 단계 위로 이동' }).click()
   const rows = surface.locator('ol > li')
@@ -9838,8 +9904,9 @@ test('워크스페이스 프로젝트 단계 정의는 충돌을 복구하고 �
   await expect(timelinePhases.nth(1)).toContainText('탐색')
 
   await page.setViewportSize({ width: 390, height: 844 })
-  await page.goto('/admin/project-phases')
-  await expect(page.getByRole('heading', { name: '프로젝트 단계' })).toBeVisible()
+  await page.goto('/admin/project-configuration?tab=phases')
+  await expect(page.getByRole('heading', { name: '프로젝트 구성' })).toBeAttached()
+  await expect(page.getByRole('tab', { name: '단계' })).toHaveAttribute('aria-selected', 'true')
   await expect(page.getByLabel('1번째 단계 이름')).toHaveValue('설계')
   await expectNoHorizontalOverflow(page)
   await page.screenshot({
@@ -9947,7 +10014,7 @@ test('custom 프로젝트 단계는 생성하고 은퇴해도 프로젝트 데�
     route.fulfill({ json: phaseList() }),
   )
 
-  await page.goto('/admin/project-phases')
+  await page.goto('/admin/project-configuration?tab=phases')
   await page.getByLabel('새 단계 이름').fill('검증')
   await page.getByRole('button', { name: '단계 추가' }).click()
   await expect(page.getByLabel('5번째 단계 이름')).toHaveValue('검증')
@@ -9970,7 +10037,7 @@ test('custom 프로젝트 단계는 생성하고 은퇴해도 프로젝트 데�
   await page.goto(`/projects/${project.id}/overview`)
   await expect(page.getByRole('region', { name: '프로젝트 수명주기' })).toHaveCount(0)
 
-  await page.goto('/admin/project-phases')
+  await page.goto('/admin/project-configuration?tab=phases')
   await page.getByRole('button', { name: '복원' }).click()
   await expect(page.getByLabel('5번째 단계 이름')).toHaveValue('검증')
   await expect(page.getByRole('heading', { name: '은퇴한 단계' })).toHaveCount(0)
@@ -9981,7 +10048,7 @@ test('custom 프로젝트 단계는 생성하고 은퇴해도 프로젝트 데�
   )
   await expectNoHorizontalOverflow(page)
   await page.screenshot({
-    path: '../../docs/screenshots/redevelopment/dynamic-project-phases-ui/desktop.png',
+    path: '../../docs/screenshots/redevelopment/settings-project-configuration-ui-238/phases-desktop.png',
     fullPage: true,
   })
 
@@ -10005,7 +10072,7 @@ test('custom 프로젝트 단계는 생성하고 은퇴해도 프로젝트 데�
   })
   await expect.poll(dockAvoidsVisibleControls).toBe(true)
   await page.screenshot({
-    path: '../../docs/screenshots/redevelopment/dynamic-project-phases-ui/mobile.png',
+    path: '../../docs/screenshots/redevelopment/settings-project-configuration-ui-238/phases-mobile.png',
     fullPage: true,
   })
 })
@@ -10201,9 +10268,10 @@ test('프로젝트 역할 설정은 충돌 복구와 생성·보관·복원·감
     await route.fulfill({ json: { items, total: items.length } })
   })
 
-  await page.goto('/admin/project-roles')
-  await expect(page.getByRole('heading', { name: '프로젝트 역할', exact: true })).toBeVisible()
-  await expect(page.getByRole('link', { name: '프로젝트 역할' })).toHaveAttribute('aria-current', 'page')
+  await page.goto('/admin/project-configuration?tab=roles')
+  await expect(page.getByRole('heading', { name: '프로젝트 구성' })).toBeAttached()
+  await expect(page.getByRole('tab', { name: '역할' })).toHaveAttribute('aria-selected', 'true')
+  await expect(page.getByRole('link', { name: '프로젝트 구성' })).toHaveAttribute('aria-current', 'page')
   await expect(page.getByLabel('역할 목록')).toContainText('배정 2명')
   await expect(page.getByRole('region', { name: '프로젝트 역할 변경 이력' })).toContainText('생성 · Delivery lead')
 
@@ -10240,7 +10308,7 @@ test('프로젝트 역할 설정은 충돌 복구와 생성·보관·복원·감
   )
   await expectNoHorizontalOverflow(page)
   await page.screenshot({
-    path: '../../docs/screenshots/redevelopment/custom-roles-settings-ui/desktop.png',
+    path: '../../docs/screenshots/redevelopment/settings-project-configuration-ui-238/roles-desktop.png',
     fullPage: true,
   })
 
@@ -10248,11 +10316,12 @@ test('프로젝트 역할 설정은 충돌 복구와 생성·보관·복원·감
   await page.locator('[data-shell-scroll-region]').evaluate((element) =>
     element.scrollTo({ top: 0, behavior: 'instant' }),
   )
-  await expect(page.getByRole('heading', { name: '프로젝트 역할', exact: true })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '프로젝트 구성' })).toBeAttached()
+  await expect(page.getByRole('tab', { name: '역할' })).toHaveAttribute('aria-selected', 'true')
   await expect(page.getByLabel('역할 목록')).toContainText('Release coordinator')
   await expectNoHorizontalOverflow(page)
   await page.screenshot({
-    path: '../../docs/screenshots/redevelopment/custom-roles-settings-ui/mobile.png',
+    path: '../../docs/screenshots/redevelopment/settings-project-configuration-ui-238/roles-mobile.png',
     fullPage: true,
   })
 })
@@ -23274,7 +23343,7 @@ test('Workspace 관리 개요는 실제 운영 상태와 기본 관리 동선을
   await expect(page.getByRole('link', { name: '사용자 관리' })).toHaveAttribute('href', '/admin/users')
   await expect(page.getByRole('link', { name: '초대 관리' })).toHaveAttribute('href', '/admin/users?view=invites')
   await expect(page.getByRole('link', { name: '일정 관리' })).toHaveAttribute('href', '/admin/calendar')
-  await expect(page.getByRole('link', { name: '단계 관리' })).toHaveAttribute('href', '/admin/project-phases')
+  await expect(page.getByRole('link', { name: '단계 관리' })).toHaveAttribute('href', '/admin/project-configuration?tab=phases')
   await expect(page.getByRole('link', { name: '기능 설정' })).toHaveAttribute('href', '/admin/wiki')
 
   const refreshAll = page.getByRole('button', { name: '모두 새로고침' })

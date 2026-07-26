@@ -244,7 +244,7 @@ export function WorkspaceSettingsOverviewPage() {
             pending={phases.isPending}
             error={phases.error}
             onRetry={() => void phases.refetch()}
-            action={<ManageLink to="/admin/project-phases">단계 관리</ManageLink>}
+            action={<ManageLink to="/admin/project-configuration?tab=phases">단계 관리</ManageLink>}
           />
 
           <OverviewRow

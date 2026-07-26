@@ -23,6 +23,7 @@ import {
 } from '@/features/workspace-profile/api'
 import { ApiError } from '@/lib/api'
 import { formatDateTime } from '@/lib/datetime'
+import { useUnsavedLocationPrompt } from '@/lib/guards'
 import { cn } from '@/lib/utils'
 
 const COLORS: Array<{
@@ -51,7 +52,11 @@ function sameDefinitions(
   )
 }
 
-export function WorkspacePhaseDefinitionsSettingsPage() {
+export function WorkspacePhaseDefinitionsSettingsPage({
+  embedded = false,
+}: {
+  embedded?: boolean
+} = {}) {
   const definitions = useWorkspaceProjectPhaseDefinitions()
   const update = useUpdateWorkspaceProjectPhaseDefinitions()
   const create = useCreateWorkspaceProjectPhaseDefinition()
@@ -75,6 +80,11 @@ export function WorkspacePhaseDefinitionsSettingsPage() {
     }
     return null
   }, [items])
+  const changed = Boolean(
+    definitions.data && dirty && !sameDefinitions(items, definitions.data.items),
+  )
+
+  useUnsavedLocationPrompt(changed, '저장하지 않은 단계 변경을 버리고 이동할까요?')
 
   if (definitions.isPending) return <ListSkeleton />
   if (definitions.isError) {
@@ -87,7 +97,6 @@ export function WorkspacePhaseDefinitionsSettingsPage() {
   const stale = update.error instanceof ApiError && update.error.status === 412
     || create.error instanceof ApiError && create.error.status === 412
     || retirement.error instanceof ApiError && retirement.error.status === 412
-  const changed = dirty && !sameDefinitions(items, definitions.data.items)
   const busy = update.isPending || create.isPending || retirement.isPending
   const activeItems = items.filter((item) => !item.retired)
   const retiredItems = items.filter((item) => item.retired)
@@ -122,17 +131,14 @@ export function WorkspacePhaseDefinitionsSettingsPage() {
     replaceItems(next)
   }
 
-  return (
-    <SettingsFrame
-      eyebrow="Workspace administration"
-      title="프로젝트 단계"
-      description="모든 프로젝트가 공유할 수명주기 이름, 색상과 진행 순서를 관리합니다."
-      meta={`revision ${definitions.data.revision}`}
-    >
+  const content = (
+    <>
       <SettingsSection
         title="단계 정의"
         description="Built-in 단계는 항상 유지됩니다. Custom 단계를 은퇴해도 프로젝트의 활성화, 일정, 게이트와 버전은 삭제되지 않습니다."
         ariaLabel="워크스페이스 프로젝트 단계 정의"
+        framed={!embedded}
+        className={embedded ? 'border-b border-of-border-subtle' : undefined}
       >
         <ol className="divide-y divide-of-border border-y border-of-border">
           {activeItems.map((item, index) => (
@@ -281,6 +287,8 @@ export function WorkspacePhaseDefinitionsSettingsPage() {
         title="Custom 단계"
         description={`현재 활성 ${activeItems.length}/12 · 전체 ${items.length}/32. 새 단계는 모든 프로젝트에서 비활성 상태로 제공되며 프로젝트 소유자가 필요한 곳에서 활성화합니다.`}
         ariaLabel="Custom 프로젝트 단계"
+        framed={!embedded}
+        className={embedded ? 'border-b border-of-border-subtle' : undefined}
       >
         <div className="grid min-w-0 gap-2 border-y border-of-border py-3 sm:grid-cols-[minmax(0,1fr)_minmax(15rem,1fr)_auto] sm:items-end">
           <label className="min-w-0 text-[11px] font-medium text-of-muted">
@@ -378,6 +386,7 @@ export function WorkspacePhaseDefinitionsSettingsPage() {
       <SettingsSection
         title="적용 범위"
         description="저장 즉시 모든 프로젝트 설정과 Overview가 같은 단계 정의를 사용합니다."
+        framed={!embedded}
       >
         <div className="flex min-w-0 items-start gap-2 border-l-2 border-of-accent px-3 py-1.5">
           <Workflow size={15} className="mt-0.5 shrink-0 text-of-accent" />
@@ -392,6 +401,29 @@ export function WorkspacePhaseDefinitionsSettingsPage() {
           </p>
         ) : null}
       </SettingsSection>
+    </>
+  )
+
+  if (embedded) {
+    return (
+      <div className="mx-auto w-full max-w-6xl bg-of-surface" data-project-configuration-panel="phases">
+        <div className="flex items-center justify-between border-b border-of-border-subtle px-4 py-2 text-[11px] text-of-muted sm:px-5">
+          <span>활성 {activeItems.length}개 · 은퇴 {retiredItems.length}개</span>
+          <span>revision {definitions.data.revision}</span>
+        </div>
+        {content}
+      </div>
+    )
+  }
+
+  return (
+    <SettingsFrame
+      eyebrow="Workspace administration"
+      title="프로젝트 단계"
+      description="모든 프로젝트가 공유할 수명주기 이름, 색상과 진행 순서를 관리합니다."
+      meta={`revision ${definitions.data.revision}`}
+    >
+      {content}
     </SettingsFrame>
   )
 }
