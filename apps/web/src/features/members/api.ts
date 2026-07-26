@@ -104,10 +104,11 @@ export function useMemberNames(projectId: string): (userId: string | null) => st
   return (userId: string | null) => (userId ? (map[userId] ?? '알 수 없음') : '미배정')
 }
 
-export function usePermissionReport(projectId: string) {
+export function usePermissionReport(projectId: string, enabled = true) {
   return useQuery({
     queryKey: ['permissions', projectId],
     queryFn: () => api<PermissionReport>(`/api/v1/projects/${projectId}/permissions`),
+    enabled,
     staleTime: Infinity, // fixed matrix — changes only with a deploy
   })
 }

@@ -11267,6 +11267,312 @@ test('설정 필드 탭에서 아래로 이동하면 전체 순서 PUT이 간다
   expect(sentOrder.ordered_ids).toEqual(['cf-2', 'cf-1'])
 })
 
+test('설정 필드 편집 실패는 옵션과 적용 타입을 보존해 같은 내용으로 재시도한다', async ({
+  page,
+}) => {
+  await mockApi(page)
+  const original = {
+    id: 'cf-severity',
+    project_id: project.id,
+    name: '심각도',
+    field_type: 'dropdown',
+    options: ['낮음', '높음'],
+    position: 0,
+    is_active: true,
+    applies_to: null,
+    created_at: '2026-07-06T00:00:00Z',
+    updated_at: '2026-07-06T00:00:00Z',
+  }
+  let current = original
+  const attempts: unknown[] = []
+  await page.route(`**/api/v1/projects/${project.id}/custom-fields**`, async (route) => {
+    if (route.request().method() === 'PATCH') {
+      const input = route.request().postDataJSON()
+      attempts.push(input)
+      if (attempts.length === 1) {
+        await route.fulfill({ status: 500, json: { detail: 'temporary failure' } })
+        return
+      }
+      current = {
+        ...current,
+        ...(input as object),
+        updated_at: '2026-07-26T01:00:00Z',
+      }
+      await route.fulfill({ json: current })
+      return
+    }
+    await route.fulfill({ json: { items: [current], total: 1 } })
+  })
+
+  await page.goto(`/projects/${project.id}/settings?tab=fields`)
+  await page.getByRole('button', { name: '심각도 필드 작업' }).click()
+  await page.getByRole('menuitem', { name: '심각도 편집' }).click()
+  await page.getByLabel('심각도 이름 편집').fill('릴리스 위험도')
+  await page.getByLabel('심각도 드롭다운 옵션 편집').fill('낮음, 보통, 높음')
+  await page.getByLabel('심각도 편집 작업 타입에 적용').check()
+  await page.getByRole('button', { name: '저장', exact: true }).click()
+
+  await expect(page.getByRole('alert')).toContainText(
+    '저장하지 못했습니다. 입력 내용은 유지됩니다.',
+  )
+  await expect(page.getByLabel('심각도 이름 편집')).toHaveValue('릴리스 위험도')
+  await page.getByRole('button', { name: '같은 내용으로 다시 시도' }).click()
+  await expect(page.getByText('필드 설정을 저장했습니다.')).toBeVisible()
+  expect(attempts).toHaveLength(2)
+  expect(attempts[1]).toEqual(attempts[0])
+  expect(attempts[1]).toEqual({
+    name: '릴리스 위험도',
+    options: ['낮음', '보통', '높음'],
+    applies_to: ['task'],
+  })
+})
+
+test('설정 필드의 생성·재정렬·삭제 실패는 작업별 정확한 재시도를 제공한다', async ({
+  page,
+}) => {
+  await mockApi(page)
+  const makeField = (id: string, name: string, position: number) => ({
+    id,
+    project_id: project.id,
+    name,
+    field_type: 'text',
+    options: null,
+    position,
+    is_active: true,
+    applies_to: null,
+    created_at: '2026-07-06T00:00:00Z',
+    updated_at: '2026-07-06T00:00:00Z',
+  })
+  let items = [makeField('cf-one', '고객 영향', 0), makeField('cf-two', '검토 메모', 1)]
+  const createBodies: unknown[] = []
+  const orderBodies: unknown[] = []
+  let deleteAttempts = 0
+  await page.route(`**/api/v1/projects/${project.id}/custom-fields**`, async (route) => {
+    const method = route.request().method()
+    if (method === 'POST') {
+      const input = route.request().postDataJSON()
+      createBodies.push(input)
+      if (createBodies.length === 1) {
+        await route.fulfill({ status: 500, json: { detail: 'temporary failure' } })
+        return
+      }
+      const created = makeField('cf-three', (input as { name: string }).name, 2)
+      items = [...items, created]
+      await route.fulfill({ status: 201, json: created })
+      return
+    }
+    if (method === 'PUT') {
+      const input = route.request().postDataJSON() as { ordered_ids: string[] }
+      orderBodies.push(input)
+      if (orderBodies.length === 1) {
+        await route.fulfill({ status: 500, json: { detail: 'temporary failure' } })
+        return
+      }
+      items = input.ordered_ids.map((id, position) => ({
+        ...items.find((field) => field.id === id)!,
+        position,
+      }))
+      await route.fulfill({ json: { items, total: items.length } })
+      return
+    }
+    if (method === 'DELETE') {
+      deleteAttempts += 1
+      if (deleteAttempts === 1) {
+        await route.fulfill({
+          status: 409,
+          json: { detail: 'field still has 2 stored values' },
+        })
+        return
+      }
+      items = items.filter((field) => field.id !== 'cf-one')
+      await route.fulfill({ status: 204, body: '' })
+      return
+    }
+    await route.fulfill({ json: { items, total: items.length } })
+  })
+
+  await page.goto(`/projects/${project.id}/settings?tab=fields`)
+  await page.getByLabel('새 필드 이름').fill('출시 채널')
+  await page.getByRole('button', { name: '필드 추가' }).click()
+  await expect(page.getByRole('alert')).toContainText('추가하지 못했습니다.')
+  await page.getByRole('button', { name: '같은 내용으로 다시 시도' }).click()
+  expect(createBodies[1]).toEqual(createBodies[0])
+
+  await page.getByLabel('고객 영향 아래로').click()
+  await expect(page.getByRole('alert')).toContainText('순서를 저장하지 못했습니다.')
+  await page.getByRole('button', { name: '같은 순서로 다시 시도' }).click()
+  expect(orderBodies[1]).toEqual(orderBodies[0])
+
+  await page.getByRole('button', { name: '고객 영향 필드 작업' }).click()
+  page.once('dialog', (dialog) => dialog.accept())
+  await page.getByRole('menuitem', { name: '고객 영향 삭제' }).click()
+  await expect(page.getByRole('alert')).toContainText('저장된 값이 남아 있어')
+  await page.getByRole('button', { name: '삭제 다시 시도' }).click()
+  expect(deleteAttempts).toBe(2)
+})
+
+test('field.manage 위임 역할은 편집 가능하고 보관 프로젝트는 읽기 전용이다', async ({
+  page,
+}) => {
+  await mockApi(page)
+  let currentRole: 'member' | 'viewer' = 'member'
+  let effective: 'always' | 'never' = 'always'
+  let archived = false
+  await page.route(`**/api/v1/projects/${project.id}/members`, (route) =>
+    route.fulfill({
+      json: {
+        items: [
+          {
+            user_id: 'me-1',
+            email: 'dev@oneflow.local',
+            display_name: 'Dev User',
+            role: currentRole,
+          },
+        ],
+        total: 1,
+      },
+    }),
+  )
+  await page.route(`**/api/v1/projects/${project.id}/permissions`, (route) =>
+    route.fulfill({
+      json: {
+        my_role: currentRole,
+        my_custom_role:
+          effective === 'always'
+            ? {
+                id: 'role-fields',
+                name: '필드 관리자',
+                permissions: ['field.manage'],
+              }
+            : null,
+        verbs: [
+          {
+            key: 'field.manage',
+            label: '커스텀 필드 구성',
+            owner: 'always',
+            member: 'never',
+            viewer: 'never',
+            condition: null,
+            note: null,
+            effective,
+          },
+        ],
+      },
+    }),
+  )
+  await page.route(`**/api/v1/projects/${project.id}`, (route) =>
+    route.fulfill({
+      json: {
+        ...project,
+        archived_at: archived ? '2026-07-26T00:00:00Z' : null,
+      },
+    }),
+  )
+
+  await page.goto(`/projects/${project.id}/settings?tab=fields`)
+  await expect(page.getByLabel('새 필드 이름')).toBeVisible()
+
+  archived = true
+  await page.reload()
+  await expect(page.getByText('보관된 프로젝트의 필드와 기존 값은 조회할 수 있지만')).toBeVisible()
+  await expect(page.getByLabel('새 필드 이름')).toHaveCount(0)
+  await expect(page.getByText('읽기 전용', { exact: true })).toBeVisible()
+
+  archived = false
+  currentRole = 'viewer'
+  effective = 'never'
+  await page.reload()
+  await expect(page.getByText('커스텀 필드 구성 권한이 없어')).toBeVisible()
+  await expect(page.getByLabel('새 필드 이름')).toHaveCount(0)
+})
+
+test('설정 필드 편집 초안은 탭 이동 전에 이탈 확인을 요구한다', async ({ page }) => {
+  await mockApi(page)
+  await page.route(`**/api/v1/projects/${project.id}/custom-fields**`, (route) =>
+    route.fulfill({
+      json: {
+        items: [
+          {
+            id: 'cf-dirty',
+            project_id: project.id,
+            name: '검토 결과',
+            field_type: 'text',
+            options: null,
+            position: 0,
+            is_active: true,
+            applies_to: null,
+            created_at: '2026-07-06T00:00:00Z',
+            updated_at: '2026-07-06T00:00:00Z',
+          },
+        ],
+        total: 1,
+      },
+    }),
+  )
+
+  await page.goto(`/projects/${project.id}/settings?tab=fields`)
+  await page.getByRole('button', { name: '검토 결과 필드 작업' }).click()
+  await page.getByRole('menuitem', { name: '검토 결과 편집' }).click()
+  await page.getByLabel('검토 결과 이름 편집').fill('최종 검토 결과')
+  page.once('dialog', async (dialog) => {
+    expect(dialog.message()).toContain('저장되지 않은 변경')
+    await dialog.dismiss()
+  })
+  await page.getByRole('tab', { name: '일반' }).click()
+  await expect(page).toHaveURL(/tab=fields/)
+  await expect(page.getByLabel('검토 결과 이름 편집')).toHaveValue('최종 검토 결과')
+})
+
+test('설정 필드 query 오류를 복구하고 데스크톱·모바일에서 내용이 넘치지 않는다', async ({
+  page,
+}) => {
+  await mockApi(page)
+  let failQuery = true
+  await page.route(`**/api/v1/projects/${project.id}/custom-fields**`, async (route) => {
+    if (failQuery) {
+      await route.fulfill({ status: 500, json: { detail: 'temporary failure' } })
+      return
+    }
+    await route.fulfill({
+      json: {
+        items: [
+          {
+            id: 'cf-mobile',
+            project_id: project.id,
+            name: '출시 승인 담당 부서와 검토 결과',
+            field_type: 'dropdown',
+            options: ['제품', '보안', '운영'],
+            position: 0,
+            is_active: true,
+            applies_to: ['task', 'feature'],
+            created_at: '2026-07-06T00:00:00Z',
+            updated_at: '2026-07-06T00:00:00Z',
+          },
+        ],
+        total: 1,
+      },
+    })
+  })
+
+  await page.goto(`/projects/${project.id}/settings?tab=fields`)
+  await expect(page.getByText('데이터를 불러오지 못했습니다')).toBeVisible()
+  failQuery = false
+  await page.getByRole('button', { name: '다시 시도' }).click()
+  const surface = page.getByRole('region', { name: '사용자 정의 필드 설정' })
+  await expect(surface.getByText('출시 승인 담당 부서와 검토 결과')).toBeVisible()
+  await expectNoHorizontalOverflow(page)
+  await surface.screenshot({
+    path: '../../docs/screenshots/redevelopment/project-settings-fields-ui-248/desktop.png',
+  })
+
+  await page.setViewportSize({ width: 390, height: 844 })
+  await expect(surface).toBeVisible()
+  await expectNoHorizontalOverflow(page)
+  await surface.screenshot({
+    path: '../../docs/screenshots/redevelopment/project-settings-fields-ui-248/mobile.png',
+  })
+})
+
 test('드로어 커스텀 필드에 값을 입력하면 델타 PUT이 간다', async ({ page }) => {
   await mockApi(page)
   await page.route(`**/api/v1/projects/${project.id}/custom-fields**`, (route) =>
