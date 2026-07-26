@@ -24272,28 +24272,129 @@ test('잠긴 뷰는 공유/삭제가 숨고 해제하면 복원된다', async ({
 })
 
 
-test('설정 스토리지 탭이 사용량 바와 카운트를 보여준다', async ({ page }) => {
+test('설정 스토리지 탭이 용량 상태와 파일 구성을 보여주고 파일로 이동한다', async ({ page }) => {
   await mockApi(page)
+  let storageRequests = 0
   await page.route(`**/api/v1/projects/${project.id}`, (route) =>
     route.fulfill({ json: project }),
   )
   await page.route(`**/api/v1/projects/${project.id}/milestones`, (route) =>
     route.fulfill({ json: { items: [], total: 0 } }),
   )
-  await page.route(`**/api/v1/projects/${project.id}/storage`, (route) =>
-    route.fulfill({
+  await page.route(`**/api/v1/projects/${project.id}/storage`, (route) => {
+    storageRequests += 1
+    return route.fulfill({
       json: {
         used_bytes: 900 * 1_048_576,
         quota_bytes: 1024 * 1_048_576,
         attachment_count: 12,
         link_count: 3,
       },
+    })
+  })
+  await page.goto(`/projects/${project.id}/settings?tab=storage`)
+  await expect(page.getByRole('heading', { name: '파일 스토리지' })).toBeVisible()
+  await expect(page.getByText('900 MiB 사용', { exact: false })).toBeVisible()
+  await expect(page.getByText('/ 1.0 GiB', { exact: false })).toBeVisible()
+  await expect(page.getByText('한도에 가까워지고 있습니다', { exact: false })).toBeVisible()
+  await expect(page.getByText('12건', { exact: true })).toBeVisible()
+  await expect(page.getByText('3건', { exact: true })).toBeVisible()
+  await expect(page.getByRole('progressbar', { name: '프로젝트 스토리지 사용률' })).toHaveAttribute(
+    'aria-valuenow',
+    '88',
+  )
+  await page.getByRole('button', { name: '사용량 새로고침' }).click()
+  await expect.poll(() => storageRequests).toBe(2)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/project-settings-storage-ui-250/desktop.png',
+  })
+
+  await page.getByRole('button', { name: '파일 열기' }).click()
+  await expect(page).toHaveURL(`/projects/${project.id}/files`)
+})
+
+test('설정 스토리지 조회 오류는 같은 화면에서 재시도해 복구한다', async ({ page }) => {
+  await mockApi(page)
+  let attempts = 0
+  await page.route(`**/api/v1/projects/${project.id}/storage`, (route) => {
+    attempts += 1
+    if (attempts <= 2) {
+      return route.fulfill({
+        status: 503,
+        json: { detail: 'temporary storage error' },
+      })
+    }
+    return route.fulfill({
+      json: {
+        used_bytes: 0,
+        quota_bytes: 1024 * 1_048_576,
+        attachment_count: 0,
+        link_count: 0,
+      },
+    })
+  })
+
+  await page.goto(`/projects/${project.id}/settings?tab=storage`)
+  await expect(page.getByText('데이터를 불러오지 못했습니다')).toBeVisible()
+  await page.getByRole('button', { name: '다시 시도' }).click()
+
+  await expect(page.getByRole('heading', { name: '파일 스토리지' })).toBeVisible()
+  await expect(page.getByText('저장된 파일과 링크가 없습니다')).toBeVisible()
+  expect(attempts).toBe(3)
+})
+
+test('설정 스토리지 무제한 상태는 용량 한도를 만들지 않는다', async ({ page }) => {
+  await mockApi(page)
+  await page.route(`**/api/v1/projects/${project.id}/storage`, (route) =>
+    route.fulfill({
+      json: {
+        used_bytes: 1536 * 1_048_576,
+        quota_bytes: 0,
+        attachment_count: 7,
+        link_count: 2,
+      },
     }),
   )
+
   await page.goto(`/projects/${project.id}/settings?tab=storage`)
-  await expect(page.getByText('900.0 MiB / 1024.0 MiB (88%)', { exact: false })).toBeVisible()
-  await expect(page.getByText('한도에 가까워지고 있습니다', { exact: false })).toBeVisible()
-  await expect(page.getByText('업로드 파일 12건 · 외부 링크 3건', { exact: false })).toBeVisible()
+  await expect(page.getByText('무제한', { exact: true }).first()).toBeVisible()
+  await expect(page.getByText('1.5 GiB 사용 · 용량 제한 없음')).toBeVisible()
+  await expect(page.getByRole('progressbar', { name: '프로젝트 스토리지 사용률' })).not.toHaveAttribute(
+    'aria-valuenow',
+  )
+})
+
+test('설정 스토리지 한도 초과 상태는 모바일에서도 정확히 표시한다', async ({ page }) => {
+  await mockApi(page)
+  await page.route(`**/api/v1/projects/${project.id}/storage`, (route) =>
+    route.fulfill({
+      json: {
+        used_bytes: 1280 * 1_048_576,
+        quota_bytes: 1024 * 1_048_576,
+        attachment_count: 18,
+        link_count: 4,
+      },
+    }),
+  )
+
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto(`/projects/${project.id}/settings?tab=storage`)
+
+  await expect(page.getByText('한도 초과', { exact: true })).toBeVisible()
+  await expect(page.getByText('256 MiB 초과', { exact: false })).toBeVisible()
+  await expect(page.getByRole('progressbar', { name: '프로젝트 스토리지 사용률' })).toHaveAttribute(
+    'aria-valuenow',
+    '100',
+  )
+  const overflow = await page.evaluate(() => ({
+    document: document.documentElement.scrollWidth - window.innerWidth,
+    body: document.body.scrollWidth - window.innerWidth,
+  }))
+  expect(overflow.document).toBeLessThanOrEqual(0)
+  expect(overflow.body).toBeLessThanOrEqual(0)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/project-settings-storage-ui-250/mobile.png',
+  })
 })
 
 test('포트폴리오 타임라인 토글이 프로젝트 막대·마일스톤을 그리고 딥링크한다', async ({ page }) => {
