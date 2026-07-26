@@ -179,6 +179,7 @@ export function useCreateDocument(projectId: string) {
       }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['documents', projectId] })
+      void queryClient.invalidateQueries({ queryKey: ['workspace-documents'] })
     },
   })
 }
@@ -205,6 +206,7 @@ export function useUpdateDocument(projectId: string) {
     onSuccess: (doc) => {
       queryClient.setQueryData(['document', doc.id], doc)
       void queryClient.invalidateQueries({ queryKey: ['documents', projectId] })
+      void queryClient.invalidateQueries({ queryKey: ['workspace-documents'] })
       void queryClient.invalidateQueries({ queryKey: ['document-activities', doc.id] })
     },
     // On a 409 we deliberately do NOT overwrite the cached document: that would
@@ -285,6 +287,7 @@ export function useDeleteDocument(projectId: string) {
       api<void>(`/api/v1/documents/${docId}`, { method: 'DELETE' }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['documents', projectId] })
+      void queryClient.invalidateQueries({ queryKey: ['workspace-documents'] })
     },
   })
 }
@@ -308,6 +311,7 @@ export function useDocumentLifecycle(projectId: string) {
     onSuccess: (document) => {
       queryClient.setQueryData(['document', document.id], document)
       void queryClient.invalidateQueries({ queryKey: ['documents', projectId] })
+      void queryClient.invalidateQueries({ queryKey: ['workspace-documents'] })
       void queryClient.invalidateQueries({ queryKey: ['work-package-documents'] })
       void queryClient.invalidateQueries({ queryKey: ['document-activities', document.id] })
     },
