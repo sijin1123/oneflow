@@ -22421,6 +22421,7 @@ test('프로젝트 소유자는 단계를 편집하고 Overview에서 현재 수
   const panel = page.getByRole('region', { name: '프로젝트 단계 설정' })
   await expect(panel).toContainText('활성 3/4')
   const planRow = panel.locator('li').filter({ hasText: '계획' })
+  await planRow.getByRole('button', { name: '계획 일정 및 게이트 펼치기' }).click()
   await planRow.getByLabel('계획 시작일').fill(updatedPlanStart)
   const datePatch = page.waitForRequest(
     (request) => request.method() === 'PATCH' && request.url().endsWith('/phases/plan'),
@@ -22432,7 +22433,7 @@ test('프로젝트 소유자는 단계를 편집하고 Overview에서 현재 수
     version: 1,
   })
   await expect(planRow.getByRole('button', { name: '저장' })).toBeDisabled()
-  await expect(planRow.getByRole('status')).toHaveCount(0)
+  await expect(planRow.getByRole('status')).toContainText('단계 일정을 저장했습니다')
 
   const finishGatePatch = page.waitForRequest(
     (request) => request.method() === 'PATCH' && request.url().endsWith('/phases/plan'),
@@ -22456,6 +22457,7 @@ test('프로젝트 소유자는 단계를 편집하고 Overview에서 현재 수
   })
   await expect(planRow.getByRole('status')).toContainText('후속 활성 단계에 근무일 규칙을 적용했습니다')
   const deliverRow = panel.locator('li').filter({ hasText: '실행' })
+  await deliverRow.getByRole('button', { name: '실행 일정 및 게이트 펼치기' }).click()
   await expect(deliverRow.getByLabel('실행 시작일')).toHaveValue(updatedDeliverStart)
   await expect(deliverRow.getByLabel('실행 종료일')).toHaveValue(updatedDeliverEnd)
 
@@ -22472,6 +22474,17 @@ test('프로젝트 소유자는 단계를 편집하고 Overview에서 현재 수
     path: '../../docs/screenshots/redevelopment/project-phase-working-days-ui/settings-desktop.png',
     fullPage: true,
   })
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/project-settings-lifecycle-ui-246/desktop.png',
+    fullPage: true,
+  })
+  await page.setViewportSize({ width: 390, height: 844 })
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/project-settings-lifecycle-ui-246/mobile.png',
+    fullPage: true,
+  })
+  await page.setViewportSize({ width: 1280, height: 720 })
 
   await page.goto(`/projects/${project.id}/overview`)
   const timeline = page.getByRole('region', { name: '프로젝트 수명주기' })
@@ -22495,6 +22508,86 @@ test('프로젝트 소유자는 단계를 편집하고 Overview에서 현재 수
     path: '../../docs/screenshots/redevelopment/project-phase-working-days-ui/overview-mobile.png',
     fullPage: true,
   })
+})
+
+test('프로젝트 단계 충돌은 일정 초안을 보존하고 최신 버전으로 같은 저장을 다시 실행한다', async ({
+  page,
+}) => {
+  await mockApi(page)
+  let phases: ProjectPhaseList = {
+    items: inactiveProjectPhases.items.map((phase, index) => ({
+      ...phase,
+      active: index < 2,
+      start_date: index === 0 ? '2026-07-13' : index === 1 ? '2026-07-20' : null,
+      end_date: index === 0 ? '2026-07-17' : index === 1 ? '2026-07-24' : null,
+      version: 1,
+    })),
+    total: 4,
+  }
+  const patchBodies: Array<{
+    start_date: string | null
+    end_date: string | null
+    version: number
+  }> = []
+  let shouldConflict = true
+
+  await page.route('**/api/v1/projects/*/phases**', async (route) => {
+    const request = route.request()
+    if (request.method() !== 'PATCH') {
+      await route.fulfill({ json: phases })
+      return
+    }
+    const key = new URL(request.url()).pathname.split('/').at(-1)
+    const body = request.postDataJSON() as {
+      start_date: string | null
+      end_date: string | null
+      version: number
+    }
+    patchBodies.push(body)
+    const index = phases.items.findIndex((phase) => phase.key === key)
+    const current = phases.items[index]
+    if (shouldConflict) {
+      shouldConflict = false
+      phases = {
+        ...phases,
+        items: phases.items.map((phase, itemIndex) =>
+          itemIndex === index ? { ...phase, version: 2 } : phase,
+        ),
+      }
+      await route.fulfill({ status: 409, json: { detail: 'phase version conflict' } })
+      return
+    }
+    const updated = {
+      ...current,
+      start_date: body.start_date,
+      end_date: body.end_date,
+      version: current.version + 1,
+    }
+    phases = {
+      ...phases,
+      items: phases.items.map((phase, itemIndex) => (itemIndex === index ? updated : phase)),
+    }
+    await route.fulfill({ json: updated })
+  })
+
+  await page.goto(`/projects/${project.id}/settings?tab=lifecycle`)
+  const panel = page.getByRole('region', { name: '프로젝트 단계 설정' })
+  const planRow = panel.locator('li').filter({ hasText: '계획' })
+  await planRow.getByRole('button', { name: '계획 일정 및 게이트 펼치기' }).click()
+  await planRow.getByLabel('계획 시작일').fill('2026-07-21')
+  await planRow.getByRole('button', { name: '저장' }).click()
+
+  await expect(planRow.getByRole('alert')).toContainText('최신 버전으로 같은 변경')
+  await expect(planRow.getByLabel('계획 시작일')).toHaveValue('2026-07-21')
+  await planRow.getByRole('button', { name: '최신 버전으로 다시 시도' }).click()
+
+  await expect.poll(() => patchBodies).toHaveLength(2)
+  expect(patchBodies).toEqual([
+    { start_date: '2026-07-21', end_date: '2026-07-24', version: 1 },
+    { start_date: '2026-07-21', end_date: '2026-07-24', version: 2 },
+  ])
+  await expect(planRow.getByRole('status')).toContainText('단계 일정을 저장했습니다')
+  await expect(planRow.getByLabel('계획 시작일')).toHaveValue('2026-07-21')
 })
 
 test('프로젝트 단계 설정은 오류 재시도 후 멤버에게 읽기 전용으로 열린다', async ({ page }) => {
@@ -22547,6 +22640,11 @@ test('프로젝트 단계 설정은 오류 재시도 후 멤버에게 읽기 전
   await page.getByRole('button', { name: '다시 시도' }).click()
   const panel = page.getByRole('region', { name: '프로젝트 단계 설정' })
   await expect(panel).toContainText('읽기 전용')
+  for (const phase of ['계획', '실행', '마감']) {
+    await panel
+      .getByRole('button', { name: `${phase} 일정 및 게이트 펼치기` })
+      .click()
+  }
   await expect(panel.getByRole('switch')).toHaveCount(12)
   for (const control of await panel.getByRole('switch').all()) {
     await expect(control).toBeDisabled()
@@ -22660,15 +22758,18 @@ test('저장된 단계 활성화는 근무일 일정 재배치와 보존 결과�
   await planRow.getByRole('switch', { name: '계획 단계 활성화' }).click()
   expect((await planPatch).postDataJSON()).toEqual({ active: true, version: 1 })
   await expect(planRow.getByRole('status')).toContainText('다음 근무일로 재배치했습니다')
+  await planRow.getByRole('button', { name: '계획 일정 및 게이트 펼치기' }).click()
   await expect(planRow.getByLabel('계획 시작일')).toHaveValue('2026-07-20')
   await expect(planRow.getByLabel('계획 종료일')).toHaveValue('2026-07-24')
   const deliverRow = panel.locator('li').filter({ hasText: '실행' })
+  await deliverRow.getByRole('button', { name: '실행 일정 및 게이트 펼치기' }).click()
   await expect(deliverRow.getByLabel('실행 시작일')).toHaveValue('2026-07-27')
   await expect(deliverRow.getByLabel('실행 종료일')).toHaveValue('2026-07-29')
 
   const closeRow = panel.locator('li').filter({ hasText: '마감' })
   await closeRow.getByRole('switch', { name: '마감 단계 활성화' }).click()
   await expect(closeRow.getByRole('status')).toContainText('저장된 날짜는 변경되지 않았습니다')
+  await closeRow.getByRole('button', { name: '마감 일정 및 게이트 펼치기' }).click()
   await expect(closeRow.getByLabel('마감 시작일')).toHaveValue('2026-08-03')
 
   await page.locator('[data-shell-scroll-region]').evaluate((element) => element.scrollTo({ top: 0 }))
