@@ -10981,6 +10981,10 @@ test('운영 허브는 데이터 이전 이력과 고정 export 파일을 제공
 
   await page.goto('/operations')
   await expect(page.getByRole('heading', { name: '운영 허브' })).toBeVisible()
+  const frameActions = page.locator('[data-frame-context-actions]')
+  await expect(frameActions.getByRole('link', { name: '시스템 상태' })).toHaveAttribute('href', '/status')
+  await expect(frameActions.getByRole('button', { name: '새로고침' })).toBeVisible()
+  await expect(page.getByTestId('operations-scroll')).toBeVisible()
   await expect(page.getByLabel('데이터 작업').getByText('OneFlow 도입')).toBeVisible()
   await expect(page.getByText('기록된 데이터 이전 작업이 없습니다.')).toBeVisible()
   await page.getByRole('navigation', { name: 'Projects 컨텍스트 내비게이션' }).getByRole('button', { name: 'More' }).click()
@@ -11010,11 +11014,17 @@ test('운영 허브는 데이터 이전 이력과 고정 export 파일을 제공
   const repeatReq = page.waitForRequest((req) => req.url().endsWith(`/${job.id}/artifact`))
   await page.getByRole('button', { name: '다시 받기' }).click()
   await repeatReq
+  await expect(page.getByText('최근 데이터 이전에서 내보내기 파일을 다시 받았습니다.')).toBeVisible()
+  await expect(page.getByText('파일은 생성됐지만 자동 다운로드에 실패했습니다.')).toHaveCount(0)
   await page.getByLabel('데이터 이전 프로젝트 필터').selectOption(project.id)
   await expect(historyList.getByText('OneFlow 도입')).toBeVisible()
   await expectNoHorizontalOverflow(page)
   await page.screenshot({
     path: '../../docs/screenshots/redevelopment/data-transfer-jobs-ui/desktop.png',
+    fullPage: true,
+  })
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/operations-hub-ui-254/desktop.png',
     fullPage: true,
   })
 
@@ -11024,6 +11034,125 @@ test('운영 허브는 데이터 이전 이력과 고정 export 파일을 제공
     path: '../../docs/screenshots/redevelopment/data-transfer-jobs-ui/mobile.png',
     fullPage: true,
   })
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/operations-hub-ui-254/mobile.png',
+    fullPage: true,
+  })
+  await page.getByTestId('operations-scroll').evaluate((element) => {
+    element.scrollTop = element.scrollHeight
+  })
+  await expect(page.getByRole('region', { name: '운영 화면' })).toBeVisible()
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/operations-hub-ui-254/mobile-bottom.png',
+    fullPage: true,
+  })
+})
+
+test('운영 허브는 프로젝트·이전·관리자 조회를 독립적으로 복구한다', async ({ page }) => {
+  await mockApi(page)
+  const checksum = 'c'.repeat(64)
+  const job: DataTransferJob = {
+    id: '78787878-7878-4787-8787-787878787878',
+    project_id: project.id,
+    project_key: project.key,
+    project_name: project.name,
+    actor_id: 'me-1',
+    actor_name: 'Dev User',
+    direction: 'import',
+    source: 'jira',
+    dry_run: true,
+    status: 'completed_with_errors',
+    total_rows: 3,
+    valid_rows: 2,
+    invalid_rows: 1,
+    inserted_rows: 0,
+    checksum,
+    errors_truncated: false,
+    notes: ['1개 행을 확인해 주세요.'],
+    artifact_available: false,
+    artifact_filename: null,
+    artifact_size_bytes: null,
+    artifact_sha256: null,
+    created_at: '2026-07-26T03:00:00Z',
+  }
+  let projectsAvailable = false
+  let transfersAvailable = false
+  let identityAvailable = false
+  const adminMe = {
+    id: 'me-1',
+    email: 'dev@oneflow.local',
+    display_name: 'Dev User',
+    is_active: true,
+    is_admin: true,
+    profile_image_url: null,
+    profile_image_content_type: null,
+    profile_image_filename: null,
+    profile_image_width: null,
+    profile_image_height: null,
+    profile_image_byte_size: null,
+    profile_revision: 1,
+  }
+
+  await page.route('**/api/v1/projects**', async (route) => {
+    const url = new URL(route.request().url())
+    if (url.pathname !== '/api/v1/projects') {
+      await route.fallback()
+      return
+    }
+    if (!projectsAvailable) {
+      await route.fulfill({ status: 503, json: { detail: 'project directory unavailable' } })
+      return
+    }
+    await route.fulfill({ json: { items: [project], total: 1, limit: 50, offset: 0 } })
+  })
+  await page.route('**/api/v1/data-transfer-jobs**', async (route) => {
+    const url = new URL(route.request().url())
+    if (url.pathname !== '/api/v1/data-transfer-jobs') {
+      await route.fallback()
+      return
+    }
+    if (!transfersAvailable) {
+      await route.fulfill({ status: 503, json: { detail: 'transfer history unavailable' } })
+      return
+    }
+    await route.fulfill({ json: { items: [job], total: 1, limit: 50, offset: 0 } })
+  })
+  await page.route('**/api/v1/me', async (route) => {
+    if (!identityAvailable) {
+      await route.fulfill({ status: 503, json: { detail: 'identity unavailable' } })
+      return
+    }
+    await route.fulfill({ json: adminMe })
+  })
+
+  await page.goto('/operations')
+  const projectsRegion = page.getByRole('region', { name: '프로젝트 데이터 작업' })
+  const transfersRegion = page.getByRole('region', { name: '최근 데이터 이전' })
+  const linksRegion = page.getByRole('region', { name: '운영 화면' })
+
+  await expect(page.getByRole('heading', { name: '운영 허브' })).toBeVisible()
+  await expect(projectsRegion.getByRole('alert')).toBeVisible()
+  await expect(transfersRegion.getByRole('alert')).toBeVisible()
+  await expect(linksRegion.getByText('관리자 권한을 확인하지 못해')).toBeVisible()
+  await expect(linksRegion.getByRole('link', { name: /시스템 상태/ })).toBeVisible()
+
+  identityAvailable = true
+  await linksRegion.getByRole('button', { name: '다시 시도' }).click()
+  await expect(linksRegion.getByRole('link', { name: /사용자 관리/ })).toHaveAttribute(
+    'href',
+    '/admin/users',
+  )
+
+  projectsAvailable = true
+  await projectsRegion.getByRole('button', { name: '다시 시도' }).click()
+  await expect(projectsRegion.getByText('OneFlow 도입')).toBeVisible()
+  await expect(transfersRegion.getByRole('alert')).toBeVisible()
+
+  transfersAvailable = true
+  await transfersRegion.getByRole('button', { name: '다시 시도' }).click()
+  await expect(transfersRegion.getByText('Jira · 전체 3')).toBeVisible()
+  await expect(transfersRegion.getByText(/오류 1/)).toBeVisible()
+  await expectNoHorizontalOverflow(page)
 })
 
 test('위험 구역은 확인 dialog에서 실패한 보관을 같은 요청으로 재시도한다', async ({ page }) => {
