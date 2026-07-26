@@ -1,5 +1,17 @@
 import { useEffect, useRef, useState } from 'react'
-import { Copy, KeyRound, LogOut, MonitorSmartphone, ShieldCheck, Trash2, Upload } from 'lucide-react'
+import {
+  Bell,
+  Copy,
+  KeyRound,
+  LogOut,
+  MonitorSmartphone,
+  ShieldCheck,
+  Trash2,
+  Upload,
+  UserRound,
+  X,
+} from 'lucide-react'
+import { useSearchParams } from 'react-router-dom'
 
 import { Avatar } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
@@ -27,10 +39,22 @@ import {
   useRevokeAccessToken,
 } from './accessTokensApi'
 import { NotificationsPanel } from './NotificationsPanel'
-import { SettingsFrame, SettingsSection } from './SettingsShell'
+import {
+  SettingsFrame,
+  SettingsSection,
+  SettingsTabList,
+  type SettingsNavItem,
+} from './SettingsShell'
 
 const PROFILE_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/webp']
 const PROFILE_IMAGE_MAX_BYTES = 2 * 1024 * 1024
+const PERSONAL_TABS = [
+  { key: 'profile', label: '계정', description: '프로필과 계정 정보', icon: UserRound },
+  { key: 'security', label: '보안', description: '로그인 세션과 API 토큰', icon: ShieldCheck },
+  { key: 'notifications', label: '알림', description: '개인 알림 수신 기준', icon: Bell },
+] as const satisfies readonly SettingsNavItem[]
+
+type PersonalTabKey = (typeof PERSONAL_TABS)[number]['key']
 
 function AccountProfilePanel() {
   const me = useMe()
@@ -230,59 +254,115 @@ function AccessTokensPanel() {
   const [name, setName] = useState('')
   const [days, setDays] = useState(90)
   const [created, setCreated] = useState<PersonalAccessTokenCreated | null>(null)
+  const [creating, setCreating] = useState(false)
+  const nameRef = useRef<HTMLInputElement>(null)
+  const openCreator = () => {
+    createToken.reset()
+    setCreating(true)
+    window.setTimeout(() => nameRef.current?.focus(), 0)
+  }
+  const create = (body: { name: string; expires_in_days: number }) => {
+    createToken.mutate(body, {
+      onSuccess: (result) => {
+        setCreated(result)
+        setName('')
+      },
+    })
+  }
 
   return (
     <SettingsSection
       title="개발자 액세스 토큰"
       description="개인 API 호출에 사용할 토큰을 만들고 필요 없어진 토큰을 폐기합니다."
-      actions={<Badge variant="outline">Bearer</Badge>}
-    >
-      <form
-        className="grid min-w-0 gap-2 sm:grid-cols-[minmax(0,1fr)_7rem_auto]"
-        onSubmit={(event) => {
-          event.preventDefault()
-          const trimmed = name.trim()
-          if (!trimmed) return
-          createToken.mutate(
-            { name: trimmed, expires_in_days: days },
-            {
-              onSuccess: (result) => {
-                setCreated(result)
-                setName('')
-              },
-            },
-          )
-        }}
-      >
-        <label className="min-w-0 text-xs">
-          <span className="mb-1 block font-medium text-of-muted">토큰 이름</span>
-          <Input
-            value={name}
-            maxLength={80}
-            placeholder="예: 배포 스크립트"
-            onChange={(event) => setName(event.target.value)}
-          />
-        </label>
-        <label className="text-xs">
-          <span className="mb-1 block font-medium text-of-muted">유효 일수</span>
-          <Input
-            type="number"
-            min={1}
-            max={365}
-            value={days}
-            onChange={(event) => {
-              const next = Number(event.target.value)
-              setDays(Number.isFinite(next) ? Math.min(365, Math.max(1, next)) : 90)
-            }}
-          />
-        </label>
-        <Button type="submit" className="self-end" disabled={createToken.isPending || !name.trim()}>
-          <KeyRound size={14} aria-hidden="true" /> 토큰 생성
+      framed={false}
+      className="border-b border-of-border-subtle p-0 pb-5 sm:p-0 sm:pb-6"
+      actions={
+        <Button
+          type="button"
+          size="sm"
+          variant={creating ? 'outline' : 'default'}
+          aria-expanded={creating}
+          aria-controls="access-token-creator"
+          onClick={() => {
+            if (creating) {
+              createToken.reset()
+              setCreating(false)
+            } else {
+              openCreator()
+            }
+          }}
+        >
+          {creating ? (
+            <X size={14} aria-hidden="true" />
+          ) : (
+            <KeyRound size={14} aria-hidden="true" />
+          )}
+          {creating ? '닫기' : '액세스 토큰 추가'}
         </Button>
-      </form>
+      }
+    >
+      {creating ? (
+        <form
+          id="access-token-creator"
+          className="mb-4 grid min-w-0 gap-3 rounded-of border border-of-border-subtle bg-of-subtle p-3 sm:grid-cols-[minmax(0,1fr)_7rem_auto] sm:items-end"
+          onSubmit={(event) => {
+            event.preventDefault()
+            const trimmed = name.trim()
+            if (!trimmed) return
+            create({ name: trimmed, expires_in_days: days })
+          }}
+        >
+          <label className="min-w-0 text-xs">
+            <span className="mb-1 block font-medium text-of-muted">토큰 이름</span>
+            <Input
+              ref={nameRef}
+              value={name}
+              maxLength={80}
+              placeholder="예: 배포 스크립트"
+              onChange={(event) => setName(event.target.value)}
+            />
+          </label>
+          <label className="text-xs">
+            <span className="mb-1 block font-medium text-of-muted">유효 일수</span>
+            <Input
+              type="number"
+              min={1}
+              max={365}
+              value={days}
+              onChange={(event) => {
+                const next = Number(event.target.value)
+                setDays(Number.isFinite(next) ? Math.min(365, Math.max(1, next)) : 90)
+              }}
+            />
+          </label>
+          <Button type="submit" disabled={createToken.isPending || !name.trim()}>
+            <KeyRound size={14} aria-hidden="true" />
+            {createToken.isPending ? '생성 중' : '토큰 생성'}
+          </Button>
+        </form>
+      ) : null}
+
+      {createToken.isError ? (
+        <div
+          className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-of border border-of-danger/30 bg-of-danger/5 p-2 text-xs"
+          role="alert"
+        >
+          <p className="text-of-danger">액세스 토큰을 만들지 못했습니다.</p>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={!createToken.variables || createToken.isPending}
+            onClick={() => {
+              if (createToken.variables) create(createToken.variables)
+            }}
+          >
+            다시 시도
+          </Button>
+        </div>
+      ) : null}
 
       {created ? (
-        <div className="mt-3 space-y-2 rounded-of bg-of-accent-soft p-3 text-xs" role="status">
+        <div className="mb-4 space-y-2 rounded-of bg-of-accent-soft p-3 text-xs" role="status">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <span className="font-medium text-of-accent">새 토큰은 지금만 확인할 수 있습니다.</span>
             <Button
@@ -303,50 +383,107 @@ function AccessTokensPanel() {
       ) : null}
 
       {tokens.isPending ? (
-        <p className="mt-3 text-xs text-of-muted">토큰을 불러오는 중입니다.</p>
+        <div className="space-y-2" aria-label="액세스 토큰 목록을 불러오는 중">
+          <div className="h-12 animate-pulse rounded-of bg-of-subtle" />
+          <div className="h-12 animate-pulse rounded-of bg-of-subtle" />
+        </div>
       ) : tokens.isError ? (
-        <p className="mt-3 text-xs text-of-danger">토큰 목록을 불러오지 못했습니다.</p>
+        <div className="flex flex-wrap items-center justify-between gap-2 text-xs" role="alert">
+          <p className="text-of-danger">토큰 목록을 불러오지 못했습니다.</p>
+          <Button size="sm" variant="outline" onClick={() => void tokens.refetch()}>
+            다시 시도
+          </Button>
+        </div>
       ) : tokens.data.items.length === 0 ? (
-        <p className="mt-3 text-xs text-of-muted">아직 만든 액세스 토큰이 없습니다.</p>
+        <div className="flex min-h-44 flex-col items-center justify-center px-4 py-8 text-center">
+          <div className="grid h-10 w-10 place-items-center rounded-of bg-of-subtle text-of-muted">
+            <KeyRound size={18} aria-hidden="true" />
+          </div>
+          <p className="mt-3 text-sm font-medium">아직 만든 액세스 토큰이 없습니다.</p>
+          <p className="mt-1 max-w-sm text-xs leading-5 text-of-muted">
+            외부 도구나 자동화에서 OneFlow API를 호출할 때 사용할 토큰을 만드세요.
+          </p>
+          <Button size="sm" className="mt-3" onClick={openCreator}>
+            액세스 토큰 추가
+          </Button>
+        </div>
       ) : (
-        <ul className="mt-3 divide-y divide-of-border border-y border-of-border">
-          {tokens.data.items.map((token) => {
-            const revoked = Boolean(token.revoked_at)
-            return (
-              <li
-                key={token.id}
-                className="grid min-w-0 gap-2 py-2 text-xs sm:grid-cols-[minmax(0,1fr)_auto]"
+        <>
+          {revokeToken.isError ? (
+            <div
+              className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-of border border-of-danger/30 bg-of-danger/5 p-2 text-xs"
+              role="alert"
+            >
+              <p className="text-of-danger">액세스 토큰을 폐기하지 못했습니다.</p>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={!revokeToken.variables || revokeToken.isPending}
+                onClick={() => {
+                  if (revokeToken.variables) revokeToken.mutate(revokeToken.variables)
+                }}
               >
-                <div className="min-w-0">
-                  <div className="flex min-w-0 flex-wrap items-center gap-2">
-                    <span className="truncate text-sm font-medium">{token.name}</span>
-                    <Badge variant={revoked ? 'outline' : 'neutral'}>
-                      {revoked ? '폐기됨' : '활성'}
-                    </Badge>
-                  </div>
-                  <p className="mt-1 break-all font-mono text-[11px] text-of-muted">
-                    {token.token_prefix}••••
-                  </p>
-                  <p className="mt-1 text-[11px] text-of-muted">
-                    만료 {formatDateTime(token.expires_at)}
-                    {token.last_used_at ? ` · 마지막 사용 ${formatDateTime(token.last_used_at)}` : ''}
-                  </p>
-                </div>
-                {!revoked ? (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    disabled={revokeToken.isPending}
-                    aria-label={`${token.name} 폐기`}
-                    onClick={() => revokeToken.mutate(token.id)}
+                다시 시도
+              </Button>
+            </div>
+          ) : null}
+          <div className="overflow-hidden rounded-of border border-of-border-subtle">
+            <div
+              className="hidden grid-cols-[minmax(0,1fr)_10rem_7rem] gap-3 border-b border-of-border-subtle bg-of-subtle px-3 py-2 text-[11px] font-medium text-of-muted sm:grid"
+              aria-hidden="true"
+            >
+              <span>토큰</span>
+              <span>만료</span>
+              <span className="text-right">작업</span>
+            </div>
+            <ul className="divide-y divide-of-border-subtle">
+              {tokens.data.items.map((token) => {
+                const revoked = Boolean(token.revoked_at)
+                return (
+                  <li
+                    key={token.id}
+                    className="grid min-w-0 gap-2 px-3 py-3 text-xs sm:grid-cols-[minmax(0,1fr)_10rem_7rem] sm:items-center"
                   >
-                    폐기
-                  </Button>
-                ) : null}
-              </li>
-            )
-          })}
-        </ul>
+                    <div className="min-w-0">
+                      <div className="flex min-w-0 flex-wrap items-center gap-2">
+                        <span className="truncate text-sm font-medium">{token.name}</span>
+                        <Badge variant={revoked ? 'outline' : 'neutral'}>
+                          {revoked ? '폐기됨' : '활성'}
+                        </Badge>
+                      </div>
+                      <p className="mt-1 break-all font-mono text-[11px] text-of-muted">
+                        {token.token_prefix}••••
+                      </p>
+                      {token.last_used_at ? (
+                        <p className="mt-1 text-[11px] text-of-muted">
+                          마지막 사용 {formatDateTime(token.last_used_at)}
+                        </p>
+                      ) : null}
+                    </div>
+                    <p className="text-[11px] text-of-muted">
+                      <span className="sm:hidden">만료 </span>
+                      {formatDateTime(token.expires_at)}
+                    </p>
+                    {!revoked ? (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="w-full sm:justify-self-end"
+                        disabled={revokeToken.isPending}
+                        aria-label={`${token.name} 폐기`}
+                        onClick={() => revokeToken.mutate(token.id)}
+                      >
+                        폐기
+                      </Button>
+                    ) : (
+                      <span className="text-right text-[11px] text-of-muted">사용 불가</span>
+                    )}
+                  </li>
+                )
+              })}
+            </ul>
+          </div>
+        </>
       )}
     </SettingsSection>
   )
@@ -369,6 +506,8 @@ function SessionsPanel({
     <SettingsSection
       title="로그인 및 세션"
       description="인증 제공 경계를 확인하고 이 계정의 활성 브라우저 세션을 종료합니다."
+      framed={false}
+      className="border-b border-of-border-subtle p-0 pb-5 sm:p-0 sm:pb-6"
       actions={
         <Badge variant={supported ? 'accent' : 'outline'}>
           {auth?.auth_mode === 'oidc' ? 'SSO (OIDC)' : '개발 모드'}
@@ -503,6 +642,11 @@ function SessionsPanel({
 export function PersonalSettingsPage() {
   const me = useMe()
   const auth = useAuthConfig()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const requested = searchParams.get('tab')
+  const tab: PersonalTabKey = PERSONAL_TABS.some((item) => item.key === requested)
+    ? (requested as PersonalTabKey)
+    : 'profile'
 
   return (
     <SettingsFrame
@@ -510,32 +654,65 @@ export function PersonalSettingsPage() {
       title="개인 설정"
       description="내 계정, 로그인 세션, 알림 수신 방식처럼 사용자 개인에게만 적용되는 설정입니다."
       meta={me.data?.is_admin ? '워크스페이스 관리자' : undefined}
-      className="max-w-5xl"
+      className="max-w-6xl"
     >
-      <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(18rem,0.9fr)]">
-        <div className="min-w-0 space-y-4">
-          <SettingsSection
-            title="내 계정"
-            description="워크스페이스에서 표시되는 프로필 이미지, 이름과 현재 계정 권한을 관리합니다."
-          >
-            <AccountProfilePanel />
-          </SettingsSection>
-
-          <SessionsPanel
-            auth={auth.data}
-            authError={auth.isError}
-            retryAuth={() => void auth.refetch()}
-          />
-
-          <AccessTokensPanel />
-        </div>
-
-        <SettingsSection
-          title="알림 설정"
-          description="새 알림 생성 기준을 내 계정 기준으로 조정합니다."
+      <div className="flex min-w-0 flex-col gap-4 lg:flex-row">
+        <SettingsTabList
+          items={PERSONAL_TABS}
+          activeKey={tab}
+          ariaLabel="개인 설정 섹션"
+          panelId="personal-settings-panel"
+          tabIdPrefix="personal-settings-tab"
+          onSelect={(key) => setSearchParams(key === 'profile' ? {} : { tab: key })}
+        />
+        <div
+          id="personal-settings-panel"
+          role="tabpanel"
+          aria-labelledby={`personal-settings-tab-${tab}`}
+          className="min-w-0 flex-1 pb-8"
         >
-          <NotificationsPanel framed={false} />
-        </SettingsSection>
+          {tab === 'profile' ? (
+            <SettingsSection
+              title="내 계정"
+              description="워크스페이스에서 표시되는 프로필 이미지, 이름과 현재 계정 권한을 관리합니다."
+              framed={false}
+              className="p-0 sm:p-0"
+            >
+              <AccountProfilePanel />
+            </SettingsSection>
+          ) : null}
+          {tab === 'security' ? (
+            <div className="min-w-0 space-y-5">
+              <div className="flex min-w-0 items-start gap-3 border-b border-of-border-subtle pb-4">
+                <div className="grid h-9 w-9 shrink-0 place-items-center rounded-of bg-of-accent-soft text-of-accent">
+                  <ShieldCheck size={17} aria-hidden="true" />
+                </div>
+                <div className="min-w-0">
+                  <h2 className="text-sm font-semibold">계정 보안</h2>
+                  <p className="mt-1 text-xs leading-5 text-of-muted">
+                    로그인 경계를 확인하고 활성 세션과 개인 API 자격 증명을 관리합니다.
+                  </p>
+                </div>
+              </div>
+              <SessionsPanel
+                auth={auth.data}
+                authError={auth.isError}
+                retryAuth={() => void auth.refetch()}
+              />
+              <AccessTokensPanel />
+            </div>
+          ) : null}
+          {tab === 'notifications' ? (
+            <SettingsSection
+              title="알림 설정"
+              description="새 알림 생성 기준을 내 계정 기준으로 조정합니다."
+              framed={false}
+              className="p-0 sm:p-0"
+            >
+              <NotificationsPanel framed={false} />
+            </SettingsSection>
+          ) : null}
+        </div>
       </div>
     </SettingsFrame>
   )

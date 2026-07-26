@@ -65,7 +65,7 @@ export function SettingsPage() {
   const requested = searchParams.get('tab')
   // The notification toggles are USER-scoped (/me) and moved to /settings —
   // old project-settings deep links follow them (Pass 64 PR-CD).
-  if (requested === 'notifications') return <Navigate to="/settings" replace />
+  if (requested === 'notifications') return <Navigate to="/settings?tab=notifications" replace />
   const releasesEnabled = capabilities.data?.releases.enabled === true
   const availableTabs = TABS.filter((item) => item.key !== 'milestones' || releasesEnabled)
   const tab: TabKey = availableTabs.some((t) => t.key === requested)

@@ -8901,9 +8901,12 @@ test('개인 설정에서 알림 토글이 PUT을 보내고 구 딥링크가 리
 
   // The OLD project-settings deep link follows the moved panel (Pass 64).
   await page.goto(`/projects/${project.id}/settings?tab=notifications`)
-  await expect(page).toHaveURL(/\/settings$/)
+  await expect(page).toHaveURL(/\/settings\?tab=notifications$/)
   await expect(page.getByRole('heading', { name: '개인 설정' })).toBeVisible()
-  await expect(page.getByText('dev@oneflow.local')).toBeVisible() // account card
+  await expect(page.getByRole('tab', { name: '알림' })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  )
 
   const put = page.waitForRequest(
     (r) => r.method() === 'PUT' && r.url().includes('/me/notification-settings'),
@@ -9161,7 +9164,7 @@ test('개인 알림 설정은 로딩 오류와 재시도를 기능적으로 처�
     })
   })
 
-  await page.goto('/settings')
+  await page.goto('/settings?tab=notifications')
   await expect(page.getByRole('status', { name: '알림 설정 불러오는 중' })).toBeVisible()
   releaseFirstResponse?.()
   await expect(page.getByText('알림 설정을 불러오지 못했습니다.')).toBeVisible()
@@ -9171,7 +9174,7 @@ test('개인 알림 설정은 로딩 오류와 재시도를 기능적으로 처�
 })
 
 test('개인 설정에서 액세스 토큰을 생성하고 폐기한다', async ({ page }) => {
-  await page.setViewportSize({ width: 390, height: 844 })
+  await page.setViewportSize({ width: 1440, height: 900 })
   await mockApi(page)
   let tokens = [
     {
@@ -9184,9 +9187,16 @@ test('개인 설정에서 액세스 토큰을 생성하고 폐기한다', async 
       last_used_at: null as string | null,
     },
   ]
+  let createFailed = false
+  let revokeFailed = false
   await page.route('**/api/v1/me/access-tokens**', async (route) => {
     const request = route.request()
     if (request.method() === 'POST') {
+      if (!createFailed) {
+        createFailed = true
+        await route.fulfill({ status: 503, json: { detail: 'temporary failure' } })
+        return
+      }
       const sent = request.postDataJSON() as { name: string; expires_in_days: number }
       const created = {
         id: 'tok-created',
@@ -9203,6 +9213,11 @@ test('개인 설정에서 액세스 토큰을 생성하고 폐기한다', async 
     }
     if (request.method() === 'DELETE') {
       const id = request.url().split('/').pop()
+      if (id === 'tok-existing' && !revokeFailed) {
+        revokeFailed = true
+        await route.fulfill({ status: 503, json: { detail: 'temporary failure' } })
+        return
+      }
       tokens = tokens.map((token) =>
         token.id === id ? { ...token, revoked_at: '2026-07-10T01:00:00Z' } : token,
       )
@@ -9212,32 +9227,61 @@ test('개인 설정에서 액세스 토큰을 생성하고 폐기한다', async 
     await route.fulfill({ json: { items: tokens, total: tokens.length } })
   })
 
-  await page.goto('/settings')
+  await page.goto('/settings?tab=security')
   const tokenSection = page.getByRole('region', { name: '개발자 액세스 토큰' })
   await expect(tokenSection.getByText('배포 스크립트')).toBeVisible()
+  await expect(page.getByRole('tab', { name: '보안' })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  )
 
-  const post = page.waitForRequest(
+  const failedPost = page.waitForRequest(
     (request) => request.method() === 'POST' && request.url().includes('/me/access-tokens'),
   )
+  await tokenSection.getByRole('button', { name: '액세스 토큰 추가' }).click()
+  await expect(tokenSection.getByLabel('토큰 이름')).toBeFocused()
   await tokenSection.getByLabel('토큰 이름').fill('통합 스크립트')
   await tokenSection.getByLabel('유효 일수').fill('45')
   await tokenSection.getByRole('button', { name: '토큰 생성' }).click()
+  await failedPost
+  await expect(tokenSection.getByRole('alert')).toContainText(
+    '액세스 토큰을 만들지 못했습니다.',
+  )
+  const post = page.waitForRequest(
+    (request) => request.method() === 'POST' && request.url().includes('/me/access-tokens'),
+  )
+  await tokenSection.getByRole('button', { name: '다시 시도' }).click()
   expect((await post).postDataJSON()).toEqual({ name: '통합 스크립트', expires_in_days: 45 })
   await expect(tokenSection.getByLabel('새 액세스 토큰')).toContainText(
     'ofp_created_secret_once',
   )
   await expectNoHorizontalOverflow(page)
-  await tokenSection.scrollIntoViewIfNeeded()
   await page.screenshot({
-    path: '../../docs/screenshots/redevelopment/developer-security-ui/mobile.png',
+    path: '../../docs/screenshots/redevelopment/personal-security-ui-241/desktop.png',
+    fullPage: true,
+  })
+  await page.setViewportSize({ width: 390, height: 844 })
+  await tokenSection.scrollIntoViewIfNeeded()
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/personal-security-ui-241/mobile.png',
     fullPage: true,
   })
 
-  const del = page.waitForRequest(
+  const failedDelete = page.waitForRequest(
     (request) =>
       request.method() === 'DELETE' && request.url().includes('/me/access-tokens/tok-existing'),
   )
   await tokenSection.getByRole('button', { name: '배포 스크립트 폐기' }).click()
+  await failedDelete
+  await expect(tokenSection.getByRole('alert')).toContainText(
+    '액세스 토큰을 폐기하지 못했습니다.',
+  )
+  const del = page.waitForRequest(
+    (request) =>
+      request.method() === 'DELETE' && request.url().includes('/me/access-tokens/tok-existing'),
+  )
+  await tokenSection.getByRole('button', { name: '다시 시도' }).click()
   await del
   await expect(tokenSection.getByText('폐기됨')).toBeVisible()
 })
@@ -9287,7 +9331,7 @@ test('개인 설정에서 활성 브라우저 세션을 확인하고 종료한�
     await route.fulfill({ json: { items: sessions, total: sessions.length } })
   })
 
-  await page.goto('/settings')
+  await page.goto('/settings?tab=security')
   const section = page.getByRole('region', { name: '로그인 및 세션' })
   await expect(section.getByText('현재 세션')).toBeVisible()
   const otherSessionButton = section.getByRole('button', { name: /^26\..*세션 종료$/ })
@@ -9310,7 +9354,7 @@ test('개인 설정에서 활성 브라우저 세션을 확인하고 종료한�
   await expectNoHorizontalOverflow(page)
   await section.scrollIntoViewIfNeeded()
   await page.screenshot({
-    path: '../../docs/screenshots/redevelopment/identity-security-ui/mobile.png',
+    path: '../../docs/screenshots/redevelopment/personal-security-ui-241/session-mobile.png',
     fullPage: true,
   })
 
@@ -9331,7 +9375,7 @@ test('개인 설정은 인증 모드별로 지원되는 세션 동작만 노출�
     await route.fulfill({ json: { items: [], total: 0 } })
   })
 
-  await page.goto('/settings')
+  await page.goto('/settings?tab=security')
   const devSection = page.getByRole('region', { name: '로그인 및 세션' })
   await expect(devSection.getByText('자동 개발 로그인이 사용 중입니다.')).toBeVisible()
   await expect(devSection.getByRole('button', { name: /세션 종료/ })).toHaveCount(0)
@@ -10455,7 +10499,7 @@ test('settings/admin IA는 모바일 폭에서 표면별 탐색을 유지한다'
     fullPage: true,
   })
 
-  await page.goto('/settings')
+  await page.goto('/settings?tab=notifications')
   await expect(page.getByRole('heading', { name: '개인 설정' })).toBeVisible()
   await expect(page.getByText('알림 설정 (내 계정)')).toBeVisible()
   await expectNoHorizontalOverflow(page)
