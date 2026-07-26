@@ -9,7 +9,6 @@ import {
   Waypoints,
   UsersRound,
 } from 'lucide-react'
-import type { LucideIcon } from 'lucide-react'
 import type * as React from 'react'
 import { useCallback, useState } from 'react'
 import { Navigate, useParams, useSearchParams } from 'react-router-dom'
@@ -146,75 +145,30 @@ function WorkflowGovernanceSurface({
   children: React.ReactNode
 }) {
   return (
-    <div className="space-y-3">
-      <section
-        aria-label="워크플로우 거버넌스"
-        className="rounded-of border border-of-border bg-of-surface p-4"
-      >
-        <div className="flex min-w-0 flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+    <section
+      aria-label="워크플로우 거버넌스"
+      className="min-w-0 overflow-hidden rounded-of border border-of-border bg-of-surface"
+    >
+      <header className="flex min-w-0 flex-col gap-3 border-b border-of-border px-4 py-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="flex min-w-0 items-start gap-3">
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-of bg-of-accent-soft text-of-accent">
+            <GitBranch size={15} aria-hidden="true" />
+          </span>
           <div className="min-w-0">
-            <p className="text-[11px] font-medium uppercase text-of-muted">
-              Project governance
-            </p>
-            <h2 className="mt-1 text-sm font-semibold">워크플로우 거버넌스</h2>
-            <p className="mt-1 max-w-3xl text-xs leading-5 text-of-muted">
-              상태 흐름과 작업 타입을 한 번에 점검합니다. 이 설정은 보드, 목록, 필터,
-              리포트의 라벨과 표시 순서에 바로 반영됩니다.
+            <p className="text-[11px] font-medium uppercase text-of-muted">Project workflow</p>
+            <h2 className="mt-1 text-sm font-semibold">상태 흐름과 작업 타입</h2>
+            <p className="mt-1 max-w-2xl text-xs leading-5 text-of-muted">
+              프로젝트의 작업 분류와 표시 순서를 관리합니다.
             </p>
           </div>
-          <div className="flex shrink-0 flex-wrap items-center gap-2">
-            <Badge variant={isOwner ? 'accent' : 'outline'}>
-              {isOwner ? '소유자 편집 가능' : '읽기 전용'}
-            </Badge>
-          </div>
         </div>
-        <div className="mt-3 grid gap-2 sm:grid-cols-3">
-          <GovernanceCue
-            icon={GitBranch}
-            label="상태 흐름"
-            value="보드·목록 기준"
-            hint="순서가 lane과 필터에 반영"
-          />
-          <GovernanceCue
-            icon={ListChecks}
-            label="작업 타입"
-            value="생성 옵션 기준"
-            hint="비활성 타입은 신규 생성에서 제외"
-          />
-          <GovernanceCue
-            icon={Bot}
-            label="자동화"
-            value="별도 탭에서 규칙 관리"
-            hint="위쪽 규칙이 우선 적용"
-          />
-        </div>
-      </section>
-      <div className="grid min-w-0 gap-3 xl:grid-cols-2">{children}</div>
-    </div>
-  )
-}
-
-function GovernanceCue({
-  icon: Icon,
-  label,
-  value,
-  hint,
-}: {
-  icon: LucideIcon
-  label: string
-  value: string
-  hint: string
-}) {
-  return (
-    <div className="flex min-w-0 gap-2 rounded-of border border-of-border bg-of-surface-2 px-3 py-2">
-      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-of bg-of-accent-soft text-of-accent">
-        <Icon size={15} aria-hidden="true" />
-      </span>
-      <span className="min-w-0">
-        <span className="block truncate text-[11px] font-medium text-of-muted">{label}</span>
-        <span className="block truncate text-sm font-semibold">{value}</span>
-        <span className="block truncate text-[11px] text-of-muted">{hint}</span>
-      </span>
-    </div>
+        <Badge variant={isOwner ? 'accent' : 'outline'} className="self-start">
+          {isOwner ? '소유자 편집 가능' : '읽기 전용'}
+        </Badge>
+      </header>
+      <div className="grid min-w-0 divide-y divide-of-border xl:grid-cols-2 xl:divide-x xl:divide-y-0">
+        {children}
+      </div>
+    </section>
   )
 }
