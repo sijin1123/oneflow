@@ -7933,8 +7933,24 @@ test('내 작업 탭이 관계·검색·범위·정렬·페이지 상태를 URL�
   await page.goto('/my?tab=assigned')
   await expect(page.getByRole('heading', { name: '나에게 배정된 작업' })).toBeVisible()
   await expect(page.getByText('assigned · open · updated · 전체')).toBeVisible()
+  const profile = page.getByRole('complementary', { name: '내 프로필' })
+  await expect(profile).toBeVisible()
+  await expect(profile.getByText('Dev User')).toBeVisible()
+  await expect(profile.getByText('dev@oneflow.local')).toBeVisible()
+  await expect(profile.getByRole('link', { name: project.name })).toHaveAttribute(
+    'href',
+    `/projects/${project.id}/overview`,
+  )
+  await expect(profile.getByRole('link', { name: '프로필 편집' })).toHaveAttribute(
+    'href',
+    '/settings',
+  )
+  const profileToggle = page
+    .getByTestId('frame-context-actions')
+    .getByRole('button', { name: '프로필' })
+  await expect(profileToggle).toHaveAttribute('aria-expanded', 'true')
   await page.screenshot({
-    path: '../../docs/screenshots/redevelopment/your-work-tabs-ui/desktop.png',
+    path: '../../docs/screenshots/redevelopment/my-work-profile-ui-235/runtime-desktop.png',
     fullPage: true,
   })
 
@@ -7961,10 +7977,18 @@ test('내 작업 탭이 관계·검색·범위·정렬·페이지 상태를 URL�
   await expect(page.getByText('created · open · updated · 전체')).toBeVisible()
   await page.getByRole('link', { name: '구독' }).click()
   await expect(page.getByText('subscribed · open · updated · 전체')).toBeVisible()
+  await profileToggle.click()
+  await expect(profile).toHaveCount(0)
+  await expect(profileToggle).toHaveAttribute('aria-expanded', 'false')
   await page.setViewportSize({ width: 390, height: 844 })
   await expectNoHorizontalOverflow(page)
+  await profileToggle.click()
+  await expect(profile).toBeVisible()
+  await expectNoHorizontalOverflow(page)
+  await profileToggle.click()
+  await expect(profile).toHaveCount(0)
   await page.screenshot({
-    path: '../../docs/screenshots/redevelopment/your-work-tabs-ui/mobile.png',
+    path: '../../docs/screenshots/redevelopment/my-work-profile-ui-235/runtime-mobile.png',
     fullPage: true,
   })
 
