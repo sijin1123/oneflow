@@ -3027,7 +3027,7 @@ test('Wiki global app은 zero-project workspace에서도 desktop과 mobile conte
   ).toBeVisible()
 })
 
-test('Wiki home은 접근 가능한 프로젝트 문서를 범위·검색·프로젝트 필터로 탐색한다', async ({ page }) => {
+test('Wiki home은 URL 탐색·정렬·프로젝트 선택 생성으로 기능형 디렉터리를 제공한다', async ({ page }) => {
   await mockApi(page)
   const secondProject = {
     ...project,
@@ -3076,9 +3076,37 @@ test('Wiki home은 접근 가능한 프로젝트 문서를 범위·검색·프�
       : []
     route.fulfill({ json: { items, total: items.length } satisfies DocumentList })
   })
+  const createdDocument = {
+    id: 'doc-created',
+    project_id: secondProject.id,
+    parent_id: null,
+    title: '신규 운영 정책',
+    body: null,
+    author_id: 'me-1',
+    visibility: 'private' as const,
+    archived_at: null,
+    archived_by_user_id: null,
+    archived_by_name: null,
+    version: 1,
+    created_at: '2026-07-26T00:00:00Z',
+    updated_at: '2026-07-26T00:00:00Z',
+  }
+  let createPayload: Record<string, unknown> | null = null
+  await page.route('**/api/v1/projects/*/documents**', async (route) => {
+    if (route.request().method() === 'POST') {
+      createPayload = route.request().postDataJSON() as Record<string, unknown>
+      return route.fulfill({ json: createdDocument })
+    }
+    return route.fulfill({ json: { items: [], total: 0 } })
+  })
+  await page.route('**/api/v1/documents/doc-created', (route) =>
+    route.fulfill({ json: createdDocument }),
+  )
 
   await page.goto('/wiki')
   const wikiHome = page.getByRole('region', { name: 'Wiki 홈' })
+  await expect(wikiHome.getByRole('heading', { name: '공유 Wiki 문서' })).toBeAttached()
+  await expect(wikiHome.getByRole('heading', { name: 'Wiki', exact: true })).toHaveCount(0)
   await expect(wikiHome.getByRole('link', { name: /제품 정책/ })).toHaveAttribute(
     'href',
     `/projects/${project.id}/documents/doc-one`,
@@ -3086,23 +3114,68 @@ test('Wiki home은 접근 가능한 프로젝트 문서를 범위·검색·프�
   await expect(wikiHome.getByRole('link', { name: /운영 매뉴얼/ })).toBeVisible()
 
   await wikiHome.getByRole('textbox', { name: 'Wiki 검색' }).fill('운영')
+  await expect(page).toHaveURL('/wiki?q=%EC%9A%B4%EC%98%81')
   await expect(wikiHome.getByRole('link', { name: /제품 정책/ })).toHaveCount(0)
   await expect(wikiHome.getByRole('link', { name: /운영 매뉴얼/ })).toBeVisible()
 
-  await wikiHome.getByRole('textbox', { name: 'Wiki 검색' }).fill('')
+  await wikiHome.getByRole('button', { name: '필터 초기화 1' }).click()
+  await expect(page).toHaveURL('/wiki')
   await wikiHome.getByRole('combobox', { name: 'Wiki 프로젝트 필터' }).selectOption(project.id)
+  await expect(page).toHaveURL(`/wiki?project=${project.id}`)
   await expect(wikiHome.getByRole('link', { name: /제품 정책/ })).toBeVisible()
   await expect(wikiHome.getByRole('link', { name: /운영 매뉴얼/ })).toHaveCount(0)
 
-  await wikiHome.getByRole('button', { name: '비공개' }).click()
+  await wikiHome.getByRole('button', { name: '필터 초기화 1' }).click()
+  await wikiHome.getByRole('combobox', { name: 'Wiki 정렬' }).selectOption('title_desc')
+  await expect(page).toHaveURL('/wiki?sort=title_desc')
+  await expect(wikiHome.getByRole('link').filter({ hasText: /제품 정책|운영 매뉴얼/ }).first()).toContainText('제품 정책')
+
+  const wikiNav = page.getByRole('navigation', { name: 'Wiki 컨텍스트 내비게이션' })
+  await wikiNav.getByRole('link', { name: '비공개' }).click()
   await expect(page).toHaveURL('/wiki?bucket=private')
   await expect(wikiHome.getByText('비공개 문서가 없습니다')).toBeVisible()
 
   await page.goto('/wiki?bucket=unknown')
   await expect(
-    page.getByRole('navigation', { name: 'Wiki 컨텍스트 내비게이션' }).getByRole('link', { name: '공유' }),
+    wikiNav.getByRole('link', { name: '공유' }),
   ).toHaveAttribute('aria-current', 'page')
-  await expect(wikiHome.getByRole('button', { name: '공유' })).toHaveAttribute('aria-current', 'page')
+  await expect(wikiHome.getByRole('heading', { name: '공유 Wiki 문서' })).toBeAttached()
+
+  const addPage = page
+    .getByTestId('frame-context-actions')
+    .getByRole('button', { name: '페이지 추가' })
+  await addPage.click()
+  const dialog = page.getByRole('dialog', { name: '페이지 추가' })
+  await expect(dialog.getByRole('textbox', { name: '새 페이지 제목' })).toBeFocused()
+  await page.keyboard.press('Escape')
+  await expect(dialog).toHaveCount(0)
+  await expect(addPage).toBeFocused()
+
+  await addPage.click()
+  await dialog.getByRole('textbox', { name: '새 페이지 제목' }).fill('신규 운영 정책')
+  await dialog.getByRole('combobox', { name: '새 페이지 프로젝트' }).selectOption(secondProject.id)
+  await dialog.getByRole('combobox', { name: '새 페이지 공개 범위' }).selectOption('private')
+  await dialog.getByRole('button', { name: '페이지 추가', exact: true }).click()
+  await expect(page).toHaveURL(`/projects/${secondProject.id}/documents/doc-created`)
+  expect(createPayload).toEqual({
+    title: '신규 운영 정책',
+    visibility: 'private',
+  })
+
+  await page.goto('/wiki?bucket=archived')
+  await expect(
+    page.getByTestId('frame-context-actions').getByRole('button', { name: '페이지 추가' }),
+  ).toHaveCount(0)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/global-wiki-directory-ui-236/runtime-desktop.png',
+    fullPage: true,
+  })
+  await page.setViewportSize({ width: 390, height: 844 })
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/global-wiki-directory-ui-236/runtime-mobile.png',
+    fullPage: true,
+  })
 })
 
 test('모바일 앱 셸에서 사이드바가 drawer로 열린다', async ({ page }) => {
