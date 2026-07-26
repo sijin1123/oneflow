@@ -22758,8 +22758,10 @@ test('프로젝트 cover는 디렉터리와 Overview를 공유하고 owner가 �
   await mockApi(page)
   let currentProject: Project = { ...project, cover_attachment_id: 'cover-old' }
   let rejectNextCover = false
+  let rejectNextBrief = false
   let commitThenAbortNextCover = false
   let cleanupCount = 0
+  const briefPatches: Array<{ description: string | null }> = []
   const coverPng = Buffer.from(
     'iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAEklEQVR4nGPkndLBwMDAxAAGAA2bAS37E8jFAAAAAElFTkSuQmCC',
     'base64',
@@ -22798,20 +22800,30 @@ test('프로젝트 cover는 디렉터리와 Overview를 공유하고 owner가 �
   }))
   await page.route(`**/api/v1/projects/${project.id}`, async (route) => {
     if (route.request().method() === 'PATCH') {
-      if (commitThenAbortNextCover) {
+      const body = route.request().postDataJSON() as {
+        cover_attachment_id?: string | null
+        description?: string | null
+      }
+      if ('description' in body) {
+        briefPatches.push({ description: body.description ?? null })
+        if (rejectNextBrief) {
+          rejectNextBrief = false
+          await route.fulfill({ status: 503, json: { detail: 'brief temporarily unavailable' } })
+          return
+        }
+      }
+      if (commitThenAbortNextCover && 'cover_attachment_id' in body) {
         commitThenAbortNextCover = false
-        const body = route.request().postDataJSON() as { cover_attachment_id: string | null }
-        currentProject = { ...currentProject, cover_attachment_id: body.cover_attachment_id }
+        currentProject = { ...currentProject, cover_attachment_id: body.cover_attachment_id ?? null }
         await route.abort('connectionrefused')
         return
       }
-      if (rejectNextCover) {
+      if (rejectNextCover && 'cover_attachment_id' in body) {
         rejectNextCover = false
         await route.fulfill({ status: 422, json: { detail: 'cover rejected' } })
         return
       }
-      const body = route.request().postDataJSON() as { cover_attachment_id: string | null }
-      currentProject = { ...currentProject, cover_attachment_id: body.cover_attachment_id }
+      currentProject = { ...currentProject, ...body }
       await route.fulfill({ json: currentProject })
       return
     }
@@ -22858,6 +22870,42 @@ test('프로젝트 cover는 디렉터리와 Overview를 공유하고 owner가 �
   await expect(page.getByRole('region', { name: '프로젝트 진행 요약' })).toContainText('완료율')
   await expect(page.getByRole('region', { name: '프로젝트 진행 요약' })).toContainText('50%')
   await expect(page.getByRole('region', { name: '최근 작업' })).toContainText(wpA.subject)
+  await expect(frame.getByRole('button', { name: '개요 편집' })).toBeVisible()
+  await expect(frame.getByRole('link', { name: 'Work items' })).toHaveAttribute(
+    'href',
+    `/projects/${project.id}/work-packages`,
+  )
+  await expect(frame.getByRole('link', { name: '대시보드' })).toHaveAttribute(
+    'href',
+    `/projects/${project.id}/dashboard`,
+  )
+
+  const overview = page.getByRole('region', { name: '프로젝트 개요' })
+  rejectNextBrief = true
+  await frame.getByRole('button', { name: '개요 편집' }).click()
+  const briefInput = overview.getByLabel('프로젝트 개요 내용')
+  await briefInput.fill('출시 범위와 성공 기준을 함께 관리합니다.')
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/project-overview-ui-253/editor-desktop.png',
+  })
+  await overview.getByRole('button', { name: '저장' }).click()
+  await expect(overview.getByRole('alert')).toContainText('brief temporarily unavailable')
+  await expect(briefInput).toHaveValue('출시 범위와 성공 기준을 함께 관리합니다.')
+  await overview.getByRole('alert').getByRole('button', { name: '다시 시도' }).click()
+  await expect(overview.getByText('출시 범위와 성공 기준을 함께 관리합니다.')).toBeVisible()
+  await expect(frame.getByRole('button', { name: '개요 편집' })).toBeFocused()
+  expect(briefPatches).toEqual([
+    { description: '출시 범위와 성공 기준을 함께 관리합니다.' },
+    { description: '출시 범위와 성공 기준을 함께 관리합니다.' },
+  ])
+
+  await frame.getByRole('button', { name: '개요 편집' }).click()
+  await overview.getByLabel('프로젝트 개요 내용').fill('저장하지 않은 초안')
+  page.once('dialog', (dialog) => dialog.dismiss())
+  await frame.getByRole('link', { name: '대시보드' }).click()
+  await expect(page).toHaveURL(`/projects/${project.id}/overview`)
+  await expect(overview.getByLabel('프로젝트 개요 내용')).toHaveValue('저장하지 않은 초안')
+  await overview.getByRole('button', { name: '취소' }).click()
 
   const coverTrigger = page.getByRole('button', { name: '표지 변경' })
   await coverTrigger.click()
@@ -22897,14 +22945,23 @@ test('프로젝트 cover는 디렉터리와 Overview를 공유하고 owner가 �
   await page.waitForTimeout(250)
 
   await page.screenshot({
-    path: '../../docs/screenshots/redevelopment/project-directory-cover-overview-ui/overview-desktop.png',
+    path: '../../docs/screenshots/redevelopment/project-overview-ui-253/desktop.png',
   })
   await page.setViewportSize({ width: 390, height: 844 })
   await expectNoHorizontalOverflow(page)
   await page.screenshot({
-    path: '../../docs/screenshots/redevelopment/project-directory-cover-overview-ui/overview-mobile.png',
+    path: '../../docs/screenshots/redevelopment/project-overview-ui-253/mobile.png',
     fullPage: true,
   })
+  await page.getByTestId('frame-context-bar').getByRole('button', { name: '개요 편집' }).click()
+  await page.getByRole('region', { name: '프로젝트 개요' }).getByLabel('프로젝트 개요 내용').fill(
+    '모바일에서도 목표와 성공 기준을 편집합니다.',
+  )
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/project-overview-ui-253/editor-mobile.png',
+    fullPage: true,
+  })
+  await page.getByRole('region', { name: '프로젝트 개요' }).getByRole('button', { name: '취소' }).click()
 
   await page.getByRole('button', { name: '표지 변경' }).click()
   const removePatch = page.waitForRequest(
@@ -22928,14 +22985,81 @@ test('프로젝트 cover는 디렉터리와 Overview를 공유하고 owner가 �
   await expect(page.getByRole('dialog', { name: '프로젝트 표지' }).getByRole('alert')).toContainText('cover rejected')
 
   commitThenAbortNextCover = true
-  await page.getByRole('dialog', { name: '프로젝트 표지' }).getByLabel('프로젝트 표지 파일').setInputFiles({
-    name: 'committed-cover.png',
-    mimeType: 'image/png',
-    buffer: coverPng,
-  })
+  await page.getByRole('dialog', { name: '프로젝트 표지' }).getByRole('button', { name: '다시 시도' }).click()
   await expect(page.getByRole('dialog', { name: '프로젝트 표지' })).toHaveCount(0)
   await expect(page.getByAltText(`${project.name} 표지`)).toHaveAttribute('src', /cover-new\/download$/)
   expect(cleanupCount).toBe(1)
+})
+
+test('프로젝트 Overview는 집계와 멤버 조회 실패를 다른 콘텐츠와 분리해 복구한다', async ({ page }) => {
+  await mockApi(page)
+  let dashboardUnavailable = true
+  let membersUnavailable = true
+  const dashboard = {
+    id: project.id,
+    key: project.key,
+    name: project.name,
+    description: project.description,
+    health: 'on_track',
+    health_note: '계획대로 진행 중입니다.',
+    archived_at: null,
+    completion_percent: 40,
+    recent_work_packages: [],
+    total_work_packages: 5,
+    open_work_packages: 3,
+    overdue_count: 1,
+    status_counts: [],
+    priority_counts: [],
+    type_counts: [],
+    total_estimated_hours: 32,
+    total_spent_hours: 14,
+    budget: null,
+    total_cost: 0,
+  }
+
+  await page.route(`**/api/v1/projects/${project.id}/dashboard`, (route) =>
+    dashboardUnavailable
+      ? route.fulfill({ status: 503, json: { detail: 'dashboard temporarily unavailable' } })
+      : route.fulfill({ json: dashboard }),
+  )
+  await page.route(`**/api/v1/projects/${project.id}/members`, (route) =>
+    membersUnavailable
+      ? route.fulfill({ status: 503, json: { detail: 'members temporarily unavailable' } })
+      : route.fulfill({
+          json: {
+            items: [
+              {
+                user_id: 'me-1',
+                email: 'dev@oneflow.local',
+                display_name: 'Dev User',
+                role: 'owner',
+              },
+            ],
+            total: 1,
+          },
+        }),
+  )
+
+  await page.goto(`/projects/${project.id}/overview`)
+  await expect(page.getByRole('region', { name: '프로젝트 개요' })).toContainText(project.description!)
+  await expect(page.getByRole('region', { name: '프로젝트 일정 기준선' })).toBeVisible()
+
+  const summary = page.getByRole('region', { name: '프로젝트 진행 요약' })
+  await expect(summary.getByRole('alert')).toContainText('진행 요약을 불러오지 못했습니다')
+  const signals = page.getByRole('complementary', { name: '프로젝트 정보' })
+  await expect(signals.getByRole('alert')).toContainText('멤버와 내 권한을 확인하지 못했습니다')
+  await expect(page.getByTestId('frame-context-bar').getByRole('button', { name: '개요 편집' })).toHaveCount(0)
+
+  dashboardUnavailable = false
+  await summary.getByRole('button', { name: '다시 시도' }).click()
+  await expect(summary).toContainText('40%')
+  await expect(page.getByRole('region', { name: '프로젝트 개요' })).toContainText(project.description!)
+
+  membersUnavailable = false
+  await signals.getByRole('button', { name: '다시 시도' }).click()
+  await expect(signals).toContainText('멤버1')
+  await expect(page.getByTestId('frame-context-bar').getByRole('button', { name: '개요 편집' })).toBeVisible()
+  await expectNoHorizontalOverflow(page)
 })
 
 test('프로젝트 일정 기준선 이력과 추세는 이름 저장·시간순 선택·개별 삭제까지 실제 요청으로 이어진다', async ({ page }) => {
