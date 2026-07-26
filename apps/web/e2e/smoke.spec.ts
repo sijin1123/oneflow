@@ -25478,6 +25478,10 @@ test('연결 및 통합 허브는 실제 capability 상태와 관리 동선을 �
   await page.goto('/admin/integrations')
   await expect(page.getByRole('heading', { name: '연결 및 통합' })).toBeVisible()
   await expect(page.getByRole('navigation', { name: '설정 컨텍스트 내비게이션' }).getByRole('link', { name: '연결 및 통합' })).toHaveAttribute('aria-current', 'page')
+  const frameActions = page.locator('[data-frame-context-actions]')
+  await expect(frameActions.getByRole('link', { name: '운영 허브' })).toHaveAttribute('href', '/operations')
+  await expect(frameActions.getByRole('button', { name: '모두 새로고침' })).toBeVisible()
+  await expect(page.getByTestId('integrations-scroll')).toBeVisible()
 
   const webhookStatus = page.getByLabel('Webhooks 상태')
   await expect(webhookStatus.getByText('확인 실패')).toBeVisible()
@@ -25497,10 +25501,17 @@ test('연결 및 통합 허브는 실제 capability 상태와 관리 동선을 �
   await expect(page.getByRole('link', { name: '데이터 전송 운영 허브' })).toHaveAttribute('href', '/operations')
   await expect(page.getByRole('link', { name: 'AI 작업 요약 정책 관리' })).toHaveAttribute('href', '/admin/ai')
   await expect(page.getByRole('link', { name: '인증 시스템 상태' })).toHaveAttribute('href', '/status')
+  const readsBeforeRefresh = webhookReads
+  await frameActions.getByRole('button', { name: '모두 새로고침' }).click()
+  await expect.poll(() => webhookReads).toBeGreaterThan(readsBeforeRefresh)
 
   await page.setViewportSize({ width: 1440, height: 960 })
   await page.screenshot({
     path: '../../docs/screenshots/redevelopment/integrations-hub-ui/desktop.png',
+    fullPage: true,
+  })
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/integrations-hub-ui-255/desktop.png',
     fullPage: true,
   })
   await page.setViewportSize({ width: 390, height: 844 })
@@ -25509,6 +25520,127 @@ test('연결 및 통합 허브는 실제 capability 상태와 관리 동선을 �
     path: '../../docs/screenshots/redevelopment/integrations-hub-ui/mobile.png',
     fullPage: true,
   })
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/integrations-hub-ui-255/mobile.png',
+    fullPage: true,
+  })
+  const externalConnections = page.getByRole('heading', { name: '외부 연결 원칙' })
+  await externalConnections.scrollIntoViewIfNeeded()
+  await expect(externalConnections).toBeInViewport()
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/integrations-hub-ui-255/mobile-bottom.png',
+    fullPage: false,
+  })
+})
+
+test('연결 및 통합 허브는 네 상태 조회를 서로 막지 않고 각각 복구한다', async ({ page }) => {
+  await mockApi(page)
+  let webhooksAvailable = false
+  let transfersAvailable = false
+  let aiAvailable = false
+  let authAvailable = false
+
+  await page.route('**/api/v1/webhooks', async (route) => {
+    if (!webhooksAvailable) {
+      await route.fulfill({ status: 503, json: { detail: 'webhooks unavailable' } })
+      return
+    }
+    await route.fulfill({
+      json: {
+        items: [],
+        total: 0,
+        enabled: true,
+        active_signing_key_id: '2026-q3',
+        available_signing_key_ids: ['2026-q3'],
+        rotations: [],
+      },
+    })
+  })
+  await page.route('**/api/v1/data-transfer-jobs', async (route) => {
+    if (!transfersAvailable) {
+      await route.fulfill({ status: 503, json: { detail: 'transfers unavailable' } })
+      return
+    }
+    await route.fulfill({ json: { items: [], total: 0, limit: 50, offset: 0 } })
+  })
+  await page.route('**/api/v1/admin/workspace/features/ai', async (route) => {
+    if (!aiAvailable) {
+      await route.fulfill({ status: 503, json: { detail: 'ai policy unavailable' } })
+      return
+    }
+    await route.fulfill({
+      json: {
+        feature_key: 'ai',
+        enabled: true,
+        revision: 5,
+        deployment_enabled: false,
+        effective_enabled: false,
+        updated_by_user_id: 'me-1',
+        updated_by_name: 'Dev User',
+        updated_at: '2026-07-26T04:00:00Z',
+      },
+    })
+  })
+  await page.route('**/api/v1/auth/config', async (route) => {
+    if (!authAvailable) {
+      await route.fulfill({ status: 503, json: { detail: 'auth config unavailable' } })
+      return
+    }
+    await route.fulfill({
+      json: {
+        auth_mode: 'dev',
+        oidc_issuer: null,
+        oidc_client_id: null,
+        oidc_provider: null,
+        oidc_providers: [],
+        has_client_secret: false,
+        command_palette_enabled: true,
+        session_management_enabled: true,
+        password_required: false,
+        oidc_login_enabled: false,
+      },
+    })
+  })
+
+  await page.goto('/admin/integrations')
+  const webhookStatus = page.getByLabel('Webhooks 상태')
+  const transferStatus = page.getByLabel('데이터 전송 상태')
+  const aiStatus = page.getByLabel('AI 작업 요약 상태')
+  const authStatus = page.getByLabel('인증 상태')
+  const summary = page.getByLabel('통합 상태 요약')
+
+  await expect(webhookStatus.getByText('확인 실패')).toBeVisible()
+  await expect(transferStatus.getByText('확인 실패')).toBeVisible()
+  await expect(aiStatus.getByText('확인 실패')).toBeVisible()
+  await expect(authStatus.getByText('확인 실패')).toBeVisible()
+  await expect(
+    summary.getByText('실패', { exact: true }).locator('..').getByText('4', { exact: true }),
+  ).toBeVisible()
+
+  transfersAvailable = true
+  await page.getByLabel('데이터 전송 다시 시도').click()
+  await expect(transferStatus.getByText('기록 없음')).toBeVisible()
+  await expect(webhookStatus.getByText('확인 실패')).toBeVisible()
+
+  aiAvailable = true
+  await page.getByLabel('AI 작업 요약 다시 시도').click()
+  await expect(aiStatus.getByText('배포 차단')).toBeVisible()
+  await expect(authStatus.getByText('확인 실패')).toBeVisible()
+
+  authAvailable = true
+  await page.getByLabel('인증 다시 시도').click()
+  await expect(authStatus.getByText('개발 모드')).toBeVisible()
+
+  webhooksAvailable = true
+  await page.getByLabel('Webhooks 다시 시도').click()
+  await expect(webhookStatus.getByText('준비됨')).toBeVisible()
+  await expect(
+    summary.getByText('확인', { exact: true }).locator('..').getByText('4', { exact: true }),
+  ).toBeVisible()
+  await expect(
+    summary.getByText('실패', { exact: true }).locator('..').getByText('0', { exact: true }),
+  ).toBeVisible()
+  await expectNoHorizontalOverflow(page)
 })
 
 test('관리자 webhook 표면이 endpoint와 delivery lifecycle을 실제 요청에 연결한다', async ({ page }) => {
