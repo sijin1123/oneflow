@@ -6311,6 +6311,7 @@ test('대시보드가 집계 타일과 분포를 보여준다', async ({ page })
   let sharedWidgets: string[] | null = null
   let sharedVersion = 0
   let failSharedUpdateOnce = false
+  let failPersonalSaveOnce = false
   const layoutPayload = () => {
     const source = personalWidgets ? 'personal' : sharedWidgets ? 'shared' : 'builtin'
     return {
@@ -6355,6 +6356,14 @@ test('대시보드가 집계 타일과 분포를 보여준다', async ({ page })
   })
   await page.route(`**/api/v1/projects/${project.id}/dashboard/layout`, async (route) => {
     if (route.request().method() === 'PUT') {
+      if (failPersonalSaveOnce) {
+        failPersonalSaveOnce = false
+        await route.fulfill({
+          status: 503,
+          json: { detail: 'personal dashboard layout temporarily unavailable' },
+        })
+        return
+      }
       personalWidgets = (route.request().postDataJSON() as { widgets: string[] }).widgets
       await route.fulfill({ json: layoutPayload() })
       return
@@ -6380,19 +6389,23 @@ test('대시보드가 집계 타일과 분포를 보여준다', async ({ page })
   await expect(main.getByText('10.5 / 40h')).toBeVisible()
   await expect(main.getByText('상태별')).toBeVisible()
   await expect(main.getByText('기본 레이아웃', { exact: true })).toBeVisible()
+  await expect(main.getByText('Reporting', { exact: true })).toHaveCount(0)
+  await expect(
+    page.getByTestId('frame-context-actions').getByRole('button', { name: '위젯 편집' }),
+  ).toBeVisible()
   // Type distribution widget (Pass 58): renders from the existing payload.
   await expect(main.getByText('타입별')).toBeVisible()
   const recentWork = main.getByRole('region', { name: '최근 작업' })
   await expect(recentWork.getByText(wpA.subject)).toBeVisible()
   await expect(recentWork.getByText('Dev User')).toBeVisible()
   await page.screenshot({
-    path: '../../docs/screenshots/redevelopment/project-overview-ui/desktop.png',
+    path: '../../docs/screenshots/redevelopment/project-dashboard-ui-252/desktop.png',
     fullPage: true,
   })
   await page.setViewportSize({ width: 390, height: 844 })
   await expectNoHorizontalOverflow(page)
   await page.screenshot({
-    path: '../../docs/screenshots/redevelopment/project-overview-ui/mobile.png',
+    path: '../../docs/screenshots/redevelopment/project-dashboard-ui-252/mobile.png',
     fullPage: true,
   })
 
@@ -6414,9 +6427,27 @@ test('대시보드가 집계 타일과 분포를 보여준다', async ({ page })
   await expect(page.getByText('todo → in_progress', { exact: false })).toBeVisible()
 
   // Publish a shared layout, keep a private override, then return to shared.
+  await page.setViewportSize({ width: 1280, height: 720 })
   await page.getByRole('button', { name: '위젯 편집' }).click()
+  await expect(page.getByRole('dialog', { name: '대시보드 위젯 편집' })).toBeVisible()
+  await page.waitForTimeout(250)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/project-dashboard-ui-252/editor-desktop.png',
+    fullPage: true,
+  })
+  await page.setViewportSize({ width: 390, height: 844 })
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/project-dashboard-ui-252/editor-mobile.png',
+    fullPage: true,
+  })
   await page.getByLabel('비용/예산 타일 표시').uncheck()
+  await page.getByRole('button', { name: '위젯 편집 창 닫기' }).click()
+  await expect(page.getByText('변경 내용을 버릴까요?')).toBeVisible()
+  await page.getByRole('button', { name: '계속 편집' }).click()
+  await expect(page.getByLabel('비용/예산 타일 표시')).not.toBeChecked()
   await page.getByRole('button', { name: '프로젝트 공유로 게시' }).click()
+  await expect(page.getByRole('button', { name: '위젯 편집' })).toBeFocused()
   await expect(main.getByText('프로젝트 공유', { exact: true })).toBeVisible()
   await expect(page.getByText('비용 합계')).toBeHidden()
   expect(sharedWidgets).toEqual([
@@ -6443,12 +6474,12 @@ test('대시보드가 집계 타일과 분포를 보여준다', async ({ page })
   // A stale owner tab keeps its draft and can refresh/retry the shared revision.
   failSharedUpdateOnce = true
   await page.getByRole('button', { name: '위젯 편집' }).click()
+  await expect(page.getByRole('dialog', { name: '대시보드 위젯 편집' })).toBeVisible()
   await page.getByLabel('우선순위별 분포 표시').uncheck()
   await page.getByRole('button', { name: '프로젝트 공유 업데이트' }).click()
-  await expect(page.getByRole('alert')).toContainText('편집 초안은 유지됩니다')
+  await expect(page.getByRole('alert')).toContainText('현재 초안을 유지')
   await expect(page.getByLabel('우선순위별 분포 표시')).not.toBeChecked()
-  await page.getByRole('button', { name: '최신 공유 버전 불러오기' }).click()
-  await page.getByRole('button', { name: '프로젝트 공유 업데이트' }).click()
+  await page.getByRole('button', { name: '최신 버전으로 다시 시도' }).click()
   await expect(main.getByText('프로젝트 공유', { exact: true })).toBeVisible()
   expect(sharedWidgets).toEqual([
     'summary',
@@ -6460,7 +6491,13 @@ test('대시보드가 집계 타일과 분포를 보여준다', async ({ page })
 
   await page.getByRole('button', { name: '위젯 편집' }).click()
   await page.getByLabel('상태별 분포 표시').uncheck()
+  failPersonalSaveOnce = true
   await page.getByRole('button', { name: '개인 레이아웃 저장' }).click()
+  await expect(page.getByRole('alert')).toContainText(
+    'personal dashboard layout temporarily unavailable',
+  )
+  await expect(page.getByLabel('상태별 분포 표시')).not.toBeChecked()
+  await page.getByRole('button', { name: '개인 저장 다시 시도' }).click()
   await expect(main.getByText('개인 레이아웃', { exact: true })).toBeVisible()
   expect(personalWidgets).toEqual([
     'summary',
@@ -6474,6 +6511,7 @@ test('대시보드가 집계 타일과 분포를 보여준다', async ({ page })
   await expect(main.getByText('우선순위별')).toBeHidden()
 
   await page.getByRole('button', { name: '공유 레이아웃 삭제' }).click()
+  await expect(page.getByRole('dialog', { name: '공유 레이아웃을 삭제할까요?' })).toBeVisible()
   await page.getByRole('button', { name: '삭제 확인' }).click()
   await expect(main.getByText('기본 레이아웃', { exact: true })).toBeVisible()
   await expect(page.getByText('비용 합계')).toBeVisible()
@@ -6538,6 +6576,93 @@ test('보관된 빈 프로젝트 개요가 읽기 상태와 empty state를 표�
   await expect(page.getByRole('button', { name: /프로젝트 공유/ })).toHaveCount(0)
   await expect(page.getByText('아직 작업이 없습니다.')).toBeVisible()
   await expect(page.getByText('0%')).toBeVisible()
+})
+
+test('대시보드 활동과 멤버 필터가 조회 실패 후 같은 위치에서 복구된다', async ({ page }) => {
+  await mockApi(page)
+  await mockProjectOverview(page)
+  await page.route(`**/api/v1/projects/${project.id}/dashboard/layout`, (route) =>
+    route.fulfill({
+      json: {
+        widgets: ['recent_activity'],
+        updated_at: null,
+        is_default: true,
+        source: 'builtin',
+        shared_layout: null,
+        can_manage_shared: false,
+      },
+    }),
+  )
+  let activityAttempts = 0
+  await page.route(`**/api/v1/projects/${project.id}/activities**`, async (route) => {
+    activityAttempts += 1
+    if (activityAttempts <= 2) {
+      await route.fulfill({ status: 503, json: { detail: 'activity temporarily unavailable' } })
+      return
+    }
+    await route.fulfill({
+      json: {
+        items: [
+          {
+            id: 'dashboard-activity-recovered',
+            work_package_id: wpA.id,
+            work_package_subject: wpA.subject,
+            actor_id: 'me-1',
+            actor_name: 'Dev User',
+            actor_profile_image_url: null,
+            action: 'commented',
+            field: null,
+            old_value: null,
+            new_value: null,
+            created_at: '2026-07-06T00:00:00Z',
+          },
+        ],
+        total: 1,
+        truncated: false,
+      },
+    })
+  })
+  let memberAttempts = 0
+  await page.route(`**/api/v1/projects/${project.id}/members`, async (route) => {
+    memberAttempts += 1
+    if (memberAttempts <= 2) {
+      await route.fulfill({ status: 503, json: { detail: 'members temporarily unavailable' } })
+      return
+    }
+    await route.fulfill({
+      json: {
+        items: [
+          {
+            user_id: 'me-1',
+            email: 'dev@oneflow.local',
+            display_name: 'Dev User',
+            role: 'owner',
+          },
+        ],
+        total: 1,
+      },
+    })
+  })
+
+  await page.goto(`/projects/${project.id}/dashboard`)
+  const activity = page.getByRole('region', { name: '최근 활동' })
+  await expect(activity.getByText('활동을 불러오지 못했습니다.')).toBeVisible()
+  await expect(activity.getByText('멤버 필터를 불러오지 못했습니다.')).toBeVisible()
+  await activity
+    .getByText('활동을 불러오지 못했습니다.')
+    .locator('..')
+    .getByRole('button', { name: '다시 시도' })
+    .click()
+  await expect(activity.getByText(wpA.subject)).toBeVisible()
+  await activity
+    .getByText('멤버 필터를 불러오지 못했습니다.')
+    .locator('..')
+    .getByRole('button', { name: '다시 시도' })
+    .click()
+  await expect(activity.getByLabel('활동 멤버')).toBeEnabled()
+  await expect(activity.getByLabel('활동 멤버').locator('option')).toHaveCount(2)
+  expect(activityAttempts).toBe(3)
+  expect(memberAttempts).toBe(3)
 })
 
 test('뷰어는 목록에서 생성·벌크 컨트롤이 없고 읽기 전용 안내를 본다', async ({ page }) => {
