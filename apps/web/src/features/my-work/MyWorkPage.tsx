@@ -6,6 +6,7 @@ import {
   FolderKanban,
   Gauge,
   ListChecks,
+  Pencil,
   Pin,
   Plus,
   Search,
@@ -20,6 +21,7 @@ import { useEffect, useState } from 'react'
 import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom'
 
 import { EmptyState, ErrorState, ListSkeleton } from '@/components/shell/states'
+import { FrameContextActions } from '@/components/shell/FrameContextActions'
 import { Avatar } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -41,7 +43,7 @@ import {
   getNotificationTargetPath,
 } from '@/features/notifications/view'
 import { useProjects } from '@/features/projects/api'
-import { profileImageSrc } from '@/features/members/api'
+import { profileImageSrc, useMe } from '@/features/members/api'
 import { usePersonalNotes } from '@/features/personal-notes/api'
 import { FIELD_LABELS } from '@/features/work-packages/activityLabels'
 import { PriorityChip, StatusChip } from '@/features/work-packages/chips'
@@ -79,10 +81,13 @@ const MY_WORK_TABS: Array<{ key: MyWorkTab; label: string }> = [
   { key: 'activity', label: '활동' },
 ]
 
-function MyWorkTabs({ active }: { active: MyWorkTab }) {
+function MyWorkTabs({ active, compact = false }: { active: MyWorkTab; compact?: boolean }) {
   return (
-    <nav aria-label="내 작업 보기" className="mt-4 overflow-x-auto">
-      <div className="flex min-w-max gap-1 border-b border-of-border">
+    <nav
+      aria-label="내 작업 보기"
+      className={cn('overflow-x-auto', compact ? 'shrink-0 border-b border-of-border-subtle px-4 sm:px-6' : 'mt-4')}
+    >
+      <div className={cn('flex min-w-max gap-1', !compact && 'border-b border-of-border')}>
         {MY_WORK_TABS.map((tab) => (
           <Link
             key={tab.key}
@@ -170,6 +175,13 @@ function MyWorkProfileSurface({
 }) {
   const [params, setParams] = useSearchParams()
   const navigate = useNavigate()
+  const me = useMe()
+  const projects = useProjects()
+  const [profileOpen, setProfileOpen] = useState(() => (
+    typeof window === 'undefined'
+    || typeof window.matchMedia !== 'function'
+    || window.matchMedia('(min-width: 1024px)').matches
+  ))
   const q = params.get('q')?.trim() ?? ''
   const state: MyWorkItemState = params.get('state') === 'all' ? 'all' : 'open'
   const sort: MyWorkItemSort = params.get('sort') === 'due' ? 'due' : 'updated'
@@ -198,6 +210,7 @@ function MyWorkProfileSurface({
   const activityItems = activities.data?.items ?? []
   const workItemItems = workItems.data?.items ?? []
   const total = query.data?.total ?? 0
+  const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
 
   const updateParams = (updates: Record<string, string | null>) => {
     const next = new URLSearchParams(window.location.search)
@@ -233,180 +246,276 @@ function MyWorkProfileSurface({
   }[tab]
 
   return (
-    <div className="mx-auto flex w-full max-w-6xl min-w-0 flex-col gap-4 px-4 py-5 sm:px-6">
-      <header className="min-w-0">
-        <p className="mb-1 text-[11px] font-medium uppercase text-of-muted">Your work</p>
-        <div className="flex min-w-0 flex-wrap items-end justify-between gap-3">
-          <div className="min-w-0">
-            <h1 className="text-base font-semibold">{labels.title}</h1>
-            <p className="mt-1 max-w-2xl text-xs leading-5 text-of-muted">
-              {labels.description}
-            </p>
-          </div>
+    <div className="flex min-h-full min-w-0 flex-col bg-of-surface">
+      <FrameContextActions>
+        <div role="toolbar" aria-label="내 작업 화면 제어" className="flex items-center gap-1.5">
           {query.data ? (
-            <Badge variant={total > 0 ? 'accent' : 'outline'}>{total}건</Badge>
+            <span className="px-1 text-xs tabular-nums text-of-muted">{total}건</span>
           ) : null}
-        </div>
-        <MyWorkTabs active={tab} />
-      </header>
-
-      <section
-        aria-label="내 작업 필터"
-        className="flex min-w-0 flex-col gap-2 border-y border-of-border py-3 md:flex-row md:items-end"
-      >
-        <form
-          className="min-w-0 flex-1"
-          onSubmit={(event) => {
-            event.preventDefault()
-            const value = String(new FormData(event.currentTarget).get('q') ?? '').trim()
-            updateParams({ q: value || null, offset: null })
-          }}
-        >
-          <label className="block">
-            <span className="mb-1 block text-xs font-medium text-of-muted">검색</span>
-            <Input
-              key={q}
-              name="q"
-              defaultValue={q}
-              maxLength={255}
-              placeholder={activityTab ? '작업 또는 프로젝트 검색' : '작업 제목 검색'}
-              aria-label="내 작업 검색"
-            />
-          </label>
-        </form>
-        {!activityTab ? (
-          <>
-            <label className="min-w-36">
-              <span className="mb-1 block text-xs font-medium text-of-muted">범위</span>
-              <Select
-                aria-label="작업 범위"
-                value={state}
-                onChange={(event) =>
-                  updateParams({
-                    state: event.target.value === 'all' ? 'all' : null,
-                    offset: null,
-                  })
-                }
-              >
-                <option value="open">열린 작업</option>
-                <option value="all">전체 작업</option>
-              </Select>
-            </label>
-            <label className="min-w-36">
-              <span className="mb-1 block text-xs font-medium text-of-muted">정렬</span>
-              <Select
-                aria-label="작업 정렬"
-                value={sort}
-                onChange={(event) =>
-                  updateParams({
-                    sort: event.target.value === 'due' ? 'due' : null,
-                    offset: null,
-                  })
-                }
-              >
-                <option value="updated">최근 변경순</option>
-                <option value="due">기한순</option>
-              </Select>
-            </label>
-          </>
-        ) : null}
-        <Button
-          variant="outline"
-          onClick={() => updateParams({ q: null, state: null, sort: null, offset: null })}
-          disabled={!q && state === 'open' && sort === 'updated' && offset === 0}
-        >
-          초기화
-        </Button>
-      </section>
-
-      {query.isPending ? (
-        <ListSkeleton rows={6} />
-      ) : query.isError ? (
-        <ErrorState error={query.error} onRetry={() => query.refetch()} />
-      ) : activityTab ? (
-        activityItems.length === 0 ? (
-          <EmptyState title={labels.empty} hint="검색을 지우거나 다른 탭을 확인해 보세요." />
-        ) : (
-          <ul
-            aria-label="내 프로젝트 활동 목록"
-            className="divide-y divide-of-border border-y border-of-border"
+          <Button
+            type="button"
+            size="sm"
+            variant={profileOpen ? 'secondary' : 'outline'}
+            aria-expanded={profileOpen}
+            aria-controls="my-work-profile"
+            onClick={() => setProfileOpen((value) => !value)}
           >
-            {activityItems.map((activity) => (
-              <li key={activity.id}>
-                <button
-                  type="button"
-                  className="grid min-h-12 w-full min-w-0 grid-cols-[1.5rem_minmax(0,1fr)] items-center gap-2 px-3 py-2 text-left hover:bg-of-surface-2 sm:grid-cols-[1.5rem_minmax(0,1fr)_auto]"
+            프로필
+          </Button>
+        </div>
+      </FrameContextActions>
+
+      <MyWorkTabs active={tab} compact />
+
+      <div className={cn('grid min-h-0 flex-1', profileOpen && 'lg:grid-cols-[minmax(0,1fr)_18rem]')}>
+        <main className="min-w-0 px-4 py-4 sm:px-6">
+          <div className="mb-3 flex min-w-0 flex-wrap items-end justify-between gap-2">
+            <div className="min-w-0">
+              <h1 className="text-sm font-semibold">{labels.title}</h1>
+              <p className="mt-0.5 text-xs text-of-muted">{labels.description}</p>
+            </div>
+          </div>
+
+          <section
+            aria-label="내 작업 필터"
+            className="mb-4 flex min-w-0 flex-col gap-2 border-y border-of-border-subtle py-2 sm:flex-row sm:items-center"
+          >
+            <form
+              className="min-w-0 flex-1"
+              onSubmit={(event) => {
+                event.preventDefault()
+                const value = String(new FormData(event.currentTarget).get('q') ?? '').trim()
+                updateParams({ q: value || null, offset: null })
+              }}
+            >
+              <label>
+                <span className="sr-only">검색</span>
+                <Input
+                  key={q}
+                  name="q"
+                  defaultValue={q}
+                  maxLength={255}
+                  placeholder={activityTab ? '작업 또는 프로젝트 검색' : '작업 제목 검색'}
+                  aria-label="내 작업 검색"
+                />
+              </label>
+            </form>
+            {!activityTab ? (
+              <>
+                <label className="sm:w-32">
+                  <span className="sr-only">범위</span>
+                  <Select
+                    aria-label="작업 범위"
+                    value={state}
+                    onChange={(event) =>
+                      updateParams({
+                        state: event.target.value === 'all' ? 'all' : null,
+                        offset: null,
+                      })
+                    }
+                  >
+                    <option value="open">열린 작업</option>
+                    <option value="all">전체 작업</option>
+                  </Select>
+                </label>
+                <label className="sm:w-32">
+                  <span className="sr-only">정렬</span>
+                  <Select
+                    aria-label="작업 정렬"
+                    value={sort}
+                    onChange={(event) =>
+                      updateParams({
+                        sort: event.target.value === 'due' ? 'due' : null,
+                        offset: null,
+                      })
+                    }
+                  >
+                    <option value="updated">최근 변경순</option>
+                    <option value="due">기한순</option>
+                  </Select>
+                </label>
+              </>
+            ) : null}
+            <Button
+              variant="outline"
+              onClick={() => updateParams({ q: null, state: null, sort: null, offset: null })}
+              disabled={!q && state === 'open' && sort === 'updated' && offset === 0}
+            >
+              초기화
+            </Button>
+          </section>
+
+          {query.isPending ? (
+            <ListSkeleton rows={6} />
+          ) : query.isError ? (
+            <ErrorState error={query.error} onRetry={() => query.refetch()} />
+          ) : activityTab ? (
+            activityItems.length === 0 ? (
+              <EmptyState title={labels.empty} hint="검색을 지우거나 다른 탭을 확인해 보세요." />
+            ) : (
+              <ul
+                aria-label="내 프로젝트 활동 목록"
+                className="divide-y divide-of-border border-y border-of-border"
+              >
+                {activityItems.map((activity) => (
+                  <li key={activity.id}>
+                    <button
+                      type="button"
+                      className="grid min-h-12 w-full min-w-0 grid-cols-[1.5rem_minmax(0,1fr)] items-center gap-2 px-3 py-2 text-left hover:bg-of-surface-2 sm:grid-cols-[1.5rem_minmax(0,1fr)_auto]"
+                      onClick={() =>
+                        navigate(
+                          `/projects/${activity.project_id}/work-packages?wp=${activity.work_package_id}`,
+                        )
+                      }
+                    >
+                      <Avatar
+                        name={activity.actor_name ?? '시스템'}
+                        src={profileImageSrc(activity)}
+                        size="sm"
+                      />
+                      <span className="min-w-0 truncate text-[13px]">
+                        <strong className="font-medium">{activity.actor_name ?? '시스템'}</strong>{' '}
+                        <span className="text-of-muted">
+                          {activity.project_name} · {activity.work_package_subject}
+                        </span>{' '}
+                        · {actionText(activity)}
+                      </span>
+                      <span className="col-start-2 text-[11px] text-of-muted sm:col-start-auto">
+                        {formatDateTime(activity.created_at)}
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )
+          ) : workItemItems.length === 0 ? (
+            <EmptyState title={labels.empty} hint="검색이나 작업 범위를 조정해 보세요." />
+          ) : (
+            <WorkList
+              items={workItemItems}
+              emptyText={labels.empty}
+              showAssignee={tab !== 'assigned'}
+              showUpdated={sort === 'updated'}
+            />
+          )}
+
+          {query.data && (offset > 0 || offset + query.data.items.length < total) ? (
+            <nav aria-label="내 작업 페이지" className="mt-4 flex items-center justify-between gap-3">
+              <span className="text-xs tabular-nums text-of-muted">
+                {total === 0 ? 0 : offset + 1}-
+                {Math.min(offset + query.data.items.length, total)} / {total}
+              </span>
+              <div className="flex gap-1">
+                <Button
+                  size="icon"
+                  variant="outline"
+                  aria-label="이전 페이지"
+                  disabled={offset === 0}
                   onClick={() =>
-                    navigate(
-                      `/projects/${activity.project_id}/work-packages?wp=${activity.work_package_id}`,
-                    )
+                    updateParams({
+                      offset: offset > PROFILE_PAGE_SIZE ? String(offset - PROFILE_PAGE_SIZE) : null,
+                    })
                   }
                 >
-                  <Avatar
-                    name={activity.actor_name ?? '시스템'}
-                    src={profileImageSrc(activity)}
-                    size="sm"
-                  />
-                  <span className="min-w-0 truncate text-[13px]">
-                    <strong className="font-medium">{activity.actor_name ?? '시스템'}</strong>{' '}
-                    <span className="text-of-muted">
-                      {activity.project_name} · {activity.work_package_subject}
-                    </span>{' '}
-                    · {actionText(activity)}
-                  </span>
-                  <span className="col-start-2 text-[11px] text-of-muted sm:col-start-auto">
-                    {formatDateTime(activity.created_at)}
-                  </span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        )
-      ) : workItemItems.length === 0 ? (
-        <EmptyState title={labels.empty} hint="검색이나 작업 범위를 조정해 보세요." />
-      ) : (
-        <WorkList
-          items={workItemItems}
-          emptyText={labels.empty}
-          showAssignee={tab !== 'assigned'}
-          showUpdated={sort === 'updated'}
-        />
-      )}
+                  <ChevronLeft />
+                </Button>
+                <Button
+                  size="icon"
+                  variant="outline"
+                  aria-label="다음 페이지"
+                  disabled={offset + query.data.items.length >= total}
+                  onClick={() =>
+                    updateParams({ offset: String(offset + PROFILE_PAGE_SIZE) })
+                  }
+                >
+                  <ChevronRight />
+                </Button>
+              </div>
+            </nav>
+          ) : null}
+        </main>
 
-      {query.data && (offset > 0 || offset + query.data.items.length < total) ? (
-        <nav aria-label="내 작업 페이지" className="flex items-center justify-between gap-3">
-          <span className="text-xs tabular-nums text-of-muted">
-            {total === 0 ? 0 : offset + 1}-
-            {Math.min(offset + query.data.items.length, total)} / {total}
-          </span>
-          <div className="flex gap-1">
-            <Button
-              size="icon"
-              variant="outline"
-              aria-label="이전 페이지"
-              disabled={offset === 0}
-              onClick={() =>
-                updateParams({
-                  offset: offset > PROFILE_PAGE_SIZE ? String(offset - PROFILE_PAGE_SIZE) : null,
-                })
-              }
-            >
-              <ChevronLeft />
-            </Button>
-            <Button
-              size="icon"
-              variant="outline"
-              aria-label="다음 페이지"
-              disabled={offset + query.data.items.length >= total}
-              onClick={() =>
-                updateParams({ offset: String(offset + PROFILE_PAGE_SIZE) })
-              }
-            >
-              <ChevronRight />
-            </Button>
-          </div>
-        </nav>
-      ) : null}
+        {profileOpen ? (
+          <aside
+            id="my-work-profile"
+            aria-label="내 프로필"
+            className="order-first min-w-0 border-b border-of-border-subtle bg-of-surface-raised lg:order-none lg:border-b-0 lg:border-l"
+          >
+            <div className="h-20 bg-of-accent-soft" aria-hidden="true" />
+            <div className="-mt-5 px-5 pb-5">
+              <div className="flex items-end justify-between gap-3">
+                <Avatar
+                  name={me.data?.display_name ?? '사용자'}
+                  src={profileImageSrc(me.data)}
+                  size="lg"
+                  className="h-12 w-12 border-2 border-of-surface-raised text-base"
+                />
+                <Link
+                  to="/settings"
+                  className="of-touch-target inline-flex h-8 w-8 items-center justify-center rounded-of border border-of-border bg-of-surface text-of-muted hover:bg-of-surface-hover hover:text-of-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus"
+                  aria-label="프로필 편집"
+                >
+                  <Pencil size={14} aria-hidden="true" />
+                </Link>
+              </div>
+
+              {me.isPending ? (
+                <div className="mt-4 h-14 animate-pulse rounded-of bg-of-surface-2" />
+              ) : me.isError ? (
+                <div className="mt-4">
+                  <ErrorState error={me.error} onRetry={() => me.refetch()} />
+                </div>
+              ) : (
+                <div className="mt-3 min-w-0">
+                  <p className="truncate text-sm font-semibold">{me.data?.display_name}</p>
+                  <p className="mt-0.5 truncate text-xs text-of-muted">{me.data?.email}</p>
+                  <dl className="mt-4 grid grid-cols-[4.5rem_minmax(0,1fr)] gap-y-2 text-xs">
+                    <dt className="text-of-muted">시간대</dt>
+                    <dd className="truncate">{timezone}</dd>
+                    <dt className="text-of-muted">상태</dt>
+                    <dd>{me.data?.is_active ? '활성' : '비활성'}</dd>
+                  </dl>
+                </div>
+              )}
+
+              <section aria-label="참여 프로젝트" className="mt-5 border-t border-of-border-subtle pt-4">
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <h2 className="text-xs font-semibold">참여 프로젝트</h2>
+                  <span className="text-[11px] tabular-nums text-of-muted">{projects.data?.total ?? 0}</span>
+                </div>
+                {projects.isPending ? (
+                  <div className="h-10 animate-pulse rounded-of bg-of-surface-2" />
+                ) : projects.isError ? (
+                  <button type="button" className="text-xs text-of-accent hover:underline" onClick={() => projects.refetch()}>
+                    프로젝트 다시 불러오기
+                  </button>
+                ) : projects.data?.items.length ? (
+                  <ul className="space-y-1">
+                    {projects.data.items.slice(0, 6).map((project) => (
+                      <li key={project.id}>
+                        <Link
+                          to={`/projects/${project.id}/overview`}
+                          className="flex min-w-0 items-center gap-2 rounded-of px-2 py-2 text-xs hover:bg-of-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus"
+                        >
+                          <span className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-of bg-of-accent-soft text-[10px] font-semibold text-of-accent">
+                            {project.key.slice(0, 2)}
+                          </span>
+                          <span className="min-w-0 flex-1 truncate">{project.name}</span>
+                          <span className="shrink-0 text-[10px] text-of-muted">
+                            {project.current_user_role === 'owner' ? '소유자' : project.current_user_role === 'viewer' ? '보기' : '멤버'}
+                          </span>
+                        </Link>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="text-xs text-of-muted">참여 중인 프로젝트가 없습니다.</p>
+                )}
+              </section>
+            </div>
+          </aside>
+        ) : null}
+      </div>
     </div>
   )
 }
