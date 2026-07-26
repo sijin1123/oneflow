@@ -10,9 +10,12 @@ import {
   Copy,
   ExternalLink,
   Flag,
+  FileText,
+  Link2,
   Layers3,
   ListTree,
   MoveRight,
+  Paperclip,
   Signal,
   SlidersHorizontal,
   Tag,
@@ -26,6 +29,7 @@ import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent, PointerEvent a
 import { Link, useSearchParams } from 'react-router-dom'
 
 import { ErrorState, ListSkeleton } from '@/components/shell/states'
+import { FrameContextActions } from '@/components/shell/FrameContextActions'
 import { Avatar, AvatarGroup } from '@/components/ui/avatar'
 import { Input } from '@/components/ui/input'
 import { AiSummarySection } from '@/features/ai/AiSummarySection'
@@ -231,12 +235,14 @@ export function WorkPackageDetailPanel({
   showFullPageLink = true,
   initialMoveOpen = false,
   resizableProperties = false,
+  fullPage = false,
 }: {
   wp: WorkPackage
   projectId: string
   showFullPageLink?: boolean
   initialMoveOpen?: boolean
   resizableProperties?: boolean
+  fullPage?: boolean
 }) {
   const patch = usePatchWorkPackage(projectId)
   const queryClient = useQueryClient()
@@ -254,7 +260,12 @@ export function WorkPackageDetailPanel({
   const canWrite = useCanWrite(projectId)
   const [moveOpen, setMoveOpen] = useState(false)
   const [activeTab, setActiveTab] = useState<'overview' | 'activity'>('overview')
-  const [propertiesOpen, setPropertiesOpen] = useState(true)
+  const [propertiesOpen, setPropertiesOpen] = useState(() => (
+    !fullPage
+    || typeof window === 'undefined'
+    || typeof window.matchMedia !== 'function'
+    || window.matchMedia('(min-width: 1024px)').matches
+  ))
   const detailGridRef = useRef<HTMLDivElement>(null)
   const propertiesFieldsRef = useRef<HTMLDivElement>(null)
   const resizeRef = useRef<{
@@ -441,30 +452,71 @@ export function WorkPackageDetailPanel({
     </Link>
   ) : null
   const currentTypeLabel = projectTypes.options.find((type) => type.key === wp.type)?.label ?? wp.type
+  const commandToolbar = (
+    <div
+      role="toolbar"
+      aria-label="작업 명령"
+      className="flex min-w-0 shrink-0 items-center gap-1"
+    >
+      <WatchControl wpId={wp.id} canWrite={canWrite} />
+      {canWrite ? (
+        <>
+          <IconButton
+            label="복제"
+            disabled={duplicate.isPending}
+            onClick={() => duplicate.mutate(wp.id)}
+          >
+            <Copy aria-hidden="true" />
+          </IconButton>
+          <IconButton
+            label="이동"
+            aria-expanded={moveOpen}
+            onClick={() => setMoveOpen((value) => !value)}
+          >
+            <MoveRight aria-hidden="true" />
+          </IconButton>
+        </>
+      ) : null}
+      {fullPageLink}
+    </div>
+  )
 
   return (
-    <div className="space-y-4">
+    <div className={fullPage ? 'flex min-h-full min-w-0 flex-col' : 'space-y-4'}>
+      {fullPage ? <FrameContextActions>{commandToolbar}</FrameContextActions> : null}
       {saveError ? (
-        <p role="alert" className="rounded-of bg-of-danger/10 px-3 py-2 text-xs text-of-danger">
+        <p
+          role="alert"
+          className={fullPage
+            ? 'mx-5 mt-4 rounded-of bg-of-danger/10 px-3 py-2 text-xs text-of-danger sm:mx-8'
+            : 'rounded-of bg-of-danger/10 px-3 py-2 text-xs text-of-danger'}
+        >
           저장하지 못했습니다: {saveError}
         </p>
       ) : null}
-      <header className="space-y-2.5 border-b border-of-border pb-3">
+      <header
+        className={fullPage
+          ? 'space-y-3 border-b border-of-border-subtle px-5 pb-4 pt-5 sm:px-8'
+          : 'space-y-2.5 border-b border-of-border pb-3'}
+      >
         <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0 flex-1">
-            <p className="px-1 text-[11px] font-medium text-of-muted">
-              {currentTypeLabel} · v{wp.version}
-              {createdByName ? ` · ${createdByName} 생성` : ''}
+            <p className="px-1 text-[11px] font-semibold uppercase text-of-muted">
+              {fullPage ? `OF-${wp.id.slice(0, 8).toUpperCase()} · ${currentTypeLabel}` : `${currentTypeLabel} · v${wp.version}`}
+              {!fullPage && createdByName ? ` · ${createdByName} 생성` : ''}
             </p>
             <label htmlFor="wp-subject" className="sr-only">
               제목
             </label>
+            <h1 className="sr-only">{subject}</h1>
             <Input
               id="wp-subject"
               readOnly={!canWrite}
               value={subject}
               disabled={!canWrite || patch.isPending}
-              className="h-10 rounded-none !border-0 !border-b !border-b-transparent !bg-transparent px-1 text-xl font-semibold !shadow-none hover:!border-b-of-border focus-visible:!border-b-of-focus focus-visible:!ring-0 disabled:!bg-transparent read-only:!bg-transparent"
+              className={fullPage
+                ? 'h-12 rounded-none !border-0 !border-b !border-b-transparent !bg-transparent px-1 text-2xl font-semibold !shadow-none hover:!border-b-of-border focus-visible:!border-b-of-focus focus-visible:!ring-0 disabled:!bg-transparent read-only:!bg-transparent'
+                : 'h-10 rounded-none !border-0 !border-b !border-b-transparent !bg-transparent px-1 text-xl font-semibold !shadow-none hover:!border-b-of-border focus-visible:!border-b-of-focus focus-visible:!ring-0 disabled:!bg-transparent read-only:!bg-transparent'}
               onChange={(e) => setSubject(e.target.value)}
               onBlur={() => {
                 const trimmed = subject.trim()
@@ -473,28 +525,7 @@ export function WorkPackageDetailPanel({
             />
           </div>
 
-          <div
-            role="toolbar"
-            aria-label="작업 명령"
-            className="flex min-w-0 shrink-0 items-center gap-1 self-end sm:self-start"
-          >
-            <WatchControl wpId={wp.id} canWrite={canWrite} />
-            {canWrite ? (
-              <>
-                <IconButton
-                  label="복제"
-                  disabled={duplicate.isPending}
-                  onClick={() => duplicate.mutate(wp.id)}
-                >
-                  <Copy aria-hidden="true" />
-                </IconButton>
-                <IconButton label="이동" onClick={() => setMoveOpen((value) => !value)}>
-                  <MoveRight aria-hidden="true" />
-                </IconButton>
-              </>
-            ) : null}
-            {fullPageLink}
-          </div>
+          {!fullPage ? <div className="self-end sm:self-start">{commandToolbar}</div> : null}
         </div>
 
         <div className="flex flex-wrap items-center gap-2 text-xs text-of-muted">
@@ -557,7 +588,7 @@ export function WorkPackageDetailPanel({
         ) : null}
       </header>
 
-      <div role="tablist" aria-label="작업 상세 탭" className="flex gap-1 border-b border-of-border-subtle">
+      {!fullPage ? <div role="tablist" aria-label="작업 상세 탭" className="flex gap-1 border-b border-of-border-subtle">
         {[
           ['overview', '개요'],
           ['activity', '활동'],
@@ -577,17 +608,21 @@ export function WorkPackageDetailPanel({
             {label}
           </button>
         ))}
-      </div>
+      </div> : null}
 
-      {activeTab === 'overview' ? (
+      {fullPage || activeTab === 'overview' ? (
         <div
           ref={detailGridRef}
           style={detailGridStyle}
           className={resizableProperties
-            ? 'grid gap-4 lg:grid-cols-[minmax(0,1fr)_0.5rem_var(--detail-properties-width)] lg:gap-0'
+            ? 'grid min-w-0 lg:grid-cols-[minmax(0,1fr)_0.5rem_var(--detail-properties-width)]'
             : 'grid gap-4 lg:grid-cols-[minmax(0,1fr)_18rem]'}
         >
-          <div className={`space-y-4 ${resizableProperties ? 'lg:pr-4' : ''}`}>
+          <main
+            className={fullPage
+              ? 'min-w-0 space-y-5 px-5 py-5 sm:px-8 lg:pr-8'
+              : `space-y-4 ${resizableProperties ? 'lg:pr-4' : ''}`}
+          >
             <WorkItemDescriptionSection
               value={wp.description}
               canWrite={canWrite}
@@ -596,6 +631,38 @@ export function WorkPackageDetailPanel({
                 await sendAsync({ description })
               }}
             />
+
+            {fullPage ? (
+              <>
+                <nav
+                  aria-label="작업 연결 도구"
+                  className="flex max-w-full flex-wrap items-center gap-1 border-b border-of-border-subtle pb-4"
+                >
+                  {[
+                    { id: 'work-item-relations', label: '관계', icon: Link2 },
+                    { id: 'work-item-pages', label: '페이지', icon: FileText },
+                    { id: 'work-item-attachments', label: '첨부', icon: Paperclip },
+                  ].map(({ id, label, icon: ToolIcon }) => (
+                    <button
+                      key={id}
+                      type="button"
+                      className="of-touch-target inline-flex h-8 items-center gap-1.5 rounded-of border border-transparent px-2 text-xs font-medium text-of-muted transition-colors hover:border-of-border-subtle hover:bg-of-surface-hover hover:text-of-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus"
+                      onClick={() => document.getElementById(id)?.scrollIntoView({
+                        behavior: typeof window.matchMedia === 'function'
+                          && window.matchMedia('(prefers-reduced-motion: reduce)').matches
+                          ? 'auto'
+                          : 'smooth',
+                        block: 'start',
+                      })}
+                    >
+                      <ToolIcon size={13} aria-hidden="true" />
+                      {label}
+                    </button>
+                  ))}
+                </nav>
+                <HistorySection wpId={wp.id} projectId={projectId} />
+              </>
+            ) : null}
 
             <AiSummarySection wpId={wp.id} />
 
@@ -610,12 +677,18 @@ export function WorkPackageDetailPanel({
               canWrite={canWrite}
             />
 
-            <RelationsSection wpId={wp.id} projectId={projectId} canWrite={canWrite} />
+            <div id="work-item-relations" className="scroll-mt-4">
+              <RelationsSection wpId={wp.id} projectId={projectId} canWrite={canWrite} />
+            </div>
 
-            <PagesSection wpId={wp.id} projectId={projectId} />
+            <div id="work-item-pages" className="scroll-mt-4">
+              <PagesSection wpId={wp.id} projectId={projectId} />
+            </div>
 
-            <AttachmentsSection wpId={wp.id} projectId={projectId} />
-          </div>
+            <div id="work-item-attachments" className="scroll-mt-4">
+              <AttachmentsSection wpId={wp.id} projectId={projectId} />
+            </div>
+          </main>
 
           {resizableProperties ? (
             <button
@@ -642,7 +715,9 @@ export function WorkPackageDetailPanel({
 
           <aside
             aria-label="작업 속성"
-            className="order-first overflow-hidden rounded-of border border-of-border-subtle bg-of-surface lg:order-none lg:sticky lg:top-0 lg:self-start lg:rounded-none lg:border-y-0 lg:border-r-0"
+            className={fullPage
+              ? 'order-first overflow-hidden border-b border-of-border-subtle bg-of-surface lg:order-none lg:sticky lg:top-0 lg:min-h-full lg:self-start lg:border-b-0 lg:border-l'
+              : 'order-first overflow-hidden rounded-of border border-of-border-subtle bg-of-surface lg:order-none lg:sticky lg:top-0 lg:self-start lg:rounded-none lg:border-y-0 lg:border-r-0'}
           >
             <button
               type="button"

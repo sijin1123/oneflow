@@ -5201,8 +5201,11 @@ test('시간·비용 오류 행은 각각 실제 ledger 조회를 다시 시도�
   expect({ timeAttempts, costAttempts }).toEqual({ timeAttempts: 3, costAttempts: 3 })
 })
 
-test('작업 상세 전체 페이지가 드로어 IA와 활동 탭을 재사용한다', async ({ page }) => {
+test('작업 상세 전체 페이지가 단일 정보구조와 기능형 활동 범위를 제공한다', async ({ page }) => {
   await mockApi(page)
+  await page.route(`**/api/v1/work-packages/${wpA.id}/watchers/me`, (route) =>
+    route.fulfill({ status: 204 }),
+  )
   await page.goto(`/projects/${project.id}/work-packages`)
   await page.getByRole('button', { name: '워크패키지 API 구현', exact: true }).click()
   const drawer = page.getByRole('dialog')
@@ -5210,10 +5213,40 @@ test('작업 상세 전체 페이지가 드로어 IA와 활동 탭을 재사용�
   await drawer.getByRole('link', { name: '전체 페이지' }).click()
 
   await expect(page).toHaveURL(new RegExp(`/projects/${project.id}/work-packages/${wpA.id}$`))
-  await expect(page.getByRole('heading', { name: '작업 상세' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '작업 상세' })).toHaveCount(0)
+  await expect(page.getByTestId('frame-context-bar')).toContainText(`OF-${wpA.id.slice(0, 8).toUpperCase()}`)
+  await expect(page.getByRole('heading', { name: '워크패키지 API 구현' })).toBeVisible()
   await expect(page.getByLabel('제목')).toHaveValue('워크패키지 API 구현')
-  await expect(page.getByText('속성')).toBeVisible()
-  await expect(page.getByRole('tab', { name: '개요' })).toHaveAttribute('aria-selected', 'true')
+  await expect(page.getByRole('tablist', { name: '작업 상세 탭' })).toHaveCount(0)
+  await expect(page.getByRole('complementary', { name: '작업 속성' })).toBeVisible()
+  await expect(page.getByTestId('frame-context-actions').getByRole('toolbar', { name: '작업 명령' })).toBeVisible()
+  const activityFilters = page.getByRole('tablist', { name: '활동 피드 필터' })
+  await expect(activityFilters.getByRole('tab', { name: '전체' })).toHaveAttribute('aria-selected', 'true')
+  const relationShortcut = page.getByRole('navigation', { name: '작업 연결 도구' }).getByRole('button', { name: '관계' })
+  await expect(relationShortcut).toBeVisible()
+  await relationShortcut.click()
+  await expect(page.getByRole('region', { name: '관계' })).toBeInViewport()
+  const subjectPatch = page.waitForRequest(
+    (request) => request.method() === 'PATCH' && request.url().endsWith(`/work-packages/${wpA.id}`),
+  )
+  await page.getByLabel('제목').fill('전체 페이지 기능형 상세')
+  await page.getByLabel('제목').press('Tab')
+  expect((await subjectPatch).postDataJSON()).toMatchObject({
+    expected_version: 0,
+    subject: '전체 페이지 기능형 상세',
+  })
+  await expect(page.getByRole('heading', { name: '전체 페이지 기능형 상세' })).toBeVisible()
+  const watchRequest = page.waitForRequest(
+    (request) => request.method() === 'PUT' && request.url().endsWith(`/work-packages/${wpA.id}/watchers/me`),
+  )
+  await page.getByTestId('frame-context-actions').getByRole('button', { name: '워치', exact: true }).click()
+  await watchRequest
+  const commentRequest = page.waitForRequest(
+    (request) => request.method() === 'POST' && request.url().endsWith(`/work-packages/${wpA.id}/comments`),
+  )
+  await page.getByLabel('댓글 입력').fill('전체 페이지에서 남긴 댓글')
+  await page.getByRole('button', { name: '댓글 추가' }).click()
+  expect((await commentRequest).postDataJSON()).toMatchObject({ body: '전체 페이지에서 남긴 댓글' })
   await page.getByRole('button', { name: '상태 변경: 할 일' }).click()
   await expect(page.getByRole('combobox', { name: '상태 검색' })).toBeFocused()
   await page.keyboard.press('Escape')
@@ -5229,7 +5262,7 @@ test('작업 상세 전체 페이지가 드로어 IA와 활동 탭을 재사용�
     fullPage: true,
   })
 
-  await page.getByRole('tab', { name: '활동' }).click()
+  await activityFilters.getByRole('tab', { name: '이력' }).click()
   await expect(page.getByText('작업을 생성했습니다')).toBeVisible()
 })
 
@@ -5294,6 +5327,8 @@ test('작업 속성 패널이 스캔 가능한 구역과 기존 저장 동작을
   await page.goto(`/projects/${project.id}/work-packages/${wpA.id}`)
 
   const properties = page.getByRole('complementary', { name: '작업 속성' })
+  const propertiesToggle = properties.getByRole('button', { name: '속성' })
+  await expect(propertiesToggle).toHaveAttribute('aria-expanded', 'true')
   await expect(properties.getByRole('heading', { name: '상세' })).toBeVisible()
   await expect(properties.getByRole('heading', { name: '일정' })).toBeVisible()
   await expect(properties.getByRole('heading', { name: '프로젝트 구조' })).toBeVisible()
@@ -5326,6 +5361,9 @@ test('모바일 작업 속성 패널이 단일 열에서 기능을 유지한다'
   await page.goto(`/projects/${project.id}/work-packages/${wpA.id}`)
 
   const properties = page.getByRole('complementary', { name: '작업 속성' })
+  const propertiesToggle = properties.getByRole('button', { name: '속성' })
+  await expect(propertiesToggle).toHaveAttribute('aria-expanded', 'false')
+  await propertiesToggle.click()
   await expect(properties.getByRole('heading', { name: '상세' })).toBeVisible()
   await expect(properties.getByLabel('상태', { exact: true })).toHaveValue('todo')
   await expect(page.getByRole('slider')).toHaveCount(0)
@@ -5336,23 +5374,25 @@ test('모바일 작업 속성 패널이 단일 열에서 기능을 유지한다'
   })
 })
 
-test('모바일 작업 상세 전체 페이지가 속성과 활동 탭을 유지한다', async ({ page }) => {
+test('모바일 작업 상세 전체 페이지가 속성과 활동을 한 흐름으로 유지한다', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 })
   await mockApi(page)
   await page.goto(`/projects/${project.id}/work-packages/${wpA.id}`)
 
   await expectNoHorizontalOverflow(page)
-  await expect(page.getByRole('heading', { name: '작업 상세' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '작업 상세' })).toHaveCount(0)
+  await expect(page.getByRole('heading', { name: '워크패키지 API 구현' })).toBeVisible()
   await expect(page.getByLabel('제목')).toHaveValue('워크패키지 API 구현')
-  await expect(page.getByText('속성')).toBeVisible()
+  const properties = page.getByRole('complementary', { name: '작업 속성' })
+  await expect(properties.getByRole('button', { name: '속성' })).toHaveAttribute('aria-expanded', 'false')
   await expect(page.getByRole('slider')).toHaveCount(0)
-  await page.getByRole('tab', { name: '활동' }).click()
   await expect(page.getByText('작업을 생성했습니다')).toBeVisible()
   await page.getByRole('tablist', { name: '활동 피드 필터' }).getByRole('tab', { name: '전환' }).click()
   await expect(page.getByText('상태: 할 일 → 진행 중')).toBeVisible()
   await page.getByRole('region', { name: '활동 및 댓글' }).screenshot({
     path: '../../docs/screenshots/redevelopment/detail-activity-ui/mobile.png',
   })
+  await page.evaluate(() => document.querySelector('[data-shell-scroll-region]')?.scrollTo(0, 0))
   await page.screenshot({
     path: '../../docs/screenshots/redevelopment/detail-ui/full-page-mobile.png',
     fullPage: true,
@@ -13982,7 +14022,8 @@ test('커맨드 팔레트가 flag ON에서 검색 결과를 열고 키보드로 
 
   await page.keyboard.press('Enter')
   await expect(page).toHaveURL(new RegExp(`/projects/${project.id}/work-packages/${wpA.id}$`))
-  await expect(page.getByRole('heading', { name: '작업 상세' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '작업 상세' })).toHaveCount(0)
+  await expect(page.getByRole('heading', { name: '워크패키지 API 구현' })).toBeVisible()
   await expect(page.getByLabel('제목')).toHaveValue('워크패키지 API 구현')
 
   await page.getByRole('button', { name: '전체 검색 열기' }).first().click()
