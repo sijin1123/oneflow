@@ -21,6 +21,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { DataGrid, DataGridFrame, type GridDensity } from '@/components/ui/data-grid'
 import { Input } from '@/components/ui/input'
+import { Skeleton } from '@/components/ui/skeleton'
 import { Toolbar } from '@/components/ui/surface'
 import {
   type SearchResultItem,
@@ -305,6 +306,18 @@ export function AllWorkPage() {
     })
   }
   const clearPql = () => updateParams({ filter_mode: 'pql', pql: null })
+  const clearResultFilters = () => {
+    setInput('')
+    setPqlDraft('')
+    setFiltersOpen(false)
+    setSearchParams((previous) => {
+      const next = new URLSearchParams(previous)
+      for (const key of ['q', 'scope', 'state', 'priority', 'filter_mode', 'pql', 'page', 'month', 'view']) {
+        next.delete(key)
+      }
+      return next
+    }, { replace: true, flushSync: true })
+  }
   const toggleColumn = (column: WorkspaceColumn) => {
     const next = columns.includes(column)
       ? columns.filter((item) => item !== column)
@@ -486,17 +499,34 @@ export function AllWorkPage() {
         </Toolbar>
       ) : null}
 
-      <div className="min-h-0 flex-1">
+      <section
+        aria-label="전체 작업 결과"
+        aria-busy={query.isPending || query.isFetching ? 'true' : 'false'}
+        data-testid="workspace-views-results"
+        className="min-h-0 flex-1"
+      >
         {query.isPending ? (
-          <ListSkeleton />
+          <WorkspaceLayoutSkeleton layout={layout} />
         ) : query.isError ? (
-          <ErrorState error={query.error} onRetry={() => query.refetch()} />
+          <ErrorState
+            error={query.error}
+            className="h-full min-h-0"
+            onRetry={() => query.refetch()}
+          />
         ) : !data || data.items.length === 0 ? (
           <EmptyState
             title={q || activeFilterCount > 0 || scope !== 'all' || pql ? '조건에 맞는 작업이 없습니다' : '작업이 없습니다'}
-            hint="범위나 필터를 바꾸어 다시 확인해 보세요."
+            hint={q || activeFilterCount > 0 || scope !== 'all' || pql
+              ? '현재 검색, 범위 또는 필터를 초기화하면 전체 작업을 다시 확인할 수 있습니다.'
+              : '새 작업을 만들면 이 뷰의 실제 범위와 레이아웃에 바로 표시됩니다.'}
             visual="illustration"
-          />
+          >
+            {q || activeFilterCount > 0 || scope !== 'all' || pql ? (
+              <Button type="button" variant="outline" size="sm" onClick={clearResultFilters}>
+                <RotateCcw size={13} /> 모든 작업 보기
+              </Button>
+            ) : null}
+          </EmptyState>
         ) : layout === 'board' ? (
           <WorkspaceBoard
             items={boardItems ?? data.items}
@@ -544,7 +574,7 @@ export function AllWorkPage() {
             onOpen={(item) => navigate(workItemPath(item))}
           />
         )}
-      </div>
+      </section>
 
       {data && data.total > PAGE_SIZE ? (
         <div className="flex min-h-11 shrink-0 items-center justify-between border-t border-of-border px-3 text-xs text-of-muted">
@@ -560,6 +590,60 @@ export function AllWorkPage() {
           </div>
         </div>
       ) : null}
+    </div>
+  )
+}
+
+function WorkspaceLayoutSkeleton({
+  layout,
+}: {
+  layout: 'board' | 'calendar' | 'table' | 'timeline'
+}) {
+  if (layout !== 'board') {
+    return (
+      <div className="flex h-full min-h-0 flex-col bg-of-surface" data-testid={`workspace-${layout}-skeleton`}>
+        <div className="flex h-10 shrink-0 items-center gap-3 border-b border-of-border-subtle px-3">
+          <Skeleton className="h-3 w-28" />
+          <Skeleton className="ml-auto h-6 w-20" />
+        </div>
+        <ListSkeleton rows={layout === 'table' ? 8 : 6} className="min-h-0 flex-1" />
+      </div>
+    )
+  }
+
+  return (
+    <div
+      className="of-scrollbar flex h-full min-h-0 gap-3 overflow-x-auto p-3"
+      role="status"
+      aria-label="Board 불러오는 중"
+      data-testid="workspace-board-skeleton"
+    >
+      <span className="sr-only">Board 불러오는 중</span>
+      {Array.from({ length: 4 }, (_, column) => (
+        <section
+          key={column}
+          className="flex min-w-[17rem] flex-1 flex-col rounded-of bg-of-surface-2"
+          aria-hidden="true"
+        >
+          <div className="flex h-10 shrink-0 items-center gap-2 border-b border-of-border-subtle px-3">
+            <Skeleton className="h-2 w-2 rounded-full" />
+            <Skeleton className="h-3 w-20" />
+            <Skeleton className="h-4 w-6 rounded-full" />
+          </div>
+          <div className="space-y-2 p-2">
+            {Array.from({ length: column % 2 === 0 ? 3 : 2 }, (_, card) => (
+              <div key={card} className="space-y-3 rounded-of border border-of-border bg-of-surface p-3">
+                <Skeleton className="h-3 w-16" />
+                <Skeleton className={cn('h-4', card % 2 === 0 ? 'w-4/5' : 'w-3/5')} />
+                <div className="flex gap-1.5">
+                  <Skeleton className="h-5 w-16 rounded-full" />
+                  <Skeleton className="h-5 w-14 rounded-full" />
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      ))}
     </div>
   )
 }
