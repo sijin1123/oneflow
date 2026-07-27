@@ -1,6 +1,7 @@
 import {
   ArrowUpRight,
   BellRing,
+  CalendarDays,
   ChevronLeft,
   ChevronRight,
   FolderKanban,
@@ -9,6 +10,7 @@ import {
   Pencil,
   Pin,
   Plus,
+  RefreshCw,
   Search,
   SlidersHorizontal,
   Sparkles,
@@ -117,6 +119,9 @@ const WORKSPACE_HOME_WIDGETS = [
   { key: 'projectShortcuts', label: '프로젝트 바로가기' },
   { key: 'recents', label: '최근 항목' },
   { key: 'personalNotes', label: '개인 메모' },
+  { key: 'time', label: '내 시간' },
+  { key: 'created', label: '내가 만든 작업' },
+  { key: 'notifications', label: '알림' },
 ] as const
 
 type WorkspaceHomeWidgetKey = (typeof WORKSPACE_HOME_WIDGETS)[number]['key']
@@ -129,6 +134,9 @@ const DEFAULT_WORKSPACE_HOME_WIDGETS: WorkspaceHomeWidgets = {
   projectShortcuts: true,
   recents: true,
   personalNotes: true,
+  time: true,
+  created: true,
+  notifications: true,
 }
 
 function parseWorkspaceHomeWidgets(raw: string | null): WorkspaceHomeWidgets {
@@ -786,6 +794,33 @@ function AiWorkspacePanel({
   )
 }
 
+function workspaceGreeting(date: Date) {
+  const hour = date.getHours()
+  if (hour < 12) return '좋은 아침이에요'
+  if (hour < 18) return '좋은 오후예요'
+  return '좋은 저녁이에요'
+}
+
+function workspaceDate(date: Date) {
+  return new Intl.DateTimeFormat('ko-KR', {
+    month: 'long',
+    day: 'numeric',
+    weekday: 'long',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(date)
+}
+
+function WorkspaceHomeSkeleton({ label }: { label: string }) {
+  return (
+    <section aria-label={label} className="min-w-0" aria-busy="true">
+      <span className="sr-only">{label} 정보를 불러오는 중입니다.</span>
+      <div className="h-4 w-24 animate-pulse rounded-of bg-of-surface-2" />
+      <div className="mt-3 h-24 animate-pulse rounded-of border border-of-border bg-of-surface-2" />
+    </section>
+  )
+}
+
 /* Personal cross-project home (expansion PLAN Pass 1 PR-B): what is on my
    plate, what is due this week, my inbox, and what changed around me. */
 function MyWorkOverview() {
@@ -793,6 +828,7 @@ function MyWorkOverview() {
   const myTime = useMyTime()
   const notifications = useNotifications()
   const projects = useProjects()
+  const me = useMe()
   const navigate = useNavigate()
   const [visibleWidgets, setVisibleWidgets] = useState(readWorkspaceHomeWidgets)
 
@@ -812,10 +848,12 @@ function MyWorkOverview() {
     return () => window.removeEventListener('storage', syncWidgets)
   }, [])
 
-  if (myWork.isPending) return <ListSkeleton />
-  if (myWork.isError) return <ErrorState error={myWork.error} onRetry={() => myWork.refetch()} />
-
-  const { assigned_to_me, due_soon, created_by_me, recent_activity } = myWork.data
+  const {
+    assigned_to_me = [],
+    due_soon = [],
+    created_by_me = [],
+    recent_activity = [],
+  } = myWork.data ?? {}
   const inbox = (notifications.data?.items ?? []).slice(0, 6)
   const unread = notifications.data?.unread ?? 0
   const projectItems = projects.data?.items ?? []
@@ -830,342 +868,445 @@ function MyWorkOverview() {
     setVisibleWidgets(DEFAULT_WORKSPACE_HOME_WIDGETS)
   }
 
+  const refreshHomeSummary = () => {
+    void Promise.all([
+      myWork.refetch(),
+      myTime.refetch(),
+      notifications.refetch(),
+      projects.refetch(),
+      me.refetch(),
+    ])
+  }
+
+  const now = new Date()
+  const displayName = me.data?.display_name?.trim() || '사용자'
+
   return (
-    <div className="mx-auto flex w-full max-w-6xl min-w-0 flex-col gap-5 px-4 py-5 sm:px-6">
-      <header className="min-w-0 border-b border-of-border pb-4">
-        <p className="mb-1 text-[11px] font-medium uppercase text-of-muted">Workspace home</p>
-        <div className="flex min-w-0 flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-          <div className="min-w-0">
-            <h1 className="text-base font-semibold">내 작업</h1>
-            <p className="mt-1 max-w-2xl text-xs leading-5 text-of-muted">
-              내가 확인해야 할 작업, 알림, 프로젝트 이동 경로를 한 화면에서 시작합니다.
+    <div className="flex min-h-full min-w-0 flex-col bg-of-surface">
+      <FrameContextActions>
+        <div role="toolbar" aria-label="Workspace Home 화면 제어" className="flex items-center gap-1.5">
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            aria-label="홈 요약 새로고침"
+            title="홈 요약 새로고침"
+            disabled={
+              myWork.isFetching
+              || myTime.isFetching
+              || notifications.isFetching
+              || projects.isFetching
+              || me.isFetching
+            }
+            onClick={refreshHomeSummary}
+          >
+            <RefreshCw
+              size={14}
+              aria-hidden="true"
+              className={cn(
+                (myWork.isFetching
+                  || myTime.isFetching
+                  || notifications.isFetching
+                  || projects.isFetching
+                  || me.isFetching)
+                  && 'animate-spin motion-reduce:animate-none',
+              )}
+            />
+          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button type="button" variant="outline" size="sm">
+                <SlidersHorizontal size={13} aria-hidden="true" />
+                위젯 관리
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56 max-w-[calc(100vw-2rem)]">
+              <DropdownMenuLabel>홈에 표시할 위젯</DropdownMenuLabel>
+              {WORKSPACE_HOME_WIDGETS.map((widget) => (
+                <DropdownMenuCheckboxItem
+                  key={widget.key}
+                  checked={visibleWidgets[widget.key]}
+                  onCheckedChange={(checked) => setWidgetVisibility(widget.key, checked === true)}
+                >
+                  {widget.label}
+                </DropdownMenuCheckboxItem>
+              ))}
+              <DropdownMenuSeparator />
+              <DropdownMenuItem className="text-xs text-of-muted" onSelect={resetWidgets}>
+                모든 위젯 복원
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      </FrameContextActions>
+
+      <main className="mx-auto flex w-full max-w-5xl min-w-0 flex-col gap-6 px-4 py-6 sm:px-6 sm:py-8">
+        <header className="min-w-0 text-center">
+          <p className="text-[11px] font-medium text-of-muted">Workspace Home</p>
+          <h1 className="mt-2 text-lg font-semibold">
+            {workspaceGreeting(now)}, {displayName}님
+          </h1>
+          <p className="mt-1 inline-flex items-center gap-1.5 text-xs text-of-muted">
+            <CalendarDays size={13} aria-hidden="true" />
+            {workspaceDate(now)}
+          </p>
+          <h2 className="sr-only">내 작업</h2>
+          <div
+            aria-label="내 작업 요약"
+            className="mt-3 flex min-w-0 flex-wrap items-center justify-center gap-x-3 gap-y-1 text-xs text-of-muted"
+          >
+            <span><strong className="font-semibold text-of-text">{assigned_to_me.length}</strong> 배정</span>
+            <span><strong className="font-semibold text-of-text">{due_soon.length}</strong> 기한 임박</span>
+            <span><strong className="font-semibold text-of-text">{unread}</strong> 읽지 않은 알림</span>
+            <span><strong className="font-semibold text-of-text">{projects.data?.total ?? 0}</strong> 프로젝트</span>
+          </div>
+        </header>
+
+        {myWork.isError && !myWork.data ? (
+          <div className="rounded-of border border-of-danger/20 bg-of-danger-soft p-3">
+            <ErrorState error={myWork.error} onRetry={() => myWork.refetch()} />
+          </div>
+        ) : null}
+
+        {visibleWidgets.ai ? (
+          myWork.isPending && !myWork.data ? (
+            <WorkspaceHomeSkeleton label="AI workspace" />
+          ) : (
+            <AiWorkspacePanel assigned={assigned_to_me} dueSoon={due_soon} created={created_by_me} />
+          )
+        ) : null}
+
+        {visibleWidgets.quickLinks ? (
+          <WorkspaceQuickLinks>
+            <QuickLink
+              to="/work-items"
+              label="전체 작업"
+              detail="프로젝트 전체 작업 검색"
+              icon={ListChecks}
+              accent
+            />
+            <QuickLink
+              to="/inbox"
+              label="인박스"
+              detail={unread > 0 ? `읽지 않음 ${unread}건` : '새 알림 없음'}
+              icon={BellRing}
+              accent={unread > 0}
+            />
+            <QuickLink
+              to="/projects"
+              label="프로젝트"
+              detail={`${projects.data?.total ?? 0}개 프로젝트`}
+              icon={FolderKanban}
+            />
+            <QuickLink
+              to="/operations"
+              label="운영 허브"
+              detail="가져오기·내보내기·상태"
+              icon={SquareActivity}
+            />
+            <QuickLink
+              to="/notes?new=1"
+              label="개인 메모"
+              detail="빠르게 기록하고 정리"
+              icon={StickyNote}
+            />
+          </WorkspaceQuickLinks>
+        ) : null}
+
+        {visibleWidgets.recents ? (
+          myWork.isPending && !myWork.data ? (
+            <WorkspaceHomeSkeleton label="최근 항목" />
+          ) : (
+            <section aria-label="최근 항목" className="min-w-0">
+              <div className="mb-3 flex min-w-0 items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <h2 className="text-sm font-semibold">최근 항목</h2>
+                  <p className="mt-0.5 text-xs text-of-muted">지금 이어서 볼 작업과 변경입니다.</p>
+                </div>
+                <Link to="/my?tab=activity" className="shrink-0 text-xs text-of-accent hover:underline">
+                  전체 활동
+                </Link>
+              </div>
+              <div className="grid min-w-0 gap-5 lg:grid-cols-[minmax(0,1.35fr)_minmax(18rem,0.65fr)]">
+                <div className="min-w-0 space-y-5">
+                  <section aria-label="기한 임박">
+                    <h3 className="mb-2 text-xs font-semibold text-of-secondary">
+                      기한 임박 <span className="font-normal text-of-muted">(7일 이내)</span>
+                    </h3>
+                    <WorkList items={due_soon} emptyText="7일 내 마감되는 작업이 없습니다." />
+                  </section>
+                  <section aria-label="나에게 배정됨">
+                    <h3 className="mb-2 text-xs font-semibold text-of-secondary">
+                      나에게 배정됨 <span className="font-normal text-of-muted">{assigned_to_me.length}건</span>
+                    </h3>
+                    <WorkList items={assigned_to_me} emptyText="배정된 미완료 작업이 없습니다." />
+                  </section>
+                </div>
+                <section aria-label="최근 활동" className="min-w-0 border-t border-of-border pt-4 lg:border-l lg:border-t-0 lg:pl-5 lg:pt-0">
+                  <h3 className="mb-2 text-xs font-semibold text-of-secondary">최근 활동</h3>
+                  {recent_activity.length === 0 ? (
+                    <p className="text-xs text-of-muted">아직 활동이 없습니다.</p>
+                  ) : (
+                    <ul className="space-y-2">
+                      {recent_activity.slice(0, 6).map((activity) => (
+                        <li key={activity.id} className="min-w-0 text-xs">
+                          <button
+                            type="button"
+                            className="block w-full min-w-0 text-left hover:text-of-accent"
+                            onClick={() => navigate(`/projects/${activity.project_id}/work-packages?wp=${activity.work_package_id}`)}
+                          >
+                            <span className="block truncate font-medium">{activity.work_package_subject}</span>
+                            <span className="mt-0.5 block truncate text-[11px] text-of-muted">
+                              {activity.project_name} · {actionText(activity)} · {formatDateTime(activity.created_at)}
+                            </span>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </section>
+              </div>
+            </section>
+          )
+        ) : null}
+
+        <div className="min-w-0 border-t border-of-border pt-6">
+          <div className="mb-4 min-w-0">
+            <h2 className="text-sm font-semibold">워크스페이스 신호</h2>
+            <p className="mt-0.5 text-xs text-of-muted">
+              프로젝트 위험, 바로가기와 개인 작업 도구를 필요한 만큼 표시합니다.
             </p>
           </div>
-          <div className="flex min-w-0 flex-wrap items-center gap-2">
-            <Badge variant={assigned_to_me.length > 0 ? 'accent' : 'outline'}>
-              배정 {assigned_to_me.length}
-            </Badge>
-            <Badge variant={due_soon.length > 0 ? 'accent' : 'outline'}>기한 {due_soon.length}</Badge>
-            <Badge variant={unread > 0 ? 'accent' : 'outline'}>알림 {unread}</Badge>
-            <Badge variant="outline">프로젝트 {projects.data?.total ?? 0}</Badge>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <button
-                  type="button"
-                  className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-of border border-of-border bg-of-surface px-2 text-xs font-medium hover:bg-of-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus"
-                >
-                  <SlidersHorizontal size={13} aria-hidden="true" />
-                  위젯 관리
-                </button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-56 max-w-[calc(100vw-2rem)]">
-                <DropdownMenuLabel>홈에 표시할 위젯</DropdownMenuLabel>
-                {WORKSPACE_HOME_WIDGETS.map((widget) => (
-                  <DropdownMenuCheckboxItem
-                    key={widget.key}
-                    checked={visibleWidgets[widget.key]}
-                    onCheckedChange={(checked) => setWidgetVisibility(widget.key, checked === true)}
+
+          <div className="min-w-0 space-y-6">
+            {visibleWidgets.riskSummary ? (
+              <WorkspaceRiskSummary
+                projects={projectItems}
+                isPending={projects.isPending}
+                isError={projects.isError}
+                onRetry={() => {
+                  void projects.refetch()
+                }}
+              />
+            ) : null}
+
+            {visibleWidgets.projectShortcuts ? (
+              <section aria-label="프로젝트 바로가기" className="min-w-0">
+                <div className="mb-2 flex items-center justify-between gap-2 px-1">
+                  <h2 className="text-sm font-semibold">프로젝트 바로가기</h2>
+                  <Link
+                    to="/projects"
+                    className="rounded-of px-1.5 py-1 text-xs text-of-muted hover:bg-of-surface-2 hover:text-of-text"
                   >
-                    {widget.label}
-                  </DropdownMenuCheckboxItem>
-                ))}
-                <DropdownMenuSeparator />
-                <DropdownMenuItem className="text-xs text-of-muted" onSelect={resetWidgets}>
-                  모든 위젯 복원
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+                    전체 보기
+                  </Link>
+                </div>
+                {projects.isPending ? (
+                  <p className="rounded-of border border-of-border bg-of-surface px-3 py-3 text-xs text-of-muted">
+                    프로젝트를 불러오는 중입니다.
+                  </p>
+                ) : projects.isError ? (
+                  <div className="flex items-center justify-between gap-3 rounded-of border border-of-danger/20 bg-of-danger-soft px-3 py-3 text-xs text-of-danger">
+                    <span>프로젝트를 불러오지 못했습니다.</span>
+                    <Button type="button" variant="outline" size="sm" onClick={() => projects.refetch()}>
+                      다시 시도
+                    </Button>
+                  </div>
+                ) : activeProjects.length === 0 ? (
+                  <p className="rounded-of border border-of-border bg-of-surface px-3 py-3 text-xs text-of-muted">
+                    활성 프로젝트가 없습니다.
+                  </p>
+                ) : (
+                  <div className="grid min-w-0 gap-2 md:grid-cols-2">
+                    {activeProjects.slice(0, 4).map((project) => (
+                      <Link
+                        key={project.id}
+                        to={`/projects/${project.id}/work-packages`}
+                        className="grid min-w-0 gap-2 rounded-of border border-of-border bg-of-surface px-3 py-3 hover:bg-of-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"
+                      >
+                        <span className="min-w-0">
+                          <span className="block truncate text-sm font-medium">{project.name}</span>
+                          <span className="block text-xs text-of-muted">{project.key}</span>
+                        </span>
+                        <span className="flex flex-wrap items-center gap-2 text-xs text-of-muted sm:justify-end">
+                          <span>열린 작업 {project.open_work_package_count}</span>
+                          <span>멤버 {project.member_count}</span>
+                        </span>
+                      </Link>
+                    ))}
+                  </div>
+                )}
+              </section>
+            ) : null}
+
+            {visibleWidgets.personalNotes ? <PersonalNotesPanel /> : null}
           </div>
         </div>
-        <MyWorkTabs active="overview" />
-      </header>
 
-      {visibleWidgets.ai ? (
-        <AiWorkspacePanel assigned={assigned_to_me} dueSoon={due_soon} created={created_by_me} />
-      ) : null}
-
-      {visibleWidgets.riskSummary ? (
-        <WorkspaceRiskSummary
-          projects={projectItems}
-          isPending={projects.isPending}
-          isError={projects.isError}
-          onRetry={() => {
-            void projects.refetch()
-          }}
-        />
-      ) : null}
-
-      {visibleWidgets.quickLinks ? (
-        <WorkspaceQuickLinks>
-          <QuickLink
-            to="/work-items"
-            label="전체 작업"
-            detail="프로젝트 전체 작업 검색"
-            icon={ListChecks}
-            accent
-          />
-          <QuickLink
-            to="/inbox"
-            label="인박스"
-            detail={unread > 0 ? `읽지 않음 ${unread}건` : '새 알림 없음'}
-            icon={BellRing}
-            accent={unread > 0}
-          />
-          <QuickLink
-            to="/projects"
-            label="프로젝트"
-            detail={`${projects.data?.total ?? 0}개 프로젝트`}
-            icon={FolderKanban}
-          />
-          <QuickLink
-            to="/operations"
-            label="운영 허브"
-            detail="가져오기·내보내기·상태"
-            icon={SquareActivity}
-          />
-          <QuickLink
-            to="/notes?new=1"
-            label="개인 메모"
-            detail="빠르게 기록하고 정리"
-            icon={StickyNote}
-          />
-        </WorkspaceQuickLinks>
-      ) : null}
-
-      {visibleWidgets.projectShortcuts ? (
-        <section aria-label="프로젝트 바로가기" className="min-w-0">
-        <div className="mb-2 flex items-center justify-between gap-2 px-1">
-          <h2 className="text-sm font-semibold">프로젝트 바로가기</h2>
-          <Link
-            to="/projects"
-            className="rounded-of px-1.5 py-1 text-xs text-of-muted hover:bg-of-surface-2 hover:text-of-text"
+        {myWork.data
+          && assigned_to_me.length === 0
+          && created_by_me.length === 0
+          && recent_activity.length === 0 ? (
+          <EmptyState
+            title="아직 배정된 작업이 없습니다"
+            hint="프로젝트에서 작업을 배정받으면 여기에 모입니다."
           >
-            전체 보기
-          </Link>
-        </div>
-        {projects.isPending ? (
-          <p className="rounded-of border border-of-border bg-of-surface px-3 py-3 text-xs text-of-muted">
-            프로젝트를 불러오는 중입니다.
-          </p>
-        ) : activeProjects.length === 0 ? (
-          <p className="rounded-of border border-of-border bg-of-surface px-3 py-3 text-xs text-of-muted">
-            활성 프로젝트가 없습니다.
-          </p>
-        ) : (
-          <div className="grid min-w-0 gap-2 md:grid-cols-2">
-            {activeProjects.slice(0, 4).map((project) => (
+            {firstProject ? (
               <Link
-                key={project.id}
-                to={`/projects/${project.id}/work-packages`}
-                className="grid min-w-0 gap-2 rounded-of border border-of-border bg-of-surface px-3 py-3 hover:bg-of-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"
+                to={`/projects/${firstProject.id}/work-packages`}
+                className="inline-flex h-7 items-center justify-center gap-1.5 rounded-of border border-of-border bg-of-surface px-2 text-xs font-medium hover:bg-of-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus"
               >
-                <span className="min-w-0">
-                  <span className="block truncate text-sm font-medium">{project.name}</span>
-                  <span className="block text-xs text-of-muted">{project.key}</span>
-                </span>
-                <span className="flex flex-wrap items-center gap-2 text-xs text-of-muted sm:justify-end">
-                  <span>열린 작업 {project.open_work_package_count}</span>
-                  <span>멤버 {project.member_count}</span>
-                </span>
+                <Gauge size={13} aria-hidden="true" /> 첫 프로젝트 열기
               </Link>
-            ))}
-          </div>
-        )}
-        </section>
-      ) : null}
+            ) : null}
+          </EmptyState>
+        ) : null}
 
-      {visibleWidgets.recents ? (
-        <section aria-label="최근 항목" className="min-w-0 border-y border-of-border py-4">
-        <div className="mb-3 flex min-w-0 items-center justify-between gap-3">
-          <div className="min-w-0">
-            <h2 className="text-sm font-semibold">최근 항목</h2>
-            <p className="mt-0.5 text-xs text-of-muted">지금 이어서 볼 작업과 변경입니다.</p>
-          </div>
-          <Link to="/my?tab=activity" className="shrink-0 text-xs text-of-accent hover:underline">
-            전체 활동
-          </Link>
-        </div>
-        <div className="grid min-w-0 gap-5 lg:grid-cols-[minmax(0,1.35fr)_minmax(18rem,0.65fr)]">
-          <div className="min-w-0 space-y-5">
-            <section aria-label="기한 임박">
-              <h3 className="mb-2 text-xs font-semibold text-of-secondary">
-                기한 임박 <span className="font-normal text-of-muted">(7일 이내)</span>
-              </h3>
-              <WorkList items={due_soon} emptyText="7일 내 마감되는 작업이 없습니다." />
-            </section>
-            <section aria-label="나에게 배정됨">
-              <h3 className="mb-2 text-xs font-semibold text-of-secondary">
-                나에게 배정됨 <span className="font-normal text-of-muted">{assigned_to_me.length}건</span>
-              </h3>
-              <WorkList items={assigned_to_me} emptyText="배정된 미완료 작업이 없습니다." />
-            </section>
-          </div>
-          <section aria-label="최근 활동" className="min-w-0 border-t border-of-border pt-4 lg:border-l lg:border-t-0 lg:pl-5 lg:pt-0">
-            <h3 className="mb-2 text-xs font-semibold text-of-secondary">최근 활동</h3>
-            {recent_activity.length === 0 ? (
-              <p className="text-xs text-of-muted">아직 활동이 없습니다.</p>
-            ) : (
-              <ul className="space-y-2">
-                {recent_activity.slice(0, 6).map((activity) => (
-                  <li key={activity.id} className="min-w-0 text-xs">
-                    <button
-                      type="button"
-                      className="block w-full min-w-0 text-left hover:text-of-accent"
-                      onClick={() => navigate(`/projects/${activity.project_id}/work-packages?wp=${activity.work_package_id}`)}
-                    >
-                      <span className="block truncate font-medium">{activity.work_package_subject}</span>
-                      <span className="mt-0.5 block truncate text-[11px] text-of-muted">
-                        {activity.project_name} · {actionText(activity)} · {formatDateTime(activity.created_at)}
-                      </span>
+        {myWork.data ? (
+          <div className="space-y-6">
+            {visibleWidgets.time ? (
+              <section aria-label="내 시간" className="rounded-of border border-of-border bg-of-surface p-4">
+                <h2 className="mb-2 text-sm font-semibold">
+                  내 시간{' '}
+                  <span className="text-xs font-normal text-of-muted">
+                    최근 7일 {myTime.data ? `${myTime.data.total_hours}h` : ''}
+                  </span>
+                </h2>
+                {myTime.isPending ? (
+                  <p className="text-xs text-of-muted">시간 기록을 불러오는 중입니다.</p>
+                ) : myTime.isError ? (
+                  <p role="alert" className="text-xs text-of-danger">
+                    시간 기록을 불러오지 못했습니다.{' '}
+                    <button type="button" className="font-medium underline" onClick={() => myTime.refetch()}>
+                      다시 시도
                     </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
-        </div>
-        </section>
-      ) : null}
+                  </p>
+                ) : !myTime.data || myTime.data.total === 0 ? (
+                  <p className="text-xs text-of-muted">최근 7일간 기록한 시간이 없습니다.</p>
+                ) : (
+                  <div className="space-y-2">
+                    <ul className="space-y-1">
+                      {myTime.data.by_project.map((p) => (
+                        <li key={p.project_id} className="flex items-center gap-2 text-xs">
+                          <span className="w-32 shrink-0 truncate text-of-muted">{p.project_name}</span>
+                          <span
+                            className="h-2 rounded-full bg-of-accent/70"
+                            style={{ width: `${Math.min(100, (p.hours / myTime.data.total_hours) * 100)}%` }}
+                          />
+                          <span className="shrink-0 tabular-nums">{p.hours}h</span>
+                        </li>
+                      ))}
+                    </ul>
+                    <ul className="space-y-1 border-t border-of-border pt-2">
+                      {myTime.data.items.slice(0, 5).map((e) => (
+                        <li key={e.id} className="flex items-baseline gap-2 text-xs">
+                          <span className="shrink-0 text-of-muted">{e.spent_on}</span>
+                          <button
+                            type="button"
+                            className="min-w-0 flex-1 truncate text-left hover:text-of-accent"
+                            onClick={() =>
+                              navigate(`/projects/${e.project_id}/work-packages?wp=${e.work_package_id}`)
+                            }
+                          >
+                            {e.work_package_subject}
+                          </button>
+                          <span className="shrink-0 tabular-nums">{e.hours}h</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </section>
+            ) : null}
 
-      {visibleWidgets.personalNotes ? <PersonalNotesPanel /> : null}
+            {visibleWidgets.created ? (
+              <section aria-label="내가 만든 작업">
+                <h2 className="mb-2 text-sm font-semibold">
+                  내가 만든 작업{' '}
+                  <span className="text-xs font-normal text-of-muted">
+                    {created_by_me.length}건 · 내 담당 제외
+                  </span>
+                </h2>
+                <WorkList
+                  items={created_by_me}
+                  emptyText="위임하거나 미배정으로 남긴 열린 작업이 없습니다."
+                  showAssignee
+                />
+              </section>
+            ) : null}
 
-      {assigned_to_me.length === 0 && created_by_me.length === 0 && recent_activity.length === 0 ? (
-        <EmptyState
-          title="아직 배정된 작업이 없습니다"
-          hint="프로젝트에서 작업을 배정받으면 여기에 모입니다."
-        >
-          {firstProject ? (
-            <Link
-              to={`/projects/${firstProject.id}/work-packages`}
-              className="inline-flex h-7 items-center justify-center gap-1.5 rounded-of border border-of-border bg-of-surface px-2 text-xs font-medium hover:bg-of-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus"
-            >
-              <Gauge size={13} aria-hidden="true" /> 첫 프로젝트 열기
-            </Link>
-          ) : null}
-        </EmptyState>
-      ) : (
-        <div className="space-y-6">
-          <section aria-label="내 시간" className="rounded-of border border-of-border bg-of-surface p-4">
-            <h2 className="mb-2 text-sm font-semibold">
-              내 시간{' '}
-              <span className="text-xs font-normal text-of-muted">
-                최근 7일 {myTime.data ? `${myTime.data.total_hours}h` : ''}
-              </span>
-            </h2>
-            {!myTime.data || myTime.data.total === 0 ? (
-              <p className="text-xs text-of-muted">최근 7일간 기록한 시간이 없습니다.</p>
-            ) : (
-              <div className="space-y-2">
-                <ul className="space-y-1">
-                  {myTime.data.by_project.map((p) => (
-                    <li key={p.project_id} className="flex items-center gap-2 text-xs">
-                      <span className="w-32 shrink-0 truncate text-of-muted">{p.project_name}</span>
-                      <span
-                        className="h-2 rounded-full bg-of-accent/70"
-                        style={{ width: `${Math.min(100, (p.hours / myTime.data.total_hours) * 100)}%` }}
-                      />
-                      <span className="shrink-0 tabular-nums">{p.hours}h</span>
-                    </li>
-                  ))}
-                </ul>
-                <ul className="space-y-1 border-t border-of-border pt-2">
-                  {myTime.data.items.slice(0, 5).map((e) => (
-                    <li key={e.id} className="flex items-baseline gap-2 text-xs">
-                      <span className="shrink-0 text-of-muted">{e.spent_on}</span>
-                      <button
-                        type="button"
-                        className="min-w-0 flex-1 truncate text-left hover:text-of-accent"
-                        onClick={() =>
-                          navigate(`/projects/${e.project_id}/work-packages?wp=${e.work_package_id}`)
-                        }
-                      >
-                        {e.work_package_subject}
-                      </button>
-                      <span className="shrink-0 tabular-nums">{e.hours}h</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-          </section>
+            {visibleWidgets.notifications ? (
+              <section aria-label="알림" className="rounded-of border border-of-border bg-of-surface p-4">
+                <div className="mb-3 flex items-center justify-between gap-2">
+                  <h2 className="text-sm font-semibold">알림</h2>
+                  <button
+                    type="button"
+                    className="rounded-of px-1.5 py-1 text-xs text-of-muted hover:bg-of-surface-2 hover:text-of-text"
+                    onClick={() => navigate('/inbox')}
+                  >
+                    전체 보기
+                  </button>
+                </div>
+                {notifications.isPending ? (
+                  <p className="text-xs text-of-muted">알림을 불러오는 중입니다.</p>
+                ) : notifications.isError ? (
+                  <p role="alert" className="text-xs text-of-danger">
+                    알림을 불러오지 못했습니다.{' '}
+                    <button type="button" className="font-medium underline" onClick={() => notifications.refetch()}>
+                      다시 시도
+                    </button>
+                  </p>
+                ) : inbox.length === 0 ? (
+                  <p className="text-xs text-of-muted">새 알림이 없습니다.</p>
+                ) : (
+                  <ul className="space-y-1.5">
+                    {inbox.map((n) => (
+                      <li key={n.id}>
+                        <button
+                          type="button"
+                          className="flex w-full items-baseline gap-2 text-left text-xs hover:underline"
+                          onClick={() => {
+                            const target = getNotificationTargetPath(n)
+                            if (target) navigate(target)
+                          }}
+                        >
+                          <span className={n.read ? 'text-of-muted' : 'font-medium'}>
+                            {getNotificationMessage(n)}
+                          </span>
+                          <span className="ml-auto shrink-0 text-[11px] text-of-muted">
+                            {formatDateTime(n.created_at)}
+                          </span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </section>
+            ) : null}
 
-          <section aria-label="내가 만든 작업">
-            <h2 className="mb-2 text-sm font-semibold">
-              내가 만든 작업{' '}
-              <span className="text-xs font-normal text-of-muted">
-                {created_by_me.length}건 · 내 담당 제외
-              </span>
-            </h2>
-            <WorkList
-              items={created_by_me}
-              emptyText="위임하거나 미배정으로 남긴 열린 작업이 없습니다."
-              showAssignee
-            />
-          </section>
-
-          <div className="min-w-0">
-            <section aria-label="알림" className="rounded-of border border-of-border bg-of-surface p-4">
-              <div className="mb-3 flex items-center justify-between gap-2">
-                <h2 className="text-sm font-semibold">알림</h2>
-                <button
-                  type="button"
-                  className="rounded-of px-1.5 py-1 text-xs text-of-muted hover:bg-of-surface-2 hover:text-of-text"
-                  onClick={() => navigate('/inbox')}
-                >
-                  전체 보기
-                </button>
-              </div>
-              {inbox.length === 0 ? (
-                <p className="text-xs text-of-muted">새 알림이 없습니다.</p>
-              ) : (
-                <ul className="space-y-1.5">
-                  {inbox.map((n) => (
-                    <li key={n.id}>
-                      <button
-                        type="button"
-                        className="flex w-full items-baseline gap-2 text-left text-xs hover:underline"
-                        onClick={() => {
-                          const target = getNotificationTargetPath(n)
-                          if (target) navigate(target)
-                        }}
-                      >
-                        <span className={n.read ? 'text-of-muted' : 'font-medium'}>
-                          {getNotificationMessage(n)}
-                        </span>
-                        <span className="ml-auto shrink-0 text-[11px] text-of-muted">
-                          {formatDateTime(n.created_at)}
-                        </span>
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
+            <section aria-label="홈 작업 도구" className="grid gap-2 sm:grid-cols-3">
+              <QuickLink
+                to="/search"
+                label="검색"
+                detail="문서·작업·프로젝트 검색"
+                icon={Search}
+              />
+              <QuickLink
+                to="/reports"
+                label="리포트"
+                detail="포트폴리오 진행 흐름"
+                icon={Gauge}
+              />
+              <QuickLink
+                to={firstProject ? `/projects/${firstProject.id}/timeline` : '/projects'}
+                label="타임라인"
+                detail="가장 최근 프로젝트 일정"
+                icon={TimerReset}
+              />
             </section>
-
           </div>
-
-          <section aria-label="홈 작업 도구" className="grid gap-2 sm:grid-cols-3">
-            <QuickLink
-              to="/search"
-              label="검색"
-              detail="문서·작업·프로젝트 검색"
-              icon={Search}
-            />
-            <QuickLink
-              to="/reports"
-              label="리포트"
-              detail="포트폴리오 진행 흐름"
-              icon={Gauge}
-            />
-            <QuickLink
-              to={firstProject ? `/projects/${firstProject.id}/timeline` : '/projects'}
-              label="타임라인"
-              detail="가장 최근 프로젝트 일정"
-              icon={TimerReset}
-            />
-          </section>
-        </div>
-      )}
+        ) : null}
+      </main>
     </div>
   )
 }
