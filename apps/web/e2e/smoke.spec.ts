@@ -23080,6 +23080,65 @@ test('프로젝트 목록 정렬이 순서를 바꾸고 방향 토글이 동작�
   await expect(rows.first()).toContainText('알파')
 })
 
+test('프로젝트 디렉터리는 초기 로딩과 오류에도 프레임 제어를 유지하고 같은 자리에서 복구한다', async ({
+  page,
+}) => {
+  await mockApi(page)
+  let releaseFirstRequest = () => {}
+  const firstRequestGate = new Promise<void>((resolve) => {
+    releaseFirstRequest = resolve
+  })
+  let attempts = 0
+  await page.unroute(/\/api\/v1\/projects(?:\?.*)?$/)
+  await page.route(/\/api\/v1\/projects(?:\?.*)?$/, async (route) => {
+    attempts += 1
+    if (attempts <= 2) {
+      await firstRequestGate
+      await route.fulfill({ status: 503, json: { detail: 'directory temporarily unavailable' } })
+      return
+    }
+    await route.fulfill({
+      json: {
+        items: [{ ...project, ...projectRollups }],
+        total: 1,
+        summary: {
+          projects: 1,
+          active: 1,
+          archived: 0,
+          open_work_packages: projectRollups.open_work_package_count,
+          overdue_work_packages: projectRollups.overdue_count,
+          initiatives: 0,
+        },
+      } satisfies ProjectList,
+    })
+  })
+
+  await page.goto('/projects')
+  const frame = page.getByTestId('frame-context-bar')
+  const controls = page.getByLabel('프로젝트 디렉터리 제어')
+  const directory = page.getByRole('region', { name: '프로젝트 디렉터리', exact: true })
+  await expect(frame.getByRole('button', { name: '새 프로젝트' })).toBeVisible()
+  await expect(frame.getByRole('button', { name: '카드 보기' })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  )
+  await expect(controls.getByLabel('프로젝트 검색어')).toBeVisible()
+  await expect(controls.getByLabel('프로젝트 정렬')).toBeVisible()
+  await expect(directory).toHaveAttribute('aria-busy', 'true')
+
+  releaseFirstRequest()
+  await expect(directory.getByRole('alert')).toContainText('데이터를 불러오지 못했습니다')
+  await expect(frame.getByRole('button', { name: '새 프로젝트' })).toBeVisible()
+  await expect(controls.getByLabel('프로젝트 검색어')).toBeVisible()
+
+  await directory.getByRole('button', { name: '다시 시도' }).click()
+  await expect(page.getByRole('list', { name: '프로젝트 디렉터리' })).toContainText(
+    project.name,
+  )
+  await expect(page.getByLabel('프로젝트 요약')).toContainText('활성 1')
+  expect(attempts).toBe(3)
+})
+
 test('프로젝트 디렉터리는 서버 페이지·검색 URL·보관 범위와 전체 템플릿 옵션을 보존한다', async ({
   page,
 }) => {
@@ -24789,6 +24848,8 @@ test('프로젝트 디렉터리는 모바일에서 요약·검색·카드 링크
     path: '../../docs/screenshots/redevelopment/project-directory-ui/mobile.png',
     fullPage: true,
   })
+  await page.setViewportSize({ width: 320, height: 740 })
+  await expectNoHorizontalOverflow(page)
 })
 
 
