@@ -34,6 +34,7 @@ export function WorkspaceSavedViewsControls({
   const [name, setName] = useState('')
   const [notice, setNotice] = useState('')
   const [error, setError] = useState('')
+  const [deleteTarget, setDeleteTarget] = useState<WorkspaceSavedView | null>(null)
   const active = views.data?.items.find((view) => view.id === activeViewId) ?? null
   const dirty = active ? !sameParams(active.params, currentParams) : false
   const busy = create.isPending || update.isPending || remove.isPending
@@ -84,11 +85,12 @@ export function WorkspaceSavedViewsControls({
   }
 
   const deleteActive = async () => {
-    if (!active || !window.confirm(`"${active.name}" 뷰를 삭제할까요?`)) return
+    if (!deleteTarget) return
     setError('')
     try {
-      await remove.mutateAsync({ id: active.id, expectedVersion: active.version })
+      await remove.mutateAsync({ id: deleteTarget.id, expectedVersion: deleteTarget.version })
       onDelete()
+      setDeleteTarget(null)
       setNotice('저장 뷰를 삭제했습니다.')
     } catch (cause) {
       setError(messageFrom(cause, '저장 뷰를 삭제하지 못했습니다.'))
@@ -131,7 +133,19 @@ export function WorkspaceSavedViewsControls({
           <Button type="button" variant="outline" size="icon" className="h-7 w-7" aria-label={dirty ? '갱신' : '저장됨'} title={dirty ? '갱신' : '저장됨'} disabled={!dirty || busy} onClick={updateActive}>
             <Save size={13} />
           </Button>
-          <Button type="button" variant="ghost" size="icon" className="h-7 w-7" aria-label="현재 저장 뷰 삭제" title="현재 저장 뷰 삭제" disabled={busy} onClick={deleteActive}>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7"
+            aria-label="현재 저장 뷰 삭제"
+            title="현재 저장 뷰 삭제"
+            disabled={busy}
+            onClick={() => {
+              setError('')
+              setDeleteTarget(active)
+            }}
+          >
             <Trash2 size={13} />
           </Button>
         </>
@@ -185,7 +199,40 @@ export function WorkspaceSavedViewsControls({
         </Dialog.Portal>
       </Dialog.Root>
 
-      {error && !dialogOpen ? <span role="alert" className="text-[11px] text-of-danger">{error}</span> : null}
+      <Dialog.Root
+        open={deleteTarget !== null}
+        onOpenChange={(open) => {
+          if (!open && !remove.isPending) {
+            setDeleteTarget(null)
+            setError('')
+          }
+        }}
+      >
+        <Dialog.Portal>
+          <ModalOverlay />
+          <ModalContent className="w-[min(26rem,calc(100vw-1.5rem))] rounded-of-lg border border-of-border bg-of-surface-raised p-4 shadow-[var(--of-shadow-popover)]">
+            <Dialog.Title className="text-sm font-semibold text-of-text">저장 뷰 삭제</Dialog.Title>
+            <Dialog.Description className="mt-1 text-xs leading-5 text-of-muted">
+              {deleteTarget ? `“${deleteTarget.name}” 뷰를 삭제합니다. 다른 작업과 원본 데이터는 변경되지 않습니다.` : ''}
+            </Dialog.Description>
+            {error ? (
+              <p role="alert" className="mt-3 rounded-of border border-of-danger/20 bg-of-danger-soft/50 px-3 py-2 text-xs text-of-danger">
+                {error}
+              </p>
+            ) : null}
+            <div className="mt-4 flex justify-end gap-2">
+              <Dialog.Close asChild>
+                <Button type="button" variant="outline" disabled={remove.isPending}>취소</Button>
+              </Dialog.Close>
+              <Button type="button" variant="danger" disabled={remove.isPending} onClick={deleteActive}>
+                {remove.isPending ? '삭제 중…' : error ? '다시 시도' : '삭제'}
+              </Button>
+            </div>
+          </ModalContent>
+        </Dialog.Portal>
+      </Dialog.Root>
+
+      {error && !dialogOpen && !deleteTarget ? <span role="alert" className="text-[11px] text-of-danger">{error}</span> : null}
       {notice ? <span role="status" className="sr-only">{notice}</span> : null}
     </div>
   )

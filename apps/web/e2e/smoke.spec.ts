@@ -3674,6 +3674,63 @@ test('UI-228 Workspace Views 제어는 프레임 헤더와 접이식 필터에 �
   })
 })
 
+test('UI-270 Workspace Views는 레이아웃 골격과 오류·빈 결과 복구 중에도 프레임을 유지한다', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 720 })
+  await mockApi(page)
+  let failResults = true
+  await page.route('**/api/v1/search/work-packages**', async (route) => {
+    const url = new URL(route.request().url())
+    await new Promise((resolve) => setTimeout(resolve, 600))
+    if (failResults) {
+      await route.fulfill({ status: 500, json: { detail: '임시 작업 조회 오류' } })
+      return
+    }
+    if (url.searchParams.get('q') === '없는 작업') {
+      await route.fulfill({ json: { query: '없는 작업', total: 0, items: [] } })
+      return
+    }
+    await route.fulfill({ json: allWorkItems })
+  })
+
+  await page.goto('/work-items')
+  const actions = page.getByTestId('workspace-views-frame-actions')
+  const results = page.getByTestId('workspace-views-results')
+  await expect(actions).toBeVisible()
+  await expect(results).toHaveAttribute('aria-busy', 'true')
+  await expect(page.getByTestId('workspace-board-skeleton')).toBeVisible()
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/workspace-views-composition-ui-270/desktop-loading.png',
+  })
+  await expect(page.getByRole('alert')).toContainText('임시 작업 조회 오류')
+  await expect(actions.getByRole('button', { name: 'Board 레이아웃' })).toHaveAttribute('aria-pressed', 'true')
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/workspace-views-composition-ui-270/desktop-error.png',
+  })
+
+  failResults = false
+  await page.getByRole('button', { name: '다시 시도' }).click()
+  await expect(page.getByLabel('전체 작업 Board')).toBeVisible()
+  await expect(results).toHaveAttribute('aria-busy', 'false')
+
+  await actions.getByRole('button', { name: /^필터/ }).click()
+  await page.getByLabel('전체 작업 검색어').fill('없는 작업')
+  await page.getByRole('button', { name: '검색', exact: true }).click()
+  await expect(page.getByRole('button', { name: '모든 작업 보기' })).toBeVisible()
+  await page.getByRole('button', { name: '모든 작업 보기' }).click()
+  await expect(page).not.toHaveURL(/q=/)
+  await expect(page.getByLabel('전체 작업 Board')).toBeVisible()
+  await expect(page.getByLabel('전체 작업 검색어')).toHaveCount(0)
+
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/workspace-views-composition-ui-270/desktop.png',
+  })
+  await page.setViewportSize({ width: 390, height: 844 })
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/workspace-views-composition-ui-270/mobile.png',
+  })
+})
+
 test('Workspace Board 상태 이동은 반환된 version으로 다음 PATCH를 이어간다', async ({ page }) => {
   test.setTimeout(60_000)
   await mockApi(page)
@@ -4276,12 +4333,34 @@ test('Workspace Views Add view가 생성·되돌리기·갱신·삭제와 실패
   expect(updatedBody.params.layout).toBe('calendar')
   await expect(page.getByRole('button', { name: '저장됨' })).toBeDisabled()
 
-  page.once('dialog', (confirmation) => confirmation.accept())
-  const deleteRequest = page.waitForRequest((request) =>
+  let deleteAttempts = 0
+  await page.route('**/api/v1/me/workspace-views/**', async (route) => {
+    if (route.request().method() !== 'DELETE') {
+      await route.fallback()
+      return
+    }
+    deleteAttempts += 1
+    if (deleteAttempts === 1) {
+      await route.fulfill({ status: 500, json: { detail: '임시 삭제 오류' } })
+      return
+    }
+    await route.fallback()
+  })
+  const failedDeleteRequest = page.waitForRequest((request) =>
     request.method() === 'DELETE' && request.url().includes('expected_version=1'),
   )
   await page.getByRole('button', { name: '현재 저장 뷰 삭제' }).click()
-  await deleteRequest
+  const deleteDialog = page.getByRole('dialog', { name: '저장 뷰 삭제' })
+  await expect(deleteDialog).toContainText('내 긴급 작업')
+  await deleteDialog.getByRole('button', { name: '삭제', exact: true }).click()
+  await failedDeleteRequest
+  await expect(deleteDialog.getByRole('alert')).toContainText('임시 삭제 오류')
+  const retryDeleteRequest = page.waitForRequest((request) =>
+    request.method() === 'DELETE' && request.url().includes('expected_version=1'),
+  )
+  await deleteDialog.getByRole('button', { name: '다시 시도' }).click()
+  await retryDeleteRequest
+  await expect(deleteDialog).toBeHidden()
   await expect(page).not.toHaveURL(/view=/)
   await expect(page.getByLabel('저장 뷰', { exact: true })).toBeDisabled()
 
