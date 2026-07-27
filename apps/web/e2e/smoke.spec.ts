@@ -11001,7 +11001,12 @@ test('settings/admin IA는 모바일 폭에서 표면별 탐색을 유지한다'
 
   await page.goto('/status')
   await expect(page.getByRole('heading', { name: '시스템 상태' })).toBeVisible()
-  await expect(page.getByText('0100')).toBeVisible()
+  await expect(
+    page
+      .getByRole('region', { name: '데이터베이스 상태' })
+      .getByText('0100', { exact: true })
+      .first(),
+  ).toBeVisible()
   await expectNoHorizontalOverflow(page)
   await page.screenshot({
     path: '../../docs/screenshots/redevelopment/settings-ia/status-mobile.png',
@@ -20495,6 +20500,67 @@ test('마일스톤 조회 실패가 오류 상태와 재시도를 제공한다',
   expect(attempts).toBeGreaterThanOrEqual(2)
 })
 
+const opsStatusFixture = {
+  version: '0.1.0',
+  readiness: {
+    status: 'warning',
+    ok: 3,
+    warnings: 1,
+    errors: 0,
+    generated_at: '2026-07-17T02:00:00Z',
+    checks: [
+      {
+        id: 'database',
+        label: '데이터베이스 연결',
+        status: 'ok',
+        detail: '데이터베이스가 요청에 응답합니다.',
+        observed: 'reachable',
+        expected: 'reachable',
+      },
+      {
+        id: 'schema',
+        label: '데이터베이스 스키마',
+        status: 'ok',
+        detail: '데이터베이스 스키마가 애플리케이션 head와 일치합니다.',
+        observed: '0100',
+        expected: '0100',
+      },
+      {
+        id: 'storage',
+        label: '파일 스토리지',
+        status: 'ok',
+        detail: 'LocalStorage에 임시 파일을 쓰고 안전하게 정리했습니다.',
+        observed: 'writable',
+        expected: 'writable',
+      },
+      {
+        id: 'auth',
+        label: '인증 구성',
+        status: 'warning',
+        detail: '개발 인증 모드입니다. 공유 배포 전 OIDC로 전환하세요.',
+        observed: 'dev',
+        expected: 'oidc',
+      },
+    ],
+  },
+  database: {
+    status: 'ok',
+    current_revision: '0100',
+    expected_revision: '0100',
+    matches_head: true,
+  },
+  counts: { projects: 3, work_packages: 42 },
+  config: {
+    environment: 'development',
+    auth_mode: 'dev',
+    oidc_provider_count: 0,
+    ai_summary_enabled: false,
+    storage_backend: 'local',
+    upload_max_bytes: 10485760,
+    project_storage_quota_bytes: 1073741824,
+  },
+}
+
 test('시스템 상태 페이지가 실제 준비 상태를 새로고침하고 안전 진단을 복사한다', async ({ page }) => {
   await mockApi(page)
   await page.addInitScript(() => {
@@ -20504,47 +20570,38 @@ test('시스템 상태 페이지가 실제 준비 상태를 새로고침하고 �
     })
   })
   let statusRequests = 0
-  await page.route('**/api/v1/ops/status', (route) =>
-    { statusRequests += 1; return route.fulfill({
-      json: {
-        version: '0.1.0',
-        readiness: {
-          status: 'warning', ok: 3, warnings: 1, errors: 0,
-          generated_at: '2026-07-17T02:00:00Z',
-          checks: [
-            { id: 'database', label: '데이터베이스 연결', status: 'ok', detail: '데이터베이스가 요청에 응답합니다.', observed: 'reachable', expected: 'reachable' },
-            { id: 'schema', label: '데이터베이스 스키마', status: 'ok', detail: '데이터베이스 스키마가 애플리케이션 head와 일치합니다.', observed: '0100', expected: '0100' },
-            { id: 'storage', label: '파일 스토리지', status: 'ok', detail: 'LocalStorage에 임시 파일을 쓰고 안전하게 정리했습니다.', observed: 'writable', expected: 'writable' },
-            { id: 'auth', label: '인증 구성', status: 'warning', detail: '개발 인증 모드입니다. 공유 배포 전 OIDC로 전환하세요.', observed: 'dev', expected: 'oidc' },
-          ],
-        },
-        database: { status: 'ok', current_revision: '0100', expected_revision: '0100', matches_head: true },
-        counts: { projects: 3, work_packages: 42 },
-        config: {
-          environment: 'development',
-          auth_mode: 'dev',
-          oidc_provider_count: 0,
-          ai_summary_enabled: false,
-          storage_backend: 'local',
-          upload_max_bytes: 10485760,
-          project_storage_quota_bytes: 1073741824,
-        },
-      },
-    }) },
-  )
+  await page.route('**/api/v1/ops/status', (route) => {
+    statusRequests += 1
+    return route.fulfill({ json: opsStatusFixture })
+  })
   await page.goto('/status')
   await expect(page.getByRole('heading', { name: '시스템 상태' })).toBeVisible()
+  const summary = page.getByLabel('시스템 상태 요약')
+  await expect(summary.getByRole('definition').filter({ hasText: '주의 필요' })).toBeVisible()
+  await expect(summary.getByRole('definition').filter({ hasText: '42' })).toBeVisible()
   await expect(
     page.getByRole('region', { name: '배포 준비 상태' }).getByText('주의 필요'),
   ).toBeVisible()
   await expect(page.getByText('데이터베이스 스키마', { exact: true })).toBeVisible()
-  await expect(page.getByText('0.1.0')).toBeVisible()
-  await expect(page.getByText('0100')).toBeVisible()
-  await expect(page.getByText('42')).toBeVisible()
+  await expect(page.getByText('OneFlow v0.1.0')).toBeVisible()
+  const databaseRegion = page.getByRole('region', { name: '데이터베이스 상태' })
+  await expect(databaseRegion.getByText('0100', { exact: true }).first()).toBeVisible()
   await expect(page.getByText('10 MiB')).toBeVisible()
+  await expect(databaseRegion).toContainText('Head 일치')
   await page.screenshot({
-    path: '../../docs/screenshots/redevelopment/deployment-diagnostics-ui/desktop.png',
+    path: '../../docs/screenshots/redevelopment/system-status-composition-ui-260/desktop.png',
     fullPage: true,
+  })
+  const statusScroll = page.getByTestId('system-status-scroll')
+  await statusScroll.evaluate((element) => {
+    element.scrollTop = element.scrollHeight
+  })
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/system-status-composition-ui-260/desktop-bottom.png',
+    fullPage: true,
+  })
+  await statusScroll.evaluate((element) => {
+    element.scrollTop = 0
   })
   await page.getByRole('button', { name: '진단 복사' }).click()
   await expect(page.getByRole('status')).toContainText('진단 보고서를 복사했습니다.')
@@ -20556,9 +20613,77 @@ test('시스템 상태 페이지가 실제 준비 상태를 새로고침하고 �
   await page.setViewportSize({ width: 390, height: 844 })
   await expectNoHorizontalOverflow(page)
   await page.screenshot({
-    path: '../../docs/screenshots/redevelopment/deployment-diagnostics-ui/mobile.png',
+    path: '../../docs/screenshots/redevelopment/system-status-composition-ui-260/mobile.png',
     fullPage: true,
   })
+  await statusScroll.evaluate((element) => {
+    element.scrollTop = element.scrollHeight
+  })
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/system-status-composition-ui-260/mobile-bottom.png',
+    fullPage: true,
+  })
+})
+
+test('시스템 상태는 초기·새로고침·진단 복사 실패를 마지막 성공 결과에서 정확히 복구한다', async ({
+  page,
+}) => {
+  await mockApi(page)
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: {
+        writeText: async (value: string) => {
+          const attempts = Number(window.sessionStorage.getItem('__diagnostic_attempts') ?? '0') + 1
+          window.sessionStorage.setItem('__diagnostic_attempts', String(attempts))
+          if (attempts === 1) throw new Error('clipboard denied')
+          window.sessionStorage.setItem('__diagnostic_copy', value)
+        },
+      },
+    })
+  })
+  let statusRequests = 0
+  await page.route('**/api/v1/ops/status', async (route) => {
+    statusRequests += 1
+    if ([1, 2, 4, 5].includes(statusRequests)) {
+      await route.fulfill({
+        status: 503,
+        json: { detail: 'readiness temporarily unavailable' },
+      })
+      return
+    }
+    await route.fulfill({ json: opsStatusFixture })
+  })
+
+  await page.goto('/status')
+  await expect(page.getByRole('alert')).toContainText('데이터를 불러오지 못했습니다')
+  await page.getByRole('button', { name: '다시 시도' }).click()
+  await expect(page.getByLabel('시스템 상태 요약')).toContainText('주의 필요')
+
+  await page.getByRole('button', { name: '진단 복사' }).click()
+  await expect(page.getByRole('alert')).toContainText('클립보드에 복사하지 못했습니다')
+  await page.getByRole('button', { name: '진단 복사 다시 시도' }).click()
+  await expect(page.getByRole('status')).toContainText('진단 보고서를 복사했습니다')
+  const copied = await page.evaluate(() => window.sessionStorage.getItem('__diagnostic_copy'))
+  expect(copied).toContain('oneflow-deployment-diagnostics/v1')
+
+  await page.getByRole('button', { name: '새로고침' }).click()
+  await expect(page.getByRole('alert')).toContainText('마지막으로 확인한 결과를 유지합니다')
+  await expect(page.getByText('데이터베이스 스키마', { exact: true })).toBeVisible()
+  await expect(page.getByLabel('시스템 상태 요약')).toContainText('42')
+  await page.setViewportSize({ width: 390, height: 844 })
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/system-status-composition-ui-260/mobile-refresh-error.png',
+    fullPage: true,
+  })
+
+  await page.getByRole('button', { name: '새로고침 다시 시도' }).click()
+  await expect.poll(() => statusRequests).toBe(6)
+  await expect(
+    page.getByText('최신 상태를 불러오지 못했습니다. 마지막으로 확인한 결과를 유지합니다.'),
+  ).toHaveCount(0)
 })
 
 test('알 수 없는 주소는 스타일된 404 페이지를 보여준다', async ({ page }) => {
