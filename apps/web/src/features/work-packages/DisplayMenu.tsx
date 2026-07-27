@@ -1,4 +1,4 @@
-import { ArrowDownAZ, Check, Columns3, Rows2, Rows3, Settings2 } from 'lucide-react'
+import { ArrowDownAZ, Check, Columns3, Group, Rows2, Rows3, Settings2 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import type { GridDensity } from '@/components/ui/data-grid'
@@ -24,6 +24,11 @@ import {
   WORK_PACKAGE_SORTS,
   type WorkPackageSort,
 } from './displayOptions'
+import {
+  PROJECT_WORK_ITEM_GROUP_LABELS,
+  PROJECT_WORK_ITEM_GROUPS,
+  type ProjectWorkItemGroupBy,
+} from './projectWorkItemDisplay'
 
 type DisplayMenuProps = {
   sort: WorkPackageSort
@@ -31,6 +36,8 @@ type DisplayMenuProps = {
   customColumns: string[]
   customFields: CustomField[]
   onSortChange: (value: WorkPackageSort) => void
+  groupBy: ProjectWorkItemGroupBy
+  onGroupByChange: (value: ProjectWorkItemGroupBy) => void
   onToggleColumn: (key: ListColumn) => void
   onToggleCustomColumn: (id: string) => void
   density: GridDensity
@@ -43,6 +50,8 @@ export function DisplayMenu({
   customColumns,
   customFields,
   onSortChange,
+  groupBy,
+  onGroupByChange,
   onToggleColumn,
   onToggleCustomColumn,
   density,
@@ -71,6 +80,22 @@ export function DisplayMenu({
           >
             <span>{WORK_PACKAGE_SORT_LABELS[key]}</span>
             {sort === key ? <Check size={12} aria-hidden="true" /> : null}
+          </DropdownMenuItem>
+        ))}
+
+        <DropdownMenuSeparator />
+        <DropdownMenuLabel className="flex items-center gap-1.5 text-[11px] uppercase tracking-normal text-of-muted">
+          <Group size={12} /> 그룹
+        </DropdownMenuLabel>
+        {PROJECT_WORK_ITEM_GROUPS.map((key) => (
+          <DropdownMenuItem
+            key={key}
+            className="flex items-center justify-between gap-3 text-xs"
+            onSelect={() => onGroupByChange(key)}
+            aria-label={`그룹 ${PROJECT_WORK_ITEM_GROUP_LABELS[key]}`}
+          >
+            <span>{PROJECT_WORK_ITEM_GROUP_LABELS[key]}</span>
+            {groupBy === key ? <Check size={12} aria-hidden="true" /> : null}
           </DropdownMenuItem>
         ))}
 

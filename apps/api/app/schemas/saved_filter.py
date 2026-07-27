@@ -31,6 +31,24 @@ class SavedFilterParams(BaseModel):
     cf_field: str | None = None
     cf_op: str | None = None
     cf_value: str | None = None
+    # Display-only project list composition. Stored in the existing JSONB
+    # params payload, so this does not require a schema migration.
+    group_by: str | None = None
+    density: str | None = None
+
+    @field_validator("group_by")
+    @classmethod
+    def _group_by(cls, v: str | None) -> str | None:
+        if v is not None and v not in ("status", "priority", "none"):
+            raise ValueError("group_by must be one of ('status', 'priority', 'none')")
+        return v
+
+    @field_validator("density")
+    @classmethod
+    def _density(cls, v: str | None) -> str | None:
+        if v is not None and v not in ("compact", "comfortable"):
+            raise ValueError("density must be one of ('compact', 'comfortable')")
+        return v
 
     @field_validator("cf_op")
     @classmethod

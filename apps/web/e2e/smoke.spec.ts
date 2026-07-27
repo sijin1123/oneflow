@@ -1278,7 +1278,7 @@ test('프로젝트 작업 화면 제어가 보기·필터·분석·생성 흐름
   await expect(page.getByRole('heading', { name: 'Work items' })).toHaveClass(/sr-only/)
   await expect(page.getByTestId('frame-context-bar').getByText('Work items', { exact: true })).toHaveCount(1)
   await expect(controls.getByTestId('work-item-total')).toHaveText('2개')
-  await expect(controls.getByRole('link', { name: '목록 보기' })).toHaveAttribute(
+  await expect(controls.getByRole('link', { name: '표 보기' })).toHaveAttribute(
     'href',
     `/projects/${project.id}/work-packages`,
   )
@@ -1286,9 +1286,9 @@ test('프로젝트 작업 화면 제어가 보기·필터·분석·생성 흐름
     'href',
     `/projects/${project.id}/board`,
   )
-  await expect(controls.getByRole('link', { name: '백로그 보기' })).toHaveAttribute(
+  await expect(controls.getByRole('link', { name: '타임라인 보기' })).toHaveAttribute(
     'href',
-    `/projects/${project.id}/backlog`,
+    `/projects/${project.id}/timeline`,
   )
   await expect(controls.getByRole('link', { name: '캘린더 보기' })).toHaveAttribute(
     'href',
@@ -1337,6 +1337,95 @@ test('프로젝트 작업 화면 제어가 보기·필터·분석·생성 흐름
   })
   await page.screenshot({
     path: '../../docs/screenshots/redevelopment/project-work-items-composition-ui/mobile.png',
+  })
+})
+
+test('프로젝트 작업 목록은 그룹·밀도·그룹별 실제 생성을 URL 상태로 연결한다', async ({ page }) => {
+  await mockApi(page)
+  await page.goto(`/projects/${project.id}/work-packages`)
+
+  const results = page.getByRole('region', { name: '프로젝트 작업 결과' })
+  await expect(results.getByTestId('work-item-group-backlog')).toBeVisible()
+  await expect(results.getByRole('button', { name: '할 일 그룹 접기' })).toBeVisible()
+  await expect(results.getByRole('button', { name: '진행 중 그룹 접기' })).toBeVisible()
+  await expect(results.getByRole('button', { name: '워크패키지 API 구현', exact: true })).toBeVisible()
+
+  await results.getByRole('button', { name: '할 일 그룹 접기' }).click()
+  await expect(results.getByRole('button', { name: '할 일 그룹 펼치기' })).toBeVisible()
+  await expect(results.getByRole('button', { name: '워크패키지 API 구현', exact: true })).toBeHidden()
+  await results.getByRole('button', { name: '할 일 그룹 펼치기' }).click()
+
+  await page.getByRole('button', { name: '표시' }).click()
+  await page.getByRole('menuitem', { name: '그룹 우선순위' }).click()
+  await expect(page).toHaveURL(/group_by=priority/)
+  await expect(results.getByRole('button', { name: '높음 그룹 접기' })).toBeVisible()
+  await page.getByRole('button', { name: '표시' }).click()
+  await page.getByRole('menuitem', { name: '여유롭게' }).click()
+  await expect(page).toHaveURL(/density=comfortable/)
+
+  await results.getByRole('button', { name: '높음 그룹에 새 작업' }).click()
+  await expect(page).toHaveURL(/new=1/)
+  await expect(page).toHaveURL(/new_priority=high/)
+  const create = page.getByRole('region', { name: '새 작업 생성' })
+  await expect(create).toBeVisible()
+  await expect(create.getByLabel('우선순위')).toHaveValue('high')
+})
+
+test('UI-271 프로젝트 작업 결과는 로딩·오류·빈 결과 복구 중에도 프레임을 유지한다', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 720 })
+  await mockApi(page)
+  let failResults = true
+  await page.route(`**/api/v1/projects/${project.id}/work-packages**`, async (route) => {
+    const url = new URL(route.request().url())
+    await new Promise((resolve) => setTimeout(resolve, 600))
+    if (failResults) {
+      await route.fulfill({ status: 500, json: { detail: '임시 프로젝트 작업 조회 오류' } })
+      return
+    }
+    if (url.searchParams.get('q') === '없는 작업') {
+      await route.fulfill({ json: { items: [], total: 0 } })
+      return
+    }
+    await route.fulfill({ json: { items: [wpA, wpB], total: 2 } })
+  })
+
+  await page.goto(`/projects/${project.id}/work-packages`)
+  const controls = page.getByRole('region', { name: '작업 화면 제어' })
+  const results = page.getByTestId('project-work-items-results')
+  await expect(controls).toBeVisible()
+  await expect(results).toHaveAttribute('aria-busy', 'true')
+  await expect(page.getByTestId('project-work-items-skeleton')).toBeVisible()
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/project-work-items-composition-ui-271/desktop-loading.png',
+  })
+  await expect(results.getByRole('alert')).toContainText('임시 프로젝트 작업 조회 오류')
+  await expect(controls.getByRole('link', { name: '표 보기' })).toHaveAttribute('aria-current', 'page')
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/project-work-items-composition-ui-271/desktop-error.png',
+  })
+
+  failResults = false
+  await results.getByRole('button', { name: '다시 시도' }).click()
+  await expect(results.getByRole('button', { name: '할 일 그룹 접기' })).toBeVisible()
+  await expect(results).toHaveAttribute('aria-busy', 'false')
+
+  await controls.getByRole('button', { name: '필터' }).click()
+  await page.getByLabel('작업 목록 검색어').fill('없는 작업')
+  await page.getByRole('button', { name: '검색', exact: true }).click()
+  await expect(page.getByRole('button', { name: '현재 보기 초기화' })).toBeVisible()
+  await page.getByRole('button', { name: '현재 보기 초기화' }).click()
+  await expect(page).not.toHaveURL(/q=/)
+  await expect(results.getByRole('button', { name: '할 일 그룹 접기' })).toBeVisible()
+  await controls.getByRole('button', { name: '필터' }).click()
+  await expect(page.getByLabel('작업 목록 검색어')).toHaveCount(0)
+
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/project-work-items-composition-ui-271/desktop.png',
+  })
+  await page.setViewportSize({ width: 390, height: 844 })
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/project-work-items-composition-ui-271/mobile.png',
   })
 })
 
@@ -3187,7 +3276,7 @@ test('모바일 앱 셸에서 사이드바가 drawer로 열린다', async ({ pag
 
   await expect(page.getByTestId('frame-context-bar').getByText('Work items', { exact: true })).toBeVisible()
   await expect(page.getByTestId('frame-context-actions').getByRole('region', { name: '작업 화면 제어' })).toBeVisible()
-  await expect(page.getByRole('button', { name: '새 작업' })).toBeVisible()
+  await expect(page.getByRole('button', { name: '새 작업', exact: true })).toBeVisible()
   await expectNoHorizontalOverflow(page)
   await page.screenshot({
     path: '../../docs/screenshots/redevelopment/view-controls/mobile.png',
@@ -15835,6 +15924,58 @@ test('저장된 필터를 적용하면 목록 쿼리에 반영된다', async ({ 
   )
   await chip.click()
   await req
+})
+
+test('프로젝트 저장 뷰는 그룹·밀도를 재적용하고 실패한 동일 삭제를 재시도한다', async ({ page }) => {
+  await mockApi(page)
+  let deleted = false
+  let deleteAttempts = 0
+  const deleteUrls: string[] = []
+  const savedView = {
+    id: 'sf-composition',
+    project_id: project.id,
+    name: '우선순위 상세',
+    params: { group_by: 'priority', density: 'comfortable' },
+    layout: 'list',
+    sort: null,
+    is_shared: false,
+    is_locked: false,
+    is_mine: true,
+    owner_name: 'Dev User',
+    created_at: '2026-07-01T00:00:00Z',
+  }
+  await page.route(`**/api/v1/projects/${project.id}/saved-filters`, (route) =>
+    route.fulfill({
+      json: { items: deleted ? [] : [savedView], total: deleted ? 0 : 1 },
+    }),
+  )
+  await page.route(`**/api/v1/projects/${project.id}/saved-filters/${savedView.id}`, async (route) => {
+    deleteAttempts += 1
+    deleteUrls.push(route.request().url())
+    if (deleteAttempts === 1) {
+      await route.fulfill({ status: 503, json: { detail: 'temporary failure' } })
+      return
+    }
+    deleted = true
+    await route.fulfill({ status: 204, body: '' })
+  })
+
+  await page.goto(`/projects/${project.id}/work-packages`)
+  await openProjectWorkItemTool(page, '저장 뷰 관리')
+  await page.getByRole('button', { name: savedView.name, exact: true }).click()
+  await expect(page).toHaveURL(/group_by=priority/)
+  await expect(page).toHaveURL(/density=comfortable/)
+  await expect(page.getByRole('button', { name: '높음 그룹 접기' })).toBeVisible()
+
+  await page.getByLabel(`${savedView.name} 삭제`).click()
+  const dialog = page.getByRole('dialog', { name: '저장 뷰 삭제' })
+  await expect(dialog).toBeVisible()
+  await dialog.getByRole('button', { name: '삭제', exact: true }).click()
+  await expect(dialog.getByRole('alert')).toBeVisible()
+  await dialog.getByRole('button', { name: '다시 시도' }).click()
+  await expect(dialog).toHaveCount(0)
+  expect(deleteAttempts).toBe(2)
+  expect(new Set(deleteUrls).size).toBe(1)
 })
 
 test('저장 뷰 관리 surface는 모바일에서 활성·잠금·저장 흐름을 유지한다', async ({ page }) => {

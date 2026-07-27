@@ -3,24 +3,26 @@ import {
   BarChart3,
   Bookmark,
   CalendarDays,
+  ChartGantt,
   CheckCircle2,
+  ChevronDown,
+  ChevronRight,
   ClipboardList,
-  Columns3,
   Download,
-  List,
   MoreHorizontal,
   Plus,
   RotateCcw,
   Search,
   SlidersHorizontal,
   SquareKanban,
+  Table2,
   Upload,
   X,
 } from 'lucide-react'
-import { type FormEvent, useEffect, useState } from 'react'
+import { Fragment, type FormEvent, useEffect, useState } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
 
-import { EmptyState, ErrorState, ListSkeleton } from '@/components/shell/states'
+import { EmptyState, ErrorState } from '@/components/shell/states'
 import { FrameContextActions } from '@/components/shell/FrameContextActions'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -33,6 +35,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
+import { Skeleton } from '@/components/ui/skeleton'
 import { useCustomFields } from '@/features/custom-fields/api'
 import { ReadOnlyNotice } from '@/components/shell/ReadOnlyNotice'
 import { useMemberNames, useMembers } from '@/features/members/api'
@@ -52,6 +55,13 @@ import {
   serializeWorkPackageSort,
   type WorkPackageSort,
 } from './displayOptions'
+import {
+  buildProjectWorkItemGroups,
+  parseProjectWorkItemGroup,
+  serializeProjectWorkItemGroup,
+  type ProjectWorkItemGroup,
+  type ProjectWorkItemGroupBy,
+} from './projectWorkItemDisplay'
 import { Filters } from './Filters'
 import { ImportDialog } from './ImportDialog'
 import { SavedFilters } from './SavedFilters'
@@ -60,7 +70,7 @@ import { PriorityChip, StatusChip, TypeChip } from './chips'
 import { type BulkUpdateResult, useBulkUpdate, useWorkPackages } from './api'
 import { useExportCsv } from './csv'
 import { WorkPackageRowActions, type RowActionMessage } from './RowActions'
-import { PRIORITY_LABELS, WP_PRIORITIES, WP_STATUSES } from './types'
+import { PRIORITY_LABELS, WP_PRIORITIES, WP_STATUSES, type WorkPackage } from './types'
 import { useStatusLabels } from './useStatusLabels'
 import { useTypeLabels } from './useTypeLabels'
 
@@ -79,6 +89,8 @@ const VIEW_CONTROL_KEYS = [
   'cf_field',
   'cf_op',
   'cf_value',
+  'group_by',
+  'density',
 ] as const
 
 const RESULT_FILTER_KEYS = [
@@ -168,10 +180,12 @@ export function ListPage() {
     writeColumns(columns, next)
   }
   const sort = parseWorkPackageSort(searchParams.get('sort'))
+  const groupBy = parseProjectWorkItemGroup(searchParams.get('group_by'))
+  const density: GridDensity =
+    searchParams.get('density') === 'comfortable' ? 'comfortable' : 'compact'
   const query = searchParams.get('q') ?? ''
   const importOpen = searchParams.get('ops') === 'import'
   const [queryDraft, setQueryDraft] = useState(query)
-  const [density, setDensity] = useState<GridDensity>('compact')
   const [filtersOpen, setFiltersOpen] = useState(() =>
     RESULT_FILTER_KEYS.some((key) => searchParams.get(key)),
   )
@@ -181,6 +195,25 @@ export function ListPage() {
     setQueryDraft(query)
   }, [query])
 
+  useEffect(() => {
+    const rawGroup = searchParams.get('group_by')
+    const rawDensity = searchParams.get('density')
+    const groupInvalid =
+      rawGroup !== null && !['status', 'priority', 'none'].includes(rawGroup)
+    const densityInvalid =
+      rawDensity !== null && !['compact', 'comfortable'].includes(rawDensity)
+    if (!groupInvalid && !densityInvalid) return
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev)
+        if (groupInvalid) next.delete('group_by')
+        if (densityInvalid) next.delete('density')
+        return next
+      },
+      { replace: true },
+    )
+  }, [searchParams, setSearchParams])
+
   const setSort = (value: WorkPackageSort) => {
     setSearchParams(
       (prev) => {
@@ -188,6 +221,29 @@ export function ListPage() {
         const serialized = serializeWorkPackageSort(value)
         if (serialized) next.set('sort', serialized)
         else next.delete('sort')
+        return next
+      },
+      { replace: true },
+    )
+  }
+  const setGroupBy = (value: ProjectWorkItemGroupBy) => {
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev)
+        const serialized = serializeProjectWorkItemGroup(value)
+        if (serialized) next.set('group_by', serialized)
+        else next.delete('group_by')
+        return next
+      },
+      { replace: true },
+    )
+  }
+  const setDensity = (value: GridDensity) => {
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev)
+        if (value === 'comfortable') next.set('density', value)
+        else next.delete('density')
         return next
       },
       { replace: true },
@@ -258,6 +314,7 @@ export function ListPage() {
   const [bulkAssignee, setBulkAssignee] = useState('')
   const [actionMessage, setActionMessage] = useState<RowActionMessage | null>(null)
   const [bulkNotice, setBulkNotice] = useState<BulkUpdateResult | null>(null)
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set())
   const visibleItems = data?.items ?? []
   const selectedVisibleItems = visibleItems.filter((wp) => selected.has(wp.id))
   const allVisibleSelected = visibleItems.length > 0 && selectedVisibleItems.length === visibleItems.length
@@ -274,6 +331,10 @@ export function ListPage() {
       return next.size === prev.size ? prev : next
     })
   }, [data])
+
+  useEffect(() => {
+    setCollapsedGroups(new Set())
+  }, [groupBy])
 
   const toggleSelected = (id: string) => {
     setBulkNotice(null)
@@ -334,20 +395,109 @@ export function ListPage() {
     })
   }
 
-  const openCreate = () => {
+  const openCreate = (prefill?: ProjectWorkItemGroup['prefill']) => {
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev)
       next.set('new', '1')
+      if (prefill?.status) next.set('new_status', prefill.status)
+      else next.delete('new_status')
+      if (prefill?.priority) next.set('new_priority', prefill.priority)
+      else next.delete('new_priority')
       return next
     })
   }
 
   const projectViews = [
-    { label: '목록', path: 'work-packages', icon: List, active: true },
+    { label: '표', path: 'work-packages', icon: Table2, active: true },
     { label: '보드', path: 'board', icon: SquareKanban, active: false },
-    { label: '백로그', path: 'backlog', icon: Columns3, active: false },
     { label: '캘린더', path: 'calendar', icon: CalendarDays, active: false },
+    { label: '타임라인', path: 'timeline', icon: ChartGantt, active: false },
   ]
+  const groups = data ? buildProjectWorkItemGroups(data.items, groupBy, statusLabel) : []
+  const tableColumnCount = (canWrite ? 1 : 0) + 1 + columns.length + customColumns.length + 1
+  const toggleGroup = (key: string) => {
+    setCollapsedGroups((current) => {
+      const next = new Set(current)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
+  }
+
+  const renderWorkPackageRow = (wp: WorkPackage) => (
+    <tr
+      key={wp.id}
+      className="group cursor-pointer border-b border-of-border hover:bg-of-surface-2 focus-within:bg-of-surface-2"
+      onClick={() => openDrawer(wp.id)}
+    >
+      {canWrite ? (
+        <td className="px-2 py-2">
+          <input
+            type="checkbox"
+            aria-label={`${wp.subject} 선택`}
+            checked={selected.has(wp.id)}
+            onClick={(event) => event.stopPropagation()}
+            onChange={() => toggleSelected(wp.id)}
+            className="h-3.5 w-3.5 accent-of-accent"
+          />
+        </td>
+      ) : null}
+      <td className="px-4 py-2">
+        <button
+          type="button"
+          className="w-full truncate text-left font-medium hover:text-of-accent"
+          onClick={(event) => {
+            event.stopPropagation()
+            openDrawer(wp.id)
+          }}
+        >
+          {wp.subject}
+        </button>
+      </td>
+      {show('type') ? (
+        <td className="px-2 py-2">
+          <TypeChip type={wp.type} label={typeLabel(wp.type)} />
+        </td>
+      ) : null}
+      {show('status') ? (
+        <td className="px-2 py-2">
+          <StatusChip status={wp.status} label={statusLabel(wp.status)} />
+        </td>
+      ) : null}
+      {show('priority') ? (
+        <td className="px-2 py-2">
+          <PriorityChip priority={wp.priority} />
+        </td>
+      ) : null}
+      {show('assignee') ? (
+        <td className="px-2 py-2 text-xs text-of-muted">{memberName(wp.assignee_id)}</td>
+      ) : null}
+      {show('start_date') ? (
+        <td className="px-2 py-2 text-xs text-of-muted">{wp.start_date ?? '—'}</td>
+      ) : null}
+      {show('due_date') ? (
+        <td className="px-2 py-2 text-xs text-of-muted">{wp.due_date ?? '—'}</td>
+      ) : null}
+      {show('created_at') ? (
+        <td className="px-2 py-2 text-xs text-of-muted">{wp.created_at.slice(0, 10)}</td>
+      ) : null}
+      {customColumns.map((id) => (
+        <td key={id} className="px-2 py-2 text-xs text-of-muted">
+          {renderCustomCell(wp, id, fieldById.get(id)?.field_type)}
+        </td>
+      ))}
+      <td className="sticky right-0 bg-of-surface px-2 py-2 text-right group-hover:bg-of-surface-2 group-focus-within:bg-of-surface-2">
+        <WorkPackageRowActions
+          projectId={projectId}
+          wp={wp}
+          canWrite={canWrite}
+          onOpenDrawer={(id) => openDrawer(id)}
+          onOpenMove={(id) => openDrawer(id, { move: true })}
+          onMessage={setActionMessage}
+        />
+      </td>
+    </tr>
+  )
 
   return (
     <div className="flex h-full flex-col">
@@ -398,10 +548,12 @@ export function ListPage() {
           </Button>
           <DisplayMenu
             sort={sort}
+            groupBy={groupBy}
             columns={columns}
             customColumns={customColumns}
             customFields={customFields.data?.items ?? []}
             onSortChange={setSort}
+            onGroupByChange={setGroupBy}
             onToggleColumn={toggleColumn}
             onToggleCustomColumn={toggleCustomColumn}
             density={density}
@@ -414,7 +566,7 @@ export function ListPage() {
             <BarChart3 size={13} aria-hidden="true" /> 분석
           </Link>
           {canWrite ? (
-            <Button size="sm" onClick={openCreate}>
+            <Button size="sm" onClick={() => openCreate()}>
               <Plus size={13} /> 새 작업
             </Button>
           ) : null}
@@ -638,155 +790,174 @@ export function ListPage() {
         </section>
       ) : null}
 
-      {isPending ? (
-        <ListSkeleton />
-      ) : isError ? (
-        <ErrorState error={error} onRetry={() => refetch()} />
-      ) : data.total === 0 && hasResultFilters ? (
-        <EmptyState
-          title="조건에 맞는 작업이 없습니다"
-          hint="검색이나 필터를 조정해 다른 작업을 찾아보세요."
-        >
-          <Button size="sm" variant="outline" aria-label="현재 보기 초기화" onClick={clearViewControls}>
-            <RotateCcw size={13} /> 현재 보기 초기화
-          </Button>
-        </EmptyState>
-      ) : data.total === 0 ? (
-        <EmptyState
-          title="아직 작업이 없습니다"
-          hint={
-            canWrite
-              ? '첫 작업을 만들어 프로젝트 실행을 시작하세요.'
-              : '프로젝트 멤버가 작업을 추가하면 이곳에 표시됩니다.'
-          }
-        >
-          {canWrite ? (
-            <Button size="sm" onClick={openCreate}>
-              <Plus size={13} /> 첫 작업 만들기
+      <section
+        aria-label="프로젝트 작업 결과"
+        aria-busy={isPending}
+        data-testid="project-work-items-results"
+        className="flex min-h-0 flex-1 flex-col overflow-hidden bg-of-surface"
+      >
+        {isPending ? (
+          <ProjectWorkItemsSkeleton density={density} />
+        ) : isError ? (
+          <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto">
+            <ErrorState error={error} onRetry={() => refetch()} />
+          </div>
+        ) : data.total === 0 && hasResultFilters ? (
+          <EmptyState
+            title="조건에 맞는 작업이 없습니다"
+            hint="검색이나 필터를 조정해 다른 작업을 찾아보세요."
+          >
+            <Button size="sm" variant="outline" aria-label="현재 보기 초기화" onClick={clearViewControls}>
+              <RotateCcw size={13} /> 현재 보기 초기화
             </Button>
-          ) : null}
-        </EmptyState>
-      ) : (
-        <DataGridFrame density={density} aria-label="프로젝트 작업 표 스크롤 영역">
-          <DataGrid className="min-w-[760px] text-left">
-            <thead>
-              <tr className="border-b border-of-border text-left text-xs text-of-muted">
-                {canWrite ? (
-                  <th className="w-8 px-2 py-2" aria-label="선택 열">
-                    <input
-                      type="checkbox"
-                      aria-label="현재 페이지 작업 선택"
-                      checked={allVisibleSelected}
-                      onChange={toggleAllVisible}
-                      className="h-3.5 w-3.5 accent-of-accent"
-                    />
-                  </th>
-                ) : null}
-                <th className="px-4 py-2 font-medium">제목</th>
-                {show('type') ? <th className="w-24 px-2 py-2 font-medium">타입</th> : null}
-                {show('status') ? <th className="w-28 px-2 py-2 font-medium">상태</th> : null}
-                {show('priority') ? <th className="w-24 px-2 py-2 font-medium">우선순위</th> : null}
-                {show('assignee') ? <th className="w-28 px-2 py-2 font-medium">담당자</th> : null}
-                {show('start_date') ? <th className="w-28 px-2 py-2 font-medium">시작일</th> : null}
-                {show('due_date') ? <th className="w-28 px-2 py-2 font-medium">기한</th> : null}
-                {show('created_at') ? <th className="w-28 px-2 py-2 font-medium">생성일</th> : null}
-                {customColumns.map((id) => (
-                  <th key={id} className="w-28 px-2 py-2 font-medium">
-                    {fieldById.get(id)?.name ?? '커스텀'}
-                  </th>
-                ))}
-                <th className="sticky right-0 w-12 bg-of-surface px-2 py-2 text-right font-medium">
-                  <span className="sr-only">행 작업</span>
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.items.map((wp) => (
-                <tr
-                  key={wp.id}
-                  className="group cursor-pointer border-b border-of-border hover:bg-of-surface-2 focus-within:bg-of-surface-2"
-                  onClick={() => openDrawer(wp.id)}
-                >
+          </EmptyState>
+        ) : data.total === 0 ? (
+          <EmptyState
+            title="아직 작업이 없습니다"
+            hint={
+              canWrite
+                ? '첫 작업을 만들어 프로젝트 실행을 시작하세요.'
+                : '프로젝트 멤버가 작업을 추가하면 이곳에 표시됩니다.'
+            }
+          >
+            {canWrite ? (
+              <Button size="sm" onClick={() => openCreate()}>
+                <Plus size={13} /> 첫 작업 만들기
+              </Button>
+            ) : null}
+          </EmptyState>
+        ) : (
+          <DataGridFrame
+            density={density}
+            className="h-full"
+            aria-label="프로젝트 작업 표 스크롤 영역"
+          >
+            <DataGrid className="min-w-[760px] text-left">
+              <thead>
+                <tr className="border-b border-of-border text-left text-xs text-of-muted">
                   {canWrite ? (
-                    <td className="px-2 py-2">
+                    <th className="w-8 px-2 py-2" aria-label="선택 열">
                       <input
                         type="checkbox"
-                        aria-label={`${wp.subject} 선택`}
-                        checked={selected.has(wp.id)}
-                        onClick={(e) => e.stopPropagation()}
-                        onChange={() => toggleSelected(wp.id)}
+                        aria-label="현재 페이지 작업 선택"
+                        checked={allVisibleSelected}
+                        onChange={toggleAllVisible}
                         className="h-3.5 w-3.5 accent-of-accent"
                       />
-                    </td>
+                    </th>
                   ) : null}
-                  <td className="px-4 py-2">
-                    <button
-                      type="button"
-                      className="w-full truncate text-left font-medium hover:text-of-accent"
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        openDrawer(wp.id)
-                      }}
-                    >
-                      {wp.subject}
-                    </button>
-                  </td>
-                  {show('type') ? (
-                    <td className="px-2 py-2">
-                      <TypeChip type={wp.type} label={typeLabel(wp.type)} />
-                    </td>
-                  ) : null}
-                  {show('status') ? (
-                    <td className="px-2 py-2">
-                      <StatusChip status={wp.status} label={statusLabel(wp.status)} />
-                    </td>
-                  ) : null}
-                  {show('priority') ? (
-                    <td className="px-2 py-2">
-                      <PriorityChip priority={wp.priority} />
-                    </td>
-                  ) : null}
-                  {show('assignee') ? (
-                    <td className="px-2 py-2 text-xs text-of-muted">
-                      {memberName(wp.assignee_id)}
-                    </td>
-                  ) : null}
-                  {show('start_date') ? (
-                    <td className="px-2 py-2 text-xs text-of-muted">{wp.start_date ?? '—'}</td>
-                  ) : null}
-                  {show('due_date') ? (
-                    <td className="px-2 py-2 text-xs text-of-muted">{wp.due_date ?? '—'}</td>
-                  ) : null}
-                  {show('created_at') ? (
-                    // UTC date part of the ISO timestamp — timezone-independent
-                    // date-only display, matching due_date (v32.1 R1-⑤).
-                    <td className="px-2 py-2 text-xs text-of-muted">
-                      {wp.created_at.slice(0, 10)}
-                    </td>
-                  ) : null}
+                  <th className="px-4 py-2 font-medium">제목</th>
+                  {show('type') ? <th className="w-24 px-2 py-2 font-medium">타입</th> : null}
+                  {show('status') ? <th className="w-28 px-2 py-2 font-medium">상태</th> : null}
+                  {show('priority') ? <th className="w-24 px-2 py-2 font-medium">우선순위</th> : null}
+                  {show('assignee') ? <th className="w-28 px-2 py-2 font-medium">담당자</th> : null}
+                  {show('start_date') ? <th className="w-28 px-2 py-2 font-medium">시작일</th> : null}
+                  {show('due_date') ? <th className="w-28 px-2 py-2 font-medium">기한</th> : null}
+                  {show('created_at') ? <th className="w-28 px-2 py-2 font-medium">생성일</th> : null}
                   {customColumns.map((id) => (
-                    <td key={id} className="px-2 py-2 text-xs text-of-muted">
-                      {renderCustomCell(wp, id, fieldById.get(id)?.field_type)}
-                    </td>
+                    <th key={id} className="w-28 px-2 py-2 font-medium">
+                      {fieldById.get(id)?.name ?? '커스텀'}
+                    </th>
                   ))}
-                  <td className="sticky right-0 bg-of-surface px-2 py-2 text-right group-hover:bg-of-surface-2 group-focus-within:bg-of-surface-2">
-                    <WorkPackageRowActions
-                      projectId={projectId}
-                      wp={wp}
-                      canWrite={canWrite}
-                      onOpenDrawer={(id) => openDrawer(id)}
-                      onOpenMove={(id) => openDrawer(id, { move: true })}
-                      onMessage={setActionMessage}
-                    />
-                  </td>
+                  <th className="sticky right-0 w-12 bg-of-surface px-2 py-2 text-right font-medium">
+                    <span className="sr-only">행 작업</span>
+                  </th>
                 </tr>
-              ))}
-            </tbody>
-          </DataGrid>
-        </DataGridFrame>
-      )}
+              </thead>
+              {groups.map((group) => {
+                const collapsed = collapsedGroups.has(group.key)
+                const sectionId = `project-work-item-group-items-${group.key}`
+                return (
+                  <Fragment key={group.key}>
+                    {groupBy !== 'none' ? (
+                      <tbody data-testid={`work-item-group-${group.key}`}>
+                        <tr className="border-b border-of-border bg-of-surface-2/70">
+                          <td colSpan={tableColumnCount} className="px-2 py-1.5">
+                            <div className="flex items-center justify-between gap-2">
+                              <button
+                                type="button"
+                                aria-expanded={!collapsed}
+                                aria-controls={sectionId}
+                                aria-label={`${group.label} 그룹 ${collapsed ? '펼치기' : '접기'}`}
+                                className="flex min-w-0 items-center gap-1.5 rounded-of px-1.5 py-1 text-xs font-medium text-of-text hover:bg-of-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus"
+                                onClick={() => toggleGroup(group.key)}
+                              >
+                                {collapsed ? <ChevronRight size={13} /> : <ChevronDown size={13} />}
+                                <span className="truncate">{group.label}</span>
+                                <Badge variant="outline">{group.items.length}</Badge>
+                              </button>
+                              {canWrite ? (
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-6 w-6"
+                                  aria-label={`${group.label} 그룹에 새 작업`}
+                                  title={`${group.label} 그룹에 새 작업`}
+                                  onClick={() => openCreate(group.prefill)}
+                                >
+                                  <Plus size={13} />
+                                </Button>
+                              ) : null}
+                            </div>
+                          </td>
+                        </tr>
+                      </tbody>
+                    ) : null}
+                    <tbody id={sectionId}>
+                      {collapsed ? null : group.items.map(renderWorkPackageRow)}
+                    </tbody>
+                  </Fragment>
+                )
+              })}
+            </DataGrid>
+          </DataGridFrame>
+        )}
+      </section>
 
       <DetailDrawer projectId={projectId} />
     </div>
+  )
+}
+
+function ProjectWorkItemsSkeleton({ density }: { density: GridDensity }) {
+  return (
+    <DataGridFrame
+      density={density}
+      className="h-full"
+      role="status"
+      aria-label="불러오는 중"
+      data-testid="project-work-items-skeleton"
+    >
+      <div className="min-w-[760px]">
+        <div className="grid h-9 grid-cols-[2rem_minmax(18rem,1fr)_6rem_7rem_6rem_7rem_7rem_3rem] items-center gap-2 border-b border-of-border px-2">
+          {Array.from({ length: 8 }, (_, index) => (
+            <Skeleton key={index} className={index === 1 ? 'h-3 w-24' : 'h-3 w-12'} />
+          ))}
+        </div>
+        {Array.from({ length: 4 }, (_, groupIndex) => (
+          <Fragment key={groupIndex}>
+            <div className="flex h-9 items-center gap-2 border-b border-of-border bg-of-surface-2/70 px-3">
+              <Skeleton className="h-3 w-3" />
+              <Skeleton className="h-3 w-20" />
+              <Skeleton className="h-4 w-6" />
+            </div>
+            {Array.from({ length: groupIndex === 0 ? 2 : 1 }, (_, rowIndex) => (
+              <div
+                key={rowIndex}
+                className="grid h-10 grid-cols-[2rem_minmax(18rem,1fr)_6rem_7rem_6rem_7rem_7rem_3rem] items-center gap-2 border-b border-of-border px-2"
+              >
+                {Array.from({ length: 8 }, (_, cellIndex) => (
+                  <Skeleton
+                    key={cellIndex}
+                    className={cellIndex === 1 ? 'h-3 w-40' : 'h-3 w-12'}
+                  />
+                ))}
+              </div>
+            ))}
+          </Fragment>
+        ))}
+      </div>
+    </DataGridFrame>
   )
 }

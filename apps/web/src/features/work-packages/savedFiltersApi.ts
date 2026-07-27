@@ -16,6 +16,8 @@ export type SavedFilterParams = {
   cf_field?: string | null
   cf_op?: string | null
   cf_value?: string | null
+  group_by?: 'status' | 'priority' | 'none' | null
+  density?: 'compact' | 'comfortable' | null
 }
 
 export type ViewLayout = 'list' | 'board' | 'tree' | 'timeline' | 'calendar'
