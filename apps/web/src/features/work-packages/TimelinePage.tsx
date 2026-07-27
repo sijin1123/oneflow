@@ -2,25 +2,54 @@ import { gantt } from 'dhtmlx-gantt'
 import 'dhtmlx-gantt/codebase/dhtmlxgantt.css'
 
 import './gantt-theme.css'
-import { useEffect, useRef, useState } from 'react'
-import { useParams, useSearchParams } from 'react-router-dom'
+import {
+  BarChart3,
+  CalendarDays,
+  ChartGantt,
+  ChevronLeft,
+  ChevronRight,
+  LocateFixed,
+  Plus,
+  RotateCcw,
+  Search,
+  SlidersHorizontal,
+  SquareKanban,
+  Table2,
+  X,
+} from 'lucide-react'
+import { type FormEvent, type ReactNode, useEffect, useRef, useState } from 'react'
+import { Link, useParams, useSearchParams } from 'react-router-dom'
 
 import { useQueryClient } from '@tanstack/react-query'
 
-import { EmptyState, ErrorState, ListSkeleton } from '@/components/shell/states'
+import { FrameContextActions } from '@/components/shell/FrameContextActions'
+import { ReadOnlyNotice } from '@/components/shell/ReadOnlyNotice'
+import { EmptyState, ErrorState } from '@/components/shell/states'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Skeleton } from '@/components/ui/skeleton'
 import { useCanWrite } from '@/features/members/useCanWrite'
 import { useMilestones } from '@/features/milestones/api'
-import { PlanningSurface } from '@/features/planning/PlanningSurface'
 import { useWorkspaceCapabilities } from '@/features/workspace-features/api'
 import { ApiError } from '@/lib/api'
 import { todayISO } from '@/lib/datetime'
 import { cn } from '@/lib/utils'
 
 import { DetailDrawer } from './DetailDrawer'
+import { Filters } from './Filters'
+import { NewWorkPackageInline } from './NewWorkPackageInline'
 import { TimelineItemActions } from './TimelineItemActions'
 import { ganttDatesToPatch, nextDay } from './ganttDates'
 import { usePatchWorkPackage, useProjectRelations, useWorkPackages } from './api'
-import { type ProjectRelation, ZOOM_LABELS, ZOOM_LEVELS, type ZoomLevel } from './timeline'
+import {
+  parseTimelineFocus,
+  parseZoomLevel,
+  shiftTimelineFocus,
+  type ProjectRelation,
+  ZOOM_LABELS,
+  ZOOM_LEVELS,
+  type ZoomLevel,
+} from './timeline'
 import type { WorkPackage } from './types'
 
 const ZOOM_STORAGE_KEY = 'oneflow.timeline.zoom.v1'
@@ -103,11 +132,46 @@ const SCALES: Record<ZoomLevel, [Scale, ...Scale[]]> = {
 
 const MIN_COLUMN: Record<ZoomLevel, number> = { fit: 18, month: 28, week: 34, day: 40 }
 
+const TIMELINE_FILTER_KEYS = [
+  'status',
+  'priority',
+  'type',
+  'assignee_id',
+  'milestone_id',
+  'customer_id',
+  'cycle_id',
+  'module_id',
+  'q',
+  'cf_field',
+  'cf_op',
+  'cf_value',
+] as const
+
+const PROJECT_VIEWS = [
+  { label: '표', path: 'work-packages', icon: Table2 },
+  { label: '보드', path: 'board', icon: SquareKanban },
+  { label: '캘린더', path: 'calendar', icon: CalendarDays },
+  { label: '타임라인', path: 'timeline', icon: ChartGantt },
+] as const
+
+const TRANSIENT_VIEW_KEYS = [
+  'scale',
+  'focus',
+  'wp',
+  'move',
+  'new',
+  'draft',
+  'new_status',
+  'new_priority',
+  'new_due',
+] as const
+
 function GanttChart({
   items,
   milestones,
   relations,
   zoom,
+  focusDate,
   editable,
   onOpen,
   onAction,
@@ -117,6 +181,7 @@ function GanttChart({
   milestones: Array<{ id: string; name: string; due_date: string | null }>
   relations: ProjectRelation[]
   zoom: ZoomLevel
+  focusDate: string
   editable: boolean
   onOpen: (id: string) => void
   onAction: (id: string, trigger: HTMLButtonElement) => void
@@ -287,20 +352,48 @@ function GanttChart({
     gantt.clearAll()
     gantt.parse({ data: tasks, links })
     gantt.render()
-  }, [items, milestones, relations, zoom])
+    const focusFrame = requestAnimationFrame(() =>
+      gantt.showDate(new Date(`${focusDate}T12:00:00`)),
+    )
+    return () => cancelAnimationFrame(focusFrame)
+  }, [focusDate, items, milestones, relations, zoom])
 
   return <div ref={container} data-testid="gantt-container" className="h-full w-full" />
 }
 
 /* Timeline on DHTMLX Gantt Community v10 (MIT — Pass 73; v9 and below were
    GPL, the exact-version pin plus the cleanroom license gate keep copyleft
-   out). Read-only parity with the previous clean-room timeline: bars from
-   start/due, dependency links, milestone rows, today marker, zoom presets.
-   Drag editing is a follow-up (needs version-token PATCH wiring). */
+   out). Bars, dependency links, milestone rows, today marker and zoom presets
+   share the same chart lifecycle; authorized drag edits use versioned PATCH. */
 export function TimelinePage() {
   const { projectId } = useParams() as { projectId: string }
-  const [, setSearchParams] = useSearchParams()
-  const { data, isPending, isError, error, refetch } = useWorkPackages(projectId, {})
+  const [searchParams, setSearchParams] = useSearchParams()
+  const query = searchParams.get('q') ?? ''
+  const [queryDraft, setQueryDraft] = useState(query)
+  const [filtersOpen, setFiltersOpen] = useState(() =>
+    TIMELINE_FILTER_KEYS.some((key) => searchParams.has(key)),
+  )
+  const storedZoom = loadZoom()
+  const rawScale = searchParams.get('scale')
+  const rawFocus = searchParams.get('focus')
+  const today = todayISO()
+  const zoom = parseZoomLevel(rawScale, storedZoom)
+  const focusDate = parseTimelineFocus(rawFocus, today)
+  const filters = {
+    status: searchParams.get('status') ?? undefined,
+    priority: searchParams.get('priority') ?? undefined,
+    type: searchParams.get('type') ?? undefined,
+    assignee_id: searchParams.get('assignee_id') ?? undefined,
+    milestone_id: searchParams.get('milestone_id') ?? undefined,
+    customer_id: searchParams.get('customer_id') ?? undefined,
+    cycle_id: searchParams.get('cycle_id') ?? undefined,
+    module_id: searchParams.get('module_id') ?? undefined,
+    q: query || undefined,
+    cf_field: searchParams.get('cf_field') ?? undefined,
+    cf_op: searchParams.get('cf_op') ?? undefined,
+    cf_value: searchParams.get('cf_value') ?? undefined,
+  }
+  const workPackages = useWorkPackages(projectId, filters)
   const capabilities = useWorkspaceCapabilities()
   const releasesEnabled = capabilities.data?.releases.enabled === true
   const milestones = useMilestones(projectId, releasesEnabled)
@@ -319,7 +412,23 @@ export function TimelinePage() {
     left: number
     trigger: HTMLButtonElement
   } | null>(null)
-  const [zoom, setZoom] = useState<ZoomLevel>(loadZoom)
+
+  useEffect(() => {
+    setQueryDraft(query)
+  }, [query])
+
+  useEffect(() => {
+    const scaleIsCanonical = rawScale === null || ZOOM_LEVELS.includes(rawScale as ZoomLevel)
+    const focusIsCanonical = rawFocus === null || (rawFocus === focusDate && rawFocus !== today)
+    if (scaleIsCanonical && focusIsCanonical) return
+    setSearchParams((current) => {
+      const next = new URLSearchParams(current)
+      if (!scaleIsCanonical) next.delete('scale')
+      if (!focusIsCanonical) next.delete('focus')
+      return next
+    }, { replace: true })
+  }, [focusDate, rawFocus, rawScale, setSearchParams, today])
+
   useEffect(() => {
     if (!activeAction) return
     const { trigger, wpId } = activeAction
@@ -330,12 +439,82 @@ export function TimelinePage() {
       trigger.removeAttribute('aria-controls')
     }
   }, [activeAction])
+
   const changeZoom = (next: ZoomLevel) => {
-    setZoom(next)
     saveZoom(next)
+    setSearchParams((current) => {
+      const params = new URLSearchParams(current)
+      if (next === 'fit') params.delete('scale')
+      else params.set('scale', next)
+      return params
+    }, { replace: true })
   }
-  const description =
-    '시작일과 기한이 있는 작업을 막대와 의존선으로 보고, 큰 일정 흐름을 계획 표면에서 조정합니다.'
+
+  const changeFocus = (next: string) => {
+    setSearchParams((current) => {
+      const params = new URLSearchParams(current)
+      if (next === today) params.delete('focus')
+      else params.set('focus', next)
+      return params
+    }, { replace: true })
+  }
+
+  const viewHref = (path: string) => {
+    const next = new URLSearchParams(searchParams)
+    TRANSIENT_VIEW_KEYS.forEach((key) => next.delete(key))
+    const suffix = next.toString()
+    return `/projects/${projectId}/${path}${suffix ? `?${suffix}` : ''}`
+  }
+
+  const submitSearch = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    setSearchParams((current) => {
+      const next = new URLSearchParams(current)
+      const value = queryDraft.trim()
+      if (value) next.set('q', value)
+      else next.delete('q')
+      return next
+    }, { replace: true })
+  }
+
+  const clearSearch = () => {
+    setQueryDraft('')
+    setSearchParams((current) => {
+      const next = new URLSearchParams(current)
+      next.delete('q')
+      return next
+    }, { replace: true })
+  }
+
+  const clearFilters = () => {
+    setQueryDraft('')
+    setSearchParams((current) => {
+      const next = new URLSearchParams(current)
+      TIMELINE_FILTER_KEYS.forEach((key) => next.delete(key))
+      return next
+    }, { replace: true })
+  }
+
+  const openDrawer = (id: string, opts: { move?: boolean } = {}) => {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev)
+      next.set('wp', id)
+      if (opts.move) next.set('move', '1')
+      else next.delete('move')
+      return next
+    })
+  }
+
+  const openCreate = () => {
+    setSearchParams((current) => {
+      const next = new URLSearchParams(current)
+      next.set('new', '1')
+      next.delete('new_status')
+      next.delete('new_priority')
+      next.delete('new_due')
+      return next
+    })
+  }
 
   const reschedule = async (
     id: string,
@@ -344,7 +523,7 @@ export function TimelinePage() {
   ) => {
     // Version token from the cache, never the drag-time snapshot (#97).
     const cached = queryClient.getQueryData<{ version: number }>(['work-package', id])
-    const listItem = data?.items.find((w) => w.id === id)
+    const listItem = workPackages.data?.items.find((w) => w.id === id)
     const version = cached?.version ?? listItem?.version ?? 0
     try {
       await patch.mutateAsync({ wpId: id, patch: { expected_version: version, ...fields } })
@@ -362,47 +541,13 @@ export function TimelinePage() {
     }
   }
 
-  if (isPending) {
-    return (
-      <PlanningSurface projectId={projectId} active="timeline" title="타임라인" description={description} wide>
-        <ListSkeleton />
-      </PlanningSurface>
-    )
-  }
-  if (isError) {
-    return (
-      <PlanningSurface projectId={projectId} active="timeline" title="타임라인" description={description} wide>
-        <ErrorState error={error} onRetry={() => refetch()} />
-      </PlanningSurface>
-    )
-  }
-
-  const dated = data.items.filter((w) => w.start_date || w.due_date)
-  const undated = data.items.filter((w) => !w.start_date && !w.due_date)
-  if (dated.length === 0) {
-    return (
-      <PlanningSurface projectId={projectId} active="timeline" title="타임라인" description={description} wide>
-        <EmptyState
-          title="일정이 있는 작업이 없습니다"
-          hint="작업에 시작일/기한을 지정하면 타임라인에 표시됩니다."
-          className="rounded-of border border-of-border bg-of-surface"
-        />
-      </PlanningSurface>
-    )
-  }
-
+  const items = workPackages.data?.items ?? []
+  const dated = items.filter((w) => w.start_date || w.due_date)
+  const undated = items.filter((w) => !w.start_date && !w.due_date)
   const drawableIds = new Set(dated.map((w) => w.id))
   const { omitted } = toLinks(relations.data?.items ?? [], drawableIds)
-
-  const openDrawer = (id: string, opts: { move?: boolean } = {}) => {
-    setSearchParams((prev) => {
-      const next = new URLSearchParams(prev)
-      next.set('wp', id)
-      if (opts.move) next.set('move', '1')
-      else next.delete('move')
-      return next
-    })
-  }
+  const activeFilterCount = TIMELINE_FILTER_KEYS.filter((key) => searchParams.has(key)).length
+  const hasFilters = activeFilterCount > 0
 
   const openActionMenu = (id: string, trigger: HTMLButtonElement) => {
     if (activeAction?.wpId === id) {
@@ -416,77 +561,288 @@ export function TimelinePage() {
     setActiveAction({ wpId: id, top: Math.max(8, top), left, trigger })
   }
 
-  const activeWp = activeAction ? data.items.find((w) => w.id === activeAction.wpId) : null
+  const activeWp = activeAction ? items.find((w) => w.id === activeAction.wpId) : null
 
   return (
-    <PlanningSurface
-      projectId={projectId}
-      active="timeline"
-      title="타임라인"
-      description={description}
-      wide
-      bodyClassName="flex min-h-0 flex-col"
-      metrics={[
-        { label: '작업', value: data.total, hint: '전체 범위' },
-        { label: '일정 있음', value: dated.length, hint: `${undated.length}건 미정` },
-        ...(releasesEnabled
-          ? [{ label: '마일스톤', value: milestones.data?.items.length ?? '-', hint: '표시 가능한 기준점' }]
-          : []),
-        { label: '줌', value: ZOOM_LABELS[zoom], hint: editable ? '드래그 가능' : '읽기 전용' },
-      ]}
-    >
-      <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-of border border-of-border bg-of-surface">
-        <div className="flex flex-wrap items-center gap-1.5 border-b border-of-border px-3 py-2 text-xs text-of-muted">
-          <span>줌</span>
-          {ZOOM_LEVELS.map((z) => (
-            <button
-              key={z}
-              type="button"
-              aria-pressed={zoom === z}
-              className={cn(
-                'rounded-of px-2 py-0.5',
-                zoom === z
-                  ? 'bg-of-accent-soft font-medium text-of-accent'
-                  : 'hover:bg-of-surface-2',
-              )}
-              onClick={() => changeZoom(z)}
+    <div className="flex h-full min-w-0 flex-col overflow-hidden bg-of-surface">
+      <FrameContextActions>
+        <section
+          aria-label="프로젝트 타임라인 제어"
+          className="flex min-w-0 flex-1 flex-wrap items-center justify-end gap-1.5"
+        >
+          {workPackages.data ? (
+            <span
+              className="shrink-0 text-[11px] tabular-nums text-of-muted"
+              aria-label={`일정 있음 ${dated.length}개, 전체 ${workPackages.data.total}개 작업`}
             >
-              {ZOOM_LABELS[z]}
-            </button>
-          ))}
-          <span className="ml-auto flex items-center gap-3">
-            {itemActionMessage ? (
-              <span
-                role={itemActionMessage.tone === 'error' ? 'alert' : 'status'}
-                className={itemActionMessage.tone === 'error' ? 'text-of-danger' : 'text-of-muted'}
-              >
-                {itemActionMessage.text}
-              </span>
+              {dated.length} / {workPackages.data.total}
+            </span>
+          ) : null}
+          <nav
+            aria-label="프로젝트 작업 보기"
+            className="flex h-7 items-center rounded-of border border-of-border bg-of-surface-2 p-0.5"
+          >
+            {PROJECT_VIEWS.map((view) => {
+              const Icon = view.icon
+              const active = view.path === 'timeline'
+              return (
+                <Link
+                  key={view.path}
+                  to={viewHref(view.path)}
+                  aria-label={`${view.label} 보기`}
+                  aria-current={active ? 'page' : undefined}
+                  title={`${view.label} 보기`}
+                  className={`flex h-6 w-7 items-center justify-center rounded-[4px] text-of-muted hover:text-of-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus ${
+                    active ? 'bg-of-surface-selected text-of-accent' : ''
+                  }`}
+                >
+                  <Icon size={13} aria-hidden="true" />
+                </Link>
+              )
+            })}
+          </nav>
+          <Button
+            variant="outline"
+            size="sm"
+            aria-expanded={filtersOpen}
+            aria-controls="project-timeline-filters"
+            onClick={() => setFiltersOpen((current) => !current)}
+          >
+            <SlidersHorizontal size={13} /> 필터
+            {activeFilterCount > 0 ? (
+              <span className="tabular-nums">{activeFilterCount}</span>
             ) : null}
-            {dragNotice ? <span role="alert" className="text-of-danger">{dragNotice}</span> : null}
-            {editable ? <span>막대를 드래그해 일정을 조정할 수 있습니다</span> : null}
-            {omitted > 0 ? (
-              <span>
-                일정 미정으로 표시되지 않은 의존 {omitted}건 (연관(relates)은 의존이 아니라
-                표시하지 않음)
-              </span>
+          </Button>
+          <Link
+            to={`/projects/${projectId}/dashboard`}
+            className="inline-flex h-7 items-center gap-1.5 rounded-of border border-of-border bg-of-surface px-2 text-xs font-medium text-of-text hover:bg-of-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus"
+          >
+            <BarChart3 size={13} aria-hidden="true" /> 분석
+          </Link>
+          {editable ? (
+            <Button size="sm" onClick={openCreate}>
+              <Plus size={13} /> 새 작업
+            </Button>
+          ) : null}
+        </section>
+      </FrameContextActions>
+
+      {filtersOpen ? (
+        <div
+          id="project-timeline-filters"
+          className="animate-in border-b border-of-border bg-of-surface px-4 py-2.5 fade-in slide-in-from-top-1 duration-150 motion-reduce:animate-none"
+        >
+          <div className="flex min-w-0 flex-col gap-2 xl:flex-row xl:items-center">
+            <form onSubmit={submitSearch} className="flex min-w-[220px] flex-1 gap-2 sm:max-w-sm">
+              <div className="relative min-w-0 flex-1">
+                <Search
+                  size={14}
+                  className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-of-muted"
+                  aria-hidden="true"
+                />
+                <Input
+                  value={queryDraft}
+                  onChange={(event) => setQueryDraft(event.target.value)}
+                  placeholder="작업 검색"
+                  aria-label="프로젝트 타임라인 검색어"
+                  className="h-7 pl-8 pr-7 text-xs"
+                />
+                {queryDraft ? (
+                  <button
+                    type="button"
+                    aria-label="타임라인 검색어 지우기"
+                    className="absolute right-1 top-1/2 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-of text-of-muted transition-colors hover:bg-of-surface-hover hover:text-of-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus"
+                    onClick={clearSearch}
+                  >
+                    <X size={12} />
+                  </button>
+                ) : null}
+              </div>
+              <Button type="submit" size="sm" variant="outline">
+                <Search size={13} /> 검색
+              </Button>
+            </form>
+            <div className="min-w-0 flex-1">
+              <Filters projectId={projectId} />
+            </div>
+            {hasFilters ? (
+              <Button size="sm" variant="ghost" onClick={clearFilters}>
+                <RotateCcw size={13} /> 초기화
+              </Button>
             ) : null}
-            {undated.length > 0 ? <span>일정 미정 {undated.length}건</span> : null}
-          </span>
+          </div>
         </div>
-        <div className="min-h-0 flex-1">
-          <GanttChart
-            items={data.items}
-            milestones={releasesEnabled ? (milestones.data?.items ?? []) : []}
-            relations={relations.data?.items ?? []}
-            zoom={zoom}
-            editable={editable}
-            onOpen={openDrawer}
-            onAction={openActionMenu}
-            onReschedule={reschedule}
-          />
+      ) : null}
+
+      {editable || searchParams.has('draft') ? (
+        <NewWorkPackageInline projectId={projectId} canWrite={editable} />
+      ) : null}
+
+      {!editable ? <ReadOnlyNotice className="mx-4 mt-2" /> : null}
+      {itemActionMessage || dragNotice ? (
+        <div
+          role={itemActionMessage?.tone === 'error' || dragNotice ? 'alert' : 'status'}
+          aria-live="polite"
+          className={`border-b border-of-border px-4 py-2 text-xs ${
+            itemActionMessage?.tone === 'error' || dragNotice
+              ? 'bg-of-danger/10 text-of-danger'
+              : 'bg-of-surface-2/60 text-of-muted'
+          }`}
+        >
+          {dragNotice ?? itemActionMessage?.text}
         </div>
-      </div>
+      ) : null}
+
+      <section
+        aria-label="프로젝트 작업 타임라인"
+        aria-busy={workPackages.isPending}
+        className="flex min-h-0 flex-1 flex-col overflow-hidden"
+      >
+        <header className="flex min-h-11 flex-wrap items-center justify-between gap-2 border-b border-of-border px-3 py-2 sm:px-4">
+          <div className="min-w-0">
+            <h1 className="text-sm font-semibold text-of-text">타임라인</h1>
+            <span className="block truncate text-[11px] text-of-muted">
+              {workPackages.isError
+                ? '프로젝트 일정을 불러오지 못했습니다'
+                : workPackages.data
+                  ? `${focusDate.replaceAll('-', '.')} 기준 · 일정 있음 ${dated.length}건 · 일정 미정 ${undated.length}건${
+                      releasesEnabled
+                        ? ` · 마일스톤 ${milestones.data?.items.length ?? 0}건`
+                        : ''
+                    }`
+                  : '프로젝트 일정을 불러오는 중'}
+            </span>
+          </div>
+          <div className="flex min-w-0 flex-wrap items-center justify-end gap-1">
+            <div
+              className="flex h-7 items-center rounded-of border border-of-border bg-of-surface-2 p-0.5"
+              aria-label="타임라인 배율"
+            >
+              {ZOOM_LEVELS.map((value) => (
+                <button
+                  key={value}
+                  type="button"
+                  aria-pressed={zoom === value}
+                  className={cn(
+                    'flex h-6 min-w-7 items-center justify-center rounded-[4px] px-1.5 text-[11px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus',
+                    zoom === value
+                      ? 'bg-of-surface-selected font-medium text-of-accent'
+                      : 'text-of-muted hover:text-of-text',
+                  )}
+                  onClick={() => changeZoom(value)}
+                >
+                  {ZOOM_LABELS[value]}
+                </button>
+              ))}
+            </div>
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label="이전 기간"
+              onClick={() => changeFocus(shiftTimelineFocus(focusDate, zoom, -1))}
+            >
+              <ChevronLeft size={16} />
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              aria-label="오늘을 타임라인 기준일로"
+              onClick={() => changeFocus(today)}
+            >
+              <LocateFixed size={13} /> 오늘
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label="다음 기간"
+              onClick={() => changeFocus(shiftTimelineFocus(focusDate, zoom, 1))}
+            >
+              <ChevronRight size={16} />
+            </Button>
+          </div>
+        </header>
+
+        <div className="flex min-h-7 flex-wrap items-center gap-x-3 gap-y-1 border-b border-of-border bg-of-surface-2/45 px-3 py-1 text-[11px] text-of-muted sm:px-4">
+          <span>{editable ? '막대를 드래그해 일정을 조정할 수 있습니다' : '일정 보기 전용'}</span>
+          {omitted > 0 ? (
+            <span>
+              일정 미정으로 표시되지 않은 의존 {omitted}건 (연관은 의존에서 제외)
+            </span>
+          ) : null}
+          {relations.isError ? <span className="text-of-danger">의존관계를 불러오지 못했습니다</span> : null}
+        </div>
+
+        {workPackages.isPending ? (
+          <TimelineSkeleton />
+        ) : workPackages.isError ? (
+          <TimelineStateFrame>
+            <ErrorState
+              error={workPackages.error}
+              onRetry={() => workPackages.refetch()}
+              className="min-h-0"
+            />
+          </TimelineStateFrame>
+        ) : workPackages.data.total === 0 && hasFilters ? (
+          <TimelineStateFrame>
+            <EmptyState
+              title="조건에 맞는 작업이 없습니다"
+              hint="검색이나 필터를 조정해 다른 일정을 찾아보세요."
+              className="min-h-0"
+            >
+              <Button size="sm" variant="outline" onClick={clearFilters}>
+                <RotateCcw size={13} /> 현재 보기 초기화
+              </Button>
+            </EmptyState>
+          </TimelineStateFrame>
+        ) : workPackages.data.total === 0 ? (
+          <TimelineStateFrame>
+            <EmptyState
+              title="아직 작업이 없습니다"
+              hint={
+                editable
+                  ? '첫 작업을 만들고 시작일이나 기한을 지정해 보세요.'
+                  : '프로젝트 멤버가 일정을 추가하면 타임라인에 표시됩니다.'
+              }
+              className="min-h-0"
+            >
+              {editable ? (
+                <Button size="sm" onClick={openCreate}>
+                  <Plus size={13} /> 첫 작업 만들기
+                </Button>
+              ) : null}
+            </EmptyState>
+          </TimelineStateFrame>
+        ) : dated.length === 0 ? (
+          <TimelineStateFrame>
+            <EmptyState
+              title="일정이 있는 작업이 없습니다"
+              hint="작업에 시작일이나 기한을 지정하면 타임라인에 표시됩니다."
+              className="min-h-0"
+            >
+              {editable ? (
+                <Button size="sm" onClick={openCreate}>
+                  <Plus size={13} /> 일정 작업 만들기
+                </Button>
+              ) : null}
+            </EmptyState>
+          </TimelineStateFrame>
+        ) : (
+          <div className="min-h-0 flex-1 overflow-hidden bg-of-surface">
+            <GanttChart
+              items={items}
+              milestones={releasesEnabled ? (milestones.data?.items ?? []) : []}
+              relations={relations.data?.items ?? []}
+              zoom={zoom}
+              focusDate={focusDate}
+              editable={editable}
+              onOpen={openDrawer}
+              onAction={openActionMenu}
+              onReschedule={reschedule}
+            />
+          </div>
+        )}
+      </section>
+
       {activeWp && activeAction ? (
         <TimelineItemActions
           wp={activeWp}
@@ -502,6 +858,83 @@ export function TimelinePage() {
         />
       ) : null}
       <DetailDrawer projectId={projectId} />
-    </PlanningSurface>
+    </div>
+  )
+}
+
+function TimelineSkeleton() {
+  return (
+    <div
+      role="status"
+      aria-label="프로젝트 타임라인 불러오는 중"
+      data-testid="project-timeline-skeleton"
+      className="min-h-0 flex-1 overflow-hidden bg-of-surface"
+    >
+      <TimelineScaffold>
+        <div className="space-y-4 p-4">
+          {[42, 66, 54, 78, 38].map((width, index) => (
+            <div key={width} className="flex h-8 items-center">
+              <Skeleton
+                className="h-4"
+                style={{ width: `${width}%`, marginLeft: `${(index * 9) % 22}%` }}
+              />
+            </div>
+          ))}
+        </div>
+      </TimelineScaffold>
+    </div>
+  )
+}
+
+function TimelineStateFrame({ children }: { children: ReactNode }) {
+  return (
+    <div
+      className="relative min-h-0 flex-1 overflow-hidden bg-of-surface"
+      data-testid="project-timeline-state-frame"
+    >
+      <div className="h-full opacity-55" aria-hidden="true">
+        <TimelineScaffold>
+          <div className="space-y-4 p-4">
+            {[58, 36, 72, 49].map((width, index) => (
+              <div
+                key={width}
+                className="h-4 bg-of-border/70"
+                style={{ width: `${width}%`, marginLeft: `${index * 7}%` }}
+              />
+            ))}
+          </div>
+        </TimelineScaffold>
+      </div>
+      <div className="absolute inset-0 flex items-center justify-center bg-of-surface/75 p-4">
+        {children}
+      </div>
+    </div>
+  )
+}
+
+function TimelineScaffold({ children }: { children: ReactNode }) {
+  return (
+    <div className="grid h-full min-h-[420px] min-w-[720px] grid-cols-[220px_1fr]">
+      <div className="border-r border-of-border">
+        <div className="flex h-12 items-center border-b border-of-border px-3">
+          <Skeleton className="h-3 w-16" />
+        </div>
+        {[0, 1, 2, 3, 4, 5].map((row) => (
+          <div key={row} className="flex h-8 items-center border-b border-of-border px-3">
+            <Skeleton className="h-3" style={{ width: `${48 + (row % 3) * 14}%` }} />
+          </div>
+        ))}
+      </div>
+      <div
+        className="min-w-0"
+        style={{
+          backgroundImage:
+            'linear-gradient(to right, var(--color-of-border) 1px, transparent 1px), linear-gradient(to bottom, var(--color-of-border) 1px, transparent 1px)',
+          backgroundSize: '64px 100%, 100% 32px',
+        }}
+      >
+        {children}
+      </div>
+    </div>
   )
 }

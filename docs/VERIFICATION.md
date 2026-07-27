@@ -3304,3 +3304,13 @@ Chromium typed mock fixture에서 1440x960과 390x844 viewport를 사용했다. 
 - **증적**: `docs/screenshots/redevelopment/project-calendar-composition-ui-273/{desktop,mobile,loading,error}.png`과 README에 실제 Chromium 월 격자, mobile 내부 스크롤, loading과 error/retry 상태를 보존했다.
 
 ---
+
+# UI-274 Project Timeline Composition 검증 (2026-07-28)
+
+- **UI 변경**: 프로젝트 Timeline을 범용 planning wrapper에서 분리해 중앙 콘텐츠 프레임을 직접 사용하는 full-height surface로 재구성했다. 프레임 상단에는 Table·Board·Calendar·Timeline 전환, Filter 수, Analytics, 실제 Add work item을 통합했고 본문은 검색·필터, URL 기반 배율·기준일 탐색, 작업 grid와 Gantt canvas를 하나의 안정된 geometry로 구성했다. desktop은 가용 높이를 사용하고 mobile은 문서 가로 넘침 없이 timeline canvas가 자체 수평 탐색을 담당한다. loading, error/retry, 필터 결과 없음, 작업 없음, 일정 미지정 상태도 같은 canvas 구조를 유지한다.
+- **기능/API 반영**: `scale=day|week|month|quarter`와 `focus=YYYY-MM-DD`를 canonical URL 상태로 추가해 배율 변경·기간 이동·오늘 복귀·reload를 왕복한다. 기존 실제 작업 조회·검색·필터·생성 composer·상세 drawer·복제·이동·링크 복사·권한을 유지했고, DHTMLX 일정 막대·의존관계·마일스톤과 versioned schedule PATCH의 충돌·실패 복구도 동일 surface에서 동작한다. 신규 API, DB/schema, migration, 환경변수, dependency 또는 Settings UI 변경은 없다.
+- **이연 항목**: 없음. 이번 Timeline surface의 보기 전환, 배율·기간 탐색, 검색, 필터, 생성, 일정 drag 저장, 작업 action과 오류 복구는 모두 실제 URL/query/mutation 또는 browser command에 연결돼 있으며 mock/dead control이나 장식용 action이 없다.
+- **검증**: typecheck PASS, lint PASS(기존 Fast Refresh warning 4건), production build PASS(기존 large chunk warning), unit **115 PASS**, component **9 PASS**, Timeline focused E2E **9 PASS**, 생성 composer·작업 초안 영향 회귀 **6 PASS**, 최종 전체 E2E **437 PASS + opt-in visual QA manifest 1 skip**다. Clean-room frontend **182**/backend **45**, OpenAPI type parity와 diff check도 PASS했다. 전체 E2E가 생성한 기존 screenshot rewrite 333건은 테스트 산출물로 판정해 원복하고 UI-274 전용 증적만 보존했다.
+- **증적**: `docs/screenshots/redevelopment/project-timeline-composition-ui-274/{desktop,mobile,loading,error}.png`과 README에 실제 Chromium timeline, mobile 내부 canvas 탐색, loading과 error/retry 상태를 보존했다.
+
+---
