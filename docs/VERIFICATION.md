@@ -3294,3 +3294,13 @@ Chromium typed mock fixture에서 1440x960과 390x844 viewport를 사용했다. 
 - **증적**: `docs/screenshots/redevelopment/project-directory-pagination-ui/{desktop,mobile}.png`과 README에 실제 Chromium 초기 2/4 페이지 상태와 URL 검색·보관·생성 흐름을 보존한다.
 
 ---
+
+# UI-273 Project Calendar Composition 검증 (2026-07-28)
+
+- **UI 변경**: 프로젝트 Calendar를 범용 planning wrapper에서 분리해 중앙 콘텐츠 프레임을 직접 사용하는 월간 surface로 재구성했다. 프레임 상단에는 Table·Board·Calendar·Timeline 전환, Filter 수, Analytics, 실제 Add work item을 통합했고 본문은 검색·필터, URL 기반 월 탐색, 요일과 한 개의 연속 월 격자로 구성했다. desktop은 중첩 card 없이 가용 높이를 사용하고 mobile은 문서 가로 넘침 없이 월 격자만 내부 스크롤한다. loading, error/retry, 필터 결과 없음, 작업 없음, 기한 미지정 상태가 같은 달력 geometry를 유지한다.
+- **기능/API 반영**: `month=YYYY-MM`을 canonical URL 상태로 추가해 월 이동·reload·현재 달 복귀를 왕복한다. 날짜 셀의 추가 버튼은 기존 실제 생성 composer를 열면서 `new_due=YYYY-MM-DD`를 검증해 기한으로 미리 채우고, 생성 POST와 성공 후 캘린더 갱신까지 연결한다. 검색·기존 Filters·작업 상세 drawer·복제·이동·링크 복사·권한·읽기 전용 동작은 기존 API와 query 계약을 그대로 유지한다. 신규 API, DB/schema, migration, 환경변수, dependency 또는 Settings UI 변경은 없다.
+- **이연 항목**: 없음. 이번 Calendar surface의 보기 전환, 월 탐색, 검색, 필터, 생성, 작업 action과 오류 복구는 모두 실제 URL/query/mutation 또는 browser command에 연결돼 있으며 mock/dead control이나 장식용 action이 없다.
+- **검증**: typecheck PASS, lint PASS(기존 Fast Refresh warning 4건), production build PASS(기존 large chunk warning), unit **113 PASS**, component **9 PASS**, Calendar focused E2E **8 PASS**, 생성 composer·작업 초안 영향 회귀 **14 PASS**, screenshot focused E2E **2 PASS**다. 전체 4-worker E2E에서 확인된 기존 Home/Worklogs 관측 경합은 응답 완료와 최신 DOM 기준으로 안정화하고 단독 반복 **20/20 PASS** 후 전체를 재실행해 **434 PASS + opt-in visual QA manifest 1 skip**로 완주했다. Clean-room frontend **182**/backend **45**와 diff check도 PASS했다.
+- **증적**: `docs/screenshots/redevelopment/project-calendar-composition-ui-273/{desktop,mobile,loading,error}.png`과 README에 실제 Chromium 월 격자, mobile 내부 스크롤, loading과 error/retry 상태를 보존했다.
+
+---

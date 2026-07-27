@@ -30,6 +30,15 @@ import {
 } from './types'
 import { useStatusLabels } from './useStatusLabels'
 
+function parsePrefilledDueDate(value: string | null): string | undefined {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value ?? '')) return undefined
+  const parsed = new Date(`${value}T00:00:00Z`)
+  if (Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== value) {
+    return undefined
+  }
+  return value ?? undefined
+}
+
 export function NewWorkPackageInline({
   projectId,
   canWrite = true,
@@ -42,6 +51,7 @@ export function NewWorkPackageInline({
   const draftId = searchParams.get('draft')
   const prefilledStatus = WP_STATUSES.find((value) => value === searchParams.get('new_status'))
   const prefilledPriority = WP_PRIORITIES.find((value) => value === searchParams.get('new_priority'))
+  const prefilledDueDate = parsePrefilledDueDate(searchParams.get('new_due'))
   const [subject, setSubject] = useState('')
   const [type, setType] = useState<WpType>('task')
   const [status, setStatus] = useState<WpStatus>('backlog')
@@ -66,7 +76,7 @@ export function NewWorkPackageInline({
   })
   const open = searchParams.get('new') === '1'
   const sessionKey = open
-    ? `${projectId}:${draftId ?? 'new'}:${prefilledStatus ?? ''}:${prefilledPriority ?? ''}`
+    ? `${projectId}:${draftId ?? 'new'}:${prefilledStatus ?? ''}:${prefilledPriority ?? ''}:${prefilledDueDate ?? ''}`
     : null
 
   useEffect(() => {
@@ -91,7 +101,8 @@ export function NewWorkPackageInline({
     if (!open || draftId) return
     setStatus(prefilledStatus ?? 'backlog')
     setPriority(prefilledPriority ?? 'none')
-  }, [draftId, open, prefilledPriority, prefilledStatus])
+    setDueDate(prefilledDueDate ?? '')
+  }, [draftId, open, prefilledDueDate, prefilledPriority, prefilledStatus])
 
   useEffect(() => {
     if (draft.data || projectTypes.options.length === 0) return
@@ -112,10 +123,10 @@ export function NewWorkPackageInline({
   const baselineContent: WorkItemDraftContent = draft.data?.content ?? {
     subject: '',
     type: 'task',
-    status: 'backlog',
-    priority: 'none',
+    status: prefilledStatus ?? 'backlog',
+    priority: prefilledPriority ?? 'none',
     assignee_id: null,
-    due_date: null,
+    due_date: prefilledDueDate ?? null,
   }
   const hasUnsavedChanges =
     JSON.stringify(content()) !== JSON.stringify(baselineContent)
@@ -151,6 +162,7 @@ export function NewWorkPackageInline({
       next.delete('draft')
       next.delete('new_status')
       next.delete('new_priority')
+      next.delete('new_due')
       return next
     })
     resetForm()

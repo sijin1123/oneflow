@@ -18,6 +18,11 @@ export type CalendarMonth = {
   weeks: CalendarDay[][] // Sunday-first rows of 7
 }
 
+export type CalendarCursor = {
+  year: number
+  month: number
+}
+
 const DAY_MS = 86_400_000
 
 function iso(ts: number): string {
@@ -69,7 +74,23 @@ export function shiftMonth(
   year: number,
   month: number,
   delta: number,
-): { year: number; month: number } {
+): CalendarCursor {
   const zero = year * 12 + (month - 1) + delta
   return { year: Math.floor(zero / 12), month: (((zero % 12) + 12) % 12) + 1 }
+}
+
+export function serializeCalendarMonth(cursor: CalendarCursor): string {
+  return `${String(cursor.year).padStart(4, '0')}-${String(cursor.month).padStart(2, '0')}`
+}
+
+export function parseCalendarMonth(
+  value: string | null,
+  fallback: CalendarCursor,
+): CalendarCursor {
+  const match = /^(\d{4})-(\d{2})$/.exec(value ?? '')
+  if (!match) return fallback
+  const year = Number(match[1])
+  const month = Number(match[2])
+  if (year < 1000 || year > 9999 || month < 1 || month > 12) return fallback
+  return { year, month }
 }

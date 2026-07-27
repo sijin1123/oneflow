@@ -1,7 +1,12 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
-import { buildCalendar, shiftMonth } from './calendar.ts'
+import {
+  buildCalendar,
+  parseCalendarMonth,
+  serializeCalendarMonth,
+  shiftMonth,
+} from './calendar.ts'
 import type { WorkPackage } from './types.ts'
 
 function wp(id: string, due: string | null): WorkPackage {
@@ -54,4 +59,14 @@ test('shiftMonth normalizes year rollover in both directions', () => {
   assert.deepEqual(shiftMonth(2026, 12, 1), { year: 2027, month: 1 })
   assert.deepEqual(shiftMonth(2026, 1, -1), { year: 2025, month: 12 })
   assert.deepEqual(shiftMonth(2026, 7, 0), { year: 2026, month: 7 })
+})
+
+test('calendar month URL state accepts only canonical bounded year-month values', () => {
+  const fallback = { year: 2026, month: 7 }
+  assert.deepEqual(parseCalendarMonth('2027-01', fallback), { year: 2027, month: 1 })
+  assert.deepEqual(parseCalendarMonth('2027-1', fallback), fallback)
+  assert.deepEqual(parseCalendarMonth('2027-13', fallback), fallback)
+  assert.deepEqual(parseCalendarMonth('0999-12', fallback), fallback)
+  assert.deepEqual(parseCalendarMonth(null, fallback), fallback)
+  assert.equal(serializeCalendarMonth({ year: 2027, month: 1 }), '2027-01')
 })
