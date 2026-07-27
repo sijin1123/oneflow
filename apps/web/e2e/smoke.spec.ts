@@ -25988,14 +25988,89 @@ test('관리자 webhook 표면이 endpoint와 delivery lifecycle을 실제 요�
   await expect(page.getByLabel('새 webhook secret')).toHaveText('ofw_rotated_secret')
   await expect(page.getByText('scheduled rotation')).toBeVisible()
   await expectNoHorizontalOverflow(page)
+  const operationsScroll = page.locator('[data-shell-scroll-region]')
+  await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur())
+  await operationsScroll.evaluate((element) => { element.scrollTop = 0 })
+  await expect.poll(() => operationsScroll.evaluate((element) => element.scrollTop)).toBe(0)
   await page.screenshot({
-    path: '../../docs/screenshots/redevelopment/webhook-transport-security-ui/mobile.png',
-    fullPage: true,
+    path: '../../docs/screenshots/redevelopment/webhook-operations-ui-257/mobile.png',
+  })
+  await page.setViewportSize({ width: 1440, height: 960 })
+  await operationsScroll.evaluate((element) => { element.scrollTop = 0 })
+  await expect.poll(() => operationsScroll.evaluate((element) => element.scrollTop)).toBe(0)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/webhook-operations-ui-257/desktop.png',
+  })
+  await page.setViewportSize({ width: 390, height: 844 })
+  await operationsScroll.evaluate((element) => { element.scrollTop = element.scrollHeight })
+  await expect.poll(() => operationsScroll.evaluate((element) => element.scrollTop)).toBeGreaterThan(0)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/webhook-operations-ui-257/mobile-bottom.png',
   })
 
-  page.once('dialog', (dialog) => void dialog.accept())
   await page.getByLabel('Deploy hook webhook 삭제').click()
+  const deleteDialog = page.getByRole('dialog', { name: 'Webhook endpoint 삭제' })
+  await expect(deleteDialog).toBeVisible()
+  await deleteDialog.getByRole('button', { name: 'endpoint 삭제', exact: true }).click()
   await expect(page.getByText('등록된 webhook이 없습니다')).toBeVisible()
+})
+
+test('webhook endpoint와 delivery 상태는 독립적으로 복구되고 frame에서 함께 새로고침된다', async ({ page }) => {
+  await mockApi(page)
+  await page.setViewportSize({ width: 390, height: 844 })
+  let webhookReads = 0
+  let deliveryReads = 0
+  let releaseFirstDelivery: (() => void) | undefined
+  const firstDeliveryGate = new Promise<void>((resolve) => {
+    releaseFirstDelivery = resolve
+  })
+  const endpoint = {
+    id: 'wh-independent', name: 'Independent hook', url: 'https://hooks.example.com/independent',
+    event_types: ['work_package.created'], is_active: true, secret_version: 1, signing_key_id: '2026-q3',
+    created_at: '2026-07-10T00:00:00Z', updated_at: '2026-07-10T00:00:00Z', deleted_at: null,
+  }
+  await page.route('**/api/v1/webhooks', async (route) => {
+    webhookReads += 1
+    await route.fulfill({
+      json: {
+        items: [endpoint], total: 1, enabled: true, active_signing_key_id: '2026-q3',
+        available_signing_key_ids: ['2026-q3'], rotations: [],
+      },
+    })
+  })
+  await page.route('**/api/v1/webhook-deliveries**', async (route) => {
+    deliveryReads += 1
+    if (deliveryReads === 1) await firstDeliveryGate
+    await route.fulfill({ json: { items: [], total: 0 } })
+  })
+
+  await page.goto('/admin/webhooks')
+  await expect(page.getByRole('heading', { name: 'Webhooks' })).toBeVisible()
+  await expect(page.getByText('Independent hook')).toBeVisible()
+  await expect(page.getByLabel('전송 감사 확인 중')).toBeVisible()
+  await expect(page.getByRole('link', { name: '통합 허브' })).toHaveAttribute('href', '/admin/integrations')
+  await expectNoHorizontalOverflow(page)
+
+  releaseFirstDelivery?.()
+  await expect(page.getByText('아직 전송 기록이 없습니다')).toBeVisible()
+  const webhookReadsBeforeRefresh = webhookReads
+  const deliveryReadsBeforeRefresh = deliveryReads
+  await page.getByRole('button', { name: '모두 새로고침' }).click()
+  await expect.poll(() => webhookReads).toBeGreaterThan(webhookReadsBeforeRefresh)
+  await expect.poll(() => deliveryReads).toBeGreaterThan(deliveryReadsBeforeRefresh)
+  await page.getByLabel('Webhook 이름').fill('저장 전 endpoint')
+  const dirtyPrompt = new Promise<void>((resolve) => {
+    page.once('dialog', async (dialog) => {
+      expect(dialog.message()).toContain('저장하지 않은 Webhook 변경')
+      await dialog.dismiss()
+      resolve()
+    })
+  })
+  await page.getByRole('link', { name: '통합 허브' }).click()
+  await dirtyPrompt
+  await expect(page).toHaveURL(/\/admin\/webhooks$/)
+  await page.getByLabel('Webhook 이름').fill('')
+  await expectNoHorizontalOverflow(page)
 })
 
 test('webhook 누락 signing key와 CAS 충돌을 최신 endpoint 상태로 복구한다', async ({ page }) => {
