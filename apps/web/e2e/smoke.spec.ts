@@ -4712,15 +4712,84 @@ test('보드 뷰가 상태 컬럼으로 그려진다', async ({ page }) => {
   await page.goto(`/projects/${project.id}/board`)
   await expect(page.getByLabel('할 일 컬럼')).toBeVisible()
   await expect(page.getByLabel('진행 중 컬럼')).toBeVisible()
-  await page.screenshot({ path: '../../docs/screenshots/web-board.png', fullPage: true })
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/project-board-composition-ui-272/desktop.png',
+    fullPage: true,
+  })
 
   // swimlanes: priority grouping splits rows; lanes carry their own columns
   await page.getByLabel('스윔레인 기준').selectOption('priority')
+  await expect(page).toHaveURL(/lane_by=priority/)
   await expect(page.getByTestId('board-lane')).toHaveCount(2) // high + medium (wpA/wpB)
-  await expect(page.getByText('높음 (1)')).toBeVisible()
+  await expect(page.getByRole('region', { name: '높음 스윔레인' })).toContainText('높음')
+  await expect(page.getByRole('region', { name: '높음 스윔레인' })).toContainText('1')
   await expect(page.getByLabel('높음 할 일 컬럼')).toBeVisible()
   await page.getByLabel('스윔레인 기준').selectOption('none')
+  await expect(page).not.toHaveURL(/lane_by=/)
   await expect(page.getByTestId('board-lane')).toHaveCount(1)
+
+  await page.getByLabel('할 일에 새 작업').click()
+  await expect(page).toHaveURL(/new_status=todo/)
+  await expect(page.getByRole('region', { name: '새 작업 생성' }).getByLabel('상태')).toHaveValue('todo')
+  await page.getByRole('region', { name: '새 작업 생성' }).getByRole('button', { name: '닫기' }).click()
+})
+
+test('프로젝트 보드는 프레임을 유지하며 loading·filter empty·error를 복구한다', async ({ page }) => {
+  await mockApi(page)
+  let errorAttempts = 0
+  let delayInitialLoad = true
+  await page.route(`**/api/v1/projects/${project.id}/work-packages**`, async (route) => {
+    const query = new URL(route.request().url()).searchParams.get('q')
+    if (query === '오류') {
+      errorAttempts += 1
+      if (errorAttempts <= 2) {
+        return route.fulfill({ status: 500, json: { detail: 'board unavailable' } })
+      }
+    }
+    if (query === '없는 작업') {
+      return route.fulfill({ json: { items: [], total: 0 } })
+    }
+    if (delayInitialLoad) {
+      delayInitialLoad = false
+      await new Promise((resolve) => setTimeout(resolve, 180))
+    }
+    return route.fulfill({ json: workPackages })
+  })
+
+  await page.goto(`/projects/${project.id}/board`)
+  await expect(page.getByRole('status', { name: '프로젝트 보드 불러오는 중' })).toBeVisible()
+  await expect(page.getByRole('navigation', { name: '프로젝트 작업 보기' })).toBeVisible()
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/project-board-composition-ui-272/loading.png',
+    fullPage: true,
+  })
+  await expect(page.getByLabel('할 일 컬럼')).toBeVisible()
+
+  await page.getByRole('button', { name: '필터' }).click()
+  await page.getByLabel('프로젝트 보드 검색어').fill('없는 작업')
+  await page.getByRole('button', { name: '검색', exact: true }).click()
+  await expect(page.getByText('조건에 맞는 작업이 없습니다')).toBeVisible()
+  await expect(page.getByRole('navigation', { name: '프로젝트 작업 보기' })).toBeVisible()
+  await page.getByRole('button', { name: '현재 보기 초기화' }).click()
+  await expect(page.getByLabel('할 일 컬럼')).toBeVisible()
+
+  await page.getByLabel('프로젝트 보드 검색어').fill('오류')
+  await page.getByRole('button', { name: '검색', exact: true }).click()
+  await expect(page.getByRole('alert')).toContainText('board unavailable')
+  await expect(page.getByRole('navigation', { name: '프로젝트 작업 보기' })).toBeVisible()
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/project-board-composition-ui-272/error.png',
+    fullPage: true,
+  })
+  await page.getByRole('button', { name: '다시 시도' }).click()
+  await expect(page.getByLabel('할 일 컬럼')).toBeVisible()
+
+  await page.setViewportSize({ width: 390, height: 844 })
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/project-board-composition-ui-272/mobile.png',
+    fullPage: true,
+  })
 })
 
 test('보드 카드 액션 메뉴가 링크·복제·이동·전체 페이지 흐름을 연결한다', async ({ page }) => {
@@ -6055,11 +6124,14 @@ test('드로어 복제 버튼이 duplicate POST를 보내고 결과를 알린다
   await page.getByRole('button', { name: '워크패키지 API 구현', exact: true }).click()
   const drawer = page.getByRole('dialog')
 
-  const post = page.waitForRequest(
-    (r) => r.method() === 'POST' && r.url().includes(`/work-packages/${wpA.id}/duplicate`),
+  const duplicateResponse = page.waitForResponse(
+    (response) =>
+      response.request().method() === 'POST' &&
+      response.url().includes(`/work-packages/${wpA.id}/duplicate`),
   )
   await drawer.getByRole('button', { name: '복제' }).click()
-  await post
+  const response = await duplicateResponse
+  await response.finished()
   await expect(drawer.getByText("'(복사) 워크패키지 API 구현' 생성됨", { exact: false })).toBeVisible()
   await expect(drawer.getByText('복사되지 않은 커스텀 값 2건', { exact: false })).toBeVisible()
 })
@@ -12623,6 +12695,7 @@ test('보드에서 카드를 드래그해 옮기면 상태 PATCH가 간다', asy
   const sent = (await patchReq).postDataJSON() as { status: string; expected_version: number }
   expect(sent.status).toBe('in_progress')
   expect(sent.expected_version).toBe(wpA.version)
+  await expect(card).toHaveAttribute('aria-busy', 'false')
 
   // cross-lane drop carries the LANE field too (Pass 31): wpA is priority
   // 'high'; dropping it into the medium lane's column adds priority to the PATCH
@@ -12631,7 +12704,12 @@ test('보드에서 카드를 드래그해 옮기면 상태 PATCH가 간다', asy
   const lanePatch = page.waitForRequest(
     (r) => r.method() === 'PATCH' && r.url().includes(`/work-packages/${wpA.id}`),
   )
-  await laneCard.dragTo(page.getByLabel('보통 할 일 컬럼'))
+  const laneTarget = page.getByLabel('보통 할 일 컬럼')
+  const dataTransfer = await page.evaluateHandle(() => new DataTransfer())
+  await laneCard.dispatchEvent('dragstart', { dataTransfer })
+  await laneTarget.dispatchEvent('dragenter', { dataTransfer })
+  await laneTarget.dispatchEvent('dragover', { dataTransfer })
+  await laneTarget.dispatchEvent('drop', { dataTransfer })
   const laneSent = (await lanePatch).postDataJSON() as { priority?: string; status?: string }
   expect(laneSent.priority).toBe('medium')
   expect(laneSent.status).toBeUndefined() // same column — only the lane changed
@@ -25188,13 +25266,15 @@ test('계획 표면은 모바일에서 백로그·보드·캘린더 모드를 �
 
   await planningNav.getByRole('link', { name: /보드/ }).click()
   await expect(page).toHaveURL(/\/board/)
-  const boardMode = page.getByRole('navigation', { name: '계획 모드' }).getByRole('link', { name: /보드/ })
+  const boardViews = page.getByRole('navigation', { name: '프로젝트 작업 보기' })
+  const boardMode = boardViews.getByRole('link', { name: '보드 보기' })
   await expect(boardMode).toBeVisible()
   await expect(boardMode).toHaveAttribute('aria-current', 'page')
-  await expect(page.getByLabel('계획 요약')).toContainText('스윔레인')
+  await expect(page.getByLabel('스윔레인 기준')).toBeVisible()
+  await expect(page.getByRole('region', { name: '프로젝트 작업 보드' })).toBeVisible()
   await expectNoHorizontalOverflow(page)
 
-  await page.getByRole('navigation', { name: '계획 모드' }).getByRole('link', { name: /캘린더/ }).click()
+  await boardViews.getByRole('link', { name: '캘린더 보기' }).click()
   await expect(page).toHaveURL(/\/calendar/)
   const calendarMode = page.getByRole('navigation', { name: '계획 모드' }).getByRole('link', { name: /캘린더/ })
   await expect(calendarMode).toBeVisible()
@@ -27121,7 +27201,14 @@ test('보고 표면은 모바일에서 포트폴리오와 이니셔티브를 넘
     fullPage: true,
   })
 
+  const initiativesResponse = page.waitForResponse(
+    (response) =>
+      response.request().method() === 'GET' &&
+      new URL(response.url()).pathname === '/api/v1/initiatives',
+  )
   await page.goto('/initiatives')
+  const response = await initiativesResponse
+  await response.finished()
   await expect(page.getByRole('heading', { name: '이니셔티브', exact: true })).toBeVisible()
   await expect(page.getByRole('region', { name: '진행 중' }).getByText('플랫폼 개편')).toBeVisible()
   await expectNoHorizontalOverflow(page)

@@ -15,6 +15,10 @@ export type Lane = {
 
 const PRIORITY_ORDER = ['urgent', 'high', 'medium', 'low', 'none']
 
+export function parseLaneBy(value: string | null): LaneBy {
+  return value === 'assignee' || value === 'priority' ? value : 'none'
+}
+
 export function buildLanes(
   items: WorkPackage[],
   laneBy: LaneBy,
