@@ -6639,13 +6639,13 @@ test('대시보드가 집계 타일과 분포를 보여준다', async ({ page })
   await expect(recentWork.getByText(wpA.subject)).toBeVisible()
   await expect(recentWork.getByText('Dev User')).toBeVisible()
   await page.screenshot({
-    path: '../../docs/screenshots/redevelopment/project-dashboard-ui-252/desktop.png',
+    path: '../../docs/screenshots/redevelopment/project-dashboard-composition-ui-277/desktop.png',
     fullPage: true,
   })
   await page.setViewportSize({ width: 390, height: 844 })
   await expectNoHorizontalOverflow(page)
   await page.screenshot({
-    path: '../../docs/screenshots/redevelopment/project-dashboard-ui-252/mobile.png',
+    path: '../../docs/screenshots/redevelopment/project-dashboard-composition-ui-277/mobile.png',
     fullPage: true,
   })
 
@@ -6761,6 +6761,120 @@ test('대시보드가 집계 타일과 분포를 보여준다', async ({ page })
   await page.goBack()
   await main.getByRole('button', { name: '전체 보기' }).click()
   await expect(page).toHaveURL(`/projects/${project.id}/work-packages`)
+})
+
+test('프로젝트 대시보드는 frame을 유지한 채 loading과 독립 query 오류를 복구한다', async ({
+  page,
+}) => {
+  await mockApi(page)
+  const dashboardPayload = {
+    id: project.id,
+    key: project.key,
+    name: project.name,
+    description: project.description,
+    health: 'on_track',
+    health_note: null,
+    archived_at: null,
+    total_work_packages: 2,
+    open_work_packages: 1,
+    completion_percent: 50,
+    overdue_count: 0,
+    status_counts: [
+      { key: 'todo', count: 1 },
+      { key: 'done', count: 1 },
+    ],
+    priority_counts: [{ key: 'medium', count: 2 }],
+    type_counts: [{ key: 'task', count: 2 }],
+    total_estimated_hours: 8,
+    total_spent_hours: 4,
+    budget: null,
+    total_cost: 0,
+    recent_work_packages: [],
+  }
+  const layoutPayload = {
+    widgets: ['summary', 'status_distribution'],
+    updated_at: null,
+    is_default: true,
+    source: 'builtin',
+    shared_layout: null,
+    can_manage_shared: false,
+  }
+  let dashboardReady = false
+  let layoutReady = false
+  let releaseInitial!: () => void
+  const initialGate = new Promise<void>((resolve) => {
+    releaseInitial = resolve
+  })
+  let initialDashboard = true
+  let initialLayout = true
+
+  await page.route(`**/api/v1/projects/${project.id}/dashboard`, async (route) => {
+    if (initialDashboard) {
+      initialDashboard = false
+      await initialGate
+    }
+    if (!dashboardReady) {
+      await route.fulfill({ status: 503, json: { detail: 'dashboard unavailable' } })
+      return
+    }
+    await route.fulfill({ json: dashboardPayload })
+  })
+  await page.route(`**/api/v1/projects/${project.id}/dashboard/layout`, async (route) => {
+    if (initialLayout) {
+      initialLayout = false
+      await initialGate
+    }
+    if (!layoutReady) {
+      await route.fulfill({ status: 503, json: { detail: 'layout unavailable' } })
+      return
+    }
+    await route.fulfill({ json: layoutPayload })
+  })
+
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto(`/projects/${project.id}/dashboard`)
+  const frame = page.getByTestId('frame-context-actions')
+  await expect(frame.getByRole('button', { name: '대시보드 새로고침' })).toBeVisible()
+  await expect(frame.getByRole('button', { name: '위젯 편집' })).toBeDisabled()
+  await expect(frame.getByRole('link', { name: 'CSV 내보내기' })).toBeVisible()
+  await expect(page.getByTestId('project-dashboard-skeleton')).toBeVisible()
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/project-dashboard-composition-ui-277/loading-mobile.png',
+    fullPage: true,
+  })
+
+  releaseInitial()
+  const dashboardError = page.getByRole('region', { name: '대시보드 데이터 오류' })
+  const layoutError = page.getByRole('region', { name: '대시보드 위젯 구성 오류' })
+  await expect(dashboardError).toBeVisible()
+  await expect(layoutError).toBeVisible()
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/project-dashboard-composition-ui-277/error-mobile.png',
+    fullPage: true,
+  })
+
+  dashboardReady = true
+  await dashboardError.getByRole('button', { name: '다시 시도' }).click()
+  await expect(dashboardError).toBeHidden()
+  await expect(layoutError).toBeVisible()
+
+  layoutReady = true
+  await layoutError.getByRole('button', { name: '다시 시도' }).click()
+  await expect(page.getByText('전체 작업')).toBeVisible()
+  await expect(frame.getByRole('button', { name: '위젯 편집' })).toBeEnabled()
+
+  dashboardReady = false
+  await frame.getByRole('button', { name: '대시보드 새로고침' }).click()
+  const retainedDataWarning = page.getByRole('alert').filter({
+    hasText: '마지막으로 불러온 대시보드를 유지하고 있습니다.',
+  })
+  await expect(retainedDataWarning).toBeVisible()
+  await expect(page.getByText('전체 작업')).toBeVisible()
+
+  dashboardReady = true
+  await retainedDataWarning.getByRole('button', { name: '다시 시도' }).click()
+  await expect(retainedDataWarning).toBeHidden()
+  await expectNoHorizontalOverflow(page)
 })
 
 test('보관된 빈 프로젝트 개요가 읽기 상태와 empty state를 표시한다', async ({ page }) => {
