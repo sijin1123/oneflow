@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
-import { buildLanes } from './lanes.ts'
+import { buildLanes, parseLaneBy } from './lanes.ts'
 import type { WorkPackage } from './types.ts'
 
 function wp(id: string, assignee: string | null, priority: WorkPackage['priority']): WorkPackage {
@@ -15,8 +15,8 @@ function wp(id: string, assignee: string | null, priority: WorkPackage['priority
     priority,
     assignee_id: assignee,
     parent_id: null,
-  milestone_id: null,
-  customer_id: null,
+    milestone_id: null,
+    customer_id: null,
     cycle_id: null,
     module_id: null,
     start_date: null,
@@ -61,4 +61,12 @@ test("laneBy 'none' is a single unlabeled lane", () => {
   const lanes = buildLanes([wp('a', null, 'low')], 'none', name)
   assert.equal(lanes.length, 1)
   assert.equal(lanes[0].label, '')
+})
+
+test('lane selection accepts only canonical URL values', () => {
+  assert.equal(parseLaneBy('assignee'), 'assignee')
+  assert.equal(parseLaneBy('priority'), 'priority')
+  assert.equal(parseLaneBy('none'), 'none')
+  assert.equal(parseLaneBy('unknown'), 'none')
+  assert.equal(parseLaneBy(null), 'none')
 })
