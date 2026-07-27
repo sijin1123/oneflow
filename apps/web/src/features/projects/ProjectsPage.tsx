@@ -16,6 +16,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 
+import { FrameContextActions } from '@/components/shell/FrameContextActions'
 import { EmptyState, ErrorState, ListSkeleton } from '@/components/shell/states'
 import { useSidebarPreferences } from '@/components/shell/sidebar-preferences'
 import { Badge } from '@/components/ui/badge'
@@ -160,9 +161,21 @@ function ProjectRow({
     <li className="group border-b border-of-border last:border-b-0">
       <div className="grid min-w-0 gap-3 px-3 py-3 transition-colors group-hover:bg-of-surface-hover md:grid-cols-[minmax(0,1.5fr)_9rem_minmax(12rem,0.8fr)_14rem_auto] md:items-center md:px-4">
         <div className="flex min-w-0 items-start gap-3">
-          <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-of bg-of-accent-soft font-mono text-[11px] font-semibold text-of-accent">
-            {project.key.slice(0, 2)}
-          </span>
+          <ProjectCover
+            projectKey={project.key}
+            projectName={project.name}
+            attachmentId={project.cover_attachment_id}
+            className="h-10 w-14 shrink-0 overflow-hidden rounded-of border border-of-border"
+          >
+            <Link
+              to={`/projects/${project.id}/overview`}
+              aria-label={`${project.name} 표지에서 Overview 열기`}
+              className="absolute inset-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-white"
+            />
+            <span className="pointer-events-none absolute bottom-1 left-1 rounded-[3px] bg-white/90 px-1 font-mono text-[9px] font-semibold text-of-accent shadow-sm">
+              {project.key.slice(0, 2)}
+            </span>
+          </ProjectCover>
           <div className="min-w-0">
             <Link
               to={`/projects/${project.id}/overview`}
@@ -262,12 +275,12 @@ function ProjectCard({
     : 0
 
   return (
-    <li className="group flex min-h-64 min-w-0 flex-col overflow-hidden rounded-of border border-of-border bg-of-surface transition-[border-color,box-shadow] hover:border-of-border-strong hover:shadow-[var(--of-shadow-sm)]">
+    <li className="group flex min-h-72 min-w-0 flex-col overflow-hidden rounded-of border border-of-border bg-of-surface transition-[border-color,box-shadow,transform] hover:-translate-y-px hover:border-of-border-strong hover:shadow-[var(--of-shadow-sm)] motion-reduce:hover:translate-y-0">
       <ProjectCover
         projectKey={project.key}
         projectName={project.name}
         attachmentId={project.cover_attachment_id}
-        className="h-24 shrink-0 border-b border-of-border"
+        className="h-28 shrink-0 border-b border-of-border"
       >
         <Link
           to={`/projects/${project.id}/overview`}
@@ -302,7 +315,7 @@ function ProjectCard({
         </div>
       </ProjectCover>
 
-      <div className="flex min-h-0 flex-1 flex-col p-3">
+      <div className="flex min-h-0 flex-1 flex-col gap-2 p-3">
         <div className="flex min-w-0 items-start justify-between gap-2">
           <div className="min-w-0">
             <Link
@@ -323,7 +336,7 @@ function ProjectCard({
           enabled={columns.includes('initiatives')}
           onOpen={onOpenInitiative}
         />
-        <div className="mt-3">
+        <div className="mt-auto pt-1">
           <div className="mb-1 flex items-center justify-between text-[11px] text-of-muted">
             <span>완료 흐름</span>
             <span className="tabular-nums">{progress}%</span>
@@ -332,7 +345,7 @@ function ProjectCard({
             <span className="block h-full rounded-full bg-of-accent" style={{ width: `${progress}%` }} />
           </div>
         </div>
-        <div className="mt-3">
+        <div>
           <RollupCells project={project} columns={columns} />
         </div>
       </div>
@@ -532,142 +545,202 @@ export function ProjectsPage() {
     }
   }, [data, projects, total])
 
-  if (isPending) return <ListSkeleton />
-  if (isError && !data) return <ErrorState error={error} onRetry={() => refetch()} />
-
-  const resultText = query.trim()
-    ? `${summary.total}개 중 ${total}개 검색 · ${projects.length}개 표시`
-    : projects.length < total
-      ? `${projects.length}/${total}개 표시`
-      : `${total}개 프로젝트`
+  const resultText = isPending
+    ? '프로젝트 불러오는 중'
+    : query.trim()
+      ? `${summary.total}개 중 ${total}개 검색 · ${projects.length}개 표시`
+      : projects.length < total
+        ? `${projects.length}/${total}개 표시`
+        : `${total}개 프로젝트`
 
   return (
     <div className="flex min-h-full w-full flex-col bg-of-surface">
-      <div className="sticky top-0 z-20 border-b border-of-border bg-of-surface/95 shadow-[var(--of-shadow-sm)] backdrop-blur">
-        <section aria-label="프로젝트 요약" className="flex min-w-0 flex-wrap items-center gap-x-5 gap-y-2 border-b border-of-border-subtle px-4 py-2 text-xs sm:px-6">
-          <span><span className="text-of-muted">활성</span> <strong className="ml-1 font-semibold tabular-nums text-of-accent">{summary.active}</strong></span>
-          <span><span className="text-of-muted">보관</span> <strong className="ml-1 font-semibold tabular-nums">{summary.archived}</strong></span>
-          <span><span className="text-of-muted">열린 작업</span> <strong className="ml-1 font-semibold tabular-nums">{summary.open}</strong></span>
-          <span><span className="text-of-muted">기한 초과</span> <strong className={cn('ml-1 font-semibold tabular-nums', summary.overdue > 0 && 'text-of-danger')}>{summary.overdue}</strong></span>
-          {initiativesEnabled ? (
-            <span><span className="text-of-muted">이니셔티브</span> <strong className="ml-1 font-semibold tabular-nums">{summary.initiatives}</strong></span>
-          ) : null}
-          <span className="ml-auto text-[11px] text-of-muted" aria-live="polite">{resultText}</span>
-          <Button size="sm" onClick={(event) => openCreate(event.currentTarget)}>
-            <Plus size={14} /> 새 프로젝트
-          </Button>
-        </section>
-
-        <section
-          aria-label="프로젝트 보기 제어"
-          className="flex flex-col gap-2 px-4 py-2 md:flex-row md:items-center md:justify-between sm:px-6"
+      <h1 className="sr-only">프로젝트 디렉터리</h1>
+      <FrameContextActions>
+        <div
+          className="flex h-7 items-center rounded-of border border-of-border bg-of-surface p-0.5"
+          role="group"
+          aria-label="프로젝트 레이아웃"
         >
-        <div className="flex min-w-0 flex-1 flex-col gap-2 sm:flex-row sm:items-center">
-          <div className="relative min-w-0 flex-1 sm:max-w-sm">
-            <Search
-              size={14}
-              className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-of-muted"
-              aria-hidden="true"
-            />
-            <Input
-              value={query}
-              onChange={(event) => setDirectoryParam('q', event.target.value)}
-              maxLength={120}
-              placeholder="프로젝트 검색"
-              aria-label="프로젝트 검색어"
-              className="h-7 pl-8 pr-8 text-xs"
-            />
-            {query ? (
-              <button
-                type="button"
-                aria-label="프로젝트 검색어 지우기"
-                className="absolute right-1 top-1/2 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-of text-of-muted transition-colors hover:bg-of-surface-hover hover:text-of-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus"
-                onClick={() => setDirectoryParam('q', null)}
+          <button
+            type="button"
+            aria-label="카드 보기"
+            aria-pressed={layout === 'grid'}
+            className={cn(
+              'flex h-6 w-7 items-center justify-center rounded-[4px] text-of-muted transition-colors hover:text-of-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus',
+              layout === 'grid' && 'bg-of-surface-selected text-of-accent',
+            )}
+            onClick={() => changeLayout('grid')}
+          >
+            <LayoutGrid size={13} aria-hidden="true" />
+          </button>
+          <button
+            type="button"
+            aria-label="목록 보기"
+            aria-pressed={layout === 'list'}
+            className={cn(
+              'flex h-6 w-7 items-center justify-center rounded-[4px] text-of-muted transition-colors hover:text-of-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus',
+              layout === 'list' && 'bg-of-surface-selected text-of-accent',
+            )}
+            onClick={() => changeLayout('list')}
+          >
+            <List size={13} aria-hidden="true" />
+          </button>
+        </div>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline" size="sm">
+              <SlidersHorizontal size={13} /> 표시
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-48">
+            <DropdownMenuLabel>프로젝트 열</DropdownMenuLabel>
+            {availableColumns.map((column) => (
+              <DropdownMenuCheckboxItem
+                key={column.key}
+                checked={columns.includes(column.key)}
+                onCheckedChange={() => toggleColumn(column.key)}
+                aria-label={`${column.label} 열 표시`}
               >
-                <X size={12} aria-hidden="true" />
-              </button>
-            ) : null}
-          </div>
-          <label className="flex min-h-7 items-center gap-2 rounded-of border border-of-border px-2 text-xs text-of-muted">
-            <input
-              type="checkbox"
-              checked={includeArchived}
-              onChange={(e) => setDirectoryParam('archived', e.target.checked ? '1' : null)}
-              className="h-3 w-3 accent-of-accent"
-            />
-            <Archive size={13} aria-hidden="true" />
-            보관 포함
-          </label>
+                {column.label}
+              </DropdownMenuCheckboxItem>
+            ))}
+            <DropdownMenuSeparator />
+            <DropdownMenuLabel className="pb-1">
+              선택한 열은 브라우저와 계정에 저장됩니다.
+            </DropdownMenuLabel>
+          </DropdownMenuContent>
+        </DropdownMenu>
+        <Button
+          variant="outline"
+          size="icon"
+          aria-label="프로젝트 새로고침"
+          className="h-7 w-7"
+          onClick={() => void refetch()}
+        >
+          <RefreshCw size={13} className={isFetching ? 'animate-spin' : undefined} />
+        </Button>
+        <Button size="sm" onClick={(event) => openCreate(event.currentTarget)}>
+          <Plus size={14} /> 새 프로젝트
+        </Button>
+      </FrameContextActions>
+
+      <section
+        aria-label="프로젝트 디렉터리 제어"
+        className="shrink-0 border-b border-of-border bg-of-surface-raised px-3 py-2.5 sm:px-5"
+      >
+        <div
+          aria-label="프로젝트 요약"
+          className="mb-2 flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1.5 text-xs"
+        >
+          <span>
+            <span className="text-of-muted">활성</span>{' '}
+            <strong className="ml-1 font-semibold tabular-nums text-of-accent">
+              {isPending ? '—' : summary.active}
+            </strong>
+          </span>
+          <span>
+            <span className="text-of-muted">보관</span>{' '}
+            <strong className="ml-1 font-semibold tabular-nums">
+              {isPending ? '—' : summary.archived}
+            </strong>
+          </span>
+          <span>
+            <span className="text-of-muted">열린 작업</span>{' '}
+            <strong className="ml-1 font-semibold tabular-nums">
+              {isPending ? '—' : summary.open}
+            </strong>
+          </span>
+          <span>
+            <span className="text-of-muted">기한 초과</span>{' '}
+            <strong
+              className={cn(
+                'ml-1 font-semibold tabular-nums',
+                !isPending && summary.overdue > 0 && 'text-of-danger',
+              )}
+            >
+              {isPending ? '—' : summary.overdue}
+            </strong>
+          </span>
+          {initiativesEnabled ? (
+            <span>
+              <span className="text-of-muted">이니셔티브</span>{' '}
+              <strong className="ml-1 font-semibold tabular-nums">
+                {isPending ? '—' : summary.initiatives}
+              </strong>
+            </span>
+          ) : null}
+          <span className="ml-auto text-[11px] text-of-muted" aria-live="polite">
+            {resultText}
+          </span>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
-          <Select
-            aria-label="프로젝트 정렬"
-            className="h-7 w-36 text-xs"
-            value={sort.key}
-            onChange={(e) => changeSort({ ...sort, key: e.target.value as ProjectSortKey })}
-          >
-            {SORT_KEYS.map((k) => (
-              <option key={k} value={k}>
-                {SORT_LABELS[k]}
-              </option>
-            ))}
-          </Select>
-          <Button
-            type="button"
-            variant="outline"
-            size="icon"
-            aria-label={`정렬 방향 (${sort.dir === 'asc' ? '오름차순' : '내림차순'})`}
-            className="h-7 w-7"
-            disabled={sort.key === 'default'}
-            onClick={() => changeSort({ ...sort, dir: sort.dir === 'asc' ? 'desc' : 'asc' })}
-          >
-            {sort.dir === 'asc' ? <ArrowUp size={13} /> : <ArrowDown size={13} />}
-          </Button>
-          <div className="flex h-7 items-center rounded-of border border-of-border bg-of-surface p-0.5" role="group" aria-label="프로젝트 레이아웃">
-            <button
-              type="button"
-              aria-label="카드 보기"
-              aria-pressed={layout === 'grid'}
-              className={cn('flex h-6 w-7 items-center justify-center rounded-[4px] text-of-muted hover:text-of-text', layout === 'grid' && 'bg-of-surface-selected text-of-accent')}
-              onClick={() => changeLayout('grid')}
-            >
-              <LayoutGrid size={13} aria-hidden="true" />
-            </button>
-            <button
-              type="button"
-              aria-label="목록 보기"
-              aria-pressed={layout === 'list'}
-              className={cn('flex h-6 w-7 items-center justify-center rounded-[4px] text-of-muted hover:text-of-text', layout === 'list' && 'bg-of-surface-selected text-of-accent')}
-              onClick={() => changeLayout('list')}
-            >
-              <List size={13} aria-hidden="true" />
-            </button>
-          </div>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm">
-                <SlidersHorizontal size={13} /> 표시
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-48">
-              <DropdownMenuLabel>프로젝트 열</DropdownMenuLabel>
-              {availableColumns.map((column) => (
-                <DropdownMenuCheckboxItem
-                  key={column.key}
-                  checked={columns.includes(column.key)}
-                  onCheckedChange={() => toggleColumn(column.key)}
-                  aria-label={`${column.label} 열 표시`}
+        <div
+          aria-label="프로젝트 보기 제어"
+          className="flex min-w-0 flex-col gap-2 md:flex-row md:items-center md:justify-between"
+        >
+          <div className="flex min-w-0 flex-1 flex-col gap-2 sm:flex-row sm:items-center">
+            <div className="relative min-w-0 flex-1 sm:max-w-sm">
+              <Search
+                size={14}
+                className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-of-muted"
+                aria-hidden="true"
+              />
+              <Input
+                value={query}
+                onChange={(event) => setDirectoryParam('q', event.target.value)}
+                maxLength={120}
+                placeholder="프로젝트 검색"
+                aria-label="프로젝트 검색어"
+                className="h-7 pl-8 pr-8 text-xs"
+              />
+              {query ? (
+                <button
+                  type="button"
+                  aria-label="프로젝트 검색어 지우기"
+                  className="absolute right-1 top-1/2 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-of text-of-muted transition-colors hover:bg-of-surface-hover hover:text-of-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus"
+                  onClick={() => setDirectoryParam('q', null)}
                 >
-                  {column.label}
-                </DropdownMenuCheckboxItem>
+                  <X size={12} aria-hidden="true" />
+                </button>
+              ) : null}
+            </div>
+            <label className="flex min-h-7 items-center gap-2 rounded-of border border-of-border px-2 text-xs text-of-muted">
+              <input
+                type="checkbox"
+                checked={includeArchived}
+                onChange={(e) => setDirectoryParam('archived', e.target.checked ? '1' : null)}
+                className="h-3 w-3 accent-of-accent"
+              />
+              <Archive size={13} aria-hidden="true" />
+              보관 포함
+            </label>
+          </div>
+
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            <Select
+              aria-label="프로젝트 정렬"
+              className="h-7 w-36 text-xs"
+              value={sort.key}
+              onChange={(e) => changeSort({ ...sort, key: e.target.value as ProjectSortKey })}
+            >
+              {SORT_KEYS.map((k) => (
+                <option key={k} value={k}>
+                  {SORT_LABELS[k]}
+                </option>
               ))}
-              <DropdownMenuSeparator />
-              <DropdownMenuLabel className="pb-1">
-                선택한 열은 브라우저와 계정에 저장됩니다.
-              </DropdownMenuLabel>
-            </DropdownMenuContent>
-          </DropdownMenu>
+            </Select>
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              aria-label={`정렬 방향 (${sort.dir === 'asc' ? '오름차순' : '내림차순'})`}
+              className="h-7 w-7"
+              disabled={sort.key === 'default'}
+              onClick={() => changeSort({ ...sort, dir: sort.dir === 'asc' ? 'desc' : 'asc' })}
+            >
+              {sort.dir === 'asc' ? <ArrowUp size={13} /> : <ArrowDown size={13} />}
+            </Button>
           {preferenceQuery.isFetching ? (
             <span className="text-[11px] text-of-muted" aria-live="polite">
               보기 설정 불러오는 중
@@ -716,18 +789,9 @@ export function ProjectsPage() {
               검색 반영 중
             </span>
           ) : null}
-          <Button
-            variant="outline"
-            size="icon"
-            aria-label="프로젝트 새로고침"
-            className="h-7 w-7"
-            onClick={() => refetch()}
-          >
-            <RefreshCw size={13} className={isFetching ? 'animate-spin' : undefined} />
-          </Button>
+          </div>
         </div>
-        </section>
-      </div>
+      </section>
 
       <ProjectCreateDialog
         open={createRequested}
@@ -735,7 +799,22 @@ export function ProjectsPage() {
         returnFocusRef={createReturnFocusRef}
       />
 
-      {summary.total === 0 && !query.trim() ? (
+      {isPending ? (
+        <section
+          aria-label="프로젝트 디렉터리"
+          aria-busy="true"
+          className="mx-auto w-full max-w-7xl min-w-0 px-4 py-3 sm:px-6"
+        >
+          <ListSkeleton />
+        </section>
+      ) : isError && !data ? (
+        <section
+          aria-label="프로젝트 디렉터리"
+          className="mx-auto w-full max-w-7xl min-w-0 px-4 py-3 sm:px-6"
+        >
+          <ErrorState error={error} onRetry={() => void refetch()} />
+        </section>
+      ) : summary.total === 0 && !query.trim() ? (
         <div className="px-4 sm:px-6"><EmptyState title="아직 프로젝트가 없습니다" hint="첫 프로젝트를 만들어 시작하세요.">
           <Button size="sm" onClick={(event) => openCreate(event.currentTarget)}>
             <Plus size={14} /> 새 프로젝트
@@ -761,7 +840,7 @@ export function ProjectsPage() {
             </div>
           ) : null}
           <div className={cn(layout === 'list' && 'overflow-hidden rounded-of border border-of-border bg-of-surface')}>
-          <ul aria-label="프로젝트 디렉터리" className={cn(layout === 'grid' ? 'grid gap-3 md:grid-cols-2 2xl:grid-cols-3' : 'divide-y divide-of-border')}>
+          <ul aria-label="프로젝트 디렉터리" className={cn(layout === 'grid' ? 'grid gap-3 md:grid-cols-2 xl:grid-cols-3' : 'divide-y divide-of-border')}>
             {projects.map((project) => (
               layout === 'grid' ? (
                 <ProjectCard
