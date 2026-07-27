@@ -8017,13 +8017,19 @@ test('내 작업 홈 위젯 관리는 표시 상태를 저장하고 복원한다
   await expect(
     widgetsMenu.getByRole('menuitemcheckbox', { name: '프로젝트 위험' }),
   ).toHaveAttribute('data-state', 'checked')
+  await expect(widgetsMenu.getByRole('menuitemcheckbox', { name: '내 시간' })).toHaveAttribute(
+    'data-state',
+    'checked',
+  )
   await widgetsMenu.getByRole('menuitemcheckbox', { name: 'AI workspace' }).click()
   await widgetsMenu.getByRole('menuitemcheckbox', { name: '프로젝트 위험' }).click()
   await widgetsMenu.getByRole('menuitemcheckbox', { name: '개인 메모' }).click()
+  await widgetsMenu.getByRole('menuitemcheckbox', { name: '내 시간' }).click()
   await page.keyboard.press('Escape')
   await expect(page.getByRole('region', { name: 'AI workspace' })).toHaveCount(0)
   await expect(page.getByRole('region', { name: '프로젝트 위험 요약' })).toHaveCount(0)
   await expect(page.getByRole('region', { name: '개인 메모' })).toHaveCount(0)
+  await expect(page.getByRole('region', { name: '내 시간' })).toHaveCount(0)
   await expect(page.getByRole('region', { name: '빠른 이동' })).toBeVisible()
   await page.screenshot({
     path: '../../docs/screenshots/redevelopment/workspace-home-widgets-ui/desktop.png',
@@ -8034,6 +8040,7 @@ test('내 작업 홈 위젯 관리는 표시 상태를 저장하고 복원한다
   await expect(page.getByRole('region', { name: 'AI workspace' })).toHaveCount(0)
   await expect(page.getByRole('region', { name: '프로젝트 위험 요약' })).toHaveCount(0)
   await expect(page.getByRole('region', { name: '개인 메모' })).toHaveCount(0)
+  await expect(page.getByRole('region', { name: '내 시간' })).toHaveCount(0)
   await page.setViewportSize({ width: 390, height: 844 })
   await page.getByRole('button', { name: '위젯 관리' }).click()
   await expectNoHorizontalOverflow(page)
@@ -8045,10 +8052,62 @@ test('내 작업 홈 위젯 관리는 표시 상태를 저장하고 복원한다
   await expect(page.getByRole('region', { name: 'AI workspace' })).toBeVisible()
   await expect(page.getByRole('region', { name: '프로젝트 위험 요약' })).toBeVisible()
   await expect(page.getByRole('region', { name: '개인 메모' })).toBeVisible()
+  await expect(page.getByRole('region', { name: '내 시간' })).toBeVisible()
   await page.reload()
   await expect(page.getByRole('region', { name: 'AI workspace' })).toBeVisible()
   await expect(page.getByRole('region', { name: '프로젝트 위험 요약' })).toBeVisible()
   await expect(page.getByRole('region', { name: '개인 메모' })).toBeVisible()
+  await expect(page.getByRole('region', { name: '내 시간' })).toBeVisible()
+})
+
+test('Workspace Home은 주요 작업 오류 중에도 독립 위젯과 명시적 복구를 유지한다', async ({
+  page,
+}) => {
+  await mockApi(page)
+  let workCalls = 0
+  await page.route('**/api/v1/me/work', async (route) => {
+    workCalls += 1
+    if (workCalls <= 2) {
+      await route.fulfill({ status: 500, json: { detail: 'workspace work unavailable' } })
+      return
+    }
+    await route.fulfill({
+      json: {
+        assigned_to_me: [],
+        due_soon: [],
+        created_by_me: [],
+        recent_activity: [],
+      },
+    })
+  })
+
+  await page.goto('/my')
+  await expect(page.getByRole('toolbar', { name: 'Workspace Home 화면 제어' })).toBeVisible()
+  await expect(page.getByRole('region', { name: '빠른 이동' })).toBeVisible()
+  await expect(page.getByRole('region', { name: '프로젝트 바로가기' })).toBeVisible()
+  await expect(page.getByRole('region', { name: '개인 메모' })).toBeVisible()
+  const primaryError = page.getByRole('alert').filter({ hasText: '데이터를 불러오지 못했습니다' })
+  await expect(primaryError).toBeVisible()
+  await primaryError.getByRole('button', { name: '다시 시도' }).click()
+  await expect(page.getByRole('region', { name: '최근 항목' })).toBeVisible()
+  await expect(page.getByText('아직 배정된 작업이 없습니다')).toBeVisible()
+  expect(workCalls).toBe(3)
+})
+
+test('Workspace Home 프레임 새로고침은 실제 요약 요청을 다시 연결한다', async ({ page }) => {
+  await mockApi(page)
+  await page.goto('/my')
+  await expect(page.getByRole('region', { name: '빠른 이동' })).toBeVisible()
+
+  const requests = Promise.all([
+    page.waitForRequest((request) => request.url().includes('/api/v1/me/work')),
+    page.waitForRequest((request) => request.url().includes('/api/v1/me/time-entries')),
+    page.waitForRequest((request) => request.url().includes('/api/v1/me/notifications')),
+    page.waitForRequest((request) => request.url().includes('/api/v1/projects')),
+  ])
+  await page.getByRole('button', { name: '홈 요약 새로고침' }).click()
+  await requests
+  await expect(page.getByRole('button', { name: '홈 요약 새로고침' })).toBeEnabled()
 })
 
 test('워크스페이스 홈 위험 요약은 실제 rollup을 우선순위로 표시하고 Overview로 연결한다', async ({
