@@ -25346,6 +25346,11 @@ test('Workspace 관리 개요는 실제 운영 상태와 기본 관리 동선을
   await expect(page).toHaveURL(/\/admin\/overview$/)
   await expect(page.getByRole('heading', { name: '관리 개요' })).toBeVisible()
   await expect(page.getByRole('navigation', { name: '설정 컨텍스트 내비게이션' }).getByRole('link', { name: '개요' })).toHaveAttribute('aria-current', 'page')
+  const frameActions = page.locator('[data-frame-context-actions]')
+  const refreshAll = frameActions.getByRole('button', { name: '모두 새로고침' })
+  const summary = page.getByLabel('워크스페이스 관리 요약')
+  await expect(refreshAll).toBeEnabled()
+  await expect(page.getByTestId('workspace-admin-overview-scroll')).toBeVisible()
 
   await expect(page.getByLabel('사용자 상태').getByText('확인 실패')).toBeVisible()
   await expect(page.getByLabel('Identity 상태').getByText('기본 identity')).toBeVisible()
@@ -25354,11 +25359,26 @@ test('Workspace 관리 개요는 실제 운영 상태와 기본 관리 동선을
   await expect(page.getByLabel('프로젝트 단계 상태').getByText('5개 활성')).toBeVisible()
   await expect(page.getByLabel('기능 상태').getByText('3개 활성')).toBeVisible()
   await expect(page.getByText('AI 배포 상한 차단')).toBeVisible()
+  await expect(
+    summary.getByText('확인', { exact: true }).locator('..').getByText('5', { exact: true }),
+  ).toBeVisible()
+  await expect(
+    summary.getByText('주의', { exact: true }).locator('..').getByText('2', { exact: true }),
+  ).toBeVisible()
+  await expect(
+    summary.getByText('실패', { exact: true }).locator('..').getByText('1', { exact: true }),
+  ).toBeVisible()
 
   usersHealthy = true
   await page.getByLabel('사용자 다시 시도').click()
   await expect(page.getByLabel('사용자 상태').getByText('2명 활성')).toBeVisible()
   await expect(page.getByText('관리자 1명')).toBeVisible()
+  await expect(
+    summary.getByText('확인', { exact: true }).locator('..').getByText('6', { exact: true }),
+  ).toBeVisible()
+  await expect(
+    summary.getByText('실패', { exact: true }).locator('..').getByText('0', { exact: true }),
+  ).toBeVisible()
 
   await expect(page.getByRole('link', { name: '일반 설정' })).toHaveAttribute('href', '/admin/general')
   await expect(page.getByRole('link', { name: '사용자 관리' })).toHaveAttribute('href', '/admin/users')
@@ -25367,8 +25387,6 @@ test('Workspace 관리 개요는 실제 운영 상태와 기본 관리 동선을
   await expect(page.getByRole('link', { name: '단계 관리' })).toHaveAttribute('href', '/admin/project-configuration?tab=phases')
   await expect(page.getByRole('link', { name: '기능 설정' })).toHaveAttribute('href', '/admin/wiki')
 
-  const refreshAll = page.getByRole('button', { name: '모두 새로고침' })
-  await expect(refreshAll).toBeEnabled()
   await refreshAll.click()
   await expect.poll(() => profileReads).toBeGreaterThan(1)
 
@@ -25377,12 +25395,186 @@ test('Workspace 관리 개요는 실제 운영 상태와 기본 관리 동선을
     path: '../../docs/screenshots/redevelopment/settings-overview-ui/desktop.png',
     fullPage: true,
   })
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/workspace-admin-overview-ui-256/desktop.png',
+    fullPage: true,
+  })
   await page.setViewportSize({ width: 390, height: 844 })
   await expectNoHorizontalOverflow(page)
   await page.screenshot({
     path: '../../docs/screenshots/redevelopment/settings-overview-ui/mobile.png',
     fullPage: true,
   })
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/workspace-admin-overview-ui-256/mobile.png',
+    fullPage: true,
+  })
+  const capabilityStatus = page.getByLabel('기능 상태')
+  await capabilityStatus.scrollIntoViewIfNeeded()
+  await expect(capabilityStatus).toBeInViewport()
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/workspace-admin-overview-ui-256/mobile-bottom.png',
+    fullPage: false,
+  })
+})
+
+test('Workspace 관리 개요는 여섯 상태 조회를 서로 막지 않고 각각 복구한다', async ({ page }) => {
+  await mockApi(page)
+  let profileAvailable = false
+  let usersAvailable = false
+  let invitationsAvailable = false
+  let calendarAvailable = false
+  let phasesAvailable = false
+  let capabilitiesAvailable = false
+
+  await page.route('**/api/v1/admin/workspace/profile', (route) => {
+    if (!profileAvailable) {
+      return route.fulfill({ status: 503, json: { detail: 'profile unavailable' } })
+    }
+    return route.fulfill({
+      headers: { ETag: '"2"' },
+      json: {
+        id: 1,
+        name: 'OneFlow',
+        revision: 2,
+        logo_url: null,
+        logo_content_type: null,
+        logo_filename: null,
+        logo_width: null,
+        logo_height: null,
+        logo_byte_size: null,
+        updated_by_user_id: 'me-1',
+        updated_by_name: 'Dev User',
+        updated_at: '2026-07-27T00:00:00Z',
+      },
+    })
+  })
+  await page.route('**/api/v1/users', (route) => {
+    if (!usersAvailable) {
+      return route.fulfill({ status: 503, json: { detail: 'users unavailable' } })
+    }
+    return route.fulfill({
+      json: {
+        items: [
+          { id: 'me-1', email: 'dev@example.com', display_name: 'Dev User', is_active: true, is_admin: true, created_at: '2026-07-01T00:00:00Z' },
+        ],
+        total: 1,
+      },
+    })
+  })
+  await page.route('**/api/v1/workspace-invitations', (route) => {
+    if (!invitationsAvailable) {
+      return route.fulfill({ status: 503, json: { detail: 'invitations unavailable' } })
+    }
+    return route.fulfill({
+      json: {
+        items: [
+          { id: 'invite-1', email: 'new@example.com', display_name: 'New Member', status: 'pending', expires_at: '2026-08-03T00:00:00Z', accepted_at: null, revoked_at: null, version: 0, created_at: '2026-07-27T00:00:00Z' },
+        ],
+        total: 1,
+      },
+    })
+  })
+  await page.route('**/api/v1/workspace/calendar', (route) => {
+    if (!calendarAvailable) {
+      return route.fulfill({ status: 503, json: { detail: 'calendar unavailable' } })
+    }
+    return route.fulfill({
+      json: {
+        working_weekdays: [],
+        holidays: [],
+        revision: 1,
+        updated_by_user_id: 'me-1',
+        updated_by_name: 'Dev User',
+        updated_at: '2026-07-27T00:00:00Z',
+      },
+    })
+  })
+  await page.route('**/api/v1/workspace/project-phase-definitions', (route) => {
+    if (!phasesAvailable) {
+      return route.fulfill({ status: 503, json: { detail: 'phases unavailable' } })
+    }
+    return route.fulfill({
+      json: {
+        items: [
+          { key: 'legacy', name: '종료된 단계', color: 'amber', position: 0, retired: true, built_in: false },
+        ],
+        revision: 3,
+        updated_by_user_id: 'me-1',
+        updated_by_name: 'Dev User',
+        updated_at: '2026-07-27T00:00:00Z',
+      },
+    })
+  })
+  await page.unroute('**/api/v1/workspace/capabilities')
+  await page.route('**/api/v1/workspace/capabilities', (route) => {
+    if (!capabilitiesAvailable) {
+      return route.fulfill({ status: 503, json: { detail: 'capabilities unavailable' } })
+    }
+    return route.fulfill({
+      json: {
+        wiki: { enabled: false, revision: 1 },
+        ai: { enabled: true, revision: 2, deployment_enabled: false, effective_enabled: false },
+        initiatives: { enabled: false, revision: 1 },
+        releases: { enabled: false, revision: 1 },
+        customers: { enabled: false, revision: 1 },
+      },
+    })
+  })
+
+  await page.goto('/admin/overview')
+  const summary = page.getByLabel('워크스페이스 관리 요약')
+  const profileStatus = page.getByLabel('Identity 상태')
+  const usersStatus = page.getByLabel('사용자 상태')
+  const invitationStatus = page.getByLabel('워크스페이스 초대 상태')
+  const calendarStatus = page.getByLabel('근무 일정 상태')
+  const phasesStatus = page.getByLabel('프로젝트 단계 상태')
+  const capabilitiesStatus = page.getByLabel('기능 상태')
+
+  await expect(profileStatus.getByText('확인 실패')).toBeVisible()
+  await expect(usersStatus.getByText('확인 실패')).toBeVisible()
+  await expect(invitationStatus.getByText('확인 실패')).toBeVisible()
+  await expect(calendarStatus.getByText('확인 실패')).toBeVisible()
+  await expect(phasesStatus.getByText('확인 실패')).toBeVisible()
+  await expect(capabilitiesStatus.getByText('확인 실패')).toBeVisible()
+  await expect(
+    summary.getByText('실패', { exact: true }).locator('..').getByText('6', { exact: true }),
+  ).toBeVisible()
+
+  profileAvailable = true
+  await page.getByLabel('Identity 다시 시도').click()
+  await expect(profileStatus.getByText('기본 identity')).toBeVisible()
+  await expect(usersStatus.getByText('확인 실패')).toBeVisible()
+
+  usersAvailable = true
+  await page.getByLabel('사용자 다시 시도').click()
+  await expect(usersStatus.getByText('1명 활성')).toBeVisible()
+
+  invitationsAvailable = true
+  await page.getByLabel('워크스페이스 초대 다시 시도').click()
+  await expect(invitationStatus.getByText('1건 대기')).toBeVisible()
+
+  calendarAvailable = true
+  await page.getByLabel('근무 일정 다시 시도').click()
+  await expect(calendarStatus.getByText('0일 근무')).toBeVisible()
+
+  phasesAvailable = true
+  await page.getByLabel('프로젝트 단계 다시 시도').click()
+  await expect(phasesStatus.getByText('0개 활성')).toBeVisible()
+
+  capabilitiesAvailable = true
+  await page.getByLabel('기능 다시 시도').click()
+  await expect(capabilitiesStatus.getByText('0개 활성')).toBeVisible()
+  await expect(
+    summary.getByText('확인', { exact: true }).locator('..').getByText('6', { exact: true }),
+  ).toBeVisible()
+  await expect(
+    summary.getByText('주의', { exact: true }).locator('..').getByText('4', { exact: true }),
+  ).toBeVisible()
+  await expect(
+    summary.getByText('실패', { exact: true }).locator('..').getByText('0', { exact: true }),
+  ).toBeVisible()
+  await expectNoHorizontalOverflow(page)
 })
 
 test('연결 및 통합 허브는 실제 capability 상태와 관리 동선을 독립적으로 제공한다', async ({ page }) => {
