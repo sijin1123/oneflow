@@ -10235,24 +10235,29 @@ test('워크스페이스 근무 일정은 요일·휴일과 revision 충돌 복�
   await expect(page.getByRole('list', { name: '등록된 휴일' })).toContainText('2026-07-20')
 
   await page.getByRole('button', { name: '일정 저장' }).click()
-  await expect(page.getByRole('alert')).toContainText('현재 선택은 유지')
+  await expect(page.getByRole('alert')).toContainText('현재 편집을 그대로')
   await expect(page.getByRole('checkbox', { name: '토' })).toBeChecked()
   await expect(page.getByRole('list', { name: '등록된 휴일' })).toContainText('2026-07-20')
-  await expect(page.getByText('revision 2')).toBeVisible()
+  await expect(page.getByText('revision 2', { exact: true })).toBeVisible()
 
   const retry = page.waitForRequest(
     (request) => request.method() === 'PATCH' && request.url().endsWith('/admin/workspace/calendar'),
   )
-  await page.getByRole('button', { name: '일정 저장' }).click()
+  await page.getByRole('button', { name: '일정 저장 다시 시도' }).click()
   expect((await retry).postDataJSON()).toEqual({
     working_weekdays: [0, 1, 2, 3, 4, 5],
     holidays: ['2026-07-20'],
   })
-  await expect(page.getByText('revision 3')).toBeVisible()
+  await expect(page.getByText('revision 3', { exact: true })).toBeVisible()
+  await expect(page.getByRole('status')).toContainText('근무 일정을 저장했습니다')
   await expect(page.getByText('월 · 화 · 수 · 목 · 금 · 토 · 휴일 1일')).toBeVisible()
+  await expect(page.getByRole('link', { name: '프로젝트 단계' })).toHaveAttribute(
+    'href',
+    '/admin/project-configuration?tab=phases',
+  )
   await expectNoHorizontalOverflow(page)
   await page.screenshot({
-    path: '../../docs/screenshots/redevelopment/workspace-working-calendar-ui/desktop.png',
+    path: '../../docs/screenshots/redevelopment/workspace-calendar-settings-composition-ui-266/desktop.png',
     fullPage: true,
   })
 
@@ -10261,9 +10266,89 @@ test('워크스페이스 근무 일정은 요일·휴일과 revision 충돌 복�
   await expect(page.getByText('월 · 화 · 수 · 목 · 금 · 토 · 휴일 1일')).toBeVisible()
   await expectNoHorizontalOverflow(page)
   await page.screenshot({
-    path: '../../docs/screenshots/redevelopment/workspace-working-calendar-ui/mobile.png',
+    path: '../../docs/screenshots/redevelopment/workspace-calendar-settings-composition-ui-266/mobile.png',
     fullPage: true,
   })
+  await page.getByRole('heading', { name: '변경 감사' }).scrollIntoViewIfNeeded()
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/workspace-calendar-settings-composition-ui-266/mobile-bottom.png',
+    fullPage: true,
+  })
+})
+
+test('워크스페이스 근무 일정은 일반 저장·새로고침 실패와 권한 상태를 정확히 복구한다', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 900 })
+  await mockApi(page)
+  let calendar = {
+    working_weekdays: [0, 1, 2, 3, 4],
+    holidays: ['2026-08-17'],
+    revision: 1,
+    updated_by_user_id: null as string | null,
+    updated_by_name: null as string | null,
+    updated_at: '2026-07-01T00:00:00Z',
+  }
+  let patchCount = 0
+  let failGets = false
+  const revisions: string[] = []
+  await page.route('**/api/v1/workspace/calendar', async (route) => {
+    if (failGets) {
+      await route.fulfill({ status: 503, json: { detail: 'calendar temporarily unavailable' } })
+      return
+    }
+    await route.fulfill({ json: calendar, headers: { ETag: `"${calendar.revision}"` } })
+  })
+  await page.route('**/api/v1/admin/workspace/calendar', async (route) => {
+    patchCount += 1
+    revisions.push(route.request().headers()['if-match'] ?? '')
+    if (patchCount === 1) {
+      await route.fulfill({ status: 503, json: { detail: 'calendar temporarily unavailable' } })
+      return
+    }
+    const sent = route.request().postDataJSON() as {
+      working_weekdays: number[]
+      holidays: string[]
+    }
+    calendar = {
+      ...calendar,
+      ...sent,
+      revision: 2,
+      updated_by_user_id: 'me-1',
+      updated_by_name: 'Dev User',
+      updated_at: '2026-07-15T12:00:00Z',
+    }
+    await route.fulfill({ json: calendar, headers: { ETag: '"2"' } })
+  })
+
+  await page.goto('/admin/calendar')
+  await page.getByRole('checkbox', { name: '토' }).check()
+  await page.getByRole('button', { name: '일정 저장', exact: true }).click()
+  await expect(page.getByRole('alert')).toContainText('calendar temporarily unavailable')
+  await expect(page.getByRole('checkbox', { name: '토' })).toBeChecked()
+  await page.getByRole('button', { name: '일정 저장 다시 시도' }).click()
+  await expect(page.getByText('revision 2', { exact: true })).toBeVisible()
+  expect(revisions).toEqual(['"1"', '"1"'])
+
+  await page.getByRole('checkbox', { name: '일' }).check()
+  failGets = true
+  await page.getByRole('button', { name: '새로고침', exact: true }).click()
+  await expect(page.getByRole('alert')).toContainText('현재 편집을 유지합니다')
+  await expect(page.getByRole('checkbox', { name: '일' })).toBeChecked()
+  failGets = false
+  await page.getByRole('button', { name: '새로고침 다시 시도' }).click()
+  await expect(page.getByRole('status')).toContainText('편집 중인 일정은 유지됩니다')
+  await expect(page.getByRole('checkbox', { name: '일' })).toBeChecked()
+  await page.getByRole('button', { name: '되돌리기' }).click()
+  await expect(page.getByRole('checkbox', { name: '일' })).not.toBeChecked()
+
+  await page.unroute('**/api/v1/workspace/calendar')
+  await page.route('**/api/v1/workspace/calendar', (route) =>
+    route.fulfill({ status: 403, json: { detail: 'workspace admin required' } }),
+  )
+  await page.reload()
+  await expect(page.getByText('접근 권한이 없습니다')).toBeVisible()
+  await expect(page.getByRole('checkbox', { name: '월' })).toHaveCount(0)
 })
 
 test('프로젝트 구성은 기존 깊은 링크와 URL 탭을 하나의 설정 surface로 통합한다', async ({ page }) => {
