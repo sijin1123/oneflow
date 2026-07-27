@@ -9010,6 +9010,10 @@ export interface components {
             customer_id?: string | null;
             /** Cycle Id */
             cycle_id?: string | null;
+            /** Density */
+            density?: string | null;
+            /** Group By */
+            group_by?: string | null;
             /** Milestone Id */
             milestone_id?: string | null;
             /** Module Id */

@@ -1,3 +1,4 @@
+import * as Dialog from '@radix-ui/react-dialog'
 import { Bookmark, BookmarkCheck, Lock, LockOpen, Save, Share2, Trash2, X } from 'lucide-react'
 import { useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
@@ -5,6 +6,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { ModalContent, ModalOverlay } from '@/components/ui/modal'
 import { Select } from '@/components/ui/select'
 
 import { parseColumns, serializeColumns } from './columns'
@@ -34,6 +36,8 @@ const KEYS = [
   'cf_field',
   'cf_op',
   'cf_value',
+  'group_by',
+  'density',
 ] as const
 
 const LAYOUT_ROUTES: Record<ViewLayout, string> = {
@@ -56,7 +60,7 @@ function paramsSignature(params: SavedFilterParams, sort: string | null) {
   const normalized: SavedFilterParams = {}
   for (const key of KEYS) {
     const value = params[key]
-    if (value) normalized[key] = value
+    if (value) Object.assign(normalized, { [key]: value })
   }
   return JSON.stringify({ params: normalized, sort: sort ?? null })
 }
@@ -89,6 +93,8 @@ export function SavedFilters({
   const [layout, setLayout] = useState<ViewLayout>('list')
   const [shared, setShared] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [deleteTarget, setDeleteTarget] = useState<SavedFilter | null>(null)
+  const [deleteError, setDeleteError] = useState('')
 
   const current: SavedFilterParams = {}
   for (const k of KEYS) {
@@ -96,7 +102,9 @@ export function SavedFilters({
     // The API 422s on unknown column keys — save exactly what the URL parser
     // renders, never the raw URL value (v32.1 R1-④).
     if (k === 'columns' && v !== null) v = serializeColumns(parseColumns(v))
-    if (v) current[k] = v
+    if (k === 'group_by' && !['status', 'priority', 'none'].includes(v ?? '')) v = null
+    if (k === 'density' && !['compact', 'comfortable'].includes(v ?? '')) v = null
+    if (v) Object.assign(current, { [k]: v })
   }
   const sort = serializeWorkPackageSort(parseWorkPackageSort(searchParams.get('sort')))
   const hasActive = Object.keys(current).length > 0 || sort !== null
@@ -131,6 +139,21 @@ export function SavedFilters({
         },
       },
     )
+  }
+
+  const deleteSavedView = async () => {
+    if (!deleteTarget) return
+    setDeleteError('')
+    try {
+      await del.mutateAsync(deleteTarget.id)
+      setDeleteTarget(null)
+    } catch (cause) {
+      setDeleteError(
+        cause instanceof Error && cause.message
+          ? cause.message
+          : '저장 뷰를 삭제하지 못했습니다.',
+      )
+    }
   }
 
   return (
@@ -237,7 +260,10 @@ export function SavedFilters({
                             type="button"
                             aria-label={`${f.name} 삭제`}
                             className="text-of-muted hover:text-of-danger"
-                            onClick={() => del.mutate(f.id)}
+                            onClick={() => {
+                              setDeleteError('')
+                              setDeleteTarget(f)
+                            }}
                           >
                             <Trash2 size={12} />
                           </button>
@@ -302,6 +328,51 @@ export function SavedFilters({
           </div>
         </div>
       ) : null}
+
+      <Dialog.Root
+        open={deleteTarget !== null}
+        onOpenChange={(open) => {
+          if (!open && !del.isPending) {
+            setDeleteTarget(null)
+            setDeleteError('')
+          }
+        }}
+      >
+        <Dialog.Portal>
+          <ModalOverlay />
+          <ModalContent className="w-[min(26rem,calc(100vw-1.5rem))] rounded-of-lg border border-of-border bg-of-surface-raised p-4 shadow-[var(--of-shadow-popover)]">
+            <Dialog.Title className="text-sm font-semibold text-of-text">저장 뷰 삭제</Dialog.Title>
+            <Dialog.Description className="mt-1 text-xs leading-5 text-of-muted">
+              {deleteTarget
+                ? `“${deleteTarget.name}” 뷰를 삭제합니다. 작업과 원본 데이터는 변경되지 않습니다.`
+                : ''}
+            </Dialog.Description>
+            {deleteError ? (
+              <p
+                role="alert"
+                className="mt-3 rounded-of border border-of-danger/20 bg-of-danger-soft/50 px-3 py-2 text-xs text-of-danger"
+              >
+                {deleteError}
+              </p>
+            ) : null}
+            <div className="mt-4 flex justify-end gap-2">
+              <Dialog.Close asChild>
+                <Button type="button" variant="outline" disabled={del.isPending}>
+                  취소
+                </Button>
+              </Dialog.Close>
+              <Button
+                type="button"
+                variant="danger"
+                disabled={del.isPending}
+                onClick={() => void deleteSavedView()}
+              >
+                {del.isPending ? '삭제 중…' : deleteError ? '다시 시도' : '삭제'}
+              </Button>
+            </div>
+          </ModalContent>
+        </Dialog.Portal>
+      </Dialog.Root>
     </section>
   )
 }

@@ -40,6 +40,8 @@ export function NewWorkPackageInline({
   const [searchParams, setSearchParams] = useSearchParams()
   const navigate = useNavigate()
   const draftId = searchParams.get('draft')
+  const prefilledStatus = WP_STATUSES.find((value) => value === searchParams.get('new_status'))
+  const prefilledPriority = WP_PRIORITIES.find((value) => value === searchParams.get('new_priority'))
   const [subject, setSubject] = useState('')
   const [type, setType] = useState<WpType>('task')
   const [status, setStatus] = useState<WpStatus>('backlog')
@@ -63,7 +65,9 @@ export function NewWorkPackageInline({
     currentKey: draft.data ? type : undefined,
   })
   const open = searchParams.get('new') === '1'
-  const sessionKey = open ? `${projectId}:${draftId ?? 'new'}` : null
+  const sessionKey = open
+    ? `${projectId}:${draftId ?? 'new'}:${prefilledStatus ?? ''}:${prefilledPriority ?? ''}`
+    : null
 
   useEffect(() => {
     if (draftSession.current === sessionKey) return
@@ -82,6 +86,12 @@ export function NewWorkPackageInline({
     setDueDate(draft.data.content.due_date ?? '')
     setTouched(false)
   }, [draft.data])
+
+  useEffect(() => {
+    if (!open || draftId) return
+    setStatus(prefilledStatus ?? 'backlog')
+    setPriority(prefilledPriority ?? 'none')
+  }, [draftId, open, prefilledPriority, prefilledStatus])
 
   useEffect(() => {
     if (draft.data || projectTypes.options.length === 0) return
@@ -139,6 +149,8 @@ export function NewWorkPackageInline({
       const next = new URLSearchParams(prev)
       next.delete('new')
       next.delete('draft')
+      next.delete('new_status')
+      next.delete('new_priority')
       return next
     })
     resetForm()

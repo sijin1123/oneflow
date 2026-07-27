@@ -36,6 +36,8 @@ async def test_saved_filter_crud(client, project):
         "cf_field": None,
         "cf_op": None,
         "cf_value": None,
+        "group_by": None,
+        "density": None,
     }
 
     listed = (await client.get(f"/api/v1/projects/{pid}/saved-filters")).json()
@@ -64,6 +66,26 @@ async def test_invalid_enum_param_rejected(client, project):
         json={"name": "bad", "params": {"status": "not_a_status"}},
     )
     assert res.status_code == 422
+    for key, value in (("group_by", "owner"), ("density", "spacious")):
+        res = await client.post(
+            f"/api/v1/projects/{pid}/saved-filters",
+            json={"name": f"bad-{key}", "params": {key: value}},
+        )
+        assert res.status_code == 422
+
+
+async def test_saved_filter_persists_project_list_composition(client, project):
+    pid = project["id"]
+    res = await client.post(
+        f"/api/v1/projects/{pid}/saved-filters",
+        json={
+            "name": "우선순위 보기",
+            "params": {"group_by": "priority", "density": "comfortable"},
+        },
+    )
+    assert res.status_code == 201, res.text
+    assert res.json()["params"]["group_by"] == "priority"
+    assert res.json()["params"]["density"] == "comfortable"
 
 
 async def test_saved_filters_are_member_scoped(client, foreign_project):
