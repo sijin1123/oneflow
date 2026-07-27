@@ -28829,9 +28829,19 @@ test('Releases 정책은 비관리자와 모바일 상태를 안전하게 처리
   await expect(page.getByRole('switch')).toHaveCount(0)
 })
 
-async function mockCustomersSurface(page: Page) {
+async function mockCustomersSurface(
+  page: Page,
+  options: {
+    forbidden?: boolean
+    staleFirstPatch?: boolean
+    failFirstPatch?: boolean
+  } = {},
+) {
   let enabled = true
   let revision = 1
+  let patchCount = 0
+  let failRefreshGets = false
+  const requests: string[] = []
   const customerId = '88888888-8888-4888-8888-888888888888'
   let customers: Customer[] = [
     {
@@ -28857,8 +28867,33 @@ async function mockCustomersSurface(page: Page) {
     }),
   )
   await page.route('**/api/v1/admin/workspace/features/customers', async (route) => {
+    if (options.forbidden) {
+      await route.fulfill({ status: 403, json: { detail: 'workspace admin required' } })
+      return
+    }
+    if (route.request().method() === 'GET' && failRefreshGets) {
+      await route.fulfill({ status: 503, json: { detail: 'policy temporarily unavailable' } })
+      return
+    }
     if (route.request().method() === 'PATCH') {
-      enabled = (route.request().postDataJSON() as { enabled: boolean }).enabled
+      patchCount += 1
+      requests.push(route.request().headers()['if-match'] ?? '')
+      const body = route.request().postDataJSON() as { enabled: boolean }
+      if (options.staleFirstPatch && patchCount === 1) {
+        enabled = false
+        revision = 2
+        await route.fulfill({
+          status: 412,
+          headers: { ETag: '"2"' },
+          json: { detail: { code: 'stale_revision', current_revision: 2 } },
+        })
+        return
+      }
+      if (options.failFirstPatch && patchCount === 1) {
+        await route.fulfill({ status: 503, json: { detail: 'policy temporarily unavailable' } })
+        return
+      }
+      enabled = body.enabled
       revision += 1
     }
     await route.fulfill({
@@ -28867,8 +28902,8 @@ async function mockCustomersSurface(page: Page) {
         feature_key: 'customers',
         enabled,
         revision,
-        updated_by_user_id: revision > 1 ? 'me-1' : null,
-        updated_by_name: revision > 1 ? 'Dev User' : null,
+        updated_by_user_id: patchCount ? 'me-1' : null,
+        updated_by_name: patchCount ? 'Dev User' : null,
         updated_at: '2026-07-11T09:00:00Z',
       },
     })
@@ -28908,7 +28943,17 @@ async function mockCustomersSurface(page: Page) {
     const filtered = customers.filter((customer) => (!query || customer.name.toLocaleLowerCase().includes(query)) && (!tag || customer.tags.includes(tag)))
     await route.fulfill({ json: { items: filtered, total: filtered.length } })
   })
-  return { customerId, isEnabled: () => enabled }
+  return {
+    customerId,
+    requests,
+    isEnabled: () => enabled,
+    failNextGet() {
+      failRefreshGets = true
+    },
+    allowGet() {
+      failRefreshGets = false
+    },
+  }
 }
 
 test('Customers surface는 고객 관리와 작업 연결을 기능적으로 제공한다', async ({ page }) => {
@@ -28958,6 +29003,85 @@ test('Customers surface는 고객 관리와 작업 연결을 기능적으로 제
   expect(customers.isEnabled()).toBe(false)
   await page.goto('/customers')
   await expect(page.getByText('고객 기능이 비활성화되어 있습니다')).toBeVisible()
+})
+
+test('Customers 정책은 stale revision을 최신 상태로 복구한다', async ({ page }) => {
+  await mockApi(page)
+  const policy = await mockCustomersSurface(page, { staleFirstPatch: true })
+  await page.goto('/admin/customers')
+
+  const toggle = page.getByRole('switch', { name: 'Customers 사용' })
+  await toggle.click()
+  await expect(page.getByRole('alert')).toContainText('다른 관리자가 정책을 변경했습니다')
+  await expect(toggle).not.toBeChecked()
+  await expect(page.getByText('정책 revision 2')).toBeVisible()
+  await page.getByRole('button', { name: 'Customers 끄기 다시 시도' }).click()
+  await expect(page.getByRole('status')).toContainText('비활성화했습니다')
+  await expect(page.getByText('정책 revision 3')).toBeVisible()
+  expect(policy.requests).toEqual(['"1"', '"2"'])
+})
+
+test('Customers 정책은 일반 실패와 마지막 성공 상태의 새로고침을 정확히 재시도한다', async ({
+  page,
+}) => {
+  await mockApi(page)
+  const policy = await mockCustomersSurface(page, { failFirstPatch: true })
+  await page.goto('/admin/customers')
+
+  const toggle = page.getByRole('switch', { name: 'Customers 사용' })
+  await toggle.click()
+  await expect(page.getByRole('alert')).toContainText('policy temporarily unavailable')
+  await expect(toggle).toBeChecked()
+  await page.getByRole('button', { name: 'Customers 끄기 다시 시도' }).click()
+  await expect(toggle).not.toBeChecked()
+  expect(policy.requests).toEqual(['"1"', '"1"'])
+
+  policy.failNextGet()
+  await page.getByRole('button', { name: '새로고침' }).click()
+  await expect(page.getByRole('alert')).toContainText('마지막으로 확인한 상태를 유지합니다')
+  await expect(toggle).not.toBeChecked()
+  policy.allowGet()
+  await page.getByRole('button', { name: '새로고침 다시 시도' }).click()
+  await expect(page.getByRole('alert')).toHaveCount(0)
+})
+
+test('Customers 정책은 실제 디렉터리 동선과 모바일·권한 상태를 안전하게 처리한다', async ({
+  page,
+}) => {
+  await mockApi(page)
+  await mockCustomersSurface(page)
+  await page.goto('/admin/customers')
+
+  await expect(page.getByRole('heading', { name: 'Customers', exact: true })).toBeVisible()
+  await expect(page.getByText('고객 데이터', { exact: true })).toHaveCount(1)
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/customers-settings-composition-ui-265/desktop.png',
+    fullPage: true,
+  })
+
+  await page.getByRole('link', { name: '고객 디렉터리' }).click()
+  await expect(page).toHaveURL('/customers')
+  await expect(page.getByText('한빛 고객사')).toBeVisible()
+
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto('/admin/customers')
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/customers-settings-composition-ui-265/mobile.png',
+    fullPage: true,
+  })
+  await page.getByRole('heading', { name: '변경 감사' }).scrollIntoViewIfNeeded()
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/customers-settings-composition-ui-265/mobile-bottom.png',
+    fullPage: true,
+  })
+
+  await page.unroute('**/api/v1/admin/workspace/features/customers')
+  await mockCustomersSurface(page, { forbidden: true })
+  await page.reload()
+  await expect(page.getByText('접근 권한이 없습니다')).toBeVisible()
+  await expect(page.getByRole('switch')).toHaveCount(0)
 })
 
 test('OneFlow design system visual QA manifest', async ({ page }) => {
