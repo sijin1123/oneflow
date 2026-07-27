@@ -718,3 +718,9 @@ OneFlow 구현은 기존 자체 Work Package query/create/draft, project members
 `docs/plane-poc-reverse-spec/03-feature-matrix.md`, `04-interaction-catalog.md`, `11-focused-sidebar-views-observations.md`에서 사용한 입력은 동일 작업 범위를 compact view control로 전환하고, 검색·필터·정렬 상태를 복원하며, 사이클에 아직 배정되지 않은 작업을 실제 생성·상세·항목 action과 함께 조작한다는 관찰 가능한 정보 구조와 행동뿐이다. 별도의 독립 Backlog 화면 계약이 확인되지 않은 부분은 OneFlow의 기존 backlog 도메인 계약을 우선했다. Plane/OpenProject source, API, database schema, package, asset, CSS, DOM hierarchy, exact dimensions/colors, wording, component implementation, icons 또는 branding은 열람·복사하지 않았다.
 
 OneFlow 구현은 기존 자체 Work Package `no_cycle`/`open_only` query, create/draft, project membership, cycle query, versioned cycle assignment PATCH, drawer/full-page/move/duplicate contract, React Router와 local token/Lucide primitive 위에서 독립 설계했다. 검색·상태·우선순위·타입·담당자·정렬은 canonical URL과 실제 API query를 공유하고 빠른 연속 변경도 병합한다. 409 배정 충돌은 같은 작업과 사이클을 최신 version으로 다시 시도하며, loading/error/retry/filtered-empty/empty/read-only와 desktop/mobile geometry를 같은 surface에서 유지한다. 신규 API, DB/schema, migration, permission, environment variable, dependency 또는 Settings storage 변경은 없고 mock/dead control이나 client-only backlog item도 없다. - attested-independent-derivation
+
+## UI-276 Project Hierarchy Composition
+
+`docs/plane-poc-reverse-spec/03-feature-matrix.md`, `04-interaction-catalog.md`와 기존 OneFlow 계층 계약에서 사용한 입력은 동일한 작업 범위를 compact view control로 전환하고, 검색·필터·정렬과 계층 disclosure를 실제 결과에 연결하며, 작업 상세·전체 페이지·링크 복사·복제·이동·생성을 같은 기능형 surface에서 제공한다는 관찰 가능한 정보 구조와 행동뿐이다. 별도의 Plane Hierarchy layout 계약이 확인되지 않은 부분은 OneFlow가 이미 보유한 `parent_id` 무결성, 전체 페이지 조회, 자체 `buildTree`와 action menu 계약을 우선했다.
+
+Plane/OpenProject source, API, database schema, package, asset, CSS, DOM hierarchy, exact dimensions/colors, wording, component implementation, icons 또는 branding은 열람·복사하지 않았다. 신규 API, DB, migration, permission, environment variable, dependency 또는 Settings storage 변경은 없다. - attested-independent-derivation
