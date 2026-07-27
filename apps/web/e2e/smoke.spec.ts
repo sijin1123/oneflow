@@ -27712,11 +27712,19 @@ test('Wiki 설정 mobile surface는 가로 overflow 없이 동작한다', async 
 
 async function mockAiPolicy(
   page: Page,
-  options: { staleFirstPatch?: boolean; forbidden?: boolean; deploymentEnabled?: boolean } = {},
+  options: {
+    staleFirstPatch?: boolean
+    failFirstPatch?: boolean
+    failFirstRefreshAfterPatch?: boolean
+    forbidden?: boolean
+    deploymentEnabled?: boolean
+  } = {},
 ) {
   let enabled = false
   let revision = 1
   let patchCount = 0
+  let successfulPatchCount = 0
+  let refreshAfterPatchCount = 0
   const deploymentEnabled = options.deploymentEnabled ?? true
   const requests: string[] = []
 
@@ -27730,10 +27738,31 @@ async function mockAiPolicy(
       await route.fulfill({ status: 403, json: { detail: 'workspace admin required' } })
       return
     }
+    if (
+      route.request().method() === 'GET'
+      && options.failFirstRefreshAfterPatch
+      && successfulPatchCount > 0
+    ) {
+      refreshAfterPatchCount += 1
+      if (refreshAfterPatchCount <= 2) {
+        await route.fulfill({
+          status: 503,
+          json: { detail: 'AI policy temporarily unavailable' },
+        })
+        return
+      }
+    }
     if (route.request().method() === 'PATCH') {
       patchCount += 1
       requests.push(route.request().headers()['if-match'] ?? '')
       const body = route.request().postDataJSON() as { enabled: boolean }
+      if (options.failFirstPatch && patchCount === 1) {
+        await route.fulfill({
+          status: 503,
+          json: { detail: 'AI policy temporarily unavailable' },
+        })
+        return
+      }
       if (options.staleFirstPatch && patchCount === 1) {
         enabled = true
         revision = 2
@@ -27746,6 +27775,7 @@ async function mockAiPolicy(
       }
       enabled = body.enabled
       revision += 1
+      successfulPatchCount += 1
     }
     await route.fulfill({
       headers: { ETag: `"${revision}"` },
@@ -27770,12 +27800,21 @@ test('AI workspace 정책은 실제 요약 진입점과 즉시 연결된다', as
   await page.goto('/admin/ai')
 
   await expect(page.getByRole('heading', { name: 'AI', exact: true })).toBeVisible()
+  await expect(page.getByLabel('AI 정책 요약')).toContainText('local-extractive')
+  await expect(page.getByRole('region', { name: '실행과 데이터 경계' })).toContainText(
+    '프로젝트 멤버십',
+  )
   const toggle = page.getByRole('switch', { name: 'AI 작업 요약 사용' })
   await expect(toggle).not.toBeChecked()
   await toggle.click()
   await expect(toggle).toBeChecked()
   await expect(page.getByText('정책 revision 2')).toBeVisible()
   expect(policy.requests).toEqual(['"1"'])
+  await expect(page.getByRole('status')).toContainText('AI 작업 요약을 활성화했습니다')
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/ai-policy-settings-composition-ui-262/desktop.png',
+    fullPage: true,
+  })
 
   await page.goto(`/projects/${project.id}/work-packages?wp=${wpA.id}`)
   const drawer = page.getByRole('dialog')
@@ -27793,6 +27832,42 @@ test('AI workspace 정책은 stale revision을 최신 상태로 복구한다', a
   await expect(page.getByRole('alert')).toContainText('다른 관리자가 정책을 변경했습니다')
   await expect(toggle).toBeChecked()
   await expect(page.getByText('정책 revision 2')).toBeVisible()
+  await expect(
+    page.getByRole('button', { name: 'AI 작업 요약 켜기 다시 시도' }),
+  ).toBeEnabled()
+  await page.getByRole('button', { name: 'AI 작업 요약 켜기 다시 시도' }).click()
+  await expect(page.getByRole('status')).toContainText('AI 작업 요약을 활성화했습니다')
+})
+
+test('AI workspace 정책은 같은 변경과 마지막 성공 상태의 새로고침을 정확히 재시도한다', async ({
+  page,
+}) => {
+  await mockApi(page)
+  const policy = await mockAiPolicy(page, {
+    failFirstPatch: true,
+    failFirstRefreshAfterPatch: true,
+  })
+  await page.goto('/admin/ai')
+
+  const toggle = page.getByRole('switch', { name: 'AI 작업 요약 사용' })
+  await toggle.click()
+  await expect(page.getByRole('alert')).toContainText('AI policy temporarily unavailable')
+  await expect(toggle).not.toBeChecked()
+  await page.getByRole('button', { name: 'AI 작업 요약 켜기 다시 시도' }).click()
+  await expect(toggle).toBeChecked()
+  await expect(page.getByRole('status')).toContainText('AI 작업 요약을 활성화했습니다')
+  expect(policy.requests).toEqual(['"1"', '"1"'])
+
+  await page.getByRole('button', { name: '새로고침' }).click()
+  await expect(page.getByRole('alert')).toContainText('마지막으로 확인한 상태를 유지합니다')
+  await expect(page.getByLabel('AI 정책 요약')).toContainText('사용 가능')
+  await expect(page.getByRole('button', { name: '새로고침 다시 시도' })).toBeVisible()
+  await page.getByRole('button', { name: '새로고침 다시 시도' }).click()
+  await expect(
+    page.getByText(
+      '최신 AI 정책을 불러오지 못했습니다. 마지막으로 확인한 상태를 유지합니다.',
+    ),
+  ).toHaveCount(0)
 })
 
 test('AI workspace 정책은 배포 상한과 관리자 권한을 fail-closed로 표시한다', async ({
@@ -27818,10 +27893,19 @@ test('AI workspace 정책 mobile surface는 가로 overflow 없이 동작한다'
   await page.setViewportSize({ width: 390, height: 844 })
   await page.goto('/admin/ai')
   await expect(page.getByRole('heading', { name: 'AI', exact: true })).toBeVisible()
+  await expect(page.getByLabel('AI 정책 요약')).toBeVisible()
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)
   expect(overflow).toBe(false)
   await page.screenshot({
-    path: '../../docs/screenshots/redevelopment/ai-policy-ui/mobile-settings.png',
+    path: '../../docs/screenshots/redevelopment/ai-policy-settings-composition-ui-262/mobile.png',
+    fullPage: true,
+  })
+  const audit = page.getByRole('region', { name: '정책과 배포' })
+  await audit.scrollIntoViewIfNeeded()
+  await expect(audit).toBeVisible()
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/ai-policy-settings-composition-ui-262/mobile-bottom.png',
     fullPage: true,
   })
 })
