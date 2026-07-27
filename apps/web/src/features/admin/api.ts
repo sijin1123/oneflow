@@ -86,7 +86,10 @@ export function useUsers(enabled = true) {
   })
 }
 
-export function useUserDirectory(query: { q: string; scope: UserDirectoryScope }) {
+export function useUserDirectory(
+  query: { q: string; scope: UserDirectoryScope },
+  enabled = true,
+) {
   return useInfiniteQuery({
     queryKey: ['admin-users', 'directory', query],
     initialPageParam: 0,
@@ -96,6 +99,7 @@ export function useUserDirectory(query: { q: string; scope: UserDirectoryScope }
       return loaded < lastPage.total ? loaded : undefined
     },
     placeholderData: keepPreviousData,
+    enabled,
     retry: false,
   })
 }

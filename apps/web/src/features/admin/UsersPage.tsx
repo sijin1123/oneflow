@@ -3,15 +3,18 @@ import {
   Ban,
   CheckCircle2,
   FolderKanban,
+  Loader2,
   Mail,
+  RefreshCw,
   Search,
+  Settings2,
   ShieldCheck,
   UserPlus,
   UsersRound,
   X,
 } from 'lucide-react'
 import { Fragment, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 
 import { FrameContextActions } from '@/components/shell/FrameContextActions'
 import { EmptyState, ErrorState, ListSkeleton } from '@/components/shell/states'
@@ -20,6 +23,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useMe } from '@/features/members/api'
 import { ApiError } from '@/lib/api'
+import { useUnsavedLocationPrompt } from '@/lib/guards'
 import { cn } from '@/lib/utils'
 
 import {
@@ -31,6 +35,9 @@ import {
   useUserMemberships,
 } from './api'
 import { WorkspaceInvitationsPanel } from './WorkspaceInvitationsPanel'
+
+const actionClassName =
+  'of-touch-target inline-flex h-7 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-of border border-of-border bg-of-surface px-2 text-xs font-medium text-of-text transition-colors hover:border-of-border-strong hover:bg-of-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus'
 
 const ROLE_LABELS: Record<string, string> = {
   owner: '소유자',
@@ -183,8 +190,8 @@ function DirectoryActions({
   currentUserId?: string
   updatePending: boolean
   lastActiveAdmin: boolean
-  onToggleActive: () => void
-  onToggleAdmin: () => void
+  onToggleActive: (trigger: HTMLButtonElement) => void
+  onToggleAdmin: (trigger: HTMLInputElement) => void
 }) {
   const cannotDeactivate = user.is_active && (user.id === currentUserId || lastActiveAdmin)
   return (
@@ -195,7 +202,7 @@ function DirectoryActions({
           checked={user.is_admin}
           // The last active admin cannot lose the flag (server 422; disabled here for clarity).
           disabled={updatePending || (user.is_admin && lastActiveAdmin)}
-          onChange={onToggleAdmin}
+          onChange={(event) => onToggleAdmin(event.currentTarget)}
           aria-label={`${user.display_name} 관리자 권한`}
           className="h-3 w-3 accent-of-accent"
         />
@@ -206,12 +213,26 @@ function DirectoryActions({
         size="sm"
         // Self-deactivation and deactivating the last active admin are server 422s — surfaced as disabled buttons.
         disabled={updatePending || cannotDeactivate}
-        onClick={onToggleActive}
+        onClick={(event) => onToggleActive(event.currentTarget)}
       >
         {user.is_active ? '비활성화' : '활성화'}
       </Button>
     </div>
   )
+}
+
+type UserUpdateInput = {
+  id: string
+  is_active?: boolean
+  is_admin?: boolean
+}
+
+type ConfirmedUserAction = {
+  user: DirectoryUser
+  input: UserUpdateInput
+  title: string
+  description: string
+  actionLabel: string
 }
 
 /* Workspace user directory (expansion Pass 33 PR-AY). Admin-only — the
@@ -228,14 +249,22 @@ export function UsersPage() {
   const [email, setEmail] = useState('')
   const [name, setName] = useState('')
   const [expanded, setExpanded] = useState<string | null>(null)
+  const [failedUpdate, setFailedUpdate] = useState<UserUpdateInput | null>(null)
+  const [failedUpdateLabel, setFailedUpdateLabel] = useState('')
+  const [confirmAction, setConfirmAction] = useState<ConfirmedUserAction | null>(null)
+  const [refreshError, setRefreshError] = useState(false)
+  const [inviteDirty, setInviteDirty] = useState(false)
+  const [inviteComposerRequest, setInviteComposerRequest] = useState(0)
   const createTriggerRef = useRef<HTMLButtonElement | null>(null)
+  const confirmTriggerRef = useRef<HTMLElement | null>(null)
   const rawQuery = searchParams.get('q') ?? ''
   const query = rawQuery.slice(0, 120)
   const deferredQuery = useDeferredValue(query.trim())
   const rawScope = searchParams.get('scope')
   const filter: UserDirectoryScope =
     rawScope === 'admins' || rawScope === 'inactive' ? rawScope : 'all'
-  const directory = useUserDirectory({ q: deferredQuery, scope: filter })
+  const view = searchParams.get('view') === 'invites' ? 'invites' : 'directory'
+  const directory = useUserDirectory({ q: deferredQuery, scope: filter }, view === 'directory')
   const {
     data,
     isPending,
@@ -248,7 +277,12 @@ export function UsersPage() {
     isFetchNextPageError,
   } = directory
   const mobileLayout = useMobileDirectoryLayout()
-  const view = searchParams.get('view') === 'invites' ? 'invites' : 'directory'
+  const createDirty = adding && Boolean(email.trim() || name.trim())
+
+  useUnsavedLocationPrompt(
+    createDirty || inviteDirty,
+    '작성 중인 사용자 또는 초대 정보를 버리고 이동할까요?',
+  )
 
   useEffect(() => {
     const next = new URLSearchParams(searchParams)
@@ -288,8 +322,14 @@ export function UsersPage() {
     else next.delete('view')
     next.delete('new')
     setSearchParams(next)
-    setAdding(false)
   }
+
+  useEffect(() => {
+    if (view !== 'invites') return
+    setAdding(false)
+    setEmail('')
+    setName('')
+  }, [view])
 
   const users = useMemo(() => data?.pages.flatMap((page) => page.items) ?? [], [data?.pages])
   const total = data?.pages[0]?.total ?? users.length
@@ -303,17 +343,19 @@ export function UsersPage() {
   }
   const totalUsers = directorySummary.users
 
-  if (isPending) return <ListSkeleton />
-  if (isError) {
-    if (error instanceof ApiError && error.status === 403) {
-      return (
-        <EmptyState
-          title="접근 권한이 없습니다"
-          hint="워크스페이스 사용자 관리는 관리자만 사용할 수 있습니다."
-        />
-      )
-    }
-    return <ErrorState error={error} onRetry={() => refetch()} />
+  if (
+    view === 'directory' &&
+    isError &&
+    !data &&
+    error instanceof ApiError &&
+    error.status === 403
+  ) {
+    return (
+      <EmptyState
+        title="접근 권한이 없습니다"
+        hint="워크스페이스 사용자 관리는 관리자만 사용할 수 있습니다."
+      />
+    )
   }
 
   const isLastActiveAdmin = (target: DirectoryUser) =>
@@ -339,24 +381,116 @@ export function UsersPage() {
     setAdding(true)
   }
 
+  const runUpdate = (input: UserUpdateInput, label: string, closeConfirmation = false) => {
+    update.reset()
+    setFailedUpdate(null)
+    setFailedUpdateLabel('')
+    update.mutate(input, {
+      onSuccess: () => {
+        if (closeConfirmation) setConfirmAction(null)
+      },
+      onError: () => {
+        setFailedUpdate(input)
+        setFailedUpdateLabel(label)
+      },
+    })
+  }
+
+  const requestActiveChange = (user: DirectoryUser, trigger: HTMLButtonElement) => {
+    const input = { id: user.id, is_active: !user.is_active }
+    if (!user.is_active) {
+      runUpdate(input, `${user.display_name} 활성화`)
+      return
+    }
+    setFailedUpdate(null)
+    setFailedUpdateLabel('')
+    update.reset()
+    confirmTriggerRef.current = trigger
+    setConfirmAction({
+      user,
+      input,
+      title: '사용자 비활성화',
+      description:
+        '로그인과 API 접근을 차단합니다. 프로젝트 멤버십, 담당 배정과 작성 이력은 유지됩니다.',
+      actionLabel: '비활성화',
+    })
+  }
+
+  const requestAdminChange = (user: DirectoryUser, trigger: HTMLInputElement) => {
+    const input = { id: user.id, is_admin: !user.is_admin }
+    if (!user.is_admin) {
+      runUpdate(input, `${user.display_name} 관리자 지정`)
+      return
+    }
+    setFailedUpdate(null)
+    setFailedUpdateLabel('')
+    update.reset()
+    confirmTriggerRef.current = trigger
+    setConfirmAction({
+      user,
+      input,
+      title: '관리자 권한 해제',
+      description: '이 사용자는 더 이상 워크스페이스 관리 화면과 관리자 API를 사용할 수 없습니다.',
+      actionLabel: '권한 해제',
+    })
+  }
+
+  const refreshDirectory = async () => {
+    setRefreshError(false)
+    const result = await refetch()
+    setRefreshError(Boolean(result.error))
+  }
+
+  const busy = isFetchingNextPage || directory.isFetching || create.isPending || update.isPending
+
   return (
     <section
       aria-label="워크스페이스 사용자 관리"
       className="flex min-h-full min-w-0 flex-col bg-of-surface"
     >
-      <h1 className="sr-only">{view === 'invites' ? '멤버 초대' : '사용자 관리'}</h1>
+      <h1 className="sr-only">
+        {view === 'invites' ? '워크스페이스 사용자 및 초대' : '사용자 관리'}
+      </h1>
       <FrameContextActions>
         <div
           role="toolbar"
           aria-label="사용자 관리 화면 제어"
           className="flex items-center gap-1.5"
         >
-          <span className="px-1 text-xs tabular-nums text-of-muted">{totalUsers}명</span>
+          <Link to="/admin/overview" className={actionClassName}>
+            <Settings2 size={13} aria-hidden="true" />
+            관리 개요
+          </Link>
+          <span className="hidden px-1 text-xs tabular-nums text-of-muted sm:inline">
+            {view === 'directory' ? `${totalUsers}명` : '7일 · 일회성 링크'}
+          </span>
           {view === 'directory' ? (
-            <Button ref={createTriggerRef} size="sm" onClick={openCreate}>
-              <UserPlus size={14} aria-hidden="true" />새 사용자
+            <>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={busy}
+                onClick={() => void refreshDirectory()}
+              >
+                <RefreshCw
+                  size={13}
+                  className={directory.isFetching ? 'animate-spin' : undefined}
+                  aria-hidden="true"
+                />
+                {refreshError ? '새로고침 다시 시도' : '새로고침'}
+              </Button>
+              <Button ref={createTriggerRef} size="sm" onClick={openCreate}>
+                <UserPlus size={14} aria-hidden="true" />새 사용자
+              </Button>
+            </>
+          ) : (
+            <Button
+              size="sm"
+              onClick={() => setInviteComposerRequest((request) => request + 1)}
+            >
+              <UserPlus size={14} aria-hidden="true" />멤버 초대
             </Button>
-          ) : null}
+          )}
         </div>
       </FrameContextActions>
 
@@ -388,8 +522,12 @@ export function UsersPage() {
       </div>
 
       {view === 'invites' ? (
-        <main className="of-scrollbar min-h-0 flex-1 overflow-y-auto bg-of-bg p-3 sm:p-4">
-          <WorkspaceInvitationsPanel initialComposer={initialInviteComposer} />
+        <main className="of-scrollbar min-h-0 flex-1 overflow-y-auto bg-of-bg">
+          <WorkspaceInvitationsPanel
+            initialComposer={initialInviteComposer}
+            composerRequest={inviteComposerRequest}
+            onDirtyChange={setInviteDirty}
+          />
         </main>
       ) : (
         <>
@@ -453,15 +591,44 @@ export function UsersPage() {
           </div>
 
           <main className="of-scrollbar min-h-0 flex-1 overflow-y-auto bg-of-bg">
-            {update.isError ? (
-              <p
+            {refreshError || directory.isRefetchError ? (
+              <div
                 role="alert"
-                className="border-b border-of-danger/30 bg-of-danger/5 px-4 py-2 text-xs text-of-danger"
+                className="flex flex-wrap items-center justify-between gap-2 border-b border-of-warning/30 bg-of-warning/5 px-4 py-2 text-xs"
               >
-                계정 상태를 변경하지 못했습니다. 권한과 최신 상태를 확인한 뒤 다시 시도하세요.
-              </p>
+                <span>최신 사용자 목록을 불러오지 못했습니다. 마지막으로 확인한 목록을 유지합니다.</span>
+                <Button size="sm" variant="outline" onClick={() => void refreshDirectory()}>
+                  다시 시도
+                </Button>
+              </div>
             ) : null}
-            {users.length === 0 ? (
+            {update.isError ? (
+              <div
+                role="alert"
+                className="flex flex-wrap items-center justify-between gap-2 border-b border-of-danger/30 bg-of-danger/5 px-4 py-2 text-xs text-of-danger"
+              >
+                <span>
+                  {failedUpdateLabel || '계정 상태 변경'}에 실패했습니다. 같은 요청을 다시 시도할 수
+                  있습니다.
+                </span>
+                {failedUpdate ? (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={update.isPending}
+                    onClick={() => runUpdate(failedUpdate, failedUpdateLabel, Boolean(confirmAction))}
+                  >
+                    <RefreshCw size={13} aria-hidden="true" />
+                    같은 요청 다시 시도
+                  </Button>
+                ) : null}
+              </div>
+            ) : null}
+            {isError && !data ? (
+              <ErrorState error={error} onRetry={() => refetch()} />
+            ) : isPending ? (
+              <ListSkeleton />
+            ) : users.length === 0 ? (
               <EmptyState
                 title="조건에 맞는 사용자가 없습니다"
                 hint="검색어나 상태 필터를 조정해 보세요."
@@ -521,18 +688,8 @@ export function UsersPage() {
                                   currentUserId={me.data?.id}
                                   updatePending={update.isPending}
                                   lastActiveAdmin={isLastActiveAdmin(u)}
-                                  onToggleActive={() =>
-                                    update.mutate({
-                                      id: u.id,
-                                      is_active: !u.is_active,
-                                    })
-                                  }
-                                  onToggleAdmin={() =>
-                                    update.mutate({
-                                      id: u.id,
-                                      is_admin: !u.is_admin,
-                                    })
-                                  }
+                                  onToggleActive={(trigger) => requestActiveChange(u, trigger)}
+                                  onToggleAdmin={(trigger) => requestAdminChange(u, trigger)}
                                 />
                               </td>
                             </tr>
@@ -578,13 +735,8 @@ export function UsersPage() {
                             currentUserId={me.data?.id}
                             updatePending={update.isPending}
                             lastActiveAdmin={isLastActiveAdmin(u)}
-                            onToggleActive={() =>
-                              update.mutate({
-                                id: u.id,
-                                is_active: !u.is_active,
-                              })
-                            }
-                            onToggleAdmin={() => update.mutate({ id: u.id, is_admin: !u.is_admin })}
+                            onToggleActive={(trigger) => requestActiveChange(u, trigger)}
+                            onToggleAdmin={(trigger) => requestAdminChange(u, trigger)}
                           />
                         </div>
                         {expanded === u.id ? (
@@ -724,6 +876,71 @@ export function UsersPage() {
             >
               <X size={15} aria-hidden="true" />
             </button>
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>
+
+      <Dialog.Root
+        open={confirmAction !== null}
+        onOpenChange={(open) => {
+          if (!open && !update.isPending) setConfirmAction(null)
+        }}
+      >
+        <Dialog.Portal>
+          <Dialog.Overlay className="fixed inset-0 z-80 bg-black/35 backdrop-blur-[1px] data-[state=closed]:animate-out data-[state=closed]:fade-out data-[state=open]:animate-in data-[state=open]:fade-in motion-reduce:animate-none" />
+          <Dialog.Content
+            className="fixed left-1/2 top-1/2 z-81 w-[min(28rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 rounded-of border border-of-border bg-of-surface shadow-xl data-[state=closed]:animate-out data-[state=closed]:fade-out data-[state=closed]:zoom-out-95 data-[state=open]:animate-in data-[state=open]:fade-in data-[state=open]:zoom-in-95 motion-reduce:animate-none"
+            onCloseAutoFocus={(event) => {
+              event.preventDefault()
+              confirmTriggerRef.current?.focus()
+            }}
+          >
+            <div className="border-b border-of-border px-5 py-4">
+              <Dialog.Title className="text-base font-semibold">{confirmAction?.title}</Dialog.Title>
+              <Dialog.Description className="mt-1 text-xs leading-5 text-of-muted">
+                <strong className="font-semibold text-of-text">{confirmAction?.user.display_name}</strong>
+                {' · '}
+                {confirmAction?.description}
+              </Dialog.Description>
+            </div>
+            {update.isError ? (
+              <p
+                role="alert"
+                className="mx-5 mt-4 rounded-of border border-of-danger/30 bg-of-danger/5 px-3 py-2 text-xs text-of-danger"
+              >
+                요청을 처리하지 못했습니다. 입력한 작업은 유지되어 같은 요청을 다시 시도할 수 있습니다.
+              </p>
+            ) : null}
+            <div className="flex flex-col-reverse gap-2 px-5 py-4 sm:flex-row sm:justify-end">
+              <Button
+                variant="outline"
+                disabled={update.isPending}
+                onClick={() => setConfirmAction(null)}
+              >
+                취소
+              </Button>
+              <Button
+                variant="danger"
+                disabled={!confirmAction || update.isPending}
+                onClick={() => {
+                  if (!confirmAction) return
+                  runUpdate(
+                    confirmAction.input,
+                    `${confirmAction.user.display_name} ${confirmAction.actionLabel}`,
+                    true,
+                  )
+                }}
+              >
+                {update.isPending ? (
+                  <Loader2 className="animate-spin" aria-hidden="true" />
+                ) : update.isError ? (
+                  <RefreshCw aria-hidden="true" />
+                ) : (
+                  <Ban aria-hidden="true" />
+                )}
+                {update.isError ? '같은 요청 다시 시도' : confirmAction?.actionLabel}
+              </Button>
+            </div>
           </Dialog.Content>
         </Dialog.Portal>
       </Dialog.Root>

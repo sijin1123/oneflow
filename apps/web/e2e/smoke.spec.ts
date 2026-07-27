@@ -22071,11 +22071,18 @@ test('Workspace 초대는 브랜드 메뉴에서 생성·복사·회전·취소�
   await expect(page.getByLabel('새 초대 링크')).toHaveValue(/\/invite\/rotated-/)
   await page.getByRole('button', { name: '닫기' }).click()
   await page.getByRole('button', { name: '초대 취소' }).click()
+  const revokeDialog = page.getByRole('dialog', { name: '초대 취소' })
+  await expect(revokeDialog).toBeVisible()
+  await revokeDialog.getByRole('button', { name: '초대 취소 확인' }).click()
   await expect(page.getByText('취소됨', { exact: true }).first()).toBeVisible()
 
   await page.setViewportSize({ width: 1440, height: 900 })
   await page.screenshot({
     path: '../../docs/screenshots/redevelopment/settings-members-directory-ui-237/invitations-desktop.png',
+    fullPage: true,
+  })
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/workspace-users-management-composition-ui-267/invitations-desktop.png',
     fullPage: true,
   })
   await page.setViewportSize({ width: 390, height: 844 })
@@ -22084,6 +22091,126 @@ test('Workspace 초대는 브랜드 메뉴에서 생성·복사·회전·취소�
     path: '../../docs/screenshots/redevelopment/settings-members-directory-ui-237/invitations-mobile.png',
     fullPage: true,
   })
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/workspace-users-management-composition-ui-267/invitations-mobile.png',
+    fullPage: true,
+  })
+})
+
+test('Workspace 초대는 마지막 목록을 유지하고 실패한 링크 회전·취소를 그대로 재시도한다', async ({ page }) => {
+  await mockApi(page)
+  let invitation = {
+    id: 'invite-recovery',
+    email: 'recover@example.com',
+    display_name: 'Recovery Member',
+    status: 'pending' as 'pending' | 'revoked',
+    expires_at: '2026-08-03T00:00:00Z',
+    accepted_at: null,
+    revoked_at: null as string | null,
+    version: 4,
+    created_at: '2026-07-27T00:00:00Z',
+  }
+  let listReads = 0
+  let failRefresh = false
+  let rotateAttempts = 0
+  let revokeAttempts = 0
+  const rotatePayloads: Record<string, unknown>[] = []
+  const revokeVersions: string[] = []
+
+  await page.route('**/api/v1/workspace-invitations**', (route) => {
+    const request = route.request()
+    const url = new URL(request.url())
+    if (request.method() === 'POST' && url.pathname.endsWith('/rotate')) {
+      rotateAttempts += 1
+      rotatePayloads.push(request.postDataJSON() as Record<string, unknown>)
+      if (rotateAttempts === 1) {
+        return route.fulfill({ status: 503, json: { detail: 'temporary rotate failure' } })
+      }
+      invitation = { ...invitation, version: invitation.version + 1 }
+      return route.fulfill({
+        json: { ...invitation, token: `recovered-${'r'.repeat(36)}` },
+      })
+    }
+    if (request.method() === 'DELETE') {
+      revokeAttempts += 1
+      revokeVersions.push(url.searchParams.get('expected_version') ?? '')
+      if (revokeAttempts === 1) {
+        return route.fulfill({ status: 503, json: { detail: 'temporary revoke failure' } })
+      }
+      invitation = {
+        ...invitation,
+        status: 'revoked',
+        revoked_at: '2026-07-27T01:00:00Z',
+        version: invitation.version + 1,
+      }
+      return route.fulfill({ status: 204, body: '' })
+    }
+    listReads += 1
+    if (failRefresh && listReads > 1) {
+      failRefresh = false
+      return route.fulfill({ status: 503, json: { detail: 'temporary list failure' } })
+    }
+    return route.fulfill({ json: { items: [invitation], total: 1 } })
+  })
+
+  await page.goto('/admin/users?view=invites')
+  await expect(page.getByText('recover@example.com')).toBeVisible()
+  await expect(page.getByLabel('워크스페이스 초대 요약')).toContainText('대기 중1')
+
+  failRefresh = true
+  await page.getByRole('button', { name: '새로고침', exact: true }).click()
+  await expect(page.getByRole('alert')).toContainText('마지막으로 확인한 목록을 유지')
+  await expect(page.getByText('recover@example.com')).toBeVisible()
+  await page.getByRole('button', { name: '다시 시도', exact: true }).click()
+  await expect(page.getByRole('alert')).toHaveCount(0)
+
+  await page.getByRole('button', { name: '새 링크 발급' }).click()
+  await expect(page.getByRole('alert')).toContainText('temporary rotate failure')
+  await page.getByRole('button', { name: '같은 요청 다시 시도' }).click()
+  await expect(page.getByLabel('새 초대 링크')).toHaveValue(/\/invite\/recovered-/)
+  expect(rotatePayloads).toEqual([{ expected_version: 4 }, { expected_version: 4 }])
+
+  await page.getByRole('button', { name: '닫기' }).click()
+  const revokeTrigger = page.getByRole('button', { name: '초대 취소' })
+  await revokeTrigger.click()
+  const revokeDialog = page.getByRole('dialog', { name: '초대 취소' })
+  await revokeDialog.getByRole('button', { name: '초대 취소 확인' }).click()
+  await expect(revokeDialog.getByRole('alert')).toContainText('temporary revoke failure')
+  await revokeDialog.getByRole('button', { name: '같은 취소 다시 시도' }).click()
+  await expect(revokeDialog).toBeHidden()
+  await expect(page.getByText('취소됨', { exact: true }).first()).toBeVisible()
+  await expect(page.getByRole('heading', { name: '멤버 초대' })).toBeFocused()
+  expect(revokeVersions).toEqual(['5', '5'])
+})
+
+test('초대 작성 초안은 프레임 액션에서 열리고 보기 이동 전에 확인을 요구한다', async ({ page }) => {
+  await mockApi(page)
+  await page.route('**/api/v1/workspace-invitations', (route) =>
+    route.fulfill({ json: { items: [], total: 0 } }),
+  )
+  await page.goto('/admin/users?view=invites')
+
+  const frameActions = page.locator('[data-frame-context-actions]')
+  await frameActions.getByRole('button', { name: '멤버 초대' }).click()
+  await page.getByLabel('초대 이메일').fill('draft@example.com')
+  await page.getByLabel('초대 사용자 이름').fill('Draft Member')
+
+  const tablist = page.getByRole('tablist', { name: '사용자 관리 보기' })
+  const firstDialog = page.waitForEvent('dialog')
+  const dismissedNavigation = tablist.getByRole('tab', { name: '멤버' }).click()
+  const discardPrompt = await firstDialog
+  expect(discardPrompt.message()).toContain('작성 중인 사용자 또는 초대 정보')
+  await discardPrompt.dismiss()
+  await dismissedNavigation
+  await expect(page).toHaveURL('/admin/users?view=invites')
+  await expect(page.getByLabel('초대 이메일')).toHaveValue('draft@example.com')
+
+  const secondDialog = page.waitForEvent('dialog')
+  const acceptedNavigation = tablist.getByRole('tab', { name: '멤버' }).click()
+  await (await secondDialog).accept()
+  await acceptedNavigation
+  await expect(page).toHaveURL('/admin/users')
+  await expect(page.getByLabel('초대 이메일')).toHaveCount(0)
 })
 
 test('공개 초대 링크는 미리보기·일회성 수락 후 로그인 이메일을 인계한다', async ({ page }) => {
@@ -22515,9 +22642,66 @@ test('관리자가 사용자 디렉터리에서 추가·비활성화를 수행�
     (r) => r.method() === 'PATCH' && r.url().includes('/api/v1/users/u-b'),
   )
   await rookieRow.getByRole('button', { name: '비활성화' }).click()
+  const deactivateDialog = page.getByRole('dialog', { name: '사용자 비활성화' })
+  await expect(deactivateDialog).toBeVisible()
+  await deactivateDialog.getByRole('button', { name: '비활성화', exact: true }).click()
   expect(((await patch).postDataJSON() as { is_active: boolean }).is_active).toBe(false)
   await expect(rookieRow.getByText('비활성')).toBeVisible()
   await expect(rookieRow.getByRole('button', { name: '활성화' })).toBeVisible()
+})
+
+test('사용자 비활성화는 확인 후 동일 요청을 보존해 실패에서 복구한다', async ({ page }) => {
+  await mockApi(page)
+  const admin = {
+    id: 'me-1',
+    email: 'dev@oneflow.local',
+    display_name: 'Dev User',
+    is_active: true,
+    is_admin: true,
+    created_at: '2026-07-01T00:00:00Z',
+  }
+  let member = {
+    id: 'member-retry',
+    email: 'retry@oneflow.local',
+    display_name: 'Retry Member',
+    is_active: true,
+    is_admin: false,
+    created_at: '2026-07-02T00:00:00Z',
+  }
+  let patchAttempts = 0
+  const payloads: Record<string, unknown>[] = []
+  await page.route(/\/api\/v1\/users(?:\?.*)?$/, (route) =>
+    route.fulfill({
+      json: {
+        items: [admin, member],
+        total: 2,
+        summary: { users: 2, active: member.is_active ? 2 : 1, admins: 1, inactive: member.is_active ? 0 : 1, active_admins: 1 },
+      },
+    }),
+  )
+  await page.route('**/api/v1/users/member-retry', (route) => {
+    patchAttempts += 1
+    payloads.push(route.request().postDataJSON() as Record<string, unknown>)
+    if (patchAttempts === 1) {
+      return route.fulfill({ status: 503, json: { detail: 'temporary failure' } })
+    }
+    member = { ...member, is_active: false }
+    return route.fulfill({ json: member })
+  })
+
+  await page.goto('/admin/users')
+  const row = page.getByRole('row', { name: /Retry Member/ })
+  const trigger = row.getByRole('button', { name: '비활성화' })
+  await trigger.click()
+  const dialog = page.getByRole('dialog', { name: '사용자 비활성화' })
+  await dialog.getByRole('button', { name: '비활성화', exact: true }).click()
+  await expect(dialog.getByRole('alert')).toContainText('같은 요청을 다시 시도')
+  await dialog.getByRole('button', { name: '같은 요청 다시 시도' }).click()
+  await expect(dialog).toBeHidden()
+  await expect(row.getByText('비활성')).toBeVisible()
+  await expect(row.getByRole('button', { name: '활성화' })).toBeFocused()
+  expect(patchAttempts).toBe(2)
+  expect(payloads).toEqual([{ is_active: false }, { is_active: false }])
 })
 
 test('사용자 디렉터리는 서버 검색·필터·추가 페이지와 전체 요약을 유지한다', async ({ page }) => {
@@ -22577,6 +22761,10 @@ test('사용자 디렉터리는 서버 검색·필터·추가 페이지와 전�
   await expectNoHorizontalOverflow(page)
   await page.screenshot({
     path: '../../docs/screenshots/redevelopment/settings-members-directory-ui-237/pagination-desktop.png',
+    fullPage: true,
+  })
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/workspace-users-management-composition-ui-267/directory-desktop.png',
     fullPage: true,
   })
 
@@ -22739,6 +22927,10 @@ test('사용자 디렉터리는 모바일에서 계정 카드와 멤버십을 �
   await page.evaluate(() => document.querySelector('main')?.scrollTo(0, 0))
   await page.screenshot({
     path: '../../docs/screenshots/redevelopment/settings-members-directory-ui-237/mobile.png',
+    fullPage: true,
+  })
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/workspace-users-management-composition-ui-267/directory-mobile.png',
     fullPage: true,
   })
 })
