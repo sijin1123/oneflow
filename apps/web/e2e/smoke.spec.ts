@@ -7055,6 +7055,145 @@ test('DHTMLX 타임라인이 막대·의존선·마일스톤을 그리고 읽기
   await expect(page).toHaveURL(new RegExp(`wp=${wpA.id}`))
 })
 
+test('프로젝트 타임라인 제어는 URL 배율·기준일·검색과 실제 생성 흐름을 연결한다', async ({
+  page,
+}) => {
+  await mockApi(page)
+  await page.route(`**/api/v1/projects/${project.id}/work-packages**`, async (route) => {
+    if (route.request().method() !== 'POST') {
+      await route.fallback()
+      return
+    }
+    const sent = route.request().postDataJSON()
+    await route.fulfill({
+      status: 201,
+      json: { ...wpA, id: 'wp-timeline-created', subject: sent.subject },
+    })
+  })
+
+  await page.goto(`/projects/${project.id}/timeline?scale=week&focus=2026-07-10`)
+  const controls = page.getByRole('region', { name: '프로젝트 타임라인 제어' })
+  const timeline = page.getByRole('region', { name: '프로젝트 작업 타임라인' })
+  await expect(controls.getByRole('link', { name: '타임라인 보기' })).toHaveAttribute(
+    'aria-current',
+    'page',
+  )
+  await expect(timeline.getByRole('button', { name: '주', exact: true })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  )
+  await expect(timeline).toContainText('2026.07.10 기준')
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/project-timeline-composition-ui-274/desktop.png',
+    fullPage: true,
+  })
+
+  await timeline.getByRole('button', { name: '다음 기간' }).click()
+  await expect(page).toHaveURL(/focus=2026-07-17/)
+  await page.reload()
+  await expect(timeline.getByRole('button', { name: '주', exact: true })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  )
+  await expect(timeline).toContainText('2026.07.17 기준')
+
+  await controls.getByRole('button', { name: /^필터/ }).click()
+  const requested = page.waitForRequest((request) => {
+    const url = new URL(request.url())
+    return url.pathname.endsWith(`/projects/${project.id}/work-packages`) &&
+      url.searchParams.get('q') === 'API'
+  })
+  await page.getByLabel('프로젝트 타임라인 검색어').fill('API')
+  await page.getByLabel('프로젝트 타임라인 검색어').press('Enter')
+  await requested
+  await expect(page).toHaveURL(/q=API/)
+  await expect(controls.getByRole('link', { name: '표 보기' })).toHaveAttribute(
+    'href',
+    new RegExp(`/projects/${project.id}/work-packages\\?q=API`),
+  )
+
+  await controls.getByRole('button', { name: '새 작업' }).click()
+  await expect(page).toHaveURL(/new=1/)
+  const createForm = page.getByRole('region', { name: '새 작업 생성' })
+  await expect(createForm).toBeVisible()
+  await createForm.getByLabel('작업 제목').fill('타임라인에서 만든 작업')
+  const createRequest = page.waitForRequest(
+    (request) =>
+      request.method() === 'POST'
+      && new URL(request.url()).pathname === `/api/v1/projects/${project.id}/work-packages`,
+  )
+  await createForm.getByRole('button', { name: '작업 만들기' }).click()
+  expect((await createRequest).postDataJSON()).toMatchObject({
+    subject: '타임라인에서 만든 작업',
+  })
+  await expect(page).not.toHaveURL(/new=/)
+})
+
+test('프로젝트 타임라인은 오류와 필터 빈 결과에서도 같은 프레임으로 복구한다', async ({
+  page,
+}) => {
+  await mockApi(page)
+  let attempts = 0
+  let recover = false
+  await page.route(`**/api/v1/projects/${project.id}/work-packages**`, async (route) => {
+    attempts += 1
+    if (!recover) {
+      await route.fulfill({ status: 503, json: { detail: 'timeline temporarily unavailable' } })
+      return
+    }
+    await route.fulfill({ json: { items: [], total: 0 } })
+  })
+
+  await page.goto(`/projects/${project.id}/timeline?status=done`)
+  const timeline = page.getByRole('region', { name: '프로젝트 작업 타임라인' })
+  await expect(timeline.getByTestId('project-timeline-state-frame')).toBeVisible()
+  await expect(timeline.getByRole('alert')).toContainText('데이터를 불러오지 못했습니다')
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/project-timeline-composition-ui-274/error.png',
+    fullPage: true,
+  })
+  recover = true
+  await timeline.getByRole('button', { name: '다시 시도' }).click()
+  await expect(timeline.getByText('조건에 맞는 작업이 없습니다')).toBeVisible()
+  await expect(timeline.getByTestId('project-timeline-state-frame')).toBeVisible()
+  await timeline.getByRole('button', { name: '현재 보기 초기화' }).click()
+  await expect(page).not.toHaveURL(/status=/)
+  expect(attempts).toBeGreaterThanOrEqual(2)
+})
+
+test('모바일 프로젝트 타임라인은 형상 로딩 후 내부 캔버스만 스크롤한다', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await mockApi(page)
+  let releaseRequest: (() => void) | undefined
+  const requestGate = new Promise<void>((resolve) => {
+    releaseRequest = resolve
+  })
+  await page.route(`**/api/v1/projects/${project.id}/work-packages**`, async (route) => {
+    await requestGate
+    await route.fulfill({ json: workPackages })
+  })
+
+  await page.goto(`/projects/${project.id}/timeline`)
+  const timeline = page.getByRole('region', { name: '프로젝트 작업 타임라인' })
+  await expect(timeline.getByTestId('project-timeline-skeleton')).toBeVisible()
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/project-timeline-composition-ui-274/loading.png',
+    fullPage: true,
+  })
+  expect(
+    await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+  ).toBe(true)
+  releaseRequest?.()
+  await expect(timeline.getByTestId('gantt-container')).toBeVisible()
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/project-timeline-composition-ui-274/mobile.png',
+    fullPage: true,
+  })
+  expect(
+    await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+  ).toBe(true)
+})
+
 test('타임라인 드래그로 일정을 조정하면 PATCH를 보내고 실패 시 되돌린다', async ({ page }) => {
   await mockApi(page)
   // Editable gate: me-1 must be an owner/member AND the project unarchived.
