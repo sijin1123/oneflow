@@ -27468,11 +27468,18 @@ test('초안 URL 프로젝트가 다르면 올바른 프로젝트 경로로 교�
 
 async function mockWikiPolicy(
   page: Page,
-  options: { staleFirstPatch?: boolean; forbidden?: boolean } = {},
+  options: {
+    staleFirstPatch?: boolean
+    failFirstPatch?: boolean
+    failFirstRefreshAfterPatch?: boolean
+    forbidden?: boolean
+  } = {},
 ) {
   let enabled = true
   let revision = 1
   let patchCount = 0
+  let successfulPatchCount = 0
+  let refreshAfterPatchCount = 0
   const requests: string[] = []
 
   await page.route('**/api/v1/workspace/capabilities', (route) =>
@@ -27496,10 +27503,31 @@ async function mockWikiPolicy(
       await route.fulfill({ status: 403, json: { detail: 'workspace admin required' } })
       return
     }
+    if (
+      route.request().method() === 'GET'
+      && options.failFirstRefreshAfterPatch
+      && successfulPatchCount > 0
+    ) {
+      refreshAfterPatchCount += 1
+      if (refreshAfterPatchCount <= 2) {
+        await route.fulfill({
+          status: 503,
+          json: { detail: 'Wiki policy temporarily unavailable' },
+        })
+        return
+      }
+    }
     if (route.request().method() === 'PATCH') {
       patchCount += 1
       requests.push(route.request().headers()['if-match'] ?? '')
       const body = route.request().postDataJSON() as { enabled: boolean }
+      if (options.failFirstPatch && patchCount === 1) {
+        await route.fulfill({
+          status: 503,
+          json: { detail: 'Wiki policy temporarily unavailable' },
+        })
+        return
+      }
       if (options.staleFirstPatch && patchCount === 1) {
         enabled = false
         revision = 2
@@ -27512,6 +27540,7 @@ async function mockWikiPolicy(
       }
       enabled = body.enabled
       revision += 1
+      successfulPatchCount += 1
     }
     await route.fulfill({
       headers: { ETag: `"${revision}"` },
@@ -27560,6 +27589,10 @@ test('Wiki 설정은 navigation과 API surface를 함께 끄고 데이터 보존
 
   await page.goto('/admin/wiki')
   await expect(page.getByRole('heading', { name: 'Wiki', exact: true })).toBeVisible()
+  await expect(page.getByLabel('Wiki 정책 요약')).toContainText('저장 데이터보존됨')
+  await expect(page.getByRole('region', { name: '정책 영향 범위' })).toContainText(
+    '통합 검색',
+  )
   let toggle = page.getByRole('switch', { name: '프로젝트 Wiki 사용' })
   await expect(toggle).toBeChecked()
   await page.goto(`/projects/${project.id}/work-packages`)
@@ -27591,14 +27624,15 @@ test('Wiki 설정은 navigation과 API surface를 함께 끄고 데이터 보존
   await page.getByRole('switch', { name: '프로젝트 Wiki 사용' }).click()
   await expect(page.getByRole('switch', { name: '프로젝트 Wiki 사용' })).toBeChecked()
   expect(wiki.requests).toEqual(['"1"', '"2"'])
+  await expect(page.getByRole('status')).toContainText('Wiki를 활성화했습니다')
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/wiki-policy-settings-composition-ui-261/desktop.png',
+    fullPage: true,
+  })
 
   await page.goto(`/projects/${project.id}/documents`)
   await expect(page.getByText('보존된 운영 문서')).toBeVisible()
   expect(documentRequests).toBe(1)
-  await page.screenshot({
-    path: '../../docs/screenshots/redevelopment/wiki-settings-ui/desktop-documents-restored.png',
-    fullPage: true,
-  })
 })
 
 test('Wiki 설정은 stale revision을 최신 서버 상태로 복구한다', async ({ page }) => {
@@ -27611,6 +27645,38 @@ test('Wiki 설정은 stale revision을 최신 서버 상태로 복구한다', as
   await expect(page.getByRole('alert')).toContainText('다른 관리자가 정책을 변경했습니다')
   await expect(toggle).not.toBeChecked()
   await expect(page.getByText('정책 revision 2')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Wiki 끄기 다시 시도' })).toBeEnabled()
+  await page.getByRole('button', { name: 'Wiki 끄기 다시 시도' }).click()
+  await expect(page.getByRole('status')).toContainText('Wiki를 비활성화했습니다')
+})
+
+test('Wiki 설정은 같은 정책 변경과 마지막 성공 상태의 새로고침을 정확히 재시도한다', async ({
+  page,
+}) => {
+  await mockApi(page)
+  const wiki = await mockWikiPolicy(page, {
+    failFirstPatch: true,
+    failFirstRefreshAfterPatch: true,
+  })
+  await page.goto('/admin/wiki')
+
+  const toggle = page.getByRole('switch', { name: '프로젝트 Wiki 사용' })
+  await toggle.click()
+  await expect(page.getByRole('alert')).toContainText('Wiki policy temporarily unavailable')
+  await expect(toggle).toBeChecked()
+  await page.getByRole('button', { name: 'Wiki 끄기 다시 시도' }).click()
+  await expect(toggle).not.toBeChecked()
+  await expect(page.getByRole('status')).toContainText('Wiki를 비활성화했습니다')
+  expect(wiki.requests).toEqual(['"1"', '"1"'])
+
+  await page.getByRole('button', { name: '새로고침' }).click()
+  await expect(page.getByRole('alert')).toContainText('마지막으로 확인한 상태를 유지합니다')
+  await expect(page.getByLabel('Wiki 정책 요약')).toContainText('비활성')
+  await expect(page.getByRole('button', { name: '새로고침 다시 시도' })).toBeVisible()
+  await page.getByRole('button', { name: '새로고침 다시 시도' }).click()
+  await expect(
+    page.getByText('최신 정책을 불러오지 못했습니다. 마지막으로 확인한 상태를 유지합니다.'),
+  ).toHaveCount(0)
 })
 
 test('Wiki 설정은 비관리자에게 권한 없음 상태를 표시한다', async ({ page }) => {
@@ -27627,10 +27693,19 @@ test('Wiki 설정 mobile surface는 가로 overflow 없이 동작한다', async 
   await page.setViewportSize({ width: 390, height: 844 })
   await page.goto('/admin/wiki')
   await expect(page.getByRole('heading', { name: 'Wiki', exact: true })).toBeVisible()
+  await expect(page.getByLabel('Wiki 정책 요약')).toBeVisible()
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)
   expect(overflow).toBe(false)
   await page.screenshot({
-    path: '../../docs/screenshots/redevelopment/wiki-settings-ui/mobile-settings.png',
+    path: '../../docs/screenshots/redevelopment/wiki-policy-settings-composition-ui-261/mobile.png',
+    fullPage: true,
+  })
+  const audit = page.getByRole('region', { name: '변경 감사' })
+  await audit.scrollIntoViewIfNeeded()
+  await expect(audit).toBeVisible()
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/wiki-policy-settings-composition-ui-261/mobile-bottom.png',
     fullPage: true,
   })
 })
