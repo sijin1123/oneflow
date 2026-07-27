@@ -9,14 +9,14 @@ import {
   TriangleAlert,
   type LucideIcon,
 } from 'lucide-react'
-import { useState } from 'react'
+import { type ReactNode, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 
+import { FrameContextActions } from '@/components/shell/FrameContextActions'
 import { ErrorState } from '@/components/shell/states'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
-import { SettingsFrame, SettingsSection } from '@/features/settings/SettingsShell'
 import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
 
@@ -102,20 +102,65 @@ const statusCopy: Record<
 
 const mib = (n: number) => `${Math.round(n / 1_048_576)} MiB`
 
+function StatusCanvas({
+  children,
+  busy = false,
+  version,
+}: {
+  children: ReactNode
+  busy?: boolean
+  version?: string
+}) {
+  return (
+    <div
+      data-testid="system-status-scroll"
+      className="h-full min-w-0 overflow-y-auto overscroll-contain bg-of-surface"
+      aria-busy={busy}
+    >
+      <div className="mx-auto w-full max-w-6xl px-4 py-5 sm:px-6 sm:py-6">
+        <header className="flex min-w-0 flex-col gap-3 border-b border-of-border pb-5 sm:flex-row sm:items-end sm:justify-between">
+          <div className="min-w-0">
+            <p className="text-[11px] font-semibold uppercase text-of-muted">Operations</p>
+            <h1 className="mt-1 text-xl font-semibold">시스템 상태</h1>
+            <p className="mt-1 max-w-2xl text-xs leading-5 text-of-muted">
+              실제 데이터베이스, 스키마, 파일 스토리지와 인증 구성을 점검합니다. 이 화면은
+              읽기 전용이며 비밀값과 서버 경로를 노출하지 않습니다.
+            </p>
+          </div>
+          {version ? <Badge variant="outline">OneFlow v{version}</Badge> : null}
+        </header>
+        <div className="py-5 pb-10">{children}</div>
+      </div>
+    </div>
+  )
+}
+
 function StatusSkeleton() {
   return (
-    <SettingsFrame
-      eyebrow="Operations"
-      title="시스템 상태"
-      description="배포 준비 상태를 점검하고 안전한 진단 보고서를 확인합니다."
-      className="max-w-5xl"
-    >
-      <div role="status" aria-label="시스템 상태 불러오는 중" className="space-y-3">
-        <Skeleton className="h-32 w-full" />
-        <Skeleton className="h-56 w-full" />
-        <Skeleton className="h-44 w-full" />
+    <StatusCanvas busy>
+      <div role="status" aria-label="시스템 상태 불러오는 중" className="space-y-5">
+        <span className="sr-only">시스템 상태를 불러오는 중입니다.</span>
+        <div className="grid grid-cols-2 gap-px border-y border-of-border-subtle bg-of-border-subtle sm:grid-cols-4">
+          {Array.from({ length: 4 }, (_, index) => (
+            <div key={index} className="bg-of-surface px-3 py-3">
+              <Skeleton className="h-2.5 w-14" />
+              <Skeleton className="mt-2 h-4 w-20" />
+            </div>
+          ))}
+        </div>
+        <Skeleton className="h-28 w-full rounded-none" />
+        <div className="space-y-2">
+          {Array.from({ length: 4 }, (_, index) => (
+            <Skeleton key={index} className="h-16 w-full rounded-none" />
+          ))}
+        </div>
+        <div className="grid gap-5 md:grid-cols-3">
+          <Skeleton className="h-44 w-full rounded-none" />
+          <Skeleton className="h-44 w-full rounded-none" />
+          <Skeleton className="h-44 w-full rounded-none" />
+        </div>
       </div>
-    </SettingsFrame>
+    </StatusCanvas>
   )
 }
 
@@ -123,7 +168,10 @@ function ReadinessSummary({ data }: { data: StatusRead['readiness'] }) {
   const copy = statusCopy[data.status]
   const Icon = copy.icon
   return (
-    <section aria-labelledby="deployment-readiness-title" className="of-surface overflow-hidden">
+    <section
+      aria-labelledby="deployment-readiness-title"
+      className="overflow-hidden border-y border-of-border-subtle"
+    >
       <div className="flex min-w-0 items-start gap-3 p-4 sm:p-5">
         <span
           className={cn(
@@ -201,24 +249,65 @@ function ConfigRow({ label, value }: { label: string; value: string }) {
   )
 }
 
+function StatusFact({
+  label,
+  value,
+  tone = 'neutral',
+}: {
+  label: string
+  value: string
+  tone?: 'neutral' | 'success' | 'warning' | 'danger'
+}) {
+  return (
+    <div className="min-w-0 bg-of-surface px-3 py-3">
+      <dt className="text-[10px] font-medium uppercase text-of-muted">{label}</dt>
+      <dd
+        className={cn(
+          'mt-1 truncate text-xs font-semibold',
+          tone === 'success' && 'text-of-success',
+          tone === 'warning' && 'text-of-warning',
+          tone === 'danger' && 'text-of-danger',
+        )}
+      >
+        {value}
+      </dd>
+    </div>
+  )
+}
+
+function SurfaceHeading({
+  id,
+  title,
+  description,
+}: {
+  id: string
+  title: string
+  description: string
+}) {
+  return (
+    <div className="border-b border-of-border-subtle pb-3">
+      <h2 id={id} className="text-sm font-semibold">
+        {title}
+      </h2>
+      <p className="mt-1 text-xs leading-5 text-of-muted">{description}</p>
+    </div>
+  )
+}
+
 export function StatusPage() {
-  const [copyState, setCopyState] = useState<'success' | 'error' | null>(null)
+  const [copyState, setCopyState] = useState<'pending' | 'success' | 'error' | null>(null)
+  const [refreshError, setRefreshError] = useState(false)
   const query = useQuery({
     queryKey: ['ops-status'],
     queryFn: () => api<StatusRead>('/api/v1/ops/status'),
   })
 
   if (query.isPending) return <StatusSkeleton />
-  if (query.isError) {
+  if (!query.data) {
     return (
-      <SettingsFrame
-        eyebrow="Operations"
-        title="시스템 상태"
-        description="배포 준비 상태를 점검하고 안전한 진단 보고서를 확인합니다."
-        className="max-w-5xl"
-      >
+      <StatusCanvas>
         <ErrorState error={query.error} onRetry={() => void query.refetch()} />
-      </SettingsFrame>
+      </StatusCanvas>
     )
   }
 
@@ -230,6 +319,7 @@ export function StatusPage() {
   )
 
   const copyDiagnostics = async () => {
+    setCopyState('pending')
     try {
       if (!navigator.clipboard?.writeText) throw new Error('clipboard unavailable')
       await navigator.clipboard.writeText(diagnosticReport)
@@ -241,74 +331,183 @@ export function StatusPage() {
 
   const refresh = async () => {
     setCopyState(null)
-    await query.refetch()
+    setRefreshError(false)
+    const result = await query.refetch()
+    setRefreshError(result.isError)
   }
 
+  const readinessTone =
+    data.readiness.status === 'ok'
+      ? 'success'
+      : data.readiness.status === 'warning'
+        ? 'warning'
+        : 'danger'
+
   return (
-    <SettingsFrame
-      eyebrow="Operations"
-      title="시스템 상태"
-      description="실제 데이터베이스, 스키마, 파일 스토리지와 인증 구성을 점검합니다. 이 화면은 읽기 전용이며 비밀값과 서버 경로를 노출하지 않습니다."
-      meta={`v${data.version}`}
-      actions={
-        <>
-          <Button variant="outline" size="sm" onClick={() => void copyDiagnostics()}>
-            <Copy aria-hidden="true" /> 진단 복사
-          </Button>
-          <Button
-            variant="secondary"
-            size="sm"
-            disabled={query.isFetching}
-            onClick={() => void refresh()}
-          >
-            <RefreshCw className={query.isFetching ? 'animate-spin' : undefined} aria-hidden="true" />
-            새로고침
-          </Button>
-        </>
-      }
-      className="max-w-5xl"
-    >
-      <div className="space-y-4" aria-busy={query.isFetching}>
-        <ReadinessSummary data={data.readiness} />
-
-        <div className="min-h-5" aria-live="polite">
-          {copyState === 'success' ? (
-            <p role="status" className="text-xs text-of-success">진단 보고서를 복사했습니다.</p>
-          ) : null}
-          {copyState === 'error' ? (
-            <p role="alert" className="text-xs text-of-danger">클립보드에 복사하지 못했습니다. 브라우저 권한을 확인하세요.</p>
-          ) : null}
-        </div>
-
-        <SettingsSection
-          title="준비 상태 점검"
-          description="각 점검은 현재 배포 환경을 직접 확인한 결과입니다."
+    <>
+      <FrameContextActions>
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={copyState === 'pending'}
+          onClick={() => void copyDiagnostics()}
         >
-          <ul className="divide-y divide-of-border-subtle border-y border-of-border-subtle">
-            {data.readiness.checks.map((check) => <CheckRow key={check.id} check={check} />)}
-          </ul>
-        </SettingsSection>
+          <Copy size={13} aria-hidden="true" />
+          {copyState === 'pending'
+            ? '복사 중…'
+            : copyState === 'error'
+              ? '진단 복사 다시 시도'
+              : '진단 복사'}
+        </Button>
+        <Button
+          variant="secondary"
+          size="sm"
+          disabled={query.isFetching}
+          onClick={() => void refresh()}
+        >
+          <RefreshCw
+            size={13}
+            className={query.isFetching ? 'animate-spin' : undefined}
+            aria-hidden="true"
+          />
+          {refreshError ? '새로고침 다시 시도' : '새로고침'}
+        </Button>
+      </FrameContextActions>
 
-        <div className="grid gap-4 md:grid-cols-2">
-          <SettingsSection title="안전한 구성 요약" description="설정 값은 비밀이 아닌 allowlist만 표시합니다.">
-            <dl className="divide-y divide-of-border-subtle border-y border-of-border-subtle">
-              <ConfigRow label="환경" value={data.config.environment} />
-              <ConfigRow label="인증 모드" value={data.config.auth_mode} />
-              <ConfigRow label="OIDC 공급자" value={`${data.config.oidc_provider_count}개`} />
-              <ConfigRow label="AI 요약" value={data.config.ai_summary_enabled ? '켜짐' : '꺼짐'} />
-            </dl>
-          </SettingsSection>
-          <SettingsSection title="용량과 범위" description="현재 사용자에게 허용된 범위만 집계합니다.">
-            <dl className="divide-y divide-of-border-subtle border-y border-of-border-subtle">
-              <ConfigRow label="스토리지" value={data.config.storage_backend} />
-              <ConfigRow label="파일당 상한" value={mib(data.config.upload_max_bytes)} />
-              <ConfigRow label="프로젝트 쿼터" value={mib(data.config.project_storage_quota_bytes)} />
-              <ConfigRow label="내 프로젝트" value={data.counts.projects?.toString() ?? '확인 불가'} />
-              <ConfigRow label="내 워크패키지" value={data.counts.work_packages?.toString() ?? '확인 불가'} />
-            </dl>
-          </SettingsSection>
+      <StatusCanvas busy={query.isFetching} version={data.version}>
+        <div className="space-y-5">
+          <dl
+            aria-label="시스템 상태 요약"
+            className="grid grid-cols-2 gap-px border-y border-of-border-subtle bg-of-border-subtle sm:grid-cols-4"
+          >
+            <StatusFact
+              label="배포 준비"
+              value={statusCopy[data.readiness.status].label}
+              tone={readinessTone}
+            />
+            <StatusFact label="정상 점검" value={`${data.readiness.ok} / ${data.readiness.checks.length}`} />
+            <StatusFact
+              label="내 프로젝트"
+              value={data.counts.projects?.toLocaleString('ko-KR') ?? '확인 불가'}
+            />
+            <StatusFact
+              label="내 워크패키지"
+              value={data.counts.work_packages?.toLocaleString('ko-KR') ?? '확인 불가'}
+            />
+          </dl>
+
+          <ReadinessSummary data={data.readiness} />
+
+          <div className="min-h-5 space-y-1" aria-live="polite">
+            {copyState === 'success' ? (
+              <p role="status" className="text-xs text-of-success">
+                진단 보고서를 복사했습니다.
+              </p>
+            ) : null}
+            {copyState === 'error' ? (
+              <p role="alert" className="text-xs text-of-danger">
+                클립보드에 복사하지 못했습니다. 같은 진단을 다시 복사할 수 있습니다.
+              </p>
+            ) : null}
+            {refreshError ? (
+              <p role="alert" className="text-xs text-of-danger">
+                최신 상태를 불러오지 못했습니다. 마지막으로 확인한 결과를 유지합니다.
+              </p>
+            ) : null}
+          </div>
+
+          <section aria-labelledby="readiness-checks-title">
+            <SurfaceHeading
+              id="readiness-checks-title"
+              title="준비 상태 점검"
+              description="각 점검은 현재 배포 환경을 직접 확인한 결과입니다."
+            />
+            {data.readiness.checks.length ? (
+              <ul className="divide-y divide-of-border-subtle border-b border-of-border-subtle">
+                {data.readiness.checks.map((check) => (
+                  <CheckRow key={check.id} check={check} />
+                ))}
+              </ul>
+            ) : (
+              <p className="border-b border-of-border-subtle py-8 text-center text-xs text-of-muted">
+                보고된 준비 상태 점검이 없습니다.
+              </p>
+            )}
+          </section>
+
+          <div className="grid gap-5 lg:grid-cols-3">
+            <section aria-labelledby="safe-config-title">
+              <SurfaceHeading
+                id="safe-config-title"
+                title="안전한 구성 요약"
+                description="비밀이 아닌 allowlist 값만 표시합니다."
+              />
+              <dl className="divide-y divide-of-border-subtle border-b border-of-border-subtle">
+                <ConfigRow label="환경" value={data.config.environment} />
+                <ConfigRow label="인증 모드" value={data.config.auth_mode} />
+                <ConfigRow label="OIDC 공급자" value={`${data.config.oidc_provider_count}개`} />
+                <ConfigRow
+                  label="AI 요약"
+                  value={data.config.ai_summary_enabled ? '켜짐' : '꺼짐'}
+                />
+              </dl>
+            </section>
+
+            <section aria-labelledby="capacity-scope-title">
+              <SurfaceHeading
+                id="capacity-scope-title"
+                title="용량과 범위"
+                description="현재 사용자에게 허용된 범위만 집계합니다."
+              />
+              <dl className="divide-y divide-of-border-subtle border-b border-of-border-subtle">
+                <ConfigRow label="스토리지" value={data.config.storage_backend} />
+                <ConfigRow label="파일당 상한" value={mib(data.config.upload_max_bytes)} />
+                <ConfigRow
+                  label="프로젝트 쿼터"
+                  value={mib(data.config.project_storage_quota_bytes)}
+                />
+                <ConfigRow
+                  label="내 프로젝트"
+                  value={data.counts.projects?.toString() ?? '확인 불가'}
+                />
+                <ConfigRow
+                  label="내 워크패키지"
+                  value={data.counts.work_packages?.toString() ?? '확인 불가'}
+                />
+              </dl>
+            </section>
+
+            <section aria-labelledby="database-state-title">
+              <SurfaceHeading
+                id="database-state-title"
+                title="데이터베이스 상태"
+                description="현재 revision과 애플리케이션 기대값을 비교합니다."
+              />
+              <dl className="divide-y divide-of-border-subtle border-b border-of-border-subtle">
+                <ConfigRow label="연결 상태" value={data.database.status} />
+                <ConfigRow
+                  label="현재 revision"
+                  value={data.database.current_revision ?? '확인 불가'}
+                />
+                <ConfigRow
+                  label="기대 revision"
+                  value={data.database.expected_revision ?? '확인 불가'}
+                />
+                <ConfigRow
+                  label="Head 일치"
+                  value={
+                    data.database.matches_head === null
+                      ? '확인 불가'
+                      : data.database.matches_head
+                        ? '일치'
+                        : '불일치'
+                  }
+                />
+              </dl>
+            </section>
+          </div>
         </div>
-      </div>
-    </SettingsFrame>
+      </StatusCanvas>
+    </>
   )
 }

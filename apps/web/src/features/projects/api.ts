@@ -234,7 +234,8 @@ export function useArchiveProject(projectId: string) {
       api<Project>(`/api/v1/projects/${projectId}/${archive ? 'archive' : 'unarchive'}`, {
         method: 'POST',
       }),
-    onSuccess: () => {
+    onSuccess: (project) => {
+      queryClient.setQueryData<Project>(['project', projectId], project)
       void queryClient.invalidateQueries({ queryKey: ['projects'] })
       void queryClient.invalidateQueries({ queryKey: ['project', projectId] })
     },

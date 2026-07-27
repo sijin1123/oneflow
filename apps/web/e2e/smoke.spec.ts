@@ -6311,6 +6311,7 @@ test('대시보드가 집계 타일과 분포를 보여준다', async ({ page })
   let sharedWidgets: string[] | null = null
   let sharedVersion = 0
   let failSharedUpdateOnce = false
+  let failPersonalSaveOnce = false
   const layoutPayload = () => {
     const source = personalWidgets ? 'personal' : sharedWidgets ? 'shared' : 'builtin'
     return {
@@ -6355,6 +6356,14 @@ test('대시보드가 집계 타일과 분포를 보여준다', async ({ page })
   })
   await page.route(`**/api/v1/projects/${project.id}/dashboard/layout`, async (route) => {
     if (route.request().method() === 'PUT') {
+      if (failPersonalSaveOnce) {
+        failPersonalSaveOnce = false
+        await route.fulfill({
+          status: 503,
+          json: { detail: 'personal dashboard layout temporarily unavailable' },
+        })
+        return
+      }
       personalWidgets = (route.request().postDataJSON() as { widgets: string[] }).widgets
       await route.fulfill({ json: layoutPayload() })
       return
@@ -6380,19 +6389,23 @@ test('대시보드가 집계 타일과 분포를 보여준다', async ({ page })
   await expect(main.getByText('10.5 / 40h')).toBeVisible()
   await expect(main.getByText('상태별')).toBeVisible()
   await expect(main.getByText('기본 레이아웃', { exact: true })).toBeVisible()
+  await expect(main.getByText('Reporting', { exact: true })).toHaveCount(0)
+  await expect(
+    page.getByTestId('frame-context-actions').getByRole('button', { name: '위젯 편집' }),
+  ).toBeVisible()
   // Type distribution widget (Pass 58): renders from the existing payload.
   await expect(main.getByText('타입별')).toBeVisible()
   const recentWork = main.getByRole('region', { name: '최근 작업' })
   await expect(recentWork.getByText(wpA.subject)).toBeVisible()
   await expect(recentWork.getByText('Dev User')).toBeVisible()
   await page.screenshot({
-    path: '../../docs/screenshots/redevelopment/project-overview-ui/desktop.png',
+    path: '../../docs/screenshots/redevelopment/project-dashboard-ui-252/desktop.png',
     fullPage: true,
   })
   await page.setViewportSize({ width: 390, height: 844 })
   await expectNoHorizontalOverflow(page)
   await page.screenshot({
-    path: '../../docs/screenshots/redevelopment/project-overview-ui/mobile.png',
+    path: '../../docs/screenshots/redevelopment/project-dashboard-ui-252/mobile.png',
     fullPage: true,
   })
 
@@ -6414,9 +6427,27 @@ test('대시보드가 집계 타일과 분포를 보여준다', async ({ page })
   await expect(page.getByText('todo → in_progress', { exact: false })).toBeVisible()
 
   // Publish a shared layout, keep a private override, then return to shared.
+  await page.setViewportSize({ width: 1280, height: 720 })
   await page.getByRole('button', { name: '위젯 편집' }).click()
+  await expect(page.getByRole('dialog', { name: '대시보드 위젯 편집' })).toBeVisible()
+  await page.waitForTimeout(250)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/project-dashboard-ui-252/editor-desktop.png',
+    fullPage: true,
+  })
+  await page.setViewportSize({ width: 390, height: 844 })
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/project-dashboard-ui-252/editor-mobile.png',
+    fullPage: true,
+  })
   await page.getByLabel('비용/예산 타일 표시').uncheck()
+  await page.getByRole('button', { name: '위젯 편집 창 닫기' }).click()
+  await expect(page.getByText('변경 내용을 버릴까요?')).toBeVisible()
+  await page.getByRole('button', { name: '계속 편집' }).click()
+  await expect(page.getByLabel('비용/예산 타일 표시')).not.toBeChecked()
   await page.getByRole('button', { name: '프로젝트 공유로 게시' }).click()
+  await expect(page.getByRole('button', { name: '위젯 편집' })).toBeFocused()
   await expect(main.getByText('프로젝트 공유', { exact: true })).toBeVisible()
   await expect(page.getByText('비용 합계')).toBeHidden()
   expect(sharedWidgets).toEqual([
@@ -6443,12 +6474,12 @@ test('대시보드가 집계 타일과 분포를 보여준다', async ({ page })
   // A stale owner tab keeps its draft and can refresh/retry the shared revision.
   failSharedUpdateOnce = true
   await page.getByRole('button', { name: '위젯 편집' }).click()
+  await expect(page.getByRole('dialog', { name: '대시보드 위젯 편집' })).toBeVisible()
   await page.getByLabel('우선순위별 분포 표시').uncheck()
   await page.getByRole('button', { name: '프로젝트 공유 업데이트' }).click()
-  await expect(page.getByRole('alert')).toContainText('편집 초안은 유지됩니다')
+  await expect(page.getByRole('alert')).toContainText('현재 초안을 유지')
   await expect(page.getByLabel('우선순위별 분포 표시')).not.toBeChecked()
-  await page.getByRole('button', { name: '최신 공유 버전 불러오기' }).click()
-  await page.getByRole('button', { name: '프로젝트 공유 업데이트' }).click()
+  await page.getByRole('button', { name: '최신 버전으로 다시 시도' }).click()
   await expect(main.getByText('프로젝트 공유', { exact: true })).toBeVisible()
   expect(sharedWidgets).toEqual([
     'summary',
@@ -6460,7 +6491,13 @@ test('대시보드가 집계 타일과 분포를 보여준다', async ({ page })
 
   await page.getByRole('button', { name: '위젯 편집' }).click()
   await page.getByLabel('상태별 분포 표시').uncheck()
+  failPersonalSaveOnce = true
   await page.getByRole('button', { name: '개인 레이아웃 저장' }).click()
+  await expect(page.getByRole('alert')).toContainText(
+    'personal dashboard layout temporarily unavailable',
+  )
+  await expect(page.getByLabel('상태별 분포 표시')).not.toBeChecked()
+  await page.getByRole('button', { name: '개인 저장 다시 시도' }).click()
   await expect(main.getByText('개인 레이아웃', { exact: true })).toBeVisible()
   expect(personalWidgets).toEqual([
     'summary',
@@ -6474,6 +6511,7 @@ test('대시보드가 집계 타일과 분포를 보여준다', async ({ page })
   await expect(main.getByText('우선순위별')).toBeHidden()
 
   await page.getByRole('button', { name: '공유 레이아웃 삭제' }).click()
+  await expect(page.getByRole('dialog', { name: '공유 레이아웃을 삭제할까요?' })).toBeVisible()
   await page.getByRole('button', { name: '삭제 확인' }).click()
   await expect(main.getByText('기본 레이아웃', { exact: true })).toBeVisible()
   await expect(page.getByText('비용 합계')).toBeVisible()
@@ -6538,6 +6576,93 @@ test('보관된 빈 프로젝트 개요가 읽기 상태와 empty state를 표�
   await expect(page.getByRole('button', { name: /프로젝트 공유/ })).toHaveCount(0)
   await expect(page.getByText('아직 작업이 없습니다.')).toBeVisible()
   await expect(page.getByText('0%')).toBeVisible()
+})
+
+test('대시보드 활동과 멤버 필터가 조회 실패 후 같은 위치에서 복구된다', async ({ page }) => {
+  await mockApi(page)
+  await mockProjectOverview(page)
+  await page.route(`**/api/v1/projects/${project.id}/dashboard/layout`, (route) =>
+    route.fulfill({
+      json: {
+        widgets: ['recent_activity'],
+        updated_at: null,
+        is_default: true,
+        source: 'builtin',
+        shared_layout: null,
+        can_manage_shared: false,
+      },
+    }),
+  )
+  let activityAttempts = 0
+  await page.route(`**/api/v1/projects/${project.id}/activities**`, async (route) => {
+    activityAttempts += 1
+    if (activityAttempts <= 2) {
+      await route.fulfill({ status: 503, json: { detail: 'activity temporarily unavailable' } })
+      return
+    }
+    await route.fulfill({
+      json: {
+        items: [
+          {
+            id: 'dashboard-activity-recovered',
+            work_package_id: wpA.id,
+            work_package_subject: wpA.subject,
+            actor_id: 'me-1',
+            actor_name: 'Dev User',
+            actor_profile_image_url: null,
+            action: 'commented',
+            field: null,
+            old_value: null,
+            new_value: null,
+            created_at: '2026-07-06T00:00:00Z',
+          },
+        ],
+        total: 1,
+        truncated: false,
+      },
+    })
+  })
+  let memberAttempts = 0
+  await page.route(`**/api/v1/projects/${project.id}/members`, async (route) => {
+    memberAttempts += 1
+    if (memberAttempts <= 2) {
+      await route.fulfill({ status: 503, json: { detail: 'members temporarily unavailable' } })
+      return
+    }
+    await route.fulfill({
+      json: {
+        items: [
+          {
+            user_id: 'me-1',
+            email: 'dev@oneflow.local',
+            display_name: 'Dev User',
+            role: 'owner',
+          },
+        ],
+        total: 1,
+      },
+    })
+  })
+
+  await page.goto(`/projects/${project.id}/dashboard`)
+  const activity = page.getByRole('region', { name: '최근 활동' })
+  await expect(activity.getByText('활동을 불러오지 못했습니다.')).toBeVisible()
+  await expect(activity.getByText('멤버 필터를 불러오지 못했습니다.')).toBeVisible()
+  await activity
+    .getByText('활동을 불러오지 못했습니다.')
+    .locator('..')
+    .getByRole('button', { name: '다시 시도' })
+    .click()
+  await expect(activity.getByText(wpA.subject)).toBeVisible()
+  await activity
+    .getByText('멤버 필터를 불러오지 못했습니다.')
+    .locator('..')
+    .getByRole('button', { name: '다시 시도' })
+    .click()
+  await expect(activity.getByLabel('활동 멤버')).toBeEnabled()
+  await expect(activity.getByLabel('활동 멤버').locator('option')).toHaveCount(2)
+  expect(activityAttempts).toBe(3)
+  expect(memberAttempts).toBe(3)
 })
 
 test('뷰어는 목록에서 생성·벌크 컨트롤이 없고 읽기 전용 안내를 본다', async ({ page }) => {
@@ -9245,7 +9370,7 @@ test('개인 설정 프로필 이미지는 미리보기·저장·shell 반영·�
   )
   await expectNoHorizontalOverflow(page)
   await page.screenshot({
-    path: '../../docs/screenshots/redevelopment/personal-profile-image-ui/desktop.png',
+    path: '../../docs/screenshots/redevelopment/personal-settings-composition-ui-259/desktop-profile.png',
     fullPage: true,
   })
 
@@ -9253,7 +9378,7 @@ test('개인 설정 프로필 이미지는 미리보기·저장·shell 반영·�
   await account.scrollIntoViewIfNeeded()
   await expectNoHorizontalOverflow(page)
   await page.screenshot({
-    path: '../../docs/screenshots/redevelopment/personal-profile-image-ui/mobile.png',
+    path: '../../docs/screenshots/redevelopment/personal-settings-composition-ui-259/mobile-profile.png',
     fullPage: true,
   })
 
@@ -9336,6 +9461,66 @@ test('프로필 이미지 충돌은 선택 파일을 보존하고 최신 revisio
   expect(attempts).toBe(2)
 })
 
+test('개인 설정은 계정 상태를 요약하고 미저장 프로필 선택의 탭 이탈을 보호한다', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await mockApi(page)
+  const png = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAEklEQVR4nGPkndLBwMDAxAAGAA2bAS37E8jFAAAAAElFTkSuQmCC',
+    'base64',
+  )
+  let meRequests = 0
+  await page.route('**/api/v1/me', async (route) => {
+    meRequests += 1
+    await route.fulfill({
+      json: {
+        id: 'me-1',
+        email: 'dev@oneflow.local',
+        display_name: 'Dev User',
+        is_active: true,
+        is_admin: true,
+        profile_image_url: null,
+        profile_image_content_type: null,
+        profile_image_filename: null,
+        profile_image_width: null,
+        profile_image_height: null,
+        profile_image_byte_size: null,
+        profile_revision: 4,
+      },
+    })
+  })
+
+  await page.goto('/settings')
+  const summary = page.getByLabel('개인 설정 요약')
+  await expect(summary.getByRole('definition').filter({ hasText: '활성' })).toBeVisible()
+  await expect(summary.getByRole('definition').filter({ hasText: '관리자' })).toBeVisible()
+  const refresh = page.getByRole('button', { name: '계정 상태 새로고침' })
+  await refresh.click()
+  await expect.poll(() => meRequests).toBeGreaterThan(1)
+
+  const account = page.getByRole('region', { name: '내 계정' })
+  await account.getByLabel('프로필 이미지 파일').setInputFiles({
+    name: 'unsaved.png',
+    mimeType: 'image/png',
+    buffer: png,
+  })
+  const securityTab = page.getByRole('tab', { name: '보안' })
+  const dismissDialog = page.waitForEvent('dialog')
+  const firstTabClick = securityTab.click()
+  const firstDialog = await dismissDialog
+  expect(firstDialog.message()).toContain('저장하지 않은 프로필 이미지 선택')
+  await firstDialog.dismiss()
+  await firstTabClick
+  await expect(page).toHaveURL(/\/settings$/)
+  await expect(account.getByText('선택됨: unsaved.png')).toBeVisible()
+
+  const acceptDialog = page.waitForEvent('dialog')
+  const secondTabClick = securityTab.click()
+  await (await acceptDialog).accept()
+  await secondTabClick
+  await expect(page).toHaveURL(/\/settings\?tab=security$/)
+  await expect(securityTab).toHaveAttribute('aria-selected', 'true')
+})
+
 test('개인 알림 설정은 로딩 오류와 재시도를 기능적으로 처리한다', async ({ page }) => {
   await mockApi(page)
   let attempts = 0
@@ -9374,6 +9559,18 @@ test('개인 알림 설정은 로딩 오류와 재시도를 기능적으로 처�
   await page.getByRole('button', { name: '다시 시도' }).click()
   await expect(page.getByLabel('초과 재알림 주기')).toHaveValue('3')
   expect(attempts).toBe(2)
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/personal-settings-composition-ui-259/desktop-notifications.png',
+    fullPage: true,
+  })
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.getByLabel('개인 알림 설정').scrollIntoViewIfNeeded()
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/personal-settings-composition-ui-259/mobile-notifications.png',
+    fullPage: true,
+  })
 })
 
 test('개인 알림 설정 저장 실패는 서버 상태를 보존하고 같은 변경을 재시도한다', async ({ page }) => {
@@ -9500,16 +9697,22 @@ test('개인 설정에서 액세스 토큰을 생성하고 폐기한다', async 
   await expect(tokenSection.getByLabel('새 액세스 토큰')).toContainText(
     'ofp_created_secret_once',
   )
+  page.once('dialog', async (dialog) => {
+    expect(dialog.message()).toContain('지금만 확인할 수 있는 새 액세스 토큰')
+    await dialog.dismiss()
+  })
+  await page.getByRole('tab', { name: '알림' }).click()
+  await expect(page).toHaveURL(/\/settings\?tab=security$/)
   await expectNoHorizontalOverflow(page)
   await page.screenshot({
-    path: '../../docs/screenshots/redevelopment/personal-security-ui-241/desktop.png',
+    path: '../../docs/screenshots/redevelopment/personal-settings-composition-ui-259/desktop-security.png',
     fullPage: true,
   })
   await page.setViewportSize({ width: 390, height: 844 })
   await tokenSection.scrollIntoViewIfNeeded()
   await expectNoHorizontalOverflow(page)
   await page.screenshot({
-    path: '../../docs/screenshots/redevelopment/personal-security-ui-241/mobile.png',
+    path: '../../docs/screenshots/redevelopment/personal-settings-composition-ui-259/mobile-security.png',
     fullPage: true,
   })
 
@@ -9518,16 +9721,24 @@ test('개인 설정에서 액세스 토큰을 생성하고 폐기한다', async 
       request.method() === 'DELETE' && request.url().includes('/me/access-tokens/tok-existing'),
   )
   await tokenSection.getByRole('button', { name: '배포 스크립트 폐기' }).click()
+  const tokenDialog = page.getByRole('dialog', { name: '액세스 토큰을 폐기할까요?' })
+  await expect(tokenDialog).toBeVisible()
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/personal-settings-composition-ui-259/mobile-token-confirm.png',
+    fullPage: true,
+  })
+  await tokenDialog.getByRole('button', { name: '토큰 폐기' }).click()
   await failedDelete
-  await expect(tokenSection.getByRole('alert')).toContainText(
+  await expect(tokenDialog.getByRole('alert')).toContainText(
     '액세스 토큰을 폐기하지 못했습니다.',
   )
   const del = page.waitForRequest(
     (request) =>
       request.method() === 'DELETE' && request.url().includes('/me/access-tokens/tok-existing'),
   )
-  await tokenSection.getByRole('button', { name: '다시 시도' }).click()
+  await tokenDialog.getByRole('button', { name: '토큰 폐기 다시 시도' }).click()
   await del
+  await expect(tokenDialog).toHaveCount(0)
   await expect(tokenSection.getByText('폐기됨')).toBeVisible()
 })
 
@@ -9587,19 +9798,25 @@ test('개인 설정에서 활성 브라우저 세션을 확인하고 종료한�
       request.method() === 'DELETE' && request.url().endsWith('/me/sessions/session-other'),
   )
   await otherSessionButton.click()
+  const otherSessionDialog = page.getByRole('dialog', { name: '브라우저 세션을 종료할까요?' })
+  await expect(otherSessionDialog).toBeVisible()
+  await otherSessionDialog.getByRole('button', { name: '세션 종료' }).click()
   await otherDelete
-  await expect(section.getByRole('alert')).toContainText('세션을 종료하지 못했습니다.')
+  await expect(otherSessionDialog.getByRole('alert')).toContainText(
+    '세션을 종료하지 못했습니다.',
+  )
   const retryDelete = page.waitForRequest(
     (request) =>
       request.method() === 'DELETE' && request.url().endsWith('/me/sessions/session-other'),
   )
-  await section.getByRole('button', { name: '다시 시도' }).click()
+  await otherSessionDialog.getByRole('button', { name: '세션 종료 다시 시도' }).click()
   await retryDelete
+  await expect(otherSessionDialog).toHaveCount(0)
   await expect(otherSessionButton).toHaveCount(0)
   await expectNoHorizontalOverflow(page)
   await section.scrollIntoViewIfNeeded()
   await page.screenshot({
-    path: '../../docs/screenshots/redevelopment/personal-security-ui-241/session-mobile.png',
+    path: '../../docs/screenshots/redevelopment/personal-settings-composition-ui-259/mobile-sessions.png',
     fullPage: true,
   })
 
@@ -9608,6 +9825,9 @@ test('개인 설정에서 활성 브라우저 세션을 확인하고 종료한�
       request.method() === 'DELETE' && request.url().endsWith('/me/sessions/session-current'),
   )
   await section.getByRole('button', { name: '현재 세션 종료' }).click()
+  const currentSessionDialog = page.getByRole('dialog', { name: '현재 세션을 종료할까요?' })
+  await expect(currentSessionDialog).toBeVisible()
+  await currentSessionDialog.getByRole('button', { name: '세션 종료' }).click()
   await currentDelete
   await expect(page).toHaveURL(/\/login$/)
 })
@@ -10015,24 +10235,29 @@ test('워크스페이스 근무 일정은 요일·휴일과 revision 충돌 복�
   await expect(page.getByRole('list', { name: '등록된 휴일' })).toContainText('2026-07-20')
 
   await page.getByRole('button', { name: '일정 저장' }).click()
-  await expect(page.getByRole('alert')).toContainText('현재 선택은 유지')
+  await expect(page.getByRole('alert')).toContainText('현재 편집을 그대로')
   await expect(page.getByRole('checkbox', { name: '토' })).toBeChecked()
   await expect(page.getByRole('list', { name: '등록된 휴일' })).toContainText('2026-07-20')
-  await expect(page.getByText('revision 2')).toBeVisible()
+  await expect(page.getByText('revision 2', { exact: true })).toBeVisible()
 
   const retry = page.waitForRequest(
     (request) => request.method() === 'PATCH' && request.url().endsWith('/admin/workspace/calendar'),
   )
-  await page.getByRole('button', { name: '일정 저장' }).click()
+  await page.getByRole('button', { name: '일정 저장 다시 시도' }).click()
   expect((await retry).postDataJSON()).toEqual({
     working_weekdays: [0, 1, 2, 3, 4, 5],
     holidays: ['2026-07-20'],
   })
-  await expect(page.getByText('revision 3')).toBeVisible()
+  await expect(page.getByText('revision 3', { exact: true })).toBeVisible()
+  await expect(page.getByRole('status')).toContainText('근무 일정을 저장했습니다')
   await expect(page.getByText('월 · 화 · 수 · 목 · 금 · 토 · 휴일 1일')).toBeVisible()
+  await expect(page.getByRole('link', { name: '프로젝트 단계' })).toHaveAttribute(
+    'href',
+    '/admin/project-configuration?tab=phases',
+  )
   await expectNoHorizontalOverflow(page)
   await page.screenshot({
-    path: '../../docs/screenshots/redevelopment/workspace-working-calendar-ui/desktop.png',
+    path: '../../docs/screenshots/redevelopment/workspace-calendar-settings-composition-ui-266/desktop.png',
     fullPage: true,
   })
 
@@ -10041,9 +10266,89 @@ test('워크스페이스 근무 일정은 요일·휴일과 revision 충돌 복�
   await expect(page.getByText('월 · 화 · 수 · 목 · 금 · 토 · 휴일 1일')).toBeVisible()
   await expectNoHorizontalOverflow(page)
   await page.screenshot({
-    path: '../../docs/screenshots/redevelopment/workspace-working-calendar-ui/mobile.png',
+    path: '../../docs/screenshots/redevelopment/workspace-calendar-settings-composition-ui-266/mobile.png',
     fullPage: true,
   })
+  await page.getByRole('heading', { name: '변경 감사' }).scrollIntoViewIfNeeded()
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/workspace-calendar-settings-composition-ui-266/mobile-bottom.png',
+    fullPage: true,
+  })
+})
+
+test('워크스페이스 근무 일정은 일반 저장·새로고침 실패와 권한 상태를 정확히 복구한다', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 900 })
+  await mockApi(page)
+  let calendar = {
+    working_weekdays: [0, 1, 2, 3, 4],
+    holidays: ['2026-08-17'],
+    revision: 1,
+    updated_by_user_id: null as string | null,
+    updated_by_name: null as string | null,
+    updated_at: '2026-07-01T00:00:00Z',
+  }
+  let patchCount = 0
+  let failGets = false
+  const revisions: string[] = []
+  await page.route('**/api/v1/workspace/calendar', async (route) => {
+    if (failGets) {
+      await route.fulfill({ status: 503, json: { detail: 'calendar temporarily unavailable' } })
+      return
+    }
+    await route.fulfill({ json: calendar, headers: { ETag: `"${calendar.revision}"` } })
+  })
+  await page.route('**/api/v1/admin/workspace/calendar', async (route) => {
+    patchCount += 1
+    revisions.push(route.request().headers()['if-match'] ?? '')
+    if (patchCount === 1) {
+      await route.fulfill({ status: 503, json: { detail: 'calendar temporarily unavailable' } })
+      return
+    }
+    const sent = route.request().postDataJSON() as {
+      working_weekdays: number[]
+      holidays: string[]
+    }
+    calendar = {
+      ...calendar,
+      ...sent,
+      revision: 2,
+      updated_by_user_id: 'me-1',
+      updated_by_name: 'Dev User',
+      updated_at: '2026-07-15T12:00:00Z',
+    }
+    await route.fulfill({ json: calendar, headers: { ETag: '"2"' } })
+  })
+
+  await page.goto('/admin/calendar')
+  await page.getByRole('checkbox', { name: '토' }).check()
+  await page.getByRole('button', { name: '일정 저장', exact: true }).click()
+  await expect(page.getByRole('alert')).toContainText('calendar temporarily unavailable')
+  await expect(page.getByRole('checkbox', { name: '토' })).toBeChecked()
+  await page.getByRole('button', { name: '일정 저장 다시 시도' }).click()
+  await expect(page.getByText('revision 2', { exact: true })).toBeVisible()
+  expect(revisions).toEqual(['"1"', '"1"'])
+
+  await page.getByRole('checkbox', { name: '일' }).check()
+  failGets = true
+  await page.getByRole('button', { name: '새로고침', exact: true }).click()
+  await expect(page.getByRole('alert')).toContainText('현재 편집을 유지합니다')
+  await expect(page.getByRole('checkbox', { name: '일' })).toBeChecked()
+  failGets = false
+  await page.getByRole('button', { name: '새로고침 다시 시도' }).click()
+  await expect(page.getByRole('status')).toContainText('편집 중인 일정은 유지됩니다')
+  await expect(page.getByRole('checkbox', { name: '일' })).toBeChecked()
+  await page.getByRole('button', { name: '되돌리기' }).click()
+  await expect(page.getByRole('checkbox', { name: '일' })).not.toBeChecked()
+
+  await page.unroute('**/api/v1/workspace/calendar')
+  await page.route('**/api/v1/workspace/calendar', (route) =>
+    route.fulfill({ status: 403, json: { detail: 'workspace admin required' } }),
+  )
+  await page.reload()
+  await expect(page.getByText('접근 권한이 없습니다')).toBeVisible()
+  await expect(page.getByRole('checkbox', { name: '월' })).toHaveCount(0)
 })
 
 test('프로젝트 구성은 기존 깊은 링크와 URL 탭을 하나의 설정 surface로 통합한다', async ({ page }) => {
@@ -10781,7 +11086,12 @@ test('settings/admin IA는 모바일 폭에서 표면별 탐색을 유지한다'
 
   await page.goto('/status')
   await expect(page.getByRole('heading', { name: '시스템 상태' })).toBeVisible()
-  await expect(page.getByText('0100')).toBeVisible()
+  await expect(
+    page
+      .getByRole('region', { name: '데이터베이스 상태' })
+      .getByText('0100', { exact: true })
+      .first(),
+  ).toBeVisible()
   await expectNoHorizontalOverflow(page)
   await page.screenshot({
     path: '../../docs/screenshots/redevelopment/settings-ia/status-mobile.png',
@@ -10856,6 +11166,10 @@ test('운영 허브는 데이터 이전 이력과 고정 export 파일을 제공
 
   await page.goto('/operations')
   await expect(page.getByRole('heading', { name: '운영 허브' })).toBeVisible()
+  const frameActions = page.locator('[data-frame-context-actions]')
+  await expect(frameActions.getByRole('link', { name: '시스템 상태' })).toHaveAttribute('href', '/status')
+  await expect(frameActions.getByRole('button', { name: '새로고침' })).toBeVisible()
+  await expect(page.getByTestId('operations-scroll')).toBeVisible()
   await expect(page.getByLabel('데이터 작업').getByText('OneFlow 도입')).toBeVisible()
   await expect(page.getByText('기록된 데이터 이전 작업이 없습니다.')).toBeVisible()
   await page.getByRole('navigation', { name: 'Projects 컨텍스트 내비게이션' }).getByRole('button', { name: 'More' }).click()
@@ -10885,11 +11199,17 @@ test('운영 허브는 데이터 이전 이력과 고정 export 파일을 제공
   const repeatReq = page.waitForRequest((req) => req.url().endsWith(`/${job.id}/artifact`))
   await page.getByRole('button', { name: '다시 받기' }).click()
   await repeatReq
+  await expect(page.getByText('최근 데이터 이전에서 내보내기 파일을 다시 받았습니다.')).toBeVisible()
+  await expect(page.getByText('파일은 생성됐지만 자동 다운로드에 실패했습니다.')).toHaveCount(0)
   await page.getByLabel('데이터 이전 프로젝트 필터').selectOption(project.id)
   await expect(historyList.getByText('OneFlow 도입')).toBeVisible()
   await expectNoHorizontalOverflow(page)
   await page.screenshot({
     path: '../../docs/screenshots/redevelopment/data-transfer-jobs-ui/desktop.png',
+    fullPage: true,
+  })
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/operations-hub-ui-254/desktop.png',
     fullPage: true,
   })
 
@@ -10899,36 +11219,257 @@ test('운영 허브는 데이터 이전 이력과 고정 export 파일을 제공
     path: '../../docs/screenshots/redevelopment/data-transfer-jobs-ui/mobile.png',
     fullPage: true,
   })
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/operations-hub-ui-254/mobile.png',
+    fullPage: true,
+  })
+  await page.getByTestId('operations-scroll').evaluate((element) => {
+    element.scrollTop = element.scrollHeight
+  })
+  await expect(page.getByRole('region', { name: '운영 화면' })).toBeVisible()
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/operations-hub-ui-254/mobile-bottom.png',
+    fullPage: true,
+  })
 })
 
-test('위험 구역에서 보관 확인 후 POST /archive를 보낸다', async ({ page }) => {
+test('운영 허브는 프로젝트·이전·관리자 조회를 독립적으로 복구한다', async ({ page }) => {
   await mockApi(page)
-  await page.route('**/api/v1/me', (route) =>
-    route.fulfill({
-      json: { id: 'me-1', email: 'dev@oneflow.local', display_name: 'Dev User', is_active: true },
-    }),
+  const checksum = 'c'.repeat(64)
+  const job: DataTransferJob = {
+    id: '78787878-7878-4787-8787-787878787878',
+    project_id: project.id,
+    project_key: project.key,
+    project_name: project.name,
+    actor_id: 'me-1',
+    actor_name: 'Dev User',
+    direction: 'import',
+    source: 'jira',
+    dry_run: true,
+    status: 'completed_with_errors',
+    total_rows: 3,
+    valid_rows: 2,
+    invalid_rows: 1,
+    inserted_rows: 0,
+    checksum,
+    errors_truncated: false,
+    notes: ['1개 행을 확인해 주세요.'],
+    artifact_available: false,
+    artifact_filename: null,
+    artifact_size_bytes: null,
+    artifact_sha256: null,
+    created_at: '2026-07-26T03:00:00Z',
+  }
+  let projectsAvailable = false
+  let transfersAvailable = false
+  let identityAvailable = false
+  const adminMe = {
+    id: 'me-1',
+    email: 'dev@oneflow.local',
+    display_name: 'Dev User',
+    is_active: true,
+    is_admin: true,
+    profile_image_url: null,
+    profile_image_content_type: null,
+    profile_image_filename: null,
+    profile_image_width: null,
+    profile_image_height: null,
+    profile_image_byte_size: null,
+    profile_revision: 1,
+  }
+
+  await page.route('**/api/v1/projects**', async (route) => {
+    const url = new URL(route.request().url())
+    if (url.pathname !== '/api/v1/projects') {
+      await route.fallback()
+      return
+    }
+    if (!projectsAvailable) {
+      await route.fulfill({ status: 503, json: { detail: 'project directory unavailable' } })
+      return
+    }
+    await route.fulfill({ json: { items: [project], total: 1, limit: 50, offset: 0 } })
+  })
+  await page.route('**/api/v1/data-transfer-jobs**', async (route) => {
+    const url = new URL(route.request().url())
+    if (url.pathname !== '/api/v1/data-transfer-jobs') {
+      await route.fallback()
+      return
+    }
+    if (!transfersAvailable) {
+      await route.fulfill({ status: 503, json: { detail: 'transfer history unavailable' } })
+      return
+    }
+    await route.fulfill({ json: { items: [job], total: 1, limit: 50, offset: 0 } })
+  })
+  await page.route('**/api/v1/me', async (route) => {
+    if (!identityAvailable) {
+      await route.fulfill({ status: 503, json: { detail: 'identity unavailable' } })
+      return
+    }
+    await route.fulfill({ json: adminMe })
+  })
+
+  await page.goto('/operations')
+  const projectsRegion = page.getByRole('region', { name: '프로젝트 데이터 작업' })
+  const transfersRegion = page.getByRole('region', { name: '최근 데이터 이전' })
+  const linksRegion = page.getByRole('region', { name: '운영 화면' })
+
+  await expect(page.getByRole('heading', { name: '운영 허브' })).toBeVisible()
+  await expect(projectsRegion.getByRole('alert')).toBeVisible()
+  await expect(transfersRegion.getByRole('alert')).toBeVisible()
+  await expect(linksRegion.getByText('관리자 권한을 확인하지 못해')).toBeVisible()
+  await expect(linksRegion.getByRole('link', { name: /시스템 상태/ })).toBeVisible()
+
+  identityAvailable = true
+  await linksRegion.getByRole('button', { name: '다시 시도' }).click()
+  await expect(linksRegion.getByRole('link', { name: /사용자 관리/ })).toHaveAttribute(
+    'href',
+    '/admin/users',
   )
+
+  projectsAvailable = true
+  await projectsRegion.getByRole('button', { name: '다시 시도' }).click()
+  await expect(projectsRegion.getByText('OneFlow 도입')).toBeVisible()
+  await expect(transfersRegion.getByRole('alert')).toBeVisible()
+
+  transfersAvailable = true
+  await transfersRegion.getByRole('button', { name: '다시 시도' }).click()
+  await expect(transfersRegion.getByText('Jira · 전체 3')).toBeVisible()
+  await expect(transfersRegion.getByText(/오류 1/)).toBeVisible()
+  await expectNoHorizontalOverflow(page)
+})
+
+test('위험 구역은 확인 dialog에서 실패한 보관을 같은 요청으로 재시도한다', async ({ page }) => {
+  await mockApi(page)
+  let currentProject: Project = { ...project }
+  let archiveAttempts = 0
   await page.route(`**/api/v1/projects/${project.id}`, (route) =>
-    route.fulfill({ json: project }),
+    route.fulfill({ json: currentProject }),
   )
-  await page.route(`**/api/v1/projects/${project.id}/archive`, (route) =>
-    route.fulfill({ json: { ...project, archived_at: '2026-07-06T00:00:00Z' } }),
-  )
+  await page.route(`**/api/v1/projects/${project.id}/archive`, async (route) => {
+    archiveAttempts += 1
+    if (archiveAttempts === 1) {
+      await route.fulfill({
+        status: 503,
+        json: { detail: 'archive unavailable' },
+      })
+      return
+    }
+    currentProject = { ...project, archived_at: '2026-07-06T00:00:00Z' }
+    await route.fulfill({ json: currentProject })
+  })
 
   await page.goto(`/projects/${project.id}/settings?tab=danger`)
-  await expect(page.getByRole('tab', { name: '위험 구역' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '프로젝트 보관' })).toBeVisible()
+  await expect(page.getByText('활성 · 변경 가능')).toBeVisible()
 
-  const dialogs: string[] = []
-  page.once('dialog', (d) => {
-    dialogs.push(d.message())
-    void d.accept()
+  const actionButton = page.getByRole('button', { name: '프로젝트 보관' })
+  await actionButton.click()
+  const dialog = page.getByRole('dialog')
+  await expect(dialog.getByRole('heading', { name: '프로젝트를 보관할까요?' })).toBeVisible()
+  await expect(dialog).toContainText('데이터는 삭제되지 않습니다')
+  await page.waitForTimeout(350)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/project-settings-danger-ui-251/desktop-confirm.png',
   })
-  const post = page.waitForRequest(
-    (r) => r.method() === 'POST' && r.url().includes('/archive'),
+
+  await dialog.getByRole('button', { name: '프로젝트 보관' }).click()
+  await expect(dialog.getByRole('alert')).toContainText('archive unavailable')
+  expect(archiveAttempts).toBe(1)
+
+  await dialog.getByRole('button', { name: '보관 다시 시도' }).click()
+  await expect(dialog).toBeHidden()
+  await expect(page.getByText('보관됨 · 읽기 전용')).toBeVisible()
+  await expect(page.getByRole('status')).toContainText(
+    '프로젝트를 보관했습니다',
   )
-  await page.getByRole('button', { name: '프로젝트 보관' }).click()
-  await post
-  expect(dialogs[0]).toContain('보관할까요')
+  await expect(page.getByRole('button', { name: '프로젝트 복원' })).toBeFocused()
+  expect(archiveAttempts).toBe(2)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/project-settings-danger-ui-251/desktop.png',
+  })
+})
+
+test('위험 구역은 실패한 복원을 보존하고 정확히 다시 실행한다', async ({ page }) => {
+  await mockApi(page)
+  let currentProject: Project = {
+    ...project,
+    archived_at: '2026-07-06T00:00:00Z',
+  }
+  let restoreAttempts = 0
+  await page.route(`**/api/v1/projects/${project.id}`, (route) =>
+    route.fulfill({ json: currentProject }),
+  )
+  await page.route(`**/api/v1/projects/${project.id}/unarchive`, async (route) => {
+    restoreAttempts += 1
+    if (restoreAttempts === 1) {
+      await route.fulfill({
+        status: 409,
+        json: { detail: 'restore conflict' },
+      })
+      return
+    }
+    currentProject = { ...project }
+    await route.fulfill({ json: currentProject })
+  })
+
+  await page.goto(`/projects/${project.id}/settings?tab=danger`)
+  await page.getByRole('button', { name: '프로젝트 복원' }).click()
+  await expect(page.getByRole('alert')).toContainText('restore conflict')
+  expect(restoreAttempts).toBe(1)
+
+  await page.getByRole('button', { name: '복원 다시 시도' }).click()
+  await expect(page.getByText('활성 · 변경 가능')).toBeVisible()
+  await expect(page.getByRole('status')).toContainText(
+    '프로젝트를 복원했습니다',
+  )
+  expect(restoreAttempts).toBe(2)
+})
+
+test('위험 구역은 조회 오류를 복구하고 모바일 멤버에게 읽기 전용이다', async ({ page }) => {
+  await mockApi(page)
+  let projectAttempts = 0
+  await page.route(`**/api/v1/projects/${project.id}/members`, (route) =>
+    route.fulfill({
+      json: {
+        items: [
+          {
+            user_id: 'me-1',
+            email: 'dev@oneflow.local',
+            display_name: 'Dev User',
+            role: 'member',
+          },
+        ],
+        total: 1,
+      },
+    }),
+  )
+  await page.route(`**/api/v1/projects/${project.id}`, async (route) => {
+    projectAttempts += 1
+    if (projectAttempts <= 2) {
+      await route.fulfill({
+        status: 503,
+        json: { detail: 'project unavailable' },
+      })
+      return
+    }
+    await route.fulfill({ json: project })
+  })
+
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto(`/projects/${project.id}/settings?tab=danger`)
+  await expect(page.getByText('데이터를 불러오지 못했습니다')).toBeVisible()
+  await page.getByRole('button', { name: '다시 시도' }).click()
+
+  await expect(page.getByRole('heading', { name: '프로젝트 보관' })).toBeVisible()
+  await expect(page.getByText('프로젝트 소유자만 보관하거나 복원할 수 있습니다.')).toBeVisible()
+  await expect(page.getByRole('button', { name: '프로젝트 보관' })).toHaveCount(0)
+  await expectNoHorizontalOverflow(page)
+  expect(projectAttempts).toBe(3)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/project-settings-danger-ui-251/mobile.png',
+  })
 })
 
 test('인테이크 큐에서 소유자가 수락하면 triage POST가 간다', async ({ page }) => {
@@ -20044,6 +20585,67 @@ test('마일스톤 조회 실패가 오류 상태와 재시도를 제공한다',
   expect(attempts).toBeGreaterThanOrEqual(2)
 })
 
+const opsStatusFixture = {
+  version: '0.1.0',
+  readiness: {
+    status: 'warning',
+    ok: 3,
+    warnings: 1,
+    errors: 0,
+    generated_at: '2026-07-17T02:00:00Z',
+    checks: [
+      {
+        id: 'database',
+        label: '데이터베이스 연결',
+        status: 'ok',
+        detail: '데이터베이스가 요청에 응답합니다.',
+        observed: 'reachable',
+        expected: 'reachable',
+      },
+      {
+        id: 'schema',
+        label: '데이터베이스 스키마',
+        status: 'ok',
+        detail: '데이터베이스 스키마가 애플리케이션 head와 일치합니다.',
+        observed: '0100',
+        expected: '0100',
+      },
+      {
+        id: 'storage',
+        label: '파일 스토리지',
+        status: 'ok',
+        detail: 'LocalStorage에 임시 파일을 쓰고 안전하게 정리했습니다.',
+        observed: 'writable',
+        expected: 'writable',
+      },
+      {
+        id: 'auth',
+        label: '인증 구성',
+        status: 'warning',
+        detail: '개발 인증 모드입니다. 공유 배포 전 OIDC로 전환하세요.',
+        observed: 'dev',
+        expected: 'oidc',
+      },
+    ],
+  },
+  database: {
+    status: 'ok',
+    current_revision: '0100',
+    expected_revision: '0100',
+    matches_head: true,
+  },
+  counts: { projects: 3, work_packages: 42 },
+  config: {
+    environment: 'development',
+    auth_mode: 'dev',
+    oidc_provider_count: 0,
+    ai_summary_enabled: false,
+    storage_backend: 'local',
+    upload_max_bytes: 10485760,
+    project_storage_quota_bytes: 1073741824,
+  },
+}
+
 test('시스템 상태 페이지가 실제 준비 상태를 새로고침하고 안전 진단을 복사한다', async ({ page }) => {
   await mockApi(page)
   await page.addInitScript(() => {
@@ -20053,47 +20655,38 @@ test('시스템 상태 페이지가 실제 준비 상태를 새로고침하고 �
     })
   })
   let statusRequests = 0
-  await page.route('**/api/v1/ops/status', (route) =>
-    { statusRequests += 1; return route.fulfill({
-      json: {
-        version: '0.1.0',
-        readiness: {
-          status: 'warning', ok: 3, warnings: 1, errors: 0,
-          generated_at: '2026-07-17T02:00:00Z',
-          checks: [
-            { id: 'database', label: '데이터베이스 연결', status: 'ok', detail: '데이터베이스가 요청에 응답합니다.', observed: 'reachable', expected: 'reachable' },
-            { id: 'schema', label: '데이터베이스 스키마', status: 'ok', detail: '데이터베이스 스키마가 애플리케이션 head와 일치합니다.', observed: '0100', expected: '0100' },
-            { id: 'storage', label: '파일 스토리지', status: 'ok', detail: 'LocalStorage에 임시 파일을 쓰고 안전하게 정리했습니다.', observed: 'writable', expected: 'writable' },
-            { id: 'auth', label: '인증 구성', status: 'warning', detail: '개발 인증 모드입니다. 공유 배포 전 OIDC로 전환하세요.', observed: 'dev', expected: 'oidc' },
-          ],
-        },
-        database: { status: 'ok', current_revision: '0100', expected_revision: '0100', matches_head: true },
-        counts: { projects: 3, work_packages: 42 },
-        config: {
-          environment: 'development',
-          auth_mode: 'dev',
-          oidc_provider_count: 0,
-          ai_summary_enabled: false,
-          storage_backend: 'local',
-          upload_max_bytes: 10485760,
-          project_storage_quota_bytes: 1073741824,
-        },
-      },
-    }) },
-  )
+  await page.route('**/api/v1/ops/status', (route) => {
+    statusRequests += 1
+    return route.fulfill({ json: opsStatusFixture })
+  })
   await page.goto('/status')
   await expect(page.getByRole('heading', { name: '시스템 상태' })).toBeVisible()
+  const summary = page.getByLabel('시스템 상태 요약')
+  await expect(summary.getByRole('definition').filter({ hasText: '주의 필요' })).toBeVisible()
+  await expect(summary.getByRole('definition').filter({ hasText: '42' })).toBeVisible()
   await expect(
     page.getByRole('region', { name: '배포 준비 상태' }).getByText('주의 필요'),
   ).toBeVisible()
   await expect(page.getByText('데이터베이스 스키마', { exact: true })).toBeVisible()
-  await expect(page.getByText('0.1.0')).toBeVisible()
-  await expect(page.getByText('0100')).toBeVisible()
-  await expect(page.getByText('42')).toBeVisible()
+  await expect(page.getByText('OneFlow v0.1.0')).toBeVisible()
+  const databaseRegion = page.getByRole('region', { name: '데이터베이스 상태' })
+  await expect(databaseRegion.getByText('0100', { exact: true }).first()).toBeVisible()
   await expect(page.getByText('10 MiB')).toBeVisible()
+  await expect(databaseRegion).toContainText('Head 일치')
   await page.screenshot({
-    path: '../../docs/screenshots/redevelopment/deployment-diagnostics-ui/desktop.png',
+    path: '../../docs/screenshots/redevelopment/system-status-composition-ui-260/desktop.png',
     fullPage: true,
+  })
+  const statusScroll = page.getByTestId('system-status-scroll')
+  await statusScroll.evaluate((element) => {
+    element.scrollTop = element.scrollHeight
+  })
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/system-status-composition-ui-260/desktop-bottom.png',
+    fullPage: true,
+  })
+  await statusScroll.evaluate((element) => {
+    element.scrollTop = 0
   })
   await page.getByRole('button', { name: '진단 복사' }).click()
   await expect(page.getByRole('status')).toContainText('진단 보고서를 복사했습니다.')
@@ -20105,9 +20698,77 @@ test('시스템 상태 페이지가 실제 준비 상태를 새로고침하고 �
   await page.setViewportSize({ width: 390, height: 844 })
   await expectNoHorizontalOverflow(page)
   await page.screenshot({
-    path: '../../docs/screenshots/redevelopment/deployment-diagnostics-ui/mobile.png',
+    path: '../../docs/screenshots/redevelopment/system-status-composition-ui-260/mobile.png',
     fullPage: true,
   })
+  await statusScroll.evaluate((element) => {
+    element.scrollTop = element.scrollHeight
+  })
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/system-status-composition-ui-260/mobile-bottom.png',
+    fullPage: true,
+  })
+})
+
+test('시스템 상태는 초기·새로고침·진단 복사 실패를 마지막 성공 결과에서 정확히 복구한다', async ({
+  page,
+}) => {
+  await mockApi(page)
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: {
+        writeText: async (value: string) => {
+          const attempts = Number(window.sessionStorage.getItem('__diagnostic_attempts') ?? '0') + 1
+          window.sessionStorage.setItem('__diagnostic_attempts', String(attempts))
+          if (attempts === 1) throw new Error('clipboard denied')
+          window.sessionStorage.setItem('__diagnostic_copy', value)
+        },
+      },
+    })
+  })
+  let statusRequests = 0
+  await page.route('**/api/v1/ops/status', async (route) => {
+    statusRequests += 1
+    if ([1, 2, 4, 5].includes(statusRequests)) {
+      await route.fulfill({
+        status: 503,
+        json: { detail: 'readiness temporarily unavailable' },
+      })
+      return
+    }
+    await route.fulfill({ json: opsStatusFixture })
+  })
+
+  await page.goto('/status')
+  await expect(page.getByRole('alert')).toContainText('데이터를 불러오지 못했습니다')
+  await page.getByRole('button', { name: '다시 시도' }).click()
+  await expect(page.getByLabel('시스템 상태 요약')).toContainText('주의 필요')
+
+  await page.getByRole('button', { name: '진단 복사' }).click()
+  await expect(page.getByRole('alert')).toContainText('클립보드에 복사하지 못했습니다')
+  await page.getByRole('button', { name: '진단 복사 다시 시도' }).click()
+  await expect(page.getByRole('status')).toContainText('진단 보고서를 복사했습니다')
+  const copied = await page.evaluate(() => window.sessionStorage.getItem('__diagnostic_copy'))
+  expect(copied).toContain('oneflow-deployment-diagnostics/v1')
+
+  await page.getByRole('button', { name: '새로고침' }).click()
+  await expect(page.getByRole('alert')).toContainText('마지막으로 확인한 결과를 유지합니다')
+  await expect(page.getByText('데이터베이스 스키마', { exact: true })).toBeVisible()
+  await expect(page.getByLabel('시스템 상태 요약')).toContainText('42')
+  await page.setViewportSize({ width: 390, height: 844 })
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/system-status-composition-ui-260/mobile-refresh-error.png',
+    fullPage: true,
+  })
+
+  await page.getByRole('button', { name: '새로고침 다시 시도' }).click()
+  await expect.poll(() => statusRequests).toBe(6)
+  await expect(
+    page.getByText('최신 상태를 불러오지 못했습니다. 마지막으로 확인한 결과를 유지합니다.'),
+  ).toHaveCount(0)
 })
 
 test('알 수 없는 주소는 스타일된 404 페이지를 보여준다', async ({ page }) => {
@@ -21410,11 +22071,18 @@ test('Workspace 초대는 브랜드 메뉴에서 생성·복사·회전·취소�
   await expect(page.getByLabel('새 초대 링크')).toHaveValue(/\/invite\/rotated-/)
   await page.getByRole('button', { name: '닫기' }).click()
   await page.getByRole('button', { name: '초대 취소' }).click()
+  const revokeDialog = page.getByRole('dialog', { name: '초대 취소' })
+  await expect(revokeDialog).toBeVisible()
+  await revokeDialog.getByRole('button', { name: '초대 취소 확인' }).click()
   await expect(page.getByText('취소됨', { exact: true }).first()).toBeVisible()
 
   await page.setViewportSize({ width: 1440, height: 900 })
   await page.screenshot({
     path: '../../docs/screenshots/redevelopment/settings-members-directory-ui-237/invitations-desktop.png',
+    fullPage: true,
+  })
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/workspace-users-management-composition-ui-267/invitations-desktop.png',
     fullPage: true,
   })
   await page.setViewportSize({ width: 390, height: 844 })
@@ -21423,6 +22091,126 @@ test('Workspace 초대는 브랜드 메뉴에서 생성·복사·회전·취소�
     path: '../../docs/screenshots/redevelopment/settings-members-directory-ui-237/invitations-mobile.png',
     fullPage: true,
   })
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/workspace-users-management-composition-ui-267/invitations-mobile.png',
+    fullPage: true,
+  })
+})
+
+test('Workspace 초대는 마지막 목록을 유지하고 실패한 링크 회전·취소를 그대로 재시도한다', async ({ page }) => {
+  await mockApi(page)
+  let invitation = {
+    id: 'invite-recovery',
+    email: 'recover@example.com',
+    display_name: 'Recovery Member',
+    status: 'pending' as 'pending' | 'revoked',
+    expires_at: '2026-08-03T00:00:00Z',
+    accepted_at: null,
+    revoked_at: null as string | null,
+    version: 4,
+    created_at: '2026-07-27T00:00:00Z',
+  }
+  let listReads = 0
+  let failRefresh = false
+  let rotateAttempts = 0
+  let revokeAttempts = 0
+  const rotatePayloads: Record<string, unknown>[] = []
+  const revokeVersions: string[] = []
+
+  await page.route('**/api/v1/workspace-invitations**', (route) => {
+    const request = route.request()
+    const url = new URL(request.url())
+    if (request.method() === 'POST' && url.pathname.endsWith('/rotate')) {
+      rotateAttempts += 1
+      rotatePayloads.push(request.postDataJSON() as Record<string, unknown>)
+      if (rotateAttempts === 1) {
+        return route.fulfill({ status: 503, json: { detail: 'temporary rotate failure' } })
+      }
+      invitation = { ...invitation, version: invitation.version + 1 }
+      return route.fulfill({
+        json: { ...invitation, token: `recovered-${'r'.repeat(36)}` },
+      })
+    }
+    if (request.method() === 'DELETE') {
+      revokeAttempts += 1
+      revokeVersions.push(url.searchParams.get('expected_version') ?? '')
+      if (revokeAttempts === 1) {
+        return route.fulfill({ status: 503, json: { detail: 'temporary revoke failure' } })
+      }
+      invitation = {
+        ...invitation,
+        status: 'revoked',
+        revoked_at: '2026-07-27T01:00:00Z',
+        version: invitation.version + 1,
+      }
+      return route.fulfill({ status: 204, body: '' })
+    }
+    listReads += 1
+    if (failRefresh && listReads > 1) {
+      failRefresh = false
+      return route.fulfill({ status: 503, json: { detail: 'temporary list failure' } })
+    }
+    return route.fulfill({ json: { items: [invitation], total: 1 } })
+  })
+
+  await page.goto('/admin/users?view=invites')
+  await expect(page.getByText('recover@example.com')).toBeVisible()
+  await expect(page.getByLabel('워크스페이스 초대 요약')).toContainText('대기 중1')
+
+  failRefresh = true
+  await page.getByRole('button', { name: '새로고침', exact: true }).click()
+  await expect(page.getByRole('alert')).toContainText('마지막으로 확인한 목록을 유지')
+  await expect(page.getByText('recover@example.com')).toBeVisible()
+  await page.getByRole('button', { name: '다시 시도', exact: true }).click()
+  await expect(page.getByRole('alert')).toHaveCount(0)
+
+  await page.getByRole('button', { name: '새 링크 발급' }).click()
+  await expect(page.getByRole('alert')).toContainText('temporary rotate failure')
+  await page.getByRole('button', { name: '같은 요청 다시 시도' }).click()
+  await expect(page.getByLabel('새 초대 링크')).toHaveValue(/\/invite\/recovered-/)
+  expect(rotatePayloads).toEqual([{ expected_version: 4 }, { expected_version: 4 }])
+
+  await page.getByRole('button', { name: '닫기' }).click()
+  const revokeTrigger = page.getByRole('button', { name: '초대 취소' })
+  await revokeTrigger.click()
+  const revokeDialog = page.getByRole('dialog', { name: '초대 취소' })
+  await revokeDialog.getByRole('button', { name: '초대 취소 확인' }).click()
+  await expect(revokeDialog.getByRole('alert')).toContainText('temporary revoke failure')
+  await revokeDialog.getByRole('button', { name: '같은 취소 다시 시도' }).click()
+  await expect(revokeDialog).toBeHidden()
+  await expect(page.getByText('취소됨', { exact: true }).first()).toBeVisible()
+  await expect(page.getByRole('heading', { name: '멤버 초대' })).toBeFocused()
+  expect(revokeVersions).toEqual(['5', '5'])
+})
+
+test('초대 작성 초안은 프레임 액션에서 열리고 보기 이동 전에 확인을 요구한다', async ({ page }) => {
+  await mockApi(page)
+  await page.route('**/api/v1/workspace-invitations', (route) =>
+    route.fulfill({ json: { items: [], total: 0 } }),
+  )
+  await page.goto('/admin/users?view=invites')
+
+  const frameActions = page.locator('[data-frame-context-actions]')
+  await frameActions.getByRole('button', { name: '멤버 초대' }).click()
+  await page.getByLabel('초대 이메일').fill('draft@example.com')
+  await page.getByLabel('초대 사용자 이름').fill('Draft Member')
+
+  const tablist = page.getByRole('tablist', { name: '사용자 관리 보기' })
+  const firstDialog = page.waitForEvent('dialog')
+  const dismissedNavigation = tablist.getByRole('tab', { name: '멤버' }).click()
+  const discardPrompt = await firstDialog
+  expect(discardPrompt.message()).toContain('작성 중인 사용자 또는 초대 정보')
+  await discardPrompt.dismiss()
+  await dismissedNavigation
+  await expect(page).toHaveURL('/admin/users?view=invites')
+  await expect(page.getByLabel('초대 이메일')).toHaveValue('draft@example.com')
+
+  const secondDialog = page.waitForEvent('dialog')
+  const acceptedNavigation = tablist.getByRole('tab', { name: '멤버' }).click()
+  await (await secondDialog).accept()
+  await acceptedNavigation
+  await expect(page).toHaveURL('/admin/users')
+  await expect(page.getByLabel('초대 이메일')).toHaveCount(0)
 })
 
 test('공개 초대 링크는 미리보기·일회성 수락 후 로그인 이메일을 인계한다', async ({ page }) => {
@@ -21854,9 +22642,66 @@ test('관리자가 사용자 디렉터리에서 추가·비활성화를 수행�
     (r) => r.method() === 'PATCH' && r.url().includes('/api/v1/users/u-b'),
   )
   await rookieRow.getByRole('button', { name: '비활성화' }).click()
+  const deactivateDialog = page.getByRole('dialog', { name: '사용자 비활성화' })
+  await expect(deactivateDialog).toBeVisible()
+  await deactivateDialog.getByRole('button', { name: '비활성화', exact: true }).click()
   expect(((await patch).postDataJSON() as { is_active: boolean }).is_active).toBe(false)
   await expect(rookieRow.getByText('비활성')).toBeVisible()
   await expect(rookieRow.getByRole('button', { name: '활성화' })).toBeVisible()
+})
+
+test('사용자 비활성화는 확인 후 동일 요청을 보존해 실패에서 복구한다', async ({ page }) => {
+  await mockApi(page)
+  const admin = {
+    id: 'me-1',
+    email: 'dev@oneflow.local',
+    display_name: 'Dev User',
+    is_active: true,
+    is_admin: true,
+    created_at: '2026-07-01T00:00:00Z',
+  }
+  let member = {
+    id: 'member-retry',
+    email: 'retry@oneflow.local',
+    display_name: 'Retry Member',
+    is_active: true,
+    is_admin: false,
+    created_at: '2026-07-02T00:00:00Z',
+  }
+  let patchAttempts = 0
+  const payloads: Record<string, unknown>[] = []
+  await page.route(/\/api\/v1\/users(?:\?.*)?$/, (route) =>
+    route.fulfill({
+      json: {
+        items: [admin, member],
+        total: 2,
+        summary: { users: 2, active: member.is_active ? 2 : 1, admins: 1, inactive: member.is_active ? 0 : 1, active_admins: 1 },
+      },
+    }),
+  )
+  await page.route('**/api/v1/users/member-retry', (route) => {
+    patchAttempts += 1
+    payloads.push(route.request().postDataJSON() as Record<string, unknown>)
+    if (patchAttempts === 1) {
+      return route.fulfill({ status: 503, json: { detail: 'temporary failure' } })
+    }
+    member = { ...member, is_active: false }
+    return route.fulfill({ json: member })
+  })
+
+  await page.goto('/admin/users')
+  const row = page.getByRole('row', { name: /Retry Member/ })
+  const trigger = row.getByRole('button', { name: '비활성화' })
+  await trigger.click()
+  const dialog = page.getByRole('dialog', { name: '사용자 비활성화' })
+  await dialog.getByRole('button', { name: '비활성화', exact: true }).click()
+  await expect(dialog.getByRole('alert')).toContainText('같은 요청을 다시 시도')
+  await dialog.getByRole('button', { name: '같은 요청 다시 시도' }).click()
+  await expect(dialog).toBeHidden()
+  await expect(row.getByText('비활성')).toBeVisible()
+  await expect(row.getByRole('button', { name: '활성화' })).toBeFocused()
+  expect(patchAttempts).toBe(2)
+  expect(payloads).toEqual([{ is_active: false }, { is_active: false }])
 })
 
 test('사용자 디렉터리는 서버 검색·필터·추가 페이지와 전체 요약을 유지한다', async ({ page }) => {
@@ -21916,6 +22761,10 @@ test('사용자 디렉터리는 서버 검색·필터·추가 페이지와 전�
   await expectNoHorizontalOverflow(page)
   await page.screenshot({
     path: '../../docs/screenshots/redevelopment/settings-members-directory-ui-237/pagination-desktop.png',
+    fullPage: true,
+  })
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/workspace-users-management-composition-ui-267/directory-desktop.png',
     fullPage: true,
   })
 
@@ -22078,6 +22927,10 @@ test('사용자 디렉터리는 모바일에서 계정 카드와 멤버십을 �
   await page.evaluate(() => document.querySelector('main')?.scrollTo(0, 0))
   await page.screenshot({
     path: '../../docs/screenshots/redevelopment/settings-members-directory-ui-237/mobile.png',
+    fullPage: true,
+  })
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/workspace-users-management-composition-ui-267/directory-mobile.png',
     fullPage: true,
   })
 })
@@ -22531,8 +23384,10 @@ test('프로젝트 cover는 디렉터리와 Overview를 공유하고 owner가 �
   await mockApi(page)
   let currentProject: Project = { ...project, cover_attachment_id: 'cover-old' }
   let rejectNextCover = false
+  let rejectNextBrief = false
   let commitThenAbortNextCover = false
   let cleanupCount = 0
+  const briefPatches: Array<{ description: string | null }> = []
   const coverPng = Buffer.from(
     'iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAEklEQVR4nGPkndLBwMDAxAAGAA2bAS37E8jFAAAAAElFTkSuQmCC',
     'base64',
@@ -22571,20 +23426,30 @@ test('프로젝트 cover는 디렉터리와 Overview를 공유하고 owner가 �
   }))
   await page.route(`**/api/v1/projects/${project.id}`, async (route) => {
     if (route.request().method() === 'PATCH') {
-      if (commitThenAbortNextCover) {
+      const body = route.request().postDataJSON() as {
+        cover_attachment_id?: string | null
+        description?: string | null
+      }
+      if ('description' in body) {
+        briefPatches.push({ description: body.description ?? null })
+        if (rejectNextBrief) {
+          rejectNextBrief = false
+          await route.fulfill({ status: 503, json: { detail: 'brief temporarily unavailable' } })
+          return
+        }
+      }
+      if (commitThenAbortNextCover && 'cover_attachment_id' in body) {
         commitThenAbortNextCover = false
-        const body = route.request().postDataJSON() as { cover_attachment_id: string | null }
-        currentProject = { ...currentProject, cover_attachment_id: body.cover_attachment_id }
+        currentProject = { ...currentProject, cover_attachment_id: body.cover_attachment_id ?? null }
         await route.abort('connectionrefused')
         return
       }
-      if (rejectNextCover) {
+      if (rejectNextCover && 'cover_attachment_id' in body) {
         rejectNextCover = false
         await route.fulfill({ status: 422, json: { detail: 'cover rejected' } })
         return
       }
-      const body = route.request().postDataJSON() as { cover_attachment_id: string | null }
-      currentProject = { ...currentProject, cover_attachment_id: body.cover_attachment_id }
+      currentProject = { ...currentProject, ...body }
       await route.fulfill({ json: currentProject })
       return
     }
@@ -22631,6 +23496,42 @@ test('프로젝트 cover는 디렉터리와 Overview를 공유하고 owner가 �
   await expect(page.getByRole('region', { name: '프로젝트 진행 요약' })).toContainText('완료율')
   await expect(page.getByRole('region', { name: '프로젝트 진행 요약' })).toContainText('50%')
   await expect(page.getByRole('region', { name: '최근 작업' })).toContainText(wpA.subject)
+  await expect(frame.getByRole('button', { name: '개요 편집' })).toBeVisible()
+  await expect(frame.getByRole('link', { name: 'Work items' })).toHaveAttribute(
+    'href',
+    `/projects/${project.id}/work-packages`,
+  )
+  await expect(frame.getByRole('link', { name: '대시보드' })).toHaveAttribute(
+    'href',
+    `/projects/${project.id}/dashboard`,
+  )
+
+  const overview = page.getByRole('region', { name: '프로젝트 개요' })
+  rejectNextBrief = true
+  await frame.getByRole('button', { name: '개요 편집' }).click()
+  const briefInput = overview.getByLabel('프로젝트 개요 내용')
+  await briefInput.fill('출시 범위와 성공 기준을 함께 관리합니다.')
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/project-overview-ui-253/editor-desktop.png',
+  })
+  await overview.getByRole('button', { name: '저장' }).click()
+  await expect(overview.getByRole('alert')).toContainText('brief temporarily unavailable')
+  await expect(briefInput).toHaveValue('출시 범위와 성공 기준을 함께 관리합니다.')
+  await overview.getByRole('alert').getByRole('button', { name: '다시 시도' }).click()
+  await expect(overview.getByText('출시 범위와 성공 기준을 함께 관리합니다.')).toBeVisible()
+  await expect(frame.getByRole('button', { name: '개요 편집' })).toBeFocused()
+  expect(briefPatches).toEqual([
+    { description: '출시 범위와 성공 기준을 함께 관리합니다.' },
+    { description: '출시 범위와 성공 기준을 함께 관리합니다.' },
+  ])
+
+  await frame.getByRole('button', { name: '개요 편집' }).click()
+  await overview.getByLabel('프로젝트 개요 내용').fill('저장하지 않은 초안')
+  page.once('dialog', (dialog) => dialog.dismiss())
+  await frame.getByRole('link', { name: '대시보드' }).click()
+  await expect(page).toHaveURL(`/projects/${project.id}/overview`)
+  await expect(overview.getByLabel('프로젝트 개요 내용')).toHaveValue('저장하지 않은 초안')
+  await overview.getByRole('button', { name: '취소' }).click()
 
   const coverTrigger = page.getByRole('button', { name: '표지 변경' })
   await coverTrigger.click()
@@ -22670,14 +23571,23 @@ test('프로젝트 cover는 디렉터리와 Overview를 공유하고 owner가 �
   await page.waitForTimeout(250)
 
   await page.screenshot({
-    path: '../../docs/screenshots/redevelopment/project-directory-cover-overview-ui/overview-desktop.png',
+    path: '../../docs/screenshots/redevelopment/project-overview-ui-253/desktop.png',
   })
   await page.setViewportSize({ width: 390, height: 844 })
   await expectNoHorizontalOverflow(page)
   await page.screenshot({
-    path: '../../docs/screenshots/redevelopment/project-directory-cover-overview-ui/overview-mobile.png',
+    path: '../../docs/screenshots/redevelopment/project-overview-ui-253/mobile.png',
     fullPage: true,
   })
+  await page.getByTestId('frame-context-bar').getByRole('button', { name: '개요 편집' }).click()
+  await page.getByRole('region', { name: '프로젝트 개요' }).getByLabel('프로젝트 개요 내용').fill(
+    '모바일에서도 목표와 성공 기준을 편집합니다.',
+  )
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/project-overview-ui-253/editor-mobile.png',
+    fullPage: true,
+  })
+  await page.getByRole('region', { name: '프로젝트 개요' }).getByRole('button', { name: '취소' }).click()
 
   await page.getByRole('button', { name: '표지 변경' }).click()
   const removePatch = page.waitForRequest(
@@ -22701,14 +23611,81 @@ test('프로젝트 cover는 디렉터리와 Overview를 공유하고 owner가 �
   await expect(page.getByRole('dialog', { name: '프로젝트 표지' }).getByRole('alert')).toContainText('cover rejected')
 
   commitThenAbortNextCover = true
-  await page.getByRole('dialog', { name: '프로젝트 표지' }).getByLabel('프로젝트 표지 파일').setInputFiles({
-    name: 'committed-cover.png',
-    mimeType: 'image/png',
-    buffer: coverPng,
-  })
+  await page.getByRole('dialog', { name: '프로젝트 표지' }).getByRole('button', { name: '다시 시도' }).click()
   await expect(page.getByRole('dialog', { name: '프로젝트 표지' })).toHaveCount(0)
   await expect(page.getByAltText(`${project.name} 표지`)).toHaveAttribute('src', /cover-new\/download$/)
   expect(cleanupCount).toBe(1)
+})
+
+test('프로젝트 Overview는 집계와 멤버 조회 실패를 다른 콘텐츠와 분리해 복구한다', async ({ page }) => {
+  await mockApi(page)
+  let dashboardUnavailable = true
+  let membersUnavailable = true
+  const dashboard = {
+    id: project.id,
+    key: project.key,
+    name: project.name,
+    description: project.description,
+    health: 'on_track',
+    health_note: '계획대로 진행 중입니다.',
+    archived_at: null,
+    completion_percent: 40,
+    recent_work_packages: [],
+    total_work_packages: 5,
+    open_work_packages: 3,
+    overdue_count: 1,
+    status_counts: [],
+    priority_counts: [],
+    type_counts: [],
+    total_estimated_hours: 32,
+    total_spent_hours: 14,
+    budget: null,
+    total_cost: 0,
+  }
+
+  await page.route(`**/api/v1/projects/${project.id}/dashboard`, (route) =>
+    dashboardUnavailable
+      ? route.fulfill({ status: 503, json: { detail: 'dashboard temporarily unavailable' } })
+      : route.fulfill({ json: dashboard }),
+  )
+  await page.route(`**/api/v1/projects/${project.id}/members`, (route) =>
+    membersUnavailable
+      ? route.fulfill({ status: 503, json: { detail: 'members temporarily unavailable' } })
+      : route.fulfill({
+          json: {
+            items: [
+              {
+                user_id: 'me-1',
+                email: 'dev@oneflow.local',
+                display_name: 'Dev User',
+                role: 'owner',
+              },
+            ],
+            total: 1,
+          },
+        }),
+  )
+
+  await page.goto(`/projects/${project.id}/overview`)
+  await expect(page.getByRole('region', { name: '프로젝트 개요' })).toContainText(project.description!)
+  await expect(page.getByRole('region', { name: '프로젝트 일정 기준선' })).toBeVisible()
+
+  const summary = page.getByRole('region', { name: '프로젝트 진행 요약' })
+  await expect(summary.getByRole('alert')).toContainText('진행 요약을 불러오지 못했습니다')
+  const signals = page.getByRole('complementary', { name: '프로젝트 정보' })
+  await expect(signals.getByRole('alert')).toContainText('멤버와 내 권한을 확인하지 못했습니다')
+  await expect(page.getByTestId('frame-context-bar').getByRole('button', { name: '개요 편집' })).toHaveCount(0)
+
+  dashboardUnavailable = false
+  await summary.getByRole('button', { name: '다시 시도' }).click()
+  await expect(summary).toContainText('40%')
+  await expect(page.getByRole('region', { name: '프로젝트 개요' })).toContainText(project.description!)
+
+  membersUnavailable = false
+  await signals.getByRole('button', { name: '다시 시도' }).click()
+  await expect(signals).toContainText('멤버1')
+  await expect(page.getByTestId('frame-context-bar').getByRole('button', { name: '개요 편집' })).toBeVisible()
+  await expectNoHorizontalOverflow(page)
 })
 
 test('프로젝트 일정 기준선 이력과 추세는 이름 저장·시간순 선택·개별 삭제까지 실제 요청으로 이어진다', async ({ page }) => {
@@ -24866,6 +25843,11 @@ test('Workspace 관리 개요는 실제 운영 상태와 기본 관리 동선을
   await expect(page).toHaveURL(/\/admin\/overview$/)
   await expect(page.getByRole('heading', { name: '관리 개요' })).toBeVisible()
   await expect(page.getByRole('navigation', { name: '설정 컨텍스트 내비게이션' }).getByRole('link', { name: '개요' })).toHaveAttribute('aria-current', 'page')
+  const frameActions = page.locator('[data-frame-context-actions]')
+  const refreshAll = frameActions.getByRole('button', { name: '모두 새로고침' })
+  const summary = page.getByLabel('워크스페이스 관리 요약')
+  await expect(refreshAll).toBeEnabled()
+  await expect(page.getByTestId('workspace-admin-overview-scroll')).toBeVisible()
 
   await expect(page.getByLabel('사용자 상태').getByText('확인 실패')).toBeVisible()
   await expect(page.getByLabel('Identity 상태').getByText('기본 identity')).toBeVisible()
@@ -24874,11 +25856,26 @@ test('Workspace 관리 개요는 실제 운영 상태와 기본 관리 동선을
   await expect(page.getByLabel('프로젝트 단계 상태').getByText('5개 활성')).toBeVisible()
   await expect(page.getByLabel('기능 상태').getByText('3개 활성')).toBeVisible()
   await expect(page.getByText('AI 배포 상한 차단')).toBeVisible()
+  await expect(
+    summary.getByText('확인', { exact: true }).locator('..').getByText('5', { exact: true }),
+  ).toBeVisible()
+  await expect(
+    summary.getByText('주의', { exact: true }).locator('..').getByText('2', { exact: true }),
+  ).toBeVisible()
+  await expect(
+    summary.getByText('실패', { exact: true }).locator('..').getByText('1', { exact: true }),
+  ).toBeVisible()
 
   usersHealthy = true
   await page.getByLabel('사용자 다시 시도').click()
   await expect(page.getByLabel('사용자 상태').getByText('2명 활성')).toBeVisible()
   await expect(page.getByText('관리자 1명')).toBeVisible()
+  await expect(
+    summary.getByText('확인', { exact: true }).locator('..').getByText('6', { exact: true }),
+  ).toBeVisible()
+  await expect(
+    summary.getByText('실패', { exact: true }).locator('..').getByText('0', { exact: true }),
+  ).toBeVisible()
 
   await expect(page.getByRole('link', { name: '일반 설정' })).toHaveAttribute('href', '/admin/general')
   await expect(page.getByRole('link', { name: '사용자 관리' })).toHaveAttribute('href', '/admin/users')
@@ -24887,8 +25884,6 @@ test('Workspace 관리 개요는 실제 운영 상태와 기본 관리 동선을
   await expect(page.getByRole('link', { name: '단계 관리' })).toHaveAttribute('href', '/admin/project-configuration?tab=phases')
   await expect(page.getByRole('link', { name: '기능 설정' })).toHaveAttribute('href', '/admin/wiki')
 
-  const refreshAll = page.getByRole('button', { name: '모두 새로고침' })
-  await expect(refreshAll).toBeEnabled()
   await refreshAll.click()
   await expect.poll(() => profileReads).toBeGreaterThan(1)
 
@@ -24897,12 +25892,186 @@ test('Workspace 관리 개요는 실제 운영 상태와 기본 관리 동선을
     path: '../../docs/screenshots/redevelopment/settings-overview-ui/desktop.png',
     fullPage: true,
   })
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/workspace-admin-overview-ui-256/desktop.png',
+    fullPage: true,
+  })
   await page.setViewportSize({ width: 390, height: 844 })
   await expectNoHorizontalOverflow(page)
   await page.screenshot({
     path: '../../docs/screenshots/redevelopment/settings-overview-ui/mobile.png',
     fullPage: true,
   })
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/workspace-admin-overview-ui-256/mobile.png',
+    fullPage: true,
+  })
+  const capabilityStatus = page.getByLabel('기능 상태')
+  await capabilityStatus.scrollIntoViewIfNeeded()
+  await expect(capabilityStatus).toBeInViewport()
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/workspace-admin-overview-ui-256/mobile-bottom.png',
+    fullPage: false,
+  })
+})
+
+test('Workspace 관리 개요는 여섯 상태 조회를 서로 막지 않고 각각 복구한다', async ({ page }) => {
+  await mockApi(page)
+  let profileAvailable = false
+  let usersAvailable = false
+  let invitationsAvailable = false
+  let calendarAvailable = false
+  let phasesAvailable = false
+  let capabilitiesAvailable = false
+
+  await page.route('**/api/v1/admin/workspace/profile', (route) => {
+    if (!profileAvailable) {
+      return route.fulfill({ status: 503, json: { detail: 'profile unavailable' } })
+    }
+    return route.fulfill({
+      headers: { ETag: '"2"' },
+      json: {
+        id: 1,
+        name: 'OneFlow',
+        revision: 2,
+        logo_url: null,
+        logo_content_type: null,
+        logo_filename: null,
+        logo_width: null,
+        logo_height: null,
+        logo_byte_size: null,
+        updated_by_user_id: 'me-1',
+        updated_by_name: 'Dev User',
+        updated_at: '2026-07-27T00:00:00Z',
+      },
+    })
+  })
+  await page.route('**/api/v1/users', (route) => {
+    if (!usersAvailable) {
+      return route.fulfill({ status: 503, json: { detail: 'users unavailable' } })
+    }
+    return route.fulfill({
+      json: {
+        items: [
+          { id: 'me-1', email: 'dev@example.com', display_name: 'Dev User', is_active: true, is_admin: true, created_at: '2026-07-01T00:00:00Z' },
+        ],
+        total: 1,
+      },
+    })
+  })
+  await page.route('**/api/v1/workspace-invitations', (route) => {
+    if (!invitationsAvailable) {
+      return route.fulfill({ status: 503, json: { detail: 'invitations unavailable' } })
+    }
+    return route.fulfill({
+      json: {
+        items: [
+          { id: 'invite-1', email: 'new@example.com', display_name: 'New Member', status: 'pending', expires_at: '2026-08-03T00:00:00Z', accepted_at: null, revoked_at: null, version: 0, created_at: '2026-07-27T00:00:00Z' },
+        ],
+        total: 1,
+      },
+    })
+  })
+  await page.route('**/api/v1/workspace/calendar', (route) => {
+    if (!calendarAvailable) {
+      return route.fulfill({ status: 503, json: { detail: 'calendar unavailable' } })
+    }
+    return route.fulfill({
+      json: {
+        working_weekdays: [],
+        holidays: [],
+        revision: 1,
+        updated_by_user_id: 'me-1',
+        updated_by_name: 'Dev User',
+        updated_at: '2026-07-27T00:00:00Z',
+      },
+    })
+  })
+  await page.route('**/api/v1/workspace/project-phase-definitions', (route) => {
+    if (!phasesAvailable) {
+      return route.fulfill({ status: 503, json: { detail: 'phases unavailable' } })
+    }
+    return route.fulfill({
+      json: {
+        items: [
+          { key: 'legacy', name: '종료된 단계', color: 'amber', position: 0, retired: true, built_in: false },
+        ],
+        revision: 3,
+        updated_by_user_id: 'me-1',
+        updated_by_name: 'Dev User',
+        updated_at: '2026-07-27T00:00:00Z',
+      },
+    })
+  })
+  await page.unroute('**/api/v1/workspace/capabilities')
+  await page.route('**/api/v1/workspace/capabilities', (route) => {
+    if (!capabilitiesAvailable) {
+      return route.fulfill({ status: 503, json: { detail: 'capabilities unavailable' } })
+    }
+    return route.fulfill({
+      json: {
+        wiki: { enabled: false, revision: 1 },
+        ai: { enabled: true, revision: 2, deployment_enabled: false, effective_enabled: false },
+        initiatives: { enabled: false, revision: 1 },
+        releases: { enabled: false, revision: 1 },
+        customers: { enabled: false, revision: 1 },
+      },
+    })
+  })
+
+  await page.goto('/admin/overview')
+  const summary = page.getByLabel('워크스페이스 관리 요약')
+  const profileStatus = page.getByLabel('Identity 상태')
+  const usersStatus = page.getByLabel('사용자 상태')
+  const invitationStatus = page.getByLabel('워크스페이스 초대 상태')
+  const calendarStatus = page.getByLabel('근무 일정 상태')
+  const phasesStatus = page.getByLabel('프로젝트 단계 상태')
+  const capabilitiesStatus = page.getByLabel('기능 상태')
+
+  await expect(profileStatus.getByText('확인 실패')).toBeVisible()
+  await expect(usersStatus.getByText('확인 실패')).toBeVisible()
+  await expect(invitationStatus.getByText('확인 실패')).toBeVisible()
+  await expect(calendarStatus.getByText('확인 실패')).toBeVisible()
+  await expect(phasesStatus.getByText('확인 실패')).toBeVisible()
+  await expect(capabilitiesStatus.getByText('확인 실패')).toBeVisible()
+  await expect(
+    summary.getByText('실패', { exact: true }).locator('..').getByText('6', { exact: true }),
+  ).toBeVisible()
+
+  profileAvailable = true
+  await page.getByLabel('Identity 다시 시도').click()
+  await expect(profileStatus.getByText('기본 identity')).toBeVisible()
+  await expect(usersStatus.getByText('확인 실패')).toBeVisible()
+
+  usersAvailable = true
+  await page.getByLabel('사용자 다시 시도').click()
+  await expect(usersStatus.getByText('1명 활성')).toBeVisible()
+
+  invitationsAvailable = true
+  await page.getByLabel('워크스페이스 초대 다시 시도').click()
+  await expect(invitationStatus.getByText('1건 대기')).toBeVisible()
+
+  calendarAvailable = true
+  await page.getByLabel('근무 일정 다시 시도').click()
+  await expect(calendarStatus.getByText('0일 근무')).toBeVisible()
+
+  phasesAvailable = true
+  await page.getByLabel('프로젝트 단계 다시 시도').click()
+  await expect(phasesStatus.getByText('0개 활성')).toBeVisible()
+
+  capabilitiesAvailable = true
+  await page.getByLabel('기능 다시 시도').click()
+  await expect(capabilitiesStatus.getByText('0개 활성')).toBeVisible()
+  await expect(
+    summary.getByText('확인', { exact: true }).locator('..').getByText('6', { exact: true }),
+  ).toBeVisible()
+  await expect(
+    summary.getByText('주의', { exact: true }).locator('..').getByText('4', { exact: true }),
+  ).toBeVisible()
+  await expect(
+    summary.getByText('실패', { exact: true }).locator('..').getByText('0', { exact: true }),
+  ).toBeVisible()
+  await expectNoHorizontalOverflow(page)
 })
 
 test('연결 및 통합 허브는 실제 capability 상태와 관리 동선을 독립적으로 제공한다', async ({ page }) => {
@@ -24998,6 +26167,10 @@ test('연결 및 통합 허브는 실제 capability 상태와 관리 동선을 �
   await page.goto('/admin/integrations')
   await expect(page.getByRole('heading', { name: '연결 및 통합' })).toBeVisible()
   await expect(page.getByRole('navigation', { name: '설정 컨텍스트 내비게이션' }).getByRole('link', { name: '연결 및 통합' })).toHaveAttribute('aria-current', 'page')
+  const frameActions = page.locator('[data-frame-context-actions]')
+  await expect(frameActions.getByRole('link', { name: '운영 허브' })).toHaveAttribute('href', '/operations')
+  await expect(frameActions.getByRole('button', { name: '모두 새로고침' })).toBeVisible()
+  await expect(page.getByTestId('integrations-scroll')).toBeVisible()
 
   const webhookStatus = page.getByLabel('Webhooks 상태')
   await expect(webhookStatus.getByText('확인 실패')).toBeVisible()
@@ -25017,10 +26190,17 @@ test('연결 및 통합 허브는 실제 capability 상태와 관리 동선을 �
   await expect(page.getByRole('link', { name: '데이터 전송 운영 허브' })).toHaveAttribute('href', '/operations')
   await expect(page.getByRole('link', { name: 'AI 작업 요약 정책 관리' })).toHaveAttribute('href', '/admin/ai')
   await expect(page.getByRole('link', { name: '인증 시스템 상태' })).toHaveAttribute('href', '/status')
+  const readsBeforeRefresh = webhookReads
+  await frameActions.getByRole('button', { name: '모두 새로고침' }).click()
+  await expect.poll(() => webhookReads).toBeGreaterThan(readsBeforeRefresh)
 
   await page.setViewportSize({ width: 1440, height: 960 })
   await page.screenshot({
     path: '../../docs/screenshots/redevelopment/integrations-hub-ui/desktop.png',
+    fullPage: true,
+  })
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/integrations-hub-ui-255/desktop.png',
     fullPage: true,
   })
   await page.setViewportSize({ width: 390, height: 844 })
@@ -25029,6 +26209,127 @@ test('연결 및 통합 허브는 실제 capability 상태와 관리 동선을 �
     path: '../../docs/screenshots/redevelopment/integrations-hub-ui/mobile.png',
     fullPage: true,
   })
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/integrations-hub-ui-255/mobile.png',
+    fullPage: true,
+  })
+  const externalConnections = page.getByRole('heading', { name: '외부 연결 원칙' })
+  await externalConnections.scrollIntoViewIfNeeded()
+  await expect(externalConnections).toBeInViewport()
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/integrations-hub-ui-255/mobile-bottom.png',
+    fullPage: false,
+  })
+})
+
+test('연결 및 통합 허브는 네 상태 조회를 서로 막지 않고 각각 복구한다', async ({ page }) => {
+  await mockApi(page)
+  let webhooksAvailable = false
+  let transfersAvailable = false
+  let aiAvailable = false
+  let authAvailable = false
+
+  await page.route('**/api/v1/webhooks', async (route) => {
+    if (!webhooksAvailable) {
+      await route.fulfill({ status: 503, json: { detail: 'webhooks unavailable' } })
+      return
+    }
+    await route.fulfill({
+      json: {
+        items: [],
+        total: 0,
+        enabled: true,
+        active_signing_key_id: '2026-q3',
+        available_signing_key_ids: ['2026-q3'],
+        rotations: [],
+      },
+    })
+  })
+  await page.route('**/api/v1/data-transfer-jobs', async (route) => {
+    if (!transfersAvailable) {
+      await route.fulfill({ status: 503, json: { detail: 'transfers unavailable' } })
+      return
+    }
+    await route.fulfill({ json: { items: [], total: 0, limit: 50, offset: 0 } })
+  })
+  await page.route('**/api/v1/admin/workspace/features/ai', async (route) => {
+    if (!aiAvailable) {
+      await route.fulfill({ status: 503, json: { detail: 'ai policy unavailable' } })
+      return
+    }
+    await route.fulfill({
+      json: {
+        feature_key: 'ai',
+        enabled: true,
+        revision: 5,
+        deployment_enabled: false,
+        effective_enabled: false,
+        updated_by_user_id: 'me-1',
+        updated_by_name: 'Dev User',
+        updated_at: '2026-07-26T04:00:00Z',
+      },
+    })
+  })
+  await page.route('**/api/v1/auth/config', async (route) => {
+    if (!authAvailable) {
+      await route.fulfill({ status: 503, json: { detail: 'auth config unavailable' } })
+      return
+    }
+    await route.fulfill({
+      json: {
+        auth_mode: 'dev',
+        oidc_issuer: null,
+        oidc_client_id: null,
+        oidc_provider: null,
+        oidc_providers: [],
+        has_client_secret: false,
+        command_palette_enabled: true,
+        session_management_enabled: true,
+        password_required: false,
+        oidc_login_enabled: false,
+      },
+    })
+  })
+
+  await page.goto('/admin/integrations')
+  const webhookStatus = page.getByLabel('Webhooks 상태')
+  const transferStatus = page.getByLabel('데이터 전송 상태')
+  const aiStatus = page.getByLabel('AI 작업 요약 상태')
+  const authStatus = page.getByLabel('인증 상태')
+  const summary = page.getByLabel('통합 상태 요약')
+
+  await expect(webhookStatus.getByText('확인 실패')).toBeVisible()
+  await expect(transferStatus.getByText('확인 실패')).toBeVisible()
+  await expect(aiStatus.getByText('확인 실패')).toBeVisible()
+  await expect(authStatus.getByText('확인 실패')).toBeVisible()
+  await expect(
+    summary.getByText('실패', { exact: true }).locator('..').getByText('4', { exact: true }),
+  ).toBeVisible()
+
+  transfersAvailable = true
+  await page.getByLabel('데이터 전송 다시 시도').click()
+  await expect(transferStatus.getByText('기록 없음')).toBeVisible()
+  await expect(webhookStatus.getByText('확인 실패')).toBeVisible()
+
+  aiAvailable = true
+  await page.getByLabel('AI 작업 요약 다시 시도').click()
+  await expect(aiStatus.getByText('배포 차단')).toBeVisible()
+  await expect(authStatus.getByText('확인 실패')).toBeVisible()
+
+  authAvailable = true
+  await page.getByLabel('인증 다시 시도').click()
+  await expect(authStatus.getByText('개발 모드')).toBeVisible()
+
+  webhooksAvailable = true
+  await page.getByLabel('Webhooks 다시 시도').click()
+  await expect(webhookStatus.getByText('준비됨')).toBeVisible()
+  await expect(
+    summary.getByText('확인', { exact: true }).locator('..').getByText('4', { exact: true }),
+  ).toBeVisible()
+  await expect(
+    summary.getByText('실패', { exact: true }).locator('..').getByText('0', { exact: true }),
+  ).toBeVisible()
+  await expectNoHorizontalOverflow(page)
 })
 
 test('관리자 webhook 표면이 endpoint와 delivery lifecycle을 실제 요청에 연결한다', async ({ page }) => {
@@ -25184,14 +26485,89 @@ test('관리자 webhook 표면이 endpoint와 delivery lifecycle을 실제 요�
   await expect(page.getByLabel('새 webhook secret')).toHaveText('ofw_rotated_secret')
   await expect(page.getByText('scheduled rotation')).toBeVisible()
   await expectNoHorizontalOverflow(page)
+  const operationsScroll = page.locator('[data-shell-scroll-region]')
+  await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur())
+  await operationsScroll.evaluate((element) => { element.scrollTop = 0 })
+  await expect.poll(() => operationsScroll.evaluate((element) => element.scrollTop)).toBe(0)
   await page.screenshot({
-    path: '../../docs/screenshots/redevelopment/webhook-transport-security-ui/mobile.png',
-    fullPage: true,
+    path: '../../docs/screenshots/redevelopment/webhook-operations-ui-257/mobile.png',
+  })
+  await page.setViewportSize({ width: 1440, height: 960 })
+  await operationsScroll.evaluate((element) => { element.scrollTop = 0 })
+  await expect.poll(() => operationsScroll.evaluate((element) => element.scrollTop)).toBe(0)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/webhook-operations-ui-257/desktop.png',
+  })
+  await page.setViewportSize({ width: 390, height: 844 })
+  await operationsScroll.evaluate((element) => { element.scrollTop = element.scrollHeight })
+  await expect.poll(() => operationsScroll.evaluate((element) => element.scrollTop)).toBeGreaterThan(0)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/webhook-operations-ui-257/mobile-bottom.png',
   })
 
-  page.once('dialog', (dialog) => void dialog.accept())
   await page.getByLabel('Deploy hook webhook 삭제').click()
+  const deleteDialog = page.getByRole('dialog', { name: 'Webhook endpoint 삭제' })
+  await expect(deleteDialog).toBeVisible()
+  await deleteDialog.getByRole('button', { name: 'endpoint 삭제', exact: true }).click()
   await expect(page.getByText('등록된 webhook이 없습니다')).toBeVisible()
+})
+
+test('webhook endpoint와 delivery 상태는 독립적으로 복구되고 frame에서 함께 새로고침된다', async ({ page }) => {
+  await mockApi(page)
+  await page.setViewportSize({ width: 390, height: 844 })
+  let webhookReads = 0
+  let deliveryReads = 0
+  let releaseFirstDelivery: (() => void) | undefined
+  const firstDeliveryGate = new Promise<void>((resolve) => {
+    releaseFirstDelivery = resolve
+  })
+  const endpoint = {
+    id: 'wh-independent', name: 'Independent hook', url: 'https://hooks.example.com/independent',
+    event_types: ['work_package.created'], is_active: true, secret_version: 1, signing_key_id: '2026-q3',
+    created_at: '2026-07-10T00:00:00Z', updated_at: '2026-07-10T00:00:00Z', deleted_at: null,
+  }
+  await page.route('**/api/v1/webhooks', async (route) => {
+    webhookReads += 1
+    await route.fulfill({
+      json: {
+        items: [endpoint], total: 1, enabled: true, active_signing_key_id: '2026-q3',
+        available_signing_key_ids: ['2026-q3'], rotations: [],
+      },
+    })
+  })
+  await page.route('**/api/v1/webhook-deliveries**', async (route) => {
+    deliveryReads += 1
+    if (deliveryReads === 1) await firstDeliveryGate
+    await route.fulfill({ json: { items: [], total: 0 } })
+  })
+
+  await page.goto('/admin/webhooks')
+  await expect(page.getByRole('heading', { name: 'Webhooks' })).toBeVisible()
+  await expect(page.getByText('Independent hook')).toBeVisible()
+  await expect(page.getByLabel('전송 감사 확인 중')).toBeVisible()
+  await expect(page.getByRole('link', { name: '통합 허브' })).toHaveAttribute('href', '/admin/integrations')
+  await expectNoHorizontalOverflow(page)
+
+  releaseFirstDelivery?.()
+  await expect(page.getByText('아직 전송 기록이 없습니다')).toBeVisible()
+  const webhookReadsBeforeRefresh = webhookReads
+  const deliveryReadsBeforeRefresh = deliveryReads
+  await page.getByRole('button', { name: '모두 새로고침' }).click()
+  await expect.poll(() => webhookReads).toBeGreaterThan(webhookReadsBeforeRefresh)
+  await expect.poll(() => deliveryReads).toBeGreaterThan(deliveryReadsBeforeRefresh)
+  await page.getByLabel('Webhook 이름').fill('저장 전 endpoint')
+  const dirtyPrompt = new Promise<void>((resolve) => {
+    page.once('dialog', async (dialog) => {
+      expect(dialog.message()).toContain('저장하지 않은 Webhook 변경')
+      await dialog.dismiss()
+      resolve()
+    })
+  })
+  await page.getByRole('link', { name: '통합 허브' }).click()
+  await dirtyPrompt
+  await expect(page).toHaveURL(/\/admin\/webhooks$/)
+  await page.getByLabel('Webhook 이름').fill('')
+  await expectNoHorizontalOverflow(page)
 })
 
 test('webhook 누락 signing key와 CAS 충돌을 최신 endpoint 상태로 복구한다', async ({ page }) => {
@@ -25576,6 +26952,7 @@ test('Workspace Worklogs는 관리자 필터·다운로드·모바일 탐색을 
   await filteredRequest
   await expect(page).toHaveURL(/from=2026-07-01/)
   await expect(page).toHaveURL(/to=2026-07-31/)
+  await expect(mobileList.getByText('Old User')).toBeVisible()
 
   const download = page.waitForEvent('download')
   await page.getByRole('button', { name: 'CSV' }).click()
@@ -25584,8 +26961,13 @@ test('Workspace Worklogs는 관리자 필터·다운로드·모바일 탐색을 
   )
   await expectNoHorizontalOverflow(page)
   await page.screenshot({
-    path: '../../docs/screenshots/redevelopment/worklogs-admin-ui/mobile.png',
-    fullPage: true,
+    path: '../../docs/screenshots/redevelopment/worklogs-operations-ui-258/mobile.png',
+    fullPage: false,
+  })
+  await mobileList.getByText('관리자 Worklog 검토').first().scrollIntoViewIfNeeded()
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/worklogs-operations-ui-258/mobile-bottom.png',
+    fullPage: false,
   })
 })
 
@@ -25603,7 +26985,7 @@ test('Workspace Worklogs는 범위 밖 페이지와 빈 결과를 canonical URL�
   await page.getByRole('button', { name: '이전 Worklogs 페이지' }).click()
   await expect(page).not.toHaveURL(/offset=/)
   await page.screenshot({
-    path: '../../docs/screenshots/redevelopment/worklogs-admin-ui/desktop.png',
+    path: '../../docs/screenshots/redevelopment/worklogs-operations-ui-258/desktop.png',
     fullPage: true,
   })
 
@@ -25662,6 +27044,107 @@ test('Workspace Worklogs 목록 오류는 명시적 재시도로 복구한다', 
   await expect(page.getByRole('alert')).toContainText('데이터를 불러오지 못했습니다')
   await page.getByRole('button', { name: '다시 시도' }).click()
   await expect(page.getByText('조회 범위에 Worklog가 없습니다')).toBeVisible()
+})
+
+test('Workspace Worklogs는 필터 옵션을 기다리는 동안 운영 프레임을 유지한다', async ({ page }) => {
+  await mockApi(page)
+  await page.route('**/api/v1/admin/worklogs**', async (route) => {
+    const url = new URL(route.request().url())
+    if (url.pathname.endsWith('/options')) {
+      await new Promise((resolve) => setTimeout(resolve, 700))
+      await route.fulfill({ json: { users: [], projects: [] } })
+      return
+    }
+    await route.fulfill({
+      json: {
+        from_date: url.searchParams.get('from'),
+        to_date: url.searchParams.get('to'),
+        items: [],
+        total: 0,
+        total_hours: 0,
+        limit: 50,
+        offset: 0,
+      },
+    })
+  })
+
+  await page.goto('/admin/worklogs?from=2026-07-01&to=2026-07-31')
+  await expect(page.getByRole('heading', { name: 'Worklogs' })).toBeVisible()
+  await expect(page.getByRole('status', { name: 'Worklogs 필터 확인 중' })).toBeVisible()
+  await expect(page.getByTestId('worklogs-operations-scroll')).toBeVisible()
+  await expect(page.getByText('조회 범위에 Worklog가 없습니다')).toBeVisible()
+})
+
+test('Workspace Worklogs CSV 오류는 실패한 동일 조회 조건으로 재시도한다', async ({ page }) => {
+  await mockApi(page)
+  let exportCalls = 0
+  const exportQueries: string[] = []
+  await page.route('**/api/v1/admin/worklogs**', async (route) => {
+    const url = new URL(route.request().url())
+    if (url.pathname.endsWith('/options')) {
+      await route.fulfill({ json: { users: [], projects: [] } })
+      return
+    }
+    if (url.pathname.endsWith('/export.csv')) {
+      exportCalls += 1
+      exportQueries.push(url.search)
+      if (exportCalls === 1) {
+        await route.fulfill({ status: 500, json: { detail: 'export unavailable' } })
+        return
+      }
+      await route.fulfill({
+        status: 200,
+        headers: {
+          'content-type': 'text/csv; charset=utf-8',
+          'content-disposition': 'attachment; filename="worklogs-retry.csv"',
+          'access-control-expose-headers': 'content-disposition',
+        },
+        body: '\ufeffid,hours\n',
+      })
+      return
+    }
+    await route.fulfill({
+      json: {
+        from_date: url.searchParams.get('from'),
+        to_date: url.searchParams.get('to'),
+        items: [],
+        total: 0,
+        total_hours: 0,
+        limit: 50,
+        offset: 0,
+      },
+    })
+  })
+
+  await page.goto('/admin/worklogs?from=2026-07-01&to=2026-07-31')
+  await expect(page.getByText('조회 범위에 Worklog가 없습니다')).toBeVisible()
+  await page.getByRole('button', { name: 'CSV', exact: true }).click()
+  await expect(page.getByRole('alert')).toContainText('실패한 조회 조건')
+
+  await page.getByLabel('Worklogs 시작일').fill('2026-06-01')
+  const download = page.waitForEvent('download')
+  await page.getByRole('button', { name: 'CSV 다시 시도', exact: true }).click()
+  expect((await download).suggestedFilename()).toBe('worklogs-retry.csv')
+  expect(exportQueries).toEqual([
+    '?from=2026-07-01&to=2026-07-31',
+    '?from=2026-07-01&to=2026-07-31',
+  ])
+})
+
+test('Workspace Worklogs는 적용하지 않은 기간 초안을 이동 전에 보호한다', async ({ page }) => {
+  await mockApi(page)
+  await mockAdminWorklogs(page, [])
+  await page.goto('/admin/worklogs?from=2026-07-01&to=2026-07-31')
+  await expect(page.getByText('조회 범위에 Worklog가 없습니다')).toBeVisible()
+
+  await page.getByLabel('Worklogs 시작일').fill('2026-06-01')
+  page.once('dialog', async (dialog) => {
+    expect(dialog.message()).toContain('적용하지 않은 Worklogs 기간 변경')
+    await dialog.dismiss()
+  })
+  await page.getByRole('link', { name: '개요', exact: true }).click()
+  await expect(page).toHaveURL(/\/admin\/worklogs/)
+  await expect(page.getByLabel('Worklogs 시작일')).toHaveValue('2026-06-01')
 })
 
 function authAssistanceFixture(
@@ -26262,11 +27745,18 @@ test('초안 URL 프로젝트가 다르면 올바른 프로젝트 경로로 교�
 
 async function mockWikiPolicy(
   page: Page,
-  options: { staleFirstPatch?: boolean; forbidden?: boolean } = {},
+  options: {
+    staleFirstPatch?: boolean
+    failFirstPatch?: boolean
+    failFirstRefreshAfterPatch?: boolean
+    forbidden?: boolean
+  } = {},
 ) {
   let enabled = true
   let revision = 1
   let patchCount = 0
+  let successfulPatchCount = 0
+  let refreshAfterPatchCount = 0
   const requests: string[] = []
 
   await page.route('**/api/v1/workspace/capabilities', (route) =>
@@ -26290,10 +27780,31 @@ async function mockWikiPolicy(
       await route.fulfill({ status: 403, json: { detail: 'workspace admin required' } })
       return
     }
+    if (
+      route.request().method() === 'GET'
+      && options.failFirstRefreshAfterPatch
+      && successfulPatchCount > 0
+    ) {
+      refreshAfterPatchCount += 1
+      if (refreshAfterPatchCount <= 2) {
+        await route.fulfill({
+          status: 503,
+          json: { detail: 'Wiki policy temporarily unavailable' },
+        })
+        return
+      }
+    }
     if (route.request().method() === 'PATCH') {
       patchCount += 1
       requests.push(route.request().headers()['if-match'] ?? '')
       const body = route.request().postDataJSON() as { enabled: boolean }
+      if (options.failFirstPatch && patchCount === 1) {
+        await route.fulfill({
+          status: 503,
+          json: { detail: 'Wiki policy temporarily unavailable' },
+        })
+        return
+      }
       if (options.staleFirstPatch && patchCount === 1) {
         enabled = false
         revision = 2
@@ -26306,6 +27817,7 @@ async function mockWikiPolicy(
       }
       enabled = body.enabled
       revision += 1
+      successfulPatchCount += 1
     }
     await route.fulfill({
       headers: { ETag: `"${revision}"` },
@@ -26354,6 +27866,10 @@ test('Wiki 설정은 navigation과 API surface를 함께 끄고 데이터 보존
 
   await page.goto('/admin/wiki')
   await expect(page.getByRole('heading', { name: 'Wiki', exact: true })).toBeVisible()
+  await expect(page.getByLabel('Wiki 정책 요약')).toContainText('저장 데이터보존됨')
+  await expect(page.getByRole('region', { name: '정책 영향 범위' })).toContainText(
+    '통합 검색',
+  )
   let toggle = page.getByRole('switch', { name: '프로젝트 Wiki 사용' })
   await expect(toggle).toBeChecked()
   await page.goto(`/projects/${project.id}/work-packages`)
@@ -26385,14 +27901,15 @@ test('Wiki 설정은 navigation과 API surface를 함께 끄고 데이터 보존
   await page.getByRole('switch', { name: '프로젝트 Wiki 사용' }).click()
   await expect(page.getByRole('switch', { name: '프로젝트 Wiki 사용' })).toBeChecked()
   expect(wiki.requests).toEqual(['"1"', '"2"'])
+  await expect(page.getByRole('status')).toContainText('Wiki를 활성화했습니다')
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/wiki-policy-settings-composition-ui-261/desktop.png',
+    fullPage: true,
+  })
 
   await page.goto(`/projects/${project.id}/documents`)
   await expect(page.getByText('보존된 운영 문서')).toBeVisible()
   expect(documentRequests).toBe(1)
-  await page.screenshot({
-    path: '../../docs/screenshots/redevelopment/wiki-settings-ui/desktop-documents-restored.png',
-    fullPage: true,
-  })
 })
 
 test('Wiki 설정은 stale revision을 최신 서버 상태로 복구한다', async ({ page }) => {
@@ -26405,6 +27922,38 @@ test('Wiki 설정은 stale revision을 최신 서버 상태로 복구한다', as
   await expect(page.getByRole('alert')).toContainText('다른 관리자가 정책을 변경했습니다')
   await expect(toggle).not.toBeChecked()
   await expect(page.getByText('정책 revision 2')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Wiki 끄기 다시 시도' })).toBeEnabled()
+  await page.getByRole('button', { name: 'Wiki 끄기 다시 시도' }).click()
+  await expect(page.getByRole('status')).toContainText('Wiki를 비활성화했습니다')
+})
+
+test('Wiki 설정은 같은 정책 변경과 마지막 성공 상태의 새로고침을 정확히 재시도한다', async ({
+  page,
+}) => {
+  await mockApi(page)
+  const wiki = await mockWikiPolicy(page, {
+    failFirstPatch: true,
+    failFirstRefreshAfterPatch: true,
+  })
+  await page.goto('/admin/wiki')
+
+  const toggle = page.getByRole('switch', { name: '프로젝트 Wiki 사용' })
+  await toggle.click()
+  await expect(page.getByRole('alert')).toContainText('Wiki policy temporarily unavailable')
+  await expect(toggle).toBeChecked()
+  await page.getByRole('button', { name: 'Wiki 끄기 다시 시도' }).click()
+  await expect(toggle).not.toBeChecked()
+  await expect(page.getByRole('status')).toContainText('Wiki를 비활성화했습니다')
+  expect(wiki.requests).toEqual(['"1"', '"1"'])
+
+  await page.getByRole('button', { name: '새로고침' }).click()
+  await expect(page.getByRole('alert')).toContainText('마지막으로 확인한 상태를 유지합니다')
+  await expect(page.getByLabel('Wiki 정책 요약')).toContainText('비활성')
+  await expect(page.getByRole('button', { name: '새로고침 다시 시도' })).toBeVisible()
+  await page.getByRole('button', { name: '새로고침 다시 시도' }).click()
+  await expect(
+    page.getByText('최신 정책을 불러오지 못했습니다. 마지막으로 확인한 상태를 유지합니다.'),
+  ).toHaveCount(0)
 })
 
 test('Wiki 설정은 비관리자에게 권한 없음 상태를 표시한다', async ({ page }) => {
@@ -26421,21 +27970,38 @@ test('Wiki 설정 mobile surface는 가로 overflow 없이 동작한다', async 
   await page.setViewportSize({ width: 390, height: 844 })
   await page.goto('/admin/wiki')
   await expect(page.getByRole('heading', { name: 'Wiki', exact: true })).toBeVisible()
+  await expect(page.getByLabel('Wiki 정책 요약')).toBeVisible()
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)
   expect(overflow).toBe(false)
   await page.screenshot({
-    path: '../../docs/screenshots/redevelopment/wiki-settings-ui/mobile-settings.png',
+    path: '../../docs/screenshots/redevelopment/wiki-policy-settings-composition-ui-261/mobile.png',
+    fullPage: true,
+  })
+  const audit = page.getByRole('region', { name: '변경 감사' })
+  await audit.scrollIntoViewIfNeeded()
+  await expect(audit).toBeVisible()
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/wiki-policy-settings-composition-ui-261/mobile-bottom.png',
     fullPage: true,
   })
 })
 
 async function mockAiPolicy(
   page: Page,
-  options: { staleFirstPatch?: boolean; forbidden?: boolean; deploymentEnabled?: boolean } = {},
+  options: {
+    staleFirstPatch?: boolean
+    failFirstPatch?: boolean
+    failFirstRefreshAfterPatch?: boolean
+    forbidden?: boolean
+    deploymentEnabled?: boolean
+  } = {},
 ) {
   let enabled = false
   let revision = 1
   let patchCount = 0
+  let successfulPatchCount = 0
+  let refreshAfterPatchCount = 0
   const deploymentEnabled = options.deploymentEnabled ?? true
   const requests: string[] = []
 
@@ -26449,10 +28015,31 @@ async function mockAiPolicy(
       await route.fulfill({ status: 403, json: { detail: 'workspace admin required' } })
       return
     }
+    if (
+      route.request().method() === 'GET'
+      && options.failFirstRefreshAfterPatch
+      && successfulPatchCount > 0
+    ) {
+      refreshAfterPatchCount += 1
+      if (refreshAfterPatchCount <= 2) {
+        await route.fulfill({
+          status: 503,
+          json: { detail: 'AI policy temporarily unavailable' },
+        })
+        return
+      }
+    }
     if (route.request().method() === 'PATCH') {
       patchCount += 1
       requests.push(route.request().headers()['if-match'] ?? '')
       const body = route.request().postDataJSON() as { enabled: boolean }
+      if (options.failFirstPatch && patchCount === 1) {
+        await route.fulfill({
+          status: 503,
+          json: { detail: 'AI policy temporarily unavailable' },
+        })
+        return
+      }
       if (options.staleFirstPatch && patchCount === 1) {
         enabled = true
         revision = 2
@@ -26465,6 +28052,7 @@ async function mockAiPolicy(
       }
       enabled = body.enabled
       revision += 1
+      successfulPatchCount += 1
     }
     await route.fulfill({
       headers: { ETag: `"${revision}"` },
@@ -26489,12 +28077,21 @@ test('AI workspace 정책은 실제 요약 진입점과 즉시 연결된다', as
   await page.goto('/admin/ai')
 
   await expect(page.getByRole('heading', { name: 'AI', exact: true })).toBeVisible()
+  await expect(page.getByLabel('AI 정책 요약')).toContainText('local-extractive')
+  await expect(page.getByRole('region', { name: '실행과 데이터 경계' })).toContainText(
+    '프로젝트 멤버십',
+  )
   const toggle = page.getByRole('switch', { name: 'AI 작업 요약 사용' })
   await expect(toggle).not.toBeChecked()
   await toggle.click()
   await expect(toggle).toBeChecked()
   await expect(page.getByText('정책 revision 2')).toBeVisible()
   expect(policy.requests).toEqual(['"1"'])
+  await expect(page.getByRole('status')).toContainText('AI 작업 요약을 활성화했습니다')
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/ai-policy-settings-composition-ui-262/desktop.png',
+    fullPage: true,
+  })
 
   await page.goto(`/projects/${project.id}/work-packages?wp=${wpA.id}`)
   const drawer = page.getByRole('dialog')
@@ -26512,6 +28109,42 @@ test('AI workspace 정책은 stale revision을 최신 상태로 복구한다', a
   await expect(page.getByRole('alert')).toContainText('다른 관리자가 정책을 변경했습니다')
   await expect(toggle).toBeChecked()
   await expect(page.getByText('정책 revision 2')).toBeVisible()
+  await expect(
+    page.getByRole('button', { name: 'AI 작업 요약 켜기 다시 시도' }),
+  ).toBeEnabled()
+  await page.getByRole('button', { name: 'AI 작업 요약 켜기 다시 시도' }).click()
+  await expect(page.getByRole('status')).toContainText('AI 작업 요약을 활성화했습니다')
+})
+
+test('AI workspace 정책은 같은 변경과 마지막 성공 상태의 새로고침을 정확히 재시도한다', async ({
+  page,
+}) => {
+  await mockApi(page)
+  const policy = await mockAiPolicy(page, {
+    failFirstPatch: true,
+    failFirstRefreshAfterPatch: true,
+  })
+  await page.goto('/admin/ai')
+
+  const toggle = page.getByRole('switch', { name: 'AI 작업 요약 사용' })
+  await toggle.click()
+  await expect(page.getByRole('alert')).toContainText('AI policy temporarily unavailable')
+  await expect(toggle).not.toBeChecked()
+  await page.getByRole('button', { name: 'AI 작업 요약 켜기 다시 시도' }).click()
+  await expect(toggle).toBeChecked()
+  await expect(page.getByRole('status')).toContainText('AI 작업 요약을 활성화했습니다')
+  expect(policy.requests).toEqual(['"1"', '"1"'])
+
+  await page.getByRole('button', { name: '새로고침' }).click()
+  await expect(page.getByRole('alert')).toContainText('마지막으로 확인한 상태를 유지합니다')
+  await expect(page.getByLabel('AI 정책 요약')).toContainText('사용 가능')
+  await expect(page.getByRole('button', { name: '새로고침 다시 시도' })).toBeVisible()
+  await page.getByRole('button', { name: '새로고침 다시 시도' }).click()
+  await expect(
+    page.getByText(
+      '최신 AI 정책을 불러오지 못했습니다. 마지막으로 확인한 상태를 유지합니다.',
+    ),
+  ).toHaveCount(0)
 })
 
 test('AI workspace 정책은 배포 상한과 관리자 권한을 fail-closed로 표시한다', async ({
@@ -26537,17 +28170,30 @@ test('AI workspace 정책 mobile surface는 가로 overflow 없이 동작한다'
   await page.setViewportSize({ width: 390, height: 844 })
   await page.goto('/admin/ai')
   await expect(page.getByRole('heading', { name: 'AI', exact: true })).toBeVisible()
+  await expect(page.getByLabel('AI 정책 요약')).toBeVisible()
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)
   expect(overflow).toBe(false)
   await page.screenshot({
-    path: '../../docs/screenshots/redevelopment/ai-policy-ui/mobile-settings.png',
+    path: '../../docs/screenshots/redevelopment/ai-policy-settings-composition-ui-262/mobile.png',
+    fullPage: true,
+  })
+  const audit = page.getByRole('region', { name: '정책과 배포' })
+  await audit.scrollIntoViewIfNeeded()
+  await expect(audit).toBeVisible()
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/ai-policy-settings-composition-ui-262/mobile-bottom.png',
     fullPage: true,
   })
 })
 
 async function mockInitiativesPolicy(
   page: Page,
-  options: { staleFirstPatch?: boolean; forbidden?: boolean } = {},
+  options: {
+    staleFirstPatch?: boolean
+    failFirstPatch?: boolean
+    forbidden?: boolean
+  } = {},
 ) {
   let enabled = true
   let revision = 1
@@ -26579,6 +28225,13 @@ async function mockInitiativesPolicy(
       patchCount += 1
       requests.push(route.request().headers()['if-match'] ?? '')
       const body = route.request().postDataJSON() as { enabled: boolean }
+      if (options.failFirstPatch && patchCount === 1) {
+        await route.fulfill({
+          status: 503,
+          json: { detail: 'temporary initiative policy failure' },
+        })
+        return
+      }
       if (options.staleFirstPatch && patchCount === 1) {
         enabled = false
         revision = 2
@@ -26659,6 +28312,20 @@ test('Initiatives 정책은 stale revision을 최신 상태로 복구한다', as
   await expect(page.getByText('정책 revision 2')).toBeVisible()
 })
 
+test('Initiatives 정책은 실패한 동일 변경을 정확히 다시 시도한다', async ({ page }) => {
+  await mockApi(page)
+  const policy = await mockInitiativesPolicy(page, { failFirstPatch: true })
+  await page.goto('/admin/initiatives')
+
+  const toggle = page.getByRole('switch', { name: '이니셔티브 사용' })
+  await toggle.click()
+  await expect(page.getByRole('alert')).toContainText('temporary initiative policy failure')
+  await expect(toggle).toBeChecked()
+  await page.getByRole('button', { name: '이니셔티브 끄기 다시 시도' }).click()
+  await expect(toggle).not.toBeChecked()
+  expect(policy.requests).toEqual(['"1"', '"1"'])
+})
+
 test('Initiatives 정책은 비관리자와 모바일 상태를 안전하게 처리한다', async ({ page }) => {
   await mockApi(page)
   await mockInitiativesPolicy(page)
@@ -26668,8 +28335,14 @@ test('Initiatives 정책은 비관리자와 모바일 상태를 안전하게 처
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)
   expect(overflow).toBe(false)
   await page.screenshot({
-    path: '../../docs/screenshots/redevelopment/initiatives-policy-ui/mobile-settings.png',
-    fullPage: true,
+    path: '../../docs/screenshots/redevelopment/initiatives-policy-label-settings-composition-ui-263/mobile.png',
+  })
+  const policyAndRetention = page.getByRole('complementary', { name: '정책과 보존' })
+  await policyAndRetention.scrollIntoViewIfNeeded()
+  await expect(policyAndRetention).toBeInViewport()
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/initiatives-policy-label-settings-composition-ui-263/mobile-bottom.png',
   })
 
   await page.unroute('**/api/v1/admin/workspace/features/initiatives')
@@ -26692,6 +28365,7 @@ test('Initiative labels는 설정 CRUD와 소유자 배정 및 목록 필터를 
       updated_at: '2026-07-18T00:00:00Z',
     },
   ]
+  let failFirstDelete = true
   let initiative: Initiative = {
     id: '11111111-1111-4111-8111-111111111142',
     name: '라벨 전략',
@@ -26745,6 +28419,15 @@ test('Initiative labels는 설정 CRUD와 소유자 배정 및 목록 필터를 
         await route.fulfill({ json: labels.find((label) => label.id === id) })
         return
       }
+      if (
+        request.method() === 'DELETE' &&
+        id === '11111111-1111-4111-8111-111111111143' &&
+        failFirstDelete
+      ) {
+        failFirstDelete = false
+        await route.fulfill({ status: 503, json: { detail: 'temporary label delete failure' } })
+        return
+      }
       labels = labels.filter((label) => label.id !== id)
       initiative = { ...initiative, labels: initiative.labels.filter((label) => label.id !== id) }
       await route.fulfill({ status: 204 })
@@ -26768,7 +28451,19 @@ test('Initiative labels는 설정 CRUD와 소유자 배정 및 목록 필터를 
   await page.goto('/admin/initiatives')
   const labelSettings = page.getByRole('region', { name: '라벨' })
   await expect(labelSettings.getByText('Strategic', { exact: true })).toBeVisible()
-  await labelSettings.getByLabel('새 라벨 이름').fill('Compliance')
+  const newLabelName = labelSettings.getByLabel('새 라벨 이름')
+  await newLabelName.fill('저장 전 초안')
+  const navigationPrompt = new Promise<string>((resolve) => {
+    page.once('dialog', async (dialog) => {
+      const message = dialog.message()
+      await dialog.dismiss()
+      resolve(message)
+    })
+  })
+  await page.getByRole('link', { name: '관리 개요' }).click()
+  await expect(page).toHaveURL(/\/admin\/initiatives$/)
+  expect(await navigationPrompt).toContain('저장하지 않은 이니셔티브 라벨 변경')
+  await newLabelName.fill('Compliance')
   const createRequest = page.waitForRequest((request) =>
     request.method() === 'POST' && request.url().endsWith('/initiatives/labels'),
   )
@@ -26781,7 +28476,7 @@ test('Initiative labels는 설정 CRUD와 소유자 배정 및 목록 필터를 
   await labelSettings.getByRole('button', { name: '저장' }).click()
   await expect(labelSettings.getByText('Regulated', { exact: true })).toBeVisible()
   await page.screenshot({
-    path: '../../docs/screenshots/redevelopment/initiative-labels-ui/desktop-settings.png',
+    path: '../../docs/screenshots/redevelopment/initiatives-policy-label-settings-composition-ui-263/desktop.png',
     fullPage: true,
   })
 
@@ -26808,9 +28503,23 @@ test('Initiative labels는 설정 CRUD와 소유자 배정 및 목록 필터를 
   await expect(page.getByText('이 라벨의 이니셔티브가 없습니다')).toBeVisible()
   await expectNoHorizontalOverflow(page)
   await page.screenshot({
-    path: '../../docs/screenshots/redevelopment/initiative-labels-ui/mobile-filter.png',
+    path: '../../docs/screenshots/redevelopment/initiatives-policy-label-settings-composition-ui-263/mobile-filter.png',
     fullPage: true,
   })
+
+  await page.setViewportSize({ width: 1280, height: 720 })
+  await page.goto('/admin/initiatives')
+  const refreshedLabelSettings = page.getByRole('region', { name: '라벨' })
+  const regulatedRow = refreshedLabelSettings.getByRole('listitem').filter({ hasText: 'Regulated' })
+  await regulatedRow.getByRole('button', { name: '삭제' }).click()
+  const deleteDialog = page.getByRole('dialog', { name: '이니셔티브 라벨을 삭제할까요?' })
+  await expect(deleteDialog).toBeVisible()
+  await deleteDialog.getByRole('button', { name: '라벨 삭제', exact: true }).click()
+  await expect(deleteDialog.getByRole('alert')).toContainText('temporary label delete failure')
+  await deleteDialog.getByRole('button', { name: '같은 라벨 삭제 다시 시도' }).click()
+  await expect(deleteDialog).toBeHidden()
+  await expect(refreshedLabelSettings.getByText('Regulated', { exact: true })).toHaveCount(0)
+  await expect(refreshedLabelSettings.getByLabel('새 라벨 이름')).toBeFocused()
 })
 
 test('Initiative 상세는 기본 정보와 전략 일정을 실제 저장한다', async ({ page }) => {
@@ -27216,11 +28925,16 @@ test('Initiative 상세 활동은 실제 이력을 페이지 단위로 복구해
 
 async function mockReleasesPolicy(
   page: Page,
-  options: { staleFirstPatch?: boolean; forbidden?: boolean } = {},
+  options: {
+    staleFirstPatch?: boolean
+    failFirstPatch?: boolean
+    forbidden?: boolean
+  } = {},
 ) {
   let enabled = true
   let revision = 1
   let patchCount = 0
+  let failRefreshGets = false
   const requests: string[] = []
 
   await page.route('**/api/v1/workspace/capabilities', (route) =>
@@ -27244,6 +28958,10 @@ async function mockReleasesPolicy(
       await route.fulfill({ status: 403, json: { detail: 'workspace admin required' } })
       return
     }
+    if (route.request().method() === 'GET' && failRefreshGets) {
+      await route.fulfill({ status: 503, json: { detail: 'policy temporarily unavailable' } })
+      return
+    }
     if (route.request().method() === 'PATCH') {
       patchCount += 1
       requests.push(route.request().headers()['if-match'] ?? '')
@@ -27256,6 +28974,10 @@ async function mockReleasesPolicy(
           headers: { ETag: '"2"' },
           json: { detail: { code: 'stale_revision', current_revision: 2 } },
         })
+        return
+      }
+      if (options.failFirstPatch && patchCount === 1) {
+        await route.fulfill({ status: 503, json: { detail: 'policy temporarily unavailable' } })
         return
       }
       enabled = body.enabled
@@ -27273,7 +28995,15 @@ async function mockReleasesPolicy(
       },
     })
   })
-  return { requests }
+  return {
+    requests,
+    failNextGet() {
+      failRefreshGets = true
+    },
+    allowGet() {
+      failRefreshGets = false
+    },
+  }
 }
 
 test('Releases 정책은 milestone UI surface를 함께 끄고 복구한다', async ({ page }) => {
@@ -27308,25 +29038,64 @@ test('Releases 정책은 milestone UI surface를 함께 끄고 복구한다', as
 
 test('Releases 정책은 stale revision을 최신 상태로 복구한다', async ({ page }) => {
   await mockApi(page)
-  await mockReleasesPolicy(page, { staleFirstPatch: true })
+  const policy = await mockReleasesPolicy(page, { staleFirstPatch: true })
   await page.goto('/admin/releases')
   const toggle = page.getByRole('switch', { name: 'Releases 사용' })
   await toggle.click()
   await expect(page.getByRole('alert')).toContainText('다른 관리자가 정책을 변경했습니다')
   await expect(toggle).not.toBeChecked()
   await expect(page.getByText('정책 revision 2')).toBeVisible()
+  await page.getByRole('button', { name: 'Releases 끄기 다시 시도' }).click()
+  await expect(page.getByRole('status')).toContainText('비활성화했습니다')
+  await expect(page.getByText('정책 revision 3')).toBeVisible()
+  expect(policy.requests).toEqual(['"1"', '"2"'])
+})
+
+test('Releases 정책은 일반 실패와 마지막 성공 상태의 새로고침을 정확히 재시도한다', async ({
+  page,
+}) => {
+  await mockApi(page)
+  const policy = await mockReleasesPolicy(page, { failFirstPatch: true })
+  await page.goto('/admin/releases')
+
+  const toggle = page.getByRole('switch', { name: 'Releases 사용' })
+  await toggle.click()
+  await expect(page.getByRole('alert')).toContainText('policy temporarily unavailable')
+  await expect(toggle).toBeChecked()
+  await page.getByRole('button', { name: 'Releases 끄기 다시 시도' }).click()
+  await expect(toggle).not.toBeChecked()
+  expect(policy.requests).toEqual(['"1"', '"1"'])
+
+  policy.failNextGet()
+  await page.getByRole('button', { name: '새로고침' }).click()
+  await expect(page.getByRole('alert')).toContainText('마지막으로 확인한 상태를 유지합니다')
+  await expect(toggle).not.toBeChecked()
+  policy.allowGet()
+  await page.getByRole('button', { name: '새로고침 다시 시도' }).click()
+  await expect(page.getByRole('alert')).toHaveCount(0)
 })
 
 test('Releases 정책은 비관리자와 모바일 상태를 안전하게 처리한다', async ({ page }) => {
   await mockApi(page)
   await mockReleasesPolicy(page)
-  await page.setViewportSize({ width: 390, height: 844 })
   await page.goto('/admin/releases')
   await expect(page.getByRole('heading', { name: 'Releases', exact: true })).toBeVisible()
-  const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)
-  expect(overflow).toBe(false)
+  await expect(page.getByText('마일스톤 데이터', { exact: true })).toHaveCount(1)
+  await expectNoHorizontalOverflow(page)
   await page.screenshot({
-    path: '../../docs/screenshots/redevelopment/releases-policy-ui/mobile-settings.png',
+    path: '../../docs/screenshots/redevelopment/releases-settings-composition-ui-264/desktop.png',
+    fullPage: true,
+  })
+
+  await page.setViewportSize({ width: 390, height: 844 })
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/releases-settings-composition-ui-264/mobile.png',
+    fullPage: true,
+  })
+  await page.getByRole('heading', { name: '변경 감사' }).scrollIntoViewIfNeeded()
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/releases-settings-composition-ui-264/mobile-bottom.png',
     fullPage: true,
   })
 
@@ -27337,9 +29106,19 @@ test('Releases 정책은 비관리자와 모바일 상태를 안전하게 처리
   await expect(page.getByRole('switch')).toHaveCount(0)
 })
 
-async function mockCustomersSurface(page: Page) {
+async function mockCustomersSurface(
+  page: Page,
+  options: {
+    forbidden?: boolean
+    staleFirstPatch?: boolean
+    failFirstPatch?: boolean
+  } = {},
+) {
   let enabled = true
   let revision = 1
+  let patchCount = 0
+  let failRefreshGets = false
+  const requests: string[] = []
   const customerId = '88888888-8888-4888-8888-888888888888'
   let customers: Customer[] = [
     {
@@ -27365,8 +29144,33 @@ async function mockCustomersSurface(page: Page) {
     }),
   )
   await page.route('**/api/v1/admin/workspace/features/customers', async (route) => {
+    if (options.forbidden) {
+      await route.fulfill({ status: 403, json: { detail: 'workspace admin required' } })
+      return
+    }
+    if (route.request().method() === 'GET' && failRefreshGets) {
+      await route.fulfill({ status: 503, json: { detail: 'policy temporarily unavailable' } })
+      return
+    }
     if (route.request().method() === 'PATCH') {
-      enabled = (route.request().postDataJSON() as { enabled: boolean }).enabled
+      patchCount += 1
+      requests.push(route.request().headers()['if-match'] ?? '')
+      const body = route.request().postDataJSON() as { enabled: boolean }
+      if (options.staleFirstPatch && patchCount === 1) {
+        enabled = false
+        revision = 2
+        await route.fulfill({
+          status: 412,
+          headers: { ETag: '"2"' },
+          json: { detail: { code: 'stale_revision', current_revision: 2 } },
+        })
+        return
+      }
+      if (options.failFirstPatch && patchCount === 1) {
+        await route.fulfill({ status: 503, json: { detail: 'policy temporarily unavailable' } })
+        return
+      }
+      enabled = body.enabled
       revision += 1
     }
     await route.fulfill({
@@ -27375,8 +29179,8 @@ async function mockCustomersSurface(page: Page) {
         feature_key: 'customers',
         enabled,
         revision,
-        updated_by_user_id: revision > 1 ? 'me-1' : null,
-        updated_by_name: revision > 1 ? 'Dev User' : null,
+        updated_by_user_id: patchCount ? 'me-1' : null,
+        updated_by_name: patchCount ? 'Dev User' : null,
         updated_at: '2026-07-11T09:00:00Z',
       },
     })
@@ -27416,7 +29220,17 @@ async function mockCustomersSurface(page: Page) {
     const filtered = customers.filter((customer) => (!query || customer.name.toLocaleLowerCase().includes(query)) && (!tag || customer.tags.includes(tag)))
     await route.fulfill({ json: { items: filtered, total: filtered.length } })
   })
-  return { customerId, isEnabled: () => enabled }
+  return {
+    customerId,
+    requests,
+    isEnabled: () => enabled,
+    failNextGet() {
+      failRefreshGets = true
+    },
+    allowGet() {
+      failRefreshGets = false
+    },
+  }
 }
 
 test('Customers surface는 고객 관리와 작업 연결을 기능적으로 제공한다', async ({ page }) => {
@@ -27466,6 +29280,85 @@ test('Customers surface는 고객 관리와 작업 연결을 기능적으로 제
   expect(customers.isEnabled()).toBe(false)
   await page.goto('/customers')
   await expect(page.getByText('고객 기능이 비활성화되어 있습니다')).toBeVisible()
+})
+
+test('Customers 정책은 stale revision을 최신 상태로 복구한다', async ({ page }) => {
+  await mockApi(page)
+  const policy = await mockCustomersSurface(page, { staleFirstPatch: true })
+  await page.goto('/admin/customers')
+
+  const toggle = page.getByRole('switch', { name: 'Customers 사용' })
+  await toggle.click()
+  await expect(page.getByRole('alert')).toContainText('다른 관리자가 정책을 변경했습니다')
+  await expect(toggle).not.toBeChecked()
+  await expect(page.getByText('정책 revision 2')).toBeVisible()
+  await page.getByRole('button', { name: 'Customers 끄기 다시 시도' }).click()
+  await expect(page.getByRole('status')).toContainText('비활성화했습니다')
+  await expect(page.getByText('정책 revision 3')).toBeVisible()
+  expect(policy.requests).toEqual(['"1"', '"2"'])
+})
+
+test('Customers 정책은 일반 실패와 마지막 성공 상태의 새로고침을 정확히 재시도한다', async ({
+  page,
+}) => {
+  await mockApi(page)
+  const policy = await mockCustomersSurface(page, { failFirstPatch: true })
+  await page.goto('/admin/customers')
+
+  const toggle = page.getByRole('switch', { name: 'Customers 사용' })
+  await toggle.click()
+  await expect(page.getByRole('alert')).toContainText('policy temporarily unavailable')
+  await expect(toggle).toBeChecked()
+  await page.getByRole('button', { name: 'Customers 끄기 다시 시도' }).click()
+  await expect(toggle).not.toBeChecked()
+  expect(policy.requests).toEqual(['"1"', '"1"'])
+
+  policy.failNextGet()
+  await page.getByRole('button', { name: '새로고침' }).click()
+  await expect(page.getByRole('alert')).toContainText('마지막으로 확인한 상태를 유지합니다')
+  await expect(toggle).not.toBeChecked()
+  policy.allowGet()
+  await page.getByRole('button', { name: '새로고침 다시 시도' }).click()
+  await expect(page.getByRole('alert')).toHaveCount(0)
+})
+
+test('Customers 정책은 실제 디렉터리 동선과 모바일·권한 상태를 안전하게 처리한다', async ({
+  page,
+}) => {
+  await mockApi(page)
+  await mockCustomersSurface(page)
+  await page.goto('/admin/customers')
+
+  await expect(page.getByRole('heading', { name: 'Customers', exact: true })).toBeVisible()
+  await expect(page.getByText('고객 데이터', { exact: true })).toHaveCount(1)
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/customers-settings-composition-ui-265/desktop.png',
+    fullPage: true,
+  })
+
+  await page.getByRole('link', { name: '고객 디렉터리' }).click()
+  await expect(page).toHaveURL('/customers')
+  await expect(page.getByText('한빛 고객사')).toBeVisible()
+
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto('/admin/customers')
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/customers-settings-composition-ui-265/mobile.png',
+    fullPage: true,
+  })
+  await page.getByRole('heading', { name: '변경 감사' }).scrollIntoViewIfNeeded()
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/customers-settings-composition-ui-265/mobile-bottom.png',
+    fullPage: true,
+  })
+
+  await page.unroute('**/api/v1/admin/workspace/features/customers')
+  await mockCustomersSurface(page, { forbidden: true })
+  await page.reload()
+  await expect(page.getByText('접근 권한이 없습니다')).toBeVisible()
+  await expect(page.getByRole('switch')).toHaveCount(0)
 })
 
 test('OneFlow design system visual QA manifest', async ({ page }) => {
