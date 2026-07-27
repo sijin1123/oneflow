@@ -27912,7 +27912,11 @@ test('AI workspace 정책 mobile surface는 가로 overflow 없이 동작한다'
 
 async function mockInitiativesPolicy(
   page: Page,
-  options: { staleFirstPatch?: boolean; forbidden?: boolean } = {},
+  options: {
+    staleFirstPatch?: boolean
+    failFirstPatch?: boolean
+    forbidden?: boolean
+  } = {},
 ) {
   let enabled = true
   let revision = 1
@@ -27944,6 +27948,13 @@ async function mockInitiativesPolicy(
       patchCount += 1
       requests.push(route.request().headers()['if-match'] ?? '')
       const body = route.request().postDataJSON() as { enabled: boolean }
+      if (options.failFirstPatch && patchCount === 1) {
+        await route.fulfill({
+          status: 503,
+          json: { detail: 'temporary initiative policy failure' },
+        })
+        return
+      }
       if (options.staleFirstPatch && patchCount === 1) {
         enabled = false
         revision = 2
@@ -28024,6 +28035,20 @@ test('Initiatives 정책은 stale revision을 최신 상태로 복구한다', as
   await expect(page.getByText('정책 revision 2')).toBeVisible()
 })
 
+test('Initiatives 정책은 실패한 동일 변경을 정확히 다시 시도한다', async ({ page }) => {
+  await mockApi(page)
+  const policy = await mockInitiativesPolicy(page, { failFirstPatch: true })
+  await page.goto('/admin/initiatives')
+
+  const toggle = page.getByRole('switch', { name: '이니셔티브 사용' })
+  await toggle.click()
+  await expect(page.getByRole('alert')).toContainText('temporary initiative policy failure')
+  await expect(toggle).toBeChecked()
+  await page.getByRole('button', { name: '이니셔티브 끄기 다시 시도' }).click()
+  await expect(toggle).not.toBeChecked()
+  expect(policy.requests).toEqual(['"1"', '"1"'])
+})
+
 test('Initiatives 정책은 비관리자와 모바일 상태를 안전하게 처리한다', async ({ page }) => {
   await mockApi(page)
   await mockInitiativesPolicy(page)
@@ -28033,8 +28058,14 @@ test('Initiatives 정책은 비관리자와 모바일 상태를 안전하게 처
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)
   expect(overflow).toBe(false)
   await page.screenshot({
-    path: '../../docs/screenshots/redevelopment/initiatives-policy-ui/mobile-settings.png',
-    fullPage: true,
+    path: '../../docs/screenshots/redevelopment/initiatives-policy-label-settings-composition-ui-263/mobile.png',
+  })
+  const policyAndRetention = page.getByRole('complementary', { name: '정책과 보존' })
+  await policyAndRetention.scrollIntoViewIfNeeded()
+  await expect(policyAndRetention).toBeInViewport()
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/initiatives-policy-label-settings-composition-ui-263/mobile-bottom.png',
   })
 
   await page.unroute('**/api/v1/admin/workspace/features/initiatives')
@@ -28057,6 +28088,7 @@ test('Initiative labels는 설정 CRUD와 소유자 배정 및 목록 필터를 
       updated_at: '2026-07-18T00:00:00Z',
     },
   ]
+  let failFirstDelete = true
   let initiative: Initiative = {
     id: '11111111-1111-4111-8111-111111111142',
     name: '라벨 전략',
@@ -28110,6 +28142,15 @@ test('Initiative labels는 설정 CRUD와 소유자 배정 및 목록 필터를 
         await route.fulfill({ json: labels.find((label) => label.id === id) })
         return
       }
+      if (
+        request.method() === 'DELETE' &&
+        id === '11111111-1111-4111-8111-111111111143' &&
+        failFirstDelete
+      ) {
+        failFirstDelete = false
+        await route.fulfill({ status: 503, json: { detail: 'temporary label delete failure' } })
+        return
+      }
       labels = labels.filter((label) => label.id !== id)
       initiative = { ...initiative, labels: initiative.labels.filter((label) => label.id !== id) }
       await route.fulfill({ status: 204 })
@@ -28133,7 +28174,19 @@ test('Initiative labels는 설정 CRUD와 소유자 배정 및 목록 필터를 
   await page.goto('/admin/initiatives')
   const labelSettings = page.getByRole('region', { name: '라벨' })
   await expect(labelSettings.getByText('Strategic', { exact: true })).toBeVisible()
-  await labelSettings.getByLabel('새 라벨 이름').fill('Compliance')
+  const newLabelName = labelSettings.getByLabel('새 라벨 이름')
+  await newLabelName.fill('저장 전 초안')
+  const navigationPrompt = new Promise<string>((resolve) => {
+    page.once('dialog', async (dialog) => {
+      const message = dialog.message()
+      await dialog.dismiss()
+      resolve(message)
+    })
+  })
+  await page.getByRole('link', { name: '관리 개요' }).click()
+  await expect(page).toHaveURL(/\/admin\/initiatives$/)
+  expect(await navigationPrompt).toContain('저장하지 않은 이니셔티브 라벨 변경')
+  await newLabelName.fill('Compliance')
   const createRequest = page.waitForRequest((request) =>
     request.method() === 'POST' && request.url().endsWith('/initiatives/labels'),
   )
@@ -28146,7 +28199,7 @@ test('Initiative labels는 설정 CRUD와 소유자 배정 및 목록 필터를 
   await labelSettings.getByRole('button', { name: '저장' }).click()
   await expect(labelSettings.getByText('Regulated', { exact: true })).toBeVisible()
   await page.screenshot({
-    path: '../../docs/screenshots/redevelopment/initiative-labels-ui/desktop-settings.png',
+    path: '../../docs/screenshots/redevelopment/initiatives-policy-label-settings-composition-ui-263/desktop.png',
     fullPage: true,
   })
 
@@ -28173,9 +28226,23 @@ test('Initiative labels는 설정 CRUD와 소유자 배정 및 목록 필터를 
   await expect(page.getByText('이 라벨의 이니셔티브가 없습니다')).toBeVisible()
   await expectNoHorizontalOverflow(page)
   await page.screenshot({
-    path: '../../docs/screenshots/redevelopment/initiative-labels-ui/mobile-filter.png',
+    path: '../../docs/screenshots/redevelopment/initiatives-policy-label-settings-composition-ui-263/mobile-filter.png',
     fullPage: true,
   })
+
+  await page.setViewportSize({ width: 1280, height: 720 })
+  await page.goto('/admin/initiatives')
+  const refreshedLabelSettings = page.getByRole('region', { name: '라벨' })
+  const regulatedRow = refreshedLabelSettings.getByRole('listitem').filter({ hasText: 'Regulated' })
+  await regulatedRow.getByRole('button', { name: '삭제' }).click()
+  const deleteDialog = page.getByRole('dialog', { name: '이니셔티브 라벨을 삭제할까요?' })
+  await expect(deleteDialog).toBeVisible()
+  await deleteDialog.getByRole('button', { name: '라벨 삭제', exact: true }).click()
+  await expect(deleteDialog.getByRole('alert')).toContainText('temporary label delete failure')
+  await deleteDialog.getByRole('button', { name: '같은 라벨 삭제 다시 시도' }).click()
+  await expect(deleteDialog).toBeHidden()
+  await expect(refreshedLabelSettings.getByText('Regulated', { exact: true })).toHaveCount(0)
+  await expect(refreshedLabelSettings.getByLabel('새 라벨 이름')).toBeFocused()
 })
 
 test('Initiative 상세는 기본 정보와 전략 일정을 실제 저장한다', async ({ page }) => {
