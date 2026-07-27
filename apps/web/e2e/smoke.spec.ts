@@ -9370,7 +9370,7 @@ test('개인 설정 프로필 이미지는 미리보기·저장·shell 반영·�
   )
   await expectNoHorizontalOverflow(page)
   await page.screenshot({
-    path: '../../docs/screenshots/redevelopment/personal-profile-image-ui/desktop.png',
+    path: '../../docs/screenshots/redevelopment/personal-settings-composition-ui-259/desktop-profile.png',
     fullPage: true,
   })
 
@@ -9378,7 +9378,7 @@ test('개인 설정 프로필 이미지는 미리보기·저장·shell 반영·�
   await account.scrollIntoViewIfNeeded()
   await expectNoHorizontalOverflow(page)
   await page.screenshot({
-    path: '../../docs/screenshots/redevelopment/personal-profile-image-ui/mobile.png',
+    path: '../../docs/screenshots/redevelopment/personal-settings-composition-ui-259/mobile-profile.png',
     fullPage: true,
   })
 
@@ -9461,6 +9461,66 @@ test('프로필 이미지 충돌은 선택 파일을 보존하고 최신 revisio
   expect(attempts).toBe(2)
 })
 
+test('개인 설정은 계정 상태를 요약하고 미저장 프로필 선택의 탭 이탈을 보호한다', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await mockApi(page)
+  const png = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAEklEQVR4nGPkndLBwMDAxAAGAA2bAS37E8jFAAAAAElFTkSuQmCC',
+    'base64',
+  )
+  let meRequests = 0
+  await page.route('**/api/v1/me', async (route) => {
+    meRequests += 1
+    await route.fulfill({
+      json: {
+        id: 'me-1',
+        email: 'dev@oneflow.local',
+        display_name: 'Dev User',
+        is_active: true,
+        is_admin: true,
+        profile_image_url: null,
+        profile_image_content_type: null,
+        profile_image_filename: null,
+        profile_image_width: null,
+        profile_image_height: null,
+        profile_image_byte_size: null,
+        profile_revision: 4,
+      },
+    })
+  })
+
+  await page.goto('/settings')
+  const summary = page.getByLabel('개인 설정 요약')
+  await expect(summary.getByRole('definition').filter({ hasText: '활성' })).toBeVisible()
+  await expect(summary.getByRole('definition').filter({ hasText: '관리자' })).toBeVisible()
+  const refresh = page.getByRole('button', { name: '계정 상태 새로고침' })
+  await refresh.click()
+  await expect.poll(() => meRequests).toBeGreaterThan(1)
+
+  const account = page.getByRole('region', { name: '내 계정' })
+  await account.getByLabel('프로필 이미지 파일').setInputFiles({
+    name: 'unsaved.png',
+    mimeType: 'image/png',
+    buffer: png,
+  })
+  const securityTab = page.getByRole('tab', { name: '보안' })
+  const dismissDialog = page.waitForEvent('dialog')
+  const firstTabClick = securityTab.click()
+  const firstDialog = await dismissDialog
+  expect(firstDialog.message()).toContain('저장하지 않은 프로필 이미지 선택')
+  await firstDialog.dismiss()
+  await firstTabClick
+  await expect(page).toHaveURL(/\/settings$/)
+  await expect(account.getByText('선택됨: unsaved.png')).toBeVisible()
+
+  const acceptDialog = page.waitForEvent('dialog')
+  const secondTabClick = securityTab.click()
+  await (await acceptDialog).accept()
+  await secondTabClick
+  await expect(page).toHaveURL(/\/settings\?tab=security$/)
+  await expect(securityTab).toHaveAttribute('aria-selected', 'true')
+})
+
 test('개인 알림 설정은 로딩 오류와 재시도를 기능적으로 처리한다', async ({ page }) => {
   await mockApi(page)
   let attempts = 0
@@ -9499,6 +9559,18 @@ test('개인 알림 설정은 로딩 오류와 재시도를 기능적으로 처�
   await page.getByRole('button', { name: '다시 시도' }).click()
   await expect(page.getByLabel('초과 재알림 주기')).toHaveValue('3')
   expect(attempts).toBe(2)
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/personal-settings-composition-ui-259/desktop-notifications.png',
+    fullPage: true,
+  })
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.getByLabel('개인 알림 설정').scrollIntoViewIfNeeded()
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/personal-settings-composition-ui-259/mobile-notifications.png',
+    fullPage: true,
+  })
 })
 
 test('개인 알림 설정 저장 실패는 서버 상태를 보존하고 같은 변경을 재시도한다', async ({ page }) => {
@@ -9625,16 +9697,22 @@ test('개인 설정에서 액세스 토큰을 생성하고 폐기한다', async 
   await expect(tokenSection.getByLabel('새 액세스 토큰')).toContainText(
     'ofp_created_secret_once',
   )
+  page.once('dialog', async (dialog) => {
+    expect(dialog.message()).toContain('지금만 확인할 수 있는 새 액세스 토큰')
+    await dialog.dismiss()
+  })
+  await page.getByRole('tab', { name: '알림' }).click()
+  await expect(page).toHaveURL(/\/settings\?tab=security$/)
   await expectNoHorizontalOverflow(page)
   await page.screenshot({
-    path: '../../docs/screenshots/redevelopment/personal-security-ui-241/desktop.png',
+    path: '../../docs/screenshots/redevelopment/personal-settings-composition-ui-259/desktop-security.png',
     fullPage: true,
   })
   await page.setViewportSize({ width: 390, height: 844 })
   await tokenSection.scrollIntoViewIfNeeded()
   await expectNoHorizontalOverflow(page)
   await page.screenshot({
-    path: '../../docs/screenshots/redevelopment/personal-security-ui-241/mobile.png',
+    path: '../../docs/screenshots/redevelopment/personal-settings-composition-ui-259/mobile-security.png',
     fullPage: true,
   })
 
@@ -9643,16 +9721,24 @@ test('개인 설정에서 액세스 토큰을 생성하고 폐기한다', async 
       request.method() === 'DELETE' && request.url().includes('/me/access-tokens/tok-existing'),
   )
   await tokenSection.getByRole('button', { name: '배포 스크립트 폐기' }).click()
+  const tokenDialog = page.getByRole('dialog', { name: '액세스 토큰을 폐기할까요?' })
+  await expect(tokenDialog).toBeVisible()
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/personal-settings-composition-ui-259/mobile-token-confirm.png',
+    fullPage: true,
+  })
+  await tokenDialog.getByRole('button', { name: '토큰 폐기' }).click()
   await failedDelete
-  await expect(tokenSection.getByRole('alert')).toContainText(
+  await expect(tokenDialog.getByRole('alert')).toContainText(
     '액세스 토큰을 폐기하지 못했습니다.',
   )
   const del = page.waitForRequest(
     (request) =>
       request.method() === 'DELETE' && request.url().includes('/me/access-tokens/tok-existing'),
   )
-  await tokenSection.getByRole('button', { name: '다시 시도' }).click()
+  await tokenDialog.getByRole('button', { name: '토큰 폐기 다시 시도' }).click()
   await del
+  await expect(tokenDialog).toHaveCount(0)
   await expect(tokenSection.getByText('폐기됨')).toBeVisible()
 })
 
@@ -9712,19 +9798,25 @@ test('개인 설정에서 활성 브라우저 세션을 확인하고 종료한�
       request.method() === 'DELETE' && request.url().endsWith('/me/sessions/session-other'),
   )
   await otherSessionButton.click()
+  const otherSessionDialog = page.getByRole('dialog', { name: '브라우저 세션을 종료할까요?' })
+  await expect(otherSessionDialog).toBeVisible()
+  await otherSessionDialog.getByRole('button', { name: '세션 종료' }).click()
   await otherDelete
-  await expect(section.getByRole('alert')).toContainText('세션을 종료하지 못했습니다.')
+  await expect(otherSessionDialog.getByRole('alert')).toContainText(
+    '세션을 종료하지 못했습니다.',
+  )
   const retryDelete = page.waitForRequest(
     (request) =>
       request.method() === 'DELETE' && request.url().endsWith('/me/sessions/session-other'),
   )
-  await section.getByRole('button', { name: '다시 시도' }).click()
+  await otherSessionDialog.getByRole('button', { name: '세션 종료 다시 시도' }).click()
   await retryDelete
+  await expect(otherSessionDialog).toHaveCount(0)
   await expect(otherSessionButton).toHaveCount(0)
   await expectNoHorizontalOverflow(page)
   await section.scrollIntoViewIfNeeded()
   await page.screenshot({
-    path: '../../docs/screenshots/redevelopment/personal-security-ui-241/session-mobile.png',
+    path: '../../docs/screenshots/redevelopment/personal-settings-composition-ui-259/mobile-sessions.png',
     fullPage: true,
   })
 
@@ -9733,6 +9825,9 @@ test('개인 설정에서 활성 브라우저 세션을 확인하고 종료한�
       request.method() === 'DELETE' && request.url().endsWith('/me/sessions/session-current'),
   )
   await section.getByRole('button', { name: '현재 세션 종료' }).click()
+  const currentSessionDialog = page.getByRole('dialog', { name: '현재 세션을 종료할까요?' })
+  await expect(currentSessionDialog).toBeVisible()
+  await currentSessionDialog.getByRole('button', { name: '세션 종료' }).click()
   await currentDelete
   await expect(page).toHaveURL(/\/login$/)
 })
