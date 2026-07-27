@@ -14582,6 +14582,172 @@ test('계층 트리가 상/하위 관계를 보여주고 접기가 동작한다'
   await expect(page.getByRole('button', { name: '보드 뷰 구현', exact: true })).toBeHidden()
 })
 
+test('프로젝트 계층 surface는 URL 필터·정렬·보기 전환·전체 disclosure를 실제 결과에 연결한다', async ({
+  page,
+}) => {
+  await mockApi(page)
+  const nested: WorkPackageList = {
+    items: [wpA, { ...wpB, parent_id: wpA.id }],
+    total: 2,
+  }
+  const workPackageRequests: string[] = []
+  await page.route('**/api/v1/projects/*/work-packages**', (route) => {
+    workPackageRequests.push(route.request().url())
+    return route.fulfill({ json: nested })
+  })
+
+  await page.goto(`/projects/${project.id}/tree`)
+  const views = page.getByRole('navigation', { name: '프로젝트 작업 보기' })
+  await expect(views.getByRole('link', { name: '계층 보기' })).toHaveAttribute(
+    'aria-current',
+    'page',
+  )
+
+  await page.getByRole('button', { name: '필터' }).click()
+  await page.getByLabel('프로젝트 계층 검색어').fill('API')
+  await page.getByLabel('계층 상태 필터').selectOption('in_progress')
+  await page.getByLabel('계층 우선순위 필터').selectOption('high')
+  await page.getByLabel('계층 타입 필터').selectOption('task')
+  await page.getByLabel('계층 담당자 필터').selectOption('me-1')
+  await page.getByLabel('계층 정렬').selectOption('subject')
+  await page.getByRole('button', { name: '검색', exact: true }).click()
+
+  await expect(page).toHaveURL(/q=API/)
+  await expect(page).toHaveURL(/status=in_progress/)
+  await expect(page).toHaveURL(/priority=high/)
+  await expect(page).toHaveURL(/type=task/)
+  await expect(page).toHaveURL(/assignee_id=me-1/)
+  await expect(page).toHaveURL(/sort=subject/)
+  await expect
+    .poll(() => workPackageRequests.some((request) => {
+      const url = new URL(request)
+      return (
+        url.searchParams.get('q') === 'API' &&
+        url.searchParams.get('status') === 'in_progress' &&
+        url.searchParams.get('priority') === 'high' &&
+        url.searchParams.get('type') === 'task' &&
+        url.searchParams.get('assignee_id') === 'me-1' &&
+        url.searchParams.get('sort') === 'subject'
+      )
+    }))
+    .toBe(true)
+
+  const boardHref = await views.getByRole('link', { name: '보드 보기' }).getAttribute('href')
+  expect(boardHref).toContain('/board?')
+  expect(boardHref).toContain('q=API')
+  expect(boardHref).toContain('status=in_progress')
+
+  await page.getByRole('button', { name: '계층 전체 접기' }).click()
+  await expect(page.getByRole('button', { name: '보드 뷰 구현', exact: true })).toBeHidden()
+  await page.getByRole('button', { name: '계층 전체 펼치기' }).click()
+  await expect(page.getByRole('button', { name: '보드 뷰 구현', exact: true })).toBeVisible()
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/project-hierarchy-ui/desktop.png',
+    fullPage: true,
+  })
+})
+
+test('프로젝트 계층 surface는 오류 재시도와 filtered empty 초기화를 복구한다', async ({
+  page,
+}) => {
+  await mockApi(page)
+  const nested: WorkPackageList = {
+    items: [wpA, { ...wpB, parent_id: wpA.id }],
+    total: 2,
+  }
+  let recover = false
+  await page.route('**/api/v1/projects/*/work-packages**', (route) => {
+    const url = new URL(route.request().url())
+    if (!recover) {
+      return route.fulfill({ status: 500, json: { detail: 'hierarchy unavailable' } })
+    }
+    if (url.searchParams.get('q')) {
+      return route.fulfill({ json: { items: [], total: 0 } satisfies WorkPackageList })
+    }
+    return route.fulfill({ json: nested })
+  })
+
+  await page.goto(`/projects/${project.id}/tree?q=missing`)
+  const results = page.getByTestId('project-hierarchy-results')
+  await expect(results.getByText('데이터를 불러오지 못했습니다')).toBeVisible()
+  recover = true
+  await results.getByRole('button', { name: '다시 시도' }).click()
+  await expect(results.getByText('조건에 맞는 계층 작업이 없습니다')).toBeVisible()
+
+  await results.getByRole('button', { name: '현재 보기 초기화' }).click()
+  await expect(page).not.toHaveURL(/q=/)
+  await expect(page.getByRole('button', { name: '워크패키지 API 구현', exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: '보드 뷰 구현', exact: true })).toBeVisible()
+})
+
+test('프로젝트 계층 surface는 모바일에서도 작업·속성·메뉴를 한 프레임에 유지한다', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await mockApi(page)
+  const nested: WorkPackageList = {
+    items: [
+      wpA,
+      { ...wpB, parent_id: wpA.id },
+      { ...wpA, id: 'wp-c', subject: '하위 검증 작업', parent_id: wpB.id },
+    ],
+    total: 3,
+  }
+  await page.route('**/api/v1/projects/*/work-packages**', (route) =>
+    route.fulfill({ json: nested }),
+  )
+
+  await page.goto(`/projects/${project.id}/tree`)
+  const results = page.getByTestId('project-hierarchy-results')
+  await expect(results.getByRole('heading', { name: '계층' })).toBeVisible()
+  await expect(results.getByRole('button', { name: '워크패키지 API 구현', exact: true })).toBeVisible()
+  await expect(results.getByRole('button', { name: '보드 뷰 구현', exact: true })).toBeVisible()
+  await expect(results.getByText('미배정').first()).toBeVisible()
+  await expect(
+    results.getByRole('button', { name: '워크패키지 API 구현 트리 항목 작업' }),
+  ).toBeVisible()
+
+  const overflow = await page.evaluate(() => ({
+    document: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    results:
+      document.querySelector('[data-testid="project-hierarchy-results"]')!.scrollWidth -
+      document.querySelector('[data-testid="project-hierarchy-results"]')!.clientWidth,
+  }))
+  expect(overflow.document).toBe(0)
+  expect(overflow.results).toBe(0)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/project-hierarchy-ui/mobile.png',
+    fullPage: true,
+  })
+})
+
+test('프로젝트 계층 loading은 모바일 행 geometry를 유지한다', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await mockApi(page)
+  const nested: WorkPackageList = {
+    items: [wpA, { ...wpB, parent_id: wpA.id }],
+    total: 2,
+  }
+  let release!: () => void
+  const gate = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  await page.route('**/api/v1/projects/*/work-packages**', async (route) => {
+    await gate
+    await route.fulfill({ json: nested })
+  })
+
+  await page.goto(`/projects/${project.id}/tree`)
+  const skeleton = page.getByTestId('project-hierarchy-skeleton')
+  await expect(skeleton).toBeVisible()
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/project-hierarchy-ui/loading-mobile.png',
+    fullPage: true,
+  })
+  release()
+  await expect(page.getByRole('button', { name: '워크패키지 API 구현', exact: true })).toBeVisible()
+})
+
 test('트리 항목 액션 메뉴가 링크·복제·이동·전체 페이지 흐름을 연결한다', async ({ page }) => {
   await page.addInitScript(() => {
     Object.defineProperty(navigator, 'clipboard', {

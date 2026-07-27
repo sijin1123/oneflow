@@ -3324,3 +3324,13 @@ Chromium typed mock fixture에서 1440x960과 390x844 viewport를 사용했다. 
 - **증적**: `docs/screenshots/redevelopment/project-backlog-ui/{desktop,mobile,loading-mobile}.png`과 README에 실제 Chromium dense backlog, 모바일의 모든 기능 열, 안정된 loading geometry를 보존했다. 오류 재시도·필터 empty 초기화·권한 상태는 E2E semantic assertion으로 검증했다.
 
 ---
+
+# UI-276 Project Hierarchy Composition 검증 (2026-07-28)
+
+- **UI 변경**: Project Hierarchy를 단일 compact frame surface로 재구성했다. 프레임 상단에는 Hierarchy·Backlog·Table·Board·Calendar·Timeline 전환, 실제 filter count, Analytics와 permission-aware Add work item을 통합했고, 본문은 URL-backed 검색·상태·우선순위·타입·담당자·정렬, 전체 펼치기/접기, dense hierarchy rows를 한 정보 계층으로 구성했다. desktop은 작업과 상태·우선순위·담당자·기한을 나란히 읽고, mobile은 같은 작업의 핵심 속성과 touch-visible item menu를 `390x844` 안에서 조작한다.
+- **기능/API 반영**: 기존 전체 work-item 조회, `parent_id` 계층 조립, 개별/전체 disclosure, 실제 creation composer, detail drawer, full-page detail, copy, duplicate, move와 owner/member/viewer authorization을 그대로 연결했다. URL 필터와 정렬은 실제 work-item request에 전달되고 layout 전환에도 보존된다. loading, error/retry, filtered empty/reset, real empty/create와 read-only 상태는 동일 결과 프레임을 유지한다. 신규 API, DB, migration, permission, environment variable, dependency 또는 Settings UI 변경은 없다.
+- **이연 항목**: 지원 중인 기능의 이연은 없다. 필터로 상위 작업이 결과에서 제외되면 기존 계약대로 일치하는 하위 작업을 임시 root로 표시해 결과를 숨기지 않는다.
+- **검증**: typecheck PASS, lint PASS(기존 Fast Refresh warning 4건), production build PASS(기존 large chunk warning), unit **115 PASS**, component **9 PASS**, 신규 Hierarchy 및 기존 tree action focused E2E **8 PASS**, 최종 전체 E2E **445 PASS + opt-in visual QA manifest 1 skip**다. URL query/request parity, view-state carry-over, 전체/개별 disclosure, error retry, filtered-empty reset, three-level mobile hierarchy, zero horizontal overflow, loading geometry, existing drawer/full-page/copy/duplicate/move/viewer action menu를 검증했다. Clean-room frontend **182**/backend **45**, OpenAPI type parity와 diff check도 PASS했다. 전체 E2E가 다시 생성한 기존 screenshot rewrite는 테스트 산출물로 원복하고 UI-276 및 영향받은 tree action 증적만 보존했다.
+- **증적**: `docs/screenshots/redevelopment/project-hierarchy-ui/{desktop,mobile,loading-mobile}.png`에서 desktop filter composition, three-level mobile containment와 hierarchy-shaped loading geometry를 확인한다.
+
+---
