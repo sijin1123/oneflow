@@ -28648,11 +28648,16 @@ test('Initiative 상세 활동은 실제 이력을 페이지 단위로 복구해
 
 async function mockReleasesPolicy(
   page: Page,
-  options: { staleFirstPatch?: boolean; forbidden?: boolean } = {},
+  options: {
+    staleFirstPatch?: boolean
+    failFirstPatch?: boolean
+    forbidden?: boolean
+  } = {},
 ) {
   let enabled = true
   let revision = 1
   let patchCount = 0
+  let failRefreshGets = false
   const requests: string[] = []
 
   await page.route('**/api/v1/workspace/capabilities', (route) =>
@@ -28676,6 +28681,10 @@ async function mockReleasesPolicy(
       await route.fulfill({ status: 403, json: { detail: 'workspace admin required' } })
       return
     }
+    if (route.request().method() === 'GET' && failRefreshGets) {
+      await route.fulfill({ status: 503, json: { detail: 'policy temporarily unavailable' } })
+      return
+    }
     if (route.request().method() === 'PATCH') {
       patchCount += 1
       requests.push(route.request().headers()['if-match'] ?? '')
@@ -28688,6 +28697,10 @@ async function mockReleasesPolicy(
           headers: { ETag: '"2"' },
           json: { detail: { code: 'stale_revision', current_revision: 2 } },
         })
+        return
+      }
+      if (options.failFirstPatch && patchCount === 1) {
+        await route.fulfill({ status: 503, json: { detail: 'policy temporarily unavailable' } })
         return
       }
       enabled = body.enabled
@@ -28705,7 +28718,15 @@ async function mockReleasesPolicy(
       },
     })
   })
-  return { requests }
+  return {
+    requests,
+    failNextGet() {
+      failRefreshGets = true
+    },
+    allowGet() {
+      failRefreshGets = false
+    },
+  }
 }
 
 test('Releases 정책은 milestone UI surface를 함께 끄고 복구한다', async ({ page }) => {
@@ -28740,25 +28761,64 @@ test('Releases 정책은 milestone UI surface를 함께 끄고 복구한다', as
 
 test('Releases 정책은 stale revision을 최신 상태로 복구한다', async ({ page }) => {
   await mockApi(page)
-  await mockReleasesPolicy(page, { staleFirstPatch: true })
+  const policy = await mockReleasesPolicy(page, { staleFirstPatch: true })
   await page.goto('/admin/releases')
   const toggle = page.getByRole('switch', { name: 'Releases 사용' })
   await toggle.click()
   await expect(page.getByRole('alert')).toContainText('다른 관리자가 정책을 변경했습니다')
   await expect(toggle).not.toBeChecked()
   await expect(page.getByText('정책 revision 2')).toBeVisible()
+  await page.getByRole('button', { name: 'Releases 끄기 다시 시도' }).click()
+  await expect(page.getByRole('status')).toContainText('비활성화했습니다')
+  await expect(page.getByText('정책 revision 3')).toBeVisible()
+  expect(policy.requests).toEqual(['"1"', '"2"'])
+})
+
+test('Releases 정책은 일반 실패와 마지막 성공 상태의 새로고침을 정확히 재시도한다', async ({
+  page,
+}) => {
+  await mockApi(page)
+  const policy = await mockReleasesPolicy(page, { failFirstPatch: true })
+  await page.goto('/admin/releases')
+
+  const toggle = page.getByRole('switch', { name: 'Releases 사용' })
+  await toggle.click()
+  await expect(page.getByRole('alert')).toContainText('policy temporarily unavailable')
+  await expect(toggle).toBeChecked()
+  await page.getByRole('button', { name: 'Releases 끄기 다시 시도' }).click()
+  await expect(toggle).not.toBeChecked()
+  expect(policy.requests).toEqual(['"1"', '"1"'])
+
+  policy.failNextGet()
+  await page.getByRole('button', { name: '새로고침' }).click()
+  await expect(page.getByRole('alert')).toContainText('마지막으로 확인한 상태를 유지합니다')
+  await expect(toggle).not.toBeChecked()
+  policy.allowGet()
+  await page.getByRole('button', { name: '새로고침 다시 시도' }).click()
+  await expect(page.getByRole('alert')).toHaveCount(0)
 })
 
 test('Releases 정책은 비관리자와 모바일 상태를 안전하게 처리한다', async ({ page }) => {
   await mockApi(page)
   await mockReleasesPolicy(page)
-  await page.setViewportSize({ width: 390, height: 844 })
   await page.goto('/admin/releases')
   await expect(page.getByRole('heading', { name: 'Releases', exact: true })).toBeVisible()
-  const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)
-  expect(overflow).toBe(false)
+  await expect(page.getByText('마일스톤 데이터', { exact: true })).toHaveCount(1)
+  await expectNoHorizontalOverflow(page)
   await page.screenshot({
-    path: '../../docs/screenshots/redevelopment/releases-policy-ui/mobile-settings.png',
+    path: '../../docs/screenshots/redevelopment/releases-settings-composition-ui-264/desktop.png',
+    fullPage: true,
+  })
+
+  await page.setViewportSize({ width: 390, height: 844 })
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/releases-settings-composition-ui-264/mobile.png',
+    fullPage: true,
+  })
+  await page.getByRole('heading', { name: '변경 감사' }).scrollIntoViewIfNeeded()
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/releases-settings-composition-ui-264/mobile-bottom.png',
     fullPage: true,
   })
 
