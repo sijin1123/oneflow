@@ -3314,3 +3314,13 @@ Chromium typed mock fixture에서 1440x960과 390x844 viewport를 사용했다. 
 - **증적**: `docs/screenshots/redevelopment/project-timeline-composition-ui-274/{desktop,mobile,loading,error}.png`과 README에 실제 Chromium timeline, mobile 내부 canvas 탐색, loading과 error/retry 상태를 보존했다.
 
 ---
+
+# UI-275 Project Backlog Composition 검증 (2026-07-28)
+
+- **UI 변경**: 프로젝트 Backlog를 범용 planning wrapper에서 분리해 중앙 콘텐츠 프레임을 직접 사용하는 full-height surface로 재구성했다. 프레임 상단에는 Backlog·Table·Board·Calendar·Timeline 전환, Filter 수, Analytics, 실제 Add work item을 통합했고 본문은 검색·상태·우선순위·타입·담당자·정렬, 사이클 미배정 수와 배정 가능한 사이클, dense work rows를 한 정보 계층으로 구성했다. desktop은 중첩 card 없이 가용 높이를 사용하고 mobile은 작업·사이클·항목 메뉴를 `390x844` 안에서 모두 조작하며 문서 가로 넘침이 없다. loading, error/retry, 필터 결과 없음, 실제 empty, read-only 상태도 같은 결과 프레임을 유지한다.
+- **기능/API 반영**: 검색·필터·정렬은 canonical URL과 기존 `no_cycle=true`·`open_only=true` 작업 API query를 함께 갱신하고 reload 및 빠른 연속 입력에서도 값을 보존한다. Add work item은 기존 composer를 `status=backlog`로 열어 실제 POST를 수행한다. cycle assignment는 완료 cycle을 제외하고 기존 versioned PATCH를 사용하며, 409가 발생하면 정확한 작업·cycle을 최신 version으로 다시 요청한다. 상세 drawer, 전체 페이지, 링크 복사, 복제, 이동과 owner/member/viewer 권한도 기존 계약을 유지한다. 신규 API, DB/schema, migration, 환경변수, dependency 또는 Settings UI 변경은 없다.
+- **이연 항목**: 없음. 이번 Backlog surface의 보기 전환, 검색, 필터, 정렬, 생성, 사이클 배정, 충돌 복구, 작업 action과 상태별 복구는 모두 실제 URL/query/mutation 또는 browser command에 연결돼 있으며 mock/dead control이나 장식용 action이 없다.
+- **검증**: typecheck PASS, lint PASS(기존 Fast Refresh warning 4건), production build PASS(기존 large chunk warning), unit **115 PASS**, component **9 PASS**, Backlog와 영향 표면 focused E2E **9 PASS**, 최종 전체 E2E **441 PASS + opt-in visual QA manifest 1 skip**다. Clean-room frontend **182**/backend **45**, OpenAPI type parity와 diff check도 PASS했다. 집중 검증에서 빠른 연속 필터 변경이 중간 URL 반영에 의해 덮일 수 있는 결함을 발견해 optimistic URL 병합과 최종 주소 확인을 추가한 뒤 재검증했다. 전체 E2E가 다시 생성한 기존 screenshot rewrite 336건과 로그인 임시 캡처 3건은 테스트 산출물로 판정해 원복·삭제하고 UI-275 및 영향받은 Backlog action 증적만 보존했다.
+- **증적**: `docs/screenshots/redevelopment/project-backlog-ui/{desktop,mobile,loading-mobile}.png`과 README에 실제 Chromium dense backlog, 모바일의 모든 기능 열, 안정된 loading geometry를 보존했다. 오류 재시도·필터 empty 초기화·권한 상태는 E2E semantic assertion으로 검증했다.
+
+---

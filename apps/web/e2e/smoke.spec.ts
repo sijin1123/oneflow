@@ -25512,8 +25512,181 @@ test('백로그에서 사이클을 배정하면 PATCH 후 행이 사라진다', 
   await expect(page.getByText('백로그가 비어 있습니다')).toBeVisible()
 })
 
-test('계획 표면은 모바일에서 백로그·보드·캘린더 모드를 유지한다', async ({ page }) => {
-  await page.setViewportSize({ width: 390, height: 844 })
+test('백로그 검색·필터·정렬은 URL과 API에 반영되고 새 작업은 backlog로 생성된다', async ({
+  page,
+}) => {
+  await mockApi(page)
+  const requestedQueries: URLSearchParams[] = []
+  const createdBodies: Record<string, unknown>[] = []
+  await page.route(`**/api/v1/projects/${project.id}/work-packages**`, async (route) => {
+    if (route.request().method() === 'POST') {
+      const createdBody = route.request().postDataJSON() as Record<string, unknown>
+      createdBodies.push(createdBody)
+      await route.fulfill({
+        status: 201,
+        json: {
+          ...wpA,
+          id: 'wp-backlog-new',
+          subject: createdBody.subject,
+          status: createdBody.status,
+          cycle_id: null,
+        },
+      })
+      return
+    }
+    const params = new URL(route.request().url()).searchParams
+    if (params.get('no_cycle') === 'true') {
+      requestedQueries.push(new URLSearchParams(params))
+      await route.fulfill({ json: { items: [wpA], total: 1 } })
+      return
+    }
+    await route.fulfill({ json: workPackages })
+  })
+
+  await page.goto(`/projects/${project.id}/backlog`)
+  const controls = page.getByRole('region', { name: '프로젝트 백로그 제어' })
+  await controls.getByRole('button', { name: '필터' }).click()
+  await page.getByLabel('프로젝트 백로그 검색어').fill('API 구현')
+  await page.getByRole('button', { name: '검색', exact: true }).click()
+  await page.getByLabel('백로그 상태 필터').selectOption('todo')
+  await page.getByLabel('백로그 우선순위 필터').selectOption('high')
+  await page.getByLabel('백로그 정렬').selectOption('subject')
+
+  await expect(page).toHaveURL(/q=API\+%EA%B5%AC%ED%98%84/)
+  await expect(page).toHaveURL(/status=todo/)
+  await expect(page).toHaveURL(/priority=high/)
+  await expect(page).toHaveURL(/sort=subject/)
+  await expect
+    .poll(() =>
+      requestedQueries.some(
+        (params) =>
+          params.get('q') === 'API 구현' &&
+          params.get('status') === 'todo' &&
+          params.get('priority') === 'high' &&
+          params.get('sort') === 'subject',
+      ),
+    )
+    .toBe(true)
+  const appliedQuery = [...requestedQueries]
+    .reverse()
+    .find((params) => params.get('sort') === 'subject')
+  expect(appliedQuery?.get('no_cycle')).toBe('true')
+  expect(appliedQuery?.get('open_only')).toBe('true')
+
+  await page.reload()
+  await expect(page.getByLabel('프로젝트 백로그 검색어')).toHaveValue('API 구현')
+  await expect(page.getByLabel('백로그 상태 필터')).toHaveValue('todo')
+  await expect(page.getByLabel('백로그 우선순위 필터')).toHaveValue('high')
+  await expect(page.getByLabel('백로그 정렬')).toHaveValue('subject')
+
+  await controls.getByRole('button', { name: '새 작업' }).click()
+  await expect(page.getByRole('region', { name: '새 작업 생성' })).toBeVisible()
+  await page.getByLabel('작업 제목').fill('백로그에서 만든 작업')
+  await page.getByRole('button', { name: '작업 만들기' }).click()
+  await expect.poll(() => createdBodies.length).toBe(1)
+  expect(createdBodies[0].subject).toBe('백로그에서 만든 작업')
+  expect(createdBodies[0].status).toBe('backlog')
+})
+
+test('백로그는 오류 재시도와 필터 빈 상태 초기화를 같은 프레임 안에서 복구한다', async ({
+  page,
+}) => {
+  await mockApi(page)
+  let backlogReads = 0
+  await page.route(`**/api/v1/projects/${project.id}/work-packages**`, async (route) => {
+    const params = new URL(route.request().url()).searchParams
+    if (params.get('no_cycle') !== 'true') {
+      await route.fulfill({ json: workPackages })
+      return
+    }
+    backlogReads += 1
+    if (backlogReads <= 2) {
+      await route.fulfill({ status: 500, json: { detail: 'Backlog unavailable' } })
+      return
+    }
+    await route.fulfill({ json: { items: [], total: 0 } })
+  })
+
+  await page.goto(`/projects/${project.id}/backlog?q=missing`)
+  const backlog = page.getByTestId('project-backlog-results')
+  await expect(backlog).toBeVisible()
+  await expect(backlog.getByRole('alert')).toContainText('데이터를 불러오지 못했습니다')
+  await backlog.getByRole('button', { name: '다시 시도' }).click()
+  await expect(backlog.getByText('조건에 맞는 백로그 작업이 없습니다')).toBeVisible()
+  await backlog.getByRole('button', { name: '현재 보기 초기화' }).click()
+  await expect(page).not.toHaveURL(/q=/)
+  await expect(backlog.getByText('백로그가 비어 있습니다')).toBeVisible()
+  expect(backlogReads).toBeGreaterThanOrEqual(3)
+})
+
+test('백로그 사이클 배정 충돌은 최신 버전으로 같은 대상을 재시도한다', async ({ page }) => {
+  await mockApi(page)
+  let assigned = false
+  let serverVersion = wpA.version
+  const sentVersions: number[] = []
+  await page.route(`**/api/v1/projects/${project.id}/cycles`, (route) =>
+    route.fulfill({
+      json: {
+        items: [
+          {
+            id: 'cy-1',
+            project_id: project.id,
+            name: '7월 스프린트',
+            start_date: '2026-07-01',
+            end_date: '2026-07-14',
+            status: 'active',
+            work_package_count: 0,
+            done_work_package_count: 0,
+            created_at: '2026-07-01T00:00:00Z',
+          },
+        ],
+        total: 1,
+      },
+    }),
+  )
+  await page.route(`**/api/v1/projects/${project.id}/work-packages**`, async (route) => {
+    const params = new URL(route.request().url()).searchParams
+    if (params.get('no_cycle') === 'true') {
+      await route.fulfill({
+        json: assigned
+          ? { items: [], total: 0 }
+          : { items: [{ ...wpA, version: serverVersion }], total: 1 },
+      })
+      return
+    }
+    await route.fulfill({ json: workPackages })
+  })
+  await page.route(`**/api/v1/work-packages/${wpA.id}`, async (route) => {
+    const body = route.request().postDataJSON() as {
+      cycle_id: string
+      expected_version: number
+    }
+    sentVersions.push(body.expected_version)
+    if (sentVersions.length === 1) {
+      serverVersion += 1
+      await route.fulfill({
+        status: 409,
+        json: { detail: 'Version conflict', current: { ...wpA, version: serverVersion } },
+      })
+      return
+    }
+    assigned = true
+    await route.fulfill({
+      json: { ...wpA, version: serverVersion + 1, cycle_id: body.cycle_id },
+    })
+  })
+
+  await page.goto(`/projects/${project.id}/backlog`)
+  await page.getByLabel('워크패키지 API 구현 사이클 배정').selectOption('cy-1')
+  const conflict = page.getByRole('alert').filter({ hasText: '최신 버전으로 다시 시도' })
+  await expect(conflict).toBeVisible()
+  await conflict.getByRole('button', { name: '다시 시도' }).click()
+  await expect(page.getByText('백로그가 비어 있습니다')).toBeVisible()
+  expect(sentVersions).toEqual([wpA.version, serverVersion])
+})
+
+test('프로젝트 작업 표면은 모바일에서 백로그·보드·캘린더 보기를 유지한다', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 960 })
   await mockApi(page)
   await page.route(`**/api/v1/projects/${project.id}/work-packages**`, (route) => {
     const url = new URL(route.request().url())
@@ -25546,21 +25719,27 @@ test('계획 표면은 모바일에서 백로그·보드·캘린더 모드를 �
   )
 
   await page.goto(`/projects/${project.id}/backlog`)
-  await expect(page.getByText('Planning surface')).toBeVisible()
-  const planningNav = page.getByRole('navigation', { name: '계획 모드' })
-  const backlogMode = planningNav.getByRole('link', { name: /백로그/ })
+  const backlogSurface = page.getByTestId('project-backlog-results')
+  await expect(backlogSurface).toBeVisible()
+  const planningNav = page.getByRole('navigation', { name: '프로젝트 작업 보기' })
+  const backlogMode = planningNav.getByRole('link', { name: '백로그 보기' })
   await expect(backlogMode).toBeVisible()
   await expect(backlogMode).toHaveAttribute('aria-current', 'page')
-  await expect(page.getByLabel('계획 요약')).toContainText('미배정 작업')
-  await expect(page.getByLabel('계획 요약')).toContainText('배정 가능 사이클')
+  await expect(backlogSurface).toContainText('사이클 미배정 2건')
+  await expect(backlogSurface).toContainText('배정 가능 1개')
   await expect(page.getByLabel('백로그 작업 목록')).toContainText('워크패키지 API 구현')
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/project-backlog-ui/desktop.png',
+    fullPage: false,
+  })
+  await page.setViewportSize({ width: 390, height: 844 })
   await expectNoHorizontalOverflow(page)
   await page.screenshot({
-    path: '../../docs/screenshots/redevelopment/planning-ui/mobile-backlog.png',
+    path: '../../docs/screenshots/redevelopment/project-backlog-ui/mobile.png',
     fullPage: true,
   })
 
-  await planningNav.getByRole('link', { name: /보드/ }).click()
+  await planningNav.getByRole('link', { name: '보드 보기' }).click()
   await expect(page).toHaveURL(/\/board/)
   const boardViews = page.getByRole('navigation', { name: '프로젝트 작업 보기' })
   const boardMode = boardViews.getByRole('link', { name: '보드 보기' })
@@ -25579,6 +25758,39 @@ test('계획 표면은 모바일에서 백로그·보드·캘린더 모드를 �
   await expect(calendarMode).toHaveAttribute('aria-current', 'page')
   await expect(page.getByRole('region', { name: '프로젝트 작업 캘린더' })).toBeVisible()
   await expect(page.getByText('워크패키지 API 구현')).toBeVisible()
+  await expectNoHorizontalOverflow(page)
+})
+
+test('백로그는 모바일 로딩 중에도 결과 프레임과 폭을 유지한다', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await mockApi(page)
+  let releaseBacklog: (() => void) | undefined
+  const backlogGate = new Promise<void>((resolve) => {
+    releaseBacklog = resolve
+  })
+  await page.route(`**/api/v1/projects/${project.id}/work-packages**`, async (route) => {
+    const params = new URL(route.request().url()).searchParams
+    if (params.get('no_cycle') === 'true') {
+      await backlogGate
+      await route.fulfill({ json: { items: [wpA], total: 1 } })
+      return
+    }
+    await route.fulfill({ json: workPackages })
+  })
+
+  await page.goto(`/projects/${project.id}/backlog`)
+  const backlog = page.getByTestId('project-backlog-results')
+  await expect(backlog).toBeVisible()
+  await expect(page.getByTestId('project-backlog-skeleton')).toBeVisible()
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/project-backlog-ui/loading-mobile.png',
+    fullPage: true,
+  })
+
+  releaseBacklog?.()
+  await expect(page.getByLabel('백로그 작업 목록')).toContainText('워크패키지 API 구현')
+  await expect(page.getByTestId('project-backlog-skeleton')).toHaveCount(0)
   await expectNoHorizontalOverflow(page)
 })
 
