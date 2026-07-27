@@ -26455,6 +26455,7 @@ test('Workspace Worklogs는 관리자 필터·다운로드·모바일 탐색을 
   await filteredRequest
   await expect(page).toHaveURL(/from=2026-07-01/)
   await expect(page).toHaveURL(/to=2026-07-31/)
+  await expect(mobileList.getByText('Old User')).toBeVisible()
 
   const download = page.waitForEvent('download')
   await page.getByRole('button', { name: 'CSV' }).click()
@@ -26463,8 +26464,13 @@ test('Workspace Worklogs는 관리자 필터·다운로드·모바일 탐색을 
   )
   await expectNoHorizontalOverflow(page)
   await page.screenshot({
-    path: '../../docs/screenshots/redevelopment/worklogs-admin-ui/mobile.png',
-    fullPage: true,
+    path: '../../docs/screenshots/redevelopment/worklogs-operations-ui-258/mobile.png',
+    fullPage: false,
+  })
+  await mobileList.getByText('관리자 Worklog 검토').first().scrollIntoViewIfNeeded()
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/worklogs-operations-ui-258/mobile-bottom.png',
+    fullPage: false,
   })
 })
 
@@ -26482,7 +26488,7 @@ test('Workspace Worklogs는 범위 밖 페이지와 빈 결과를 canonical URL�
   await page.getByRole('button', { name: '이전 Worklogs 페이지' }).click()
   await expect(page).not.toHaveURL(/offset=/)
   await page.screenshot({
-    path: '../../docs/screenshots/redevelopment/worklogs-admin-ui/desktop.png',
+    path: '../../docs/screenshots/redevelopment/worklogs-operations-ui-258/desktop.png',
     fullPage: true,
   })
 
@@ -26541,6 +26547,107 @@ test('Workspace Worklogs 목록 오류는 명시적 재시도로 복구한다', 
   await expect(page.getByRole('alert')).toContainText('데이터를 불러오지 못했습니다')
   await page.getByRole('button', { name: '다시 시도' }).click()
   await expect(page.getByText('조회 범위에 Worklog가 없습니다')).toBeVisible()
+})
+
+test('Workspace Worklogs는 필터 옵션을 기다리는 동안 운영 프레임을 유지한다', async ({ page }) => {
+  await mockApi(page)
+  await page.route('**/api/v1/admin/worklogs**', async (route) => {
+    const url = new URL(route.request().url())
+    if (url.pathname.endsWith('/options')) {
+      await new Promise((resolve) => setTimeout(resolve, 700))
+      await route.fulfill({ json: { users: [], projects: [] } })
+      return
+    }
+    await route.fulfill({
+      json: {
+        from_date: url.searchParams.get('from'),
+        to_date: url.searchParams.get('to'),
+        items: [],
+        total: 0,
+        total_hours: 0,
+        limit: 50,
+        offset: 0,
+      },
+    })
+  })
+
+  await page.goto('/admin/worklogs?from=2026-07-01&to=2026-07-31')
+  await expect(page.getByRole('heading', { name: 'Worklogs' })).toBeVisible()
+  await expect(page.getByRole('status', { name: 'Worklogs 필터 확인 중' })).toBeVisible()
+  await expect(page.getByTestId('worklogs-operations-scroll')).toBeVisible()
+  await expect(page.getByText('조회 범위에 Worklog가 없습니다')).toBeVisible()
+})
+
+test('Workspace Worklogs CSV 오류는 실패한 동일 조회 조건으로 재시도한다', async ({ page }) => {
+  await mockApi(page)
+  let exportCalls = 0
+  const exportQueries: string[] = []
+  await page.route('**/api/v1/admin/worklogs**', async (route) => {
+    const url = new URL(route.request().url())
+    if (url.pathname.endsWith('/options')) {
+      await route.fulfill({ json: { users: [], projects: [] } })
+      return
+    }
+    if (url.pathname.endsWith('/export.csv')) {
+      exportCalls += 1
+      exportQueries.push(url.search)
+      if (exportCalls === 1) {
+        await route.fulfill({ status: 500, json: { detail: 'export unavailable' } })
+        return
+      }
+      await route.fulfill({
+        status: 200,
+        headers: {
+          'content-type': 'text/csv; charset=utf-8',
+          'content-disposition': 'attachment; filename="worklogs-retry.csv"',
+          'access-control-expose-headers': 'content-disposition',
+        },
+        body: '\ufeffid,hours\n',
+      })
+      return
+    }
+    await route.fulfill({
+      json: {
+        from_date: url.searchParams.get('from'),
+        to_date: url.searchParams.get('to'),
+        items: [],
+        total: 0,
+        total_hours: 0,
+        limit: 50,
+        offset: 0,
+      },
+    })
+  })
+
+  await page.goto('/admin/worklogs?from=2026-07-01&to=2026-07-31')
+  await expect(page.getByText('조회 범위에 Worklog가 없습니다')).toBeVisible()
+  await page.getByRole('button', { name: 'CSV', exact: true }).click()
+  await expect(page.getByRole('alert')).toContainText('실패한 조회 조건')
+
+  await page.getByLabel('Worklogs 시작일').fill('2026-06-01')
+  const download = page.waitForEvent('download')
+  await page.getByRole('button', { name: 'CSV 다시 시도', exact: true }).click()
+  expect((await download).suggestedFilename()).toBe('worklogs-retry.csv')
+  expect(exportQueries).toEqual([
+    '?from=2026-07-01&to=2026-07-31',
+    '?from=2026-07-01&to=2026-07-31',
+  ])
+})
+
+test('Workspace Worklogs는 적용하지 않은 기간 초안을 이동 전에 보호한다', async ({ page }) => {
+  await mockApi(page)
+  await mockAdminWorklogs(page, [])
+  await page.goto('/admin/worklogs?from=2026-07-01&to=2026-07-31')
+  await expect(page.getByText('조회 범위에 Worklog가 없습니다')).toBeVisible()
+
+  await page.getByLabel('Worklogs 시작일').fill('2026-06-01')
+  page.once('dialog', async (dialog) => {
+    expect(dialog.message()).toContain('적용하지 않은 Worklogs 기간 변경')
+    await dialog.dismiss()
+  })
+  await page.getByRole('link', { name: '개요', exact: true }).click()
+  await expect(page).toHaveURL(/\/admin\/worklogs/)
+  await expect(page.getByLabel('Worklogs 시작일')).toHaveValue('2026-06-01')
 })
 
 function authAssistanceFixture(
