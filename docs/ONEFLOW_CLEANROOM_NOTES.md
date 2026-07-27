@@ -700,3 +700,9 @@ Plane/OpenProject source, package, asset, logo, CSS, DOM, wording 또는 brandin
 `docs/plane-poc-reverse-spec/`에서 사용한 입력은 Inbox와 topbar notification surface가 이벤트의 사용자 identity, 종류, 시각, 읽음 상태와 target navigation을 compact feed row로 일관되게 표현한다는 관찰 가능한 정보 구조와 행동뿐이다. OneFlow 구현은 자체 notification fanout, 개인 프로필 이미지 저장소, 수신자 ownership, React Query와 공통 `Avatar` 컴포넌트를 사용해 독립 설계했다.
 
 Plane/OpenProject source, API, database schema, package, asset, CSS, DOM hierarchy, exact dimensions/colors, wording, component implementation, icons 또는 branding은 복사하지 않았다. notification 생성 transaction에서 이름과 이미지 key/content type을 snapshot하고, recipient-scoped exact-version private read를 해당 알림 수신자에게만 제공한다. 프로필 교체·삭제와 actor 계정 삭제 뒤에도 이벤트 생성 시점 identity와 참조 blob을 보존하고 storage sweep live set에 포함한다. actor가 없는 scheduler 알림은 사용자 identity를 합성하지 않는다. 신규 dependency, environment variable 또는 Settings storage 변경은 없다. - attested-independent-derivation
+
+## UI-273 Project Calendar Composition
+
+`docs/plane-poc-reverse-spec/04-interaction-catalog.md`와 `11-focused-sidebar-views-observations.md`에서 사용한 입력은 같은 작업 범위를 Table, Board, Calendar, Timeline으로 전환하고, 현재 query와 layout 상태를 URL에서 복원하며, 실제 날짜 항목과 생성·상세 action을 연결한다는 관찰 가능한 정보 구조와 행동뿐이다. Plane/OpenProject source, API, database schema, package, asset, CSS, DOM hierarchy, exact dimensions/colors, wording, component implementation, icons 또는 branding은 열람·복사하지 않았다.
+
+OneFlow 구현은 기존 자체 Work Package query/create/draft, project membership, due-date string, drawer/full-page/move/duplicate contract, React Router와 local token/Lucide primitive 위에서 독립 설계했다. 달력 월은 canonical `YYYY-MM` URL 상태이고 날짜 셀 생성은 검증된 `new_due=YYYY-MM-DD`를 기존 실제 composer와 POST payload에 연결한다. 검색·필터·권한·card action과 stable loading/error/filtered-empty는 같은 month grid 안에서 동작한다. 신규 API, DB/schema, migration, permission, environment variable, dependency 또는 Settings storage 변경은 없고 mock/dead control이나 client-only work item도 없다. - attested-independent-derivation

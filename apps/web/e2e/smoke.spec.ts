@@ -8336,17 +8336,44 @@ test('Workspace Home은 주요 작업 오류 중에도 독립 위젯과 명시�
 
 test('Workspace Home 프레임 새로고침은 실제 요약 요청을 다시 연결한다', async ({ page }) => {
   await mockApi(page)
+  await page.route('**/api/v1/me/work', (route) =>
+    route.fulfill({
+      json: {
+        assigned_to_me: [],
+        due_soon: [],
+        created_by_me: [],
+        recent_activity: [],
+      },
+    }),
+  )
+  await page.route('**/api/v1/me/time-entries**', (route) =>
+    route.fulfill({ json: { items: [], total: 0, total_hours: 0, by_project: [] } }),
+  )
+  await page.route('**/api/v1/projects', (route) =>
+    route.fulfill({
+      json: { items: [{ ...project, ...projectRollups }], total: 1 },
+    }),
+  )
   await page.goto('/my')
   await expect(page.getByRole('region', { name: '빠른 이동' })).toBeVisible()
 
-  const requests = Promise.all([
-    page.waitForRequest((request) => request.url().includes('/api/v1/me/work')),
-    page.waitForRequest((request) => request.url().includes('/api/v1/me/time-entries')),
-    page.waitForRequest((request) => request.url().includes('/api/v1/me/notifications')),
-    page.waitForRequest((request) => request.url().includes('/api/v1/projects')),
+  const responses = Promise.all([
+    page.waitForResponse(
+      (response) => new URL(response.url()).pathname === '/api/v1/me/work',
+    ),
+    page.waitForResponse(
+      (response) => new URL(response.url()).pathname === '/api/v1/me/time-entries',
+    ),
+    page.waitForResponse(
+      (response) => new URL(response.url()).pathname === '/api/v1/me/notifications',
+    ),
+    page.waitForResponse(
+      (response) => new URL(response.url()).pathname === '/api/v1/projects',
+    ),
   ])
   await page.getByRole('button', { name: '홈 요약 새로고침' }).click()
-  await requests
+  const completedResponses = await responses
+  await Promise.all(completedResponses.map((response) => response.finished()))
   await expect(page.getByRole('button', { name: '홈 요약 새로고침' })).toBeEnabled()
 })
 
@@ -14567,12 +14594,142 @@ test('캘린더가 기한이 있는 작업을 해당 날짜에 표시하고 월 
   await page.clock.install({ time: new Date('2026-07-05T12:00:00Z') })
   await page.goto(`/projects/${project.id}/calendar`)
   await expect(page.getByText('2026.07')).toBeVisible()
+  const calendarViews = page.getByRole('navigation', { name: '프로젝트 작업 보기' })
+  await expect(calendarViews.getByRole('link', { name: '캘린더 보기' })).toHaveAttribute(
+    'aria-current',
+    'page',
+  )
+  await expect(page.getByRole('region', { name: '프로젝트 작업 캘린더' })).toBeVisible()
   // wpA is due 2026-07-15 → shown in July
   await expect(page.getByRole('button', { name: '워크패키지 API 구현', exact: true })).toBeVisible()
-  // next month → the due chip is gone
+  // next month is canonical URL state and survives reload.
   await page.getByRole('button', { name: '다음 달' }).click()
+  await expect(page).toHaveURL(/month=2026-08/)
   await expect(page.getByText('2026.08')).toBeVisible()
   await expect(page.getByRole('button', { name: '워크패키지 API 구현', exact: true })).toBeHidden()
+  await page.reload()
+  await expect(page.getByText('2026.08')).toBeVisible()
+  await page.getByRole('button', { name: '이번 달' }).click()
+  await expect(page).not.toHaveURL(/month=/)
+  await expect(page.getByText('2026.07')).toBeVisible()
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/project-calendar-composition-ui-273/desktop.png',
+    fullPage: true,
+  })
+  await page.setViewportSize({ width: 390, height: 844 })
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/project-calendar-composition-ui-273/mobile.png',
+    fullPage: true,
+  })
+})
+
+test('캘린더 날짜 추가가 실제 생성 폼의 기한과 POST 요청을 연결한다', async ({ page }) => {
+  await mockApi(page)
+  await page.clock.install({ time: new Date('2026-07-05T12:00:00Z') })
+  await page.route(`**/api/v1/projects/${project.id}/work-packages**`, async (route) => {
+    if (route.request().method() !== 'POST') {
+      await route.fallback()
+      return
+    }
+    const sent = route.request().postDataJSON()
+    await route.fulfill({
+      status: 201,
+      json: {
+        ...wpA,
+        id: 'wp-calendar-created',
+        subject: sent.subject,
+        due_date: sent.due_date,
+      },
+    })
+  })
+
+  await page.goto(`/projects/${project.id}/calendar?month=2026-07`)
+  await page.getByRole('button', { name: '2026-07-20에 새 작업' }).click()
+  await expect(page).toHaveURL(/new=1/)
+  await expect(page).toHaveURL(/new_due=2026-07-20/)
+  const createForm = page.getByRole('region', { name: '새 작업 생성' })
+  await expect(createForm.getByLabel('기한')).toHaveValue('2026-07-20')
+  await createForm.getByLabel('작업 제목').fill('캘린더에서 만든 작업')
+  const createRequest = page.waitForRequest(
+    (request) =>
+      request.method() === 'POST'
+      && new URL(request.url()).pathname === `/api/v1/projects/${project.id}/work-packages`,
+  )
+  await createForm.getByRole('button', { name: '작업 만들기' }).click()
+  expect((await createRequest).postDataJSON()).toMatchObject({
+    subject: '캘린더에서 만든 작업',
+    due_date: '2026-07-20',
+  })
+  await expect(page).not.toHaveURL(/new_due=/)
+})
+
+test('캘린더 검색·필터는 URL과 달력형 filtered-empty 초기화를 보존한다', async ({ page }) => {
+  await mockApi(page)
+  await page.clock.install({ time: new Date('2026-07-05T12:00:00Z') })
+  await page.route(`**/api/v1/projects/${project.id}/work-packages**`, async (route) => {
+    if (route.request().method() !== 'GET') {
+      await route.fallback()
+      return
+    }
+    const query = new URL(route.request().url()).searchParams.get('q')
+    if (query === '검색 결과 없음') {
+      await route.fulfill({ json: { items: [], total: 0 } })
+      return
+    }
+    await route.fallback()
+  })
+
+  await page.goto(`/projects/${project.id}/calendar?month=2026-07`)
+  await page.getByRole('button', { name: '필터' }).click()
+  await page.getByLabel('프로젝트 캘린더 검색어').fill('검색 결과 없음')
+  await page.getByRole('button', { name: '검색', exact: true }).click()
+  await expect(page).toHaveURL(/q=%EA%B2%80%EC%83%89\+%EA%B2%B0%EA%B3%BC\+%EC%97%86%EC%9D%8C/)
+  await expect(page.getByTestId('project-calendar-state-frame')).toBeVisible()
+  await expect(page.getByText('조건에 맞는 작업이 없습니다')).toBeVisible()
+  await page.getByRole('button', { name: '현재 보기 초기화' }).click()
+  await expect(page).not.toHaveURL(/q=/)
+  await expect(page.getByRole('button', { name: '워크패키지 API 구현', exact: true })).toBeVisible()
+})
+
+test('캘린더 로딩·오류·재시도는 월 격자 프레임을 유지한다', async ({ page }) => {
+  await mockApi(page)
+  await page.clock.install({ time: new Date('2026-07-05T12:00:00Z') })
+  let releaseInitial: (() => void) | undefined
+  let available = false
+  const initialGate = new Promise<void>((resolve) => {
+    releaseInitial = resolve
+  })
+  await page.route(`**/api/v1/projects/${project.id}/work-packages**`, async (route) => {
+    if (route.request().method() !== 'GET') {
+      await route.fallback()
+      return
+    }
+    if (!available) {
+      await initialGate
+      await route.fulfill({ status: 503, json: { detail: 'calendar temporarily unavailable' } })
+      return
+    }
+    await route.fulfill({ json: workPackages })
+  })
+
+  await page.goto(`/projects/${project.id}/calendar?month=2026-07`)
+  await expect(page.getByTestId('project-calendar-skeleton')).toBeVisible()
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/project-calendar-composition-ui-273/loading.png',
+    fullPage: true,
+  })
+  releaseInitial?.()
+  await expect(page.getByTestId('project-calendar-state-frame')).toBeVisible()
+  await expect(page.getByRole('alert')).toContainText('calendar temporarily unavailable')
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/project-calendar-composition-ui-273/error.png',
+    fullPage: true,
+  })
+  available = true
+  await page.getByRole('button', { name: '다시 시도' }).click()
+  await expect(page.getByTestId('project-calendar-grid')).toBeVisible()
+  await expect(page.getByRole('button', { name: '워크패키지 API 구현', exact: true })).toBeVisible()
 })
 
 test('캘린더 항목 액션 메뉴가 링크·복제·이동·전체 페이지 흐름을 연결한다', async ({ page }) => {
@@ -25276,10 +25433,12 @@ test('계획 표면은 모바일에서 백로그·보드·캘린더 모드를 �
 
   await boardViews.getByRole('link', { name: '캘린더 보기' }).click()
   await expect(page).toHaveURL(/\/calendar/)
-  const calendarMode = page.getByRole('navigation', { name: '계획 모드' }).getByRole('link', { name: /캘린더/ })
+  const calendarMode = page
+    .getByRole('navigation', { name: '프로젝트 작업 보기' })
+    .getByRole('link', { name: '캘린더 보기' })
   await expect(calendarMode).toBeVisible()
   await expect(calendarMode).toHaveAttribute('aria-current', 'page')
-  await expect(page.getByLabel('계획 요약')).toContainText('일정 있음')
+  await expect(page.getByRole('region', { name: '프로젝트 작업 캘린더' })).toBeVisible()
   await expect(page.getByText('워크패키지 API 구현')).toBeVisible()
   await expectNoHorizontalOverflow(page)
 })
@@ -27372,14 +27531,18 @@ test('Workspace Worklogs는 관리자 필터·다운로드·모바일 탐색을 
   await expect(page.getByRole('alert')).toContainText('시작일은 종료일보다 늦을 수 없습니다')
   await expect(page.getByRole('button', { name: '적용', exact: true })).toBeDisabled()
   await page.getByLabel('Worklogs 시작일').fill('2026-07-01')
-  const filteredRequest = page.waitForRequest(
-    (request) => request.url().includes('/admin/worklogs?') && request.url().includes('from=2026-07-01'),
+  const filteredResponse = page.waitForResponse(
+    (response) =>
+      response.url().includes('/admin/worklogs?') &&
+      response.url().includes('from=2026-07-01'),
   )
   await page.getByRole('button', { name: '적용', exact: true }).click()
-  await filteredRequest
+  await (await filteredResponse).finished()
   await expect(page).toHaveURL(/from=2026-07-01/)
   await expect(page).toHaveURL(/to=2026-07-31/)
-  await expect(mobileList.getByText('Old User')).toBeVisible()
+  await expect(
+    page.getByRole('list', { name: '모바일 Worklogs 목록' }).getByText('Old User'),
+  ).toBeVisible()
 
   const download = page.waitForEvent('download')
   await page.getByRole('button', { name: 'CSV' }).click()
@@ -27391,7 +27554,11 @@ test('Workspace Worklogs는 관리자 필터·다운로드·모바일 탐색을 
     path: '../../docs/screenshots/redevelopment/worklogs-operations-ui-258/mobile.png',
     fullPage: false,
   })
-  await mobileList.getByText('관리자 Worklog 검토').first().scrollIntoViewIfNeeded()
+  await page
+    .getByRole('list', { name: '모바일 Worklogs 목록' })
+    .getByText('관리자 Worklog 검토')
+    .first()
+    .scrollIntoViewIfNeeded()
   await page.screenshot({
     path: '../../docs/screenshots/redevelopment/worklogs-operations-ui-258/mobile-bottom.png',
     fullPage: false,
