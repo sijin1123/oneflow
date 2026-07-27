@@ -7,13 +7,16 @@ import {
   FileInput,
   FolderKanban,
   History,
+  RefreshCw,
+  ServerCog,
   TriangleAlert,
   UsersRound,
   type LucideIcon,
 } from 'lucide-react'
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 
+import { FrameContextActions } from '@/components/shell/FrameContextActions'
 import { ErrorState, ListSkeleton } from '@/components/shell/states'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -22,7 +25,6 @@ import { useMe } from '@/features/members/api'
 import { useCanWrite } from '@/features/members/useCanWrite'
 import { useProjects } from '@/features/projects/api'
 import type { ProjectListItem } from '@/features/projects/types'
-import { SettingsFrame, SettingsSection } from '@/features/settings/SettingsShell'
 import { useExportCsv } from '@/features/work-packages/csv'
 import { formatDateTime } from '@/lib/datetime'
 import { cn } from '@/lib/utils'
@@ -73,11 +75,41 @@ function SurfaceLink({
   )
 }
 
-function ProjectDataRow({ project }: { project: ProjectListItem }) {
+function SurfaceHeading({
+  id,
+  title,
+  description,
+  actions,
+}: {
+  id: string
+  title: string
+  description: string
+  actions?: ReactNode
+}) {
+  return (
+    <div className="flex min-w-0 flex-col gap-3 border-b border-of-border-subtle pb-3 sm:flex-row sm:items-end sm:justify-between">
+      <div className="min-w-0">
+        <h2 id={id} className="text-sm font-semibold">{title}</h2>
+        <p className="mt-1 text-xs leading-5 text-of-muted">{description}</p>
+      </div>
+      {actions ? <div className="shrink-0">{actions}</div> : null}
+    </div>
+  )
+}
+
+function ProjectDataRow({
+  project,
+  recoveredArtifacts,
+}: {
+  project: ProjectListItem
+  recoveredArtifacts: ReadonlySet<string>
+}) {
   const canWrite = useCanWrite(project.id)
   const exportCsv = useExportCsv(project.id)
   const archived = Boolean(project.archived_at)
   const importDisabled = archived || !canWrite
+  const recoveredExport = exportCsv.error instanceof ExportDownloadError
+    && recoveredArtifacts.has(exportCsv.error.created.job_id)
 
   return (
     <li className="grid gap-3 px-3 py-3 md:grid-cols-[minmax(0,1fr)_5rem_7rem_auto] md:items-center">
@@ -124,7 +156,12 @@ function ProjectDataRow({ project }: { project: ProjectListItem }) {
           {exportCsv.data.row_count}개 행 · 체크섬 {exportCsv.data.checksum.slice(0, 10)}
         </p>
       ) : null}
-      {exportCsv.isError ? (
+      {recoveredExport ? (
+        <p className="text-[11px] text-of-success md:col-span-4 md:text-right" role="status">
+          최근 데이터 이전에서 내보내기 파일을 다시 받았습니다.
+        </p>
+      ) : null}
+      {exportCsv.isError && !recoveredExport ? (
         <p className="text-[11px] text-of-danger md:col-span-4 md:text-right" role="alert">
           {exportCsv.error instanceof ExportDownloadError
             ? '파일은 생성됐지만 자동 다운로드에 실패했습니다. 최근 데이터 이전에서 다시 받아 주세요.'
@@ -137,7 +174,13 @@ function ProjectDataRow({ project }: { project: ProjectListItem }) {
 
 const sourceLabel = { oneflow: 'OneFlow', jira: 'Jira', linear: 'Linear' } as const
 
-function TransferRow({ job }: { job: DataTransferJob }) {
+function TransferRow({
+  job,
+  onDownloaded,
+}: {
+  job: DataTransferJob
+  onDownloaded: (jobId: string) => void
+}) {
   const download = useDownloadTransferArtifact()
   const hasErrors = job.status === 'completed_with_errors'
   const direction = job.direction === 'export' ? '내보내기' : job.dry_run ? '가져오기 미리보기' : '가져오기'
@@ -181,7 +224,10 @@ function TransferRow({ job }: { job: DataTransferJob }) {
             size="sm"
             disabled={download.isPending}
             onClick={() =>
-              download.mutate({ jobId: job.id, filename: job.artifact_filename ?? 'export.csv' })
+              download.mutate(
+                { jobId: job.id, filename: job.artifact_filename ?? 'export.csv' },
+                { onSuccess: () => onDownloaded(job.id) },
+              )
             }
           >
             <Download size={13} aria-hidden="true" /> 다시 받기
@@ -203,98 +249,192 @@ export function OperationsPage() {
   const projects = useProjects()
   const me = useMe()
   const [projectFilter, setProjectFilter] = useState('')
+  const [recoveredArtifacts, setRecoveredArtifacts] = useState<Set<string>>(() => new Set())
   const transfers = useDataTransferJobs(projectFilter || undefined)
+  const projectItems = projects.data?.items ?? []
+  const firstProject = projectItems[0]
+  const refreshing = projects.isFetching || transfers.isFetching || me.isFetching
 
-  if (projects.isPending) return <ListSkeleton />
-  if (projects.isError) return <ErrorState error={projects.error} onRetry={() => projects.refetch()} />
-  const firstProject = projects.data.items[0]
+  const refresh = async () => {
+    await Promise.all([projects.refetch(), transfers.refetch(), me.refetch()])
+  }
 
   return (
-    <SettingsFrame
-      eyebrow="Operations"
-      title="운영 허브"
-      description="프로젝트 데이터 작업, 시스템 상태, 워크스페이스 관리 표면을 한 곳에서 확인합니다."
-      meta={`프로젝트 ${projects.data.total}개 · 최근 작업 ${transfers.data?.total ?? 0}건`}
-      className="max-w-6xl"
-    >
-      <SettingsSection
-        title="데이터 작업"
-        description="프로젝트별 작업 CSV 가져오기와 내보내기 진입점입니다."
-      >
-        <ul aria-label="프로젝트 데이터 작업" className="divide-y divide-of-border">
-          {projects.data.items.map((project) => (
-            <ProjectDataRow key={project.id} project={project} />
-          ))}
-        </ul>
-      </SettingsSection>
+    <div className="flex h-full min-w-0 flex-col bg-of-surface">
+      <FrameContextActions>
+        <Link to="/status" className={actionLinkClass()}>
+          <Activity size={13} aria-hidden="true" /> 시스템 상태
+        </Link>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          disabled={refreshing}
+          onClick={() => void refresh()}
+        >
+          <RefreshCw size={13} className={refreshing ? 'animate-spin' : undefined} aria-hidden="true" />
+          새로고침
+        </Button>
+      </FrameContextActions>
 
-      <SettingsSection
-        title="최근 데이터 이전"
-        description="가져오기 미리보기와 적용 결과, 시점이 고정된 내보내기 파일을 확인합니다."
-        actions={
-          <label className="flex items-center gap-2 text-xs text-of-muted">
-            <span>프로젝트</span>
-            <Select
-              aria-label="데이터 이전 프로젝트 필터"
-              className="w-44"
-              value={projectFilter}
-              onChange={(event) => setProjectFilter(event.target.value)}
-            >
-              <option value="">전체 프로젝트</option>
-              {projects.data.items.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.name}
-                </option>
-              ))}
-            </Select>
-          </label>
-        }
+      <div
+        data-testid="operations-scroll"
+        className="min-h-0 flex-1 overflow-y-auto overscroll-contain"
+        aria-busy={refreshing}
       >
-        {transfers.isPending ? <ListSkeleton rows={3} /> : null}
-        {transfers.isError ? (
-          <ErrorState error={transfers.error} onRetry={() => transfers.refetch()} />
-        ) : null}
-        {transfers.data?.items.length === 0 ? (
-          <div className="flex min-h-28 flex-col items-center justify-center gap-2 text-center text-of-muted">
-            <History size={20} aria-hidden="true" />
-            <p className="text-xs">기록된 데이터 이전 작업이 없습니다.</p>
-          </div>
-        ) : null}
-        {transfers.data?.items.length ? (
-          <ul aria-label="데이터 이전 이력" className="divide-y divide-of-border">
-            {transfers.data.items.map((job) => (
-              <TransferRow key={job.id} job={job} />
-            ))}
-          </ul>
-        ) : null}
-      </SettingsSection>
+        <div className="mx-auto w-full max-w-6xl px-4 py-5 sm:px-6 sm:py-6">
+          <header className="grid gap-4 border-b border-of-border pb-5 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+            <div className="min-w-0">
+              <p className="text-[11px] font-semibold uppercase text-of-muted">Operations</p>
+              <h1 className="mt-1 text-xl font-semibold">운영 허브</h1>
+              <p className="mt-1 max-w-2xl text-xs leading-5 text-of-muted">
+                프로젝트 데이터 작업과 최근 이전 결과를 확인하고 필요한 운영 화면으로 이동합니다.
+              </p>
+            </div>
+            <dl className="grid grid-cols-2 divide-x divide-of-border-subtle border-y border-of-border-subtle sm:min-w-64">
+              <div className="px-4 py-2">
+                <dt className="text-[11px] text-of-muted">프로젝트</dt>
+                <dd className="mt-0.5 text-sm font-semibold tabular-nums">
+                  {projects.data?.total ?? '-'}
+                </dd>
+              </div>
+              <div className="px-4 py-2">
+                <dt className="text-[11px] text-of-muted">이전 기록</dt>
+                <dd className="mt-0.5 text-sm font-semibold tabular-nums">
+                  {transfers.data?.total ?? '-'}
+                </dd>
+              </div>
+            </dl>
+          </header>
 
-      <SettingsSection title="운영 표면" description="워크스페이스 운영자가 자주 확인하는 화면입니다.">
-        <ul className="divide-y divide-of-border">
-          <SurfaceLink
-            to="/status"
-            icon={Activity}
-            label="시스템 상태"
-            detail="DB 스키마, 스토리지, 인증 준비 상태와 안전 진단 보고서"
-          />
-          {me.data?.is_admin ? (
-            <SurfaceLink
-              to="/admin/users"
-              icon={UsersRound}
-              label="사용자 관리"
-              detail="계정 상태, 관리자 권한, 프로젝트 멤버십"
+          <section aria-labelledby="project-data-title" className="py-6">
+            <SurfaceHeading
+              id="project-data-title"
+              title="프로젝트 데이터 작업"
+              description="프로젝트 작업을 열거나 실제 CSV 가져오기와 내보내기를 실행합니다."
             />
-          ) : null}
-          {firstProject ? (
-            <SurfaceLink
-              to={`/projects/${firstProject.id}/settings?tab=storage`}
-              icon={DatabaseBackup}
-              label="스토리지"
-              detail="프로젝트 파일 사용량과 쿼터"
+            {projects.isPending ? <ListSkeleton rows={3} /> : null}
+            {projects.isError ? (
+              <ErrorState error={projects.error} onRetry={() => void projects.refetch()} />
+            ) : null}
+            {projects.data?.items.length === 0 ? (
+              <div className="flex min-h-28 flex-col items-center justify-center gap-2 text-center text-of-muted">
+                <FolderKanban size={20} aria-hidden="true" />
+                <p className="text-xs">운영할 수 있는 프로젝트가 없습니다.</p>
+                <Link to="/projects?new=1" className={actionLinkClass()}>
+                  프로젝트 만들기 <ArrowUpRight size={13} aria-hidden="true" />
+                </Link>
+              </div>
+            ) : null}
+            {projectItems.length ? (
+              <ul aria-label="프로젝트 데이터 작업" className="divide-y divide-of-border">
+                {projectItems.map((project) => (
+                  <ProjectDataRow
+                    key={project.id}
+                    project={project}
+                    recoveredArtifacts={recoveredArtifacts}
+                  />
+                ))}
+              </ul>
+            ) : null}
+          </section>
+
+          <section aria-labelledby="transfer-history-title" className="border-t border-of-border py-6">
+            <SurfaceHeading
+              id="transfer-history-title"
+              title="최근 데이터 이전"
+              description="가져오기 미리보기와 적용 결과, 시점이 고정된 내보내기 파일을 확인합니다."
+              actions={
+                <label className="flex items-center gap-2 text-xs text-of-muted">
+                  <span>프로젝트</span>
+                  <Select
+                    aria-label="데이터 이전 프로젝트 필터"
+                    className="w-44 max-w-[65vw]"
+                    value={projectFilter}
+                    disabled={projects.isPending || projects.isError}
+                    onChange={(event) => setProjectFilter(event.target.value)}
+                  >
+                    <option value="">전체 프로젝트</option>
+                    {projectItems.map((item) => (
+                      <option key={item.id} value={item.id}>
+                        {item.name}
+                      </option>
+                    ))}
+                  </Select>
+                </label>
+              }
             />
-          ) : null}
-        </ul>
-      </SettingsSection>
-    </SettingsFrame>
+            {transfers.isPending ? <ListSkeleton rows={3} /> : null}
+            {transfers.isError ? (
+              <ErrorState error={transfers.error} onRetry={() => void transfers.refetch()} />
+            ) : null}
+            {transfers.data?.items.length === 0 ? (
+              <div className="flex min-h-28 flex-col items-center justify-center gap-2 text-center text-of-muted">
+                <History size={20} aria-hidden="true" />
+                <p className="text-xs">기록된 데이터 이전 작업이 없습니다.</p>
+              </div>
+            ) : null}
+            {transfers.data?.items.length ? (
+              <ul aria-label="데이터 이전 이력" className="divide-y divide-of-border">
+                {transfers.data.items.map((job) => (
+                  <TransferRow
+                    key={job.id}
+                    job={job}
+                    onDownloaded={(jobId) => {
+                      setRecoveredArtifacts((current) => {
+                        if (current.has(jobId)) return current
+                        const next = new Set(current)
+                        next.add(jobId)
+                        return next
+                      })
+                    }}
+                  />
+                ))}
+              </ul>
+            ) : null}
+          </section>
+
+          <section aria-labelledby="operations-links-title" className="border-t border-of-border py-6">
+            <SurfaceHeading
+              id="operations-links-title"
+              title="운영 화면"
+              description="현재 권한과 프로젝트 범위에서 사용할 수 있는 관리 화면입니다."
+            />
+            {me.isError ? (
+              <div className="mt-3 flex flex-wrap items-center justify-between gap-3 border-y border-of-danger/20 py-3 text-xs text-of-danger">
+                <span>관리자 권한을 확인하지 못해 사용자 관리 링크를 숨겼습니다.</span>
+                <Button type="button" size="sm" variant="outline" onClick={() => void me.refetch()}>
+                  <RefreshCw size={13} aria-hidden="true" /> 다시 시도
+                </Button>
+              </div>
+            ) : null}
+            <ul className="divide-y divide-of-border">
+              <SurfaceLink
+                to="/status"
+                icon={ServerCog}
+                label="시스템 상태"
+                detail="DB 스키마, 스토리지, 인증 준비 상태와 안전 진단 보고서"
+              />
+              {me.data?.is_admin ? (
+                <SurfaceLink
+                  to="/admin/users"
+                  icon={UsersRound}
+                  label="사용자 관리"
+                  detail="계정 상태, 관리자 권한, 프로젝트 멤버십"
+                />
+              ) : null}
+              {firstProject ? (
+                <SurfaceLink
+                  to={`/projects/${firstProject.id}/settings?tab=storage`}
+                  icon={DatabaseBackup}
+                  label="스토리지"
+                  detail="프로젝트 파일 사용량과 쿼터"
+                />
+              ) : null}
+            </ul>
+          </section>
+        </div>
+      </div>
+    </div>
   )
 }

@@ -146,6 +146,7 @@ export function useUpdateAiPolicy() {
     },
     onError: () => {
       void queryClient.invalidateQueries({ queryKey: aiPolicyKey })
+      void queryClient.invalidateQueries({ queryKey: workspaceCapabilitiesKey })
       void queryClient.invalidateQueries({ queryKey: aiCapabilitiesKey })
     },
   })

@@ -24,6 +24,7 @@ export function useWorkspaceInvitations(enabled = true) {
     queryKey: ['workspace-invitations'],
     queryFn: () => api<WorkspaceInvitationList>('/api/v1/workspace-invitations'),
     enabled,
+    retry: false,
   })
 }
 
