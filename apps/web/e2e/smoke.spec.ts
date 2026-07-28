@@ -27428,6 +27428,57 @@ test('프로젝트 디렉터리는 모바일에서 요약·검색·카드 링크
   await expectNoHorizontalOverflow(page)
 })
 
+test('모바일 프로젝트 진입은 실제 역할과 2열 진행 신호를 첫 흐름에 유지한다', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await mockApi(page)
+  await mockProjectOverview(page)
+
+  await page.goto('/projects')
+  const card = page.getByRole('listitem').filter({ hasText: project.name })
+  await expect(card.getByText('소유자', { exact: true })).toBeVisible()
+  await expect(page.getByTestId('frame-context-bar')).toHaveCSS('height', '44px')
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/mobile-project-entry-ui-285/directory-390x844.png',
+  })
+
+  await card.getByRole('link', { name: `${project.name} Overview 열기` }).click()
+  await expect(page).toHaveURL(`/projects/${project.id}/overview`)
+
+  const summary = page.getByRole('region', { name: '프로젝트 진행 요약' })
+  const metrics = summary.locator('[data-overview-metric]')
+  await expect(metrics).toHaveCount(4)
+  const boxes = await metrics.evaluateAll((items) =>
+    items.map((item) => {
+      const box = item.getBoundingClientRect()
+      return { x: Math.round(box.x), y: Math.round(box.y), width: Math.round(box.width) }
+    }),
+  )
+  expect(Math.abs(boxes[0]!.y - boxes[1]!.y)).toBeLessThanOrEqual(1)
+  expect(Math.abs(boxes[2]!.y - boxes[3]!.y)).toBeLessThanOrEqual(1)
+  expect(boxes[0]!.x).toBeLessThan(boxes[1]!.x)
+  expect(boxes[2]!.x).toBeLessThan(boxes[3]!.x)
+  expect(Math.abs(boxes[0]!.width - boxes[1]!.width)).toBeLessThanOrEqual(1)
+
+  const signals = page.getByRole('complementary', { name: '프로젝트 정보' })
+  const baseline = page.getByRole('region', { name: '프로젝트 일정 기준선' })
+  await expect(signals).toContainText('프로젝트 신호')
+  await expect.poll(async () => {
+    const signalBox = await signals.boundingBox()
+    const baselineBox = await baseline.boundingBox()
+    return Boolean(signalBox && baselineBox && signalBox.y < baselineBox.y)
+  }).toBe(true)
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/mobile-project-entry-ui-285/overview-390x844.png',
+  })
+
+  await page.setViewportSize({ width: 320, height: 740 })
+  await expectNoHorizontalOverflow(page)
+})
+
 
 test('백로그에서 사이클을 배정하면 PATCH 후 행이 사라진다', async ({ page }) => {
   await mockApi(page)

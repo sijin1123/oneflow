@@ -42,9 +42,31 @@ import { ProjectScheduleBaselinePanel } from './ProjectScheduleBaselinePanel'
 
 const COVER_TYPES = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp'])
 
-function OverviewMetric({ label, value, danger = false }: { label: string; value: string; danger?: boolean }) {
+function overviewCellBorders(index: number) {
+  return cn(
+    'border-of-border-subtle sm:border-b-0',
+    index < 2 && 'border-b',
+    index % 2 === 0 && 'border-r',
+    index < 3 && 'sm:border-r',
+  )
+}
+
+function OverviewMetric({
+  label,
+  value,
+  index,
+  danger = false,
+}: {
+  label: string
+  value: string
+  index: number
+  danger?: boolean
+}) {
   return (
-    <div className="min-w-0 border-b border-of-border-subtle px-4 py-3 last:border-b-0 sm:border-b-0 sm:border-r sm:last:border-r-0">
+    <div
+      data-overview-metric={label}
+      className={cn('min-w-0 px-4 py-3', overviewCellBorders(index))}
+    >
       <p className="text-[11px] font-medium text-of-muted">{label}</p>
       <p className={cn('mt-0.5 text-lg font-semibold tabular-nums', danger && 'text-of-danger')}>{value}</p>
     </div>
@@ -439,10 +461,16 @@ export function ProjectOverviewPage() {
             )}
           </section>
 
-          <section aria-label="프로젝트 진행 요약" className="grid border-b border-of-border sm:grid-cols-4">
+          <section
+            aria-label="프로젝트 진행 요약"
+            className="grid grid-cols-2 border-b border-of-border sm:grid-cols-4"
+          >
             {dashboard.isPending ? (
               [0, 1, 2, 3].map((item) => (
-                <div key={item} className="border-b border-of-border-subtle px-4 py-3 last:border-b-0 sm:border-b-0 sm:border-r sm:last:border-r-0">
+                <div
+                  key={item}
+                  className={cn('px-4 py-3', overviewCellBorders(item))}
+                >
                   <div className="h-3 w-16 animate-pulse rounded bg-of-surface-hover" />
                   <div className="mt-2 h-5 w-10 animate-pulse rounded bg-of-surface-hover" />
                 </div>
@@ -456,10 +484,27 @@ export function ProjectOverviewPage() {
               </div>
             ) : (
               <>
-                <OverviewMetric label="전체 작업" value={String(dashboard.data.total_work_packages)} />
-                <OverviewMetric label="진행 중" value={String(dashboard.data.open_work_packages)} />
-                <OverviewMetric label="완료율" value={`${dashboard.data.completion_percent}%`} />
-                <OverviewMetric label="기한 초과" value={String(dashboard.data.overdue_count)} danger={dashboard.data.overdue_count > 0} />
+                <OverviewMetric
+                  index={0}
+                  label="전체 작업"
+                  value={String(dashboard.data.total_work_packages)}
+                />
+                <OverviewMetric
+                  index={1}
+                  label="진행 중"
+                  value={String(dashboard.data.open_work_packages)}
+                />
+                <OverviewMetric
+                  index={2}
+                  label="완료율"
+                  value={`${dashboard.data.completion_percent}%`}
+                />
+                <OverviewMetric
+                  index={3}
+                  label="기한 초과"
+                  value={String(dashboard.data.overdue_count)}
+                  danger={dashboard.data.overdue_count > 0}
+                />
               </>
             )}
           </section>
@@ -500,7 +545,10 @@ export function ProjectOverviewPage() {
               <RecentActivity projectId={projectId} />
             </div>
 
-            <aside aria-label="프로젝트 정보" className="min-w-0 border-t border-of-border pt-4 lg:sticky lg:top-4 lg:self-start lg:border-l lg:border-t-0 lg:pl-5 lg:pt-0">
+            <aside
+              aria-label="프로젝트 정보"
+              className="order-first min-w-0 border-b border-of-border pb-5 lg:order-none lg:sticky lg:top-4 lg:self-start lg:border-b-0 lg:border-l lg:pl-5 lg:pt-0"
+            >
               <div className="flex items-center gap-2 text-xs font-semibold"><Gauge size={14} /> 프로젝트 신호</div>
               <dl className="mt-3 divide-y divide-of-border text-xs">
                 <div className="flex items-center justify-between gap-3 py-2.5">
