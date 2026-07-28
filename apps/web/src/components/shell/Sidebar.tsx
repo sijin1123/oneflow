@@ -1,5 +1,6 @@
 import {
   Activity,
+  ArrowLeft,
   ArrowDown,
   ArrowUp,
   Archive,
@@ -748,6 +749,16 @@ function SidebarContent({
   const wikiMode = location.pathname === '/wiki'
   const aiMode = location.pathname === '/ai'
   const settingsMode = location.pathname === '/settings' || location.pathname.startsWith('/admin')
+  const workspaceIdentity = workspaceProfile.data ?? {
+    name: 'OneFlow',
+    revision: 1,
+    logo_url: null,
+    logo_content_type: null,
+    logo_filename: null,
+    logo_width: null,
+    logo_height: null,
+    logo_byte_size: null,
+  }
   const settingsNavigationRef = useRevealActiveNavigationLink({
     enabled: settingsMode,
     pathname: location.pathname,
@@ -837,25 +848,28 @@ function SidebarContent({
       {!collapsed ? (
       <div className="flex min-w-0 flex-1 flex-col bg-of-surface-raised md:mb-2 md:rounded-l-[var(--of-radius-lg)] md:border-y md:border-l md:border-of-border-subtle md:shadow-[var(--of-shadow-sm)]">
         <div className="flex h-11 shrink-0 items-center gap-2 px-3">
-          <WorkspaceLogo
-            profile={workspaceProfile.data ?? {
-              name: 'OneFlow',
-              revision: 1,
-              logo_url: null,
-              logo_content_type: null,
-              logo_filename: null,
-              logo_width: null,
-              logo_height: null,
-              logo_byte_size: null,
-            }}
-          />
+          {settingsMode ? (
+            <Link
+              to="/projects"
+              aria-label="설정에서 나가기"
+              title="프로젝트로 돌아가기"
+              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-of text-of-muted hover:bg-of-surface-2 hover:text-of-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus"
+              onClick={onNavigate}
+            >
+              <ArrowLeft size={15} aria-hidden="true" />
+            </Link>
+          ) : (
+            <WorkspaceLogo profile={workspaceIdentity} />
+          )}
           <div className="min-w-0 flex-1">
             <h2 className="truncate text-sm font-semibold leading-4">
-              {wikiMode ? 'Wiki' : aiMode ? 'AI' : settingsMode ? 'Settings' : 'Projects'}
+              {wikiMode ? 'Wiki' : aiMode ? 'AI' : settingsMode ? '워크스페이스 설정' : 'Projects'}
             </h2>
-            <p className="truncate text-[10px] leading-3 text-of-muted">
-              {workspaceProfile.data?.name ?? 'OneFlow'}
-            </p>
+            {!settingsMode ? (
+              <p className="truncate text-[10px] leading-3 text-of-muted">
+                {workspaceProfile.data?.name ?? 'OneFlow'}
+              </p>
+            ) : null}
           </div>
           {!wikiMode && !aiMode && !settingsMode ? (
             <NavigationCustomizer
@@ -896,6 +910,29 @@ function SidebarContent({
           ) : null}
         </div>
 
+        {settingsMode ? (
+          <div
+            aria-label="현재 설정 워크스페이스"
+            className="mx-2 mb-3 flex min-h-14 shrink-0 items-center gap-2.5 border-b border-of-border-subtle px-2 pb-3"
+          >
+            <WorkspaceLogo profile={workspaceIdentity} />
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-[13px] font-medium text-of-text">
+                {workspaceProfile.data?.name ?? 'OneFlow'}
+              </p>
+              <p className="truncate text-[11px] text-of-muted">
+                {me.isPending
+                  ? '권한 확인 중'
+                  : me.isError
+                    ? '권한 확인 필요'
+                    : me.data?.is_admin
+                      ? '관리자'
+                      : '멤버'}
+              </p>
+            </div>
+          </div>
+        ) : null}
+
         {selectedProject && !wikiMode && !aiMode && !settingsMode ? (
           <NewWorkItemButton projectId={selectedProject.id} onNavigate={onNavigate} />
         ) : null}
@@ -927,7 +964,7 @@ function SidebarContent({
                       <NavLink to="/admin/general" className={navLinkClass} onClick={onNavigate}><Settings /><span>일반</span></NavLink>
                       <NavLink to="/admin/calendar" className={navLinkClass} onClick={onNavigate}><CalendarCheck2 /><span>근무 일정</span></NavLink>
                       <NavLink to="/admin/project-configuration" className={navLinkClass} onClick={onNavigate}><Workflow /><span>프로젝트 구성</span></NavLink>
-                      <NavLink to="/admin/users" className={navLinkClass} onClick={onNavigate}><Users /><span>사용자</span></NavLink>
+                      <NavLink to="/admin/users" className={navLinkClass} onClick={onNavigate}><Users /><span>멤버</span></NavLink>
                       <NavLink to="/admin/auth-assistance" className={navLinkClass} onClick={onNavigate}><LifeBuoy /><span>로그인 지원</span></NavLink>
                       <NavLink to="/admin/worklogs" className={navLinkClass} onClick={onNavigate}><Clock3 /><span>Worklogs</span></NavLink>
                     </div>
