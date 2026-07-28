@@ -6,6 +6,7 @@ import {
   ChevronRight,
   Columns3,
   Filter,
+  Layers3,
   RefreshCw,
   RotateCcw,
   Search,
@@ -330,24 +331,30 @@ export function AllWorkPage() {
   }
 
   return (
-    <div className="flex h-full min-w-0 flex-col bg-of-surface">
+    <div className="flex h-full w-full max-w-full min-w-0 flex-col overflow-hidden bg-of-surface">
       <h1 className="sr-only">All work items</h1>
       <FrameContextActions>
         <section
           aria-label="Workspace Views 제어"
           data-testid="workspace-views-frame-actions"
-          className="flex min-w-0 flex-1 flex-wrap items-center justify-end gap-1 lg:flex-nowrap"
+          className="flex min-w-0 flex-1 flex-nowrap items-center justify-end gap-1"
         >
-          <label className="relative w-40 shrink-0">
+          <label className="relative w-[4.25rem] shrink-0 sm:w-40">
             <span className="sr-only">작업 범위</span>
             <select
               aria-label="작업 범위"
+              title={scopeLabel}
               value={scope}
-              className="h-7 w-full appearance-none rounded-of border border-of-border bg-of-surface px-2 pr-12 text-xs font-medium text-of-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus"
+              className="h-7 w-full appearance-none rounded-of border border-of-border bg-of-surface px-2 pr-12 text-xs font-medium text-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus sm:text-of-text"
               onChange={(event) => updateParams({ scope: event.target.value })}
             >
-              {SCOPES.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
+              {SCOPES.map((item) => (
+                <option key={item.value} value={item.value} className="text-of-text">
+                  {item.label}
+                </option>
+              ))}
             </select>
+            <Layers3 size={13} className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-of-muted sm:hidden" />
             <Badge variant="neutral" className="pointer-events-none absolute right-6 top-1/2 -translate-y-1/2">
               {data?.total ?? '…'}
             </Badge>
@@ -503,7 +510,7 @@ export function AllWorkPage() {
         aria-label="전체 작업 결과"
         aria-busy={query.isPending || query.isFetching ? 'true' : 'false'}
         data-testid="workspace-views-results"
-        className="min-h-0 flex-1"
+        className="min-h-0 min-w-0 flex-1 overflow-hidden"
       >
         {query.isPending ? (
           <WorkspaceLayoutSkeleton layout={layout} />

@@ -3892,6 +3892,104 @@ test('UI-270 Workspace Views는 레이아웃 골격과 오류·빈 결과 복구
   })
 })
 
+test('UI-283 모바일 Workspace Views는 범위와 4개 레이아웃을 첫 프레임에 두고 나머지 기능까지 스크롤로 연결한다', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await mockApi(page)
+  await page.goto('/work-items')
+
+  const frameBar = page.getByTestId('frame-context-bar')
+  const actionViewport = page.getByTestId('frame-context-actions')
+  const actions = page.getByTestId('workspace-views-frame-actions')
+  const scope = actions.getByLabel('작업 범위')
+  const layoutButtons = [
+    actions.getByRole('button', { name: 'Board 레이아웃' }),
+    actions.getByRole('button', { name: 'Calendar 레이아웃' }),
+    actions.getByRole('button', { name: 'Table 레이아웃' }),
+    actions.getByRole('button', { name: 'Timeline 레이아웃' }),
+  ]
+
+  await expect(frameBar).toBeVisible()
+  await expect(actionViewport).toBeVisible()
+  await expect(scope).toBeVisible()
+  for (const button of layoutButtons) await expect(button).toBeVisible()
+
+  const viewportBox = await actionViewport.boundingBox()
+  expect(viewportBox).not.toBeNull()
+  for (const control of [scope, ...layoutButtons]) {
+    const box = await control.boundingBox()
+    expect(box).not.toBeNull()
+    expect(box!.x).toBeGreaterThanOrEqual(viewportBox!.x)
+    expect(box!.x + box!.width).toBeLessThanOrEqual(viewportBox!.x + viewportBox!.width + 1)
+  }
+
+  const frameBox = await frameBar.boundingBox()
+  const actionsBox = await actions.boundingBox()
+  expect(frameBox).not.toBeNull()
+  expect(actionsBox).not.toBeNull()
+  expect(actionsBox!.y).toBeGreaterThanOrEqual(frameBox!.y)
+  expect(actionsBox!.y + actionsBox!.height).toBeLessThanOrEqual(frameBox!.y + frameBox!.height + 1)
+
+  const assignedRequest = page.waitForRequest((request) => {
+    const url = new URL(request.url())
+    return url.pathname.endsWith('/search/work-packages') && url.searchParams.get('scope') === 'assigned'
+  })
+  await scope.selectOption('assigned')
+  await assignedRequest
+  await expect(page).toHaveURL(/scope=assigned/)
+
+  await layoutButtons[2].click()
+  await expect(page).toHaveURL(/layout=table/)
+  await expect(page.getByLabel('전체 작업 표 스크롤 영역')).toBeVisible()
+
+  const filterTrigger = actions.getByRole('button', { name: /^필터/ })
+  await filterTrigger.scrollIntoViewIfNeeded()
+  await filterTrigger.click()
+  await expect(page.getByLabel('전체 작업 검색어')).toBeVisible()
+
+  const displayTrigger = actions.getByRole('button', { name: 'Display' })
+  await displayTrigger.scrollIntoViewIfNeeded()
+  await displayTrigger.click()
+  await expect(page.getByRole('menuitemradio', { name: '조밀하게' })).toBeVisible()
+  await page.keyboard.press('Escape')
+
+  const addView = actions.getByRole('button', { name: 'Add view' })
+  await addView.scrollIntoViewIfNeeded()
+  await addView.click()
+  const addViewDialog = page.getByRole('dialog', { name: '작업영역 뷰 저장' })
+  await expect(addViewDialog).toBeVisible()
+  await page.getByRole('button', { name: '닫기' }).click()
+  await expect(addViewDialog).toBeHidden()
+
+  const tableRegion = page.getByLabel('전체 작업 표 스크롤 영역')
+  const tableMetrics = await tableRegion.evaluate((element) => ({
+    clientWidth: element.clientWidth,
+    scrollWidth: element.scrollWidth,
+    overflowX: getComputedStyle(element).overflowX,
+  }))
+  expect(tableMetrics.clientWidth).toBeLessThanOrEqual(390)
+  expect(tableMetrics.scrollWidth).toBeGreaterThan(tableMetrics.clientWidth)
+  expect(tableMetrics.overflowX).toBe('auto')
+  for (const container of [
+    page.locator('main'),
+    page.locator('[data-shell-scroll-region]'),
+    page.getByTestId('workspace-views-results'),
+  ]) {
+    const metrics = await container.evaluate((element) => ({
+      clientWidth: element.clientWidth,
+      scrollWidth: element.scrollWidth,
+    }))
+    expect(metrics.scrollWidth).toBe(metrics.clientWidth)
+  }
+
+  await actionViewport.evaluate((element) => {
+    const scroller = element.firstElementChild
+    if (scroller instanceof HTMLElement) scroller.scrollLeft = 0
+  })
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/mobile-workspace-views-ui-283/workspace-views-390x844.png',
+  })
+})
+
 test('Workspace Board 상태 이동은 반환된 version으로 다음 PATCH를 이어간다', async ({ page }) => {
   test.setTimeout(60_000)
   await mockApi(page)

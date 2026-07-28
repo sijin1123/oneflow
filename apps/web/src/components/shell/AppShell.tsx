@@ -44,7 +44,7 @@ export function AppShell() {
         />
         <main
           className={cn(
-            'min-h-0 flex flex-1 flex-col overflow-hidden bg-of-bg md:mb-2 md:mr-2 md:rounded-r-[var(--of-radius-lg)] md:border-y md:border-r md:border-of-border-subtle md:shadow-[var(--of-shadow-sm)]',
+            'min-h-0 min-w-0 flex flex-1 flex-col overflow-hidden bg-of-bg md:mb-2 md:mr-2 md:rounded-r-[var(--of-radius-lg)] md:border-y md:border-r md:border-of-border-subtle md:shadow-[var(--of-shadow-sm)]',
             sidebar.preferences.collapsed &&
               'md:rounded-l-[var(--of-radius-lg)] md:border-l',
           )}
@@ -58,7 +58,7 @@ export function AppShell() {
             }}
           />
           <ProjectNavigationTabs enabled={sidebar.preferences.projectNavigation === 'tabs'} />
-          <div data-shell-scroll-region className="of-scrollbar min-h-0 flex-1 overflow-y-auto">
+          <div data-shell-scroll-region className="of-scrollbar min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto">
             <Outlet />
           </div>
         </main>
