@@ -724,3 +724,9 @@ OneFlow 구현은 기존 자체 Work Package `no_cycle`/`open_only` query, creat
 `docs/plane-poc-reverse-spec/03-feature-matrix.md`, `04-interaction-catalog.md`와 기존 OneFlow 계층 계약에서 사용한 입력은 동일한 작업 범위를 compact view control로 전환하고, 검색·필터·정렬과 계층 disclosure를 실제 결과에 연결하며, 작업 상세·전체 페이지·링크 복사·복제·이동·생성을 같은 기능형 surface에서 제공한다는 관찰 가능한 정보 구조와 행동뿐이다. 별도의 Plane Hierarchy layout 계약이 확인되지 않은 부분은 OneFlow가 이미 보유한 `parent_id` 무결성, 전체 페이지 조회, 자체 `buildTree`와 action menu 계약을 우선했다.
 
 Plane/OpenProject source, API, database schema, package, asset, CSS, DOM hierarchy, exact dimensions/colors, wording, component implementation, icons 또는 branding은 열람·복사하지 않았다. 신규 API, DB, migration, permission, environment variable, dependency 또는 Settings storage 변경은 없다. - attested-independent-derivation
+
+## UI-277 Project Dashboard Composition
+
+`docs/plane-poc-reverse-spec/03-feature-matrix.md`, `04-interaction-catalog.md`와 기존 OneFlow 대시보드 계약에서 사용한 입력은 프로젝트 상태·작업·일정·비용을 한 surface에서 스캔하고, 위젯 구성을 개인 또는 프로젝트 공유 범위로 저장하며, 데이터 갱신·내보내기·실패 복구를 실제 action에 연결한다는 관찰 가능한 정보 구조와 행동뿐이다. 별도의 Plane dashboard API나 위젯 구현은 참조하지 않고 OneFlow가 이미 보유한 집계, 활동, 예산, 레이아웃 version과 authorization 계약을 우선했다.
+
+Plane/OpenProject source, API, database schema, package, asset, CSS, DOM hierarchy, exact dimensions/colors, wording, component implementation, icons 또는 branding은 열람·복사하지 않았다. OneFlow 구현은 기존 dashboard/layout query, CSV export, personal/shared widget mutation, React Query retained data, local design token과 Lucide primitive 위에서 독립 설계했다. 신규 API, DB, migration, permission, environment variable, dependency 또는 Settings storage 변경은 없고 mock/dead control이나 client-only metric은 없다. - attested-independent-derivation

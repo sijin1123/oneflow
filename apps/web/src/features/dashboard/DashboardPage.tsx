@@ -16,12 +16,12 @@ import { useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 
 import { FrameContextActions } from '@/components/shell/FrameContextActions'
-import { ErrorState, ListSkeleton } from '@/components/shell/states'
+import { ErrorState } from '@/components/shell/states'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { ModalContent, ModalOverlay } from '@/components/ui/modal'
+import { Skeleton } from '@/components/ui/skeleton'
 import { HEALTH_LABELS, HEALTH_STYLES } from '@/features/projects/types'
-import { ReportingMetricCard } from '@/features/reports/ReportingSurface'
 import { PriorityChip, StatusChip } from '@/features/work-packages/chips'
 import { PRIORITY_LABELS, WP_STATUSES } from '@/features/work-packages/types'
 import type { WpPriority, WpStatus } from '@/features/work-packages/types'
@@ -77,6 +77,9 @@ const WIDGET_LABELS: Record<string, string> = {
   recent_activity: '최근 활동',
 }
 
+const COMPACT_ERROR_STATE_CLASS =
+  'min-h-0 justify-start px-0 py-0 text-left sm:px-0 [&>div]:grid [&>div]:w-full [&>div]:max-w-none [&>div]:grid-cols-[2rem_minmax(0,1fr)_auto] [&>div]:items-center [&>div]:gap-x-2 [&>div]:gap-y-0.5 [&>div]:px-3 [&>div]:py-3 [&>div]:text-left [&>div>span]:row-span-2 [&>div>span]:h-8 [&>div>span]:w-8 [&>div>p]:col-start-2 [&_button]:col-start-3 [&_button]:row-span-2 [&_button]:row-start-1 [&_button]:ml-auto [&_button]:mt-0'
+
 type FailedAction =
   | 'save-personal'
   | 'reset-personal'
@@ -93,7 +96,19 @@ function sameWidgets(left: string[], right: string[]) {
 }
 
 function Tile({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
-  return <ReportingMetricCard label={label} value={value} tone={accent ? 'danger' : 'neutral'} />
+  return (
+    <div className="min-w-0 border border-of-border bg-of-surface px-3 py-3 -ml-px -mt-px">
+      <span className="block truncate text-[11px] text-of-muted">{label}</span>
+      <strong
+        className={cn(
+          'mt-1 block truncate text-base font-semibold tabular-nums text-of-text',
+          accent && 'text-of-danger',
+        )}
+      >
+        {value}
+      </strong>
+    </div>
+  )
 }
 
 function Distribution({
@@ -111,7 +126,7 @@ function Distribution({
   const total = buckets.reduce((sum, bucket) => sum + bucket.count, 0)
 
   return (
-    <section className="min-w-0 rounded-of border border-of-border bg-of-surface p-4">
+    <section className="min-w-0 border-t border-of-border pt-3">
       <h2 className="mb-3 text-sm font-semibold">{title}</h2>
       {total === 0 ? (
         <p className="text-xs text-of-muted">데이터가 없습니다.</p>
@@ -136,6 +151,57 @@ function Distribution({
         </ul>
       )}
     </section>
+  )
+}
+
+function DashboardSkeleton() {
+  return (
+    <div
+      data-testid="project-dashboard-skeleton"
+      className="mx-auto w-full max-w-6xl min-w-0 space-y-4 px-3 py-4 sm:px-5"
+    >
+      <div className="flex min-h-8 items-center gap-2 border-b border-of-border pb-3">
+        <Skeleton className="h-5 w-10" />
+        <Skeleton className="h-5 w-14" />
+        <Skeleton className="h-5 w-24" />
+      </div>
+      <div className="grid grid-cols-2 sm:grid-cols-5">
+        {Array.from({ length: 5 }).map((_, index) => (
+          <div key={index} className="border border-of-border px-3 py-3 -ml-px -mt-px">
+            <Skeleton className="h-3 w-16" />
+            <Skeleton className="mt-2 h-5 w-12" />
+          </div>
+        ))}
+      </div>
+      <div className="grid grid-cols-2 sm:grid-cols-4">
+        {Array.from({ length: 4 }).map((_, index) => (
+          <div key={index} className="border border-of-border px-3 py-3 -ml-px -mt-px">
+            <Skeleton className="h-3 w-16" />
+            <Skeleton className="mt-2 h-5 w-24" />
+          </div>
+        ))}
+      </div>
+      <div className="border-y border-of-border py-3">
+        <Skeleton className="h-3 w-28" />
+        <Skeleton className="mt-2 h-2.5 w-full" />
+      </div>
+      <div className="grid gap-5 md:grid-cols-3">
+        {Array.from({ length: 3 }).map((_, index) => (
+          <div key={index} className="border-t border-of-border pt-3">
+            <Skeleton className="h-4 w-20" />
+            <div className="mt-4 space-y-3">
+              {Array.from({ length: 5 }).map((__, row) => (
+                <div key={row} className="flex items-center gap-3">
+                  <Skeleton className="h-3 w-12" />
+                  <Skeleton className="h-2.5 flex-1" />
+                  <Skeleton className="h-3 w-4" />
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
   )
 }
 
@@ -170,11 +236,75 @@ export function DashboardPage() {
     '저장하지 않은 대시보드 위젯 변경이 있습니다. 페이지를 이동할까요?',
   )
 
-  if (dashboard.isPending || layout.isPending) return <ListSkeleton />
-  if (dashboard.isError)
-    return <ErrorState error={dashboard.error} onRetry={() => dashboard.refetch()} />
-  if (layout.isError) return <ErrorState error={layout.error} onRetry={() => layout.refetch()} />
-  if (!data || !layout.data) return null
+  const refreshAll = () => Promise.all([dashboard.refetch(), layout.refetch()])
+  const refreshPending = dashboard.isFetching || layout.isFetching
+
+  if (!data || !layout.data) {
+    const pending = dashboard.isPending || layout.isPending
+    return (
+      <div className="flex h-full min-w-0 flex-col overflow-hidden bg-of-surface">
+        <h1 className="sr-only">프로젝트 대시보드</h1>
+        <FrameContextActions>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            aria-label="대시보드 새로고침"
+            title="새로고침"
+            disabled={refreshPending}
+            onClick={() => void refreshAll()}
+          >
+            <RefreshCw
+              size={13}
+              className={refreshPending ? 'animate-spin' : undefined}
+              aria-hidden="true"
+            />
+          </Button>
+          <Button type="button" variant="outline" size="sm" disabled>
+            <Settings2 size={13} aria-hidden="true" />
+            위젯 편집
+          </Button>
+          <a
+            href={`${BASE_URL}/api/v1/projects/${projectId}/dashboard/export.csv`}
+            className="of-touch-target inline-flex h-7 items-center justify-center gap-1.5 whitespace-nowrap rounded-of border border-of-border bg-of-surface px-2 text-xs font-medium transition-colors hover:bg-of-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus focus-visible:ring-offset-1 focus-visible:ring-offset-of-surface"
+          >
+            <FileDown size={13} aria-hidden="true" />
+            CSV 내보내기
+          </a>
+        </FrameContextActions>
+        <section
+          aria-label="프로젝트 대시보드 결과"
+          aria-busy={pending}
+          className="of-scrollbar min-h-0 flex-1 overflow-y-auto"
+        >
+          {pending ? (
+            <DashboardSkeleton />
+          ) : (
+            <div className="mx-auto grid w-full max-w-6xl content-start gap-3 px-3 py-4 sm:px-5">
+              {dashboard.isError ? (
+                <section aria-label="대시보드 데이터 오류">
+                  <ErrorState
+                    error={dashboard.error}
+                    onRetry={() => dashboard.refetch()}
+                    className={COMPACT_ERROR_STATE_CLASS}
+                  />
+                </section>
+              ) : null}
+              {layout.isError ? (
+                <section aria-label="대시보드 위젯 구성 오류">
+                  <ErrorState
+                    error={layout.error}
+                    onRetry={() => layout.refetch()}
+                    className={COMPACT_ERROR_STATE_CLASS}
+                  />
+                </section>
+              ) : null}
+            </div>
+          )}
+        </section>
+      </div>
+    )
+  }
 
   const source = layout.data.source ?? (layout.data.is_default ? 'builtin' : 'personal')
   const sharedLayout = layout.data.shared_layout ?? null
@@ -347,6 +477,21 @@ export function DashboardPage() {
       <h1 className="sr-only">{data.name} 대시보드</h1>
       <FrameContextActions>
         <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          aria-label="대시보드 새로고침"
+          title="새로고침"
+          disabled={refreshPending || anyLayoutMutationPending}
+          onClick={() => void refreshAll()}
+        >
+          <RefreshCw
+            size={13}
+            className={refreshPending ? 'animate-spin' : undefined}
+            aria-hidden="true"
+          />
+        </Button>
+        <Button
           ref={editButtonRef}
           type="button"
           variant="outline"
@@ -437,6 +582,29 @@ export function DashboardPage() {
         </div>
       </section>
 
+      {dashboard.isError || layout.isError ? (
+        <div
+          role="alert"
+          className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-of-danger/15 bg-of-danger-soft px-3 py-2 text-xs text-of-danger"
+        >
+          <span>마지막으로 불러온 대시보드를 유지하고 있습니다. 최신 상태를 다시 확인하세요.</span>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            disabled={refreshPending}
+            onClick={() => void refreshAll()}
+          >
+            <RefreshCw
+              size={13}
+              className={refreshPending ? 'animate-spin' : undefined}
+              aria-hidden="true"
+            />
+            다시 시도
+          </Button>
+        </div>
+      ) : null}
+
       {failedAction === 'reset-personal' ? (
         <div
           role="alert"
@@ -469,14 +637,14 @@ export function DashboardPage() {
             </p>
           ) : null}
 
-          <div className="grid min-w-0 grid-cols-1 gap-4 lg:grid-cols-3">
+          <div className="grid min-w-0 grid-cols-1 gap-5 lg:grid-cols-3">
             {widgets.map((key) => {
               if (key === 'summary')
                 return (
                   <section
                     key={key}
                     aria-label="작업 요약"
-                    className="grid grid-cols-2 gap-3 lg:col-span-3 sm:grid-cols-5"
+                    className="grid grid-cols-2 overflow-hidden lg:col-span-3 sm:grid-cols-5"
                   >
                     <Tile label="전체 작업" value={String(data.total_work_packages)} />
                     <Tile label="진행 중" value={String(data.open_work_packages)} />
@@ -497,7 +665,7 @@ export function DashboardPage() {
                   <section
                     key={key}
                     aria-label="예산 요약"
-                    className="grid grid-cols-2 gap-3 lg:col-span-3 sm:grid-cols-4"
+                    className="grid grid-cols-2 overflow-hidden lg:col-span-3 sm:grid-cols-4"
                   >
                     <Tile label="비용 합계" value={`₩${data.total_cost.toLocaleString('ko-KR')}`} />
                     <Tile
@@ -529,10 +697,7 @@ export function DashboardPage() {
                 )
               if (key === 'progress')
                 return progress !== null ? (
-                  <section
-                    key={key}
-                    className="rounded-of border border-of-border bg-of-surface p-4 lg:col-span-3"
-                  >
+                  <section key={key} className="border-y border-of-border py-3 lg:col-span-3">
                     <div className="mb-1.5 flex items-center justify-between text-xs">
                       <h2 className="font-medium">예상 대비 소요</h2>
                       <span className={cn('text-of-muted', progress > 100 && 'text-of-danger')}>

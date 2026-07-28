@@ -3334,3 +3334,13 @@ Chromium typed mock fixture에서 1440x960과 390x844 viewport를 사용했다. 
 - **증적**: `docs/screenshots/redevelopment/project-hierarchy-ui/{desktop,mobile,loading-mobile}.png`에서 desktop filter composition, three-level mobile containment와 hierarchy-shaped loading geometry를 확인한다.
 
 ---
+
+# UI-277 Project Dashboard Composition 검증 (2026-07-28)
+
+- **UI 변경**: Project Dashboard를 별도 카드의 나열에서 중앙 콘텐츠 프레임에 직접 결합된 compact operational surface로 재구성했다. 실제 refresh·widget edit·CSV export를 프레임 상단에 유지하고, 상태·작업·일정·비용·예산·진행률·분포·최근 활동을 dense metric band와 unframed sections로 통합했다. desktop과 `390x844` mobile 모두 문서 가로 넘침 없이 동일한 정보 계층을 유지한다.
+- **기능/API 반영**: 기존 dashboard aggregate, activity, member filter, CSV export, personal/shared widget layout, owner authorization, optimistic revision과 dirty guard를 그대로 연결했다. dashboard와 layout query의 초기 loading은 최종 geometry를 닮은 skeleton으로 표시하고, 두 query의 초기 오류는 독립적으로 재시도한다. 마지막 성공 데이터가 있는 재조회 실패는 화면을 비우지 않고 retained data warning과 실제 재시도를 제공한다. 신규 API, DB/schema, migration, permission, environment variable, dependency 또는 Settings UI 변경은 없다.
+- **이연 항목**: 없음. 새로고침, CSV, 개인/공유 위젯 저장·초기화·삭제, version 충돌 복구, activity filter, recent-work deep link, 초기 query 독립 복구와 last-success retry가 모두 실제 query/mutation 또는 browser command에 연결돼 있으며 mock/dead control이나 장식용 metric은 없다.
+- **검증**: typecheck PASS, lint PASS(기존 Fast Refresh warning 4건), production build PASS(기존 large chunk warning), unit **115 PASS**, component **9 PASS**, Dashboard focused E2E **4 PASS**다. 첫 4-worker 전체 E2E는 **445 PASS + opt-in visual QA manifest 1 skip**에서 기존 DHTMLX timeline 클릭 1건이 내부 스크롤 가시성 경합으로 실패했고 해당 시나리오를 병렬로 **5/5 PASS** 확인했다. 최종 1-worker 전체 E2E는 **446 PASS + opt-in visual QA manifest 1 skip**로 완주했다. Clean-room frontend **182**/backend **45**, OpenAPI type parity와 diff check도 PASS했다. 전체 E2E가 생성한 무관한 screenshot rewrite와 로그인 임시 캡처는 원복·삭제하고 UI-277 및 영향받은 dashboard editor/shared layout 증적만 보존했다.
+- **증적**: `docs/screenshots/redevelopment/project-dashboard-composition-ui-277/{desktop,mobile,loading-mobile,error-mobile}.png`에서 compact dashboard, mobile containment, stable skeleton과 독립 오류 복구를 확인한다. `project-dashboard-ui-252/{editor-desktop,editor-mobile}.png`와 `shared-dashboard-layouts-ui/{desktop,mobile}.png`는 새 dashboard composition 위에서 기존 위젯 편집·공유 레이아웃 흐름이 유지됨을 보여 준다.
+
+---

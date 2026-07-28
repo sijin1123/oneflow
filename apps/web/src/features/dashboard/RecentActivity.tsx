@@ -33,7 +33,7 @@ export function RecentActivity({ projectId }: { projectId: string }) {
   return (
     <section
       aria-label="최근 활동"
-      className="min-w-0 rounded-of border border-of-border bg-of-surface p-4"
+      className="min-w-0 border-t border-of-border pt-4"
     >
       <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <h2 className="text-sm font-semibold">최근 활동</h2>
