@@ -21182,7 +21182,7 @@ test('회의 상세가 안건·액션 아이템을 보여주고 액션 아이템
   await expect(page.getByLabel('회의 제목', { exact: true })).toHaveValue('스프린트 회의')
   await expect(page.getByText('배포 점검')).toBeVisible()
   await expect(page.getByLabel('안건', { exact: true })).toBeVisible()
-  await expect(page.getByText('Meeting detail')).toBeVisible()
+  await expect(page.getByText('회의 상세', { exact: true })).toBeVisible()
   await expect(page.getByLabel('회의 속성')).toBeVisible()
   await expectNoHorizontalOverflow(page)
   await page.screenshot({
@@ -21316,6 +21316,244 @@ test('회의 상세에서 반복 주기를 고르면 PATCH에 recurrence가 실�
   const sent = (await patch).postDataJSON() as { recurrence?: string }
   expect(sent.recurrence).toBe('weekly')
   await expect(page.getByLabel('반복 주기')).toHaveValue('weekly')
+})
+
+test('회의 상세는 로딩·오류 중에도 최종 프레임을 유지하고 같은 화면에서 복구한다', async ({
+  page,
+}) => {
+  await mockApi(page)
+  let attempt = 0
+  let allowRecovery = false
+  let releaseFirstRequest: (() => void) | undefined
+  const recoveredMeeting = {
+    id: 'm-detail-recovered',
+    project_id: project.id,
+    title: '복구된 운영 회의',
+    scheduled_on: '2026-07-28',
+    agenda: '<p>복구된 안건</p>',
+    minutes: '<p>복구된 회의록</p>',
+    author_id: null,
+    recurrence: 'weekly',
+    recurrence_source_id: null,
+    follow_up_source_id: null,
+    follow_up_source_title: null,
+    version: 2,
+    created_at: '2026-07-28T00:00:00Z',
+    updated_at: '2026-07-28T01:00:00Z',
+    action_items: [],
+  }
+  await page.route('**/api/v1/meetings/m-detail-recovered', async (route) => {
+    if (route.request().method() !== 'GET') {
+      await route.fallback()
+      return
+    }
+    attempt += 1
+    if (attempt === 1) {
+      await new Promise<void>((resolve) => {
+        releaseFirstRequest = resolve
+      })
+    }
+    if (!allowRecovery) {
+      await route.fulfill({
+        status: 503,
+        json: { detail: '회의 상세 서비스를 사용할 수 없습니다.' },
+      })
+      return
+    }
+    await route.fulfill({ json: recoveredMeeting })
+  })
+
+  await page.goto(`/projects/${project.id}/meetings/m-detail-recovered`)
+  const frame = page.getByTestId('frame-context-bar')
+  await expect(page.getByRole('status', { name: '회의 상세 불러오는 중' })).toBeVisible()
+  await expect(page.getByLabel('회의 상세 상태')).toBeVisible()
+  await expect(frame.getByRole('button', { name: '회의 상세 새로고침' })).toBeVisible()
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/project-meeting-detail-composition-ui-281/loading.png',
+    fullPage: true,
+  })
+
+  releaseFirstRequest?.()
+  await expect(page.getByRole('alert')).toContainText('회의 상세 서비스를 사용할 수 없습니다.')
+  await expect(page.getByLabel('회의 상세 상태')).toBeVisible()
+  await expect(page.getByRole('status', { name: '회의 상세 불러오는 중' })).toBeVisible()
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/project-meeting-detail-composition-ui-281/error.png',
+    fullPage: true,
+  })
+
+  allowRecovery = true
+  await page.getByRole('button', { name: '다시 시도' }).click()
+  await expect(page.getByLabel('회의 제목')).toHaveValue('복구된 운영 회의')
+  await expect(page.getByLabel('안건', { exact: true })).toBeVisible()
+  await expect(page.getByLabel('회의 속성')).toBeVisible()
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/project-meeting-detail-composition-ui-281/desktop.png',
+    fullPage: true,
+  })
+
+  await page.setViewportSize({ width: 390, height: 844 })
+  await expect(page.getByLabel('회의 명령')).toBeVisible()
+  await expect(page.getByLabel('회의 제목')).toBeVisible()
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/project-meeting-detail-composition-ui-281/mobile.png',
+    fullPage: true,
+  })
+})
+
+test('회의 상세 저장과 액션 실패는 초안·명령을 보존해 같은 payload로 재시도한다', async ({
+  page,
+}) => {
+  await mockApi(page)
+  const meeting = {
+    id: 'm-detail-retry',
+    project_id: project.id,
+    title: '주간 운영 회의',
+    scheduled_on: '2026-07-28',
+    agenda: '<p>운영 안건</p>',
+    minutes: null,
+    author_id: null,
+    recurrence: null,
+    recurrence_source_id: null,
+    follow_up_source_id: null,
+    follow_up_source_title: null,
+    version: 4,
+    created_at: '2026-07-28T00:00:00Z',
+    updated_at: '2026-07-28T01:00:00Z',
+    action_items: [],
+  }
+  const patchBodies: Array<Record<string, unknown>> = []
+  const actionBodies: Array<Record<string, unknown>> = []
+  await page.route('**/api/v1/meetings/m-detail-retry', async (route) => {
+    if (route.request().method() === 'PATCH') {
+      const body = route.request().postDataJSON() as Record<string, unknown>
+      patchBodies.push(body)
+      if (patchBodies.length === 1) {
+        await route.fulfill({ status: 503, json: { detail: '저장 연결 오류' } })
+        return
+      }
+      await route.fulfill({
+        json: {
+          ...meeting,
+          ...body,
+          id: meeting.id,
+          version: 5,
+          updated_at: '2026-07-28T02:00:00Z',
+        },
+      })
+      return
+    }
+    await route.fulfill({ json: meeting })
+  })
+  await page.route('**/api/v1/meetings/m-detail-retry/action-items', async (route) => {
+    const body = route.request().postDataJSON() as Record<string, unknown>
+    actionBodies.push(body)
+    if (actionBodies.length === 1) {
+      await route.fulfill({ status: 503, json: { detail: '액션 연결 오류' } })
+      return
+    }
+    await route.fulfill({
+      status: 201,
+      json: {
+        id: 'a-retried',
+        meeting_id: meeting.id,
+        description: body.description,
+        assignee_id: null,
+        done: false,
+        converted_wp_id: null,
+        created_at: '2026-07-28T02:00:00Z',
+      },
+    })
+  })
+
+  await page.goto(`/projects/${project.id}/meetings/${meeting.id}`)
+  await page.getByLabel('회의 제목').fill('주간 운영 회의 보정')
+  await page.getByLabel('회의 일정').fill('2026-07-29')
+  await page.getByLabel('반복 주기').selectOption('weekly')
+  await page.getByRole('button', { name: '저장', exact: true }).click()
+  const saveFailure = page.getByRole('alert').filter({ hasText: '저장 연결 오류' })
+  await expect(saveFailure).toBeVisible()
+  await expect(page.getByLabel('회의 제목')).toHaveValue('주간 운영 회의 보정')
+  await saveFailure.getByRole('button', { name: '같은 변경 저장 다시 시도' }).click()
+  await expect(page.getByRole('status')).toContainText('회의 변경사항을 저장했습니다.')
+  expect(patchBodies).toHaveLength(2)
+  expect(patchBodies[1]).toEqual(patchBodies[0])
+
+  await page.getByLabel('새 액션 아이템').fill('배포 체크리스트 공유')
+  await page.getByRole('button', { name: '추가', exact: true }).click()
+  const actionFailure = page.getByRole('alert').filter({ hasText: '배포 체크리스트 공유' })
+  await expect(actionFailure).toContainText('추가에 실패했습니다')
+  await expect(page.getByLabel('새 액션 아이템')).toHaveValue('배포 체크리스트 공유')
+  await actionFailure.getByRole('button', { name: '액션 아이템 다시 시도' }).click()
+  await expect(page.getByLabel('새 액션 아이템')).toHaveValue('')
+  expect(actionBodies).toEqual([
+    { description: '배포 체크리스트 공유' },
+    { description: '배포 체크리스트 공유' },
+  ])
+})
+
+test('회의 템플릿 저장 실패는 입력한 이름을 보존해 동일한 요청으로 재시도한다', async ({
+  page,
+}) => {
+  await mockApi(page)
+  const meeting = {
+    id: 'm-template-retry',
+    project_id: project.id,
+    title: '제품 회의',
+    scheduled_on: null,
+    agenda: '<p>제품 안건</p>',
+    minutes: null,
+    author_id: null,
+    recurrence: null,
+    recurrence_source_id: null,
+    follow_up_source_id: null,
+    follow_up_source_title: null,
+    version: 1,
+    created_at: '2026-07-28T00:00:00Z',
+    updated_at: '2026-07-28T01:00:00Z',
+    action_items: [],
+  }
+  const templateBodies: Array<Record<string, unknown>> = []
+  await page.route(`**/api/v1/projects/${project.id}/meeting-templates`, async (route) => {
+    if (route.request().method() === 'POST') {
+      const body = route.request().postDataJSON() as Record<string, unknown>
+      templateBodies.push(body)
+      if (templateBodies.length === 1) {
+        await route.fulfill({ status: 503, json: { detail: '템플릿 연결 오류' } })
+        return
+      }
+      await route.fulfill({
+        status: 201,
+        json: {
+          id: 't-retried',
+          project_id: project.id,
+          name: body.name,
+          agenda: '<p>제품 안건</p>',
+          created_by: 'me-1',
+          created_at: '2026-07-28T02:00:00Z',
+        },
+      })
+      return
+    }
+    await route.fulfill({ json: { items: [], total: 0 } })
+  })
+  await page.route('**/api/v1/meetings/m-template-retry', (route) =>
+    route.fulfill({ json: meeting }),
+  )
+
+  await page.goto(`/projects/${project.id}/meetings/${meeting.id}`)
+  page.once('dialog', (dialog) => void dialog.accept('제품 주간 템플릿'))
+  await page.getByRole('button', { name: '템플릿으로 저장' }).click()
+  const failure = page.getByRole('alert').filter({ hasText: '제품 주간 템플릿' })
+  await expect(failure).toBeVisible()
+  await failure.getByRole('button', { name: '같은 템플릿 저장 다시 시도' }).click()
+  await expect(page.getByRole('status')).toContainText("'제품 주간 템플릿' 템플릿을 저장했습니다.")
+  expect(templateBodies).toEqual([
+    { name: '제품 주간 템플릿', from_meeting_id: meeting.id },
+    { name: '제품 주간 템플릿', from_meeting_id: meeting.id },
+  ])
 })
 
 test('회의 생성 시 템플릿을 고르면 template_id가 실린다', async ({ page }) => {

@@ -3377,3 +3377,14 @@ Chromium typed mock fixture에서 1440x960과 390x844 viewport를 사용했다. 
 - **증적**: `docs/screenshots/redevelopment/project-meetings-composition-ui-280/{desktop,mobile,loading,error}.png`과 README에서 compact directory, mobile containment, stable skeleton과 in-place 오류 복구를 확인한다.
 
 ---
+
+# UI-281 Project Meeting Detail Composition 검증 (2026-07-28)
+
+- **UI 변경**: Meeting Detail을 중앙 콘텐츠 프레임에 직접 결합된 compact 협업 surface로 재구성했다. 프레임 상단에 실제 refresh와 draft-aware save를 유지하고, 제목·일정·반복, agenda/minutes, 액션 아이템을 주 작업 캔버스에 배치하며 일정·반복·미결·전환·version 사실과 실제 후속 회의·템플릿·삭제 명령을 반응형 속성 rail에 통합했다. desktop과 `390x844` mobile 모두 문서 가로 넘침 없이 같은 기능 흐름을 유지한다.
+- **기능/API 반영**: 기존 meeting/project query, versioned PATCH, 프로젝트 멤버십과 archive write boundary, agenda/minutes persistence, action-item add/toggle/delete/convert, follow-up creation/source navigation, recurrence source navigation, template save와 delete를 그대로 연결했다. 저장 초안과 409 최신 version을 보존하며, 저장·후속·템플릿·삭제·액션 실패는 정확한 입력 또는 대상 ID로 명시적 재시도한다. 초기 loading/error에서도 최종 detail/property geometry와 실제 frame refresh를 유지하고 마지막 성공 데이터의 refetch failure는 내용을 비우지 않는다. 신규 API, DB/schema, migration, permission, 환경변수, dependency 또는 Settings UI 변경은 없다.
+- **이연 항목**: 없음. UI-281의 모든 visible control은 실제 query, mutation, navigation 또는 browser confirmation/prompt에 연결돼 있으며 mock/dead control이나 client-only meeting state는 없다.
+- **검증**: typecheck PASS, lint PASS(기존 Fast Refresh warning 4건), production build PASS(기존 large chunk warning), unit **115 PASS**, component **9 PASS**, 전체 Meetings focused E2E **12 PASS**다. 4-worker 전체 E2E 468개에서는 UI-281 및 기존 회의 시나리오가 모두 PASS했고 **462 PASS + opt-in visual QA manifest 1 skip** 후 비관련 5건이 장시간 병렬 자원 포화와 animation 관측 경합으로 실패했다. 해당 Projects sidebar·작업 설명·Milestone 시나리오를 1-worker로 다시 실행해 **5/5 PASS**를 확인했다. Clean-room frontend **182**/backend **45**, OpenAPI type parity, desktop/mobile/loading/error visual QA와 diff check도 PASS했다. 전체 E2E가 생성한 기존 screenshot rewrite는 테스트 산출물로 원복하고 UI-281 증적만 보존했다.
+- **보안 감사**: 신규 dependency/lockfile 변경은 없다. `npm audit --omit=dev --audit-level=high`는 React Router RSC mode 권고 `GHSA-qwww-vcr4-c8h2`로 기존 high 2건을 보고했다. OneFlow는 RSC mode를 사용하지 않으며 강제 수정은 `react-router-dom@7.11.0`으로의 breaking downgrade를 요구하므로 별도 dependency PR에서 추적한다.
+- **증적**: `docs/screenshots/redevelopment/project-meeting-detail-composition-ui-281/{desktop,mobile,loading,error}.png`과 README에서 compact detail, mobile containment, stable skeleton과 in-place 오류 복구를 확인한다.
+
+---
