@@ -3019,8 +3019,12 @@ test('Settings rail은 권한별 설정 navigation과 중앙 form을 중복 없�
   const globalNav = page.getByRole('navigation', { name: '글로벌 내비게이션' })
   await expect(globalNav.getByRole('link', { name: 'Settings' })).toHaveAttribute('aria-current', 'page')
   const settingsNav = page.getByRole('navigation', { name: '설정 컨텍스트 내비게이션' })
+  await expect(page.getByRole('heading', { name: '워크스페이스 설정' })).toBeVisible()
+  await expect(page.getByLabel('현재 설정 워크스페이스')).toContainText('OneFlow')
+  await expect(page.getByLabel('현재 설정 워크스페이스')).toContainText('관리자')
+  await expect(page.getByRole('link', { name: '설정에서 나가기' })).toHaveAttribute('href', '/projects')
   await expect(settingsNav.getByRole('link', { name: '내 계정' })).toHaveAttribute('href', '/settings')
-  await expect(settingsNav.getByRole('link', { name: '사용자' })).toHaveAttribute('aria-current', 'page')
+  await expect(settingsNav.getByRole('link', { name: '멤버' })).toHaveAttribute('aria-current', 'page')
   await expect(settingsNav.getByRole('link', { name: '개요' })).toHaveAttribute('href', '/admin/overview')
   await expect(settingsNav.getByRole('link', { name: '프로젝트 구성' })).toHaveAttribute('href', '/admin/project-configuration')
   await expect(settingsNav.getByRole('link', { name: '연결 및 통합' })).toHaveAttribute('href', '/admin/integrations')
@@ -3037,9 +3041,16 @@ test('Settings rail은 권한별 설정 navigation과 중앙 form을 중복 없�
   await page.setViewportSize({ width: 390, height: 844 })
   await expectNoHorizontalOverflow(page)
   await page.getByRole('button', { name: '사이드바 열기' }).click()
-  await expect(page.getByRole('dialog', { name: '모바일 내비게이션' }).getByRole('navigation', { name: '설정 컨텍스트 내비게이션' })).toBeVisible()
+  const mobileSettingsDrawer = page.getByRole('dialog', { name: '모바일 내비게이션' })
+  await expect(mobileSettingsDrawer.getByRole('navigation', { name: '설정 컨텍스트 내비게이션' })).toBeVisible()
+  await expect(mobileSettingsDrawer.getByRole('heading', { name: '워크스페이스 설정' })).toBeVisible()
+  await expect(mobileSettingsDrawer.getByLabel('현재 설정 워크스페이스')).toContainText('관리자')
   await expectNoHorizontalOverflow(page)
   await page.screenshot({ path: '../../docs/screenshots/redevelopment/settings-central-composition-ui/mobile.png' })
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/mobile-settings-navigation-ui-286/members-drawer-390.png',
+    fullPage: true,
+  })
 })
 
 test('Project Pages는 Projects context navigation 안에서 중앙 lifecycle surface를 연다', async ({ page }) => {
@@ -11825,7 +11836,7 @@ test('settings/admin IA는 모바일 폭에서 표면별 탐색을 유지한다'
   await expect(workspaceSettings.getByText('워크스페이스', { exact: true })).toBeVisible()
   await expect(workspaceSettings.getByText('기능', { exact: true })).toBeVisible()
   await expect(workspaceSettings.getByText('개발자 도구', { exact: true })).toBeVisible()
-  await expect(workspaceSettings.getByRole('link', { name: '사용자' })).toHaveAttribute(
+  await expect(workspaceSettings.getByRole('link', { name: '멤버' })).toHaveAttribute(
     'aria-current',
     'page',
   )
@@ -25237,7 +25248,7 @@ test('관리자가 사용자 디렉터리에서 추가·비활성화를 수행�
   await expect(page).toHaveURL('/admin/overview')
   await page
     .getByRole('navigation', { name: '설정 컨텍스트 내비게이션' })
-    .getByRole('link', { name: '사용자' })
+    .getByRole('link', { name: '멤버' })
     .click()
   await expect(page.getByRole('heading', { name: '사용자 관리' })).toBeVisible()
   await expect(page.getByText('dev@oneflow.local')).toBeVisible()
@@ -27843,8 +27854,9 @@ test('workspace settings shell은 비관리자 direct route를 차단한다', as
   await page.goto('/admin/users')
   await expect(page.getByText('접근 권한이 없습니다')).toBeVisible()
   const settingsNav = page.getByRole('navigation', { name: '설정 컨텍스트 내비게이션' })
+  await expect(page.getByLabel('현재 설정 워크스페이스')).toContainText('멤버')
   await expect(settingsNav.getByRole('link', { name: '내 계정' })).toBeVisible()
-  await expect(settingsNav.getByRole('link', { name: '사용자' })).toHaveCount(0)
+  await expect(settingsNav.getByRole('link', { name: '멤버' })).toHaveCount(0)
   await expect(settingsNav.getByRole('status', { name: '관리자 내비게이션 불러오는 중' })).toHaveCount(0)
 })
 
@@ -27871,7 +27883,7 @@ test('관리자 direct route는 identity pending 동안 shell geometry를 비상
   const settingsNav = page.getByRole('navigation', { name: '설정 컨텍스트 내비게이션' })
   await expect(page.getByRole('status', { name: '계정 정보 불러오는 중' })).toBeVisible()
   await expect(settingsNav.getByRole('status', { name: '관리자 내비게이션 불러오는 중' })).toBeVisible()
-  await expect(settingsNav.getByRole('link', { name: '사용자' })).toHaveCount(0)
+  await expect(settingsNav.getByRole('link', { name: '멤버' })).toHaveCount(0)
   await expect(settingsNav.getByRole('link', { name: '연결 및 통합' })).toHaveCount(0)
   await expect(settingsNav).toContainText('워크스페이스')
   await expect(settingsNav).toContainText('기능')
@@ -27953,10 +27965,10 @@ test('identity 오류 shell은 비인가 링크 없이 재시도해 관리자 na
   const identityError = settingsNav.getByRole('alert')
   await expect(identityError).toContainText('권한 정보를 불러오지 못했습니다')
   await expect(page.getByRole('button', { name: '계정 정보 다시 시도' })).toBeVisible()
-  await expect(settingsNav.getByRole('link', { name: '사용자' })).toHaveCount(0)
+  await expect(settingsNav.getByRole('link', { name: '멤버' })).toHaveCount(0)
 
   await identityError.getByRole('button', { name: '다시 시도' }).click()
-  await expect(settingsNav.getByRole('link', { name: '사용자' })).toHaveAttribute('aria-current', 'page')
+  await expect(settingsNav.getByRole('link', { name: '멤버' })).toHaveAttribute('aria-current', 'page')
   await expect(page.getByRole('button', { name: '계정 메뉴' })).toBeVisible()
   await expect.poll(() => identityReads).toBe(2)
 })
@@ -27996,6 +28008,96 @@ test('모바일 설정 drawer는 깊은 경로의 활성 메뉴를 열자마자 
   expect(await settingsNav.evaluate((element) => element.scrollTop)).toBeGreaterThan(0)
   await expect(integrationsLink).not.toBeFocused()
   await expectNoHorizontalOverflow(page)
+})
+
+test('모바일 Settings IA는 워크스페이스 맥락과 실제 관리 surface 전환을 한 drawer에서 유지한다', async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 740 })
+  await mockApi(page)
+  await page.route('**/api/v1/users', (route) =>
+    route.fulfill({
+      json: {
+        items: [{
+          id: 'me-1',
+          email: 'dev@oneflow.local',
+          display_name: 'Dev User',
+          is_active: true,
+          is_admin: true,
+          created_at: '2026-07-01T00:00:00Z',
+        }],
+        total: 1,
+      },
+    }),
+  )
+  await page.route('**/api/v1/admin/workspace/profile', (route) =>
+    route.fulfill({
+      json: {
+        id: 1,
+        name: 'OneFlow',
+        revision: 1,
+        logo_url: null,
+        logo_content_type: null,
+        logo_filename: null,
+        logo_width: null,
+        logo_height: null,
+        logo_byte_size: null,
+        updated_by_user_id: null,
+        updated_by_name: null,
+        updated_at: '2026-07-01T00:00:00Z',
+      },
+      headers: { ETag: '"1"' },
+    }),
+  )
+
+  await page.goto('/admin/project-configuration')
+  await expect(page.getByRole('heading', { name: '프로젝트 구성' })).toBeVisible()
+  await page.getByRole('button', { name: '사이드바 열기' }).click()
+
+  let drawer = page.getByRole('dialog', { name: '모바일 내비게이션' })
+  let settingsNav = drawer.getByRole('navigation', { name: '설정 컨텍스트 내비게이션' })
+  await expect(drawer.getByRole('heading', { name: '워크스페이스 설정' })).toBeVisible()
+  await expect(drawer.getByLabel('현재 설정 워크스페이스')).toContainText('OneFlow')
+  await expect(drawer.getByLabel('현재 설정 워크스페이스')).toContainText('관리자')
+  await expect(settingsNav.getByRole('link', { name: '프로젝트 구성' })).toHaveAttribute(
+    'aria-current',
+    'page',
+  )
+  const drawerBox = await drawer.locator('aside').boundingBox()
+  expect(drawerBox).not.toBeNull()
+  expect(drawerBox!.x).toBe(0)
+  expect(drawerBox!.width).toBeLessThanOrEqual(320)
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/mobile-settings-navigation-ui-286/project-configuration-drawer-320.png',
+    fullPage: true,
+  })
+
+  await settingsNav.getByRole('link', { name: '일반' }).click()
+  await expect(drawer).toHaveCount(0)
+  await expect(page).toHaveURL('/admin/general')
+  await expect(page.getByRole('heading', { name: '일반 설정' })).toBeVisible()
+
+  await page.getByRole('button', { name: '사이드바 열기' }).click()
+  drawer = page.getByRole('dialog', { name: '모바일 내비게이션' })
+  settingsNav = drawer.getByRole('navigation', { name: '설정 컨텍스트 내비게이션' })
+  await settingsNav.getByRole('link', { name: '멤버' }).click()
+  await expect(drawer).toHaveCount(0)
+  await expect(page).toHaveURL('/admin/users')
+  await expect(page.getByRole('region', { name: '워크스페이스 사용자 관리' })).toBeVisible()
+
+  await page.getByRole('button', { name: '사이드바 열기' }).click()
+  drawer = page.getByRole('dialog', { name: '모바일 내비게이션' })
+  await expect(drawer.getByRole('link', { name: '설정에서 나가기' })).toHaveAttribute(
+    'href',
+    '/projects',
+  )
+  await drawer.getByRole('link', { name: '설정에서 나가기' }).click()
+  await expect(drawer).toHaveCount(0)
+  await expect(page).toHaveURL('/projects')
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/mobile-settings-navigation-ui-286/projects-after-settings-mobile.png',
+    fullPage: true,
+  })
 })
 
 
