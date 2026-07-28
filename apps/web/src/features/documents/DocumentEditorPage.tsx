@@ -14,6 +14,7 @@ import {
   Save,
   Send,
   Trash2,
+  X,
 } from 'lucide-react'
 import {
   Suspense,
@@ -127,8 +128,13 @@ export function DocumentEditorPage() {
   const [visibility, setVisibility] = useState<'shared' | 'private'>('shared')
   const [detailTab, setDetailTab] = useState<'comments' | 'activity' | 'versions'>('comments')
   const [detailsOpen, setDetailsOpen] = useState(false)
+  const [mobileDetails, setMobileDetails] = useState(() =>
+    typeof window === 'undefined' ? false : window.matchMedia('(max-width: 1279px)').matches,
+  )
   const [activeCommentAnchorId, setActiveCommentAnchorId] = useState<string | null>(null)
   const titleRef = useRef<HTMLTextAreaElement>(null)
+  const detailsToggleRef = useRef<HTMLButtonElement>(null)
+  const detailsCloseRef = useRef<HTMLButtonElement>(null)
   const upload = useUploadAttachment(projectId)
   const canWrite = useCanWrite(projectId)
   const activeCommentAnchorIds = useMemo(
@@ -163,6 +169,30 @@ export function DocumentEditorPage() {
     element.style.height = '0px'
     element.style.height = `${element.scrollHeight}px`
   }, [title])
+
+  useEffect(() => {
+    const media = window.matchMedia('(max-width: 1279px)')
+    const updateLayout = () => setMobileDetails(media.matches)
+    updateLayout()
+    media.addEventListener('change', updateLayout)
+    return () => media.removeEventListener('change', updateLayout)
+  }, [])
+
+  useEffect(() => {
+    if (!detailsOpen || !mobileDetails) return
+    const close = () => {
+      setDetailsOpen(false)
+      requestAnimationFrame(() => detailsToggleRef.current?.focus())
+    }
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape' || event.defaultPrevented) return
+      event.preventDefault()
+      close()
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    requestAnimationFrame(() => detailsCloseRef.current?.focus())
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [detailsOpen, mobileDetails])
 
   const dirty =
     !!doc &&
@@ -293,6 +323,7 @@ export function DocumentEditorPage() {
           )
         ) : null}
         <Button
+          ref={detailsToggleRef}
           variant="ghost"
           size="icon"
           aria-label={detailsOpen ? '페이지 상세 닫기' : '페이지 상세 열기'}
@@ -430,11 +461,40 @@ export function DocumentEditorPage() {
         </main>
 
         {detailsOpen ? (
-          <aside
-            aria-label="문서 속성"
-            className="fixed inset-x-0 bottom-0 top-[8.5rem] z-30 min-w-0 border-t border-of-border bg-of-surface-raised xl:static xl:z-auto xl:border-l xl:border-t-0"
-          >
-            <div className="grid h-full min-w-0 gap-3 overflow-y-auto p-3 xl:sticky xl:top-0 xl:max-h-[calc(100vh-7rem)]">
+          <>
+            <div
+              aria-hidden="true"
+              className="fixed inset-x-0 bottom-0 top-[calc(var(--of-topbar-height)*2)] z-20 bg-of-overlay/30 backdrop-blur-[1px] xl:hidden"
+              onMouseDown={() => {
+                setDetailsOpen(false)
+                requestAnimationFrame(() => detailsToggleRef.current?.focus())
+              }}
+            />
+            <aside
+              aria-label="문서 속성"
+              aria-modal={mobileDetails ? true : undefined}
+              role={mobileDetails ? 'dialog' : undefined}
+              className="fixed inset-x-0 bottom-0 top-[calc(var(--of-topbar-height)*2)] z-30 flex min-w-0 flex-col border-t border-of-border bg-of-surface-raised shadow-[var(--of-shadow-popover)] xl:static xl:z-auto xl:border-l xl:border-t-0 xl:shadow-none"
+            >
+              <div className="flex h-[var(--of-topbar-height)] shrink-0 items-center justify-between border-b border-of-border-subtle px-3 xl:hidden">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-semibold">페이지 정보</p>
+                  <p className="truncate text-[11px] text-of-muted">{doc.title}</p>
+                </div>
+                <Button
+                  ref={detailsCloseRef}
+                  variant="ghost"
+                  size="icon"
+                  aria-label="페이지 상세 패널 닫기"
+                  onClick={() => {
+                    setDetailsOpen(false)
+                    requestAnimationFrame(() => detailsToggleRef.current?.focus())
+                  }}
+                >
+                  <X size={15} />
+                </Button>
+              </div>
+              <div className="grid min-h-0 min-w-0 flex-1 gap-3 overflow-x-hidden overflow-y-auto p-3 pb-24 xl:sticky xl:top-0 xl:max-h-[calc(100vh-7rem)] xl:pb-3">
               <div
                 role="tablist"
                 aria-label="문서 상세 보기"
@@ -566,8 +626,9 @@ export function DocumentEditorPage() {
                 canWrite={editable}
               />
               <DocumentAttachments docId={doc.id} projectId={projectId} />
-            </div>
-          </aside>
+              </div>
+            </aside>
+          </>
         ) : null}
       </div>
     </div>
