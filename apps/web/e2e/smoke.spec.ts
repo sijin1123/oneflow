@@ -30801,10 +30801,15 @@ function draftFixture(
 async function mockWorkItemDraftApi(
   page: Page,
   initial: WorkItemDraft[] = [],
-  options: { conflictFirstSave?: boolean } = {},
+  options: {
+    conflictFirstSave?: boolean
+    failFirstDelete?: boolean
+    deleteRequests?: number[]
+  } = {},
 ) {
   let drafts = [...initial]
   let conflictPending = options.conflictFirstSave ?? false
+  let deleteFailurePending = options.failFirstDelete ?? false
 
   await page.route('**/api/v1/projects?include_archived=true', (route) =>
     route.fulfill({ json: projects }),
@@ -30848,6 +30853,12 @@ async function mockWorkItemDraftApi(
       return
     }
     if (request.method() === 'DELETE') {
+      options.deleteRequests?.push(Number(url.searchParams.get('expected_version')))
+      if (deleteFailurePending) {
+        deleteFailurePending = false
+        await route.fulfill({ status: 503, json: { detail: 'draft delete unavailable' } })
+        return
+      }
       drafts = drafts.filter((item) => item.id !== draftId)
       await route.fulfill({ status: 204, body: '' })
       return
@@ -30913,7 +30924,8 @@ test('작업 초안은 삭제·저장·이어쓰기·최종 제출 흐름을 연
     (request) =>
       request.method() === 'DELETE' && request.url().includes('/draft-existing'),
   )
-  await page.getByRole('button', { name: '초안 삭제' }).click()
+  await page.getByRole('button', { name: 'API 정리 초안 초안 작업' }).click()
+  await page.getByRole('menuitem', { name: '초안 삭제' }).click()
   await page.getByRole('button', { name: '삭제', exact: true }).click()
   await deleteRequest
   await expect(page.getByText('저장된 작업 초안이 없습니다.')).toBeVisible()
@@ -31015,6 +31027,68 @@ test('모바일 작업 초안 목록은 sidebar 진입과 빈·목록 상태를 
   })
 })
 
+test('UI-290 모바일 작업 초안은 compact 행과 삭제 실패 exact retry를 연결한다', async ({
+  page,
+}) => {
+  const deleteRequests: number[] = []
+  await page.setViewportSize({ width: 390, height: 844 })
+  await mockApi(page)
+  await mockWorkItemDraftApi(
+    page,
+    [
+      draftFixture({
+        id: 'draft-mobile-lifecycle',
+        version: 4,
+        content: {
+          subject: '모바일 초안 수명주기',
+          type: 'feature',
+          status: 'in_progress',
+          priority: 'high',
+          assignee_id: null,
+          due_date: '2026-07-31',
+        },
+      }),
+    ],
+    { failFirstDelete: true, deleteRequests },
+  )
+  await page.goto('/drafts')
+
+  const draftList = page.getByRole('list', { name: '작업 초안 목록' })
+  await expect(page.getByRole('heading', { name: '작업 초안' })).toBeVisible()
+  await expect(draftList.getByText('모바일 초안 수명주기')).toBeVisible()
+  await expect(draftList.getByText('기능')).toBeVisible()
+  await expect(draftList.getByText('진행 중')).toBeVisible()
+  await expect(draftList.getByText('높음')).toBeVisible()
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/mobile-drafts-lifecycle-ui-290/directory-390.png',
+    fullPage: true,
+  })
+
+  await page.setViewportSize({ width: 320, height: 740 })
+  await page
+    .getByRole('button', { name: '모바일 초안 수명주기 초안 작업' })
+    .click()
+  await page.getByRole('menuitem', { name: '초안 삭제' }).click()
+  await expect(page.getByRole('group', { name: '초안 삭제 확인' })).toBeVisible()
+  await page.getByRole('button', { name: '삭제', exact: true }).click()
+
+  const deleteError = page.getByRole('alert')
+  await expect(deleteError).toContainText('초안은 그대로 유지됩니다')
+  await expect(draftList.getByText('모바일 초안 수명주기')).toBeVisible()
+  expect(deleteRequests).toEqual([4])
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/mobile-drafts-lifecycle-ui-290/delete-error-320.png',
+    fullPage: true,
+  })
+
+  await deleteError.getByRole('button', { name: '다시 시도' }).click()
+  await expect(page.getByText('저장된 작업 초안이 없습니다.')).toBeVisible()
+  expect(deleteRequests).toEqual([4, 4])
+  await expectNoHorizontalOverflow(page)
+})
+
 test('작업 초안 목록 오류는 명시적 재시도로 복구한다', async ({ page }) => {
   await mockApi(page)
   await page.route('**/api/v1/projects?include_archived=true', (route) =>
@@ -31096,8 +31170,9 @@ test('읽기 전용 프로젝트 초안은 재개 control 없이 삭제만 제�
   )
   await page.goto('/drafts')
   await expect(page.getByText(/읽기 전용 · 삭제만 가능/)).toBeVisible()
-  await expect(page.getByRole('button', { name: '초안 이어쓰기' })).toHaveCount(0)
-  await expect(page.getByRole('button', { name: '초안 삭제' })).toBeVisible()
+  await page.getByRole('button', { name: 'API 정리 초안 초안 작업' }).click()
+  await expect(page.getByRole('menuitem', { name: '초안 이어쓰기' })).toHaveCount(0)
+  await expect(page.getByRole('menuitem', { name: '초안 삭제' })).toBeVisible()
 })
 
 test('초안 URL 프로젝트가 다르면 올바른 프로젝트 경로로 교정한다', async ({ page }) => {
