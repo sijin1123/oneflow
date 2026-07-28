@@ -11,9 +11,11 @@ import { getShellContext } from './shell-context'
 export function FrameContextBar({
   sidebarCollapsed,
   onExpandSidebar,
+  onOpenMobileSidebar,
 }: {
   sidebarCollapsed: boolean
   onExpandSidebar: () => void
+  onOpenMobileSidebar: () => void
 }) {
   const { projectId, docId, wpId } = useParams()
   const location = useLocation()
@@ -60,9 +62,20 @@ export function FrameContextBar({
   return (
     <div
       data-testid="frame-context-bar"
-      className="flex min-h-11 shrink-0 flex-col border-b border-of-border-subtle bg-of-surface-raised lg:h-11 lg:flex-row lg:items-center"
+      className="flex h-11 min-h-11 shrink-0 items-center border-b border-of-border-subtle bg-of-surface-raised"
     >
-      <div className="flex h-11 min-w-0 shrink-0 items-center lg:flex-1">
+      <div className="flex h-full min-w-0 flex-1 items-center">
+        <div className="flex h-full w-11 shrink-0 items-center justify-center border-r border-of-border-subtle md:hidden">
+          <button
+            type="button"
+            aria-label="사이드바 열기"
+            title="사이드바 열기"
+            className="flex h-7 w-7 items-center justify-center rounded-of text-of-muted hover:bg-of-surface-2 hover:text-of-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus"
+            onClick={onOpenMobileSidebar}
+          >
+            <PanelLeftOpen size={15} aria-hidden="true" />
+          </button>
+        </div>
         {sidebarCollapsed ? (
           <div data-testid="collapsed-sidebar-slot" className="hidden h-full w-11 shrink-0 items-center justify-center border-r border-of-border-subtle md:flex">
             <button type="button" aria-label="사이드바 펼치기" title="사이드바 펼치기" className="flex h-7 w-7 items-center justify-center rounded-of text-of-muted hover:bg-of-surface-2 hover:text-of-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus" onClick={onExpandSidebar}>
@@ -90,7 +103,7 @@ export function FrameContextBar({
       <div
         data-frame-context-actions
         data-testid="frame-context-actions"
-        className="flex min-w-0 flex-wrap items-center justify-end gap-1.5 border-t border-of-border-subtle px-2 py-1.5 empty:hidden lg:h-full lg:shrink-0 lg:flex-nowrap lg:border-l lg:border-t-0 lg:px-3 lg:py-0"
+        className="flex h-full w-[62%] min-w-0 shrink-0 items-center overflow-hidden border-l border-of-border-subtle empty:hidden [contain:layout_inline-size_paint] md:w-[72%]"
       />
     </div>
   )

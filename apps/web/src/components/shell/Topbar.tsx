@@ -1,4 +1,4 @@
-import { Check, ChevronDown, LogOut, MailPlus, Menu, RefreshCw, Rocket, Settings, SlidersHorizontal, Users } from 'lucide-react'
+import { Check, ChevronDown, LogOut, MailPlus, RefreshCw, Rocket, Settings, SlidersHorizontal, Users } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 
@@ -242,11 +242,7 @@ function AccountMenu({ open, onOpenChange }: { open: boolean; onOpenChange: (ope
   )
 }
 
-export function Topbar({
-  onOpenMobileSidebar,
-}: {
-  onOpenMobileSidebar?: () => void
-}) {
+export function Topbar() {
   const workspaceProfile = useWorkspaceProfile()
   const workspace = workspaceProfile.data ?? {
     name: 'OneFlow',
@@ -267,15 +263,11 @@ export function Topbar({
     <header className="flex h-[var(--of-topbar-height)] shrink-0 items-center border-b border-of-border-subtle bg-of-surface-2 px-2 md:px-3">
       <div className="flex min-w-0 flex-1 items-center gap-2 md:grid md:grid-cols-[minmax(15rem,1fr)_minmax(14rem,30rem)_minmax(15rem,1fr)] md:gap-3">
         <div className="flex min-w-0 items-center gap-2">
-          <IconButton label="사이드바 열기" className="shrink-0 md:hidden" onClick={onOpenMobileSidebar}><Menu size={16} /></IconButton>
-          <WorkspaceLogo profile={workspace} className="md:hidden" />
-          <div className="hidden md:block">
-            <WorkspaceMenu
-              workspace={workspace}
-              open={openMenu === 'workspace'}
-              onOpenChange={setWorkspaceOpen}
-            />
-          </div>
+          <WorkspaceMenu
+            workspace={workspace}
+            open={openMenu === 'workspace'}
+            onOpenChange={setWorkspaceOpen}
+          />
         </div>
         <div className="ml-auto min-w-0 sm:ml-0">
           <CommandPalette prominent />
