@@ -21169,7 +21169,7 @@ test('회의 상세가 안건·액션 아이템을 보여주고 액션 아이템
   await page.route('**/api/v1/meetings/m1', (route) => route.fulfill({ json: meeting }))
 
   await page.goto(`/projects/${project.id}/meetings`)
-  await expect(page.getByText('Collaboration surface')).toBeVisible()
+  await expect(page.getByText('회의 디렉터리', { exact: true })).toBeVisible()
   await expect(page.getByLabel('회의 요약').getByText('전체 회의')).toBeVisible()
   await expect(page.getByLabel('회의 요약').getByText('일정 있음')).toBeVisible()
   await expectNoHorizontalOverflow(page)
@@ -21390,6 +21390,222 @@ test('회의 생성 시 템플릿을 고르면 template_id가 실린다', async 
   // through the rich editor — server-sanitized HTML only).
   await expect(page.getByLabel('회의 제목')).toHaveValue('제목 없는 회의')
   await expect(page.getByText('안건 1')).toBeVisible()
+})
+
+test('회의 디렉터리는 로딩·오류 중에도 프레임 명령을 유지하고 같은 화면에서 복구한다', async ({
+  page,
+}) => {
+  await mockApi(page)
+  let attempt = 0
+  let allowRecovery = false
+  let releaseFirstRequest: (() => void) | undefined
+  await page.route(`**/api/v1/projects/${project.id}/meetings`, async (route) => {
+    if (route.request().method() !== 'GET') {
+      await route.fallback()
+      return
+    }
+    attempt += 1
+    if (attempt === 1) {
+      await new Promise<void>((resolve) => {
+        releaseFirstRequest = resolve
+      })
+    }
+    if (!allowRecovery) {
+      await route.fulfill({ status: 503, json: { detail: '회의 서비스를 사용할 수 없습니다.' } })
+      return
+    }
+    await route.fulfill({
+      json: {
+        items: [
+          {
+            id: 'm-recovered',
+            project_id: project.id,
+            title: '복구된 운영 회의',
+            scheduled_on: '2026-07-28',
+            recurrence: null,
+            version: 1,
+            updated_at: '2026-07-28T01:00:00Z',
+          },
+        ],
+        total: 1,
+      },
+    })
+  })
+
+  await page.goto(`/projects/${project.id}/meetings`)
+  const frame = page.getByTestId('frame-context-bar')
+  await expect(page.getByRole('status', { name: '회의 불러오는 중' })).toBeVisible()
+  await expect(frame.getByRole('button', { name: '회의 디렉터리 새로고침' })).toBeVisible()
+  await expect(frame.getByRole('button', { name: '새 회의' })).toBeVisible()
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/project-meetings-composition-ui-280/loading.png',
+    fullPage: true,
+  })
+
+  releaseFirstRequest?.()
+  await expect(page.getByTestId('project-meetings-scroll').getByRole('alert')).toContainText(
+    '회의 서비스를 사용할 수 없습니다.',
+  )
+  await expect(page.getByText('회의 디렉터리', { exact: true })).toBeVisible()
+  await expect(frame.getByRole('button', { name: '회의 디렉터리 새로고침' })).toBeVisible()
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/project-meetings-composition-ui-280/error.png',
+    fullPage: true,
+  })
+
+  const attemptsBeforeRetry = attempt
+  allowRecovery = true
+  await page
+    .getByTestId('project-meetings-scroll')
+    .getByRole('button', { name: '다시 시도' })
+    .click()
+  await expect(page.getByRole('button', { name: /복구된 운영 회의/ })).toBeVisible()
+  expect(attempt).toBeGreaterThan(attemptsBeforeRetry)
+})
+
+test('회의 생성 실패는 선택한 템플릿 의도를 보존해 동일한 요청으로 재시도한다', async ({
+  page,
+}) => {
+  await mockApi(page)
+  const sentBodies: Array<{ title: string; template_id?: string }> = []
+  await page.route(`**/api/v1/projects/${project.id}/meeting-templates`, (route) =>
+    route.fulfill({
+      json: {
+        items: [
+          {
+            id: 't-retry',
+            project_id: project.id,
+            name: '운영 점검 템플릿',
+            agenda: '<p>점검 안건</p>',
+            created_by: 'me-1',
+            created_at: '2026-07-28T00:00:00Z',
+          },
+        ],
+        total: 1,
+      },
+    }),
+  )
+  await page.route(`**/api/v1/projects/${project.id}/meetings`, async (route) => {
+    if (route.request().method() === 'POST') {
+      sentBodies.push(route.request().postDataJSON() as { title: string; template_id?: string })
+      if (sentBodies.length === 1) {
+        await route.fulfill({ status: 503, json: { detail: '잠시 후 다시 시도하세요.' } })
+        return
+      }
+      await route.fulfill({
+        status: 201,
+        json: {
+          id: 'm-retried',
+          project_id: project.id,
+          title: '제목 없는 회의',
+          scheduled_on: null,
+          agenda: '<p>점검 안건</p>',
+          minutes: null,
+          author_id: null,
+          recurrence: null,
+          recurrence_source_id: null,
+          follow_up_source_id: null,
+          follow_up_source_title: null,
+          version: 0,
+          created_at: '2026-07-28T00:00:00Z',
+          updated_at: '2026-07-28T00:00:00Z',
+          action_items: [],
+        },
+      })
+      return
+    }
+    await route.fulfill({ json: { items: [], total: 0 } })
+  })
+  await page.route('**/api/v1/meetings/m-retried', (route) =>
+    route.fulfill({
+      json: {
+        id: 'm-retried',
+        project_id: project.id,
+        title: '제목 없는 회의',
+        scheduled_on: null,
+        agenda: '<p>점검 안건</p>',
+        minutes: null,
+        author_id: null,
+        recurrence: null,
+        recurrence_source_id: null,
+        follow_up_source_id: null,
+        follow_up_source_title: null,
+        version: 0,
+        created_at: '2026-07-28T00:00:00Z',
+        updated_at: '2026-07-28T00:00:00Z',
+        action_items: [],
+      },
+    }),
+  )
+
+  await page.goto(`/projects/${project.id}/meetings`)
+  await page.getByLabel('회의 템플릿').selectOption('t-retry')
+  await page.getByRole('button', { name: '생성', exact: true }).click()
+  const failure = page.getByRole('alert').filter({ hasText: '운영 점검 템플릿' })
+  await expect(failure).toContainText('잠시 후 다시 시도하세요.')
+  await expect(page.getByLabel('회의 템플릿')).toHaveValue('t-retry')
+  await failure.getByRole('button', { name: '같은 설정으로 재시도' }).click()
+
+  await expect(page).toHaveURL(new RegExp(`/projects/${project.id}/meetings/m-retried$`))
+  expect(sentBodies).toEqual([
+    { title: '제목 없는 회의', template_id: 't-retry' },
+    { title: '제목 없는 회의', template_id: 't-retry' },
+  ])
+})
+
+test('회의 디렉터리 검색은 URL에 유지되고 데스크톱·모바일에서 폭을 넘지 않는다', async ({
+  page,
+}) => {
+  await mockApi(page)
+  await page.route(`**/api/v1/projects/${project.id}/meetings`, (route) =>
+    route.fulfill({
+      json: {
+        items: [
+          {
+            id: 'm-alpha',
+            project_id: project.id,
+            title: '제품 운영 회의',
+            scheduled_on: '2026-07-28',
+            recurrence: 'weekly',
+            version: 1,
+            updated_at: '2026-07-28T01:00:00Z',
+          },
+          {
+            id: 'm-beta',
+            project_id: project.id,
+            title: '고객 피드백 검토',
+            scheduled_on: null,
+            recurrence: null,
+            version: 1,
+            updated_at: '2026-07-27T01:00:00Z',
+          },
+        ],
+        total: 2,
+      },
+    }),
+  )
+
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.goto(`/projects/${project.id}/meetings`)
+  await page.getByLabel('회의 제목 검색').fill('제품')
+  await expect(page).toHaveURL(new RegExp('/meetings\\?q=%EC%A0%9C%ED%92%88$'))
+  await expect(page.getByRole('button', { name: /제품 운영 회의/ })).toBeVisible()
+  await expect(page.getByRole('button', { name: /고객 피드백 검토/ })).toBeHidden()
+  await page.getByLabel('회의 제목 검색').blur()
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/project-meetings-composition-ui-280/desktop.png',
+    fullPage: true,
+  })
+
+  await page.setViewportSize({ width: 390, height: 844 })
+  await expect(page.getByLabel('회의 요약')).toBeVisible()
+  await expect(page.getByRole('button', { name: /제품 운영 회의/ })).toBeVisible()
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/project-meetings-composition-ui-280/mobile.png',
+    fullPage: true,
+  })
 })
 
 test('후속 회의를 만들면 아젠다·미결 항목을 들고 새 회의로 이동한다', async ({ page }) => {
