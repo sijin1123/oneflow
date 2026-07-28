@@ -730,3 +730,9 @@ Plane/OpenProject source, API, database schema, package, asset, CSS, DOM hierarc
 `docs/plane-poc-reverse-spec/03-feature-matrix.md`, `04-interaction-catalog.md`와 기존 OneFlow 대시보드 계약에서 사용한 입력은 프로젝트 상태·작업·일정·비용을 한 surface에서 스캔하고, 위젯 구성을 개인 또는 프로젝트 공유 범위로 저장하며, 데이터 갱신·내보내기·실패 복구를 실제 action에 연결한다는 관찰 가능한 정보 구조와 행동뿐이다. 별도의 Plane dashboard API나 위젯 구현은 참조하지 않고 OneFlow가 이미 보유한 집계, 활동, 예산, 레이아웃 version과 authorization 계약을 우선했다.
 
 Plane/OpenProject source, API, database schema, package, asset, CSS, DOM hierarchy, exact dimensions/colors, wording, component implementation, icons 또는 branding은 열람·복사하지 않았다. OneFlow 구현은 기존 dashboard/layout query, CSV export, personal/shared widget mutation, React Query retained data, local design token과 Lucide primitive 위에서 독립 설계했다. 신규 API, DB, migration, permission, environment variable, dependency 또는 Settings storage 변경은 없고 mock/dead control이나 client-only metric은 없다. - attested-independent-derivation
+
+## UI-278 Project Intake Composition
+
+`docs/plane-poc-reverse-spec/03-feature-matrix.md`, `04-interaction-catalog.md`와 기존 OneFlow Intake 계약에서 사용한 입력은 요청 접수, 권한에 따른 큐 범위, 상태별 판정, 작업 전환과 처리 이력을 한 compact surface에서 연결하고 loading/error/retry를 실제 상태로 표현한다는 관찰 가능한 정보 구조와 행동뿐이다. 별도의 Plane Intake API나 화면 구현은 참조하지 않고 OneFlow가 이미 보유한 member submit, `intake.triage` 권한, archive write boundary, append-only decision history와 accepted work-item deep link 계약을 우선했다.
+
+Plane/OpenProject source, API, database schema, package, asset, CSS, DOM hierarchy, exact dimensions/colors, wording, component implementation, icons 또는 branding은 열람·복사하지 않았다. OneFlow 구현은 기존 intake/member/project/permission query와 mutation, React Query retained data, 프로젝트별 fail-close 권한 재확인, local design token과 Lucide primitive 위에서 독립 설계했다. 신규 API, DB/schema, migration, permission, environment variable, dependency 또는 Settings storage 변경은 없고 mock/dead control이나 장식용 판정 action은 없다. - attested-independent-derivation

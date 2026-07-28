@@ -871,6 +871,18 @@ async function mockApi(page: Page, opts: { conflictOnPatch?: boolean } = {}) {
   await page.route('**/api/v1/projects/*/intake', (route) =>
     route.fulfill({ json: { items: [], total: 0 } }),
   )
+  // Intake and delegated-management surfaces read the caller's effective
+  // project permissions. Default to the fixture owner; focused tests can
+  // replace this route with a member, viewer, or custom-role report.
+  await page.route('**/api/v1/projects/*/permissions', (route) =>
+    route.fulfill({
+      json: {
+        my_role: 'owner',
+        my_custom_role: null,
+        verbs: [],
+      },
+    }),
+  )
   // The initiatives page reads the workspace list.
   await page.route('**/api/v1/initiatives', (route) =>
     route.fulfill({ json: { items: [], total: 0 } }),
@@ -12116,7 +12128,6 @@ test('인테이크 큐에서 소유자가 수락하면 triage POST가 간다', a
 
 test('인테이크 표면은 모바일에서 제출과 판정 큐를 유지한다', async ({ page }) => {
   await mockApi(page)
-  await page.setViewportSize({ width: 390, height: 844 })
   await page.route(`**/api/v1/projects/${project.id}/intake`, (route) =>
     route.fulfill({
       json: {
@@ -12161,7 +12172,11 @@ test('인테이크 표면은 모바일에서 제출과 판정 큐를 유지한�
 
   await page.goto(`/projects/${project.id}/intake?item=it-1`)
   await expect(page.getByRole('heading', { name: '인테이크', exact: true })).toBeVisible()
-  await expect(page.getByText('열린 요청')).toBeVisible()
+  await expect(page.locator('#intake-it-1')).toBeFocused()
+  await expect(page.locator('#intake-it-1')).toHaveAttribute('aria-current', 'true')
+  await expect(
+    page.getByRole('region', { name: '인테이크 요약' }).getByText('열린 요청', { exact: true }),
+  ).toBeVisible()
   await expect(page.getByLabel('인테이크 요청 제목')).toBeVisible()
   const pending = page.getByRole('region', { name: '대기' })
   await expect(pending.getByText('검색이 느려요')).toBeVisible()
@@ -12169,9 +12184,848 @@ test('인테이크 표면은 모바일에서 제출과 판정 큐를 유지한�
   await expect(pending.getByLabel('검색이 느려요 판정 사유')).toBeVisible()
   await expectNoHorizontalOverflow(page)
   await page.screenshot({
-    path: '../../docs/screenshots/redevelopment/intake-ui/mobile.png',
+    path: '../../docs/screenshots/redevelopment/project-intake-composition-ui-278/desktop.png',
     fullPage: true,
   })
+
+  await page.setViewportSize({ width: 390, height: 844 })
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/project-intake-composition-ui-278/mobile.png',
+    fullPage: true,
+  })
+})
+
+test('인테이크 제출 실패는 제목과 동일 요청을 보존해 그대로 재시도한다', async ({ page }) => {
+  await mockApi(page)
+  const posted: Array<{ title: string }> = []
+  await page.route(`**/api/v1/projects/${project.id}/intake`, async (route) => {
+    if (route.request().method() !== 'POST') {
+      await route.fulfill({ json: { items: [], total: 0 } })
+      return
+    }
+    const body = route.request().postDataJSON() as { title: string }
+    posted.push(body)
+    if (posted.length === 1) {
+      await route.fulfill({ status: 503, json: { detail: 'intake unavailable' } })
+      return
+    }
+    await route.fulfill({
+      status: 201,
+      json: {
+        id: 'it-retried',
+        project_id: project.id,
+        title: body.title,
+        body: null,
+        status: 'pending',
+        submitted_by: 'me-1',
+        submitter_name: 'Dev User',
+        snooze_until: null,
+        accepted_wp_id: null,
+        triage_note: null,
+        triaged_by_id: null,
+        triaged_at: null,
+        created_at: '2026-07-27T00:00:00Z',
+        updated_at: '2026-07-27T00:00:00Z',
+      },
+    })
+  })
+
+  await page.goto(`/projects/${project.id}/intake`)
+  const composer = page.getByLabel('인테이크 요청 제목')
+  await composer.fill('외부 고객 요청 정리')
+  await page.getByRole('button', { name: '요청 제출' }).click()
+  await expect(page.getByRole('alert')).toContainText('제목과 제출 의도를 유지했습니다.')
+  await expect(composer).toHaveValue('외부 고객 요청 정리')
+
+  await page.getByRole('button', { name: '제출 다시 시도' }).click()
+  await expect(page.getByRole('status')).toContainText('요청을 제출했습니다.')
+  expect(posted).toEqual([
+    { title: '외부 고객 요청 정리' },
+    { title: '외부 고객 요청 정리' },
+  ])
+})
+
+test('인테이크 판정 실패는 메모와 동일 판정을 보존해 그대로 재시도한다', async ({ page }) => {
+  await mockApi(page)
+  const item = {
+    id: 'it-triage-retry',
+    project_id: project.id,
+    title: '감사 로그 내보내기',
+    body: null,
+    status: 'pending',
+    submitted_by: 'u-alex',
+    submitter_name: 'Alex Kim',
+    snooze_until: null,
+    accepted_wp_id: null,
+    triage_note: null,
+    triaged_by_id: null,
+    triaged_at: null,
+    created_at: '2026-07-27T00:00:00Z',
+    updated_at: '2026-07-27T00:00:00Z',
+  }
+  const posted: Array<{ status: string; note: string }> = []
+  await page.route(`**/api/v1/projects/${project.id}/intake`, (route) =>
+    route.fulfill({ json: { items: [item], total: 1 } }),
+  )
+  await page.route(
+    `**/api/v1/projects/${project.id}/intake/${item.id}/triage`,
+    async (route) => {
+      const body = route.request().postDataJSON() as { status: string; note: string }
+      posted.push(body)
+      if (posted.length === 1) {
+        await route.fulfill({ status: 503, json: { detail: 'triage unavailable' } })
+        return
+      }
+      await route.fulfill({
+        json: {
+          ...item,
+          status: body.status,
+          triage_note: body.note,
+          triaged_by_id: 'me-1',
+          triaged_at: '2026-07-27T00:01:00Z',
+          updated_at: '2026-07-27T00:01:00Z',
+        },
+      })
+    },
+  )
+
+  await page.goto(`/projects/${project.id}/intake`)
+  const pending = page.getByRole('region', { name: '대기' })
+  const note = pending.getByLabel('감사 로그 내보내기 판정 사유')
+  await note.fill('이미 보안 백로그에서 관리 중')
+  await pending.getByRole('button', { name: '중복' }).click()
+  await expect(pending.getByRole('alert')).toContainText('입력과 대상을 유지했습니다.')
+  await expect(note).toHaveValue('이미 보안 백로그에서 관리 중')
+
+  await pending.getByRole('button', { name: '중복 다시 시도' }).click()
+  await expect(pending.getByRole('status')).toContainText('중복 처리했습니다.')
+  expect(posted).toEqual([
+    { status: 'duplicate', note: '이미 보안 백로그에서 관리 중' },
+    { status: 'duplicate', note: '이미 보안 백로그에서 관리 중' },
+  ])
+})
+
+test('intake.triage 위임 역할과 일반 멤버는 같은 큐에서 서로 다른 기능을 본다', async ({
+  page,
+}) => {
+  await mockApi(page)
+  const item = {
+    id: 'it-delegated',
+    project_id: project.id,
+    title: '고객 포털 요청',
+    body: null,
+    status: 'pending',
+    submitted_by: 'me-1',
+    submitter_name: 'Dev User',
+    snooze_until: null,
+    accepted_wp_id: null,
+    triage_note: null,
+    triaged_by_id: null,
+    triaged_at: null,
+    created_at: '2026-07-27T00:00:00Z',
+    updated_at: '2026-07-27T00:00:00Z',
+  }
+  await page.route(`**/api/v1/projects/${project.id}/members`, (route) =>
+    route.fulfill({
+      json: {
+        items: [
+          {
+            user_id: 'me-1',
+            email: 'dev@oneflow.local',
+            display_name: 'Dev User',
+            role: 'member',
+          },
+        ],
+        total: 1,
+      },
+    }),
+  )
+  await page.route(`**/api/v1/projects/${project.id}/permissions`, (route) =>
+    route.fulfill({
+      json: {
+        my_role: 'member',
+        my_custom_role: {
+          id: 'role-intake',
+          name: 'Intake manager',
+          permissions: ['intake.triage'],
+        },
+        verbs: [],
+      },
+    }),
+  )
+  await page.route(`**/api/v1/projects/${project.id}/intake`, (route) =>
+    route.fulfill({ json: { items: [item], total: 1 } }),
+  )
+
+  await page.goto(`/projects/${project.id}/intake`)
+  const pending = page.getByRole('region', { name: '대기' })
+  await expect(pending.getByLabel('고객 포털 요청 판정 사유')).toBeVisible()
+  await expect(pending.getByRole('button', { name: '수락' })).toBeVisible()
+  await expect(page.getByLabel('인테이크 요청 제목')).toBeVisible()
+
+  await page.route(`**/api/v1/projects/${project.id}/permissions`, (route) =>
+    route.fulfill({
+      json: { my_role: 'member', my_custom_role: null, verbs: [] },
+    }),
+  )
+  await page.reload()
+  await expect(page.getByText('고객 포털 요청')).toBeVisible()
+  await expect(page.getByLabel('인테이크 요청 제목')).toBeVisible()
+  await expect(page.getByLabel('고객 포털 요청 판정 사유')).toHaveCount(0)
+  await expect(page.getByRole('button', { name: '수락' })).toHaveCount(0)
+})
+
+test('보관 프로젝트 인테이크는 요청과 판정 동작을 모두 닫는다', async ({ page }) => {
+  await mockApi(page)
+  await page.route(`**/api/v1/projects/${project.id}`, (route) =>
+    route.fulfill({
+      json: { ...project, archived_at: '2026-07-27T00:00:00Z' },
+    }),
+  )
+  await page.route(`**/api/v1/projects/${project.id}/intake`, (route) =>
+    route.fulfill({
+      json: {
+        items: [
+          {
+            id: 'it-archived',
+            project_id: project.id,
+            title: '보관 전 요청',
+            body: null,
+            status: 'pending',
+            submitted_by: 'u-alex',
+            submitter_name: 'Alex Kim',
+            snooze_until: null,
+            accepted_wp_id: null,
+            triage_note: null,
+            triaged_by_id: null,
+            triaged_at: null,
+            created_at: '2026-07-26T00:00:00Z',
+            updated_at: '2026-07-26T00:00:00Z',
+          },
+        ],
+        total: 1,
+      },
+    }),
+  )
+
+  await page.goto(`/projects/${project.id}/intake`)
+  await expect(page.getByText('읽기 전용입니다', { exact: false })).toBeVisible()
+  await expect(page.getByLabel('인테이크 요청 제목')).toHaveCount(0)
+  await expect(page.getByLabel('보관 전 요청 판정 사유')).toHaveCount(0)
+  await expect(page.getByText('보관됨', { exact: true })).toBeVisible()
+})
+
+test('인테이크 지원 정보 오류는 큐를 유지하고 독립적으로 복구한다', async ({ page }) => {
+  await mockApi(page)
+  let permissionAttempts = 0
+  await page.route(`**/api/v1/projects/${project.id}/permissions`, async (route) => {
+    permissionAttempts += 1
+    if (permissionAttempts <= 2) {
+      await route.fulfill({ status: 503, json: { detail: 'permission unavailable' } })
+      return
+    }
+    await route.fulfill({
+      json: { my_role: 'owner', my_custom_role: null, verbs: [] },
+    })
+  })
+  await page.route(`**/api/v1/projects/${project.id}/intake`, (route) =>
+    route.fulfill({
+      json: {
+        items: [
+          {
+            id: 'it-retained',
+            project_id: project.id,
+            title: '유지되는 요청',
+            body: null,
+            status: 'pending',
+            submitted_by: 'u-alex',
+            submitter_name: 'Alex Kim',
+            snooze_until: null,
+            accepted_wp_id: null,
+            triage_note: null,
+            triaged_by_id: null,
+            triaged_at: null,
+            created_at: '2026-07-27T00:00:00Z',
+            updated_at: '2026-07-27T00:00:00Z',
+          },
+        ],
+        total: 1,
+      },
+    }),
+  )
+
+  await page.goto(`/projects/${project.id}/intake`)
+  await expect(page.getByText('유지되는 요청')).toBeVisible()
+  await expect(page.getByRole('alert')).toContainText('마지막으로 불러온 요청을 유지')
+  await expect(page.getByLabel('유지되는 요청 판정 사유')).toBeVisible()
+  await page.getByRole('button', { name: '다시 시도' }).click()
+  await expect(page.getByRole('alert')).toHaveCount(0)
+  expect(permissionAttempts).toBe(3)
+})
+
+test('인테이크는 최종 배치 골격을 유지하며 로딩을 마친다', async ({ page }) => {
+  await mockApi(page)
+  await page.setViewportSize({ width: 390, height: 844 })
+  let releaseIntake: (() => void) | undefined
+  let releasePermissions: (() => void) | undefined
+  let intakeResolved = false
+  let intakeRequests = 0
+  let refreshedIntake = false
+  const intakeGate = new Promise<void>((resolve) => {
+    releaseIntake = resolve
+  })
+  const permissionGate = new Promise<void>((resolve) => {
+    releasePermissions = resolve
+  })
+  await page.route(`**/api/v1/projects/${project.id}/intake`, async (route) => {
+    intakeRequests += 1
+    await intakeGate
+    await route.fulfill({
+      json: {
+        items: [
+          {
+            id: 'it-late-focus',
+            project_id: project.id,
+            title: refreshedIntake ? '새로 고친 요청' : '늦게 준비된 요청',
+            body: null,
+            status: 'pending',
+            submitted_by: 'u-alex',
+            submitter_name: 'Alex Kim',
+            snooze_until: null,
+            accepted_wp_id: null,
+            triage_note: null,
+            triaged_by_id: null,
+            triaged_at: null,
+            created_at: '2026-07-27T00:00:00Z',
+            updated_at: '2026-07-27T00:00:00Z',
+          },
+        ],
+        total: 1,
+      },
+    })
+    intakeResolved = true
+  })
+  await page.route(`**/api/v1/projects/${project.id}/permissions`, async (route) => {
+    await permissionGate
+    await route.fulfill({
+      json: { my_role: 'owner', my_custom_role: null, verbs: [] },
+    })
+  })
+
+  await page.goto(`/projects/${project.id}/intake?item=it-late-focus`)
+  const skeleton = page.getByTestId('project-intake-skeleton')
+  await expect(skeleton).toBeVisible()
+  await expect(page.getByRole('button', { name: '인테이크 새로고침' })).toBeVisible()
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/project-intake-composition-ui-278/loading-mobile.png',
+    fullPage: true,
+  })
+
+  releaseIntake?.()
+  await expect.poll(() => intakeResolved).toBe(true)
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve) => {
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+      }),
+  )
+  await expect(skeleton).toBeVisible()
+  await expect(page.locator('#intake-it-late-focus')).toHaveCount(0)
+  releasePermissions?.()
+  await expect(skeleton).toHaveCount(0)
+  const highlighted = page.locator('#intake-it-late-focus')
+  await expect(highlighted).toBeFocused()
+  await expect(highlighted).toContainText('늦게 준비된 요청')
+
+  const composer = page.getByLabel('인테이크 요청 제목')
+  await composer.focus()
+  await expect(composer).toBeFocused()
+  const refresh = page.getByRole('button', { name: '인테이크 새로고침' })
+  const requestsBeforeRefresh = intakeRequests
+  refreshedIntake = true
+  await refresh.evaluate((button: HTMLButtonElement) => button.click())
+  await expect.poll(() => intakeRequests).toBeGreaterThan(requestsBeforeRefresh)
+  await expect(highlighted).toContainText('새로 고친 요청')
+  await expect(composer).toBeFocused()
+  await expect(highlighted).not.toBeFocused()
+
+  await page.evaluate(() => {
+    window.history.pushState({}, '', window.location.pathname)
+    window.dispatchEvent(new PopStateEvent('popstate'))
+  })
+  await expect(highlighted).not.toHaveAttribute('aria-current')
+  await page.evaluate(() => {
+    window.history.pushState({}, '', `${window.location.pathname}?item=it-late-focus`)
+    window.dispatchEvent(new PopStateEvent('popstate'))
+  })
+  await expect(highlighted).toBeFocused()
+})
+
+test('인테이크 판정 409는 전체 상태를 갱신해 서버의 최신 결정을 반영한다', async ({ page }) => {
+  await mockApi(page)
+  let intakeAttempts = 0
+  let projectAttempts = 0
+  let permissionAttempts = 0
+  let decidedElsewhere = false
+  const baseItem = {
+    id: 'it-conflict',
+    project_id: project.id,
+    title: '동시 판정 요청',
+    body: null,
+    submitted_by: 'u-alex',
+    submitter_name: 'Alex Kim',
+    snooze_until: null,
+    accepted_wp_id: null,
+    triage_note: null,
+    triaged_by_id: null,
+    triaged_at: null,
+    created_at: '2026-07-27T00:00:00Z',
+    updated_at: '2026-07-27T00:00:00Z',
+  }
+  await page.route(`**/api/v1/projects/${project.id}/intake`, (route) => {
+    intakeAttempts += 1
+    return route.fulfill({
+      json: {
+        items: [
+          decidedElsewhere
+            ? {
+                ...baseItem,
+                status: 'accepted',
+                triage_note: '다른 담당자가 수락',
+                triaged_by_id: 'u-alex',
+                triaged_at: '2026-07-27T00:01:00Z',
+                updated_at: '2026-07-27T00:01:00Z',
+              }
+            : { ...baseItem, status: 'pending' },
+        ],
+        total: 1,
+      },
+    })
+  })
+  await page.route(`**/api/v1/projects/${project.id}`, (route) => {
+    projectAttempts += 1
+    return route.fulfill({ json: project })
+  })
+  await page.route(`**/api/v1/projects/${project.id}/permissions`, (route) => {
+    permissionAttempts += 1
+    return route.fulfill({
+      json: { my_role: 'owner', my_custom_role: null, verbs: [] },
+    })
+  })
+  await page.route(
+    `**/api/v1/projects/${project.id}/intake/${baseItem.id}/triage`,
+    async (route) => {
+      decidedElsewhere = true
+      await route.fulfill({
+        status: 409,
+        json: { detail: 'intake item was already triaged' },
+      })
+    },
+  )
+
+  await page.goto(`/projects/${project.id}/intake`)
+  const before = { intakeAttempts, projectAttempts, permissionAttempts }
+  await page.getByRole('region', { name: '대기' }).getByRole('button', { name: '수락' }).click()
+  const accepted = page.getByRole('region', { name: '수락됨' })
+  await expect(accepted.getByText('동시 판정 요청')).toBeVisible()
+  await expect(accepted.getByText('다른 담당자가 수락')).toBeVisible()
+  await expect(page.getByLabel('동시 판정 요청 판정 사유')).toHaveCount(0)
+  expect(intakeAttempts).toBeGreaterThan(before.intakeAttempts)
+  expect(projectAttempts).toBeGreaterThan(before.projectAttempts)
+  expect(permissionAttempts).toBeGreaterThan(before.permissionAttempts)
+})
+
+test('인테이크 판정 중 위임 권한이 회수되면 쓰기 조작부를 닫는다', async ({ page }) => {
+  await mockApi(page)
+  let permissionRevoked = false
+  let permissionRefreshUnavailable = false
+  let permissionAttempts = 0
+  const item = {
+    id: 'it-revoked',
+    project_id: project.id,
+    title: '위임 권한 판정 요청',
+    body: null,
+    status: 'pending',
+    submitted_by: 'u-alex',
+    submitter_name: 'Alex Kim',
+    snooze_until: null,
+    accepted_wp_id: null,
+    triage_note: null,
+    triaged_by_id: null,
+    triaged_at: null,
+    created_at: '2026-07-27T00:00:00Z',
+    updated_at: '2026-07-27T00:00:00Z',
+  }
+  await page.route(`**/api/v1/projects/${project.id}/members`, (route) =>
+    route.fulfill({
+      json: {
+        items: [
+          {
+            user_id: 'me-1',
+            email: 'dev@oneflow.local',
+            display_name: 'Dev User',
+            role: 'member',
+          },
+        ],
+        total: 1,
+      },
+    }),
+  )
+  await page.route(`**/api/v1/projects/${project.id}/permissions`, async (route) => {
+    permissionAttempts += 1
+    if (permissionRefreshUnavailable) {
+      await route.fulfill({ status: 503, json: { detail: 'permissions unavailable' } })
+      return
+    }
+    await route.fulfill({
+      json: {
+        my_role: 'member',
+        my_custom_role: permissionRevoked
+          ? null
+          : {
+              id: 'role-intake',
+              name: 'Intake manager',
+              permissions: ['intake.triage'],
+            },
+        verbs: [],
+      },
+    })
+  })
+  await page.route(`**/api/v1/projects/${project.id}/intake`, (route) =>
+    route.fulfill({ json: { items: [item], total: 1 } }),
+  )
+  await page.route(
+    `**/api/v1/projects/${project.id}/intake/${item.id}/triage`,
+    async (route) => {
+      permissionRevoked = true
+      permissionRefreshUnavailable = true
+      await route.fulfill({ status: 403, json: { detail: 'permission denied' } })
+    },
+  )
+
+  await page.goto(`/projects/${project.id}/intake`)
+  const pending = page.getByRole('region', { name: '대기' })
+  await pending.getByRole('button', { name: '중복' }).click()
+  await expect(pending.getByLabel('위임 권한 판정 요청 판정 사유')).toHaveCount(0)
+  await expect(pending.getByRole('button', { name: '수락' })).toHaveCount(0)
+  await expect(page.getByLabel('인테이크 요청 제목')).toHaveCount(0)
+  await expect(page.getByText('프로젝트, 권한 또는 요청 상태가 변경되었습니다.')).toBeVisible()
+  await expect(page.getByText('마지막으로 불러온 요청을 유지하고 있습니다.')).toBeVisible()
+  const attemptsBeforeRecovery = permissionAttempts
+  permissionRefreshUnavailable = false
+  await page.getByRole('button', { name: '다시 시도' }).click()
+  await expect.poll(() => permissionAttempts).toBeGreaterThan(attemptsBeforeRecovery)
+  await expect(page.getByLabel('인테이크 요청 제목')).toBeVisible()
+  await expect(pending.getByRole('button', { name: '수락' })).toHaveCount(0)
+})
+
+test('인테이크 제출 중 프로젝트가 보관되면 즉시 읽기 전용으로 전환한다', async ({ page }) => {
+  await mockApi(page)
+  let archived = false
+  let projectRefreshUnavailable = false
+  let projectAttempts = 0
+  await page.route(`**/api/v1/projects/${project.id}`, async (route) => {
+    projectAttempts += 1
+    if (projectRefreshUnavailable) {
+      await route.fulfill({ status: 503, json: { detail: 'project unavailable' } })
+      return
+    }
+    await route.fulfill({
+      json: {
+        ...project,
+        archived_at: archived ? '2026-07-27T00:00:00Z' : null,
+      },
+    })
+  })
+  await page.route(`**/api/v1/projects/${project.id}/intake`, async (route) => {
+    if (route.request().method() === 'POST') {
+      archived = true
+      projectRefreshUnavailable = true
+      await route.fulfill({
+        status: 409,
+        json: { detail: 'archived projects are read-only' },
+      })
+      return
+    }
+    await route.fulfill({ json: { items: [], total: 0 } })
+  })
+
+  await page.goto(`/projects/${project.id}/intake`)
+  await page.getByLabel('인테이크 요청 제목').fill('보관 경계 요청')
+  await page.getByRole('button', { name: '요청 제출' }).click()
+  await expect(page.getByText('읽기 전용입니다', { exact: false })).toBeVisible()
+  await expect(page.getByLabel('인테이크 요청 제목')).toHaveCount(0)
+  await expect(page.getByRole('alert')).toContainText('마지막으로 불러온 요청을 유지')
+  const attemptsBeforeRecovery = projectAttempts
+  projectRefreshUnavailable = false
+  await page.getByRole('button', { name: '다시 시도' }).click()
+  await expect.poll(() => projectAttempts).toBeGreaterThan(attemptsBeforeRecovery)
+  await expect(page.getByText('보관됨', { exact: true })).toBeVisible()
+})
+
+test('인테이크 권한 재확인은 프로젝트 전환과 늦은 응답 사이에서 격리된다', async ({ page }) => {
+  await mockApi(page)
+  const projectB = {
+    ...project,
+    id: '99999999-9999-4999-8999-999999999997',
+    key: 'OPS',
+    name: '운영 개선',
+  }
+  let releaseProjectAPermissions: (() => void) | undefined
+  let releaseProjectBRefresh: (() => void) | undefined
+  let projectAPermissionAttempts = 0
+  let projectBProjectAttempts = 0
+  let projectARefreshResolved = false
+  const projectAPermissionGate = new Promise<void>((resolve) => {
+    releaseProjectAPermissions = resolve
+  })
+  const projectBRefreshGate = new Promise<void>((resolve) => {
+    releaseProjectBRefresh = resolve
+  })
+  const projectAItem = {
+    id: 'it-project-a',
+    project_id: project.id,
+    title: '프로젝트 A 요청',
+    body: null,
+    status: 'pending',
+    submitted_by: 'u-alex',
+    submitter_name: 'Alex Kim',
+    snooze_until: null,
+    accepted_wp_id: null,
+    triage_note: null,
+    triaged_by_id: null,
+    triaged_at: null,
+    created_at: '2026-07-27T00:00:00Z',
+    updated_at: '2026-07-27T00:00:00Z',
+  }
+
+  await page.route(`**/api/v1/projects/${project.id}/permissions`, async (route) => {
+    projectAPermissionAttempts += 1
+    if (projectAPermissionAttempts > 1) {
+      await projectAPermissionGate
+      projectARefreshResolved = true
+    }
+    await route.fulfill({
+      json: { my_role: 'owner', my_custom_role: null, verbs: [] },
+    })
+  })
+  await page.route(`**/api/v1/projects/${project.id}/intake`, (route) =>
+    route.fulfill({ json: { items: [projectAItem], total: 1 } }),
+  )
+  await page.route(
+    `**/api/v1/projects/${project.id}/intake/${projectAItem.id}/triage`,
+    (route) => route.fulfill({ status: 403, json: { detail: 'permission changed' } }),
+  )
+  await page.route(`**/api/v1/projects/${projectB.id}`, async (route) => {
+    projectBProjectAttempts += 1
+    if (projectBProjectAttempts > 1) {
+      await projectBRefreshGate
+    }
+    await route.fulfill({ json: projectB })
+  })
+  await page.route(`**/api/v1/projects/${projectB.id}/members`, (route) =>
+    route.fulfill({
+      json: {
+        items: [
+          {
+            user_id: 'me-1',
+            email: 'dev@oneflow.local',
+            display_name: 'Dev User',
+            role: 'owner',
+          },
+        ],
+        total: 1,
+      },
+    }),
+  )
+  await page.route(`**/api/v1/projects/${projectB.id}/permissions`, (route) =>
+    route.fulfill({
+      json: { my_role: 'owner', my_custom_role: null, verbs: [] },
+    }),
+  )
+  await page.route(`**/api/v1/projects/${projectB.id}/intake`, async (route) => {
+    if (route.request().method() === 'POST') {
+      await route.fulfill({ status: 409, json: { detail: 'project state changed' } })
+      return
+    }
+    await route.fulfill({ json: { items: [], total: 0 } })
+  })
+
+  await page.goto(`/projects/${project.id}/intake`)
+  await page.getByRole('region', { name: '대기' }).getByRole('button', { name: '수락' }).click()
+  await expect.poll(() => projectAPermissionAttempts).toBeGreaterThan(1)
+
+  await page.evaluate((projectId) => {
+    window.history.pushState({}, '', `/projects/${projectId}/intake`)
+    window.dispatchEvent(new PopStateEvent('popstate'))
+  }, projectB.id)
+  await expect(page).toHaveURL(`/projects/${projectB.id}/intake`)
+  const composer = page.getByLabel('인테이크 요청 제목')
+  await expect(composer).toBeVisible()
+
+  await composer.fill('프로젝트 B 요청')
+  await page.getByRole('button', { name: '요청 제출' }).click()
+  await expect(composer).toHaveCount(0)
+  await expect.poll(() => projectBProjectAttempts).toBeGreaterThan(1)
+
+  releaseProjectAPermissions?.()
+  await expect.poll(() => projectARefreshResolved).toBe(true)
+  await expect(composer).toHaveCount(0)
+
+  releaseProjectBRefresh?.()
+  await expect(composer).toBeVisible()
+  await expect(composer).toHaveValue('프로젝트 B 요청')
+})
+
+test('이전 프로젝트의 늦은 인테이크 제출 결과는 현재 프로젝트 작성 상태를 바꾸지 않는다', async ({
+  page,
+}) => {
+  await mockApi(page)
+  const projectB = {
+    ...project,
+    id: '99999999-9999-4999-8999-999999999996',
+    key: 'SUP',
+    name: '고객 지원',
+  }
+  type SubmissionOutcome = 'success' | 'failure' | 'stale'
+  let activeOutcome: SubmissionOutcome = 'success'
+  let submissionGate = Promise.resolve()
+  let releaseSubmission: (() => void) | undefined
+  let submissionStarted = 0
+  let submissionResolved = 0
+  let projectBIntakeRequests = 0
+
+  await page.route(`**/api/v1/projects/${project.id}/intake`, async (route) => {
+    if (route.request().method() !== 'POST') {
+      await route.fulfill({ json: { items: [], total: 0 } })
+      return
+    }
+    const outcome = activeOutcome
+    const gate = submissionGate
+    submissionStarted += 1
+    await gate
+    submissionResolved += 1
+    if (outcome === 'failure') {
+      await route.fulfill({ status: 503, json: { detail: 'intake unavailable' } })
+      return
+    }
+    if (outcome === 'stale') {
+      await route.fulfill({ status: 409, json: { detail: 'project state changed' } })
+      return
+    }
+    const body = route.request().postDataJSON() as { title: string }
+    await route.fulfill({
+      status: 201,
+      json: {
+        id: `it-late-${submissionResolved}`,
+        project_id: project.id,
+        title: body.title,
+        body: null,
+        status: 'pending',
+        submitted_by: 'me-1',
+        submitter_name: 'Dev User',
+        snooze_until: null,
+        accepted_wp_id: null,
+        triage_note: null,
+        triaged_by_id: null,
+        triaged_at: null,
+        created_at: '2026-07-27T00:00:00Z',
+        updated_at: '2026-07-27T00:00:00Z',
+      },
+    })
+  })
+  await page.route(`**/api/v1/projects/${projectB.id}`, (route) =>
+    route.fulfill({ json: projectB }),
+  )
+  await page.route(`**/api/v1/projects/${projectB.id}/members`, (route) =>
+    route.fulfill({
+      json: {
+        items: [
+          {
+            user_id: 'me-1',
+            email: 'dev@oneflow.local',
+            display_name: 'Dev User',
+            role: 'owner',
+          },
+        ],
+        total: 1,
+      },
+    }),
+  )
+  await page.route(`**/api/v1/projects/${projectB.id}/permissions`, (route) =>
+    route.fulfill({
+      json: { my_role: 'owner', my_custom_role: null, verbs: [] },
+    }),
+  )
+  await page.route(`**/api/v1/projects/${projectB.id}/intake`, (route) => {
+    projectBIntakeRequests += 1
+    return route.fulfill({ json: { items: [], total: 0 } })
+  })
+
+  for (const outcome of ['success', 'failure', 'stale'] as const) {
+    activeOutcome = outcome
+    submissionGate = new Promise<void>((resolve) => {
+      releaseSubmission = resolve
+    })
+    const startedBefore = submissionStarted
+    const resolvedBefore = submissionResolved
+
+    await page.goto(`/projects/${project.id}/intake`)
+    const projectAComposer = page.getByLabel('인테이크 요청 제목')
+    await projectAComposer.fill(`프로젝트 A ${outcome}`)
+    await page.getByRole('button', { name: '요청 제출' }).click()
+    await expect.poll(() => submissionStarted).toBeGreaterThan(startedBefore)
+
+    const projectBRequestsBefore = projectBIntakeRequests
+    await page.evaluate((projectId) => {
+      window.history.pushState({}, '', `/projects/${projectId}/intake`)
+      window.dispatchEvent(new PopStateEvent('popstate'))
+    }, projectB.id)
+    await expect(page).toHaveURL(`/projects/${projectB.id}/intake`)
+    await expect.poll(() => projectBIntakeRequests).toBeGreaterThan(projectBRequestsBefore)
+    const projectBComposer = page.getByLabel('인테이크 요청 제목')
+    await expect(projectBComposer).toBeVisible()
+    await projectBComposer.fill(`프로젝트 B ${outcome}`)
+    await expect(page.getByRole('button', { name: '요청 제출' })).toBeEnabled()
+
+    releaseSubmission?.()
+    await expect.poll(() => submissionResolved).toBeGreaterThan(resolvedBefore)
+    await expect(projectBComposer).toHaveValue(`프로젝트 B ${outcome}`)
+    await expect(page.getByText('요청을 제출했습니다.')).toHaveCount(0)
+    await expect(page.getByText('요청을 제출하지 못했습니다.')).toHaveCount(0)
+    await expect(page.getByText('프로젝트 또는 권한 상태가 변경되었습니다.')).toHaveCount(0)
+    await expect(page.getByRole('button', { name: '제출 다시 시도' })).toHaveCount(0)
+  }
+})
+
+test('인테이크 초기 조회 오류는 프레임을 유지하고 같은 영역에서 복구한다', async ({ page }) => {
+  await mockApi(page)
+  await page.setViewportSize({ width: 390, height: 844 })
+  let intakeAttempts = 0
+  await page.route(`**/api/v1/projects/${project.id}/intake`, async (route) => {
+    intakeAttempts += 1
+    if (intakeAttempts <= 2) {
+      await route.fulfill({ status: 503, json: { detail: 'intake unavailable' } })
+      return
+    }
+    await route.fulfill({ json: { items: [], total: 0 } })
+  })
+
+  await page.goto(`/projects/${project.id}/intake`)
+  const errorRegion = page.getByRole('region', { name: '인테이크 요청 오류' })
+  await expect(errorRegion).toBeVisible()
+  await expect(page.getByRole('button', { name: '인테이크 새로고침' })).toBeVisible()
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/project-intake-composition-ui-278/error-mobile.png',
+    fullPage: true,
+  })
+
+  await errorRegion.getByRole('button', { name: '다시 시도' }).click()
+  await expect(page.getByText('접수된 요청이 없습니다')).toBeVisible()
+  expect(intakeAttempts).toBe(3)
 })
 
 test('인테이크 판정 이력은 펼칠 때 지연 조회하고 모바일에서도 전이 흐름을 유지한다', async ({
