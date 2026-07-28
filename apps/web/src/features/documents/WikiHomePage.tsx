@@ -2,8 +2,11 @@ import * as Dialog from '@radix-ui/react-dialog'
 import {
   Archive,
   FileText,
+  LoaderCircle,
   LockKeyhole,
+  MoreHorizontal,
   Plus,
+  RotateCcw,
   Search,
   Users,
   X,
@@ -14,8 +17,15 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { FrameContextActions } from '@/components/shell/FrameContextActions'
 import { EmptyState, ErrorState, ListSkeleton } from '@/components/shell/states'
 import { Button } from '@/components/ui/button'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
+import { useMe } from '@/features/members/api'
 import { useProjects } from '@/features/projects/api'
 import { formatDateTime } from '@/lib/datetime'
 
@@ -23,6 +33,7 @@ import {
   type DocumentBucket,
   type DocumentListItem,
   useCreateDocument,
+  useDocumentLifecycle,
   useWorkspaceDocuments,
 } from './api'
 
@@ -44,8 +55,109 @@ function wikiSortFrom(value: string | null): WikiSort {
     : 'updated_desc'
 }
 
+function bucketHref(bucket: DocumentBucket, params: URLSearchParams) {
+  const next = new URLSearchParams(params)
+  if (bucket === 'shared') next.delete('bucket')
+  else next.set('bucket', bucket)
+  const search = next.toString()
+  return search ? `/wiki?${search}` : '/wiki'
+}
+
+function WikiDocumentRow({
+  document,
+  canManageLifecycle,
+}: {
+  document: WorkspaceDocument
+  canManageLifecycle: boolean
+}) {
+  const lifecycle = useDocumentLifecycle(document.project_id)
+  const archived = document.archived_at !== null
+  const actionLabel = archived ? '복원' : '보관'
+
+  const runLifecycle = () => {
+    lifecycle.mutate({
+      docId: document.id,
+      expectedVersion: document.version,
+      archived: !archived,
+    })
+  }
+
+  return (
+    <li className="relative min-w-0">
+      <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_2.75rem] items-stretch">
+        <Link
+          to={`/projects/${document.project_id}/documents/${document.id}`}
+          className="grid min-h-14 min-w-0 gap-1 px-4 py-2.5 hover:bg-of-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-of-focus sm:grid-cols-[minmax(0,1fr)_11rem_8rem] sm:items-center sm:px-6"
+        >
+          <span className="flex min-w-0 items-center gap-2">
+            <FileText size={14} className="shrink-0 text-of-muted" aria-hidden="true" />
+            <span className="truncate text-sm font-medium">{document.title}</span>
+            {document.visibility === 'private' ? (
+              <LockKeyhole
+                size={12}
+                className="shrink-0 text-of-muted"
+                aria-label="비공개"
+              />
+            ) : null}
+          </span>
+          <span className="min-w-0 truncate pl-6 text-xs text-of-muted sm:pl-0">
+            {document.projectName}
+          </span>
+          <span className="pl-6 text-xs text-of-muted sm:pl-0 sm:text-right">
+            {formatDateTime(document.updated_at)}
+          </span>
+        </Link>
+        {canManageLifecycle ? (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                type="button"
+                aria-label={`${document.title} 페이지 작업`}
+                disabled={lifecycle.isPending}
+                className="my-2 mr-2 grid min-h-9 min-w-9 place-items-center self-start rounded-of text-of-muted hover:bg-of-surface-hover hover:text-of-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus disabled:opacity-50"
+              >
+                {lifecycle.isPending ? (
+                  <LoaderCircle size={15} className="animate-spin" aria-hidden="true" />
+                ) : (
+                  <MoreHorizontal size={15} aria-hidden="true" />
+                )}
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onSelect={runLifecycle} className="flex items-center gap-2">
+                {archived ? (
+                  <RotateCcw size={14} aria-hidden="true" />
+                ) : (
+                  <Archive size={14} aria-hidden="true" />
+                )}
+                {actionLabel}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        ) : null}
+      </div>
+      {lifecycle.isError ? (
+        <div
+          role="alert"
+          className="flex min-h-8 items-center justify-between gap-2 border-t border-of-danger/20 bg-of-danger/5 px-4 py-1.5 text-xs text-of-danger sm:px-6"
+        >
+          <span>페이지를 {actionLabel}하지 못했습니다.</span>
+          <button
+            type="button"
+            className="shrink-0 font-medium underline underline-offset-2"
+            onClick={runLifecycle}
+          >
+            다시 시도
+          </button>
+        </div>
+      ) : null}
+    </li>
+  )
+}
+
 export function WikiHomePage() {
   const navigate = useNavigate()
+  const me = useMe()
   const projects = useProjects()
   const [params, setParams] = useSearchParams()
   const rawBucket = params.get('bucket')
@@ -68,7 +180,13 @@ export function WikiHomePage() {
   const create = useCreateDocument(createProjectId)
   const workspaceDocuments = useWorkspaceDocuments(bucket)
   const projectNames = new Map(projectItems.map((project) => [project.id, project.name]))
-  const loading = projects.isPending || workspaceDocuments.isPending
+  const projectRoles = new Map(
+    projectItems.map((project) => [project.id, project.current_user_role]),
+  )
+  const archivedProjects = new Set(
+    projectItems.filter((project) => project.archived_at !== null).map((project) => project.id),
+  )
+  const loading = projects.isPending || workspaceDocuments.isPending || me.isPending
   const documents: WorkspaceDocument[] = (workspaceDocuments.data?.items ?? []).map(
     (document) => ({
       ...document,
@@ -145,6 +263,9 @@ export function WikiHomePage() {
   if (workspaceDocuments.isError) {
     return <ErrorState error={workspaceDocuments.error} onRetry={() => workspaceDocuments.refetch()} />
   }
+  if (me.isError) {
+    return <ErrorState error={me.error} onRetry={() => me.refetch()} />
+  }
 
   return (
     <section aria-label="Wiki 홈" className="flex min-h-full min-w-0 flex-col bg-of-surface">
@@ -163,8 +284,38 @@ export function WikiHomePage() {
         </div>
       </FrameContextActions>
 
-      <div className="flex min-w-0 shrink-0 flex-wrap items-center gap-2 border-b border-of-border-subtle px-3 py-2">
-        <label className="relative min-w-44 flex-1 sm:max-w-72">
+      <nav
+        aria-label="Wiki 문서 범위"
+        className="grid min-w-0 shrink-0 grid-cols-3 border-b border-of-border-subtle bg-of-surface px-2 pt-1 sm:flex sm:px-3"
+      >
+        {BUCKETS.map((item) => {
+          const Icon = item.icon
+          const active = item.key === bucket
+          return (
+            <Link
+              key={item.key}
+              to={bucketHref(item.key, params)}
+              aria-current={active ? 'page' : undefined}
+              className={`flex min-h-9 min-w-0 items-center justify-center gap-1.5 border-b-2 px-2 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-of-focus sm:min-w-24 ${
+                active
+                  ? 'border-of-accent text-of-text'
+                  : 'border-transparent text-of-muted hover:border-of-border hover:text-of-text'
+              }`}
+            >
+              <Icon size={13} className="shrink-0" aria-hidden="true" />
+              <span className="truncate">{item.label}</span>
+              {active ? (
+                <span className="rounded-of bg-of-surface-muted px-1 text-[10px] tabular-nums text-of-muted">
+                  {workspaceDocuments.data?.total ?? 0}
+                </span>
+              ) : null}
+            </Link>
+          )
+        })}
+      </nav>
+
+      <div className="grid min-w-0 shrink-0 grid-cols-2 items-center gap-2 border-b border-of-border-subtle px-3 py-2 sm:flex">
+        <label className="relative col-span-2 min-w-0 flex-1 sm:max-w-72">
           <span className="sr-only">Wiki 검색</span>
           <Search
             size={13}
@@ -195,7 +346,7 @@ export function WikiHomePage() {
             updateParams({ project: event.target.value === 'all' ? null : event.target.value })
           }
           aria-label="Wiki 프로젝트 필터"
-          className="h-7 min-w-36 text-xs sm:w-44 sm:flex-none"
+          className="h-7 min-w-0 w-full text-xs sm:w-44 sm:flex-none"
         >
           <option value="all">전체 프로젝트</option>
           {projectItems.map((project) => (
@@ -212,7 +363,7 @@ export function WikiHomePage() {
             })
           }
           aria-label="Wiki 정렬"
-          className="h-7 min-w-32 text-xs sm:w-36 sm:flex-none"
+          className="h-7 min-w-0 w-full text-xs sm:w-36 sm:flex-none"
         >
           <option value="updated_desc">최근 수정</option>
           <option value="updated_asc">오래된 수정</option>
@@ -224,6 +375,7 @@ export function WikiHomePage() {
             type="button"
             size="sm"
             variant="ghost"
+            className="col-span-2 justify-self-end sm:col-auto"
             onClick={() => updateParams({ q: null, project: null })}
           >
             필터 초기화 {activeFilters}
@@ -266,32 +418,20 @@ export function WikiHomePage() {
             aria-label={`${bucketLabel} Wiki 문서`}
             className="min-w-0 divide-y divide-of-border-subtle border-b border-of-border-subtle bg-of-surface"
           >
-            {visibleDocuments.map((document) => (
-              <li key={document.id}>
-                <Link
-                  to={`/projects/${document.project_id}/documents/${document.id}`}
-                  className="grid min-h-12 min-w-0 gap-1 px-4 py-2.5 hover:bg-of-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-of-focus sm:grid-cols-[minmax(0,1fr)_11rem_8rem] sm:items-center sm:px-6"
-                >
-                  <span className="flex min-w-0 items-center gap-2">
-                    <FileText size={14} className="shrink-0 text-of-muted" aria-hidden="true" />
-                    <span className="truncate text-sm font-medium">{document.title}</span>
-                    {document.visibility === 'private' ? (
-                      <LockKeyhole
-                        size={12}
-                        className="shrink-0 text-of-muted"
-                        aria-label="비공개"
-                      />
-                    ) : null}
-                  </span>
-                  <span className="min-w-0 truncate pl-6 text-xs text-of-muted sm:pl-0">
-                    {document.projectName}
-                  </span>
-                  <span className="pl-6 text-xs text-of-muted sm:pl-0 sm:text-right">
-                    {formatDateTime(document.updated_at)}
-                  </span>
-                </Link>
-              </li>
-            ))}
+            {visibleDocuments.map((document) => {
+              const role = projectRoles.get(document.project_id)
+              const canManageLifecycle =
+                !archivedProjects.has(document.project_id) &&
+                role !== 'viewer' &&
+                (document.author_id === me.data?.id || role === 'owner')
+              return (
+                <WikiDocumentRow
+                  key={document.id}
+                  document={document}
+                  canManageLifecycle={canManageLifecycle}
+                />
+              )
+            })}
           </ul>
         )}
       </main>
