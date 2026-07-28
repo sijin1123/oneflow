@@ -19951,6 +19951,113 @@ test('UI-232 Page detail은 문서 캔버스와 실제 저장 상태·보조 패
   })
 })
 
+test('UI-288 모바일 Page detail 패널은 실제 협업 정보와 Escape·focus lifecycle을 유지한다', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await mockApi(page)
+  const doc = {
+    id: 'ui288-page',
+    project_id: project.id,
+    parent_id: null,
+    title: '모바일 협업 운영 가이드',
+    body: '<h2>협업 원칙</h2><p>페이지에서 결정과 실행을 함께 추적합니다.</p>',
+    author_id: 'me-1',
+    visibility: 'shared' as const,
+    archived_at: null,
+    archived_by_user_id: null,
+    archived_by_name: null,
+    version: 4,
+    created_at: '2026-07-27T00:00:00Z',
+    updated_at: '2026-07-28T00:00:00Z',
+  }
+  await page.route(`**/api/v1/projects/${project.id}/documents**`, (route) =>
+    route.fulfill({ json: { items: [doc], total: 1 } }),
+  )
+  await page.route('**/api/v1/documents/ui288-page', (route) =>
+    route.fulfill({ json: doc }),
+  )
+  await page.route('**/api/v1/documents/ui288-page/comments**', (route) =>
+    route.fulfill({ json: { items: [], total: 0 } }),
+  )
+  await page.route('**/api/v1/documents/ui288-page/activities**', (route) =>
+    route.fulfill({
+      json: {
+        items: [
+          {
+            id: 'activity-ui288',
+            actor_id: 'me-1',
+            actor_name: 'Alex Kim',
+            actor_profile_image_url: null,
+            kind: 'document_updated',
+            changed_fields: ['body'],
+            created_at: '2026-07-28T00:00:00Z',
+          },
+        ],
+        total: 1,
+      },
+    }),
+  )
+  await page.route('**/api/v1/documents/ui288-page/work-package-links', (route) =>
+    route.fulfill({ json: { items: [], total: 0 } }),
+  )
+  await page.route(`**/api/v1/projects/${project.id}/attachments**`, (route) =>
+    route.fulfill({ json: { items: [], total: 0 } }),
+  )
+
+  await page.goto(`/projects/${project.id}/documents/ui288-page`)
+  const trigger = page.getByRole('button', { name: '페이지 상세 열기' })
+  await trigger.click()
+
+  const panel = page.getByRole('dialog', { name: '문서 속성' })
+  const close = panel.getByRole('button', { name: '페이지 상세 패널 닫기' })
+  await expect(panel).toBeVisible()
+  await expect(panel.getByText('페이지 정보')).toBeVisible()
+  await expect(panel.getByText(doc.title)).toBeVisible()
+  await expect(close).toBeFocused()
+  await expect(panel.getByRole('tablist', { name: '문서 상세 보기' })).toBeVisible()
+  await expect(panel.getByRole('region', { name: '문서 메타' })).toBeVisible()
+  await expect(panel.getByRole('region', { name: '연결된 작업' })).toBeAttached()
+  await expect(panel.getByRole('region', { name: '문서 첨부' })).toBeAttached()
+
+  await panel.getByRole('tab', { name: '활동' }).click()
+  await expect(panel.getByRole('heading', { name: '활동' })).toBeVisible()
+  await expect(panel.getByText('문서 정보를 수정했습니다.')).toBeVisible()
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/mobile-page-detail-ui-288/activity-panel-390.png',
+    fullPage: false,
+  })
+
+  await page.keyboard.press('Escape')
+  await expect(panel).toHaveCount(0)
+  await expect(trigger).toBeFocused()
+
+  await trigger.click()
+  await expect(close).toBeFocused()
+  await close.click()
+  await expect(panel).toHaveCount(0)
+  await expect(trigger).toBeFocused()
+  await expectNoHorizontalOverflow(page)
+
+  await page.setViewportSize({ width: 320, height: 740 })
+  await trigger.click()
+  await expect(panel).toBeVisible()
+  const panelBox = await panel.boundingBox()
+  expect(panelBox).not.toBeNull()
+  expect(panelBox!.x).toBe(0)
+  expect(panelBox!.width).toBeLessThanOrEqual(320)
+  await expect(panel.getByRole('tab', { name: '활동' })).toHaveAttribute('aria-selected', 'true')
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/mobile-page-detail-ui-288/activity-panel-320.png',
+    fullPage: false,
+  })
+  await panel.getByRole('button', { name: '페이지 상세 패널 닫기' }).click()
+  await expect(panel).toHaveCount(0)
+  await expect(trigger).toBeFocused()
+})
+
 test('문서 목록에서 문서를 열면 편집기가 제목과 본문을 보여준다', async ({ page }) => {
   await mockApi(page)
   const doc = {
