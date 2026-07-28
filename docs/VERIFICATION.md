@@ -3355,3 +3355,14 @@ Chromium typed mock fixture에서 1440x960과 390x844 viewport를 사용했다. 
 - **증적**: `docs/screenshots/redevelopment/project-intake-composition-ui-278/{desktop,mobile,loading-mobile,error-mobile}.png`과 README에서 compact queue, mobile containment, stable skeleton과 독립 오류 복구를 확인한다.
 
 ---
+
+# UI-279 Project Files Composition 검증 (2026-07-28)
+
+- **UI 변경**: Project Files를 별도 storage 카드 모음에서 중앙 콘텐츠 프레임에 직접 결합된 compact directory surface로 재구성했다. 프레임 상단에 실제 refresh와 permission-aware 업로드/링크 진입점을 유지하고, 저장량·업로드·외부 링크·연결·본문 검색 상태, upload/link composer, URL-backed 검색·범위, dense file rows와 pagination을 한 정보 계층으로 통합했다. desktop과 `390x844` mobile 모두 문서 가로 넘침 없이 같은 기능 순서를 유지한다.
+- **기능/API 반영**: 기존 attachment directory, binary upload/download, external-link create, work-item/document anchor, body-index rebuild, highlighted deep link와 cursor pagination을 그대로 연결했다. 업로드·링크·삭제 실패는 정확한 파일·연결 대상·입력·대상 ID를 보존해 동일 작업으로 재시도한다. 초기 loading/error에서도 최종 프레임 액션과 geometry를 유지하고, 마지막 성공 데이터의 재조회 오류는 목록을 비우지 않은 채 실제 directory/project/work-item/capability/document query로 복구한다. 프로젝트 전환 시 composer와 mutation 상태를 프로젝트별로 격리하며, archive/viewer 상태에서는 쓰기 control을 노출하지 않는다. 신규 API, DB/schema, migration, permission, 환경변수, dependency 또는 Settings UI 변경은 없다.
+- **이연 항목**: 없음. 업로드, 다운로드, 외부 링크 열기·추가, 삭제, 검색, 범위, 연결 대상, 본문 검색 준비, refresh, pagination과 오류 재시도가 모두 기존 실제 query/mutation 또는 browser command에 연결돼 있으며 mock/dead control이나 장식용 파일은 없다.
+- **검증**: typecheck PASS, lint PASS(기존 Fast Refresh warning 4건), production build PASS(기존 large chunk warning), unit **115 PASS**, component **9 PASS**, Files focused E2E **10 PASS**, 신규 UI-279 focused E2E **3 PASS**, 최종 전체 E2E **457 PASS + opt-in visual QA manifest 1 skip**다. initial loading/error recovery, combined refresh, upload/link/delete exact retry, URL search/scope, body-index rebuild, highlighted deep link, pagination failure recovery, archive/viewer authorization, desktop/mobile zero horizontal overflow를 검증했다. Clean-room frontend **182**/backend **45**, OpenAPI type parity와 diff check도 PASS했다. 전체 E2E가 다시 생성한 기존 screenshot rewrite와 로그인 임시 캡처는 테스트 산출물로 원복·삭제하고 UI-279 증적만 보존했다.
+- **보안 감사**: 신규 dependency/lockfile 변경은 없다. `npm audit --omit=dev --audit-level=high`는 React Router RSC mode 권고 `GHSA-qwww-vcr4-c8h2`로 기존 high 2건을 보고했다. OneFlow는 RSC mode를 사용하지 않으며 강제 수정은 `react-router-dom@7.11.0`으로의 breaking downgrade를 요구하므로 별도 dependency PR에서 추적한다.
+- **증적**: `docs/screenshots/redevelopment/project-files-composition-ui-279/{desktop,mobile,loading,error}.png`과 README에서 compact directory, mobile containment, stable skeleton과 in-place 오류 복구를 확인한다.
+
+---

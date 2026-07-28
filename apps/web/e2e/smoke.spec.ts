@@ -21650,7 +21650,7 @@ test('파일 페이지는 스토리지 허브와 모바일 안전 목록을 보�
   })
 
   await page.goto(`/projects/${project.id}/files`)
-  await expect(page.getByText('Storage surface')).toBeVisible()
+  await expect(page.getByText('파일 디렉터리', { exact: true })).toBeVisible()
   await expect(page.getByLabel('파일 요약')).toContainText('전체 파일')
   await expect(page.getByText('작업: 워크패키지 API 구현')).toBeVisible()
   await expect(page.getByText('문서: 온보딩 위키')).toBeVisible()
@@ -21783,6 +21783,232 @@ test('Files 디렉터리는 직접 파일과 서버 검색·범위·누적 로�
   await expectNoHorizontalOverflow(page)
   await page.screenshot({
     path: '../../docs/screenshots/redevelopment/files-directory-pagination-ui/mobile.png',
+  })
+})
+
+test('UI-279 Files는 초기 로딩과 오류에도 최종 프레임을 유지하고 실제 새로고침으로 복구한다', async ({
+  page,
+}) => {
+  await mockApi(page)
+  let releaseInitial = () => {}
+  const initialGate = new Promise<void>((resolve) => {
+    releaseInitial = resolve
+  })
+  let attempts = 0
+  await page.unroute(`**/api/v1/projects/${project.id}/attachments/directory**`)
+  await page.route(`**/api/v1/projects/${project.id}/attachments/directory**`, async (route) => {
+    attempts += 1
+    if (attempts === 1) {
+      await initialGate
+      await route.fulfill({ status: 503, json: { detail: 'files temporarily unavailable' } })
+      return
+    }
+    await route.fulfill({
+      json: attachmentDirectory([
+        {
+          id: 'file-recovered',
+          project_id: project.id,
+          filename: '복구된 설계서.txt',
+          url: 'oneflow://attachments/file-recovered',
+          content_type: 'text/plain',
+          size_bytes: 2048,
+          has_file: true,
+          search_index_status: 'indexed',
+          created_at: '2026-07-28T00:00:00Z',
+        },
+      ]),
+    })
+  })
+
+  await page.goto(`/projects/${project.id}/files`)
+  const frame = page.getByTestId('frame-context-bar')
+  await expect(frame.getByRole('button', { name: '파일 디렉터리 새로고침' })).toBeVisible()
+  await expect(frame.getByRole('button', { name: '업로드/링크' })).toBeVisible()
+  await expect(page.getByRole('region', { name: '파일 디렉터리 상태' })).toContainText(
+    '파일 디렉터리',
+  )
+  await expect(page.getByTestId('project-files-skeleton')).toBeVisible()
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/project-files-composition-ui-279/loading.png',
+    fullPage: true,
+  })
+
+  releaseInitial()
+  await expect(page.getByTestId('project-files-scroll').getByRole('alert')).toContainText(
+    '데이터를 불러오지 못했습니다',
+  )
+  await expect(frame.getByRole('button', { name: '파일 디렉터리 새로고침' })).toBeVisible()
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/project-files-composition-ui-279/error.png',
+    fullPage: true,
+  })
+  await page.getByTestId('project-files-scroll').getByRole('button', { name: '다시 시도' }).click()
+  await expect(page.getByRole('link', { name: /복구된 설계서\.txt/ })).toBeVisible()
+  await expect(page.getByLabel('파일 요약')).toContainText('전체 파일')
+  expect(attempts).toBe(2)
+})
+
+test('UI-279 Files는 업로드·링크·삭제 실패 의도를 보존하고 같은 작업을 재시도한다', async ({
+  page,
+}) => {
+  await mockApi(page)
+  let uploadAttempts = 0
+  let linkAttempts = 0
+  let deleteAttempts = 0
+  const linkBodies: unknown[] = []
+  await page.route(`**/api/v1/projects/${project.id}/attachments/directory**`, (route) =>
+    route.fulfill({
+      json: attachmentDirectory([
+        {
+          id: 'file-delete',
+          project_id: project.id,
+          filename: '삭제 재시도.txt',
+          url: 'oneflow://attachments/file-delete',
+          content_type: 'text/plain',
+          size_bytes: 32,
+          has_file: true,
+          search_index_status: 'indexed',
+          created_at: '2026-07-28T00:00:00Z',
+        },
+      ]),
+    }),
+  )
+  await page.route(`**/api/v1/projects/${project.id}/attachments/upload**`, async (route) => {
+    uploadAttempts += 1
+    if (uploadAttempts === 1) {
+      await route.fulfill({ status: 503, json: { detail: 'upload unavailable' } })
+      return
+    }
+    await route.fulfill({
+      status: 201,
+      json: {
+        id: 'file-upload-retry',
+        project_id: project.id,
+        filename: '재시도 업로드.txt',
+        url: 'oneflow://attachments/file-upload-retry',
+        content_type: 'text/plain',
+        size_bytes: 5,
+        has_file: true,
+        search_index_status: 'indexed',
+        uploaded_by: 'u-dev',
+        created_at: '2026-07-28T00:00:00Z',
+      },
+    })
+  })
+  await page.route(`**/api/v1/projects/${project.id}/attachments`, async (route) => {
+    if (route.request().method() !== 'POST') {
+      await route.fallback()
+      return
+    }
+    linkAttempts += 1
+    linkBodies.push(route.request().postDataJSON())
+    if (linkAttempts === 1) {
+      await route.fulfill({ status: 503, json: { detail: 'link unavailable' } })
+      return
+    }
+    await route.fulfill({
+      status: 201,
+      json: {
+        id: 'file-link-retry',
+        project_id: project.id,
+        filename: '재시도 링크',
+        url: 'https://files.example.com/retry',
+        content_type: null,
+        size_bytes: null,
+        has_file: false,
+        search_index_status: 'not_applicable',
+        uploaded_by: null,
+        created_at: '2026-07-28T00:00:00Z',
+      },
+    })
+  })
+  await page.route('**/api/v1/attachments/file-delete', async (route) => {
+    deleteAttempts += 1
+    if (deleteAttempts === 1) {
+      await route.fulfill({ status: 503, json: { detail: 'delete unavailable' } })
+      return
+    }
+    await route.fulfill({ status: 204, body: '' })
+  })
+
+  await page.goto(`/projects/${project.id}/files`)
+  await page.getByLabel('업로드할 파일').setInputFiles({
+    name: '재시도 업로드.txt',
+    mimeType: 'text/plain',
+    buffer: Buffer.from('retry'),
+  })
+  await expect(page.getByRole('alert')).toContainText('파일과 연결 대상을 유지했습니다')
+  await page.getByRole('alert').getByRole('button', { name: '다시 시도' }).click()
+  await expect(page.getByText('재시도 업로드.txt 업로드를 완료했습니다.')).toBeVisible()
+  expect(uploadAttempts).toBe(2)
+
+  await page.getByLabel('파일 이름').fill('재시도 링크')
+  await page.getByLabel('파일 URL').fill('https://files.example.com/retry')
+  await page.getByRole('button', { name: '링크 추가' }).click()
+  await expect(page.getByRole('button', { name: '링크 다시 시도' })).toBeVisible()
+  await expect(page.getByLabel('파일 이름')).toHaveValue('재시도 링크')
+  await page.getByRole('button', { name: '링크 다시 시도' }).click()
+  await expect(page.getByText('외부 링크를 추가했습니다.')).toBeVisible()
+  expect(linkAttempts).toBe(2)
+  expect(linkBodies[1]).toEqual(linkBodies[0])
+
+  page.once('dialog', (dialog) => void dialog.accept())
+  await page.getByLabel('삭제 재시도.txt 삭제').click()
+  await expect(page.getByRole('alert')).toContainText('같은 파일 삭제를 다시 시도')
+  await page.getByRole('alert').getByRole('button', { name: '다시 시도' }).click()
+  await expect(page.getByText('삭제 재시도.txt을(를) 삭제했습니다.')).toBeVisible()
+  expect(deleteAttempts).toBe(2)
+})
+
+test('UI-279 Files compact 디렉터리는 데스크톱과 모바일에서 넘치지 않는다', async ({
+  page,
+}) => {
+  await mockApi(page)
+  await page.route(`**/api/v1/projects/${project.id}/attachments/directory**`, (route) =>
+    route.fulfill({
+      json: attachmentDirectory([
+        {
+          id: 'file-visual',
+          project_id: project.id,
+          filename: '프로젝트 운영 가이드.txt',
+          url: 'oneflow://attachments/file-visual',
+          content_type: 'text/plain',
+          size_bytes: 4096,
+          work_package_id: wpA.id,
+          work_package_subject: wpA.subject,
+          has_file: true,
+          search_index_status: 'indexed',
+          created_at: '2026-07-28T00:00:00Z',
+        },
+        {
+          id: 'link-visual',
+          project_id: project.id,
+          filename: '디자인 참고 링크',
+          url: 'https://example.com/design',
+          content_type: null,
+          size_bytes: null,
+          has_file: false,
+          search_index_status: 'not_applicable',
+          created_at: '2026-07-27T00:00:00Z',
+        },
+      ]),
+    }),
+  )
+
+  await page.setViewportSize({ width: 1440, height: 960 })
+  await page.goto(`/projects/${project.id}/files`)
+  await expect(page.getByRole('link', { name: /프로젝트 운영 가이드/ })).toBeVisible()
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/project-files-composition-ui-279/desktop.png',
+    fullPage: true,
+  })
+
+  await page.setViewportSize({ width: 390, height: 844 })
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/project-files-composition-ui-279/mobile.png',
+    fullPage: true,
   })
 })
 
