@@ -192,7 +192,15 @@ export const projectNavSections: Array<{ label: string; items: ProjectNavItem[] 
       { path: 'cycles', label: 'Cycles', icon: IterationCcw },
       { path: 'modules', label: 'Modules', icon: Boxes },
       { path: 'views', label: 'Views', icon: Bookmark },
+    ],
+  },
+  {
+    label: '협업',
+    items: [
       { path: 'documents', label: 'Pages', icon: FileText },
+      { path: 'files', label: 'Files', icon: Paperclip },
+      { path: 'meetings', label: 'Meetings', icon: CalendarClock },
+      { path: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     ],
   },
   {
@@ -204,14 +212,6 @@ export const projectNavSections: Array<{ label: string; items: ProjectNavItem[] 
       { path: 'timeline', label: 'Timeline', icon: CalendarRange },
       { path: 'calendar', label: 'Calendar', icon: CalendarDays },
       { path: 'intake', label: 'Intake', icon: ClipboardList },
-    ],
-  },
-  {
-    label: '협업',
-    items: [
-      { path: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-      { path: 'meetings', label: 'Meetings', icon: CalendarClock },
-      { path: 'files', label: 'Files', icon: Paperclip },
     ],
   },
   {
@@ -1185,24 +1185,39 @@ function SidebarContent({
                         </button>
                       </div>
                       {expanded && preferences.projectNavigation === 'accordion' ? (
-                        <div className="mt-1 space-y-0.5 border-l border-of-border-subtle pl-2">
-                          {projectNavSections
-                            .flatMap((section) => section.items)
-                            .filter((item) => item.path !== 'documents' || wikiEnabled)
-                            .map((item) => {
-                              const Icon = item.icon
-                              return (
-                                <NavLink
-                                  key={item.path}
-                                  to={`/projects/${project.id}/${item.path}`}
-                                  className={navLinkClass}
-                                  onClick={onNavigate}
-                                >
-                                  <Icon />
-                                  <span className="truncate">{item.label}</span>
-                                </NavLink>
-                              )
-                            })}
+                        <div className="mt-1 space-y-2 border-l border-of-border-subtle pl-2">
+                          {projectNavSections.map((section) => {
+                            const items = section.items.filter(
+                              (item) => item.path !== 'documents' || wikiEnabled,
+                            )
+                            if (items.length === 0) return null
+                            return (
+                              <section
+                                key={section.label}
+                                aria-label={`${project.name} ${section.label} 내비게이션`}
+                              >
+                                <p className="px-2 pb-0.5 text-[10px] font-medium text-of-muted">
+                                  {section.label}
+                                </p>
+                                <div className="space-y-0.5">
+                                  {items.map((item) => {
+                                    const Icon = item.icon
+                                    return (
+                                      <NavLink
+                                        key={item.path}
+                                        to={`/projects/${project.id}/${item.path}`}
+                                        className={navLinkClass}
+                                        onClick={onNavigate}
+                                      >
+                                        <Icon />
+                                        <span className="truncate">{item.label}</span>
+                                      </NavLink>
+                                    )
+                                  })}
+                                </div>
+                              </section>
+                            )
+                          })}
                         </div>
                       ) : null}
                     </div>
