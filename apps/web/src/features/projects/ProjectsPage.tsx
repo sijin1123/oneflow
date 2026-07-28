@@ -59,6 +59,12 @@ import { ProjectCover } from './ProjectCover'
 import { ProjectActionsMenu } from './ProjectActionsMenu'
 import { ProjectCreateDialog } from './ProjectCreateDialog'
 
+const PROJECT_ROLE_LABELS: Record<ProjectListItem['current_user_role'], string> = {
+  owner: '소유자',
+  member: '멤버',
+  viewer: '읽기 전용',
+}
+
 function ProjectHealthBadge({ health, note }: { health: ProjectHealth | null; note: string | null }) {
   if (!health) return <Badge variant="outline">상태 미설정</Badge>
   return (
@@ -351,7 +357,13 @@ function ProjectCard({
       </div>
 
       <div className="flex items-center gap-2 border-t border-of-border px-3 py-2">
-        {archived ? <Badge variant="outline">보관됨</Badge> : <Badge variant="accent">참여 중</Badge>}
+        {archived ? (
+          <Badge variant="outline">보관됨</Badge>
+        ) : (
+          <Badge variant={project.current_user_role === 'owner' ? 'accent' : 'neutral'}>
+            {PROJECT_ROLE_LABELS[project.current_user_role]}
+          </Badge>
+        )}
         <div className="ml-auto flex items-center gap-1.5">
           <Link
             to={`/projects/${project.id}/dashboard`}
