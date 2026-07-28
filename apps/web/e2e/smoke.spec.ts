@@ -3357,6 +3357,135 @@ test('Wiki home은 URL 탐색·정렬·프로젝트 선택 생성으로 기능�
   })
 })
 
+test('UI-289 모바일 Wiki 디렉터리는 버킷과 보관·복원 실패 재시도를 실제 lifecycle에 연결한다', async ({
+  page,
+}) => {
+  test.setTimeout(90_000)
+  await page.setViewportSize({ width: 390, height: 844 })
+  await mockApi(page)
+  let document = {
+    id: 'wiki-mobile-1',
+    project_id: project.id,
+    parent_id: null,
+    title: '모바일 운영 가이드',
+    author_id: 'me-1',
+    visibility: 'shared' as const,
+    archived_at: null as string | null,
+    archived_by_user_id: null as string | null,
+    archived_by_name: null as string | null,
+    version: 3,
+    created_at: '2026-07-27T01:00:00Z',
+    updated_at: '2026-07-27T02:00:00Z',
+  }
+  let restoreAttempts = 0
+
+  await page.route('**/api/v1/documents?**', async (route) => {
+    const bucket = new URL(route.request().url()).searchParams.get('bucket') ?? 'shared'
+    const visible =
+      (bucket === 'shared' && document.archived_at === null) ||
+      (bucket === 'archived' && document.archived_at !== null)
+    await route.fulfill({
+      json: { items: visible ? [document] : [], total: visible ? 1 : 0 },
+    })
+  })
+  await page.route('**/api/v1/documents/wiki-mobile-1/archive', async (route) => {
+    document = {
+      ...document,
+      archived_at: '2026-07-28T01:00:00Z',
+      archived_by_user_id: 'me-1',
+      archived_by_name: 'Dev User',
+      version: 4,
+    }
+    await route.fulfill({ json: document })
+  })
+  await page.route('**/api/v1/documents/wiki-mobile-1/restore', async (route) => {
+    restoreAttempts += 1
+    if (restoreAttempts === 1) {
+      await route.fulfill({ status: 503, json: { detail: 'retry fixture' } })
+      return
+    }
+    document = {
+      ...document,
+      archived_at: null,
+      archived_by_user_id: null,
+      archived_by_name: null,
+      version: 5,
+    }
+    await route.fulfill({ json: document })
+  })
+
+  await page.goto('/wiki')
+  const wikiHome = page.getByRole('region', { name: 'Wiki 홈' })
+  const buckets = wikiHome.getByRole('navigation', { name: 'Wiki 문서 범위' })
+  await expect(buckets.getByRole('link', { name: /공유/ })).toHaveAttribute(
+    'aria-current',
+    'page',
+  )
+  await expect(buckets.getByRole('link', { name: /비공개/ })).toHaveAttribute(
+    'href',
+    '/wiki?bucket=private',
+  )
+  await expect(buckets.getByRole('link', { name: /보관됨/ })).toHaveAttribute(
+    'href',
+    '/wiki?bucket=archived',
+  )
+  await expect(wikiHome.getByRole('link', { name: /모바일 운영 가이드/ })).toBeVisible()
+  await expect(wikiHome.getByRole('combobox', { name: 'Wiki 프로젝트 필터' })).toBeVisible()
+  await expect(wikiHome.getByRole('combobox', { name: 'Wiki 정렬' })).toBeVisible()
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/mobile-wiki-lifecycle-ui-289/shared-directory-390.png',
+    fullPage: true,
+  })
+
+  const archiveRequest = page.waitForRequest((request) =>
+    request.url().endsWith('/documents/wiki-mobile-1/archive'),
+  )
+  await wikiHome
+    .getByRole('button', { name: '모바일 운영 가이드 페이지 작업' })
+    .click()
+  await page.getByRole('menuitem', { name: '보관' }).click()
+  expect(
+    ((await archiveRequest).postDataJSON() as { expected_version: number }).expected_version,
+  ).toBe(3)
+  await expect(wikiHome.getByText('공유 문서가 없습니다')).toBeVisible()
+
+  await buckets.getByRole('link', { name: /보관됨/ }).click()
+  await expect(page).toHaveURL('/wiki?bucket=archived')
+  await expect(wikiHome.getByRole('link', { name: /모바일 운영 가이드/ })).toBeVisible()
+
+  await page.setViewportSize({ width: 320, height: 740 })
+  const restoreRequest = page.waitForRequest((request) =>
+    request.url().endsWith('/documents/wiki-mobile-1/restore'),
+  )
+  await wikiHome
+    .getByRole('button', { name: '모바일 운영 가이드 페이지 작업' })
+    .click()
+  await page.getByRole('menuitem', { name: '복원' }).click()
+  expect(
+    ((await restoreRequest).postDataJSON() as { expected_version: number }).expected_version,
+  ).toBe(4)
+  await expect(wikiHome.getByRole('alert')).toContainText(
+    '페이지를 복원하지 못했습니다.',
+  )
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/mobile-wiki-lifecycle-ui-289/restore-error-320.png',
+    fullPage: true,
+  })
+
+  const retryRequest = page.waitForRequest((request) =>
+    request.url().endsWith('/documents/wiki-mobile-1/restore'),
+  )
+  await wikiHome.getByRole('button', { name: '다시 시도' }).click()
+  expect(
+    ((await retryRequest).postDataJSON() as { expected_version: number }).expected_version,
+  ).toBe(4)
+  await expect(wikiHome.getByText('보관됨 문서가 없습니다')).toBeVisible()
+  expect(restoreAttempts).toBe(2)
+  await expectNoHorizontalOverflow(page)
+})
+
 test('모바일 앱 셸에서 사이드바가 drawer로 열린다', async ({ page }) => {
   await mockApi(page)
   await page.setViewportSize({ width: 390, height: 844 })
