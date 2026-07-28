@@ -162,7 +162,10 @@ export function QuickDock({
           )
         }
 
-        const maxOffset = Math.max(0, baseBottom - rootRect.height - 52)
+        const availableOffset = Math.max(0, baseBottom - rootRect.height - 52)
+        const maxOffset = mobile && location.pathname === '/my'
+          ? Math.min(52, availableOffset)
+          : availableOffset
         let nextOffset = 0
         while (overlaps(nextOffset) && nextOffset + 52 <= maxOffset) nextOffset += 52
         setCollisionOffset((current) => (current === nextOffset ? current : nextOffset))

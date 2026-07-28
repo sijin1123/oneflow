@@ -21,12 +21,7 @@ export function AppShell() {
   return (
     <div className="of-shell flex h-screen flex-col overflow-hidden">
       <GlobalShortcutLayer />
-      <Topbar
-        onOpenMobileSidebar={() => {
-          setQuickDockOpen(false)
-          setMobileSidebarOpen(true)
-        }}
-      />
+      <Topbar />
       <div className="flex min-h-0 min-w-0 flex-1 bg-of-surface-2">
         <Sidebar
           mobileOpen={mobileSidebarOpen}
@@ -54,7 +49,14 @@ export function AppShell() {
               'md:rounded-l-[var(--of-radius-lg)] md:border-l',
           )}
         >
-          <FrameContextBar sidebarCollapsed={sidebar.preferences.collapsed} onExpandSidebar={() => sidebar.setCollapsed(false)} />
+          <FrameContextBar
+            sidebarCollapsed={sidebar.preferences.collapsed}
+            onExpandSidebar={() => sidebar.setCollapsed(false)}
+            onOpenMobileSidebar={() => {
+              setQuickDockOpen(false)
+              setMobileSidebarOpen(true)
+            }}
+          />
           <ProjectNavigationTabs enabled={sidebar.preferences.projectNavigation === 'tabs'} />
           <div data-shell-scroll-region className="of-scrollbar min-h-0 flex-1 overflow-y-auto">
             <Outlet />

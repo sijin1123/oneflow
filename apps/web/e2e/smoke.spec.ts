@@ -3286,15 +3286,27 @@ test('모바일 앱 셸에서 사이드바가 drawer로 열린다', async ({ pag
   await page.setViewportSize({ width: 390, height: 844 })
   await page.goto(`/projects/${project.id}/work-packages`)
 
-  await expect(page.getByTestId('frame-context-bar').getByText('Work items', { exact: true })).toBeVisible()
+  const frameBar = page.getByTestId('frame-context-bar')
+  await expect(frameBar.getByText('Work items', { exact: true })).toBeVisible()
+  await expect(frameBar.getByRole('button', { name: '사이드바 열기' })).toBeVisible()
+  await expect(page.locator('header').getByRole('button', { name: '사이드바 열기' })).toHaveCount(0)
   await expect(page.getByTestId('frame-context-actions').getByRole('region', { name: '작업 화면 제어' })).toBeVisible()
   await expect(page.getByRole('button', { name: '새 작업', exact: true })).toBeVisible()
+  const [frameBox, actionsBox] = await Promise.all([
+    frameBar.boundingBox(),
+    page.getByTestId('frame-context-actions').boundingBox(),
+  ])
+  expect(frameBox).not.toBeNull()
+  expect(actionsBox).not.toBeNull()
+  expect(frameBox!.height).toBeLessThanOrEqual(45)
+  expect(actionsBox!.y).toBeGreaterThanOrEqual(frameBox!.y)
+  expect(actionsBox!.y + actionsBox!.height).toBeLessThanOrEqual(frameBox!.y + frameBox!.height + 1)
   await expectNoHorizontalOverflow(page)
   await page.screenshot({
     path: '../../docs/screenshots/redevelopment/view-controls/mobile.png',
     fullPage: true,
   })
-  await page.getByRole('button', { name: '사이드바 열기' }).click()
+  await frameBar.getByRole('button', { name: '사이드바 열기' }).click()
 
   const drawer = page.getByRole('dialog', { name: '모바일 내비게이션' })
   await expect(drawer).toBeVisible()
@@ -3311,6 +3323,54 @@ test('모바일 앱 셸에서 사이드바가 drawer로 열린다', async ({ pag
   await drawer.getByRole('link', { name: /Board/ }).click()
   await expect(drawer).toBeHidden()
   await expect(page).toHaveURL(new RegExp(`/projects/${project.id}/board$`))
+})
+
+test('UI-282 인증 후 모바일 Home shell은 한 줄 context와 viewport-safe Quick Dock을 유지한다', async ({ page }) => {
+  await mockApi(page)
+  await page.route('**/api/v1/me/work', (route) =>
+    route.fulfill({
+      json: {
+        assigned_to_me: [],
+        due_soon: [],
+        created_by_me: [],
+        recent_activity: [],
+      },
+    }),
+  )
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto('/my')
+
+  const frameBar = page.getByTestId('frame-context-bar')
+  const frameActions = page.getByTestId('frame-context-actions')
+  const quickDock = page.getByRole('button', { name: '빠른 도구 열기' })
+
+  await expect(page.getByRole('button', { name: '워크스페이스 전환' })).toBeVisible()
+  await expect(page.getByTestId('workspace-menu-chevron')).toBeVisible()
+  await expect(frameBar.getByRole('button', { name: '사이드바 열기' })).toBeVisible()
+  await expect(frameBar.getByText('홈', { exact: true })).toBeVisible()
+  await expect(frameActions.getByRole('toolbar', { name: 'Workspace Home 화면 제어' })).toBeVisible()
+  await expect(frameActions.getByRole('button', { name: '홈 요약 새로고침' })).toBeVisible()
+  await expect(frameActions.getByRole('button', { name: '위젯 관리' })).toBeVisible()
+
+  const [frameBox, actionsBox, dockBox] = await Promise.all([
+    frameBar.boundingBox(),
+    frameActions.boundingBox(),
+    quickDock.boundingBox(),
+  ])
+  expect(frameBox).not.toBeNull()
+  expect(actionsBox).not.toBeNull()
+  expect(dockBox).not.toBeNull()
+  expect(frameBox!.height).toBeLessThanOrEqual(45)
+  expect(actionsBox!.y).toBeGreaterThanOrEqual(frameBox!.y)
+  expect(actionsBox!.y + actionsBox!.height).toBeLessThanOrEqual(frameBox!.y + frameBox!.height + 1)
+  expect(dockBox!.x + dockBox!.width).toBeLessThanOrEqual(390)
+  expect(dockBox!.y + dockBox!.height).toBeLessThanOrEqual(844)
+  expect(dockBox!.y).toBeGreaterThanOrEqual(732)
+  await expectNoHorizontalOverflow(page)
+
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/mobile-shell-ui-282/home-390x844.png',
+  })
 })
 
 test('개인 메모는 모바일 sidebar/home entry에서 생성·편집·고정·순서·삭제 요청을 연결한다', async ({ page }) => {
