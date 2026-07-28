@@ -5166,6 +5166,15 @@ test('모바일 작업 상세 드로어가 속성과 활동 탭을 유지한다'
   const drawer = page.getByRole('dialog', { name: '워크패키지 API 구현' })
 
   await expectNoHorizontalOverflow(page)
+  await expect(drawer.getByText(`OF-${wpA.id.slice(0, 8).toUpperCase()}`, { exact: true })).toBeVisible()
+  const sheetScrollRegion = drawer.locator('[data-slot="sheet-scroll-region"]')
+  await expect(sheetScrollRegion).toBeVisible()
+  await expect.poll(() => sheetScrollRegion.evaluate(
+    (element) => element.scrollWidth - element.clientWidth,
+  )).toBe(0)
+  await expect.poll(() => sheetScrollRegion.evaluate(
+    (element) => element.getBoundingClientRect().width <= window.innerWidth,
+  )).toBe(true)
   await expect(drawer.getByText('속성')).toBeVisible()
   await expect(drawer.getByRole('tab', { name: '개요' })).toHaveAttribute('aria-selected', 'true')
   await drawer.getByRole('complementary', { name: '작업 속성' }).screenshot({
@@ -5202,9 +5211,10 @@ test('모바일 작업 상세 드로어가 속성과 활동 탭을 유지한다'
     fullPage: true,
   })
   await page.keyboard.press('Escape')
+  await expect(page.getByRole('dialog', { name: '기한 선택' })).toBeHidden()
   await expect(dueTrigger).toBeFocused()
   await page.screenshot({
-    path: '../../docs/screenshots/redevelopment/detail-ui/mobile.png',
+    path: '../../docs/screenshots/redevelopment/mobile-work-item-detail-ui-284/drawer-390x844.png',
     fullPage: true,
   })
   await drawer.getByRole('tab', { name: '활동' }).click()
@@ -5876,7 +5886,7 @@ test('모바일 작업 상세 전체 페이지가 속성과 활동을 한 흐름
   })
   await page.evaluate(() => document.querySelector('[data-shell-scroll-region]')?.scrollTo(0, 0))
   await page.screenshot({
-    path: '../../docs/screenshots/redevelopment/detail-ui/full-page-mobile.png',
+    path: '../../docs/screenshots/redevelopment/mobile-work-item-detail-ui-284/full-page-390x844.png',
     fullPage: true,
   })
   await page.screenshot({

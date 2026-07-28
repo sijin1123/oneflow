@@ -47,7 +47,6 @@ export function DetailInlineDateMenu({
       event.preventDefault()
       event.stopImmediatePropagation()
       setOpen(false)
-      window.requestAnimationFrame(() => triggerRef.current?.focus())
     }
     window.addEventListener('keydown', closeOnEscape, { capture: true })
     return () => {
@@ -109,6 +108,10 @@ export function DetailInlineDateMenu({
         aria-label={`${label} 선택`}
         className="w-[min(18rem,calc(100vw-2rem))] space-y-3 p-3"
         onOpenAutoFocus={(event) => event.preventDefault()}
+        onCloseAutoFocus={(event) => {
+          event.preventDefault()
+          triggerRef.current?.focus()
+        }}
       >
         <div className="space-y-1.5">
           <label htmlFor={inputId} className="text-xs font-medium text-of-fg">

@@ -46,7 +46,12 @@ export function SheetContent({
             <IconButton label="닫기"><X /></IconButton>
           </DialogPrimitive.Close>
         </div>
-        <div className="of-scrollbar flex-1 overflow-y-auto p-4">{children}</div>
+        <div
+          data-slot="sheet-scroll-region"
+          className="of-scrollbar min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto p-4"
+        >
+          {children}
+        </div>
       </DialogPrimitive.Content>
     </DialogPrimitive.Portal>
   )

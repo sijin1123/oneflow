@@ -131,9 +131,14 @@ function DrawerBody({
   initialMoveOpen: boolean
 }) {
   const { data: wp, isPending, isError, error, refetch } = useWorkPackage(wpId)
+  const identifier = wp ? `OF-${wp.id.slice(0, 8).toUpperCase()}` : '작업 상세'
 
   return (
-    <SheetContent title={wp ? wp.subject : '작업 상세'} displayTitle="작업 상세" className="max-w-4xl">
+    <SheetContent
+      title={wp ? wp.subject : '작업 상세'}
+      displayTitle={identifier}
+      className="max-w-4xl"
+    >
       {isPending ? (
         <ListSkeleton rows={4} />
       ) : isError ? (
@@ -482,7 +487,7 @@ export function WorkPackageDetailPanel({
   )
 
   return (
-    <div className={fullPage ? 'flex min-h-full min-w-0 flex-col' : 'space-y-4'}>
+    <div className={fullPage ? 'flex min-h-full min-w-0 flex-col' : 'min-w-0 space-y-4'}>
       {fullPage ? <FrameContextActions>{commandToolbar}</FrameContextActions> : null}
       {saveError ? (
         <p
