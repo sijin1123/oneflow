@@ -3084,6 +3084,71 @@ test('Project Pages는 Projects context navigation 안에서 중앙 lifecycle su
   await expect(mobileNav.getByRole('navigation', { name: 'Projects 컨텍스트 내비게이션' })).toBeVisible()
 })
 
+test('모바일 프로젝트 협업 navigation은 Pages·Files·Meetings 실제 directory 전환을 유지한다', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await mockApi(page)
+  await page.route('**/api/v1/projects/*/meetings', (route) =>
+    route.fulfill({ json: { items: [], total: 0 } }),
+  )
+  await page.goto(`/projects/${project.id}/documents`)
+  await expect(page.getByRole('heading', { name: 'Pages' })).toBeAttached()
+
+  await page.getByRole('button', { name: '사이드바 열기' }).click()
+  let drawer = page.getByRole('dialog', { name: '모바일 내비게이션' })
+  let collaborationNav = drawer.getByRole('region', {
+    name: `${project.name} 협업 내비게이션`,
+  })
+  await expect(collaborationNav.getByRole('link', { name: 'Pages' })).toHaveAttribute(
+    'aria-current',
+    'page',
+  )
+  await expect(collaborationNav.getByRole('link', { name: 'Files' })).toBeVisible()
+  await expect(collaborationNav.getByRole('link', { name: 'Meetings' })).toBeVisible()
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/mobile-project-collaboration-ui-287/pages-drawer-390.png',
+    fullPage: true,
+  })
+
+  await collaborationNav.getByRole('link', { name: 'Files' }).click()
+  await expect(drawer).toHaveCount(0)
+  await expect(page).toHaveURL(`/projects/${project.id}/files`)
+  await expect(page.getByRole('heading', { name: '파일' })).toBeAttached()
+  await expect(page.getByRole('region', { name: '파일 디렉터리 상태' })).toBeVisible()
+
+  await page.setViewportSize({ width: 320, height: 740 })
+  await page.getByRole('button', { name: '사이드바 열기' }).click()
+  drawer = page.getByRole('dialog', { name: '모바일 내비게이션' })
+  collaborationNav = drawer.getByRole('region', {
+    name: `${project.name} 협업 내비게이션`,
+  })
+  await expect(collaborationNav.getByRole('link', { name: 'Files' })).toHaveAttribute(
+    'aria-current',
+    'page',
+  )
+  const drawerBox = await drawer.locator('aside').boundingBox()
+  expect(drawerBox).not.toBeNull()
+  expect(drawerBox!.x).toBe(0)
+  expect(drawerBox!.width).toBeLessThanOrEqual(320)
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/mobile-project-collaboration-ui-287/files-drawer-320.png',
+    fullPage: true,
+  })
+
+  await collaborationNav.getByRole('link', { name: 'Meetings' }).click()
+  await expect(drawer).toHaveCount(0)
+  await expect(page).toHaveURL(`/projects/${project.id}/meetings`)
+  await expect(page.getByRole('heading', { name: '회의' })).toBeAttached()
+  await expect(page.getByRole('region', { name: '회의 디렉터리 상태' })).toBeVisible()
+  await expect(page.getByLabel('회의 제목 검색')).toBeVisible()
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/mobile-project-collaboration-ui-287/meetings-directory-320.png',
+    fullPage: true,
+  })
+})
+
 test('Wiki global app은 capability와 무관하게 표시되고 비활성 상태를 안내한다', async ({ page }) => {
   await mockApi(page)
   let workspaceDocumentRequests = 0
