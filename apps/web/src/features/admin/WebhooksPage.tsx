@@ -28,8 +28,10 @@ import { useUnsavedLocationPrompt } from '@/lib/guards'
 import {
   WEBHOOK_EVENTS,
   type WebhookDelivery,
+  type WebhookDeliveryList,
   type WebhookEndpoint,
   type WebhookEndpointCreated,
+  type WebhookEndpointList,
   type WebhookEvent,
   useCreateWebhook,
   useDeleteWebhook,
@@ -293,13 +295,24 @@ export function WebhooksPage() {
   const [testResults, setTestResults] = useState<Record<string, WebhookDelivery>>({})
   const [retryError, setRetryError] = useState(false)
   const [dirtyEndpoints, setDirtyEndpoints] = useState<Set<string>>(() => new Set())
+  const [failedRefreshes, setFailedRefreshes] = useState<string[]>([])
+  const [endpointSnapshot, setEndpointSnapshot] = useState<WebhookEndpointList | null>(null)
+  const [deliverySnapshot, setDeliverySnapshot] = useState<WebhookDeliveryList | null>(null)
   useEffect(() => setRetryError(false), [deliveries.dataUpdatedAt])
+  useEffect(() => {
+    if (webhooks.data) setEndpointSnapshot(webhooks.data)
+  }, [webhooks.data])
+  useEffect(() => {
+    if (deliveries.data) setDeliverySnapshot(deliveries.data)
+  }, [deliveries.data])
+  const endpointData = webhooks.data ?? endpointSnapshot
+  const deliveryData = deliveries.data ?? deliverySnapshot
   const endpointsById = useMemo(
-    () => new Map((webhooks.data?.items ?? []).map((endpoint) => [endpoint.id, endpoint])),
-    [webhooks.data?.items],
+    () => new Map((endpointData?.items ?? []).map((endpoint) => [endpoint.id, endpoint])),
+    [endpointData?.items],
   )
-  const endpointItems = webhooks.data?.items ?? []
-  const deliveryItems = deliveries.data?.items ?? []
+  const endpointItems = endpointData?.items ?? []
+  const deliveryItems = deliveryData?.items ?? []
   const activeEndpointCount = endpointItems.filter((endpoint) => endpoint.is_active).length
   const failedDeliveryCount = deliveryItems.filter(
     (delivery) => delivery.status === 'failed' || delivery.status === 'dead_letter',
@@ -328,10 +341,23 @@ export function WebhooksPage() {
 
   const refreshAll = async () => {
     setRetryError(false)
-    await Promise.all([webhooks.refetch(), deliveries.refetch()])
+    const results = await Promise.all([webhooks.refetch(), deliveries.refetch()])
+    const labels = ['Endpoint', 'Delivery audit']
+    setFailedRefreshes(results.flatMap((result, index) => result.isError ? [labels[index]] : []))
   }
 
-  if (webhooks.isError) {
+  const retryOne = async (label: string, refetch: () => Promise<{ isError: boolean }>) => {
+    const result = await refetch()
+    setFailedRefreshes((current) => result.isError
+      ? current.includes(label) ? current : [...current, label]
+      : current.filter((item) => item !== label))
+  }
+
+  const refreshActionLabel = failedRefreshes.length > 0 ? '모두 새로고침 다시 시도' : '모두 새로고침'
+  const endpointStale = Boolean(endpointData && webhooks.isError)
+  const deliveryStale = Boolean(deliveryData && deliveries.isError)
+
+  if (!endpointData && webhooks.isError) {
     if (webhooks.error instanceof ApiError && webhooks.error.status === 403) {
       return <EmptyState title="접근 권한이 없습니다" hint="워크스페이스 webhook은 관리자만 관리할 수 있습니다." />
     }
@@ -340,8 +366,9 @@ export function WebhooksPage() {
   return (
     <div className="flex h-full min-w-0 flex-col bg-of-surface">
       <FrameContextActions>
-        <Link to="/admin/integrations" className={frameLinkClass}>
-          통합 허브 <ArrowUpRight size={13} aria-hidden="true" />
+        <Link to="/admin/integrations" className={frameLinkClass} aria-label="통합 허브" title="통합 허브">
+          <span className="hidden min-[360px]:inline">통합 허브</span>
+          <ArrowUpRight size={13} aria-hidden="true" />
         </Link>
         <Button
           type="button"
@@ -349,9 +376,11 @@ export function WebhooksPage() {
           variant="outline"
           disabled={refreshing}
           onClick={() => void refreshAll()}
+          aria-label={refreshActionLabel}
+          title={refreshActionLabel}
         >
           <RefreshCw size={13} className={refreshing ? 'animate-spin' : undefined} aria-hidden="true" />
-          모두 새로고침
+          <span className="hidden min-[360px]:inline">{refreshActionLabel}</span>
         </Button>
       </FrameContextActions>
 
@@ -375,39 +404,53 @@ export function WebhooksPage() {
             >
               <div className="px-2 py-2 sm:px-3">
                 <dt className="text-[11px] text-of-muted">Endpoint</dt>
-                <dd className="mt-0.5 text-sm font-semibold tabular-nums">{webhooks.data?.total ?? '—'}</dd>
+                <dd className="mt-0.5 text-sm font-semibold tabular-nums">{endpointData?.total ?? '—'}</dd>
               </div>
               <div className="px-2 py-2 sm:px-3">
                 <dt className="text-[11px] text-of-muted">활성</dt>
-                <dd className="mt-0.5 text-sm font-semibold tabular-nums">{webhooks.data ? activeEndpointCount : '—'}</dd>
+                <dd className="mt-0.5 text-sm font-semibold tabular-nums">{endpointData ? activeEndpointCount : '—'}</dd>
               </div>
               <div className="px-2 py-2 sm:px-3">
                 <dt className="text-[11px] text-of-muted">주의</dt>
-                <dd className="mt-0.5 text-sm font-semibold tabular-nums">{deliveries.data ? failedDeliveryCount : '—'}</dd>
+                <dd className="mt-0.5 text-sm font-semibold tabular-nums">{deliveryData ? failedDeliveryCount : '—'}</dd>
               </div>
               <div className="px-2 py-2 sm:px-3">
                 <dt className="text-[11px] text-of-muted">전송</dt>
-                <dd className="mt-0.5 text-sm font-semibold tabular-nums">{deliveries.data?.total ?? '—'}</dd>
+                <dd className="mt-0.5 text-sm font-semibold tabular-nums">{deliveryData?.total ?? '—'}</dd>
               </div>
             </dl>
           </header>
 
-          {webhooks.isPending ? (
+          {failedRefreshes.length > 0 ? (
+            <div role="alert" className="mt-4 border-l-2 border-of-warning bg-of-warning-soft/30 px-3 py-2 text-xs leading-5 text-of-text">
+              {failedRefreshes.join(', ')} 상태를 새로고침하지 못했습니다. 마지막 성공 결과를 유지했으며 상단에서 같은 전체 요청을 다시 시도할 수 있습니다.
+            </div>
+          ) : null}
+
+          {!endpointData && webhooks.isPending ? (
             <section aria-label="Webhook endpoint 확인 중" className="grid gap-3 border-b border-of-border py-6">
               <Skeleton className="h-5 w-36" />
               <Skeleton className="h-10 w-full" />
               <Skeleton className="h-20 w-full" />
             </section>
-          ) : webhooks.isError ? (
+          ) : !endpointData && webhooks.isError ? (
             <section aria-labelledby="webhook-endpoints-title" className="border-b border-of-border py-6">
               <h2 id="webhook-endpoints-title" className="text-sm font-semibold">Endpoint 운영</h2>
               <div className="mt-3">
-                <ErrorState error={webhooks.error} onRetry={() => webhooks.refetch()} />
+                <ErrorState error={webhooks.error} onRetry={() => void retryOne('Endpoint', webhooks.refetch)} />
               </div>
             </section>
-          ) : (
+          ) : endpointData ? (
             <>
-              {!webhooks.data.enabled ? (
+              {endpointStale ? (
+                <div role="alert" className="mt-4 flex min-w-0 flex-wrap items-center gap-2 border-l-2 border-of-warning bg-of-warning-soft/30 px-3 py-2 text-xs leading-5 text-of-text">
+                  <p className="min-w-0 flex-1">Endpoint 최신 상태를 확인하지 못해 마지막 성공 결과를 유지했습니다.</p>
+                  <Button size="sm" variant="ghost" onClick={() => void retryOne('Endpoint', webhooks.refetch)} aria-label="Endpoint 다시 시도">
+                    <RefreshCw size={13} aria-hidden="true" /> 다시 시도
+                  </Button>
+                </div>
+              ) : null}
+              {!endpointData.enabled ? (
                 <section aria-labelledby="webhook-disabled-title" className="border-b border-of-border py-5">
                   <div className="flex min-w-0 items-start gap-3">
                     <span className="flex size-8 shrink-0 items-center justify-center rounded-of border border-of-border-subtle bg-of-surface-2 text-of-muted">
@@ -472,13 +515,13 @@ export function WebhooksPage() {
                     <p className="mt-1 text-xs leading-5 text-of-muted">전달 대상, 이벤트, 활성 상태와 signing secret 버전을 관리합니다.</p>
                   </div>
                   <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-of-muted">
-                    <Badge variant={webhooks.data.enabled ? 'accent' : 'outline'}>
-                      {webhooks.data.enabled ? '전달 사용' : '전달 중지'}
+                    <Badge variant={endpointData.enabled ? 'accent' : 'outline'}>
+                      {endpointData.enabled ? '전달 사용' : '전달 중지'}
                     </Badge>
-                    {webhooks.data.enabled ? (
+                    {endpointData.enabled ? (
                       <>
-                        <span>기본 key <code>{webhooks.data.active_signing_key_id}</code></span>
-                        <span>사용 가능 {webhooks.data.available_signing_key_ids.length}개</span>
+                        <span>기본 key <code>{endpointData.active_signing_key_id}</code></span>
+                        <span>사용 가능 {endpointData.available_signing_key_ids.length}개</span>
                       </>
                     ) : null}
                   </div>
@@ -486,19 +529,19 @@ export function WebhooksPage() {
 
                 {secret ? <div className="mt-4"><SecretNotice created={secret} onDismiss={() => setSecret(null)} /></div> : null}
 
-                {webhooks.data.items.length === 0 ? (
+                {endpointData.items.length === 0 ? (
                   <div className="mt-4">
                     <EmptyState title="등록된 webhook이 없습니다" hint="운영 allowlist에 포함된 HTTPS endpoint를 추가하세요." />
                   </div>
                 ) : (
                   <ul className="mt-4 grid gap-2">
-                    {webhooks.data.items.map((endpoint) => (
+                    {endpointData.items.map((endpoint) => (
                       <EndpointRow
                         key={endpoint.id}
                         endpoint={endpoint}
                         onSecret={setSecret}
-                        enabled={webhooks.data.enabled}
-                        availableKeyIds={webhooks.data.available_signing_key_ids}
+                        enabled={endpointData.enabled}
+                        availableKeyIds={endpointData.available_signing_key_ids}
                         testResult={testResults[endpoint.id]}
                         onTestStart={() => setTestResults((current) => {
                           if (!(endpoint.id in current)) return current
@@ -519,11 +562,11 @@ export function WebhooksPage() {
                   <h2 id="webhook-key-audit-title" className="text-sm font-semibold">Key change audit</h2>
                   <p className="mt-1 text-xs leading-5 text-of-muted">최근 signing key 전환과 secret 재발급 사유를 확인합니다.</p>
                 </div>
-                {webhooks.data.rotations.length === 0 ? (
+                {endpointData.rotations.length === 0 ? (
                   <p className="mt-4 text-xs text-of-muted">아직 key 변경 기록이 없습니다.</p>
                 ) : (
                   <ul className="mt-3 divide-y divide-of-border-subtle border-y border-of-border-subtle">
-                    {webhooks.data.rotations.map((rotation) => (
+                    {endpointData.rotations.map((rotation) => (
                       <li key={rotation.id} className="grid min-w-0 gap-1 py-2 text-xs sm:grid-cols-[minmax(0,1fr)_auto]">
                         <div className="min-w-0">
                           <p className="truncate font-medium">{endpointsById.get(rotation.endpoint_id)?.name ?? '삭제된 endpoint'}</p>
@@ -538,7 +581,7 @@ export function WebhooksPage() {
                 )}
               </section>
             </>
-          )}
+          ) : null}
 
           <section aria-labelledby="webhook-delivery-audit-title" className="py-6">
             <div className="flex min-w-0 items-start justify-between gap-3">
@@ -549,7 +592,7 @@ export function WebhooksPage() {
                 </p>
               </div>
               <div className="flex shrink-0 items-center gap-1">
-                <Badge variant="outline">{deliveries.data?.total ?? 0}건</Badge>
+                <Badge variant="outline">{deliveryData?.total ?? 0}건</Badge>
                 <Button
                   size="icon"
                   variant="ghost"
@@ -558,7 +601,7 @@ export function WebhooksPage() {
                   disabled={deliveries.isFetching}
                   onClick={() => {
                     setRetryError(false)
-                    void deliveries.refetch()
+                    void retryOne('Delivery audit', deliveries.refetch)
                   }}
                 >
                   <RefreshCw size={14} className={deliveries.isFetching ? 'animate-spin' : undefined} aria-hidden="true" />
@@ -566,13 +609,22 @@ export function WebhooksPage() {
               </div>
             </div>
 
-            {deliveries.isPending ? (
+            {deliveryStale ? (
+              <div role="alert" className="mt-4 flex min-w-0 flex-wrap items-center gap-2 border-l-2 border-of-warning bg-of-warning-soft/30 px-3 py-2 text-xs leading-5 text-of-text">
+                <p className="min-w-0 flex-1">전송 감사 최신 상태를 확인하지 못해 마지막 성공 결과를 유지했습니다.</p>
+                <Button size="sm" variant="ghost" onClick={() => void retryOne('Delivery audit', deliveries.refetch)} aria-label="Delivery audit 다시 시도">
+                  <RefreshCw size={13} aria-hidden="true" /> 다시 시도
+                </Button>
+              </div>
+            ) : null}
+
+            {!deliveryData && deliveries.isPending ? (
               <div role="status" aria-label="전송 감사 확인 중" className="mt-4 grid gap-2">
                 <Skeleton className="h-14 w-full" />
                 <Skeleton className="h-14 w-full" />
               </div>
-            ) : deliveries.isError ? (
-              <div className="mt-4"><ErrorState error={deliveries.error} onRetry={() => deliveries.refetch()} /></div>
+            ) : !deliveryData && deliveries.isError ? (
+              <div className="mt-4"><ErrorState error={deliveries.error} onRetry={() => void retryOne('Delivery audit', deliveries.refetch)} /></div>
             ) : deliveryItems.length === 0 ? (
               <p className="mt-4 text-xs text-of-muted">아직 전송 기록이 없습니다.</p>
             ) : (
@@ -595,7 +647,7 @@ export function WebhooksPage() {
                           <p className="mt-1 text-[11px] text-of-muted">다음 시도 {formatDateTime(delivery.next_attempt_at)}</p>
                         ) : null}
                       </div>
-                      {(delivery.status === 'failed' || delivery.status === 'dead_letter') && endpoint?.is_active && webhooks.data?.enabled ? (
+                      {(delivery.status === 'failed' || delivery.status === 'dead_letter') && endpoint?.is_active && endpointData?.enabled ? (
                         <Button
                           size="sm"
                           variant="outline"
