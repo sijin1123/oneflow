@@ -2610,6 +2610,7 @@ test('Quick Dock은 phase 시작 icon 전환과 실제 높이 fold를 같은 tim
   await expect(dock).toHaveAttribute('data-phase', 'open')
   await expect(dock.getByRole('button', { name: '모든 메모 열기' })).toBeFocused()
   await page.emulateMedia({ reducedMotion: 'no-preference' })
+  await expect(dock).toHaveAttribute('data-motion-preference', 'full')
   await dock.getByRole('button', { name: '빠른 도구 닫기' }).click()
   await expect(dock).toHaveAttribute('data-phase', 'closing')
   await page.emulateMedia({ reducedMotion: 'reduce' })
@@ -2622,15 +2623,32 @@ test('Quick Dock은 phase 시작 icon 전환과 실제 높이 fold를 같은 tim
 
   // The default motion uses the observed 300ms interval for icon, actions and pill reveal.
   await page.emulateMedia({ reducedMotion: 'no-preference' })
+  await expect(trigger.locator('xpath=..')).toHaveAttribute('data-motion-preference', 'full')
   await page.evaluate(() => document.documentElement.style.removeProperty('--of-dock-motion-duration'))
   await page.evaluate(() => document.documentElement.style.setProperty('--of-dock-css-animation-play-state', 'paused'))
   await trigger.click()
   await expect(dock).toHaveAttribute('data-phase', 'opening')
-  await expect(dock).toHaveCSS('animation-duration', '0.3s')
-  await expect(dock.getByTestId('quick-dock-toggle-icon')).toHaveCSS('animation-duration', '0.3s')
-  await expect(dock.getByTestId('quick-dock-actions')).toHaveCSS('animation-duration', '0.3s')
-  await dock.evaluate((element) => {
+  const defaultOpeningMotion = await dock.evaluate((element) => {
+    const icon = element.querySelector<HTMLElement>('[data-testid="quick-dock-toggle-icon"]')!
+    const actions = element.querySelector<HTMLElement>('[data-testid="quick-dock-actions"]')!
+    const readAnimation = (target: Element) => {
+      const style = getComputedStyle(target)
+      return { name: style.animationName, duration: style.animationDuration }
+    }
+    const motion = {
+      phase: element.getAttribute('data-phase'),
+      dock: readAnimation(element),
+      icon: readAnimation(icon),
+      actions: readAnimation(actions),
+    }
     for (const animation of element.getAnimations({ subtree: true })) animation.finish()
+    return motion
+  })
+  expect(defaultOpeningMotion).toEqual({
+    phase: 'opening',
+    dock: { name: 'of-dock-enter', duration: '0.3s' },
+    icon: { name: 'of-dock-toggle-open', duration: '0.3s' },
+    actions: { name: 'of-dock-actions-enter', duration: '0.3s' },
   })
   await expect(dock).toHaveAttribute('data-phase', 'open')
   const defaultClosingMotion = await dock.evaluate(async (element) => {
@@ -2812,10 +2830,18 @@ test('빠른 도구 dock은 개인 메모를 compact·expanded·modal 상태로 
   await page.screenshot({
     path: '../../docs/screenshots/redevelopment/quick-notes-dock-ui/desktop.png',
   })
+  await page.evaluate(() => document.documentElement.style.setProperty('--of-dock-motion-duration', '10s'))
   await page.keyboard.press('Escape')
   await page.keyboard.press('Escape')
-  await expect(page.getByTestId('quick-dock-expanded')).toHaveCSS('animation-name', 'of-dock-exit')
+  const closingDock = page.getByTestId('quick-dock-expanded')
+  await expect(closingDock).toHaveAttribute('data-phase', 'closing')
+  await expect(closingDock).toHaveCSS('animation-name', 'of-dock-exit')
+  await closingDock.evaluate((element) => {
+    for (const animation of element.getAnimations({ subtree: true })) animation.finish()
+  })
+  await expect(closingDock).toHaveCount(0)
   await expect(trigger).toBeFocused()
+  await page.evaluate(() => document.documentElement.style.removeProperty('--of-dock-motion-duration'))
 
   const viewerPage = await page.context().newPage()
   await mockApi(viewerPage)
