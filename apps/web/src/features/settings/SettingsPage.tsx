@@ -71,8 +71,10 @@ export function SettingsPage() {
     ? (requested as TabKey)
     : 'general'
 
-  if (members.isPending || me.isPending) return <ListSkeleton />
-  if (members.isError) return <ErrorState error={members.error} onRetry={() => members.refetch()} />
+  if ((members.isPending && !members.data) || me.isPending) return <ListSkeleton />
+  if (!members.data) {
+    return <ErrorState error={members.error} onRetry={() => void members.refetch()} />
+  }
   if (requested === 'milestones' && capabilities.isPending) {
     return <ListSkeleton />
   }
@@ -81,8 +83,10 @@ export function SettingsPage() {
   }
 
   const myRole = members.data.items.find((m) => m.user_id === me.data?.id)?.role
-  const isOwner = myRole === 'owner'
-  const canManageMilestones = myRole === 'owner' || myRole === 'member'
+  const lastKnownIsOwner = myRole === 'owner'
+  const isOwner = !members.isError && lastKnownIsOwner
+  const canManageMilestones =
+    !members.isError && (myRole === 'owner' || myRole === 'member')
 
   return (
     <SettingsFrame
@@ -110,7 +114,11 @@ export function SettingsPage() {
             <GeneralPanel projectId={projectId} isOwner={isOwner} onDirtyChange={onDirtyChange} />
           ) : null}
           {tab === 'members' ? (
-            <MembersPanel projectId={projectId} isOwner={isOwner} onDirtyChange={onDirtyChange} />
+            <MembersPanel
+              projectId={projectId}
+              isOwner={lastKnownIsOwner}
+              onDirtyChange={onDirtyChange}
+            />
           ) : null}
           {tab === 'workflow' ? (
             <WorkflowGovernanceSurface isOwner={isOwner}>
