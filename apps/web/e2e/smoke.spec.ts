@@ -8874,6 +8874,89 @@ test('보관된 프로젝트 일반 설정은 모바일에서 읽기 전용 맥�
   })
 })
 
+test('프로젝트 일반 설정 후속 조회 오류는 마지막 설정과 저장하지 않은 변경을 유지한다', async ({ page }) => {
+  await mockApi(page)
+  let getAttempts = 0
+  let refreshShouldFail = false
+  await page.route(`**/api/v1/projects/${project.id}`, async (route) => {
+    if (route.request().method() !== 'GET') {
+      await route.fallback()
+      return
+    }
+    getAttempts += 1
+    if (refreshShouldFail) {
+      await route.fulfill({ status: 503, json: { detail: 'temporary project refresh error' } })
+      return
+    }
+    await route.fulfill({
+      json:
+        getAttempts === 1
+          ? {
+              ...project,
+              budget: 25_000_000,
+              health: 'on_track',
+              health_note: '서버 최초 상태',
+            }
+          : {
+              ...project,
+              name: '서버에서 갱신된 프로젝트',
+              description: '서버에서 갱신된 설명',
+              budget: 35_000_000,
+              health: 'off_track',
+              health_note: '서버에서 갱신된 상태',
+              updated_at: '2026-07-30T00:00:00Z',
+            },
+    })
+  })
+
+  await page.setViewportSize({ width: 1280, height: 720 })
+  await page.goto(`/projects/${project.id}/settings`)
+  const panel = page.getByRole('region', { name: '프로젝트 일반 설정' })
+  await panel.getByLabel('프로젝트 이름').fill('저장하지 않은 프로젝트 이름')
+  await panel.getByLabel('프로젝트 설명').fill('저장하지 않은 프로젝트 설명')
+  await panel.getByLabel('프로젝트 예산').fill('27000000')
+  await panel.getByLabel('프로젝트 상태').selectOption('at_risk')
+  await panel.getByLabel('상태 사유').fill('저장하지 않은 상태 사유')
+
+  refreshShouldFail = true
+  await panel.getByRole('button', { name: '일반 설정 새로고침' }).click()
+  const staleAlert = panel.getByRole('alert').filter({ hasText: '최신 프로젝트 설정' })
+  await expect(staleAlert).toContainText('저장하지 않은 변경을 유지합니다.')
+  await expect(panel.getByLabel('프로젝트 이름')).toHaveValue('저장하지 않은 프로젝트 이름')
+  await expect(panel.getByLabel('프로젝트 설명')).toHaveValue('저장하지 않은 프로젝트 설명')
+  await expect(panel.getByLabel('프로젝트 예산')).toHaveValue('27000000')
+  await expect(panel.getByLabel('프로젝트 상태')).toHaveValue('at_risk')
+  await expect(panel.getByLabel('상태 사유')).toHaveValue('저장하지 않은 상태 사유')
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/project-general-settings-lifecycle-ui-311/desktop-retained-error.png',
+    fullPage: true,
+  })
+
+  await page.setViewportSize({ width: 320, height: 740 })
+  await staleAlert.scrollIntoViewIfNeeded()
+  await expect(staleAlert).toBeVisible()
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/project-general-settings-lifecycle-ui-311/mobile-retained-error-320.png',
+    fullPage: true,
+  })
+
+  refreshShouldFail = false
+  await staleAlert.getByRole('button', { name: '프로젝트 설정 다시 시도' }).click()
+  await expect(staleAlert).toHaveCount(0)
+  expect(getAttempts).toBeGreaterThanOrEqual(3)
+  await expect(panel.getByLabel('프로젝트 이름')).toHaveValue('저장하지 않은 프로젝트 이름')
+  await expect(panel.getByLabel('프로젝트 설명')).toHaveValue('저장하지 않은 프로젝트 설명')
+  await expect(panel.getByLabel('프로젝트 예산')).toHaveValue('27000000')
+  await expect(panel.getByLabel('프로젝트 상태')).toHaveValue('at_risk')
+  await expect(panel.getByLabel('상태 사유')).toHaveValue('저장하지 않은 상태 사유')
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/project-general-settings-lifecycle-ui-311/mobile-recovered-320.png',
+    fullPage: true,
+  })
+})
+
 test('내 작업 홈이 배정·기한임박·활동을 모아 보여주고 딥링크한다', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 })
   await mockApi(page)
