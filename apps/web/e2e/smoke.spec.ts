@@ -9371,6 +9371,112 @@ test('Workspace Home 빠른 링크가 개인 CRUD와 순서를 실제 요청에 
   })
 })
 
+test('UI-294 모바일 빠른 링크는 실패한 CRUD와 순서 요청을 정확히 보존해 재시도한다', async ({
+  page,
+}) => {
+  await mockApi(page)
+  await page.setViewportSize({ width: 320, height: 740 })
+  await page.route('**/api/v1/me/work', (route) =>
+    route.fulfill({
+      json: { assigned_to_me: [], due_soon: [], created_by_me: [], recent_activity: [] },
+    }),
+  )
+  await page.route('**/api/v1/me/time-entries**', (route) =>
+    route.fulfill({ json: { items: [], total: 0, total_hours: 0, by_project: [] } }),
+  )
+
+  type FailureKind = 'create' | 'update' | 'delete' | 'order'
+  const attempts: Record<FailureKind, number> = { create: 0, update: 0, delete: 0, order: 0 }
+  const payloads: Record<FailureKind, unknown[]> = {
+    create: [],
+    update: [],
+    delete: [],
+    order: [],
+  }
+  await page.route('**/api/v1/me/quick-links**', async (route) => {
+    const request = route.request()
+    const url = new URL(request.url())
+    const kind: FailureKind | null = url.pathname.endsWith('/order')
+      ? 'order'
+      : request.method() === 'POST'
+        ? 'create'
+        : request.method() === 'PATCH'
+          ? 'update'
+          : request.method() === 'DELETE'
+            ? 'delete'
+            : null
+    if (!kind) {
+      await route.fallback()
+      return
+    }
+    attempts[kind] += 1
+    payloads[kind].push(kind === 'delete' ? url.searchParams.toString() : request.postDataJSON())
+    if (attempts[kind] === 1) {
+      await route.fulfill({ status: 503, json: { detail: `${kind} temporarily unavailable` } })
+      return
+    }
+    await route.fallback()
+  })
+
+  await page.goto('/my')
+  const region = page.getByRole('region', { name: '빠른 이동' })
+  await region.getByRole('button', { name: '빠른 링크 추가' }).click()
+  await page.getByLabel('이름').fill('팀 핸드북')
+  await page.getByLabel('주소').fill('/wiki?section=team')
+  await page.getByRole('button', { name: '저장' }).click()
+  await expect(page.getByRole('alert')).toContainText('create temporarily unavailable')
+  await page.getByLabel('이름').fill('재시도에 포함하지 않을 이름')
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/mobile-quick-links-ui-294/retry-320.png',
+    fullPage: true,
+  })
+  await page.getByRole('button', { name: '같은 요청 다시 시도' }).click()
+  await expect(region.getByRole('link', { name: /팀 핸드북/ })).toBeVisible()
+  expect(payloads.create[1]).toEqual(payloads.create[0])
+
+  await region.getByRole('button', { name: '빠른 링크 추가' }).click()
+  await page.getByLabel('이름').fill('제품 문서')
+  await page.getByLabel('주소').fill('https://docs.example.com/guide')
+  await page.getByRole('button', { name: '저장' }).click()
+
+  await region.getByRole('button', { name: '팀 핸드북 빠른 링크 관리' }).click()
+  await page.locator('[role="menu"][data-state="open"]').getByRole('menuitem', { name: '편집' }).click()
+  await page.getByLabel('이름').fill('협업 핸드북')
+  await page.getByRole('button', { name: '저장' }).click()
+  await expect(page.getByRole('alert')).toContainText('update temporarily unavailable')
+  await page.getByLabel('이름').fill('재시도에 포함하지 않을 편집')
+  await page.getByRole('button', { name: '같은 요청 다시 시도' }).click()
+  await expect(region.getByRole('link', { name: /협업 핸드북/ })).toBeVisible()
+  expect(payloads.update[1]).toEqual(payloads.update[0])
+
+  await region.getByRole('button', { name: '제품 문서 빠른 링크 관리' }).click()
+  await page
+    .locator('[role="menu"][data-state="open"]')
+    .getByRole('menuitem', { name: '앞으로 이동' })
+    .click()
+  await expect(region.getByRole('alert')).toContainText('order temporarily unavailable')
+  await expectNoHorizontalOverflow(page)
+  await region.getByRole('button', { name: '같은 순서 다시 시도' }).click()
+  await expect(region.getByRole('alert')).toHaveCount(0)
+  expect(payloads.order[1]).toEqual(payloads.order[0])
+
+  await region.getByRole('button', { name: '협업 핸드북 빠른 링크 관리' }).click()
+  await page.locator('[role="menu"][data-state="open"]').getByRole('menuitem', { name: '삭제' }).click()
+  await page.getByRole('button', { name: '삭제' }).click()
+  await expect(page.getByRole('alert')).toContainText('delete temporarily unavailable')
+  await page.getByRole('button', { name: '같은 삭제 다시 시도' }).click()
+  await expect(region.getByRole('link', { name: /협업 핸드북/ })).toHaveCount(0)
+  expect(payloads.delete[1]).toEqual(payloads.delete[0])
+
+  await page.setViewportSize({ width: 390, height: 844 })
+  await expectNoHorizontalOverflow(page)
+  await expect(page.getByRole('button', { name: '빠른 도구 열기' })).toBeVisible()
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/mobile-quick-links-ui-294/ready-390.png',
+    fullPage: true,
+  })
+})
+
 test('내 작업 탭이 관계·검색·범위·정렬·페이지 상태를 URL과 API에 연결한다', async ({
   page,
 }) => {

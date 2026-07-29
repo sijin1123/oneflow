@@ -40,6 +40,17 @@ type EditorState =
   | { mode: 'delete'; link: WorkspaceQuickLink }
   | null
 
+type CreateInput = { title: string; destination: string }
+type UpdateInput = CreateInput & { id: string; expected_version: number }
+type DeleteInput = { id: string; expectedVersion: number }
+type OrderInput = Array<{ id: string; expected_version: number }>
+
+type FailedEditorAction =
+  | { kind: 'create'; input: CreateInput }
+  | { kind: 'update'; input: UpdateInput }
+  | { kind: 'delete'; input: DeleteInput }
+  | null
+
 function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : '요청을 완료하지 못했습니다.'
 }
@@ -129,13 +140,16 @@ export function WorkspaceQuickLinks({ children }: { children: ReactNode }) {
   const [destination, setDestination] = useState('')
   const [error, setError] = useState('')
   const [actionError, setActionError] = useState('')
+  const [failedEditorAction, setFailedEditorAction] = useState<FailedEditorAction>(null)
+  const [failedOrderInput, setFailedOrderInput] = useState<OrderInput | null>(null)
   const items = links.data?.items ?? []
-  const busy = create.isPending || update.isPending || remove.isPending || order.isPending
+  const editorBusy = create.isPending || update.isPending || remove.isPending
 
   const openCreate = () => {
     setTitle('')
     setDestination('')
     setError('')
+    setFailedEditorAction(null)
     setEditor({ mode: 'create' })
   }
 
@@ -143,44 +157,67 @@ export function WorkspaceQuickLinks({ children }: { children: ReactNode }) {
     setTitle(link.title)
     setDestination(link.destination)
     setError('')
+    setFailedEditorAction(null)
     setEditor({ mode: 'edit', link })
+  }
+
+  const runEditorAction = async (action: Exclude<FailedEditorAction, null>) => {
+    setError('')
+    try {
+      if (action.kind === 'create') await create.mutateAsync(action.input)
+      if (action.kind === 'update') await update.mutateAsync(action.input)
+      if (action.kind === 'delete') await remove.mutateAsync(action.input)
+      setFailedEditorAction(null)
+      setEditor(null)
+    } catch (caught) {
+      setFailedEditorAction(action)
+      setError(errorMessage(caught))
+    }
   }
 
   const submit = async (event: FormEvent) => {
     event.preventDefault()
     if (!editor || editor.mode === 'delete') return
-    setError('')
-    try {
-      if (editor.mode === 'create') {
-        await create.mutateAsync({
+    if (editor.mode === 'create') {
+      await runEditorAction({
+        kind: 'create',
+        input: {
           title: title.trim(),
           destination: destination.trim(),
-        })
-      } else {
-        await update.mutateAsync({
+        },
+      })
+    } else {
+      await runEditorAction({
+        kind: 'update',
+        input: {
           id: editor.link.id,
           expected_version: editor.link.version,
           title: title.trim(),
           destination: destination.trim(),
-        })
-      }
-      setEditor(null)
-    } catch (caught) {
-      setError(errorMessage(caught))
+        },
+      })
     }
   }
 
   const confirmDelete = async () => {
     if (!editor || editor.mode !== 'delete') return
-    setError('')
-    try {
-      await remove.mutateAsync({
+    await runEditorAction({
+      kind: 'delete',
+      input: {
         id: editor.link.id,
         expectedVersion: editor.link.version,
-      })
-      setEditor(null)
+      },
+    })
+  }
+
+  const runOrderAction = async (input: OrderInput) => {
+    setActionError('')
+    try {
+      await order.mutateAsync(input)
+      setFailedOrderInput(null)
     } catch (caught) {
-      setError(errorMessage(caught))
+      setFailedOrderInput(input)
+      setActionError(errorMessage(caught))
     }
   }
 
@@ -189,18 +226,26 @@ export function WorkspaceQuickLinks({ children }: { children: ReactNode }) {
     if (nextIndex < 0 || nextIndex >= items.length || order.isPending) return
     const next = [...items]
     ;[next[index], next[nextIndex]] = [next[nextIndex], next[index]]
-    setActionError('')
-    try {
-      await order.mutateAsync(next.map((link) => ({ id: link.id, expected_version: link.version })))
-    } catch (caught) {
-      setActionError(errorMessage(caught))
-    }
+    await runOrderAction(next.map((link) => ({ id: link.id, expected_version: link.version })))
   }
 
   const refreshAfterError = () => {
     setEditor(null)
     setError('')
+    setActionError('')
+    setFailedEditorAction(null)
+    setFailedOrderInput(null)
     void links.refetch()
+  }
+
+  const retryFailedEditorAction = () => {
+    if (!failedEditorAction) return
+    void runEditorAction(failedEditorAction)
+  }
+
+  const retryFailedOrder = () => {
+    if (!failedOrderInput) return
+    void runOrderAction(failedOrderInput)
   }
 
   const editorTitle =
@@ -266,10 +311,11 @@ export function WorkspaceQuickLinks({ children }: { children: ReactNode }) {
               link={link}
               index={index}
               total={items.length}
-              busy={busy}
+              busy={order.isPending}
               onEdit={() => openEdit(link)}
               onDelete={() => {
                 setError('')
+                setFailedEditorAction(null)
                 setEditor({ mode: 'delete', link })
               }}
               onMove={(direction) => void move(index, direction)}
@@ -278,18 +324,29 @@ export function WorkspaceQuickLinks({ children }: { children: ReactNode }) {
         )}
       </div>
       {actionError ? (
-        <p role="alert" className="mt-2 px-1 text-xs text-of-danger">
-          {actionError}{' '}
-          <button type="button" className="font-medium underline" onClick={() => links.refetch()}>
-            새로고침
+        <div
+          role="alert"
+          className="mt-2 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 rounded-of border border-of-danger/20 bg-of-danger-soft px-3 py-2 text-xs text-of-danger"
+        >
+          <span className="min-w-0 flex-1">{actionError}</span>
+          <button
+            type="button"
+            className="shrink-0 font-medium underline disabled:opacity-50"
+            disabled={order.isPending}
+            onClick={retryFailedOrder}
+          >
+            {order.isPending ? '다시 시도 중…' : '같은 순서 다시 시도'}
           </button>
-        </p>
+          <button type="button" className="shrink-0 font-medium underline" onClick={refreshAfterError}>
+            최신 상태 불러오기
+          </button>
+        </div>
       ) : null}
 
       <Dialog.Root
         open={editor !== null}
         onOpenChange={(open) => {
-          if (!open && !busy) setEditor(null)
+          if (!open && !editorBusy) setEditor(null)
         }}
       >
         <Dialog.Portal>
@@ -310,7 +367,7 @@ export function WorkspaceQuickLinks({ children }: { children: ReactNode }) {
                   variant="ghost"
                   size="icon"
                   aria-label="빠른 링크 창 닫기"
-                  disabled={busy}
+                  disabled={editorBusy}
                 >
                   <X size={14} />
                 </Button>
@@ -323,22 +380,28 @@ export function WorkspaceQuickLinks({ children }: { children: ReactNode }) {
                   {editor.link.title}
                 </p>
                 {error ? (
-                  <p role="alert" className="mt-3 text-xs text-of-danger">
-                    {error}{' '}
-                    <button
-                      type="button"
-                      className="font-medium underline"
-                      onClick={refreshAfterError}
-                    >
-                      서버 상태 새로고침
-                    </button>
-                  </p>
+                  <div role="alert" className="mt-3 rounded-of bg-of-danger-soft px-3 py-2 text-xs text-of-danger">
+                    <p>{error}</p>
+                    <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1">
+                      <button
+                        type="button"
+                        className="font-medium underline disabled:opacity-50"
+                        disabled={remove.isPending}
+                        onClick={retryFailedEditorAction}
+                      >
+                        {remove.isPending ? '다시 시도 중…' : '같은 삭제 다시 시도'}
+                      </button>
+                      <button type="button" className="font-medium underline" onClick={refreshAfterError}>
+                        최신 상태 불러오기
+                      </button>
+                    </div>
+                  </div>
                 ) : null}
                 <div className="mt-4 flex justify-end gap-2">
                   <Button
                     type="button"
                     variant="outline"
-                    disabled={busy}
+                    disabled={editorBusy}
                     onClick={() => setEditor(null)}
                   >
                     취소
@@ -346,7 +409,7 @@ export function WorkspaceQuickLinks({ children }: { children: ReactNode }) {
                   <Button
                     type="button"
                     variant="danger"
-                    disabled={busy}
+                    disabled={editorBusy}
                     onClick={() => void confirmDelete()}
                   >
                     {remove.isPending ? '삭제 중…' : '삭제'}
@@ -377,27 +440,35 @@ export function WorkspaceQuickLinks({ children }: { children: ReactNode }) {
                   />
                 </label>
                 {error ? (
-                  <p role="alert" className="text-xs text-of-danger">
-                    {error}{' '}
-                    <button
-                      type="button"
-                      className="font-medium underline"
-                      onClick={refreshAfterError}
-                    >
-                      서버 상태 새로고침
-                    </button>
-                  </p>
+                  <div role="alert" className="rounded-of bg-of-danger-soft px-3 py-2 text-xs text-of-danger">
+                    <p>{error}</p>
+                    <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1">
+                      <button
+                        type="button"
+                        className="font-medium underline disabled:opacity-50"
+                        disabled={create.isPending || update.isPending}
+                        onClick={retryFailedEditorAction}
+                      >
+                        {create.isPending || update.isPending
+                          ? '다시 시도 중…'
+                          : '같은 요청 다시 시도'}
+                      </button>
+                      <button type="button" className="font-medium underline" onClick={refreshAfterError}>
+                        최신 상태 불러오기
+                      </button>
+                    </div>
+                  </div>
                 ) : null}
                 <div className="flex justify-end gap-2">
                   <Button
                     type="button"
                     variant="outline"
-                    disabled={busy}
+                    disabled={editorBusy}
                     onClick={() => setEditor(null)}
                   >
                     취소
                   </Button>
-                  <Button type="submit" disabled={busy || !title.trim() || !destination.trim()}>
+                  <Button type="submit" disabled={editorBusy || !title.trim() || !destination.trim()}>
                     {create.isPending || update.isPending ? '저장 중…' : '저장'}
                   </Button>
                 </div>
