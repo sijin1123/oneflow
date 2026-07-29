@@ -276,8 +276,16 @@ export function UsersPage() {
     isFetchingNextPage,
     isFetchNextPageError,
   } = directory
+  const lastSuccessfulDirectory = useRef<typeof data>(undefined)
   const mobileLayout = useMobileDirectoryLayout()
   const createDirty = adding && Boolean(email.trim() || name.trim())
+
+  useEffect(() => {
+    if (!data || directory.isPlaceholderData || isError) return
+    lastSuccessfulDirectory.current = data
+  }, [data, directory.isPlaceholderData, isError])
+
+  const retainedData = data ?? (isError ? lastSuccessfulDirectory.current : undefined)
 
   useUnsavedLocationPrompt(
     createDirty || inviteDirty,
@@ -331,9 +339,12 @@ export function UsersPage() {
     setName('')
   }, [view])
 
-  const users = useMemo(() => data?.pages.flatMap((page) => page.items) ?? [], [data?.pages])
-  const total = data?.pages[0]?.total ?? users.length
-  const summary = data?.pages[0]?.summary
+  const users = useMemo(
+    () => retainedData?.pages.flatMap((page) => page.items) ?? [],
+    [retainedData?.pages],
+  )
+  const total = retainedData?.pages[0]?.total ?? users.length
+  const summary = retainedData?.pages[0]?.summary
   const directorySummary = summary ?? {
     users: total,
     active: users.filter((item) => item.is_active).length,
@@ -457,9 +468,14 @@ export function UsersPage() {
           aria-label="사용자 관리 화면 제어"
           className="flex items-center gap-1.5"
         >
-          <Link to="/admin/overview" className={actionClassName}>
+          <Link
+            to="/admin/overview"
+            className={actionClassName}
+            aria-label="관리 개요"
+            title="관리 개요"
+          >
             <Settings2 size={13} aria-hidden="true" />
-            관리 개요
+            <span className="hidden min-[360px]:inline">관리 개요</span>
           </Link>
           <span className="hidden px-1 text-xs tabular-nums text-of-muted sm:inline">
             {view === 'directory' ? `${totalUsers}명` : '7일 · 일회성 링크'}
@@ -471,24 +487,38 @@ export function UsersPage() {
                 variant="outline"
                 disabled={busy}
                 onClick={() => void refreshDirectory()}
+                aria-label={refreshError ? '새로고침 다시 시도' : '새로고침'}
+                title={refreshError ? '새로고침 다시 시도' : '새로고침'}
               >
                 <RefreshCw
                   size={13}
                   className={directory.isFetching ? 'animate-spin' : undefined}
                   aria-hidden="true"
                 />
-                {refreshError ? '새로고침 다시 시도' : '새로고침'}
+                <span className="hidden min-[360px]:inline">
+                  {refreshError ? '새로고침 다시 시도' : '새로고침'}
+                </span>
               </Button>
-              <Button ref={createTriggerRef} size="sm" onClick={openCreate}>
-                <UserPlus size={14} aria-hidden="true" />새 사용자
+              <Button
+                ref={createTriggerRef}
+                size="sm"
+                onClick={openCreate}
+                aria-label="새 사용자"
+                title="새 사용자"
+              >
+                <UserPlus size={14} aria-hidden="true" />
+                <span className="hidden min-[360px]:inline">새 사용자</span>
               </Button>
             </>
           ) : (
             <Button
               size="sm"
               onClick={() => setInviteComposerRequest((request) => request + 1)}
+              aria-label="멤버 초대"
+              title="멤버 초대"
             >
-              <UserPlus size={14} aria-hidden="true" />멤버 초대
+              <UserPlus size={14} aria-hidden="true" />
+              <span className="hidden min-[360px]:inline">멤버 초대</span>
             </Button>
           )}
         </div>
@@ -591,7 +621,7 @@ export function UsersPage() {
           </div>
 
           <main className="of-scrollbar min-h-0 flex-1 overflow-y-auto bg-of-bg">
-            {refreshError || directory.isRefetchError ? (
+            {refreshError || directory.isRefetchError || (isError && Boolean(retainedData)) ? (
               <div
                 role="alert"
                 className="flex flex-wrap items-center justify-between gap-2 border-b border-of-warning/30 bg-of-warning/5 px-4 py-2 text-xs"
@@ -624,7 +654,7 @@ export function UsersPage() {
                 ) : null}
               </div>
             ) : null}
-            {isError && !data ? (
+            {isError && !retainedData ? (
               <ErrorState error={error} onRetry={() => refetch()} />
             ) : isPending ? (
               <ListSkeleton />
