@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query'
+import { keepPreviousData, useQuery } from '@tanstack/react-query'
 
 import type { WorkPackage } from '@/features/work-packages/types'
 import { api } from '@/lib/api'
@@ -98,6 +98,7 @@ export function useMyWorkItems({
       return api<MyWorkItemList>(`/api/v1/me/work-items?${params.toString()}`)
     },
     enabled,
+    placeholderData: keepPreviousData,
   })
 }
 
@@ -123,6 +124,7 @@ export function useMyActivities({
       return api<MyActivityList>(`/api/v1/me/activities?${params.toString()}`)
     },
     enabled,
+    placeholderData: keepPreviousData,
   })
 }
 

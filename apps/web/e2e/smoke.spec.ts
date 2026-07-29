@@ -9621,6 +9621,89 @@ test('내 작업 탭이 오류 재시도 후 빈 상태를 복구한다', async 
   await expect(page.getByText('조건에 맞는 구독 작업이 없습니다.')).toBeVisible()
 })
 
+test('모바일 내 작업이 실패한 검색과 페이지 요청에서 이전 결과와 정확한 요청을 유지한다', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 320, height: 740 })
+  await mockApi(page)
+  let failSearch = true
+  let failPage = true
+  const requests: string[] = []
+  await page.route('**/api/v1/me/work-items**', (route) => {
+    const url = new URL(route.request().url())
+    requests.push(url.search)
+    const q = url.searchParams.get('q') ?? ''
+    const offset = Number(url.searchParams.get('offset') ?? 0)
+    if ((q === 'retained' && failSearch) || (offset === 25 && failPage)) {
+      return route.fulfill({ status: 500, json: { detail: 'temporary' } })
+    }
+    const item = offset === 25 ? wpB : wpA
+    const body: MyWorkItemList = {
+      items: [
+        {
+          id: item.id,
+          project_id: project.id,
+          project_name: project.name,
+          subject: q === 'retained' ? '검색 재시도 결과' : item.subject,
+          type: item.type,
+          status: item.status,
+          priority: item.priority,
+          due_date: item.due_date,
+          assignee_id: 'me-1',
+          assignee_name: 'Dev User',
+          updated_at: item.updated_at,
+        },
+      ],
+      total: q === 'retained' ? 1 : 26,
+      limit: 25,
+      offset,
+    }
+    return route.fulfill({ json: body })
+  })
+
+  await page.goto('/my?tab=assigned')
+  await expect(page.getByText(wpA.subject)).toBeVisible()
+  await page.getByLabel('내 작업 검색').fill('retained')
+  await page.getByLabel('내 작업 검색').press('Enter')
+
+  const retainedAlert = page.getByRole('alert')
+  await expect(retainedAlert).toContainText('이전 결과를 유지합니다')
+  await expect(page.getByText(wpA.subject)).toBeVisible()
+  await expect(page).toHaveURL(/q=retained/)
+  expect(requests.at(-1)).toContain('q=retained')
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/mobile-my-work-profile-ui-295/search-retry-320.png',
+    fullPage: true,
+  })
+
+  failSearch = false
+  await retainedAlert.getByRole('button', { name: '같은 요청 다시 시도' }).click()
+  await expect(page.getByText('검색 재시도 결과')).toBeVisible()
+  await expect(retainedAlert).toHaveCount(0)
+
+  await page.getByRole('button', { name: '초기화' }).click()
+  await expect(page.getByText(wpA.subject)).toBeVisible()
+  await page.getByRole('button', { name: '다음 페이지' }).click()
+  await expect(retainedAlert).toContainText('이전 결과를 유지합니다')
+  await expect(page.getByText(wpA.subject)).toBeVisible()
+  await expect(page).toHaveURL(/offset=25/)
+  expect(requests.at(-1)).toContain('offset=25')
+
+  failPage = false
+  await retainedAlert.getByRole('button', { name: '같은 요청 다시 시도' }).click()
+  await expect(page.getByText(wpB.subject)).toBeVisible()
+  await expect(page.getByText('26-26 / 26')).toBeVisible()
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.getByTestId('frame-context-actions').getByRole('button', { name: '프로필' }).click()
+  await expect(page.getByRole('complementary', { name: '내 프로필' })).toBeVisible()
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/mobile-my-work-profile-ui-295/profile-ready-390.png',
+    fullPage: true,
+  })
+})
+
 test('AI workspace가 켜진 AI 요약 기능을 보이는 작업 상세로 연결한다', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 })
   await mockApi(page)
