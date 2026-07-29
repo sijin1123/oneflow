@@ -3,6 +3,7 @@
 import pytest
 from pydantic import ValidationError
 
+from app.core.config import Settings
 from app.seed import SeedGuardError, check_env_guard, check_reset_guard
 from tests.conftest import TEST_URL, make_oidc_test_settings, make_test_settings
 
@@ -33,6 +34,16 @@ def test_db_scheme_guard():
 def test_cors_guard():
     _expect_invalid(cors_origins="not-a-url")
     _expect_invalid(cors_origins="ftp://example.com")
+
+
+def test_default_local_cors_supports_both_loopback_browser_hosts():
+    default_origins = Settings.model_fields["cors_origins"].default
+    settings = make_test_settings(cors_origins=default_origins)
+
+    assert settings.cors_origin_list == [
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+    ]
 
 
 def test_log_level_guard():

@@ -167,7 +167,7 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+asyncpg://oneflow:oneflow@localhost:5432/oneflow"
     test_database_url: str = "postgresql+asyncpg://oneflow:oneflow@localhost:5432/oneflow_test"
     auth_mode: str = "dev"
-    cors_origins: str = "http://localhost:5173"
+    cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
     log_level: str = "INFO"
     # Strict parse: exactly "true" enables it, everything else stays locked (PLAN §9 table).
     dev_allow_nonlocal: str = "false"
