@@ -6,6 +6,7 @@ import {
   LoaderCircle,
   RefreshCw,
 } from 'lucide-react'
+import { useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 
@@ -22,6 +23,7 @@ import { useUnsavedLocationPromptWithBypass } from '@/lib/guards'
 import {
   downloadAdminWorklogs,
   type AdminWorklog,
+  type AdminWorklogList,
   type WorklogFilters,
   useAdminWorklogOptions,
   useAdminWorklogs,
@@ -73,6 +75,7 @@ const hours = (value: number) =>
   value.toLocaleString('ko-KR', { maximumFractionDigits: 2 })
 
 export function WorklogsPage() {
+  const queryClient = useQueryClient()
   const defaults = defaultRange()
   const [searchParams, setSearchParams] = useSearchParams()
   const searchParamsRef = useRef(new URLSearchParams(searchParams))
@@ -111,6 +114,7 @@ export function WorklogsPage() {
   const [downloading, setDownloading] = useState(false)
   const [downloadError, setDownloadError] = useState<unknown>(null)
   const [downloadRetryFilters, setDownloadRetryFilters] = useState<WorklogFilters | null>(null)
+  const [lastSuccessfulWorklogs, setLastSuccessfulWorklogs] = useState<AdminWorklogList | null>(null)
   const navigationBypassRef = useRef(false)
   const draftRangeError = rangeError(fromDraft, toDraft)
   const draftDirty = fromDraft !== from || toDraft !== to
@@ -130,7 +134,19 @@ export function WorklogsPage() {
     !needsCanonicalFilters &&
     !needsCanonicalOffsetShape
   const worklogs = useAdminWorklogs(filters, canQuery)
-  const total = worklogs.data?.total
+  useEffect(() => {
+    if (worklogs.data && !worklogs.isError && !worklogs.isPlaceholderData) {
+      setLastSuccessfulWorklogs(worklogs.data)
+    }
+  }, [worklogs.data, worklogs.isError, worklogs.isPlaceholderData])
+  const cachedSuccessfulWorklogs = queryClient
+    .getQueryCache()
+    .findAll({ queryKey: ['admin-worklogs'] })
+    .filter((query) => query.state.status === 'success' && query.state.data)
+    .sort((left, right) => right.state.dataUpdatedAt - left.state.dataUpdatedAt)[0]
+    ?.state.data as AdminWorklogList | undefined
+  const retainedData = worklogs.data ?? lastSuccessfulWorklogs ?? cachedSuccessfulWorklogs
+  const total = worklogs.isPlaceholderData ? undefined : worklogs.data?.total
   const normalizedOffset =
     total === undefined
       ? undefined
@@ -228,7 +244,8 @@ export function WorklogsPage() {
     )
   }
 
-  const data = worklogs.data
+  const data = retainedData
+  const retainingFailedResult = worklogs.isError && Boolean(data)
   const selectedUser =
     userId === 'deleted'
       ? '삭제된 사용자'
@@ -274,8 +291,8 @@ export function WorklogsPage() {
         className="min-h-0 flex-1 overflow-y-auto overscroll-contain"
         aria-busy={refreshing || canonicalizing}
       >
-        <div className="mx-auto w-full max-w-6xl px-4 py-5 sm:px-6 sm:py-6">
-          <header className="grid gap-4 border-b border-of-border pb-5 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
+        <div className="mx-auto w-full max-w-6xl px-3 py-3 sm:px-6 sm:py-6">
+          <header className="grid gap-3 border-b border-of-border pb-4 sm:gap-4 sm:pb-5 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
             <div className="min-w-0">
               <p className="text-[11px] font-semibold uppercase text-of-muted">Workspace administration</p>
               <h1 className="mt-1 text-xl font-semibold">Worklogs</h1>
@@ -294,7 +311,7 @@ export function WorklogsPage() {
             </dl>
           </header>
 
-          <section aria-labelledby="worklogs-filter-title" className="border-b border-of-border py-5">
+          <section aria-labelledby="worklogs-filter-title" className="border-b border-of-border py-4 sm:py-5">
             <div className="flex min-w-0 flex-wrap items-start justify-between gap-3">
               <div className="min-w-0">
                 <h2 id="worklogs-filter-title" className="text-sm font-semibold">조회 범위</h2>
@@ -417,7 +434,7 @@ export function WorklogsPage() {
             ) : null}
           </section>
 
-          <section aria-labelledby="worklogs-history-title" className="py-5">
+          <section aria-labelledby="worklogs-history-title" className="py-4 sm:py-5">
             <div className="flex min-w-0 flex-wrap items-start justify-between gap-3 border-b border-of-border-subtle pb-3">
               <div className="min-w-0">
                 <h2 id="worklogs-history-title" className="text-sm font-semibold">시간 기록</h2>
@@ -432,13 +449,34 @@ export function WorklogsPage() {
               ) : null}
             </div>
 
+            {retainingFailedResult ? (
+              <div
+                role="alert"
+                className="mt-3 flex min-w-0 flex-wrap items-center justify-between gap-2 border-y border-of-danger/25 bg-of-danger/5 px-3 py-2"
+              >
+                <p className="min-w-0 text-xs leading-5 text-of-danger">
+                  요청한 조건의 Worklogs를 불러오지 못했습니다. 이전 조회 결과를 유지합니다.
+                </p>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  disabled={worklogs.isFetching}
+                  onClick={() => void worklogs.refetch()}
+                >
+                  {worklogs.isFetching ? <LoaderCircle size={13} className="animate-spin" /> : null}
+                  요청 다시 시도
+                </Button>
+              </div>
+            ) : null}
+
             {canonicalizing || (worklogs.isPending && !worklogs.isError) ? (
               <div role="status" aria-label="Worklogs 기록 확인 중" className="grid gap-2 py-5">
                 <Skeleton className="h-12 w-full" />
                 <Skeleton className="h-12 w-full" />
                 <Skeleton className="h-12 w-full" />
               </div>
-            ) : worklogs.isError ? (
+            ) : worklogs.isError && !data ? (
               <div className="py-5">
                 <ErrorState error={worklogs.error} onRetry={() => worklogs.refetch()} />
               </div>
