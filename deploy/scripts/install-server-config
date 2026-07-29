@@ -26,6 +26,7 @@ install -o root -g root -m 0755 "$repo_root/deploy/scripts/oneflow-deploy" /usr/
 install -o root -g root -m 0755 "$repo_root/deploy/scripts/oneflow-backup" /usr/local/sbin/oneflow-backup
 install -o root -g root -m 0755 "$repo_root/deploy/scripts/oneflow-health-check" /usr/local/sbin/oneflow-health-check
 install -o root -g root -m 0700 "$repo_root/deploy/scripts/oneflow-set-oauth-secret" /usr/local/sbin/oneflow-set-oauth-secret
+install -o root -g root -m 0700 "$repo_root/deploy/scripts/oneflow-provision-user" /usr/local/sbin/oneflow-provision-user
 install -o root -g root -m 0644 "$repo_root"/deploy/systemd/* /etc/systemd/system/
 install -o root -g root -m 0644 "$repo_root/deploy/nginx/oneflow.conf" /etc/nginx/conf.d/oneflow.conf
 install -d -o root -g root -m 0755 /etc/systemd/journald.conf.d

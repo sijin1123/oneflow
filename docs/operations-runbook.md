@@ -66,3 +66,16 @@ only when a signing key and exact outbound host allowlist are configured.
 GitHub Actions notifications are the initial deployment failure channel. Operators must watch
 failed backup and timer units through systemd/journal monitoring; SMTP is not configured because
 the application currently has no deployment SMTP contract.
+
+## Initial Google administrator
+
+OIDC intentionally does not auto-provision accounts. After the first migration, register the first
+active workspace administrator in both isolated databases without creating a password:
+
+```bash
+oneflow-provision-user both administrator@bsgone.com 'Administrator Name'
+```
+
+The root-only helper validates the email against each environment's configured Google domain and
+uses the local PostgreSQL operating-system identity. The first successful Google callback binds the
+provider subject to this pre-provisioned account. Add later users through the authenticated admin UI.

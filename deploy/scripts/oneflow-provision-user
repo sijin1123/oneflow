@@ -1,0 +1,62 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ ${EUID} -ne 0 ]]; then
+  printf 'run as root\n' >&2
+  exit 77
+fi
+
+target=${1:-}
+email=${2:-}
+display_name=${3:-}
+
+if [[ "$target" == both ]]; then
+  "$0" dev "$email" "$display_name"
+  "$0" prod "$email" "$display_name"
+  exit
+fi
+case "$target" in
+  dev) database=oneflow_dev ;;
+  prod) database=oneflow_prod ;;
+  *) printf 'usage: %s {dev|prod|both} EMAIL DISPLAY_NAME\n' "$0" >&2; exit 64 ;;
+esac
+
+email=${email,,}
+if [[ ! "$email" =~ ^[a-z0-9.!#$%\&\'*+/=?^_\`{|}~-]+@[a-z0-9.-]+$ || ${#email} -gt 255 ]]; then
+  printf 'invalid email address\n' >&2
+  exit 64
+fi
+if [[ -z "$display_name" || ${#display_name} -gt 120 || "$display_name" == *$'\n'* || "$display_name" == *$'\r'* ]]; then
+  printf 'display name must contain 1-120 characters on one line\n' >&2
+  exit 64
+fi
+
+runtime_env="/etc/oneflow/${target}.env"
+allowed_domains=$(sed -n 's/^ONEFLOW_OIDC_GOOGLE_ALLOWED_EMAIL_DOMAINS=//p' "$runtime_env")
+email_domain=${email##*@}
+domain_allowed=false
+IFS=',' read -r -a domains <<< "$allowed_domains"
+for domain in "${domains[@]}"; do
+  if [[ "${domain,,}" == "$email_domain" ]]; then
+    domain_allowed=true
+    break
+  fi
+done
+if ! $domain_allowed; then
+  printf 'email domain is not allowed by %s\n' "$runtime_env" >&2
+  exit 78
+fi
+
+runuser -u postgres -- psql --dbname="$database" --set=ON_ERROR_STOP=1 \
+  --set=user_email="$email" --set=display_name="$display_name" <<'SQL'
+INSERT INTO users (id, email, display_name, is_active, is_admin)
+VALUES (gen_random_uuid(), lower(:'user_email'), :'display_name', true, true)
+ON CONFLICT (email) DO UPDATE
+SET display_name = EXCLUDED.display_name,
+    is_active = true,
+    is_admin = true,
+    updated_at = now()
+RETURNING id, email, display_name, is_active, is_admin;
+SQL
+
+printf 'provisioned initial administrator in %s\n' "$target"
