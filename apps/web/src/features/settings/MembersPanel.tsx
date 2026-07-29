@@ -158,14 +158,14 @@ function PermissionCard({
 function PermissionsTable({ projectId }: { projectId: string }) {
   const mobileLayout = useMobileMembersLayout()
   const report = usePermissionReport(projectId)
-  if (report.isPending) {
+  if (report.isPending && !report.data) {
     return (
       <section aria-label="권한" className="border-t border-of-border pt-4">
         <ListSkeleton rows={4} className="min-h-48" />
       </section>
     )
   }
-  if (report.isError || !report.data) {
+  if (!report.data) {
     return (
       <section aria-label="권한" className="border-t border-of-border pt-4">
         <ErrorState error={report.error} onRetry={() => report.refetch()} />
@@ -177,7 +177,11 @@ function PermissionsTable({ projectId }: { projectId: string }) {
   const roleCol = (role: string) => (role === myRole ? 'bg-of-accent-soft/40 font-medium' : '')
 
   return (
-    <section aria-label="권한" className="border-t border-of-border pt-4">
+    <section
+      aria-label="권한"
+      aria-busy={report.isFetching}
+      className="border-t border-of-border pt-4"
+    >
       <div className="mb-3 flex min-w-0 flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
           <h3 className="text-sm font-semibold">역할별 권한</h3>
@@ -187,12 +191,43 @@ function PermissionsTable({ projectId }: { projectId: string }) {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <Button
+            size="sm"
+            variant="ghost"
+            disabled={report.isFetching}
+            onClick={() => void report.refetch()}
+          >
+            <RotateCw
+              size={13}
+              aria-hidden="true"
+              className={report.isFetching ? 'animate-spin' : undefined}
+            />
+            권한 보고서 새로고침
+          </Button>
           {myCustomRole ? <Badge variant="accent">실효 역할 · {myCustomRole.name}</Badge> : null}
           <Badge variant="outline" className="self-start">
             워크스페이스 관리자 권한과 별개
           </Badge>
         </div>
       </div>
+      {report.isError ? (
+        <div
+          role="alert"
+          className="mb-3 flex min-w-0 flex-col gap-2 border border-of-warning/35 bg-of-warning/10 px-3 py-2.5 sm:flex-row sm:items-center sm:justify-between"
+        >
+          <span className="text-xs text-of-muted">
+            최신 권한 보고서를 불러오지 못했습니다. 마지막으로 확인한 권한을 표시합니다.
+          </span>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={report.isFetching}
+            onClick={() => void report.refetch()}
+          >
+            <RotateCw size={13} aria-hidden="true" /> 권한 보고서 다시 시도
+          </Button>
+        </div>
+      ) : null}
       {!mobileLayout ? (
         <div className="overflow-x-auto rounded-of border border-of-border">
           <table className="w-full min-w-[34rem] bg-of-surface text-xs">
@@ -263,6 +298,7 @@ function MemberControls({
   customRoles,
   catalogReady,
   isOwner,
+  writeDisabled,
   lastOwner,
   updatePending,
   removePending,
@@ -277,6 +313,7 @@ function MemberControls({
   customRoles: ProjectRoleCatalogItem[]
   catalogReady: boolean
   isOwner: boolean
+  writeDisabled: boolean
   lastOwner: boolean
   updatePending: boolean
   removePending: boolean
@@ -319,7 +356,7 @@ function MemberControls({
         <Button size="sm" variant="ghost" disabled={removePending} onClick={onCancelRemove}>
           취소
         </Button>
-        <Button size="sm" variant="danger" disabled={removePending} onClick={onRemove}>
+        <Button size="sm" variant="danger" disabled={writeDisabled || removePending} onClick={onRemove}>
           {removePending ? '제거 중' : '제거'}
         </Button>
       </div>
@@ -331,7 +368,7 @@ function MemberControls({
         aria-label={`${member.display_name} 역할`}
         className="h-7 w-24 text-xs"
         value={member.role}
-        disabled={updatePending || lastOwner}
+        disabled={writeDisabled || updatePending || lastOwner}
         onChange={(e) => onRoleChange(e.target.value as BuiltInProjectRole)}
       >
         <option value="owner">소유자</option>
@@ -343,7 +380,7 @@ function MemberControls({
           aria-label={`${member.display_name} 커스텀 역할`}
           className="h-7 min-w-[8.5rem] max-w-44 text-xs"
           value={member.custom_role_id ?? ''}
-          disabled={updatePending || !catalogReady}
+          disabled={writeDisabled || updatePending || !catalogReady}
           onChange={(e) => onCustomRoleChange(e.target.value || null)}
         >
           <option value="">기본 멤버</option>
@@ -360,7 +397,7 @@ function MemberControls({
       <button
         type="button"
         aria-label={`${member.display_name} 제거`}
-        disabled={lastOwner || removePending}
+        disabled={writeDisabled || lastOwner || removePending}
         className="rounded-of p-1 text-of-muted hover:bg-of-surface-2 hover:text-of-danger disabled:opacity-30"
         onClick={onRequestRemove}
       >
@@ -401,6 +438,7 @@ export function MembersPanel({
     | { kind: 'remove'; userId: string }
     | null
   >(null)
+  const canEdit = isOwner && !members.isError
 
   const dirty = email.trim() !== '' || role !== 'member' || customRoleId !== ''
   useEffect(() => {
@@ -419,9 +457,9 @@ export function MembersPanel({
       setCustomRoleId('')
     }
   }, [customRoleId, customRoles, roleCatalog.isSuccess])
-  if (members.isPending) return <ListSkeleton rows={7} />
-  if (members.isError || !members.data) {
-    return <ErrorState error={members.error} onRetry={() => members.refetch()} />
+  if (members.isPending && !members.data) return <ListSkeleton rows={7} />
+  if (!members.data) {
+    return <ErrorState error={members.error} onRetry={() => void members.refetch()} />
   }
 
   const ownerCount = items.filter((m) => m.role === 'owner').length
@@ -500,7 +538,11 @@ export function MembersPanel({
 
   return (
     <div className="space-y-4">
-      <section className="overflow-hidden rounded-of border border-of-border bg-of-surface">
+      <section
+        aria-label="프로젝트 멤버 설정"
+        aria-busy={members.isFetching}
+        className="overflow-hidden rounded-of border border-of-border bg-of-surface"
+      >
         <header className="flex min-w-0 flex-col gap-3 border-b border-of-border px-4 py-4 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0">
             <p className="text-[11px] font-medium uppercase text-of-muted">Project access</p>
@@ -516,10 +558,51 @@ export function MembersPanel({
               </div>
             </div>
           </div>
-          <Badge variant={isOwner ? 'accent' : 'outline'} className="self-start">
-            {isOwner ? '소유자 편집 가능' : '읽기 전용'}
-          </Badge>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              size="sm"
+              variant="ghost"
+              disabled={members.isFetching}
+              onClick={() => void members.refetch()}
+            >
+              <RotateCw
+                size={13}
+                aria-hidden="true"
+                className={members.isFetching ? 'animate-spin' : undefined}
+              />
+              프로젝트 멤버 새로고침
+            </Button>
+            <Badge variant={canEdit ? 'accent' : 'outline'} className="self-start">
+              {canEdit ? '소유자 편집 가능' : '읽기 전용'}
+            </Badge>
+          </div>
         </header>
+
+        {members.isError ? (
+          <div
+            role="alert"
+            className="mx-3 my-3 flex min-w-0 flex-col gap-2 border border-of-warning/35 bg-of-warning/10 px-3 py-2.5 sm:mx-4 sm:flex-row sm:items-center sm:justify-between"
+          >
+            <div className="flex min-w-0 items-start gap-2">
+              <CircleAlert size={14} className="mt-0.5 shrink-0 text-of-warning" aria-hidden="true" />
+              <div className="min-w-0">
+                <p className="text-xs font-medium text-of-text">최신 프로젝트 멤버를 불러오지 못했습니다.</p>
+                <p className="mt-0.5 text-[11px] leading-5 text-of-muted">
+                  마지막 목록과 검색·필터·초대 초안을 유지합니다. 다시 확인할 때까지 초대·역할·제거 변경은 차단됩니다.
+                </p>
+              </div>
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              className="w-full shrink-0 sm:w-auto"
+              disabled={members.isFetching}
+              onClick={() => void members.refetch()}
+            >
+              <RotateCw size={13} aria-hidden="true" /> 프로젝트 멤버 다시 시도
+            </Button>
+          </div>
+        ) : null}
 
         <div
           aria-label="멤버 요약"
@@ -537,7 +620,7 @@ export function MembersPanel({
           className="border-b border-of-border px-4 py-4"
           onSubmit={(event) => {
             event.preventDefault()
-            if (!emailValid || addMember.isPending) return
+            if (!canEdit || !emailValid || addMember.isPending) return
             setNotice(null)
             addMember.mutate(
               {
@@ -575,11 +658,13 @@ export function MembersPanel({
               placeholder="이메일 (기존 사용자)"
               aria-label="추가할 멤버 이메일"
               className="h-8 min-w-0 text-xs"
+              disabled={!canEdit}
             />
             <Select
               aria-label="추가 역할"
               className="h-8 w-full text-xs"
               value={role}
+              disabled={!canEdit}
               onChange={(e) => {
                 const nextRole = e.target.value as Member['role']
                 setRole(nextRole)
@@ -594,7 +679,7 @@ export function MembersPanel({
               aria-label="추가 커스텀 역할"
               className="h-8 w-full min-w-0 text-xs"
               value={customRoleId}
-              disabled={role !== 'member' || roleCatalog.isPending || roleCatalog.isError}
+              disabled={!canEdit || role !== 'member' || roleCatalog.isPending || roleCatalog.isError}
               onChange={(e) => setCustomRoleId(e.target.value)}
             >
               <option value="">기본 멤버</option>
@@ -605,7 +690,7 @@ export function MembersPanel({
             <Button
               type="submit"
               size="sm"
-              disabled={!emailValid || addMember.isPending}
+              disabled={!canEdit || !emailValid || addMember.isPending}
             >
               {addMember.isPending ? '추가 중' : '추가'}
             </Button>
@@ -645,7 +730,7 @@ export function MembersPanel({
             <CircleAlert size={14} aria-hidden="true" />
             <span className="min-w-0 flex-1">{memberMutationMessage}</span>
             {retryAction ? (
-              <Button size="sm" variant="outline" onClick={retryLastAction}>
+              <Button size="sm" variant="outline" disabled={!canEdit} onClick={retryLastAction}>
                 <RotateCw size={13} aria-hidden="true" /> 다시 시도
               </Button>
             ) : null}
@@ -721,6 +806,7 @@ export function MembersPanel({
                     customRoles={customRoles}
                     catalogReady={roleCatalog.isSuccess}
                     isOwner={isOwner}
+                    writeDisabled={!canEdit}
                     lastOwner={lastOwner}
                     updatePending={updatingMemberIds.has(m.user_id)}
                     removePending={removingMemberIds.has(m.user_id)}
@@ -772,6 +858,7 @@ export function MembersPanel({
                       customRoles={customRoles}
                       catalogReady={roleCatalog.isSuccess}
                       isOwner={isOwner}
+                      writeDisabled={!canEdit}
                       lastOwner={lastOwner}
                       updatePending={updatingMemberIds.has(m.user_id)}
                       removePending={removingMemberIds.has(m.user_id)}

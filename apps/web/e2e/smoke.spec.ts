@@ -8222,6 +8222,122 @@ test('설정 화면에서 멤버를 보여주고 소유자가 멤버를 추가�
   await expect(page.getByText('alex@oneflow.local')).toHaveCount(0)
 })
 
+test('프로젝트 멤버 후속 갱신 오류는 목록과 초대 초안을 유지하고 권한 보고서 오류를 격리한다', async ({ page }) => {
+  await mockApi(page)
+  await page.route('**/api/v1/workspace/project-roles', (route) =>
+    route.fulfill({ json: { items: [], total: 0 } }),
+  )
+  let memberGets = 0
+  let permissionGets = 0
+  let membersShouldFail = false
+  let permissionsShouldFail = false
+  const permissionReport = {
+    my_role: 'owner',
+    my_custom_role: null,
+    verbs: [
+      {
+        key: 'member.manage',
+        label: '멤버 추가·역할 변경·제거',
+        owner: 'always',
+        member: 'never',
+        viewer: 'never',
+        effective: 'always',
+        condition: null,
+        note: null,
+      },
+    ],
+  }
+
+  await page.route(`**/api/v1/projects/${project.id}/members`, async (route) => {
+    if (route.request().method() !== 'GET') {
+      await route.fallback()
+      return
+    }
+    memberGets += 1
+    if (membersShouldFail) {
+      await route.fulfill({ status: 503, json: { detail: 'temporary members refresh error' } })
+      return
+    }
+    await route.fulfill({
+      json: {
+        items: [
+          { user_id: 'me-1', email: 'dev@oneflow.local', display_name: 'Dev User', role: 'owner' },
+          { user_id: 'u-alex', email: 'alex@oneflow.local', display_name: 'Alex Kim', role: 'member' },
+        ],
+        total: 2,
+      },
+    })
+  })
+  await page.route(`**/api/v1/projects/${project.id}/permissions`, async (route) => {
+    permissionGets += 1
+    if (permissionsShouldFail) {
+      await route.fulfill({ status: 503, json: { detail: 'temporary permission refresh error' } })
+      return
+    }
+    await route.fulfill({ json: permissionReport })
+  })
+
+  await page.setViewportSize({ width: 1280, height: 720 })
+  await page.goto(`/projects/${project.id}/settings?tab=members`)
+  const panel = page.getByRole('region', { name: '프로젝트 멤버 설정' })
+  const email = panel.getByLabel('추가할 멤버 이메일')
+  const search = panel.getByPlaceholder('이름 또는 이메일 검색')
+  await email.fill('pending.member@oneflow.local')
+  await search.fill('alex')
+  await panel.getByLabel('멤버 역할 필터').selectOption('member')
+
+  membersShouldFail = true
+  await panel.getByRole('button', { name: '프로젝트 멤버 새로고침' }).click()
+  const membersAlert = panel.getByRole('alert').filter({ hasText: '최신 프로젝트 멤버' })
+  await expect(membersAlert).toContainText('마지막 목록과 검색·필터·초대 초안을 유지합니다.')
+  await expect(panel.getByText('alex@oneflow.local')).toBeVisible()
+  await expect(email).toHaveValue('pending.member@oneflow.local')
+  await expect(email).toBeDisabled()
+  await expect(search).toHaveValue('alex')
+  await expect(panel.getByLabel('멤버 역할 필터')).toHaveValue('member')
+  await expect(panel.getByLabel('Alex Kim 역할')).toBeDisabled()
+  await expect(panel.getByRole('button', { name: 'Alex Kim 제거' })).toBeDisabled()
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/project-members-lifecycle-ui-314/desktop-members-error.png',
+    fullPage: true,
+  })
+
+  membersShouldFail = false
+  await membersAlert.getByRole('button', { name: '프로젝트 멤버 다시 시도' }).click()
+  await expect(membersAlert).toHaveCount(0)
+  await expect(email).toBeEnabled()
+  await expect(email).toHaveValue('pending.member@oneflow.local')
+  await expect(panel.getByLabel('Alex Kim 역할')).toBeEnabled()
+
+  permissionsShouldFail = true
+  const permissions = page.getByRole('region', { name: '권한' })
+  await permissions.getByRole('button', { name: '권한 보고서 새로고침' }).click()
+  const permissionAlert = permissions.getByRole('alert').filter({ hasText: '최신 권한 보고서' })
+  await expect(permissionAlert).toContainText('마지막으로 확인한 권한을 표시합니다.')
+  await expect(permissions).toContainText('멤버 추가·역할 변경·제거')
+  await expect(panel.getByText('alex@oneflow.local')).toBeVisible()
+
+  await page.setViewportSize({ width: 320, height: 740 })
+  await permissionAlert.scrollIntoViewIfNeeded()
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/project-members-lifecycle-ui-314/mobile-permission-error-320.png',
+    fullPage: true,
+  })
+
+  permissionsShouldFail = false
+  await permissionAlert.getByRole('button', { name: '권한 보고서 다시 시도' }).click()
+  await expect(permissionAlert).toHaveCount(0)
+  await expect(email).toHaveValue('pending.member@oneflow.local')
+  expect(memberGets).toBeGreaterThanOrEqual(3)
+  expect(permissionGets).toBeGreaterThanOrEqual(3)
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/project-members-lifecycle-ui-314/mobile-recovered-320.png',
+    fullPage: true,
+  })
+})
+
 test('멤버 패널: 뷰어 옵션을 제공하고 역할 변경 payload를 보낸다', async ({ page }) => {
   let updateAttempts = 0
   await page.route('**/api/v1/projects', (route) => route.fulfill({ json: projects }))
