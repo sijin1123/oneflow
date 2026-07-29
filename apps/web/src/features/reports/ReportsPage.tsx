@@ -1,6 +1,6 @@
-import { ArrowUpRight, Download, Table2, Timeline, TrendingUp } from 'lucide-react'
+import { ArrowUpRight, CircleAlert, Download, RefreshCw, Table2, Timeline, TrendingUp } from 'lucide-react'
 import { useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 
 import { EmptyState, ErrorState, ListSkeleton } from '@/components/shell/states'
@@ -54,12 +54,16 @@ type PortfolioTotals = {
 }
 
 type PortfolioReport = { items: PortfolioItem[]; totals: PortfolioTotals; total: number }
+type RetainedPortfolioReport = { data: PortfolioReport; includeArchived: boolean }
+
+const RETAINED_PORTFOLIO_REPORT_KEY = ['portfolio-report', 'retained-scope'] as const
 
 function usePortfolio(includeArchived: boolean) {
   return useQuery({
     queryKey: ['portfolio-report', includeArchived],
     queryFn: () =>
       api<PortfolioReport>(`/api/v1/reports/portfolio?include_archived=${includeArchived}`),
+    placeholderData: keepPreviousData,
   })
 }
 
@@ -90,14 +94,21 @@ export function ReportsPage() {
   const [view, setView] = useState<'table' | 'timeline' | 'trend'>('table')
   const [scheduleFilter, setScheduleFilter] = useState<ScheduleFilter>('all')
   const report = usePortfolio(includeArchived)
+  const queryClient = useQueryClient()
   // Single shared filter state across both views (v75.1 R1-⑥).
   const timeline = usePortfolioTimeline(includeArchived)
   const navigate = useNavigate()
+  const retainedReport = report.isError
+    ? queryClient.getQueryData<RetainedPortfolioReport>(RETAINED_PORTFOLIO_REPORT_KEY)
+    : null
+  const reportData = report.data ?? retainedReport?.data
+  const reportDataIncludesArchived = retainedReport?.includeArchived
+    ?? (report.isPlaceholderData ? !includeArchived : includeArchived)
 
-  if (report.isPending) return <ListSkeleton />
-  if (report.isError) return <ErrorState error={report.error} onRetry={() => report.refetch()} />
+  if (report.isPending && !reportData) return <ListSkeleton />
+  if (report.isError && !reportData) return <ErrorState error={report.error} onRetry={() => report.refetch()} />
 
-  const { items, totals } = report.data
+  const { items, totals } = reportData!
   const budgetRatio = (i: PortfolioItem) =>
     i.budget && i.budget > 0 ? `${Math.round((i.cost_total / i.budget) * 100)}%` : '—'
   const overdueTone = totals.overdue > 0 ? 'danger' : 'neutral'
@@ -132,7 +143,15 @@ export function ReportsPage() {
             <input
               type="checkbox"
               checked={includeArchived}
-              onChange={(e) => setIncludeArchived(e.target.checked)}
+              onChange={(e) => {
+                if (reportData) {
+                  queryClient.setQueryData<RetainedPortfolioReport>(RETAINED_PORTFOLIO_REPORT_KEY, {
+                    data: reportData,
+                    includeArchived: reportDataIncludesArchived,
+                  })
+                }
+                setIncludeArchived(e.target.checked)
+              }}
               className="h-3.5 w-3.5 accent-of-accent"
             />
             아카이브 포함
@@ -149,6 +168,27 @@ export function ReportsPage() {
         </>
       }
     >
+      {report.isError && retainedReport?.data ? (
+        <div
+          role="alert"
+          className="flex min-w-0 flex-col gap-3 rounded-of border border-of-danger/25 bg-of-danger/5 px-3 py-3 sm:flex-row sm:items-center sm:justify-between"
+        >
+          <div className="flex min-w-0 items-start gap-2">
+            <CircleAlert size={15} className="mt-0.5 shrink-0 text-of-danger" aria-hidden="true" />
+            <div className="min-w-0">
+              <p className="text-xs font-semibold text-of-text">
+                {includeArchived ? '아카이브 포함' : '현재 프로젝트'} 범위를 불러오지 못했습니다.
+              </p>
+              <p className="mt-0.5 break-words text-[11px] leading-4 text-of-muted">
+                {retainedReport.includeArchived ? '아카이브 포함' : '현재 프로젝트'} 범위의 마지막 성공 결과를 유지합니다.
+              </p>
+            </div>
+          </div>
+          <Button type="button" size="sm" variant="outline" className="w-full shrink-0 sm:w-auto" onClick={() => void report.refetch()}>
+            <RefreshCw size={13} aria-hidden="true" /> 이 범위 다시 시도
+          </Button>
+        </div>
+      ) : null}
       <ReportingSummaryGrid className="grid-cols-2 xl:grid-cols-6">
         <ReportingMetricCard label="프로젝트" value={`${totals.projects}개`} detail="표시 범위" />
         <ReportingMetricCard

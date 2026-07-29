@@ -38,11 +38,11 @@ export function ReportingSurface({
     (item) => item.to !== '/initiatives' || initiativesEnabled,
   )
   return (
-    <div className="mx-auto flex w-full max-w-6xl min-w-0 flex-col gap-5 px-4 py-5 sm:px-6">
-      <header className="flex min-w-0 flex-col gap-4 border-b border-of-border pb-4">
+    <div className="mx-auto flex w-full max-w-6xl min-w-0 flex-col gap-4 px-3 py-4 sm:gap-5 sm:px-6 sm:py-5">
+      <header className="flex min-w-0 flex-col gap-3 border-b border-of-border pb-3 sm:gap-4 sm:pb-4">
         <div className="flex min-w-0 flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div className="min-w-0">
-            <div className="mb-2 flex min-w-0 flex-wrap items-center gap-2 text-[11px] font-medium text-of-muted">
+            <div className="mb-1.5 flex min-w-0 flex-wrap items-center gap-2 text-[11px] font-medium text-of-muted sm:mb-2">
               <span className="inline-flex items-center gap-1 rounded-of border border-of-border bg-of-surface px-2 py-1">
                 <Gauge size={12} aria-hidden="true" />
                 Reporting
@@ -57,7 +57,7 @@ export function ReportingSurface({
             ) : null}
           </div>
           {actions ? (
-            <div className="flex min-w-0 flex-wrap items-center gap-2 lg:justify-end">{actions}</div>
+            <div className="flex min-w-0 flex-wrap items-center gap-1.5 sm:gap-2 lg:justify-end">{actions}</div>
           ) : null}
         </div>
         <nav
