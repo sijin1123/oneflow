@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ ${EUID} -ne 0 ]]; then
+  printf 'run as root\n' >&2
+  exit 77
+fi
+runner_root=/opt/actions-runner/oneflow
+install -d -o github-runner -g github-runner -m 0750 "$runner_root"
+cd "$runner_root"
+
+if [[ ! -f "$runner_root/.runner" ]]; then
+  IFS= read -r registration_token
+  if [[ -z "$registration_token" ]]; then
+    printf 'registration token is required on standard input\n' >&2
+    exit 64
+  fi
+  release_json=$(curl --fail --silent --show-error --location \
+    https://api.github.com/repos/actions/runner/releases/latest)
+  runner_version=$(printf '%s' "$release_json" | jq -r '.tag_name | sub("^v"; "")')
+  archive="actions-runner-linux-x64-${runner_version}.tar.gz"
+  download_url=$(printf '%s' "$release_json" \
+    | jq -r --arg archive "$archive" \
+      '.assets[] | select(.name == $archive) | .browser_download_url')
+  [[ "$runner_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+  [[ "$download_url" == https://github.com/actions/runner/releases/download/* ]]
+
+  temporary_archive=$(mktemp "/tmp/${archive}.XXXXXX")
+  trap 'rm -f "$temporary_archive"' EXIT
+  curl --fail --silent --show-error --location "$download_url" -o "$temporary_archive"
+  tar -xzf "$temporary_archive" -C "$runner_root"
+  chown -R github-runner:github-runner "$runner_root"
+  ./bin/installdependencies.sh >/dev/null
+  runuser -u github-runner -- ./config.sh \
+    --url https://github.com/sijin1123/oneflow \
+    --token "$registration_token" \
+    --name oneflow-idc-10-100-100-83 \
+    --labels oneflow-deploy \
+    --work _work \
+    --unattended \
+    --replace
+  unset registration_token
+fi
+
+if ! compgen -G '/etc/systemd/system/actions.runner.sijin1123-oneflow.*.service' >/dev/null; then
+  ./svc.sh install github-runner
+fi
+./svc.sh start
+./svc.sh status

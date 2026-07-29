@@ -1,0 +1,11 @@
+[Unit]
+Description=Run OneFlow recurring meeting materialization daily (%i)
+
+[Timer]
+OnCalendar=*-*-* 00:30:00 UTC
+Persistent=true
+RandomizedDelaySec=5m
+Unit=oneflow-recurring-meetings@%i.service
+
+[Install]
+WantedBy=timers.target

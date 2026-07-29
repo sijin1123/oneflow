@@ -1,0 +1,33 @@
+[Unit]
+Description=OneFlow API (%i)
+After=network-online.target postgresql.service
+Wants=network-online.target
+Requires=postgresql.service
+ConditionPathIsDirectory=/opt/oneflow/%i/current/apps/api
+
+[Service]
+Type=simple
+User=oneflow
+Group=oneflow
+WorkingDirectory=/opt/oneflow/%i/current/apps/api
+Environment=HOME=/opt/oneflow/%i/shared
+Environment=PYTHONUNBUFFERED=1
+EnvironmentFile=/etc/oneflow/%i.database.env
+EnvironmentFile=/etc/oneflow/%i.env
+ExecStart=/opt/oneflow/%i/current/apps/api/.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port ${ONEFLOW_API_PORT} --proxy-headers --forwarded-allow-ips=127.0.0.1
+Restart=on-failure
+RestartSec=5s
+TimeoutStartSec=45s
+TimeoutStopSec=30s
+KillSignal=SIGINT
+UMask=0027
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/srv/oneflow/%i/uploads /opt/oneflow/%i/shared
+RestrictSUIDSGID=true
+
+[Install]
+WantedBy=multi-user.target

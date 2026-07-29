@@ -1,0 +1,11 @@
+[Unit]
+Description=Run OneFlow due-date alerts daily (%i)
+
+[Timer]
+OnCalendar=*-*-* 00:15:00 UTC
+Persistent=true
+RandomizedDelaySec=5m
+Unit=oneflow-due-alerts@%i.service
+
+[Install]
+WantedBy=timers.target
