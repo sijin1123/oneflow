@@ -78,6 +78,9 @@ export function QuickDock({
   const motionTimingRef = useRef<{ phase: 'opening' | 'closing'; deadline: number } | undefined>(undefined)
   const [collisionOffset, setCollisionOffset] = useState(0)
   const [dockPhase, setDockPhase] = useState<DockIconPhase>(open ? 'open' : 'closed')
+  const [reducedMotion, setReducedMotion] = useState(
+    () => window.matchMedia('(prefers-reduced-motion: reduce)').matches,
+  )
   const [motionSnapshot, setMotionSnapshot] = useState<DockMotionSnapshot>()
   const [motionRevision, setMotionRevision] = useState(0)
   const renderedDockPhase = open && dockPhase === 'closed' ? 'opening' : dockPhase
@@ -206,7 +209,6 @@ export function QuickDock({
   }
 
   useLayoutEffect(() => {
-    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
     if (open) {
       if (dockPhase === 'closed') {
         setMotionSnapshot(undefined)
@@ -222,7 +224,7 @@ export function QuickDock({
       setMotionSnapshot(snapshotMotion())
       setDockPhase(reducedMotion ? 'closed' : 'closing')
     }
-  }, [dockPhase, open])
+  }, [dockPhase, open, reducedMotion])
 
   useLayoutEffect(() => {
     if (dockPhase !== 'opening' && dockPhase !== 'closing') return
@@ -292,6 +294,7 @@ export function QuickDock({
   useEffect(() => {
     const media = window.matchMedia('(prefers-reduced-motion: reduce)')
     const settleMotion = (event: MediaQueryListEvent) => {
+      setReducedMotion(event.matches)
       if (!event.matches) return
       motionTimingRef.current = undefined
       setMotionSnapshot(undefined)
@@ -336,7 +339,6 @@ export function QuickDock({
     if (dockOpening || dockClosing) return
     setPanel('none')
     restoreTriggerFocusRef.current = true
-    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
     setMotionSnapshot(snapshotMotion())
     setDockPhase(reducedMotion ? 'closed' : 'closing')
     onOpenChange(false)
@@ -344,7 +346,6 @@ export function QuickDock({
 
   const openDock = () => {
     if (open || dockOpening || dockClosing) return
-    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
     setMotionSnapshot(undefined)
     setDockPhase(reducedMotion ? 'open' : 'opening')
     onOpenChange(true)
@@ -402,6 +403,7 @@ export function QuickDock({
       <div
         ref={dockRootRef}
         data-quick-dock
+        data-motion-preference={reducedMotion ? 'reduced' : 'full'}
         className="fixed bottom-3 right-3 z-40 transition-transform duration-[var(--of-duration-default)] motion-reduce:transition-none md:bottom-5 md:right-5"
         style={{ transform: `translateY(-${collisionOffset}px)` }}
       >
@@ -423,6 +425,7 @@ export function QuickDock({
           role={dockMounted ? 'navigation' : undefined}
           aria-label={dockMounted ? '빠른 도구' : undefined}
           data-quick-dock-surface
+          data-motion-preference={reducedMotion ? 'reduced' : 'full'}
           data-testid={dockMounted ? 'quick-dock-expanded' : undefined}
           data-phase={renderedDockPhase}
           style={dockOpening || dockClosing
