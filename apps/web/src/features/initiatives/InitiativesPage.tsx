@@ -1,5 +1,5 @@
-import { ListChecks, Search, SlidersHorizontal, X } from 'lucide-react'
-import { type ChangeEvent, useRef } from 'react'
+import { CircleAlert, ListChecks, RefreshCw, Search, SlidersHorizontal, X } from 'lucide-react'
+import { type ChangeEvent, useEffect, useRef } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 
 import { EmptyState, ErrorState, ListSkeleton } from '@/components/shell/states'
@@ -17,6 +17,7 @@ import {
 import {
   INITIATIVE_STATE_LABELS,
   type Initiative,
+  type InitiativeList,
   type InitiativeState,
   useInitiativeLabels,
   useInitiatives,
@@ -153,14 +154,29 @@ export function InitiativesPage() {
   const discovery = readInitiativeDiscovery(searchParams)
   const initiatives = useInitiatives(selectedLabelId)
   const labels = useInitiativeLabels()
+  const lastSuccessfulDirectory = useRef<{
+    data: InitiativeList
+    labelId: string
+  } | null>(null)
 
-  if (initiatives.isPending) return <ListSkeleton />
-  if (initiatives.isError)
+  useEffect(() => {
+    if (!initiatives.data || initiatives.isPlaceholderData || initiatives.isError) return
+    lastSuccessfulDirectory.current = {
+      data: initiatives.data,
+      labelId: selectedLabelId,
+    }
+  }, [initiatives.data, initiatives.isError, initiatives.isPlaceholderData, selectedLabelId])
+
+  const retainedDirectory = initiatives.isError ? lastSuccessfulDirectory.current : null
+  const directory = initiatives.data ?? retainedDirectory?.data
+
+  if (initiatives.isPending && !directory) return <ListSkeleton />
+  if (initiatives.isError && !directory)
     return <ErrorState error={initiatives.error} onRetry={() => initiatives.refetch()} />
   if (labels.isPending) return <ListSkeleton />
   if (labels.isError) return <ErrorState error={labels.error} onRetry={() => labels.refetch()} />
 
-  const items = initiatives.data.items
+  const items = directory?.items ?? []
   const visibleItems = discoverInitiatives(items, discovery)
   const activeDiscoveryCount = countActiveInitiativeDiscovery(discovery, selectedLabelId)
   const selectedInitiative =
@@ -232,10 +248,10 @@ export function InitiativesPage() {
         <form
           ref={discoveryFormRef}
           aria-label="이니셔티브 탐색"
-          className="min-w-0 space-y-2 border-b border-of-border-subtle pb-4"
+          className="min-w-0 space-y-2 border-b border-of-border-subtle pb-3 sm:pb-4"
           onSubmit={(event) => event.preventDefault()}
         >
-          <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center">
+          <div className="flex min-w-0 items-center gap-2">
             <label className="relative min-w-0 flex-1">
               <span className="sr-only">이니셔티브 검색</span>
               <Search
@@ -252,8 +268,41 @@ export function InitiativesPage() {
                 onChange={syncDiscoveryForm}
               />
             </label>
-            <InitiativeCreateDialog onCreated={openCreated} />
+            <div className="shrink-0">
+              <InitiativeCreateDialog onCreated={openCreated} />
+            </div>
           </div>
+          {initiatives.isError && retainedDirectory ? (
+            <section
+              role="alert"
+              className="flex min-w-0 flex-col gap-2 rounded-of border border-of-danger/20 bg-of-danger-soft/45 px-3 py-2.5 sm:flex-row sm:items-center sm:justify-between"
+            >
+              <div className="flex min-w-0 items-start gap-2">
+                <CircleAlert
+                  size={15}
+                  className="mt-0.5 shrink-0 text-of-danger"
+                  aria-hidden="true"
+                />
+                <div className="min-w-0">
+                  <p className="text-xs font-medium text-of-text">
+                    선택한 라벨의 이니셔티브를 불러오지 못했습니다
+                  </p>
+                  <p className="mt-0.5 text-[11px] leading-4 text-of-muted">
+                    마지막으로 확인한 {retainedDirectory.labelId ? '라벨 결과' : '전체 결과'}를 유지합니다.
+                  </p>
+                </div>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="self-start sm:self-auto"
+                onClick={() => initiatives.refetch()}
+              >
+                <RefreshCw size={13} /> 같은 요청 다시 시도
+              </Button>
+            </section>
+          ) : null}
           <div className="grid min-w-0 grid-cols-2 gap-2 xl:grid-cols-5">
             <Select
               name="label"
@@ -327,7 +376,7 @@ export function InitiativesPage() {
             ) : null}
           </div>
         </form>
-        <ReportingSummaryGrid className="grid-cols-2 gap-2 sm:gap-3">
+        <ReportingSummaryGrid className="grid-cols-2 gap-1.5 sm:gap-3">
           <ReportingMetricCard
             label="표시 중"
             value={`${visibleItems.length}개`}

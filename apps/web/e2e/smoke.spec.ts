@@ -15368,6 +15368,111 @@ test('이니셔티브 탐색은 URL 조합 필터와 정렬 및 초기화를 왕
   })
 })
 
+test('UI-298 모바일 이니셔티브는 라벨 요청 실패 중 마지막 디렉터리를 유지하고 정확히 재시도한다', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await mockApi(page)
+  const requests: string[] = []
+  let riskAttempts = 0
+  const labels: InitiativeLabel[] = [
+    {
+      id: 'label-risk',
+      name: '주의 전략',
+      color: '#dc2626',
+      created_at: '2026-07-01T00:00:00Z',
+      updated_at: '2026-07-01T00:00:00Z',
+    },
+  ]
+  const base: Initiative = {
+    id: 'ini-stable',
+    name: '안정적인 플랫폼 전략',
+    description: '마지막으로 확인한 전략 디렉터리',
+    owner_id: 'owner-1',
+    owner_name: 'Dev User',
+    owner_active: true,
+    state: 'in_progress',
+    start_date: '2026-07-01',
+    target_date: '2026-12-31',
+    health: 'on_track',
+    health_note: null,
+    health_updated_by: null,
+    health_updated_at: null,
+    is_mine: true,
+    can_claim_ownership: false,
+    connected_project_count: 1,
+    connected_work_item_count: 3,
+    follower_count: 1,
+    is_following: true,
+    labels: [],
+    projects: [{
+      project_id: project.id,
+      project_name: project.name,
+      work_package_count: 4,
+      done_work_package_count: 2,
+    }],
+    created_at: '2026-07-01T00:00:00Z',
+    updated_at: '2026-07-03T00:00:00Z',
+  }
+  const risk: Initiative = {
+    ...base,
+    id: 'ini-risk',
+    name: '복구된 위험 전략',
+    health: 'at_risk',
+    labels,
+  }
+
+  await page.route('**/api/v1/initiatives**', (route) => {
+    const url = new URL(route.request().url())
+    if (url.pathname.endsWith('/initiatives/labels')) {
+      return route.fulfill({ json: { items: labels, total: labels.length } })
+    }
+    if (!url.pathname.endsWith('/initiatives')) return route.fallback()
+    const label = url.searchParams.get('label_id') ?? ''
+    requests.push(label)
+    if (label === 'label-risk') riskAttempts += 1
+    if (label === 'label-risk' && riskAttempts <= 2) {
+      return route.fulfill({ status: 503, json: { detail: '전략 집계를 갱신하고 있습니다' } })
+    }
+    const items = label === 'label-risk' ? [risk] : [base]
+    return route.fulfill({ json: { items, total: items.length } })
+  })
+
+  await page.goto('/initiatives')
+  await expect(page.getByRole('button', { name: '안정적인 플랫폼 전략', exact: true })).toBeVisible()
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/mobile-initiatives-ui-298/directory-390.png',
+    fullPage: true,
+  })
+  await page.getByLabel('이니셔티브 라벨 필터').selectOption('label-risk')
+
+  const retainedAlert = page.getByRole('alert')
+  await expect(retainedAlert).toContainText('선택한 라벨의 이니셔티브를 불러오지 못했습니다')
+  await expect(retainedAlert).toContainText('마지막으로 확인한 전체 결과를 유지합니다')
+  await expect(page.getByRole('button', { name: '안정적인 플랫폼 전략', exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: '복구된 위험 전략', exact: true })).toHaveCount(0)
+  await expectNoHorizontalOverflow(page)
+
+  await page.setViewportSize({ width: 320, height: 740 })
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/mobile-initiatives-ui-298/retained-error-320.png',
+    fullPage: true,
+  })
+
+  await retainedAlert.getByRole('button', { name: '같은 요청 다시 시도' }).click()
+  await expect(page.getByRole('button', { name: '복구된 위험 전략', exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: '안정적인 플랫폼 전략', exact: true })).toHaveCount(0)
+  expect(requests.filter((label) => label === 'label-risk')).toHaveLength(3)
+  await expectNoHorizontalOverflow(page)
+  await page.getByRole('button', { name: '복구된 위험 전략', exact: true }).scrollIntoViewIfNeeded()
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/mobile-initiatives-ui-298/recovered-320.png',
+    fullPage: true,
+  })
+})
+
 test('파일 업로드가 raw body POST로 나가고 다운로드 링크가 생긴다', async ({ page }) => {
   await mockApi(page)
   let uploaded = false
