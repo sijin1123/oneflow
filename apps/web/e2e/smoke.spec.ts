@@ -31784,6 +31784,79 @@ test('로그인 지원 큐는 범위 밖 페이지와 API 권한 변경을 복�
   await expect(page.getByRole('heading', { name: '로그인 지원' })).toHaveCount(0)
 })
 
+test('모바일 로그인 지원 큐는 실패한 상태 범위에서 마지막 목록과 정확한 재시도를 유지한다', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 320, height: 740 })
+  await mockApi(page)
+  const pending = authAssistanceFixture({
+    id: 'assist-mobile-pending',
+    email: 'pending@oneflow.local',
+  })
+  const resolved = authAssistanceFixture({
+    id: 'assist-mobile-resolved',
+    status: 'resolved',
+    email: 'resolved@oneflow.local',
+    triage_note: '본인 확인 및 접근 복구 완료',
+    triaged_at: '2026-07-15T02:00:00Z',
+    version: 2,
+  })
+  const requestedStatuses: string[] = []
+  let resolvedAttempts = 0
+
+  await page.route('**/api/v1/admin/auth-assistance-requests**', async (route) => {
+    if (route.request().method() !== 'GET') return route.fallback()
+    const url = new URL(route.request().url())
+    const requestedStatus = url.searchParams.get('status') ?? 'all'
+    requestedStatuses.push(requestedStatus)
+    if (requestedStatus === 'resolved') {
+      resolvedAttempts += 1
+      if (resolvedAttempts === 1) {
+        await route.fulfill({ status: 503, json: { detail: 'assistance queue unavailable' } })
+        return
+      }
+      await route.fulfill({
+        json: { items: [resolved], total: 1, limit: 50, offset: 0 },
+      })
+      return
+    }
+    await route.fulfill({
+      json: { items: [pending], total: 1, limit: 50, offset: 0 },
+    })
+  })
+
+  await page.goto('/admin/auth-assistance')
+  const mobileList = page.getByRole('list', { name: '모바일 로그인 지원 요청' })
+  await expect(mobileList.getByText('pending@oneflow.local')).toBeVisible()
+  await expect(page.getByRole('button', { name: '로그인 지원 요청 새로고침' })).toBeVisible()
+
+  await page.getByLabel('로그인 지원 상태').selectOption('resolved')
+  await expect(page).toHaveURL(/status=resolved/)
+  const retainedAlert = page.getByRole('alert').filter({ hasText: '마지막으로 확인한 목록' })
+  await expect(retainedAlert).toBeVisible()
+  await expect(mobileList.getByText('pending@oneflow.local')).toBeVisible()
+  await expect(mobileList.getByText('resolved@oneflow.local')).toHaveCount(0)
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/mobile-auth-assistance-lifecycle-ui-304/retained-error-320.png',
+    fullPage: true,
+  })
+
+  await retainedAlert.getByRole('button', { name: '다시 시도' }).click()
+  await expect(mobileList.getByText('resolved@oneflow.local')).toBeVisible()
+  await expect(mobileList.getByText('pending@oneflow.local')).toHaveCount(0)
+  await expect(retainedAlert).toHaveCount(0)
+  await expect(page).toHaveURL(/status=resolved/)
+  await expect(page.getByRole('button', { name: '빠른 도구 열기' })).toBeVisible()
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/mobile-auth-assistance-lifecycle-ui-304/recovered-320.png',
+    fullPage: true,
+  })
+
+  expect(requestedStatuses).toEqual(['all', 'resolved', 'resolved'])
+})
+
 test('로그인 지원 큐는 비관리자를 민감한 collection GET 전에 차단한다', async ({ page }) => {
   await mockApi(page)
   await page.route('**/api/v1/me', (route) => route.fulfill({

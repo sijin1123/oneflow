@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { api } from '@/lib/api'
 
@@ -52,6 +52,8 @@ export function useAdminAuthAssistance(filters: AuthAssistanceFilters, enabled =
     enabled,
     staleTime: 0,
     gcTime: 0,
+    placeholderData: keepPreviousData,
+    retry: false,
   })
 }
 
