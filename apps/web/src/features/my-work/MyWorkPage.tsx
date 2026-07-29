@@ -19,7 +19,7 @@ import {
   TimerReset,
   type LucideIcon,
 } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom'
 
 import { EmptyState, ErrorState, ListSkeleton } from '@/components/shell/states'
@@ -54,7 +54,9 @@ import { cn } from '@/lib/utils'
 
 import {
   type MyActivity,
+  type MyActivityList,
   type MyWorkItemRelationship,
+  type MyWorkItemList,
   type MyWorkItemSort,
   type MyWorkItemState,
   type MyWorkPackage,
@@ -215,9 +217,32 @@ function MyWorkProfileSurface({
     enabled: activityTab,
   })
   const query = activityTab ? activities : workItems
-  const activityItems = activities.data?.items ?? []
-  const workItemItems = workItems.data?.items ?? []
-  const total = query.data?.total ?? 0
+  const retainedWorkItems = useRef<Partial<Record<MyWorkItemRelationship, MyWorkItemList>>>({})
+  const retainedActivities = useRef<MyActivityList | null>(null)
+
+  useEffect(() => {
+    if (!workItems.data || workItems.isPlaceholderData) return
+    retainedWorkItems.current[relationship] = workItems.data
+  }, [relationship, workItems.data, workItems.isPlaceholderData])
+
+  useEffect(() => {
+    if (!activities.data || activities.isPlaceholderData) return
+    retainedActivities.current = activities.data
+  }, [activities.data, activities.isPlaceholderData])
+
+  const activityData = activities.isPlaceholderData
+    ? retainedActivities.current
+    : (activities.data ?? retainedActivities.current)
+  const workItemData = workItems.isPlaceholderData
+    ? retainedWorkItems.current[relationship]
+    : (workItems.data ?? retainedWorkItems.current[relationship])
+  const displayedData = activityTab ? activityData : workItemData
+  const activityItems = activityData?.items ?? []
+  const workItemItems = workItemData?.items ?? []
+  const total = displayedData?.total ?? 0
+  const displayedOffset = displayedData?.offset ?? offset
+  const hasRetainedResults = query.isError && Boolean(displayedData)
+  const isRefreshingResults = query.isFetching && Boolean(displayedData)
   const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
 
   const updateParams = (updates: Record<string, string | null>) => {
@@ -257,7 +282,7 @@ function MyWorkProfileSurface({
     <div className="flex min-h-full min-w-0 flex-col bg-of-surface">
       <FrameContextActions>
         <div role="toolbar" aria-label="내 작업 화면 제어" className="flex items-center gap-1.5">
-          {query.data ? (
+          {displayedData ? (
             <span className="px-1 text-xs tabular-nums text-of-muted">{total}건</span>
           ) : null}
           <Button
@@ -353,9 +378,33 @@ function MyWorkProfileSurface({
             </Button>
           </section>
 
-          {query.isPending ? (
+          {hasRetainedResults ? (
+            <div
+              role="alert"
+              className="mb-3 flex min-w-0 flex-col gap-2 border-y border-of-danger/30 bg-of-danger-soft px-3 py-2 text-xs text-of-danger sm:flex-row sm:items-center sm:justify-between"
+            >
+              <span className="min-w-0">
+                요청한 조건을 불러오지 못해 이전 결과를 유지합니다.
+              </span>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="self-start sm:self-auto"
+                onClick={() => query.refetch()}
+              >
+                같은 요청 다시 시도
+              </Button>
+            </div>
+          ) : isRefreshingResults ? (
+            <p role="status" className="mb-3 border-y border-of-border-subtle px-3 py-2 text-xs text-of-muted">
+              요청한 조건으로 결과를 갱신하고 있습니다.
+            </p>
+          ) : null}
+
+          {query.isPending && !displayedData ? (
             <ListSkeleton rows={6} />
-          ) : query.isError ? (
+          ) : query.isError && !displayedData ? (
             <ErrorState error={query.error} onRetry={() => query.refetch()} />
           ) : activityTab ? (
             activityItems.length === 0 ? (
@@ -407,21 +456,27 @@ function MyWorkProfileSurface({
             />
           )}
 
-          {query.data && (offset > 0 || offset + query.data.items.length < total) ? (
-            <nav aria-label="내 작업 페이지" className="mt-4 flex items-center justify-between gap-3">
+          {displayedData && (displayedOffset > 0 || displayedOffset + displayedData.items.length < total) ? (
+            <nav
+              aria-label="내 작업 페이지"
+              className="mt-4 flex items-center justify-between gap-3 pr-16 sm:pr-0"
+            >
               <span className="text-xs tabular-nums text-of-muted">
-                {total === 0 ? 0 : offset + 1}-
-                {Math.min(offset + query.data.items.length, total)} / {total}
+                {total === 0 ? 0 : displayedOffset + 1}-
+                {Math.min(displayedOffset + displayedData.items.length, total)} / {total}
               </span>
               <div className="flex gap-1">
                 <Button
                   size="icon"
                   variant="outline"
                   aria-label="이전 페이지"
-                  disabled={offset === 0}
+                  disabled={displayedOffset === 0 || isRefreshingResults}
                   onClick={() =>
                     updateParams({
-                      offset: offset > PROFILE_PAGE_SIZE ? String(offset - PROFILE_PAGE_SIZE) : null,
+                      offset:
+                        displayedOffset > PROFILE_PAGE_SIZE
+                          ? String(displayedOffset - PROFILE_PAGE_SIZE)
+                          : null,
                     })
                   }
                 >
@@ -431,9 +486,13 @@ function MyWorkProfileSurface({
                   size="icon"
                   variant="outline"
                   aria-label="다음 페이지"
-                  disabled={offset + query.data.items.length >= total}
+                  disabled={
+                    hasRetainedResults
+                    || isRefreshingResults
+                    || displayedOffset + displayedData.items.length >= total
+                  }
                   onClick={() =>
-                    updateParams({ offset: String(offset + PROFILE_PAGE_SIZE) })
+                    updateParams({ offset: String(displayedOffset + PROFILE_PAGE_SIZE) })
                   }
                 >
                   <ChevronRight />
