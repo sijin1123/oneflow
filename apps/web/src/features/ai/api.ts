@@ -10,6 +10,11 @@ export type AiSummaryResponse = {
   provider: string
 }
 
+export type AiSummaryRequest = {
+  workPackageId: string
+  question?: string
+}
+
 export const aiCapabilitiesKey = ['capabilities'] as const
 
 export function useCapabilities() {
@@ -21,12 +26,22 @@ export function useCapabilities() {
   })
 }
 
+function summarizeWorkPackage({ workPackageId, question }: AiSummaryRequest) {
+  return api<AiSummaryResponse>(`/api/v1/work-packages/${workPackageId}/summary`, {
+    method: 'POST',
+    body: question ? JSON.stringify({ question }) : undefined,
+  })
+}
+
 export function useSummarize(wpId: string) {
   return useMutation({
     mutationFn: (question?: string) =>
-      api<AiSummaryResponse>(`/api/v1/work-packages/${wpId}/summary`, {
-        method: 'POST',
-        body: question ? JSON.stringify({ question }) : undefined,
-      }),
+      summarizeWorkPackage({ workPackageId: wpId, question }),
+  })
+}
+
+export function useSummarizeRequest() {
+  return useMutation({
+    mutationFn: summarizeWorkPackage,
   })
 }

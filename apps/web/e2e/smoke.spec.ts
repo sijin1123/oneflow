@@ -2839,7 +2839,7 @@ test('빠른 도구 dock은 개인 메모를 compact·expanded·modal 상태로 
   await viewerPage.close()
 })
 
-test('AI workspace는 Ask 요약과 검토 후 Build 생성을 실제 API에 연결한다', async ({ page }) => {
+test('UI-291 모바일 AI workspace는 Ask exact retry와 검토 후 Build 생성을 실제 API에 연결한다', async ({ page }) => {
   await mockApi(page)
   await page.route('**/api/v1/capabilities', (route) => route.fulfill({ json: { ai_summary_enabled: true } }))
   await page.route('**/api/v1/me/work', (route) => route.fulfill({
@@ -2861,11 +2861,15 @@ test('AI workspace는 Ask 요약과 검토 후 Build 생성을 실제 API에 연
       recent_activity: [],
     },
   }))
-  let summaryRequests = 0
+  const summaryPayloads: Array<Record<string, unknown>> = []
   await page.route(`**/api/v1/work-packages/${wpA.id}/summary`, async (route) => {
-    summaryRequests += 1
+    summaryPayloads.push(route.request().postDataJSON() as Record<string, unknown>)
     expect(route.request().method()).toBe('POST')
     expect(route.request().postDataJSON()).toEqual({ question: '현재 범위와 남은 검증은 무엇인가요?' })
+    if (summaryPayloads.length === 1) {
+      await route.fulfill({ status: 503, json: { detail: 'temporary ask failure' } })
+      return
+    }
     await route.fulfill({
       json: {
         work_package_id: wpA.id,
@@ -2906,16 +2910,33 @@ test('AI workspace는 Ask 요약과 검토 후 Build 생성을 실제 API에 연
   await expect(aiNav.getByRole('link', { name: '새 대화' })).toHaveAttribute('href', '/ai?new=1')
   await expect(aiNav.getByRole('link', { name: 'AI 설정' })).toHaveAttribute('href', '/admin/ai')
   await expect(page.getByRole('heading', { name: 'OneFlow AI' })).toBeVisible()
+  const frameActions = page.getByTestId('frame-context-actions')
+  await expect(frameActions.getByText('사용 가능')).toBeVisible()
+  await expect(frameActions.getByRole('button', { name: '새 AI 대화' })).toBeVisible()
+  await expect(frameActions.getByRole('link', { name: 'AI 설정' })).toHaveAttribute('href', '/admin/ai')
   await expect(page.getByRole('tab', { name: 'Ask' })).toHaveAttribute('aria-selected', 'true')
   await expect(page.getByLabel('작업 범위')).toHaveValue(wpA.id)
 
   const question = page.getByPlaceholder('선택한 작업에서 확인할 내용을 입력하세요')
   await question.fill('현재 범위와 남은 검증은 무엇인가요?')
   await page.getByRole('button', { name: '질문 보내기' }).click()
+  const askFailure = page.getByRole('alert').filter({ hasText: 'temporary ask failure' })
+  await expect(askFailure).toContainText(`${project.name} · ${wpA.subject}`)
+  await expect(question).toHaveValue('현재 범위와 남은 검증은 무엇인가요?')
+  await page.setViewportSize({ width: 320, height: 740 })
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/mobile-ai-workspace-ui-291/ask-error-320.png',
+  })
+  await askFailure.getByRole('button', { name: '같은 요청 다시 시도' }).click()
   await expect(page.getByText('API 구현의 현재 범위와 남은 검증을 정리했습니다.')).toBeVisible()
   await expect(page.getByRole('link', { name: new RegExp(`출처: ${project.name}`) })).toHaveAttribute('href', `/projects/${project.id}/work-packages?wp=${wpA.id}`)
-  expect(summaryRequests).toBe(1)
+  expect(summaryPayloads).toEqual([
+    { question: '현재 범위와 남은 검증은 무엇인가요?' },
+    { question: '현재 범위와 남은 검증은 무엇인가요?' },
+  ])
 
+  await page.setViewportSize({ width: 1440, height: 960 })
   await page.getByRole('tab', { name: 'Build' }).click()
   await expect(page.getByRole('tab', { name: 'Build' })).toHaveAttribute('aria-selected', 'true')
   await expect(page.getByLabel('프로젝트')).toHaveValue(project.id)
@@ -2937,7 +2958,6 @@ test('AI workspace는 Ask 요약과 검토 후 Build 생성을 실제 API에 연
     { subject: createdWorkPackage.subject, type: 'task', status: 'backlog', priority: 'urgent', due_date: '2026-08-01' },
   ])
 
-  await page.setViewportSize({ width: 1440, height: 960 })
   await page.screenshot({ path: '../../docs/screenshots/redevelopment/ai-ask-build-ui/desktop-build.png' })
   await page.setViewportSize({ width: 390, height: 844 })
   await page.getByRole('tab', { name: 'Ask' }).click()
@@ -2948,6 +2968,9 @@ test('AI workspace는 Ask 요약과 검토 후 Build 생성을 실제 API에 연
   expect(sendBox).not.toBeNull()
   expect(quickDockBox).not.toBeNull()
   expect((sendBox?.x ?? 0) + (sendBox?.width ?? 0)).toBeLessThanOrEqual(quickDockBox?.x ?? 0)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/mobile-ai-workspace-ui-291/ask-ready-390.png',
+  })
   await page.screenshot({ path: '../../docs/screenshots/redevelopment/ai-ask-build-ui/mobile-ask.png' })
   await page.getByRole('button', { name: '사이드바 열기' }).click()
   await expect(page.getByRole('dialog', { name: '모바일 내비게이션' })).toBeVisible()

@@ -6,6 +6,7 @@ import {
   ListChecks,
   LoaderCircle,
   Plus,
+  RefreshCw,
   Send,
   Settings,
   Sparkles,
@@ -14,6 +15,7 @@ import {
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 
+import { FrameContextActions } from '@/components/shell/FrameContextActions'
 import { ErrorState, ListSkeleton } from '@/components/shell/states'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -27,7 +29,7 @@ import { useProjects } from '@/features/projects/api'
 import { useCreateWorkPackage } from '@/features/work-packages/api'
 import { PRIORITY_LABELS, type WorkPackage, type WpPriority } from '@/features/work-packages/types'
 
-import { useCapabilities, useSummarize } from './api'
+import { useCapabilities, useSummarizeRequest } from './api'
 
 type AiMode = 'ask' | 'build'
 
@@ -35,6 +37,11 @@ type AskTurn = {
   id: number
   question: string
   answer: string
+  source: MyWorkPackage
+}
+
+type AskRequest = {
+  question: string
   source: MyWorkPackage
 }
 
@@ -56,6 +63,7 @@ export function AiWorkspacePage() {
   const [askWpId, setAskWpId] = useState('')
   const [askQuestion, setAskQuestion] = useState('이 작업의 핵심 내용을 요약해 주세요.')
   const [turns, setTurns] = useState<AskTurn[]>([])
+  const [failedAsk, setFailedAsk] = useState<AskRequest | null>(null)
   const [buildProjectId, setBuildProjectId] = useState('')
   const [buildSubject, setBuildSubject] = useState('')
   const [buildPriority, setBuildPriority] = useState<WpPriority>('none')
@@ -83,7 +91,7 @@ export function AiWorkspacePage() {
   )
   const selectedCandidate = candidates.find((item) => item.id === askWpId) ?? null
   const selectedProject = writableProjects.find((project) => project.id === buildProjectId) ?? null
-  const summary = useSummarize(askWpId)
+  const summary = useSummarizeRequest()
   const create = useCreateWorkPackage(buildProjectId)
   const enabled = capabilities.data?.ai_summary_enabled === true
 
@@ -91,6 +99,7 @@ export function AiWorkspacePage() {
     if (searchParams.get('new') !== '1') return
     setMode('ask')
     setTurns([])
+    setFailedAsk(null)
     setAskQuestion('이 작업의 핵심 내용을 요약해 주세요.')
     setBuildSubject('')
     setBuildPriority('none')
@@ -127,6 +136,7 @@ export function AiWorkspacePage() {
   const resetConversation = () => {
     setMode('ask')
     setTurns([])
+    setFailedAsk(null)
     setAskQuestion('이 작업의 핵심 내용을 요약해 주세요.')
     setBuildSubject('')
     setBuildPriority('none')
@@ -138,23 +148,36 @@ export function AiWorkspacePage() {
     window.requestAnimationFrame(() => promptRef.current?.focus())
   }
 
+  const runAsk = (request: AskRequest) => {
+    setFailedAsk(null)
+    summary.mutate(
+      {
+        workPackageId: request.source.id,
+        question: request.question,
+      },
+      {
+        onSuccess: (result) => {
+          setTurns((current) => [
+            ...current,
+            {
+              id: Date.now(),
+              question: request.question,
+              answer: result.summary,
+              source: request.source,
+            },
+          ])
+          setAskQuestion('')
+          setFailedAsk(null)
+        },
+        onError: () => setFailedAsk(request),
+      },
+    )
+  }
+
   const ask = () => {
     const question = askQuestion.trim()
     if (!enabled || !selectedCandidate || !question) return
-    summary.mutate(question, {
-      onSuccess: (result) => {
-        setTurns((current) => [
-          ...current,
-          {
-            id: Date.now(),
-            question,
-            answer: result.summary,
-            source: selectedCandidate,
-          },
-        ])
-        setAskQuestion('')
-      },
-    })
+    runAsk({ question, source: selectedCandidate })
   }
 
   const confirmBuild = () => {
@@ -181,33 +204,50 @@ export function AiWorkspacePage() {
   }
 
   return (
-    <div className="mx-auto flex min-h-[calc(100dvh-5.5rem)] w-full max-w-5xl min-w-0 flex-col px-4 py-4 sm:px-6">
-      <header className="flex min-w-0 flex-wrap items-center justify-between gap-3 border-b border-of-border pb-3">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            <span className="flex h-7 w-7 items-center justify-center rounded-of bg-of-accent-soft text-of-accent">
-              <Sparkles size={15} aria-hidden="true" />
-            </span>
-            <div>
-              <p className="text-[11px] text-of-muted">AI workspace</p>
-              <h1 className="text-sm font-semibold">OneFlow AI</h1>
-            </div>
-          </div>
-        </div>
-        <div className="flex flex-wrap items-center justify-end gap-2">
-          {capabilities.isPending ? <Badge variant="outline">기능 확인 중</Badge> : enabled ? <Badge variant="accent">사용 가능</Badge> : <Badge variant="outline">꺼짐</Badge>}
-          <Button variant="outline" size="sm" onClick={resetConversation}>
-            <Plus size={13} aria-hidden="true" /> 새 대화
+    <main className="mx-auto flex min-h-[calc(100dvh-5.5rem)] w-full max-w-5xl min-w-0 flex-col px-4 sm:px-6">
+      <FrameContextActions>
+        <div className="flex h-full w-full min-w-0 items-center justify-end gap-1 px-1.5 sm:gap-2 sm:px-2">
+          {capabilities.isPending ? (
+            <Badge variant="outline" className="max-w-20 truncate">확인 중</Badge>
+          ) : enabled ? (
+            <Badge variant="accent" className="max-w-20 truncate">사용 가능</Badge>
+          ) : (
+            <Badge variant="outline" className="max-w-20 truncate">꺼짐</Badge>
+          )}
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label="새 AI 대화"
+            title="새 AI 대화"
+            onClick={resetConversation}
+          >
+            <Plus size={14} aria-hidden="true" />
           </Button>
           {me.data?.is_admin ? (
-            <Link to="/admin/ai" className="inline-flex h-7 items-center gap-1.5 rounded-of border border-of-border bg-of-surface px-2 text-xs font-medium hover:bg-of-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus">
-              <Settings size={13} aria-hidden="true" /> 설정
+            <Link
+              to="/admin/ai"
+              aria-label="AI 설정"
+              title="AI 설정"
+              className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-of text-of-muted hover:bg-of-surface-hover hover:text-of-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus"
+            >
+              <Settings size={14} aria-hidden="true" />
             </Link>
           ) : null}
         </div>
-      </header>
+      </FrameContextActions>
 
-      <div className="flex justify-center border-b border-of-border py-3">
+      <div className="flex min-h-12 shrink-0 items-center justify-between gap-3 border-b border-of-border">
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-of bg-of-accent-soft text-of-accent">
+            <Sparkles size={15} aria-hidden="true" />
+          </span>
+          <div className="min-w-0">
+            <p className="truncate text-[11px] text-of-muted">실제 작업 데이터로 요청</p>
+            <h1 className="truncate text-sm font-semibold">
+              OneFlow AI · {mode === 'ask' ? 'Ask' : 'Build'}
+            </h1>
+          </div>
+        </div>
         <div role="tablist" aria-label="AI 모드" className="inline-flex h-8 items-center rounded-of bg-of-surface-2 p-0.5">
           {([
             ['ask', 'Ask', Bot],
@@ -285,7 +325,7 @@ export function AiWorkspacePage() {
             }}
           >
             <label htmlFor="ai-ask-scope" className="text-[11px] font-medium text-of-muted">작업 범위</label>
-            <Select id="ai-ask-scope" value={askWpId} disabled={!enabled || candidates.length === 0 || summary.isPending} onChange={(event) => { setAskWpId(event.target.value); summary.reset() }} className="mt-1">
+            <Select id="ai-ask-scope" value={askWpId} disabled={!enabled || candidates.length === 0 || summary.isPending} onChange={(event) => { setAskWpId(event.target.value); setFailedAsk(null); summary.reset() }} className="mt-1">
               {candidates.length === 0 ? <option value="">요약할 열린 작업 없음</option> : candidates.map((item) => (
                 <option key={item.id} value={item.id}>{item.project_name} · {item.subject}</option>
               ))}
@@ -299,7 +339,13 @@ export function AiWorkspacePage() {
                 disabled={!enabled || candidates.length === 0 || summary.isPending}
                 className="min-h-14 flex-1 resize-none border-0 bg-transparent p-1 shadow-none focus-visible:border-0 focus-visible:ring-0"
                 placeholder="선택한 작업에서 확인할 내용을 입력하세요"
-                onChange={(event) => { setAskQuestion(event.target.value); if (summary.isError) summary.reset() }}
+                onChange={(event) => {
+                  setAskQuestion(event.target.value)
+                  if (summary.isError) {
+                    setFailedAsk(null)
+                    summary.reset()
+                  }
+                }}
                 onKeyDown={(event) => {
                   if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
                     event.preventDefault()
@@ -311,7 +357,28 @@ export function AiWorkspacePage() {
                 {summary.isPending ? <LoaderCircle className="animate-spin motion-reduce:animate-none" /> : <Send />}
               </Button>
             </div>
-            {summary.error ? <p role="alert" className="mt-2 text-xs text-of-danger">{errorMessage(summary.error)}</p> : null}
+            {summary.error && failedAsk ? (
+              <div
+                role="alert"
+                className="mt-2 flex min-w-0 flex-wrap items-center justify-between gap-2 border-y border-of-danger/20 bg-of-danger/5 px-2 py-2 text-xs text-of-danger"
+              >
+                <span className="min-w-0">
+                  <span className="block font-medium">{errorMessage(summary.error)}</span>
+                  <span className="mt-0.5 block truncate text-[11px]">
+                    {failedAsk.source.project_name} · {failedAsk.source.subject}
+                  </span>
+                </span>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={summary.isPending}
+                  onClick={() => runAsk(failedAsk)}
+                >
+                  <RefreshCw size={13} aria-hidden="true" /> 같은 요청 다시 시도
+                </Button>
+              </div>
+            ) : null}
             <p className="mt-2 pr-14 text-[11px] text-of-muted sm:pr-0">상태·일정·우선순위·활동·예상시간 질문에 작업 데이터로 답하며 결과에 출처를 표시합니다.</p>
           </form>
         </section>
@@ -413,6 +480,6 @@ export function AiWorkspacePage() {
           </ModalContent>
         </Dialog.Portal>
       </Dialog.Root>
-    </div>
+    </main>
   )
 }
