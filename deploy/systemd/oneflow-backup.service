@@ -1,0 +1,12 @@
+[Unit]
+Description=Back up OneFlow PostgreSQL databases and uploads
+After=postgresql.service
+Requires=postgresql.service
+
+[Service]
+Type=oneshot
+User=root
+ExecStart=/usr/local/sbin/oneflow-backup both scheduled
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7

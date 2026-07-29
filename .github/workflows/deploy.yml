@@ -1,0 +1,97 @@
+name: deploy
+
+on:
+  workflow_run:
+    workflows: [ci]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      target:
+        description: Deployment target
+        required: true
+        default: both
+        type: choice
+        options: [both, dev, prod]
+
+concurrency:
+  group: oneflow-deployment
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: >-
+      (github.event_name == 'workflow_run' && github.event.workflow_run.event == 'push' && github.event.workflow_run.conclusion == 'success') ||
+      github.event_name == 'workflow_dispatch'
+    runs-on: [self-hosted, linux, x64, oneflow-deploy]
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - name: Resolve deployment target and commit
+        id: deployment
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          WORKFLOW_SHA: ${{ github.event.workflow_run.head_sha }}
+          MANUAL_TARGET: ${{ inputs.target }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [[ "$EVENT_NAME" == workflow_run ]]; then
+            printf 'target=both\n' >> "$GITHUB_OUTPUT"
+            printf 'sha=%s\n' "$WORKFLOW_SHA" >> "$GITHUB_OUTPUT"
+          else
+            printf 'target=%s\n' "$MANUAL_TARGET" >> "$GITHUB_OUTPUT"
+            sha=$(curl --fail --silent --show-error \
+              -H "Authorization: Bearer ${GH_TOKEN}" \
+              -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/${GITHUB_REPOSITORY}/commits/main" | jq -r .sha)
+            [[ "$sha" =~ ^[0-9a-f]{40}$ ]]
+            printf 'sha=%s\n' "$sha" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ steps.deployment.outputs.sha }}
+          fetch-depth: 1
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          cache-dependency-glob: apps/api/uv.lock
+
+      - name: Install web dependencies
+        working-directory: apps/web
+        run: npm ci
+
+      - name: Build and deploy development
+        if: steps.deployment.outputs.target == 'both' || steps.deployment.outputs.target == 'dev'
+        shell: bash
+        env:
+          VITE_ONEFLOW_API_BASE_URL: https://dev-oneflow.nexvione.net
+          DEPLOY_SHA: ${{ steps.deployment.outputs.sha }}
+        run: |
+          (cd apps/web && npm run build)
+          install -d "$RUNNER_TEMP/oneflow-web-dev"
+          rsync -a --delete apps/web/dist/ "$RUNNER_TEMP/oneflow-web-dev/"
+          sudo /usr/local/sbin/oneflow-deploy dev "$DEPLOY_SHA" "$GITHUB_WORKSPACE" "$RUNNER_TEMP/oneflow-web-dev"
+          /usr/local/sbin/oneflow-health-check dev external
+
+      - name: Build and deploy production
+        if: steps.deployment.outputs.target == 'both' || steps.deployment.outputs.target == 'prod'
+        shell: bash
+        env:
+          VITE_ONEFLOW_API_BASE_URL: https://oneflow.nexvione.net
+          DEPLOY_SHA: ${{ steps.deployment.outputs.sha }}
+        run: |
+          (cd apps/web && npm run build)
+          install -d "$RUNNER_TEMP/oneflow-web-prod"
+          rsync -a --delete apps/web/dist/ "$RUNNER_TEMP/oneflow-web-prod/"
+          sudo /usr/local/sbin/oneflow-deploy prod "$DEPLOY_SHA" "$GITHUB_WORKSPACE" "$RUNNER_TEMP/oneflow-web-prod"
+          /usr/local/sbin/oneflow-health-check prod external

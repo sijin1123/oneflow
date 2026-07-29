@@ -1,0 +1,10 @@
+[Unit]
+Description=Run OneFlow backups daily
+
+[Timer]
+OnCalendar=*-*-* 02:00:00 UTC
+Persistent=true
+RandomizedDelaySec=10m
+
+[Install]
+WantedBy=timers.target

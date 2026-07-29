@@ -1,0 +1,2 @@
+# The command validates target, commit SHA and all source paths before mutation.
+github-runner ALL=(root) NOPASSWD: /usr/local/sbin/oneflow-deploy

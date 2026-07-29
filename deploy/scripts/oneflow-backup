@@ -1,0 +1,71 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+target=${1:-}
+reason=${2:-manual}
+
+if [[ "$target" == both ]]; then
+  status=0
+  "$0" prod "$reason" || status=$?
+  "$0" dev "$reason" || status=$?
+  exit "$status"
+fi
+
+case "$target" in
+  prod)
+    database=oneflow_prod
+    uploads=/srv/oneflow/prod/uploads
+    ;;
+  dev)
+    database=oneflow_dev
+    uploads=/srv/oneflow/dev/uploads
+    ;;
+  *)
+    printf 'usage: %s {prod|dev|both} [reason]\n' "$0" >&2
+    exit 64
+    ;;
+esac
+
+if [[ ! "$reason" =~ ^[a-zA-Z0-9._-]{1,32}$ ]]; then
+  printf 'invalid backup reason\n' >&2
+  exit 64
+fi
+
+stamp=$(date -u +%Y%m%dT%H%M%SZ)
+daily_root="/var/backups/oneflow/daily/${target}"
+weekly_root="/var/backups/oneflow/weekly/${target}"
+monthly_root="/var/backups/oneflow/monthly/${target}"
+destination="${daily_root}/${stamp}-${reason}"
+install -d -m 0700 "$daily_root" "$weekly_root" "$monthly_root" "$destination"
+
+# DB first, uploads second: a later blob snapshot is safer than a later DB snapshot.
+runuser -u postgres -- pg_dump --format=custom "$database" > "$destination/database.dump"
+tar --create --gzip --file="$destination/uploads.tar.gz" --directory="$uploads" .
+sha256sum "$destination/database.dump" "$destination/uploads.tar.gz" > "$destination/SHA256SUMS"
+{
+  printf 'created_at=%s\n' "$stamp"
+  printf 'target=%s\n' "$target"
+  printf 'reason=%s\n' "$reason"
+  printf 'database=%s\n' "$database"
+  printf 'uploads=%s\n' "$uploads"
+  readlink -f "/opt/oneflow/${target}/current" 2>/dev/null | sed 's/^/release=/' || true
+} > "$destination/manifest.txt"
+
+day_of_week=$(date -u +%u)
+day_of_month=$(date -u +%d)
+if [[ "$day_of_week" == 7 ]]; then
+  cp -al "$destination" "$weekly_root/"
+fi
+if [[ "$day_of_month" == 01 ]]; then
+  cp -al "$destination" "$monthly_root/"
+fi
+
+# Retention: 14 daily, 8 weekly and 12 monthly generations.
+find "$daily_root" -mindepth 1 -maxdepth 1 -type d -printf '%T@ %p\n' \
+  | sort -nr | tail -n +15 | cut -d' ' -f2- | xargs -r rm -rf --
+find "$weekly_root" -mindepth 1 -maxdepth 1 -type d -printf '%T@ %p\n' \
+  | sort -nr | tail -n +9 | cut -d' ' -f2- | xargs -r rm -rf --
+find "$monthly_root" -mindepth 1 -maxdepth 1 -type d -printf '%T@ %p\n' \
+  | sort -nr | tail -n +13 | cut -d' ' -f2- | xargs -r rm -rf --
+
+printf 'backup complete: %s\n' "$destination"

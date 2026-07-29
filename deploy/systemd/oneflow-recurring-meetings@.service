@@ -1,0 +1,20 @@
+[Unit]
+Description=OneFlow recurring meeting materialization (%i)
+After=oneflow-api@%i.service
+ConditionPathIsDirectory=/opt/oneflow/%i/current/apps/api
+
+[Service]
+Type=oneshot
+User=oneflow
+Group=oneflow
+WorkingDirectory=/opt/oneflow/%i/current/apps/api
+Environment=HOME=/opt/oneflow/%i/shared
+EnvironmentFile=/etc/oneflow/%i.database.env
+EnvironmentFile=/etc/oneflow/%i.env
+ExecStart=/opt/oneflow/%i/current/apps/api/.venv/bin/python -m app.services.recurring_meetings --create
+UMask=0027
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/opt/oneflow/%i/shared

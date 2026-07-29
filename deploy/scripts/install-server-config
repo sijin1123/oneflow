@@ -1,0 +1,61 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ ${EUID} -ne 0 ]]; then
+  printf 'run as root\n' >&2
+  exit 77
+fi
+
+cloudflare_tunnel_only=false
+if [[ ${1:-} == --cloudflare-tunnel-only ]]; then
+  cloudflare_tunnel_only=true
+elif [[ $# -ne 0 ]]; then
+  printf 'usage: %s [--cloudflare-tunnel-only]\n' "$0" >&2
+  exit 64
+fi
+
+repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
+stamp=$(date -u +%Y%m%dT%H%M%SZ)
+backup="/root/oneflow-config-backup-${stamp}"
+install -d -m 0700 "$backup"
+for path in /etc/nginx /etc/systemd/system /etc/ssh/sshd_config.d /etc/sudoers.d; do
+  [[ -e "$path" ]] && cp -a "$path" "$backup/"
+done
+
+install -o root -g root -m 0755 "$repo_root/deploy/scripts/oneflow-deploy" /usr/local/sbin/oneflow-deploy
+install -o root -g root -m 0755 "$repo_root/deploy/scripts/oneflow-backup" /usr/local/sbin/oneflow-backup
+install -o root -g root -m 0755 "$repo_root/deploy/scripts/oneflow-health-check" /usr/local/sbin/oneflow-health-check
+install -o root -g root -m 0700 "$repo_root/deploy/scripts/oneflow-set-oauth-secret" /usr/local/sbin/oneflow-set-oauth-secret
+install -o root -g root -m 0700 "$repo_root/deploy/scripts/oneflow-provision-user" /usr/local/sbin/oneflow-provision-user
+install -o root -g root -m 0644 "$repo_root"/deploy/systemd/* /etc/systemd/system/
+install -o root -g root -m 0644 "$repo_root/deploy/nginx/oneflow.conf" /etc/nginx/conf.d/oneflow.conf
+install -d -o root -g root -m 0755 /etc/systemd/journald.conf.d
+install -o root -g root -m 0644 "$repo_root/deploy/journald/oneflow-retention.conf" \
+  /etc/systemd/journald.conf.d/oneflow-retention.conf
+install -o root -g root -m 0644 "$repo_root/deploy/logrotate/nginx" /etc/logrotate.d/nginx
+install -o root -g root -m 0440 "$repo_root/deploy/sudoers/github-runner-oneflow" /etc/sudoers.d/github-runner-oneflow
+
+install -d -o root -g oneflow -m 0750 /etc/oneflow
+for target in prod dev; do
+  if [[ ! -f "/etc/oneflow/${target}.env" ]]; then
+    install -o root -g oneflow -m 0640 \
+      "$repo_root/deploy/env/${target}.env.example" "/etc/oneflow/${target}.env"
+  fi
+done
+
+rm -f /etc/nginx/sites-enabled/default
+nginx -t
+systemctl unmask nginx.service
+systemctl enable --now nginx.service
+systemctl daemon-reload
+systemctl restart systemd-journald.service
+systemctl enable --now oneflow-backup.timer
+
+if $cloudflare_tunnel_only; then
+  ufw --force delete allow 80/tcp >/dev/null 2>&1 || true
+  ufw --force delete allow 443/tcp >/dev/null 2>&1 || true
+fi
+
+visudo -cf /etc/sudoers.d/github-runner-oneflow
+printf 'configuration installed; backup=%s\n' "$backup"
+printf 'API services remain stopped until rotated OAuth secrets are installed and a release is deployed.\n'

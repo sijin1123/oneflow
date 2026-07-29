@@ -171,3 +171,7 @@ docs/         클린룸 노트 · 검증 기록 · 스크린샷
 ```
 
 전체 계획·검증 이력: `../docs/ONEFLOW_PLAN.md` (워크스페이스 루트), 작업 원장: `../docs/PROJECT_WORKLOG.md`.
+
+운영·개발 IDC 배포 구성과 수동 절차는 `docs/server-setup-guide.md`,
+`docs/deployment-guide.md`, `docs/operations-runbook.md`를 참고한다. 운영
+PostgreSQL과 업로드는 로컬 개발 Compose와 공유하지 않는다.

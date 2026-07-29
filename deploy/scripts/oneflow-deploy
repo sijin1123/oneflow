@@ -1,0 +1,120 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+target=${1:-}
+commit_sha=${2:-}
+source_root=${3:-}
+web_dist=${4:-}
+
+case "$target" in
+  prod|dev) ;;
+  *) printf 'invalid deployment target\n' >&2; exit 64 ;;
+esac
+if [[ ! "$commit_sha" =~ ^[0-9a-f]{40}$ ]]; then
+  printf 'commit SHA must contain exactly 40 lowercase hexadecimal characters\n' >&2
+  exit 64
+fi
+
+source_root=$(realpath -e -- "$source_root")
+web_dist=$(realpath -e -- "$web_dist")
+case "$source_root" in
+  /opt/actions-runner/oneflow/_work/oneflow/oneflow) ;;
+  *) printf 'source root is outside the registered OneFlow runner workspace\n' >&2; exit 64 ;;
+esac
+case "$web_dist" in
+  /opt/actions-runner/oneflow/_work/_temp/*) ;;
+  *) printf 'web distribution is outside the runner temporary workspace\n' >&2; exit 64 ;;
+esac
+if [[ ! -f "$source_root/apps/api/pyproject.toml" || ! -f "$source_root/apps/api/uv.lock" ]]; then
+  printf 'source root is not a OneFlow checkout\n' >&2
+  exit 64
+fi
+if [[ $(git -c safe.directory="$source_root" -C "$source_root" rev-parse HEAD) != "$commit_sha" ]]; then
+  printf 'checkout commit does not match requested deployment SHA\n' >&2
+  exit 64
+fi
+if [[ ! -f "$web_dist/index.html" ]]; then
+  printf 'web distribution is missing index.html\n' >&2
+  exit 64
+fi
+
+runtime_env="/etc/oneflow/${target}.env"
+database_env="/etc/oneflow/${target}.database.env"
+for env_file in "$runtime_env" "$database_env"; do
+  if [[ ! -r "$env_file" ]]; then
+    printf 'required environment file is missing: %s\n' "$env_file" >&2
+    exit 78
+  fi
+done
+if grep -q 'REPLACE_ON_SERVER' "$runtime_env"; then
+  printf 'rotated OAuth secret has not been installed in %s\n' "$runtime_env" >&2
+  exit 78
+fi
+
+release_root="/opt/oneflow/${target}/releases"
+current_link="/opt/oneflow/${target}/current"
+stamp=$(date -u +%Y%m%dT%H%M%SZ)
+release="${release_root}/${stamp}-${commit_sha:0:12}"
+previous=$(readlink -f "$current_link" 2>/dev/null || true)
+if [[ -e "$release" ]]; then
+  printf 'release path already exists: %s\n' "$release" >&2
+  exit 73
+fi
+
+install -d -o oneflow -g oneflow -m 0750 "$release"
+rsync -a --delete \
+  --exclude='.git/' \
+  --exclude='.env' --exclude='.env.*' \
+  --exclude='node_modules/' --exclude='dist/' --exclude='.venv/' \
+  "$source_root/" "$release/"
+install -d -o oneflow -g oneflow -m 0750 "$release/apps/web/dist"
+rsync -a --delete "$web_dist/" "$release/apps/web/dist/"
+chown -R oneflow:oneflow "$release"
+# Keep release trees private while granting Nginx the minimum traversal/read ACL
+# needed for the static web root. API source and shared data remain inaccessible.
+setfacl -m u:www-data:--x "$release_root" "$release" "$release/apps" "$release/apps/web"
+setfacl -Rm u:www-data:rX "$release/apps/web/dist"
+
+shared_root="/opt/oneflow/${target}/shared"
+install -d -o oneflow -g oneflow -m 0750 "$shared_root/uv-cache"
+cd "$release/apps/api"
+runuser -u oneflow -- env \
+  HOME="$shared_root" \
+  UV_CACHE_DIR="$shared_root/uv-cache" \
+  /usr/local/bin/uv sync --frozen --no-dev
+
+set -a
+# shellcheck disable=SC1090
+. "$database_env"
+# shellcheck disable=SC1090
+. "$runtime_env"
+set +a
+export HOME="$shared_root"
+export UV_CACHE_DIR="$shared_root/uv-cache"
+
+/usr/local/sbin/oneflow-backup "$target" predeploy
+runuser -u oneflow --preserve-environment -- /usr/local/bin/uv run alembic upgrade head
+
+temporary_link="${current_link}.new"
+ln -s "$release" "$temporary_link"
+mv -Tf "$temporary_link" "$current_link"
+systemctl enable "oneflow-api@${target}.service" >/dev/null
+systemctl restart "oneflow-api@${target}.service"
+
+if ! /usr/local/sbin/oneflow-health-check "$target" local; then
+  if [[ -n "$previous" && -d "$previous" ]]; then
+    ln -s "$previous" "$temporary_link"
+    mv -Tf "$temporary_link" "$current_link"
+    systemctl restart "oneflow-api@${target}.service"
+  fi
+  printf 'deployment failed; code release rolled back. Database migrations were not downgraded.\n' >&2
+  exit 1
+fi
+
+systemctl enable --now "oneflow-due-alerts@${target}.timer" >/dev/null
+systemctl enable --now "oneflow-recurring-meetings@${target}.timer" >/dev/null
+
+find "$release_root" -mindepth 1 -maxdepth 1 -type d -printf '%T@ %p\n' \
+  | sort -nr | tail -n +6 | cut -d' ' -f2- | xargs -r rm -rf --
+
+printf 'deployed %s at %s (%s)\n' "$target" "$commit_sha" "$release"
