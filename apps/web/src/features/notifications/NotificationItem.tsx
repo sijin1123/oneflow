@@ -19,12 +19,14 @@ export function NotificationItem({
   action,
   compact = false,
   showTargetHint = false,
+  disabled = false,
 }: {
   notification: Notification
   onOpen: (notification: Notification) => void
   action?: ReactNode
   compact?: boolean
   showTargetHint?: boolean
+  disabled?: boolean
 }) {
   const message = getNotificationMessage(notification)
   const target = getNotificationTargetPath(notification)
@@ -40,8 +42,9 @@ export function NotificationItem({
       >
         <button
           type="button"
-          className="flex min-w-0 flex-1 items-start gap-2.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus"
+          className="flex min-w-0 flex-1 items-start gap-2.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus disabled:cursor-wait disabled:opacity-60"
           aria-label={message}
+          disabled={disabled}
           onClick={() => onOpen(notification)}
         >
           <span className="relative mt-0.5 shrink-0">
