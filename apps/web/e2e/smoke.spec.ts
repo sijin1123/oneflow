@@ -12644,6 +12644,102 @@ test('운영 허브는 프로젝트·이전·관리자 조회를 독립적으로
   await expectNoHorizontalOverflow(page)
 })
 
+test('모바일 운영 허브는 실패한 프로젝트 이력 scope에서 마지막 결과와 정확한 재시도를 유지한다', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 320, height: 740 })
+  await mockApi(page)
+  const initialJob: DataTransferJob = {
+    id: '79797979-7979-4797-8797-797979797979',
+    project_id: project.id,
+    project_key: project.key,
+    project_name: project.name,
+    actor_id: 'me-1',
+    actor_name: 'Dev User',
+    direction: 'import',
+    source: 'jira',
+    dry_run: true,
+    status: 'completed_with_errors',
+    total_rows: 3,
+    valid_rows: 2,
+    invalid_rows: 1,
+    inserted_rows: 0,
+    checksum: 'd'.repeat(64),
+    errors_truncated: false,
+    notes: [],
+    artifact_available: false,
+    artifact_filename: null,
+    artifact_size_bytes: null,
+    artifact_sha256: null,
+    created_at: '2026-07-27T03:00:00Z',
+  }
+  const scopedJob: DataTransferJob = {
+    ...initialJob,
+    id: '80808080-8080-4808-8808-808080808080',
+    direction: 'export',
+    source: 'oneflow',
+    dry_run: false,
+    status: 'completed',
+    total_rows: 2,
+    valid_rows: 2,
+    invalid_rows: 0,
+    checksum: 'e'.repeat(64),
+  }
+  let scopedCalls = 0
+  const transferQueries: string[] = []
+  await page.route('**/api/v1/data-transfer-jobs**', async (route) => {
+    const url = new URL(route.request().url())
+    if (url.pathname !== '/api/v1/data-transfer-jobs') {
+      await route.fallback()
+      return
+    }
+    transferQueries.push(url.search)
+    if (url.searchParams.get('project_id') === project.id) {
+      scopedCalls += 1
+      if (scopedCalls <= 2) {
+        await route.fulfill({ status: 503, json: { detail: 'scoped transfers unavailable' } })
+        return
+      }
+      await route.fulfill({ json: { items: [scopedJob], total: 1, limit: 50, offset: 0 } })
+      return
+    }
+    await route.fulfill({ json: { items: [initialJob], total: 1, limit: 50, offset: 0 } })
+  })
+
+  await page.goto('/operations')
+  const history = page.getByRole('region', { name: '최근 데이터 이전' })
+  await expect(history.getByText('Jira · 전체 3')).toBeVisible()
+  await page.getByLabel('데이터 이전 프로젝트 필터').selectOption(project.id)
+  await expect(page).toHaveURL(new RegExp(`project=${project.id}`))
+  await expect(history.getByRole('alert')).toContainText('이전 결과를 유지합니다')
+  await expect(history.getByText('Jira · 전체 3')).toBeVisible()
+  await expect(history.getByText('OneFlow · 전체 2')).toHaveCount(0)
+  await history.getByRole('alert').scrollIntoViewIfNeeded()
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/mobile-operations-lifecycle-ui-301/retained-error-320.png',
+    fullPage: false,
+  })
+
+  await history.getByRole('button', { name: '요청 다시 시도' }).click()
+  await expect(history.getByText('OneFlow · 전체 2')).toBeVisible()
+  await expect(history.getByText('이전 결과를 유지합니다')).toHaveCount(0)
+  expect(transferQueries.slice(-3)).toEqual([
+    `?project_id=${project.id}`,
+    `?project_id=${project.id}`,
+    `?project_id=${project.id}`,
+  ])
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/mobile-operations-lifecycle-ui-301/recovered-320.png',
+    fullPage: false,
+  })
+
+  await page.goto('/operations?project=missing')
+  await expect(page).not.toHaveURL(/project=missing/)
+  await expect(page.getByRole('heading', { name: '운영 허브' })).toBeVisible()
+})
+
 test('위험 구역은 확인 dialog에서 실패한 보관을 같은 요청으로 재시도한다', async ({ page }) => {
   await mockApi(page)
   let currentProject: Project = { ...project }

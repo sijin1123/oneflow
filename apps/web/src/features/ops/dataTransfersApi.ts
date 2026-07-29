@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { ApiError, BASE_URL, api } from '@/lib/api'
 
@@ -30,7 +30,7 @@ export type DataTransferJob = {
   created_at: string
 }
 
-type DataTransferJobList = {
+export type DataTransferJobList = {
   items: DataTransferJob[]
   total: number
   limit: number
@@ -93,6 +93,7 @@ export function useDataTransferJobs(projectId?: string) {
   return useQuery({
     queryKey: ['data-transfer-jobs', projectId ?? 'all'],
     queryFn: () => api<DataTransferJobList>(`/api/v1/data-transfer-jobs${query}`),
+    placeholderData: keepPreviousData,
   })
 }
 
