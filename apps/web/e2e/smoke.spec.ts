@@ -10945,6 +10945,72 @@ test('개인 알림 설정 저장 실패는 서버 상태를 보존하고 같은
   expect(putAttempts).toBe(2)
 })
 
+test('개인 알림 설정 후속 조회 오류는 마지막 선택을 유지하고 같은 요청을 재시도한다', async ({ page }) => {
+  await mockApi(page)
+  let getAttempts = 0
+  let refreshShouldFail = false
+  await page.route('**/api/v1/me/notification-settings', async (route) => {
+    if (route.request().method() !== 'GET') {
+      await route.fallback()
+      return
+    }
+    getAttempts += 1
+    if (refreshShouldFail) {
+      await route.fulfill({ status: 503, json: { detail: 'temporary notification refresh error' } })
+      return
+    }
+    await route.fulfill({
+      json: {
+        assigned: true,
+        watched: true,
+        commented: true,
+        mention: true,
+        due_alerts: true,
+        overdue_reminder_days: getAttempts === 1 ? 3 : 7,
+        intake: true,
+        initiatives: true,
+      },
+    })
+  })
+
+  await page.setViewportSize({ width: 1280, height: 720 })
+  await page.goto('/settings?tab=notifications')
+  const watched = page.getByRole('switch', { name: '워치 알림 사용' })
+  const cadence = page.getByLabel('초과 재알림 주기')
+  await expect(watched).toBeChecked()
+  await expect(cadence).toHaveValue('3')
+
+  refreshShouldFail = true
+  await page.getByRole('button', { name: '알림 설정 새로고침' }).click()
+  const staleAlert = page.getByRole('alert').filter({ hasText: '최신 알림 설정' })
+  await expect(staleAlert).toContainText('마지막으로 확인한 개인 설정을 표시합니다.')
+  await expect(watched).toBeChecked()
+  await expect(cadence).toHaveValue('3')
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/notification-settings-lifecycle-ui-310/desktop-retained-error.png',
+    fullPage: true,
+  })
+
+  await page.setViewportSize({ width: 320, height: 740 })
+  await staleAlert.scrollIntoViewIfNeeded()
+  await expect(staleAlert).toBeVisible()
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/notification-settings-lifecycle-ui-310/mobile-retained-error-320.png',
+    fullPage: true,
+  })
+
+  refreshShouldFail = false
+  await staleAlert.getByRole('button', { name: '알림 설정 다시 시도' }).click()
+  await expect(staleAlert).toHaveCount(0)
+  await expect(cadence).toHaveValue('7')
+  expect(getAttempts).toBeGreaterThanOrEqual(3)
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/notification-settings-lifecycle-ui-310/mobile-recovered-320.png',
+    fullPage: true,
+  })
+})
+
 test('개인 설정에서 액세스 토큰을 생성하고 폐기한다', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 })
   await mockApi(page)

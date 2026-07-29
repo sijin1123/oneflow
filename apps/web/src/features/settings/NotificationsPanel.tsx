@@ -150,7 +150,7 @@ export function NotificationsPanel({ framed = true }: { framed?: boolean }) {
     )
   }
 
-  if (settings.isError || !settings.data) {
+  if (!settings.data) {
     return (
       <div
         className={cn(
@@ -189,9 +189,59 @@ export function NotificationsPanel({ framed = true }: { framed?: boolean }) {
       aria-label="개인 알림 설정"
       aria-busy={update.isPending}
     >
-      <p className="border-b border-of-border-subtle pb-3 text-xs leading-5 text-of-muted">
-        선택한 이벤트만 새 알림으로 받습니다. 이미 받은 알림과 읽음 상태는 변경되지 않습니다.
-      </p>
+      <div className="flex min-w-0 flex-col gap-2 border-b border-of-border-subtle pb-3 sm:flex-row sm:items-start sm:justify-between">
+        <p className="min-w-0 text-xs leading-5 text-of-muted">
+          선택한 이벤트만 새 알림으로 받습니다. 이미 받은 알림과 읽음 상태는 변경되지 않습니다.
+        </p>
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          className="h-7 w-full shrink-0 sm:w-auto"
+          disabled={settings.isFetching}
+          onClick={() => void settings.refetch()}
+        >
+          <RefreshCw
+            size={13}
+            aria-hidden="true"
+            className={cn(settings.isFetching && 'animate-spin')}
+          />
+          알림 설정 새로고침
+        </Button>
+      </div>
+      {settings.isError ? (
+        <div
+          role="alert"
+          className="mt-3 flex min-w-0 flex-col gap-2 border border-of-warning/35 bg-of-warning/10 px-3 py-2.5 sm:flex-row sm:items-center sm:justify-between"
+        >
+          <div className="flex min-w-0 items-start gap-2">
+            <CircleAlert size={13} aria-hidden="true" className="mt-0.5 shrink-0 text-of-warning" />
+            <div className="min-w-0">
+              <p className="text-xs font-medium text-of-text">
+                최신 알림 설정을 불러오지 못했습니다.
+              </p>
+              <p className="mt-0.5 text-[11px] leading-5 text-of-muted">
+                마지막으로 확인한 개인 설정을 표시합니다.
+              </p>
+            </div>
+          </div>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="w-full shrink-0 sm:w-auto"
+            disabled={settings.isFetching}
+            onClick={() => void settings.refetch()}
+          >
+            <RefreshCw
+              size={13}
+              aria-hidden="true"
+              className={cn(settings.isFetching && 'animate-spin')}
+            />
+            알림 설정 다시 시도
+          </Button>
+        </div>
+      ) : null}
       <div className="divide-y divide-of-border-subtle">
         {GROUPS.map((group) => {
           const Icon = group.icon
