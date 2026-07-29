@@ -15,6 +15,7 @@ import {
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 
+import { FrameContextActions } from '@/components/shell/FrameContextActions'
 import { EmptyState, ErrorState, ListSkeleton } from '@/components/shell/states'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -25,6 +26,7 @@ import { ApiError } from '@/lib/api'
 import {
   type AuthAssistanceFilters,
   type AuthAssistanceKind,
+  type AuthAssistanceList,
   type AuthAssistanceRequest,
   type AuthAssistanceStatus,
   useAdminAuthAssistance,
@@ -101,6 +103,8 @@ export function AuthAssistancePage() {
   const [decision, setDecision] = useState<Decision | null>(null)
   const [redaction, setRedaction] = useState<Redaction | null>(null)
   const [note, setNote] = useState('')
+  const [refreshError, setRefreshError] = useState(false)
+  const lastSuccessfulRequests = useRef<AuthAssistanceList | undefined>(undefined)
 
   const setParams = useCallback((updates: Record<string, string | null>) => {
     const next = new URLSearchParams(paramsRef.current)
@@ -134,6 +138,12 @@ export function AuthAssistancePage() {
     setParams({ offset: nextOffset === 0 ? null : String(nextOffset) })
   }, [offset, requests.data, setParams])
 
+  useEffect(() => {
+    if (!requests.data || requests.isPlaceholderData || requests.isError) return
+    lastSuccessfulRequests.current = requests.data
+    setRefreshError(false)
+  }, [requests.data, requests.isError, requests.isPlaceholderData])
+
   const closeDecision = () => {
     const trigger = decision?.trigger
     setDecision(null)
@@ -147,10 +157,12 @@ export function AuthAssistancePage() {
     window.requestAnimationFrame(() => trigger?.focus({ preventScroll: true }))
   }
 
-  const refresh = () => {
+  const refresh = async () => {
     triage.reset()
     redact.reset()
-    void requests.refetch()
+    setRefreshError(false)
+    const result = await requests.refetch()
+    setRefreshError(Boolean(result.error))
   }
 
   const resetMutations = () => {
@@ -158,17 +170,21 @@ export function AuthAssistancePage() {
     redact.reset()
   }
 
-  if (needsCanonical || requests.isPending) return <ListSkeleton />
-  if (requests.isError) {
-    if (requests.error instanceof ApiError && requests.error.status === 403) {
-      return <EmptyState title="접근 권한이 없습니다" hint="로그인 지원 요청은 워크스페이스 관리자만 볼 수 있습니다." />
-    }
-    return <ErrorState error={requests.error} onRetry={() => requests.refetch()} />
+  const forbidden =
+    requests.isError && requests.error instanceof ApiError && requests.error.status === 403
+
+  useEffect(() => {
+    if (forbidden) lastSuccessfulRequests.current = undefined
+  }, [forbidden])
+
+  if (forbidden) {
+    return <EmptyState title="접근 권한이 없습니다" hint="로그인 지원 요청은 워크스페이스 관리자만 볼 수 있습니다." />
   }
 
-  const data = requests.data
-  const lastOffset = data.total === 0 ? 0 : Math.floor((data.total - 1) / 50) * 50
-  if (offset > lastOffset) return <ListSkeleton />
+  const retainedData = requests.data ?? (requests.isError ? lastSuccessfulRequests.current : undefined)
+  const data = retainedData
+  const lastOffset = data && data.total > 0 ? Math.floor((data.total - 1) / 50) * 50 : 0
+  const correctingOffset = Boolean(requests.data && offset > lastOffset)
   const mutationError = triage.error ?? redact.error
   const busy = triage.isPending || redact.isPending
 
@@ -178,10 +194,30 @@ export function AuthAssistancePage() {
       className="flex min-h-full min-w-0 flex-col overflow-hidden bg-of-bg"
     >
       <h1 className="sr-only">로그인 지원</h1>
-      <div className="flex min-w-0 flex-wrap items-end gap-2 border-b border-of-border-subtle bg-of-surface px-3 py-3 sm:px-4">
-        <div className="min-w-0 basis-full sm:mr-auto sm:basis-auto">
+      <FrameContextActions>
+        <span className="hidden px-1 text-xs tabular-nums text-of-muted sm:inline">
+          {data ? `${data.total}건` : '지원 요청'}
+        </span>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          aria-label={refreshError ? '로그인 지원 요청 새로고침 다시 시도' : '로그인 지원 요청 새로고침'}
+          title={refreshError ? '새로고침 다시 시도' : '새로고침'}
+          onClick={() => void refresh()}
+          disabled={requests.isFetching || busy || needsCanonical}
+        >
+          <RefreshCw size={13} className={requests.isFetching ? 'animate-spin' : undefined} aria-hidden="true" />
+          <span className="hidden min-[360px]:inline">
+            {refreshError ? '다시 시도' : '새로고침'}
+          </span>
+        </Button>
+      </FrameContextActions>
+
+      <div role="toolbar" aria-label="로그인 지원 요청 보기" className="flex min-w-0 flex-wrap items-center gap-2 border-b border-of-border-subtle bg-of-surface px-3 py-2 sm:px-4">
+        <div className="mr-auto min-w-0">
           <p className="text-xs font-medium">지원 요청</p>
-          <p className="mt-0.5 text-[11px] tabular-nums text-of-muted">{data.total}건</p>
+          <p className="mt-0.5 text-[11px] tabular-nums text-of-muted">{data ? `${data.total}건` : '불러오는 중'}</p>
         </div>
         <label className="min-w-0 text-[11px] font-medium text-of-muted">
           <span className="sr-only">상태</span>
@@ -207,25 +243,27 @@ export function AuthAssistancePage() {
             {KINDS.map((value) => <option key={value} value={value}>{kindCopy[value]}</option>)}
           </Select>
         </label>
-        <Button
-          type="button"
-          size="icon"
-          variant="outline"
-          aria-label="로그인 지원 요청 새로고침"
-          onClick={refresh}
-          disabled={requests.isFetching || busy}
-        >
-          <RefreshCw className={requests.isFetching ? 'animate-spin' : undefined} />
-        </Button>
         {mutationError && !decision && !redaction ? (
           <div className="basis-full">
-            <MutationFeedback error={mutationError} onRefresh={refresh} />
+            <MutationFeedback error={mutationError} onRefresh={() => void refresh()} />
           </div>
         ) : null}
       </div>
 
       <main className="of-scrollbar min-h-0 flex-1 overflow-auto bg-of-surface">
-        {data.total === 0 ? (
+        {(refreshError || requests.isRefetchError || requests.isError) && Boolean(data) ? (
+          <div role="alert" className="flex flex-wrap items-center justify-between gap-2 border-b border-of-warning/30 bg-of-warning/5 px-3 py-2 text-xs sm:px-4">
+            <span>최신 로그인 지원 요청을 불러오지 못했습니다. 마지막으로 확인한 목록을 유지합니다.</span>
+            <Button type="button" size="sm" variant="outline" onClick={() => void refresh()}>다시 시도</Button>
+          </div>
+        ) : null}
+        {needsCanonical || requests.isPending || correctingOffset ? (
+          <ListSkeleton />
+        ) : requests.isError && !data ? (
+          <ErrorState error={requests.error} onRetry={() => void refresh()} />
+        ) : !data ? (
+          <ListSkeleton />
+        ) : data.total === 0 ? (
           <EmptyState title="지원 요청이 없습니다" hint="필터를 바꾸거나 새 요청이 접수된 뒤 다시 확인하세요." />
         ) : (
           <>
@@ -265,7 +303,7 @@ export function AuthAssistancePage() {
         )}
       </main>
 
-      {offset > 0 || offset + data.items.length < data.total ? (
+      {!requests.isError && data && (offset > 0 || offset + data.items.length < data.total) ? (
         <nav aria-label="로그인 지원 요청 페이지" className="flex items-center justify-between gap-3 border-t border-of-border-subtle bg-of-surface px-3 py-2">
           <span className="text-xs tabular-nums text-of-muted">{offset + 1}-{Math.min(offset + data.items.length, data.total)} / {data.total}</span>
           <div className="flex gap-1">
@@ -275,8 +313,8 @@ export function AuthAssistancePage() {
         </nav>
       ) : null}
 
-      <DecisionDialog decision={decision} note={note} busy={triage.isPending} error={triage.error} onNoteChange={setNote} onClose={closeDecision} onRefresh={() => { closeDecision(); refresh() }} onSubmit={() => { if (!decision || !note.trim()) return; triage.mutate({ id: decision.item.id, status: decision.status, expectedVersion: decision.item.version, note: note.trim() }, { onSuccess: closeDecision }) }} />
-      <RedactionDialog redaction={redaction} busy={redact.isPending} error={redact.error} onClose={closeRedaction} onRefresh={() => { closeRedaction(); refresh() }} onSubmit={() => { if (!redaction) return; redact.mutate(redaction.item.id, { onSuccess: closeRedaction }) }} />
+      <DecisionDialog decision={decision} note={note} busy={triage.isPending} error={triage.error} onNoteChange={setNote} onClose={closeDecision} onRefresh={() => { closeDecision(); void refresh() }} onSubmit={() => { if (!decision || !note.trim()) return; triage.mutate({ id: decision.item.id, status: decision.status, expectedVersion: decision.item.version, note: note.trim() }, { onSuccess: closeDecision }) }} />
+      <RedactionDialog redaction={redaction} busy={redact.isPending} error={redact.error} onClose={closeRedaction} onRefresh={() => { closeRedaction(); void refresh() }} onSubmit={() => { if (!redaction) return; redact.mutate(redaction.item.id, { onSuccess: closeRedaction }) }} />
     </section>
   )
 }
