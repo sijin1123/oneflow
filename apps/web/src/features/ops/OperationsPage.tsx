@@ -13,8 +13,9 @@ import {
   UsersRound,
   type LucideIcon,
 } from 'lucide-react'
-import { useState, type ReactNode } from 'react'
-import { Link } from 'react-router-dom'
+import { useQueryClient } from '@tanstack/react-query'
+import { useEffect, useState, type ReactNode } from 'react'
+import { Link, useSearchParams } from 'react-router-dom'
 
 import { FrameContextActions } from '@/components/shell/FrameContextActions'
 import { ErrorState, ListSkeleton } from '@/components/shell/states'
@@ -31,6 +32,7 @@ import { cn } from '@/lib/utils'
 
 import {
   type DataTransferJob,
+  type DataTransferJobList,
   ExportDownloadError,
   useDataTransferJobs,
   useDownloadTransferArtifact,
@@ -246,14 +248,44 @@ function TransferRow({
 }
 
 export function OperationsPage() {
+  const queryClient = useQueryClient()
+  const [searchParams, setSearchParams] = useSearchParams()
   const projects = useProjects()
   const me = useMe()
-  const [projectFilter, setProjectFilter] = useState('')
   const [recoveredArtifacts, setRecoveredArtifacts] = useState<Set<string>>(() => new Set())
+  const requestedProjectFilter = searchParams.get('project') ?? ''
+  const projectFilter =
+    !projects.data ||
+    requestedProjectFilter === '' ||
+    projects.data.items.some((project) => project.id === requestedProjectFilter)
+      ? requestedProjectFilter
+      : ''
   const transfers = useDataTransferJobs(projectFilter || undefined)
+  const cachedSuccessfulTransfers = queryClient
+    .getQueryCache()
+    .findAll({ queryKey: ['data-transfer-jobs'] })
+    .filter((query) => query.state.status === 'success' && query.state.data)
+    .sort((left, right) => right.state.dataUpdatedAt - left.state.dataUpdatedAt)[0]
+    ?.state.data as DataTransferJobList | undefined
+  const transferData = transfers.data ?? cachedSuccessfulTransfers
+  const retainingFailedTransfers = transfers.isError && Boolean(transferData)
   const projectItems = projects.data?.items ?? []
   const firstProject = projectItems[0]
   const refreshing = projects.isFetching || transfers.isFetching || me.isFetching
+
+  useEffect(() => {
+    if (!projects.data || requestedProjectFilter === projectFilter) return
+    const next = new URLSearchParams(searchParams)
+    next.delete('project')
+    setSearchParams(next, { replace: true })
+  }, [projectFilter, projects.data, requestedProjectFilter, searchParams, setSearchParams])
+
+  const setProjectScope = (projectId: string) => {
+    const next = new URLSearchParams(searchParams)
+    if (projectId) next.set('project', projectId)
+    else next.delete('project')
+    setSearchParams(next, { replace: true })
+  }
 
   const refresh = async () => {
     await Promise.all([projects.refetch(), transfers.refetch(), me.refetch()])
@@ -301,13 +333,13 @@ export function OperationsPage() {
               <div className="px-4 py-2">
                 <dt className="text-[11px] text-of-muted">이전 기록</dt>
                 <dd className="mt-0.5 text-sm font-semibold tabular-nums">
-                  {transfers.data?.total ?? '-'}
+                  {transferData?.total ?? '-'}
                 </dd>
               </div>
             </dl>
           </header>
 
-          <section aria-labelledby="project-data-title" className="py-6">
+          <section aria-labelledby="project-data-title" className="py-4 sm:py-6">
             <SurfaceHeading
               id="project-data-title"
               title="프로젝트 데이터 작업"
@@ -339,7 +371,7 @@ export function OperationsPage() {
             ) : null}
           </section>
 
-          <section aria-labelledby="transfer-history-title" className="border-t border-of-border py-6">
+          <section aria-labelledby="transfer-history-title" className="border-t border-of-border py-4 sm:py-6">
             <SurfaceHeading
               id="transfer-history-title"
               title="최근 데이터 이전"
@@ -352,7 +384,7 @@ export function OperationsPage() {
                     className="w-44 max-w-[65vw]"
                     value={projectFilter}
                     disabled={projects.isPending || projects.isError}
-                    onChange={(event) => setProjectFilter(event.target.value)}
+                    onChange={(event) => setProjectScope(event.target.value)}
                   >
                     <option value="">전체 프로젝트</option>
                     {projectItems.map((item) => (
@@ -364,19 +396,39 @@ export function OperationsPage() {
                 </label>
               }
             />
-            {transfers.isPending ? <ListSkeleton rows={3} /> : null}
-            {transfers.isError ? (
+            {transfers.isPending && !transferData ? <ListSkeleton rows={3} /> : null}
+            {transfers.isError && !transferData ? (
               <ErrorState error={transfers.error} onRetry={() => void transfers.refetch()} />
             ) : null}
-            {transfers.data?.items.length === 0 ? (
+            {retainingFailedTransfers ? (
+              <div
+                role="alert"
+                className="mt-3 flex min-w-0 flex-wrap items-center justify-between gap-2 border-y border-of-danger/25 bg-of-danger/5 px-3 py-2"
+              >
+                <p className="min-w-0 text-xs leading-5 text-of-danger">
+                  요청한 프로젝트의 이전 이력을 불러오지 못했습니다. 이전 결과를 유지합니다.
+                </p>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  disabled={transfers.isFetching}
+                  onClick={() => void transfers.refetch()}
+                >
+                  <RefreshCw size={13} className={transfers.isFetching ? 'animate-spin' : undefined} />
+                  요청 다시 시도
+                </Button>
+              </div>
+            ) : null}
+            {transferData?.items.length === 0 ? (
               <div className="flex min-h-28 flex-col items-center justify-center gap-2 text-center text-of-muted">
                 <History size={20} aria-hidden="true" />
                 <p className="text-xs">기록된 데이터 이전 작업이 없습니다.</p>
               </div>
             ) : null}
-            {transfers.data?.items.length ? (
+            {transferData?.items.length ? (
               <ul aria-label="데이터 이전 이력" className="divide-y divide-of-border">
-                {transfers.data.items.map((job) => (
+                {transferData.items.map((job) => (
                   <TransferRow
                     key={job.id}
                     job={job}
@@ -394,7 +446,7 @@ export function OperationsPage() {
             ) : null}
           </section>
 
-          <section aria-labelledby="operations-links-title" className="border-t border-of-border py-6">
+          <section aria-labelledby="operations-links-title" className="border-t border-of-border py-4 sm:py-6">
             <SurfaceHeading
               id="operations-links-title"
               title="운영 화면"
