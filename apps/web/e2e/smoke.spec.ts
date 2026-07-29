@@ -24401,6 +24401,7 @@ test('시스템 상태는 초기·새로고침·진단 복사 실패를 마지�
   page,
 }) => {
   await mockApi(page)
+  await page.setViewportSize({ width: 320, height: 740 })
   await page.addInitScript(() => {
     Object.defineProperty(navigator, 'clipboard', {
       configurable: true,
@@ -24440,13 +24441,14 @@ test('시스템 상태는 초기·새로고침·진단 복사 실패를 마지�
   expect(copied).toContain('oneflow-deployment-diagnostics/v1')
 
   await page.getByRole('button', { name: '새로고침' }).click()
-  await expect(page.getByRole('alert')).toContainText('마지막으로 확인한 결과를 유지합니다')
+  const retainedAlert = page.getByRole('alert')
+  await expect(retainedAlert).toContainText('마지막으로 확인한 결과를 유지합니다')
+  await expect(retainedAlert).toBeInViewport()
   await expect(page.getByText('데이터베이스 스키마', { exact: true })).toBeVisible()
   await expect(page.getByLabel('시스템 상태 요약')).toContainText('42')
-  await page.setViewportSize({ width: 390, height: 844 })
   await expectNoHorizontalOverflow(page)
   await page.screenshot({
-    path: '../../docs/screenshots/redevelopment/system-status-composition-ui-260/mobile-refresh-error.png',
+    path: '../../docs/screenshots/redevelopment/mobile-system-status-lifecycle-ui-302/retained-error-320.png',
     fullPage: true,
   })
 
@@ -24455,6 +24457,12 @@ test('시스템 상태는 초기·새로고침·진단 복사 실패를 마지�
   await expect(
     page.getByText('최신 상태를 불러오지 못했습니다. 마지막으로 확인한 결과를 유지합니다.'),
   ).toHaveCount(0)
+  await expect(page.getByRole('button', { name: '빠른 도구 열기' })).toBeVisible()
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/mobile-system-status-lifecycle-ui-302/recovered-320.png',
+    fullPage: true,
+  })
 })
 
 test('알 수 없는 주소는 스타일된 404 페이지를 보여준다', async ({ page }) => {

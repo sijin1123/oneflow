@@ -117,8 +117,8 @@ function StatusCanvas({
       className="h-full min-w-0 overflow-y-auto overscroll-contain bg-of-surface"
       aria-busy={busy}
     >
-      <div className="mx-auto w-full max-w-6xl px-4 py-5 sm:px-6 sm:py-6">
-        <header className="flex min-w-0 flex-col gap-3 border-b border-of-border pb-5 sm:flex-row sm:items-end sm:justify-between">
+      <div className="mx-auto w-full max-w-6xl px-3 py-4 sm:px-6 sm:py-6">
+        <header className="flex min-w-0 flex-col gap-3 border-b border-of-border pb-4 sm:flex-row sm:items-end sm:justify-between sm:pb-5">
           <div className="min-w-0">
             <p className="text-[11px] font-semibold uppercase text-of-muted">Operations</p>
             <h1 className="mt-1 text-xl font-semibold">시스템 상태</h1>
@@ -127,9 +127,9 @@ function StatusCanvas({
               읽기 전용이며 비밀값과 서버 경로를 노출하지 않습니다.
             </p>
           </div>
-          {version ? <Badge variant="outline">OneFlow v{version}</Badge> : null}
+          {version ? <Badge className="self-start" variant="outline">OneFlow v{version}</Badge> : null}
         </header>
-        <div className="py-5 pb-10">{children}</div>
+        <div className="py-4 pb-12 sm:py-5 sm:pb-10">{children}</div>
       </div>
     </div>
   )
@@ -263,7 +263,7 @@ function StatusFact({
       <dt className="text-[10px] font-medium uppercase text-of-muted">{label}</dt>
       <dd
         className={cn(
-          'mt-1 truncate text-xs font-semibold',
+          'mt-1 break-words text-xs font-semibold',
           tone === 'success' && 'text-of-success',
           tone === 'warning' && 'text-of-warning',
           tone === 'danger' && 'text-of-danger',
@@ -342,6 +342,13 @@ export function StatusPage() {
       : data.readiness.status === 'warning'
         ? 'warning'
         : 'danger'
+  const copyActionLabel =
+    copyState === 'pending'
+      ? '복사 중…'
+      : copyState === 'error'
+        ? '진단 복사 다시 시도'
+        : '진단 복사'
+  const refreshActionLabel = refreshError ? '새로고침 다시 시도' : '새로고침'
 
   return (
     <>
@@ -350,19 +357,19 @@ export function StatusPage() {
           variant="outline"
           size="sm"
           disabled={copyState === 'pending'}
+          aria-label={copyActionLabel}
+          title={copyActionLabel}
           onClick={() => void copyDiagnostics()}
         >
           <Copy size={13} aria-hidden="true" />
-          {copyState === 'pending'
-            ? '복사 중…'
-            : copyState === 'error'
-              ? '진단 복사 다시 시도'
-              : '진단 복사'}
+          <span className="hidden min-[360px]:inline">{copyActionLabel}</span>
         </Button>
         <Button
           variant="secondary"
           size="sm"
           disabled={query.isFetching}
+          aria-label={refreshActionLabel}
+          title={refreshActionLabel}
           onClick={() => void refresh()}
         >
           <RefreshCw
@@ -370,12 +377,41 @@ export function StatusPage() {
             className={query.isFetching ? 'animate-spin' : undefined}
             aria-hidden="true"
           />
-          {refreshError ? '새로고침 다시 시도' : '새로고침'}
+          <span className="hidden min-[360px]:inline">{refreshActionLabel}</span>
         </Button>
       </FrameContextActions>
 
       <StatusCanvas busy={query.isFetching} version={data.version}>
-        <div className="space-y-5">
+        <div className="space-y-4 sm:space-y-5">
+          {copyState || refreshError ? (
+            <div className="space-y-1" aria-live="polite">
+              {copyState === 'success' ? (
+                <p
+                  role="status"
+                  className="border-y border-of-success/20 bg-of-success-soft px-3 py-2 text-xs text-of-success"
+                >
+                  진단 보고서를 복사했습니다.
+                </p>
+              ) : null}
+              {copyState === 'error' ? (
+                <p
+                  role="alert"
+                  className="border-y border-of-danger/20 bg-of-danger/5 px-3 py-2 text-xs leading-5 text-of-danger"
+                >
+                  클립보드에 복사하지 못했습니다. 같은 진단을 다시 복사할 수 있습니다.
+                </p>
+              ) : null}
+              {refreshError ? (
+                <p
+                  role="alert"
+                  className="border-y border-of-danger/20 bg-of-danger/5 px-3 py-2 text-xs leading-5 text-of-danger"
+                >
+                  최신 상태를 불러오지 못했습니다. 마지막으로 확인한 결과를 유지합니다.
+                </p>
+              ) : null}
+            </div>
+          ) : null}
+
           <dl
             aria-label="시스템 상태 요약"
             className="grid grid-cols-2 gap-px border-y border-of-border-subtle bg-of-border-subtle sm:grid-cols-4"
@@ -397,24 +433,6 @@ export function StatusPage() {
           </dl>
 
           <ReadinessSummary data={data.readiness} />
-
-          <div className="min-h-5 space-y-1" aria-live="polite">
-            {copyState === 'success' ? (
-              <p role="status" className="text-xs text-of-success">
-                진단 보고서를 복사했습니다.
-              </p>
-            ) : null}
-            {copyState === 'error' ? (
-              <p role="alert" className="text-xs text-of-danger">
-                클립보드에 복사하지 못했습니다. 같은 진단을 다시 복사할 수 있습니다.
-              </p>
-            ) : null}
-            {refreshError ? (
-              <p role="alert" className="text-xs text-of-danger">
-                최신 상태를 불러오지 못했습니다. 마지막으로 확인한 결과를 유지합니다.
-              </p>
-            ) : null}
-          </div>
 
           <section aria-labelledby="readiness-checks-title">
             <SurfaceHeading
