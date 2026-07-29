@@ -29540,6 +29540,66 @@ test('설정 스토리지 조회 오류는 같은 화면에서 재시도해 복�
   expect(attempts).toBe(3)
 })
 
+test('설정 스토리지 후속 새로고침 오류는 마지막 성공 값을 유지하고 같은 요청을 재시도한다', async ({ page }) => {
+  await mockApi(page)
+  let storageRequests = 0
+  let refreshShouldFail = false
+  await page.route(`**/api/v1/projects/${project.id}/storage`, (route) => {
+    storageRequests += 1
+    if (refreshShouldFail) {
+      return route.fulfill({
+        status: 503,
+        json: { detail: 'temporary storage refresh error' },
+      })
+    }
+    return route.fulfill({
+      json: {
+        used_bytes: storageRequests === 1 ? 900 * 1_048_576 : 920 * 1_048_576,
+        quota_bytes: 1024 * 1_048_576,
+        attachment_count: 12,
+        link_count: 3,
+      },
+    })
+  })
+
+  await page.setViewportSize({ width: 1280, height: 720 })
+  await page.goto(`/projects/${project.id}/settings?tab=storage`)
+  await expect(page.getByText('900 MiB 사용', { exact: false })).toBeVisible()
+
+  refreshShouldFail = true
+  await page.getByRole('button', { name: '사용량 새로고침' }).click()
+  const staleAlert = page.getByRole('alert')
+  await expect(staleAlert).toContainText('최신 사용량을 불러오지 못했습니다')
+  await expect(staleAlert).toContainText('마지막으로 확인한 스토리지 정보를 표시합니다.')
+  await expect(page.getByText('900 MiB 사용', { exact: false })).toBeVisible()
+  await expect(page.getByText('12건', { exact: true })).toBeVisible()
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/project-storage-lifecycle-ui-309/desktop-retained-error.png',
+  })
+
+  await page.setViewportSize({ width: 320, height: 740 })
+  await expect(staleAlert).toBeVisible()
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/project-storage-lifecycle-ui-309/mobile-retained-error-320.png',
+  })
+
+  refreshShouldFail = false
+  await staleAlert.getByRole('button', { name: '사용량 다시 시도' }).click()
+  await expect(staleAlert).toHaveCount(0)
+  await expect(page.getByText('920 MiB 사용', { exact: false })).toBeVisible()
+  expect(storageRequests).toBeGreaterThanOrEqual(3)
+
+  const overflow = await page.evaluate(() => ({
+    document: document.documentElement.scrollWidth - window.innerWidth,
+    body: document.body.scrollWidth - window.innerWidth,
+  }))
+  expect(overflow.document).toBeLessThanOrEqual(0)
+  expect(overflow.body).toBeLessThanOrEqual(0)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/project-storage-lifecycle-ui-309/mobile-recovered-320.png',
+  })
+})
+
 test('설정 스토리지 무제한 상태는 용량 한도를 만들지 않는다', async ({ page }) => {
   await mockApi(page)
   await page.route(`**/api/v1/projects/${project.id}/storage`, (route) =>
