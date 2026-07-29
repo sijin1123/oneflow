@@ -24446,6 +24446,107 @@ test('마일스톤 조회 실패가 오류 상태와 재시도를 제공한다',
   expect(attempts).toBeGreaterThanOrEqual(2)
 })
 
+test('마일스톤 후속 갱신 오류는 목록과 초안을 유지하고 권한 오류는 쓰기를 차단한다', async ({ page }) => {
+  await mockApi(page)
+  let milestoneGets = 0
+  let projectGets = 0
+  let milestoneShouldFail = false
+  let projectShouldFail = false
+  const milestone: Milestone = {
+    id: 'ms-lifecycle-1',
+    project_id: project.id,
+    name: '출시 준비',
+    description: null,
+    due_date: '2026-09-01',
+    work_package_count: 5,
+    done_work_package_count: 2,
+    created_at: '2026-07-01T00:00:00Z',
+    updated_at: '2026-07-01T00:00:00Z',
+  }
+
+  await page.route(`**/api/v1/projects/${project.id}/milestones`, async (route) => {
+    if (route.request().method() !== 'GET') {
+      await route.fallback()
+      return
+    }
+    milestoneGets += 1
+    if (milestoneShouldFail) {
+      await route.fulfill({ status: 503, json: { detail: 'temporary milestone refresh error' } })
+      return
+    }
+    await route.fulfill({ json: { items: [milestone], total: 1 } })
+  })
+  await page.route(`**/api/v1/projects/${project.id}`, async (route) => {
+    if (route.request().method() !== 'GET') {
+      await route.fallback()
+      return
+    }
+    projectGets += 1
+    if (projectShouldFail) {
+      await route.fulfill({ status: 503, json: { detail: 'temporary project refresh error' } })
+      return
+    }
+    await route.fulfill({ json: project })
+  })
+
+  await page.setViewportSize({ width: 1280, height: 720 })
+  await page.goto(`/projects/${project.id}/settings?tab=milestones`)
+  const panel = page.getByRole('region', { name: '마일스톤 설정' })
+  const createName = panel.getByLabel('마일스톤 이름', { exact: true })
+  await createName.fill('저장하지 않은 새 마일스톤')
+  await panel.getByLabel('출시 준비 마일스톤 작업').click()
+  await panel.getByLabel('출시 준비 편집').click()
+  const editName = panel.getByLabel('마일스톤 이름 편집')
+  await editName.fill('저장하지 않은 출시 초안')
+
+  milestoneShouldFail = true
+  await panel.getByRole('button', { name: '마일스톤 설정 새로고침' }).click()
+  const milestoneAlert = panel.getByRole('alert').filter({ hasText: '최신 마일스톤 목록' })
+  await expect(milestoneAlert).toContainText('저장하지 않은 초안을 유지합니다.')
+  await expect(editName).toHaveValue('저장하지 않은 출시 초안')
+  await expect(editName).toBeDisabled()
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/project-milestones-lifecycle-ui-312/desktop-milestone-error.png',
+    fullPage: true,
+  })
+
+  milestoneShouldFail = false
+  await milestoneAlert.getByRole('button', { name: '마일스톤 다시 시도' }).click()
+  await expect(milestoneAlert).toHaveCount(0)
+  await expect(editName).toBeEnabled()
+  await expect(editName).toHaveValue('저장하지 않은 출시 초안')
+  await expect(createName).toHaveValue('저장하지 않은 새 마일스톤')
+
+  projectShouldFail = true
+  await panel.getByRole('button', { name: '마일스톤 설정 새로고침' }).click()
+  const projectAlert = panel.getByRole('alert').filter({ hasText: '프로젝트 권한' })
+  await expect(projectAlert).toContainText('생성·수정·삭제는 권한 확인 전까지 차단됩니다.')
+  await expect(editName).toBeDisabled()
+  await expect(panel.getByRole('button', { name: '저장', exact: true })).toBeDisabled()
+
+  await page.setViewportSize({ width: 320, height: 740 })
+  await projectAlert.scrollIntoViewIfNeeded()
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/project-milestones-lifecycle-ui-312/mobile-project-error-320.png',
+    fullPage: true,
+  })
+
+  projectShouldFail = false
+  await projectAlert.getByRole('button', { name: '프로젝트 권한 다시 시도' }).click()
+  await expect(projectAlert).toHaveCount(0)
+  await expect(editName).toBeEnabled()
+  await expect(editName).toHaveValue('저장하지 않은 출시 초안')
+  await expect(createName).toHaveValue('저장하지 않은 새 마일스톤')
+  expect(milestoneGets).toBeGreaterThanOrEqual(3)
+  expect(projectGets).toBeGreaterThanOrEqual(3)
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/project-milestones-lifecycle-ui-312/mobile-recovered-320.png',
+    fullPage: true,
+  })
+})
+
 const opsStatusFixture = {
   version: '0.1.0',
   readiness: {

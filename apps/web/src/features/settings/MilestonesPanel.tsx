@@ -1,6 +1,7 @@
 import {
   CalendarDays,
   CheckCircle2,
+  CircleAlert,
   ExternalLink,
   Flag,
   LoaderCircle,
@@ -229,6 +230,7 @@ function MilestoneRow({
         <div className="grid min-w-0 gap-2 bg-of-surface-2/45 px-3 py-3 sm:grid-cols-[minmax(0,1fr)_9rem_auto] sm:items-start">
           <Input
             value={name}
+            disabled={!canEdit || updateMilestone.isPending}
             onChange={(event) => updateDraft('name', event.target.value)}
             aria-label="마일스톤 이름 편집"
             className="h-8 min-w-0 text-xs"
@@ -236,6 +238,7 @@ function MilestoneRow({
           <Input
             type="date"
             value={dueDate}
+            disabled={!canEdit || updateMilestone.isPending}
             onChange={(event) => updateDraft('dueDate', event.target.value)}
             aria-label="마일스톤 기한 편집"
             className="h-8"
@@ -243,7 +246,7 @@ function MilestoneRow({
           <div className="flex items-center gap-2">
             <Button
               size="sm"
-              disabled={!name.trim() || updateMilestone.isPending}
+              disabled={!canEdit || !name.trim() || updateMilestone.isPending}
               onClick={() =>
                 submitUpdate({
                   milestoneId: milestone.id,
@@ -277,7 +280,7 @@ function MilestoneRow({
                 <Button
                   size="sm"
                   variant="outline"
-                  disabled={updateMilestone.isPending}
+                  disabled={!canEdit || updateMilestone.isPending}
                   onClick={() => submitUpdate(updateRetry)}
                 >
                   <RefreshCw size={13} aria-hidden="true" /> 같은 내용으로 다시
@@ -351,7 +354,7 @@ function MilestoneRow({
             <Button
               size="sm"
               variant="outline"
-              disabled={deleteMilestone.isPending}
+              disabled={!canEdit || deleteMilestone.isPending}
               onClick={() => submitDelete(deleteRetry)}
             >
               <RefreshCw size={13} aria-hidden="true" /> 삭제 다시 시도
@@ -388,7 +391,11 @@ export function MilestonesPanel({
   const [createRetry, setCreateRetry] = useState<MilestoneInput | null>(null)
   const [createMessage, setCreateMessage] = useState('')
   const [dirtyRows, setDirtyRows] = useState<Set<string>>(new Set())
-  const canEdit = canManage && !project.data?.archived_at
+  const canEdit =
+    canManage &&
+    !project.isError &&
+    !milestones.isError &&
+    !project.data?.archived_at
   const createDirty = msName.trim() !== '' || msDue !== ''
 
   const markRowDirty = useCallback((milestoneId: string, dirty: boolean) => {
@@ -440,14 +447,17 @@ export function MilestonesPanel({
     })
   }
 
-  if (milestones.isPending || project.isPending) {
+  if (
+    (milestones.isPending && !milestones.data) ||
+    (project.isPending && !project.data)
+  ) {
     return (
       <section aria-label="마일스톤 설정" className="min-w-0">
         <ListSkeleton rows={5} />
       </section>
     )
   }
-  if (milestones.isError) {
+  if (!milestones.data) {
     return (
       <ErrorState
         error={milestones.error}
@@ -455,7 +465,7 @@ export function MilestonesPanel({
       />
     )
   }
-  if (project.isError) {
+  if (!project.data) {
     return (
       <ErrorState
         error={project.error}
@@ -467,6 +477,7 @@ export function MilestonesPanel({
   return (
     <section
       aria-label="마일스톤 설정"
+      aria-busy={milestones.isFetching || project.isFetching}
       className="min-w-0 overflow-hidden rounded-of border border-of-border bg-of-surface"
     >
       <header className="flex min-w-0 flex-col gap-3 px-4 py-4 sm:flex-row sm:items-start sm:justify-between">
@@ -481,16 +492,106 @@ export function MilestonesPanel({
             기한과 연결 작업의 진행률을 한 곳에서 확인하고 관리합니다.
           </p>
         </div>
-        <Badge variant={canEdit ? 'accent' : 'outline'} className="self-start">
-          {canEdit ? (
-            `${milestones.data.total}개 관리 중`
-          ) : (
-            <>
-              <LockKeyhole size={12} aria-hidden="true" /> 읽기 전용
-            </>
-          )}
-        </Badge>
+        <div className="flex shrink-0 flex-wrap items-center gap-2">
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            disabled={milestones.isFetching || project.isFetching}
+            onClick={() =>
+              void Promise.all([milestones.refetch(), project.refetch()])
+            }
+          >
+            <RefreshCw
+              size={13}
+              aria-hidden="true"
+              className={
+                milestones.isFetching || project.isFetching
+                  ? 'animate-spin'
+                  : undefined
+              }
+            />
+            마일스톤 설정 새로고침
+          </Button>
+          <Badge variant={canEdit ? 'accent' : 'outline'} className="self-start">
+            {canEdit ? (
+              `${milestones.data.total}개 관리 중`
+            ) : (
+              <>
+                <LockKeyhole size={12} aria-hidden="true" /> 읽기 전용
+              </>
+            )}
+          </Badge>
+        </div>
       </header>
+
+      {milestones.isError ? (
+        <div
+          role="alert"
+          className="mx-3 mb-3 flex min-w-0 flex-col gap-2 border border-of-warning/35 bg-of-warning/10 px-3 py-2.5 sm:mx-4 sm:flex-row sm:items-center sm:justify-between"
+        >
+          <div className="flex min-w-0 items-start gap-2">
+            <CircleAlert
+              size={13}
+              aria-hidden="true"
+              className="mt-0.5 shrink-0 text-of-warning"
+            />
+            <div className="min-w-0">
+              <p className="text-xs font-medium text-of-text">
+                최신 마일스톤 목록을 불러오지 못했습니다.
+              </p>
+              <p className="mt-0.5 text-[11px] leading-5 text-of-muted">
+                마지막으로 확인한 목록과 저장하지 않은 초안을 유지합니다.
+                다시 확인할 때까지 변경은 차단됩니다.
+              </p>
+            </div>
+          </div>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="w-full shrink-0 sm:w-auto"
+            disabled={milestones.isFetching}
+            onClick={() => void milestones.refetch()}
+          >
+            <RefreshCw size={13} aria-hidden="true" /> 마일스톤 다시 시도
+          </Button>
+        </div>
+      ) : null}
+
+      {project.isError ? (
+        <div
+          role="alert"
+          className="mx-3 mb-3 flex min-w-0 flex-col gap-2 border border-of-danger/25 bg-of-danger-soft/35 px-3 py-2.5 sm:mx-4 sm:flex-row sm:items-center sm:justify-between"
+        >
+          <div className="flex min-w-0 items-start gap-2">
+            <LockKeyhole
+              size={13}
+              aria-hidden="true"
+              className="mt-0.5 shrink-0 text-of-danger"
+            />
+            <div className="min-w-0">
+              <p className="text-xs font-medium text-of-text">
+                프로젝트 권한을 다시 확인하지 못했습니다.
+              </p>
+              <p className="mt-0.5 text-[11px] leading-5 text-of-muted">
+                마일스톤은 계속 볼 수 있지만 생성·수정·삭제는 권한 확인
+                전까지 차단됩니다.
+              </p>
+            </div>
+          </div>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="w-full shrink-0 sm:w-auto"
+            disabled={project.isFetching}
+            onClick={() => void project.refetch()}
+          >
+            <RefreshCw size={13} aria-hidden="true" /> 프로젝트 권한 다시 시도
+          </Button>
+        </div>
+      ) : null}
 
       <div
         role="list"
