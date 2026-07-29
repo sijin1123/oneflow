@@ -3653,6 +3653,131 @@ test('개인 메모는 모바일 sidebar/home entry에서 생성·편집·고정
   await page.screenshot({ path: '../../docs/screenshots/redevelopment/personal-notes-ui/mobile.png', fullPage: true })
 })
 
+test('UI-293 개인 메모는 320px에서 실패한 생성·수정·순서·삭제 의도를 그대로 재시도한다', async ({ page }) => {
+  test.setTimeout(90_000)
+  await page.setViewportSize({ width: 320, height: 740 })
+  await mockApi(page)
+
+  let createFailures = 1
+  let updateFailures = 0
+  let orderFailures = 0
+  let deleteFailures = 0
+  const createBodies: unknown[] = []
+  const updateBodies: unknown[] = []
+  const orderBodies: unknown[] = []
+  const deleteUrls: string[] = []
+
+  await page.route('**/api/v1/me/personal-notes**', async (route) => {
+    const request = route.request()
+    if (request.method() === 'POST') {
+      createBodies.push(request.postDataJSON())
+      if (createFailures > 0) {
+        createFailures -= 1
+        await route.fulfill({ status: 503, json: { detail: 'create unavailable' } })
+        return
+      }
+    }
+    if (request.method() === 'PATCH') {
+      updateBodies.push(request.postDataJSON())
+      if (updateFailures > 0) {
+        updateFailures -= 1
+        await route.fulfill({ status: 503, json: { detail: 'update unavailable' } })
+        return
+      }
+    }
+    if (request.method() === 'PUT') {
+      orderBodies.push(request.postDataJSON())
+      if (orderFailures > 0) {
+        orderFailures -= 1
+        await route.fulfill({ status: 503, json: { detail: 'order unavailable' } })
+        return
+      }
+    }
+    if (request.method() === 'DELETE') {
+      deleteUrls.push(request.url())
+      if (deleteFailures > 0) {
+        deleteFailures -= 1
+        await route.fulfill({ status: 503, json: { detail: 'delete unavailable' } })
+        return
+      }
+    }
+    await route.fallback()
+  })
+
+  await page.goto('/notes')
+  const frameActions = page.getByTestId('frame-context-actions')
+  await expect(frameActions.getByText('0개')).toBeVisible()
+  await expect(frameActions.getByRole('button', { name: '메모 검색' })).toBeVisible()
+  await expect(frameActions.getByRole('button', { name: '새 메모' })).toBeVisible()
+
+  await frameActions.getByRole('button', { name: '새 메모' }).click()
+  let recovery = page.getByRole('alert')
+  await expect(recovery).toContainText('새 메모를 만들지 못했습니다')
+  expect(createBodies).toHaveLength(1)
+  await recovery.getByRole('button', { name: '같은 요청 다시 시도' }).click()
+  await expect(page.getByRole('article', { name: '제목 없는 메모' })).toBeVisible()
+  await expect.poll(() => createBodies.length).toBe(2)
+  expect(createBodies[1]).toEqual(createBodies[0])
+
+  updateFailures = 1
+  const firstCard = page.getByRole('article', { name: '제목 없는 메모' })
+  await firstCard.getByLabel('메모 제목').fill('복구할 메모')
+  await firstCard.getByLabel('메모 내용').fill('실패해도 남아야 하는 내용')
+  await page.getByRole('heading', { name: '개인 메모' }).click()
+  recovery = page.getByRole('alert')
+  await expect(recovery).toContainText('변경을 저장하지 못했습니다')
+  await expect(firstCard.getByLabel('메모 제목')).toHaveValue('복구할 메모')
+  await expect(firstCard.getByLabel('메모 내용')).toHaveValue('실패해도 남아야 하는 내용')
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/mobile-personal-notes-ui-293/retry-320.png',
+  })
+  await recovery.getByRole('button', { name: '같은 요청 다시 시도' }).click()
+  await expect(page.getByRole('article', { name: '복구할 메모' })).toBeVisible()
+  await expect.poll(() => updateBodies.length).toBe(2)
+  expect(updateBodies[1]).toEqual(updateBodies[0])
+
+  await frameActions.getByRole('button', { name: '새 메모' }).click()
+  const secondCard = page.getByRole('article', { name: '제목 없는 메모' })
+  await secondCard.getByLabel('메모 제목').fill('두번째 메모')
+  await page.getByRole('heading', { name: '개인 메모' }).click()
+  await expect(page.getByRole('article', { name: '두번째 메모' })).toBeVisible()
+
+  orderFailures = 1
+  await page.getByRole('button', { name: '위로 이동' }).nth(1).click()
+  recovery = page.getByRole('alert')
+  await expect(recovery).toContainText('메모 순서를 저장하지 못했습니다')
+  await recovery.getByRole('button', { name: '같은 요청 다시 시도' }).click()
+  await expect.poll(() => orderBodies.length).toBe(2)
+  expect(orderBodies[1]).toEqual(orderBodies[0])
+
+  deleteFailures = 1
+  page.once('dialog', (dialog) => dialog.accept())
+  await page
+    .getByRole('article', { name: '복구할 메모' })
+    .getByRole('button', { name: '메모 삭제' })
+    .click()
+  recovery = page.getByRole('alert')
+  await expect(recovery).toContainText('메모를 삭제하지 못했습니다')
+  await expect(page.getByRole('article', { name: '복구할 메모' })).toBeVisible()
+  await recovery.getByRole('button', { name: '같은 요청 다시 시도' }).click()
+  await expect(page.getByRole('article', { name: '복구할 메모' })).toHaveCount(0)
+  await expect.poll(() => deleteUrls.length).toBe(2)
+  expect(deleteUrls[1]).toBe(deleteUrls[0])
+
+  await page.setViewportSize({ width: 390, height: 844 })
+  await expect(frameActions.getByText('1개')).toBeVisible()
+  const quickDock = page.getByRole('button', { name: '빠른 도구 열기' })
+  const dockBox = await quickDock.boundingBox()
+  expect(dockBox).not.toBeNull()
+  expect(dockBox!.x + dockBox!.width).toBeLessThanOrEqual(390)
+  expect(dockBox!.y + dockBox!.height).toBeLessThanOrEqual(844)
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/mobile-personal-notes-ui-293/ready-390.png',
+  })
+})
+
 test('개인 메모 새 메모는 검색에 숨은 기존 빈 메모를 복원해 포커스한다', async ({ page }) => {
   await mockApi(page)
   let createCount = 0

@@ -94,10 +94,13 @@ export function StickyNoteCard({
       className={cn(
         'relative flex min-w-0 flex-col overflow-hidden rounded-of border border-black/5 shadow-sm transition-[width,height,transform,box-shadow] duration-200 motion-reduce:transition-none',
         COLOR_STYLES[note.color],
-        variant === 'grid' && 'h-[310px] w-full',
-        variant === 'compact' && 'h-48 w-[min(22rem,calc(100vw-6rem))] shadow-[var(--of-shadow-popover)]',
-        variant === 'expanded' && 'h-[min(36rem,calc(100vh-7rem))] w-[min(31rem,calc(100vw-6rem))] shadow-[var(--of-shadow-popover)]',
+        variant === 'grid' && 'h-[248px] w-full sm:h-[280px]',
+        variant === 'compact' &&
+          'h-48 w-[min(22rem,calc(100vw-6rem))] shadow-[var(--of-shadow-popover)]',
+        variant === 'expanded' &&
+          'h-[min(36rem,calc(100vh-7rem))] w-[min(31rem,calc(100vw-6rem))] shadow-[var(--of-shadow-popover)]',
       )}
+      aria-busy={pending}
       onBlurCapture={(event) => {
         const next = event.relatedTarget
         if (next instanceof Node && event.currentTarget.contains(next)) return
@@ -120,7 +123,7 @@ export function StickyNoteCard({
         value={title}
         maxLength={120}
         placeholder="여기를 클릭해 입력"
-        className="mx-4 mt-4 min-w-0 bg-transparent text-base font-medium outline-none placeholder:text-current/45"
+        className="mx-3 mt-3 min-w-0 bg-transparent pr-14 text-sm font-medium outline-none placeholder:text-current/45 sm:mx-4 sm:mt-4 sm:pr-0 sm:text-base"
         onChange={(event) => {
           titleDirtyRef.current = true
           setTitle(event.target.value)
@@ -132,7 +135,7 @@ export function StickyNoteCard({
         value={body}
         maxLength={4000}
         placeholder="설명을 추가하세요"
-        className="mx-4 mt-4 min-h-0 flex-1 resize-none bg-transparent text-sm leading-6 outline-none placeholder:text-current/45"
+        className="mx-3 mt-3 min-h-0 flex-1 resize-none bg-transparent text-sm leading-5 outline-none placeholder:text-current/45 sm:mx-4 sm:mt-4 sm:leading-6"
         onChange={(event) => {
           bodyDirtyRef.current = true
           setBody(event.target.value)
@@ -172,13 +175,34 @@ export function StickyNoteCard({
               ))}
             </div>
           ) : null}
-          <button type="button" aria-label="굵게" disabled={pending} className={toolbarButton} onMouseDown={(event) => event.preventDefault()} onClick={() => format('bold')}>
+          <button
+            type="button"
+            aria-label="굵게"
+            disabled={pending}
+            className={toolbarButton}
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => format('bold')}
+          >
             <Bold size={16} />
           </button>
-          <button type="button" aria-label="기울임" disabled={pending} className={toolbarButton} onMouseDown={(event) => event.preventDefault()} onClick={() => format('italic')}>
+          <button
+            type="button"
+            aria-label="기울임"
+            disabled={pending}
+            className={toolbarButton}
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => format('italic')}
+          >
             <Italic size={16} />
           </button>
-          <button type="button" aria-label="체크리스트" disabled={pending} className={toolbarButton} onMouseDown={(event) => event.preventDefault()} onClick={() => format('checklist')}>
+          <button
+            type="button"
+            aria-label="체크리스트"
+            disabled={pending}
+            className={toolbarButton}
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => format('checklist')}
+          >
             <CheckSquare size={16} />
           </button>
           <button
