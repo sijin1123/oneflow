@@ -31186,6 +31186,91 @@ test('Workspace Worklogs 목록 오류는 명시적 재시도로 복구한다', 
   await expect(page.getByText('조회 범위에 Worklog가 없습니다')).toBeVisible()
 })
 
+test('Workspace Worklogs는 실패한 필터 요청 중 마지막 성공 결과와 정확한 재시도를 유지한다', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 320, height: 740 })
+  await mockApi(page)
+  const initialItem = adminWorklogFixture({ id: 'worklog-initial' })
+  const filteredItem = adminWorklogFixture({
+    id: 'worklog-filtered',
+    user_id: 'u-old',
+    user_display_name: 'Old User',
+    user_email: 'old@oneflow.local',
+    user_is_active: false,
+    hours: 1,
+  })
+  let failedFilterCalls = 0
+  const listQueries: string[] = []
+
+  await page.route('**/api/v1/admin/worklogs**', async (route) => {
+    const url = new URL(route.request().url())
+    if (url.pathname.endsWith('/options')) {
+      await route.fulfill({
+        json: {
+          users: [
+            { id: 'u-dev', display_name: 'Dev User', email: 'dev@oneflow.local', is_active: true },
+            { id: 'u-old', display_name: 'Old User', email: 'old@oneflow.local', is_active: false },
+          ],
+          projects: [{ id: project.id, key: project.key, name: project.name, is_archived: false }],
+        },
+      })
+      return
+    }
+    listQueries.push(url.search)
+    const userId = url.searchParams.get('user_id')
+    if (userId === 'u-old') {
+      failedFilterCalls += 1
+      if (failedFilterCalls <= 2) {
+        await route.fulfill({ status: 503, json: { detail: 'filtered worklogs unavailable' } })
+        return
+      }
+    }
+    const items = userId === 'u-old' ? [filteredItem] : [initialItem]
+    await route.fulfill({
+      json: {
+        from_date: '2026-07-01',
+        to_date: '2026-07-31',
+        items,
+        total: items.length,
+        total_hours: items.reduce((sum, item) => sum + item.hours, 0),
+        limit: 50,
+        offset: 0,
+      },
+    })
+  })
+
+  await page.goto('/admin/worklogs?from=2026-07-01&to=2026-07-31')
+  const list = page.getByRole('list', { name: '모바일 Worklogs 목록' })
+  await expect(list.getByText('Dev User')).toBeVisible()
+
+  await page.getByLabel('Worklogs 사용자').selectOption('u-old')
+  await expect(page).toHaveURL(/user=u-old/)
+  await expect(page.getByRole('alert')).toContainText('이전 조회 결과를 유지합니다')
+  await expect(list.getByText('Dev User')).toBeVisible()
+  await expect(list.getByText('Old User')).toHaveCount(0)
+  await expectNoHorizontalOverflow(page)
+  await page.getByRole('alert').scrollIntoViewIfNeeded()
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/mobile-worklogs-lifecycle-ui-300/retained-error-320.png',
+    fullPage: false,
+  })
+
+  await page.getByRole('button', { name: '요청 다시 시도' }).click()
+  await expect(list.getByText('Old User')).toBeVisible()
+  await expect(page.getByText('이전 조회 결과를 유지합니다')).toHaveCount(0)
+  expect(listQueries.slice(-3)).toEqual([
+    '?from=2026-07-01&to=2026-07-31&user_id=u-old&limit=50&offset=0',
+    '?from=2026-07-01&to=2026-07-31&user_id=u-old&limit=50&offset=0',
+    '?from=2026-07-01&to=2026-07-31&user_id=u-old&limit=50&offset=0',
+  ])
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/mobile-worklogs-lifecycle-ui-300/recovered-320.png',
+    fullPage: false,
+  })
+})
+
 test('Workspace Worklogs는 필터 옵션을 기다리는 동안 운영 프레임을 유지한다', async ({ page }) => {
   await mockApi(page)
   await page.route('**/api/v1/admin/worklogs**', async (route) => {

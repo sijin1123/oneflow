@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query'
+import { keepPreviousData, useQuery } from '@tanstack/react-query'
 
 import { api, ApiError, BASE_URL, detailFromPayload } from '@/lib/api'
 
@@ -60,6 +60,7 @@ export function useAdminWorklogs(filters: WorklogFilters, enabled = true) {
     queryFn: () =>
       api<AdminWorklogList>(`/api/v1/admin/worklogs?${worklogParams(filters)}`),
     enabled,
+    placeholderData: keepPreviousData,
   })
 }
 
