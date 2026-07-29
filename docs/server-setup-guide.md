@@ -30,6 +30,8 @@ loopback ports 5173 and 5174.
 Create a non-login `oneflow` service account and a separate `github-runner` account. Create the
 paths from `docs/environment-matrix.md`. `/etc/oneflow` must be `0750 root:oneflow`; environment
 files must be `0640 root:oneflow`; uploads and releases must be `0750 oneflow:oneflow`.
+The deploy broker adds a narrow `www-data` ACL only to release-path traversal and the built web
+distribution, so Nginx can serve static assets without joining the application group.
 
 ## 4. PostgreSQL
 

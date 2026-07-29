@@ -70,6 +70,10 @@ rsync -a --delete \
 install -d -o oneflow -g oneflow -m 0750 "$release/apps/web/dist"
 rsync -a --delete "$web_dist/" "$release/apps/web/dist/"
 chown -R oneflow:oneflow "$release"
+# Keep release trees private while granting Nginx the minimum traversal/read ACL
+# needed for the static web root. API source and shared data remain inaccessible.
+setfacl -m u:www-data:--x "$release_root" "$release" "$release/apps" "$release/apps/web"
+setfacl -Rm u:www-data:rX "$release/apps/web/dist"
 
 shared_root="/opt/oneflow/${target}/shared"
 install -d -o oneflow -g oneflow -m 0750 "$shared_root/uv-cache"
