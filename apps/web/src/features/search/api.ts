@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { ApiError, api } from '@/lib/api'
 import { decideOnPatchError } from '@/lib/conflict'
@@ -288,6 +288,7 @@ export function useUnifiedSearch(q: string) {
     queryFn: () => api<UnifiedSearchResults>(`/api/v1/search?q=${encodeURIComponent(query)}`),
     // The server requires 2+ chars (load control) — don't fire a doomed request.
     enabled: query.length >= 2,
+    placeholderData: keepPreviousData,
   })
 }
 

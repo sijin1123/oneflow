@@ -8246,12 +8246,15 @@ test('멤버 패널: 뷰어 옵션을 제공하고 역할 변경 payload를 보�
   await page.getByLabel('Alex Kim 역할').selectOption('viewer')
   const patchReq = await rolePatch
   expect((patchReq.postDataJSON() as { role: string }).role).toBe('viewer')
-  await expect(page.getByRole('alert')).toContainText('역할 서비스를 사용할 수 없습니다.')
+  const roleUpdateAlert = page
+    .getByRole('alert')
+    .filter({ hasText: '역할 서비스를 사용할 수 없습니다.' })
+  await expect(roleUpdateAlert).toBeVisible()
 
   const retryPatch = page.waitForRequest(
     (req) => req.method() === 'PATCH' && req.url().includes(`/members/u-alex`),
   )
-  await page.getByRole('alert').getByRole('button', { name: '다시 시도' }).click()
+  await roleUpdateAlert.getByRole('button', { name: '다시 시도' }).click()
   const retryReq = await retryPatch
   expect(retryReq.postDataJSON()).toEqual({ role: 'viewer', custom_role_id: null })
   await expect(page.getByText('Alex Kim의 역할을 변경했습니다.')).toBeVisible()
@@ -17855,6 +17858,84 @@ test('전체 검색 표면은 모바일에서 요약과 결과 카드를 안정�
     path: '../../docs/screenshots/redevelopment/file-content-search-ui/search-mobile.png',
     fullPage: true,
   })
+})
+
+test('UI-297 모바일 전체 검색은 실패한 쿼리에서 마지막 성공 결과를 유지하고 정확히 재시도한다', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await mockApi(page)
+  const requests: string[] = []
+  let deployAttempts = 0
+  const emptyGroup = { items: [], returned: 0, truncated: false }
+
+  await page.route('**/api/v1/search?**', (route) => {
+    const query = new URL(route.request().url()).searchParams.get('q') ?? ''
+    requests.push(query)
+    if (query === '배포') deployAttempts += 1
+    if (query === '배포' && deployAttempts <= 2) {
+      return route.fulfill({ status: 503, json: { detail: '검색 인덱스를 갱신하고 있습니다' } })
+    }
+    const subject = query === '배포' ? '배포 점검 완료' : '검색 구현 완료'
+    return route.fulfill({
+      json: {
+        query,
+        work_packages: {
+          items: [
+            {
+              id: query === '배포' ? 'wp-deploy' : 'wp-search',
+              project_id: project.id,
+              project_key: 'ONE',
+              project_name: 'OneFlow 도입',
+              subject,
+              status: 'todo',
+              priority: 'high',
+              type: 'task',
+              due_date: null,
+              matched_in: 'primary',
+              snippet: null,
+            },
+          ],
+          returned: 1,
+          truncated: false,
+        },
+        documents: emptyGroup,
+        files: emptyGroup,
+        meetings: emptyGroup,
+        cycles: emptyGroup,
+        modules: emptyGroup,
+        initiatives: emptyGroup,
+      },
+    })
+  })
+
+  await page.goto('/search?q=%EA%B5%AC%ED%98%84')
+  await expect(page.getByRole('button', { name: /검색 구현 완료/ })).toBeVisible()
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/mobile-unified-search-ui-297/results-390.png',
+    fullPage: true,
+  })
+
+  await page.setViewportSize({ width: 320, height: 740 })
+  await page.getByLabel('전체 검색어').fill('배포')
+  await page.getByRole('button', { name: '검색', exact: true }).click()
+  const retainedAlert = page.getByRole('alert')
+  await expect(retainedAlert).toContainText("'배포' 검색을 완료하지 못했습니다")
+  await expect(retainedAlert).toContainText("마지막으로 확인한 '구현' 결과를 유지합니다")
+  await expect(page.getByRole('button', { name: /검색 구현 완료/ })).toBeVisible()
+  await expect(page.getByRole('button', { name: /배포 점검 완료/ })).toHaveCount(0)
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/mobile-unified-search-ui-297/retained-error-320.png',
+    fullPage: true,
+  })
+
+  await retainedAlert.getByRole('button', { name: "'배포' 다시 시도" }).click()
+  await expect(page.getByRole('button', { name: /배포 점검 완료/ })).toBeVisible()
+  await expect(page.getByRole('button', { name: /검색 구현 완료/ })).toHaveCount(0)
+  expect(requests.filter((query) => query === '배포')).toHaveLength(3)
+  await expectNoHorizontalOverflow(page)
 })
 
 test('파일 표면에서 legacy 본문 인덱스를 실제로 준비하고 상태를 갱신한다', async ({ page }) => {

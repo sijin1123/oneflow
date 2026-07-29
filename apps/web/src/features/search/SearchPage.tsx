@@ -2,6 +2,7 @@ import {
   Boxes,
   CalendarClock,
   CalendarDays,
+  CircleAlert,
   Compass,
   FileText,
   Paperclip,
@@ -11,7 +12,7 @@ import {
   X,
   type LucideIcon,
 } from 'lucide-react'
-import { type FormEvent, type ReactNode, useEffect, useMemo, useState } from 'react'
+import { type FormEvent, type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 
 import { EmptyState, ErrorState, ListSkeleton } from '@/components/shell/states'
@@ -36,7 +37,13 @@ export function SearchPage() {
   const wikiEnabled = capabilities.data?.wiki.enabled === true
   const initiativesEnabled = capabilities.data?.initiatives.enabled === true
 
-  const { data, isFetching, isError, error, refetch } = useUnifiedSearch(q)
+  const { data, isFetching, isError, isPlaceholderData, error, refetch } = useUnifiedSearch(q)
+  const lastSuccessfulResults = useRef<UnifiedSearchResults | null>(null)
+
+  useEffect(() => {
+    if (!data || isPlaceholderData || isError) return
+    lastSuccessfulResults.current = data
+  }, [data, isError, isPlaceholderData])
 
   useEffect(() => {
     setInput(q)
@@ -66,45 +73,51 @@ export function SearchPage() {
   }
 
   const trimmedQuery = q.trim()
+  const results =
+    trimmedQuery.length >= 2
+      ? (data ?? (isError ? (lastSuccessfulResults.current ?? undefined) : undefined))
+      : undefined
   const summaries = useMemo(
-    () => groupSummaries(data, wikiEnabled, initiativesEnabled),
-    [data, initiativesEnabled, wikiEnabled],
+    () => groupSummaries(results, wikiEnabled, initiativesEnabled),
+    [initiativesEnabled, results, wikiEnabled],
   )
   const totalReturned = summaries.reduce((sum, group) => sum + group.returned, 0)
-  const empty = data ? totalReturned === 0 : false
+  const empty = results ? totalReturned === 0 : false
   const waitingForQuery = trimmedQuery.length < 2
-  const loading = trimmedQuery.length >= 2 && isFetching && !data
+  const loading = trimmedQuery.length >= 2 && isFetching && !results
   const resultText = waitingForQuery
     ? '검색 대기'
-    : data
+    : results
       ? `${totalReturned}건`
       : isFetching
         ? '검색 중'
         : ' '
 
   return (
-    <div className="mx-auto flex h-full w-full max-w-6xl flex-col gap-4 overflow-y-auto px-4 py-4 sm:px-6">
-      <header className="border-b border-of-border pb-4">
-        <div className="flex min-w-0 flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+    <div className="mx-auto flex h-full w-full max-w-6xl flex-col gap-3 overflow-y-auto px-3 py-3 pb-24 sm:gap-4 sm:px-6 sm:py-4 sm:pb-6">
+      <header className="border-b border-of-border pb-3 sm:pb-4">
+        <div className="flex min-w-0 items-end justify-between gap-3">
           <div className="min-w-0">
             <p className="text-[11px] font-medium uppercase text-of-muted">Workspace search</p>
             <h1 className="mt-1 text-base font-semibold">전체 검색</h1>
-            <p className="mt-1 max-w-3xl text-xs leading-5 text-of-muted">
+            <p className="mt-1 hidden max-w-3xl text-xs leading-5 text-of-muted sm:block">
               권한이 있는 작업, 문서, 파일, 회의, 사이클, 모듈, 이니셔티브를 한 화면에서 찾습니다.
             </p>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5 sm:gap-2">
             <Badge variant="outline">{resultText}</Badge>
-            {isFetching && data ? <Badge variant="accent">업데이트 중</Badge> : null}
+            {isFetching && results ? (
+              <Badge variant="accent">{isPlaceholderData ? '이전 결과' : '업데이트 중'}</Badge>
+            ) : null}
           </div>
         </div>
       </header>
 
       <section
         aria-label="검색어 입력"
-        className="rounded-of border border-of-border bg-of-surface p-3 shadow-[var(--of-shadow-card)]"
+        className="-mx-3 border-y border-of-border bg-of-surface px-3 py-3 sm:mx-0 sm:rounded-of sm:border sm:shadow-[var(--of-shadow-card)]"
       >
-        <form onSubmit={submit} className="flex flex-col gap-2 sm:flex-row sm:items-center">
+        <form onSubmit={submit} className="flex items-center gap-2">
           <div className="relative min-w-0 flex-1">
             <Search
               size={14}
@@ -129,22 +142,20 @@ export function SearchPage() {
               </button>
             ) : null}
           </div>
-          <div className="flex items-center gap-2">
-            <Button type="submit" size="sm">
-              <Search size={13} /> 검색
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              size="icon"
-              aria-label="새로고침"
-              className="h-7 w-7"
-              disabled={waitingForQuery}
-              onClick={() => refetch()}
-            >
-              <RefreshCw size={13} className={isFetching ? 'animate-spin' : undefined} />
-            </Button>
-          </div>
+          <Button type="submit" size="sm" aria-label="검색" className="shrink-0">
+            <Search size={13} /> <span className="hidden sm:inline">검색</span>
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            aria-label="새로고침"
+            className="h-7 w-7 shrink-0"
+            disabled={waitingForQuery}
+            onClick={() => refetch()}
+          >
+            <RefreshCw size={13} className={isFetching ? 'animate-spin' : undefined} />
+          </Button>
         </form>
       </section>
 
@@ -161,6 +172,32 @@ export function SearchPage() {
         </section>
       ) : null}
 
+      {isError && results ? (
+        <section
+          role="alert"
+          className="flex min-w-0 flex-col gap-2 rounded-of border border-of-danger/20 bg-of-danger-soft/45 px-3 py-2.5 sm:flex-row sm:items-center sm:justify-between"
+        >
+          <div className="flex min-w-0 items-start gap-2">
+            <CircleAlert size={15} className="mt-0.5 shrink-0 text-of-danger" aria-hidden="true" />
+            <div className="min-w-0">
+              <p className="text-xs font-medium text-of-text">'{q}' 검색을 완료하지 못했습니다</p>
+              <p className="mt-0.5 text-[11px] leading-4 text-of-muted">
+                마지막으로 확인한 '{results.query}' 결과를 유지합니다.
+              </p>
+            </div>
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="self-start sm:self-auto"
+            onClick={() => refetch()}
+          >
+            <RefreshCw size={13} /> '{q}' 다시 시도
+          </Button>
+        </section>
+      ) : null}
+
       {waitingForQuery ? (
         <EmptyState
           title="검색어를 입력하세요"
@@ -168,19 +205,22 @@ export function SearchPage() {
         />
       ) : loading ? (
         <ListSkeleton />
-      ) : isError ? (
+      ) : isError && !results ? (
         <ErrorState error={error} onRetry={() => refetch()} />
-      ) : !data || empty ? (
-        <EmptyState title={`'${q}' 결과가 없습니다`} hint="검색어를 줄이거나 다른 단어로 다시 찾아보세요." />
+      ) : !results || empty ? (
+        <EmptyState
+          title={`'${results?.query ?? q}' 결과가 없습니다`}
+          hint="검색어를 줄이거나 다른 단어로 다시 찾아보세요."
+        />
       ) : (
         <div className="space-y-4">
           <GroupSection
             icon={ListChecks}
             title="작업"
-            returned={data.work_packages.returned}
-            truncated={data.work_packages.truncated}
+            returned={results.work_packages.returned}
+            truncated={results.work_packages.truncated}
           >
-            {data.work_packages.items.map((item) => (
+            {results.work_packages.items.map((item) => (
               <ResultRow
                 key={item.id}
                 icon={ListChecks}
@@ -203,10 +243,10 @@ export function SearchPage() {
             <GroupSection
               icon={FileText}
               title="문서"
-              returned={data.documents.returned}
-              truncated={data.documents.truncated}
+              returned={results.documents.returned}
+              truncated={results.documents.truncated}
             >
-              {data.documents.items.map((item) => (
+              {results.documents.items.map((item) => (
                 <ResultRow
                   key={item.id}
                   icon={FileText}
@@ -224,10 +264,10 @@ export function SearchPage() {
           <GroupSection
             icon={Paperclip}
             title="파일"
-            returned={data.files.returned}
-            truncated={data.files.truncated}
+            returned={results.files.returned}
+            truncated={results.files.truncated}
           >
-            {data.files.items.map((item) => (
+            {results.files.items.map((item) => (
               <ResultRow
                 key={item.id}
                 icon={Paperclip}
@@ -245,10 +285,10 @@ export function SearchPage() {
           <GroupSection
             icon={CalendarClock}
             title="회의"
-            returned={data.meetings.returned}
-            truncated={data.meetings.truncated}
+            returned={results.meetings.returned}
+            truncated={results.meetings.truncated}
           >
-            {data.meetings.items.map((item) => (
+            {results.meetings.items.map((item) => (
               <ResultRow
                 key={item.id}
                 icon={CalendarClock}
@@ -269,10 +309,10 @@ export function SearchPage() {
           <GroupSection
             icon={CalendarDays}
             title="사이클"
-            returned={data.cycles.returned}
-            truncated={data.cycles.truncated}
+            returned={results.cycles.returned}
+            truncated={results.cycles.truncated}
           >
-            {data.cycles.items.map((item) => (
+            {results.cycles.items.map((item) => (
               <ResultRow
                 key={item.id}
                 icon={CalendarDays}
@@ -287,10 +327,10 @@ export function SearchPage() {
           <GroupSection
             icon={Boxes}
             title="모듈"
-            returned={data.modules.returned}
-            truncated={data.modules.truncated}
+            returned={results.modules.returned}
+            truncated={results.modules.truncated}
           >
-            {data.modules.items.map((item) => (
+            {results.modules.items.map((item) => (
               <ResultRow
                 key={item.id}
                 icon={Boxes}
@@ -306,10 +346,10 @@ export function SearchPage() {
             <GroupSection
               icon={Compass}
               title="이니셔티브"
-              returned={data.initiatives.returned}
-              truncated={data.initiatives.truncated}
+              returned={results.initiatives.returned}
+              truncated={results.initiatives.truncated}
             >
-              {data.initiatives.items.map((item) => (
+              {results.initiatives.items.map((item) => (
                 <ResultRow
                   key={item.id}
                   icon={Compass}
