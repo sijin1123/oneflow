@@ -1,4 +1,10 @@
-import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import {
+  keepPreviousData,
+  useInfiniteQuery,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query'
 
 import { api } from '@/lib/api'
 
@@ -125,6 +131,7 @@ export function useInitiatives(labelId = '') {
   return useQuery({
     queryKey: ['initiatives', { labelId }],
     queryFn: () => api<InitiativeList>(`/api/v1/initiatives${suffix}`),
+    placeholderData: keepPreviousData,
   })
 }
 
