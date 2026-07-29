@@ -16664,7 +16664,7 @@ test('공통 Sheet는 닫힘 동작과 포커스 복귀를 같은 전환에서 �
   await expect(trigger).toBeFocused()
 })
 
-test('인박스는 알림 센터를 모바일에서도 정리된 표면으로 보여준다', async ({ page }) => {
+test('UI-292 모바일 인박스는 읽음 lifecycle과 exact retry를 실제 API에 연결한다', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 })
   await mockApi(page)
   const actorVersion = '11111111-1111-4111-8111-111111111111'
@@ -16731,6 +16731,22 @@ test('인박스는 알림 센터를 모바일에서도 정리된 표면으로 �
   await page.route('**/api/v1/me/notifications/n1/actor-image**', (route) =>
     route.fulfill({ body: actorPng, contentType: 'image/png' }),
   )
+  let readAttempts = 0
+  let readAllAttempts = 0
+  await page.route('**/api/v1/me/notifications/n1/read', (route) => {
+    readAttempts += 1
+    if (readAttempts === 1) {
+      return route.fulfill({ status: 503, json: { detail: 'temporary read failure' } })
+    }
+    return route.fulfill({ status: 204, body: '' })
+  })
+  await page.route('**/api/v1/me/notifications/read-all', (route) => {
+    readAllAttempts += 1
+    if (readAllAttempts === 1) {
+      return route.fulfill({ status: 503, json: { detail: 'temporary read-all failure' } })
+    }
+    return route.fulfill({ status: 204, body: '' })
+  })
   await page.route('**/api/v1/me/notifications', (route) => route.fulfill({ json: inbox }))
   await page.route('**/api/v1/me/notifications?**', (route) => {
     const scope = new URL(route.request().url()).searchParams.get('scope') ?? 'all'
@@ -16773,11 +16789,18 @@ test('인박스는 알림 센터를 모바일에서도 정리된 표면으로 �
     fullPage: true,
   })
 
-  const readReq = page.waitForRequest(
-    (req) => req.method() === 'POST' && req.url().includes('/me/notifications/n1/read'),
-  )
   await page.getByRole('button', { name: '읽음', exact: true }).first().click()
-  await readReq
+  const readFailure = page.getByRole('alert').filter({ hasText: 'temporary read failure' })
+  await expect(readFailure).toContainText('워크패키지 API 구현')
+  await page.setViewportSize({ width: 320, height: 740 })
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/mobile-inbox-lifecycle-ui-292/read-error-320.png',
+  })
+  await readFailure.getByRole('button', { name: '같은 요청 다시 시도' }).click()
+  await expect(readFailure).toHaveCount(0)
+  expect(readAttempts).toBe(2)
+  await page.setViewportSize({ width: 390, height: 844 })
 
   await page.getByRole('tab', { name: '읽음' }).click()
   await expect(page.getByText(/보드 뷰 구현/)).toBeVisible()
@@ -16787,13 +16810,17 @@ test('인박스는 알림 센터를 모바일에서도 정리된 표면으로 �
   await expect(page.getByText(/보드 뷰 구현/)).toBeVisible()
   await expect(page.getByText(/워크패키지 API 구현/)).toHaveCount(0)
 
-  const readAllReq = page.waitForRequest(
-    (req) => req.method() === 'POST' && req.url().includes('/me/notifications/read-all'),
-  )
-  await page.getByRole('button', { name: /전체 읽음/ }).click()
-  await readAllReq
-
+  await page.getByRole('button', { name: '전체 읽음 처리' }).click()
+  const readAllFailure = page.getByRole('alert').filter({ hasText: 'temporary read-all failure' })
+  await expect(readAllFailure).toContainText('현재 알림 상태를 유지했습니다.')
+  await readAllFailure.getByRole('button', { name: '같은 요청 다시 시도' }).click()
+  await expect(readAllFailure).toHaveCount(0)
+  expect(readAllAttempts).toBe(2)
   await page.getByRole('tab', { name: '전체' }).click()
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/mobile-inbox-lifecycle-ui-292/ready-390.png',
+  })
+
   const declinedReadReq = page.waitForRequest(
     (req) => req.method() === 'POST' && req.url().includes('/me/notifications/n3/read'),
   )
@@ -16888,10 +16915,11 @@ test('인박스는 커서로 더 불러오고 추가 페이지 오류를 현재 
   await expect(page.getByRole('alert')).toContainText('추가 알림을 불러오지 못했습니다')
   await expect(page.getByText('2 / 3건 표시')).toBeVisible()
 
-  await page.getByRole('button', { name: '더 불러오기' }).click()
+  await page.getByRole('button', { name: '같은 페이지 다시 시도' }).click()
   await expect(page.getByText('3 / 3건 표시')).toBeVisible()
   await expect(page.getByText('추가 페이지 시스템 알림')).toBeVisible()
   await expect(page.getByRole('button', { name: '더 불러오기' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: '같은 페이지 다시 시도' })).toHaveCount(0)
 
   await page.setViewportSize({ width: 390, height: 844 })
   await expectNoHorizontalOverflow(page)
@@ -20945,6 +20973,9 @@ test('문서 코멘트 멘션은 member picker와 Document Inbox deep link를 �
   )
   await page.route('**/api/v1/me/notifications?**', (route) =>
     route.fulfill({ json: documentInbox }),
+  )
+  await page.route('**/api/v1/me/notifications/document-notification/read', (route) =>
+    route.fulfill({ status: 204, body: '' }),
   )
   await page.setViewportSize({ width: 390, height: 844 })
   await page.goto('/inbox')
