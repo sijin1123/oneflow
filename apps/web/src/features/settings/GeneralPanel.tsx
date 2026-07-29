@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   Activity,
   CircleAlert,
@@ -95,12 +95,30 @@ export function GeneralPanel({
     description: string | null
   } | null>(null)
   const [budgetAttempt, setBudgetAttempt] = useState<{ budget: number | null } | null>(null)
+  const syncedProject = useRef<Project | null>(null)
 
   useEffect(() => {
-    if (!project.data) return
-    setPName(project.data.name)
-    setPDesc(project.data.description ?? '')
-    setBudget(project.data.budget === null ? '' : String(project.data.budget))
+    const next = project.data
+    if (!next) return
+    const previous = syncedProject.current
+    if (!previous || previous.id !== next.id) {
+      setPName(next.name)
+      setPDesc(next.description ?? '')
+      setBudget(next.budget === null ? '' : String(next.budget))
+    } else {
+      setPName((current) => (current === previous.name ? next.name : current))
+      setPDesc((current) =>
+        current === (previous.description ?? '') ? (next.description ?? '') : current,
+      )
+      setBudget((current) =>
+        current === (previous.budget === null ? '' : String(previous.budget))
+          ? next.budget === null
+            ? ''
+            : String(next.budget)
+          : current,
+      )
+    }
+    syncedProject.current = next
   }, [project.data])
 
   const identityDirty =
@@ -147,7 +165,7 @@ export function GeneralPanel({
     )
   }
 
-  if (project.isError || !project.data) {
+  if (!project.data) {
     return <ErrorState error={project.error} onRetry={() => project.refetch()} />
   }
 
@@ -178,7 +196,7 @@ export function GeneralPanel({
   return (
     <section
       aria-label="프로젝트 일반 설정"
-      aria-busy={identityUpdate.isPending || budgetUpdate.isPending}
+      aria-busy={project.isFetching || identityUpdate.isPending || budgetUpdate.isPending}
       className="min-w-0"
     >
       <header className="flex min-w-0 flex-col gap-3 border-b border-of-border-subtle pb-4 sm:flex-row sm:items-center sm:justify-between">
@@ -194,12 +212,60 @@ export function GeneralPanel({
           </div>
         </div>
         <div className="flex shrink-0 flex-wrap items-center gap-2">
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            disabled={project.isFetching}
+            onClick={() => void project.refetch()}
+          >
+            <RefreshCw
+              size={13}
+              aria-hidden="true"
+              className={project.isFetching ? 'animate-spin' : undefined}
+            />
+            일반 설정 새로고침
+          </Button>
           <Badge variant="outline">{project.data.key}</Badge>
           <Badge variant={archived ? 'danger' : isOwner ? 'accent' : 'outline'}>
             {archived ? '보관됨 · 읽기 전용' : isOwner ? '소유자 편집' : '읽기 전용'}
           </Badge>
         </div>
       </header>
+
+      {project.isError ? (
+        <div
+          role="alert"
+          className="mt-3 flex min-w-0 flex-col gap-2 border border-of-warning/35 bg-of-warning/10 px-3 py-2.5 sm:flex-row sm:items-center sm:justify-between"
+        >
+          <div className="flex min-w-0 items-start gap-2">
+            <CircleAlert size={13} aria-hidden="true" className="mt-0.5 shrink-0 text-of-warning" />
+            <div className="min-w-0">
+              <p className="text-xs font-medium text-of-text">
+                최신 프로젝트 설정을 불러오지 못했습니다.
+              </p>
+              <p className="mt-0.5 text-[11px] leading-5 text-of-muted">
+                마지막으로 확인한 설정과 저장하지 않은 변경을 유지합니다.
+              </p>
+            </div>
+          </div>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="w-full shrink-0 sm:w-auto"
+            disabled={project.isFetching}
+            onClick={() => void project.refetch()}
+          >
+            <RefreshCw
+              size={13}
+              aria-hidden="true"
+              className={project.isFetching ? 'animate-spin' : undefined}
+            />
+            프로젝트 설정 다시 시도
+          </Button>
+        </div>
+      ) : null}
 
       {archived ? (
         <div className="mt-3 flex items-start gap-2 border-l-2 border-of-warning bg-of-warning-soft/30 px-3 py-2 text-xs text-of-muted">
@@ -465,10 +531,22 @@ function HealthSection({
   const [lastAttempt, setLastAttempt] = useState<
     { health: null } | { health: ProjectHealth; health_note: string | null } | null
   >(null)
+  const syncedProject = useRef<Project | null>(null)
 
   useEffect(() => {
-    setHealth(project.health ?? '')
-    setNote(project.health_note ?? '')
+    const previous = syncedProject.current
+    if (!previous || previous.id !== project.id) {
+      setHealth(project.health ?? '')
+      setNote(project.health_note ?? '')
+    } else {
+      setHealth((current) =>
+        current === (previous.health ?? '') ? (project.health ?? '') : current,
+      )
+      setNote((current) =>
+        current === (previous.health_note ?? '') ? (project.health_note ?? '') : current,
+      )
+    }
+    syncedProject.current = project
   }, [project])
 
   const dirty =
