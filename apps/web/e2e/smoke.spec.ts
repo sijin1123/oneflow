@@ -30643,6 +30643,139 @@ test('연결 및 통합 허브는 네 상태 조회를 서로 막지 않고 각�
   await expectNoHorizontalOverflow(page)
 })
 
+test('UI-305 모바일 통합 새로고침은 마지막 성공 상태와 동일한 전체 재시도를 보존한다', async ({ page }) => {
+  await mockApi(page)
+  await page.setViewportSize({ width: 320, height: 740 })
+
+  let failRefresh = false
+  const reads = { webhooks: 0, transfers: 0, ai: 0, auth: 0 }
+
+  await page.route('**/api/v1/webhooks', async (route) => {
+    reads.webhooks += 1
+    if (failRefresh) {
+      await route.fulfill({ status: 503, json: { detail: 'webhooks temporarily unavailable' } })
+      return
+    }
+    await route.fulfill({
+      json: {
+        items: [{
+          id: 'wh-mobile',
+          name: 'Mobile delivery',
+          url: 'https://hooks.example.com/mobile',
+          event_types: ['work_package.updated'],
+          is_active: true,
+          secret_version: 3,
+          signing_key_id: '2026-q3',
+          created_at: '2026-07-30T00:00:00Z',
+          updated_at: '2026-07-30T00:00:00Z',
+          deleted_at: null,
+        }],
+        total: 1,
+        enabled: true,
+        active_signing_key_id: '2026-q3',
+        available_signing_key_ids: ['2026-q3'],
+        rotations: [],
+      },
+    })
+  })
+  await page.route('**/api/v1/data-transfer-jobs', async (route) => {
+    reads.transfers += 1
+    await route.fulfill({ json: { items: [], total: 0, limit: 50, offset: 0 } })
+  })
+  await page.route('**/api/v1/admin/workspace/features/ai', async (route) => {
+    reads.ai += 1
+    await route.fulfill({
+      json: {
+        feature_key: 'ai',
+        enabled: true,
+        revision: 7,
+        deployment_enabled: true,
+        effective_enabled: true,
+        updated_by_user_id: 'me-1',
+        updated_by_name: 'Dev User',
+        updated_at: '2026-07-30T00:00:00Z',
+      },
+    })
+  })
+  await page.route('**/api/v1/auth/config', async (route) => {
+    reads.auth += 1
+    if (failRefresh) {
+      await route.fulfill({ status: 503, json: { detail: 'auth config temporarily unavailable' } })
+      return
+    }
+    await route.fulfill({
+      json: {
+        auth_mode: 'oidc',
+        oidc_issuer: null,
+        oidc_client_id: null,
+        oidc_provider: null,
+        oidc_providers: ['google', 'microsoft'],
+        has_client_secret: true,
+        command_palette_enabled: true,
+        session_management_enabled: true,
+        password_required: false,
+        oidc_login_enabled: true,
+      },
+    })
+  })
+
+  await page.goto('/admin/integrations')
+  const frameActions = page.locator('[data-frame-context-actions]')
+  const webhooks = page.getByLabel('Webhooks 상태')
+  const auth = page.getByLabel('인증 상태')
+
+  await expect(webhooks.getByText('전송 중', { exact: true })).toBeVisible()
+  await expect(webhooks.getByText('endpoint 1개')).toBeVisible()
+  await expect(auth.getByText('OIDC 준비됨', { exact: true })).toBeVisible()
+  await expect(auth.getByText('provider 2개')).toBeVisible()
+  await expect(frameActions.getByRole('link', { name: '운영 허브' })).toBeVisible()
+  await expect(frameActions.getByRole('button', { name: '모두 새로고침' })).toBeVisible()
+
+  const beforeFailure = { ...reads }
+  failRefresh = true
+  await frameActions.getByRole('button', { name: '모두 새로고침' }).click()
+
+  await expect(page.getByRole('alert').filter({ hasText: 'Webhooks, 인증 상태를 새로고침하지 못했습니다.' })).toBeVisible()
+  await expect(webhooks.getByText('전송 중 · 갱신 필요')).toBeVisible()
+  await expect(webhooks.getByText('endpoint 1개')).toBeVisible()
+  await expect(auth.getByText('OIDC 준비됨 · 갱신 필요')).toBeVisible()
+  await expect(auth.getByText('provider 2개')).toBeVisible()
+  await expect(frameActions.getByRole('button', { name: '모두 새로고침 다시 시도' })).toBeVisible()
+  expect(reads.webhooks).toBeGreaterThan(beforeFailure.webhooks)
+  expect(reads.transfers).toBeGreaterThan(beforeFailure.transfers)
+  expect(reads.ai).toBeGreaterThan(beforeFailure.ai)
+  expect(reads.auth).toBeGreaterThan(beforeFailure.auth)
+  await expectNoHorizontalOverflow(page)
+  await expect(page.getByTestId('quick-dock-toggle')).toBeVisible()
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/mobile-integrations-lifecycle-ui-305/retained-refresh-error-320.png',
+    fullPage: false,
+  })
+
+  failRefresh = false
+  await page.getByLabel('Webhooks 다시 시도').click()
+  await expect(webhooks.getByText('전송 중', { exact: true })).toBeVisible()
+  await expect(auth.getByText('OIDC 준비됨 · 갱신 필요')).toBeVisible()
+  await expect(page.getByRole('alert').filter({ hasText: '인증 상태를 새로고침하지 못했습니다.' })).toBeVisible()
+
+  const beforeRecovery = { ...reads }
+  await frameActions.getByRole('button', { name: '모두 새로고침 다시 시도' }).click()
+
+  await expect(page.getByRole('alert').filter({ hasText: '상태를 새로고침하지 못했습니다.' })).toHaveCount(0)
+  await expect(webhooks.getByText('전송 중', { exact: true })).toBeVisible()
+  await expect(auth.getByText('OIDC 준비됨', { exact: true })).toBeVisible()
+  await expect(frameActions.getByRole('button', { name: '모두 새로고침' })).toBeVisible()
+  expect(reads.webhooks).toBeGreaterThan(beforeRecovery.webhooks)
+  expect(reads.transfers).toBeGreaterThan(beforeRecovery.transfers)
+  expect(reads.ai).toBeGreaterThan(beforeRecovery.ai)
+  expect(reads.auth).toBeGreaterThan(beforeRecovery.auth)
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/mobile-integrations-lifecycle-ui-305/recovered-320.png',
+    fullPage: false,
+  })
+})
+
 test('관리자 webhook 표면이 endpoint와 delivery lifecycle을 실제 요청에 연결한다', async ({ page }) => {
   await mockApi(page)
   await page.setViewportSize({ width: 390, height: 844 })

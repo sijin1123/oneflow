@@ -8,6 +8,7 @@ import {
   Webhook,
   type LucideIcon,
 } from 'lucide-react'
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
 
 import { FrameContextActions } from '@/components/shell/FrameContextActions'
@@ -33,6 +34,7 @@ type IntegrationRowProps = {
   action: string
   pending?: boolean
   error?: unknown
+  hasSnapshot?: boolean
   onRetry?: () => void
 }
 
@@ -50,8 +52,11 @@ function IntegrationRow({
   action,
   pending = false,
   error,
+  hasSnapshot = false,
   onRetry,
 }: IntegrationRowProps) {
+  const stale = Boolean(error && hasSnapshot)
+
   return (
     <li aria-label={`${title} 상태`} className="grid min-w-0 gap-3 py-4 first:pt-1 last:pb-1 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
       <div className="flex min-w-0 items-start gap-3">
@@ -61,15 +66,21 @@ function IntegrationRow({
         <div className="min-w-0 flex-1">
           <div className="flex min-w-0 flex-wrap items-center gap-2">
             <h3 className="text-sm font-medium">{title}</h3>
-            {pending ? <Skeleton className="h-5 w-16" /> : <Badge variant={error ? 'danger' : tone}>{error ? '확인 실패' : status}</Badge>}
+            {pending ? (
+              <Skeleton className="h-5 w-16" />
+            ) : (
+              <Badge variant={stale ? 'warning' : error ? 'danger' : tone}>
+                {stale ? `${status} · 갱신 필요` : error ? '확인 실패' : status}
+              </Badge>
+            )}
           </div>
           <p className="mt-1 max-w-2xl text-xs leading-5 text-of-muted">{description}</p>
-          {pending ? (
+          {pending && !hasSnapshot ? (
             <div role="status" aria-label={`${title} 확인 중`} className="mt-2 flex gap-2">
               <Skeleton className="h-4 w-24" />
               <Skeleton className="h-4 w-32" />
             </div>
-          ) : error ? (
+          ) : error && !hasSnapshot ? (
             <div className="mt-2 flex min-w-0 flex-wrap items-center gap-2" role="alert">
               <p className="text-xs text-of-danger">현재 상태를 불러오지 못했습니다.</p>
               {onRetry ? (
@@ -79,9 +90,21 @@ function IntegrationRow({
               ) : null}
             </div>
           ) : (
-            <ul aria-label={`${title} 세부 상태`} className="mt-2 flex min-w-0 flex-wrap gap-x-3 gap-y-1 text-[11px] text-of-muted">
-              {facts.map((fact) => <li key={fact}>{fact}</li>)}
-            </ul>
+            <>
+              <ul aria-label={`${title} 세부 상태`} className="mt-2 flex min-w-0 flex-wrap gap-x-3 gap-y-1 text-[11px] text-of-muted">
+                {facts.map((fact) => <li key={fact}>{fact}</li>)}
+              </ul>
+              {stale ? (
+                <div className="mt-2 flex min-w-0 flex-wrap items-center gap-2" role="alert">
+                  <p className="text-xs text-of-warning">이전 확인 결과를 유지했습니다. 현재 상태를 다시 확인해 주세요.</p>
+                  {onRetry ? (
+                    <Button size="sm" variant="ghost" onClick={onRetry} aria-label={`${title} 다시 시도`}>
+                      <RefreshCw size={13} aria-hidden="true" /> 다시 시도
+                    </Button>
+                  ) : null}
+                </div>
+              ) : null}
+            </>
           )}
         </div>
       </div>
@@ -100,30 +123,43 @@ export function IntegrationsSettingsPage() {
   const transfers = useDataTransferJobs()
   const ai = useAiPolicy()
   const auth = useAuthConfig()
+  const [failedRefreshes, setFailedRefreshes] = useState<string[]>([])
 
   const activeWebhooks = webhooks.data?.items.filter((item) => item.is_active).length ?? 0
   const latestTransfer = transfers.data?.items[0]
   const authProviders = auth.data?.oidc_providers ?? []
   const authReady = auth.data?.auth_mode === 'dev' || Boolean(auth.data?.oidc_login_enabled)
   const queries = [webhooks, transfers, ai, auth]
-  const confirmedCount = queries.filter((query) => query.data !== undefined && !query.isError).length
+  const confirmedCount = queries.filter((query) => query.data !== undefined).length
   const failedCount = queries.filter((query) => query.isError).length
   const refreshing = queries.some((query) => query.isFetching)
 
   const refreshAll = async () => {
-    await Promise.all([
+    const results = await Promise.all([
       webhooks.refetch(),
       transfers.refetch(),
       ai.refetch(),
       auth.refetch(),
     ])
+    const labels = ['Webhooks', '데이터 전송', 'AI 작업 요약', '인증']
+    setFailedRefreshes(results.flatMap((result, index) => result.isError ? [labels[index]] : []))
   }
+
+  const retryOne = async (label: string, refetch: () => Promise<{ isError: boolean }>) => {
+    const result = await refetch()
+    if (!result.isError) {
+      setFailedRefreshes((current) => current.filter((item) => item !== label))
+    }
+  }
+
+  const refreshActionLabel = failedRefreshes.length > 0 ? '모두 새로고침 다시 시도' : '모두 새로고침'
 
   return (
     <div className="flex h-full min-w-0 flex-col bg-of-surface">
       <FrameContextActions>
-        <Link to="/operations" className={actionClassName}>
-          <DatabaseZap size={13} aria-hidden="true" /> 운영 허브
+        <Link to="/operations" className={actionClassName} aria-label="운영 허브" title="운영 허브">
+          <DatabaseZap size={13} aria-hidden="true" />
+          <span className="hidden min-[360px]:inline">운영 허브</span>
         </Link>
         <Button
           type="button"
@@ -131,9 +167,11 @@ export function IntegrationsSettingsPage() {
           variant="outline"
           disabled={refreshing}
           onClick={() => void refreshAll()}
+          aria-label={refreshActionLabel}
+          title={refreshActionLabel}
         >
           <RefreshCw size={13} className={refreshing ? 'animate-spin' : undefined} aria-hidden="true" />
-          모두 새로고침
+          <span className="hidden min-[360px]:inline">{refreshActionLabel}</span>
         </Button>
       </FrameContextActions>
 
@@ -170,6 +208,12 @@ export function IntegrationsSettingsPage() {
             </dl>
           </header>
 
+          {failedRefreshes.length > 0 ? (
+            <div role="alert" className="mt-4 border-l-2 border-of-warning bg-of-warning-soft/30 px-3 py-2 text-xs leading-5 text-of-text">
+              {failedRefreshes.join(', ')} 상태를 새로고침하지 못했습니다. 마지막 성공 결과를 유지했으며 상단에서 같은 전체 요청을 다시 시도할 수 있습니다.
+            </div>
+          ) : null}
+
           <section aria-labelledby="integration-status-title" className="py-6">
             <div className="flex min-w-0 items-start justify-between gap-3 border-b border-of-border-subtle pb-3">
               <div className="min-w-0">
@@ -196,7 +240,8 @@ export function IntegrationsSettingsPage() {
                 action="관리"
                 pending={webhooks.isPending}
                 error={webhooks.error}
-                onRetry={() => void webhooks.refetch()}
+                hasSnapshot={webhooks.data !== undefined}
+                onRetry={() => void retryOne('Webhooks', webhooks.refetch)}
               />
 
               <IntegrationRow
@@ -216,7 +261,8 @@ export function IntegrationsSettingsPage() {
                 action="운영 허브"
                 pending={transfers.isPending}
                 error={transfers.error}
-                onRetry={() => void transfers.refetch()}
+                hasSnapshot={transfers.data !== undefined}
+                onRetry={() => void retryOne('데이터 전송', transfers.refetch)}
               />
 
               <IntegrationRow
@@ -234,7 +280,8 @@ export function IntegrationsSettingsPage() {
                 action="정책 관리"
                 pending={ai.isPending}
                 error={ai.error}
-                onRetry={() => void ai.refetch()}
+                hasSnapshot={ai.data !== undefined}
+                onRetry={() => void retryOne('AI 작업 요약', ai.refetch)}
               />
 
               <IntegrationRow
@@ -252,7 +299,8 @@ export function IntegrationsSettingsPage() {
                 action="시스템 상태"
                 pending={auth.isPending}
                 error={auth.error}
-                onRetry={() => void auth.refetch()}
+                hasSnapshot={auth.data !== undefined}
+                onRetry={() => void retryOne('인증', auth.refetch)}
               />
             </ul>
           </section>
