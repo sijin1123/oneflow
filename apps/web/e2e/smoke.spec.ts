@@ -26629,6 +26629,88 @@ test('사용자 디렉터리는 모바일에서 계정 카드와 멤버십을 �
   })
 })
 
+test('모바일 사용자 디렉터리는 실패한 상태 범위에서 마지막 목록과 정확한 재시도를 유지한다', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 320, height: 740 })
+  await mockApi(page)
+  const admin = {
+    id: 'me-1',
+    email: 'dev@oneflow.local',
+    display_name: 'Dev User',
+    is_active: true,
+    is_admin: true,
+    created_at: '2026-07-01T00:00:00Z',
+  }
+  const member = {
+    id: 'member-mobile',
+    email: 'member@oneflow.local',
+    display_name: 'Mobile Member',
+    is_active: true,
+    is_admin: false,
+    created_at: '2026-07-02T00:00:00Z',
+  }
+  const inactive = {
+    id: 'inactive-mobile',
+    email: 'inactive@oneflow.local',
+    display_name: 'Inactive Member',
+    is_active: false,
+    is_admin: false,
+    created_at: '2026-07-03T00:00:00Z',
+  }
+  const summary = { users: 3, active: 2, admins: 1, inactive: 1, active_admins: 1 }
+  const requestedScopes: string[] = []
+  let inactiveAttempts = 0
+
+  await page.route(/\/api\/v1\/users(?:\?.*)?$/, (route) => {
+    if (route.request().method() !== 'GET') return route.fallback()
+    const url = new URL(route.request().url())
+    const scope = url.searchParams.get('scope') ?? 'all'
+    requestedScopes.push(scope)
+    if (scope === 'inactive') {
+      inactiveAttempts += 1
+      if (inactiveAttempts === 1) {
+        return route.fulfill({ status: 503, json: { detail: 'directory temporarily unavailable' } })
+      }
+      return route.fulfill({ json: { items: [inactive], total: 1, summary } })
+    }
+    return route.fulfill({ json: { items: [admin, member], total: 2, summary } })
+  })
+
+  await page.goto('/admin/users')
+  await expect(page.getByText('member@oneflow.local')).toBeVisible()
+  const frameActions = page.getByRole('toolbar', { name: '사용자 관리 화면 제어' })
+  await expect(frameActions.getByRole('link', { name: '관리 개요' })).toBeVisible()
+  await expect(frameActions.getByRole('button', { name: '새로고침' })).toBeVisible()
+  await expect(frameActions.getByRole('button', { name: '새 사용자' })).toBeVisible()
+
+  await page.getByRole('button', { name: '비활성', exact: true }).click()
+  await expect(page).toHaveURL(/scope=inactive/)
+  const retainedAlert = page.getByRole('alert').filter({ hasText: '마지막으로 확인한 목록' })
+  await expect(retainedAlert).toBeVisible()
+  await expect(page.getByText('member@oneflow.local')).toBeVisible()
+  await expect(page.getByText('inactive@oneflow.local')).toHaveCount(0)
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/mobile-user-directory-lifecycle-ui-303/query-failure-retained-320.png',
+    fullPage: true,
+  })
+
+  await retainedAlert.getByRole('button', { name: '다시 시도' }).click()
+  await expect(page.getByText('inactive@oneflow.local')).toBeVisible()
+  await expect(page.getByText('member@oneflow.local')).toHaveCount(0)
+  await expect(retainedAlert).toHaveCount(0)
+  await expect(page).toHaveURL(/scope=inactive/)
+  await expectNoHorizontalOverflow(page)
+  await expect(page.getByRole('button', { name: '빠른 도구 열기' })).toBeVisible()
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/mobile-user-directory-lifecycle-ui-303/query-recovered-320.png',
+    fullPage: true,
+  })
+
+  expect(requestedScopes).toEqual(['all', 'inactive', 'inactive'])
+})
+
 test('프로젝트 상태 보고를 저장하면 목록에 헬스 칩이 보인다', async ({ page }) => {
   await mockApi(page)
   const atRisk = {
