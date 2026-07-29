@@ -31014,6 +31014,129 @@ test('webhook endpoint와 delivery 상태는 독립적으로 복구되고 frame�
   await expectNoHorizontalOverflow(page)
 })
 
+test('UI-306 모바일 Webhook 갱신은 endpoint와 delivery의 마지막 성공 상태를 독립 보존한다', async ({ page }) => {
+  await mockApi(page)
+  await page.setViewportSize({ width: 320, height: 740 })
+  let failEndpoints = false
+  let failDeliveries = false
+  const reads = { endpoints: 0, deliveries: 0 }
+  const endpoint = {
+    id: 'wh-mobile-lifecycle',
+    name: 'Mobile lifecycle hook',
+    url: 'https://hooks.example.com/mobile-lifecycle',
+    event_types: ['work_package.updated'],
+    is_active: true,
+    secret_version: 4,
+    signing_key_id: '2026-q3',
+    created_at: '2026-07-30T00:00:00Z',
+    updated_at: '2026-07-30T00:00:00Z',
+    deleted_at: null,
+  }
+  const delivery = {
+    id: 'del-mobile-lifecycle',
+    endpoint_id: endpoint.id,
+    event_id: 'event-mobile-lifecycle',
+    event_type: 'work_package.updated',
+    status: 'failed',
+    attempt_count: 2,
+    response_status: 503,
+    duration_ms: 38,
+    error: 'HTTP 503',
+    created_at: '2026-07-30T00:01:00Z',
+    attempted_at: '2026-07-30T00:01:00Z',
+    next_attempt_at: null,
+    leased_until: null,
+    completed_at: '2026-07-30T00:01:00Z',
+    signing_key_id: '2026-q3',
+    secret_version: 4,
+    signing_snapshot_source: 'captured',
+  }
+
+  await page.route('**/api/v1/webhooks', async (route) => {
+    reads.endpoints += 1
+    if (failEndpoints) {
+      await route.fulfill({ status: 503, json: { detail: 'endpoint refresh unavailable' } })
+      return
+    }
+    await route.fulfill({
+      json: {
+        items: [endpoint],
+        total: 1,
+        enabled: true,
+        active_signing_key_id: '2026-q3',
+        available_signing_key_ids: ['2026-q3'],
+        rotations: [],
+      },
+    })
+  })
+  await page.route('**/api/v1/webhook-deliveries**', async (route) => {
+    reads.deliveries += 1
+    if (failDeliveries) {
+      await route.fulfill({ status: 503, json: { detail: 'delivery refresh unavailable' } })
+      return
+    }
+    await route.fulfill({ json: { items: [delivery], total: 1 } })
+  })
+
+  await page.goto('/admin/webhooks')
+  const frameActions = page.locator('[data-frame-context-actions]')
+  const summary = page.getByLabel('Webhook 운영 요약')
+  const endpointRegion = page.getByRole('region', { name: 'Endpoints' })
+  const deliveryRegion = page.getByRole('region', { name: 'Delivery audit' })
+  await expect(endpointRegion.getByText('Mobile lifecycle hook')).toBeVisible()
+  await expect(deliveryRegion.getByText('Mobile lifecycle hook')).toBeVisible()
+  await expect(deliveryRegion.getByText('실패', { exact: true })).toBeVisible()
+  await expect(summary.getByText('Endpoint').locator('..').getByText('1', { exact: true })).toBeVisible()
+  await expect(summary.getByText('전송').locator('..').getByText('1', { exact: true })).toBeVisible()
+  await expect(frameActions.getByRole('link', { name: '통합 허브' })).toBeVisible()
+  await expect(frameActions.getByRole('button', { name: '모두 새로고침' })).toBeVisible()
+
+  const beforeFailure = { ...reads }
+  failEndpoints = true
+  failDeliveries = true
+  await frameActions.getByRole('button', { name: '모두 새로고침' }).click()
+
+  await expect(page.getByRole('alert').filter({ hasText: 'Endpoint, Delivery audit 상태를 새로고침하지 못했습니다.' })).toBeVisible()
+  await expect(page.getByText('Endpoint 최신 상태를 확인하지 못해 마지막 성공 결과를 유지했습니다.')).toBeVisible()
+  await expect(page.getByText('전송 감사 최신 상태를 확인하지 못해 마지막 성공 결과를 유지했습니다.')).toBeVisible()
+  await expect(endpointRegion.getByText('Mobile lifecycle hook')).toBeVisible()
+  await expect(deliveryRegion.getByText('Mobile lifecycle hook')).toBeVisible()
+  await expect(deliveryRegion.getByText('실패', { exact: true })).toBeVisible()
+  await expect(summary.getByText('Endpoint').locator('..').getByText('1', { exact: true })).toBeVisible()
+  await expect(summary.getByText('전송').locator('..').getByText('1', { exact: true })).toBeVisible()
+  expect(reads.endpoints).toBeGreaterThan(beforeFailure.endpoints)
+  expect(reads.deliveries).toBeGreaterThan(beforeFailure.deliveries)
+  await expect(frameActions.getByRole('button', { name: '모두 새로고침 다시 시도' })).toBeVisible()
+  await expectNoHorizontalOverflow(page)
+  await expect(page.getByTestId('quick-dock-toggle')).toBeVisible()
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/mobile-webhook-operations-lifecycle-ui-306/retained-refresh-error-320.png',
+    fullPage: false,
+  })
+
+  failEndpoints = false
+  await page.getByRole('button', { name: 'Endpoint 다시 시도' }).click()
+  await expect(page.getByText('Endpoint 최신 상태를 확인하지 못해 마지막 성공 결과를 유지했습니다.')).toHaveCount(0)
+  await expect(page.getByText('전송 감사 최신 상태를 확인하지 못해 마지막 성공 결과를 유지했습니다.')).toBeVisible()
+  await expect(page.getByRole('alert').filter({ hasText: 'Delivery audit 상태를 새로고침하지 못했습니다.' })).toBeVisible()
+
+  const beforeRecovery = { ...reads }
+  failDeliveries = false
+  await frameActions.getByRole('button', { name: '모두 새로고침 다시 시도' }).click()
+  await expect(page.getByRole('alert').filter({ hasText: '상태를 새로고침하지 못했습니다.' })).toHaveCount(0)
+  await expect(endpointRegion.getByText('Mobile lifecycle hook')).toBeVisible()
+  await expect(deliveryRegion.getByText('Mobile lifecycle hook')).toBeVisible()
+  await expect(deliveryRegion.getByText('실패', { exact: true })).toBeVisible()
+  expect(reads.endpoints).toBeGreaterThan(beforeRecovery.endpoints)
+  expect(reads.deliveries).toBeGreaterThan(beforeRecovery.deliveries)
+  await expect(frameActions.getByRole('button', { name: '모두 새로고침' })).toBeVisible()
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/mobile-webhook-operations-lifecycle-ui-306/recovered-320.png',
+    fullPage: false,
+  })
+})
+
 test('webhook 누락 signing key와 CAS 충돌을 최신 endpoint 상태로 복구한다', async ({ page }) => {
   await mockApi(page)
   let endpoint = {
