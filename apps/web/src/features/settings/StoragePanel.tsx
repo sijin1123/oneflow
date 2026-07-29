@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import {
+  AlertTriangle,
   Archive,
   Database,
   ExternalLink,
@@ -54,7 +55,7 @@ export function StoragePanel({ projectId }: { projectId: string }) {
       </section>
     )
   }
-  if (storage.isError || !storage.data) {
+  if (!storage.data) {
     return (
       <ErrorState
         error={storage.error}
@@ -123,6 +124,42 @@ export function StoragePanel({ projectId }: { projectId: string }) {
           </Button>
         </div>
       </header>
+
+      {storage.isError ? (
+        <div
+          role="alert"
+          className="mx-4 mb-4 flex min-w-0 flex-col gap-3 border border-of-warning/35 bg-of-warning/10 px-3 py-2.5 sm:flex-row sm:items-center sm:justify-between"
+        >
+          <div className="flex min-w-0 items-start gap-2">
+            <AlertTriangle
+              size={14}
+              aria-hidden="true"
+              className="mt-0.5 shrink-0 text-of-warning"
+            />
+            <div className="min-w-0">
+              <p className="text-xs font-medium">최신 사용량을 불러오지 못했습니다</p>
+              <p className="mt-0.5 text-[11px] leading-5 text-of-muted">
+                마지막으로 확인한 스토리지 정보를 표시합니다.
+              </p>
+            </div>
+          </div>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="w-full shrink-0 sm:w-auto"
+            disabled={storage.isFetching}
+            onClick={() => void storage.refetch()}
+          >
+            <RefreshCw
+              size={14}
+              aria-hidden="true"
+              className={cn(storage.isFetching && 'animate-spin')}
+            />
+            사용량 다시 시도
+          </Button>
+        </div>
+      ) : null}
 
       <div
         role="list"
