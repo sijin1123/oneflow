@@ -250,7 +250,7 @@ function EditablePhaseRow({
                 type="date"
                 value={startDate}
                 readOnly={!canEdit}
-                disabled={!phase.active || update.isPending || retrying}
+                disabled={!canEdit || !phase.active || update.isPending || retrying}
                 aria-label={`${phase.name} 시작일`}
                 className="mt-1 text-xs"
                 onChange={(event) => {
@@ -270,7 +270,7 @@ function EditablePhaseRow({
                 type="date"
                 value={endDate}
                 readOnly={!canEdit}
-                disabled={!phase.active || update.isPending || retrying}
+                disabled={!canEdit || !phase.active || update.isPending || retrying}
                 aria-label={`${phase.name} 종료일`}
                 className="mt-1 text-xs"
                 onChange={(event) => {
@@ -393,7 +393,7 @@ function EditablePhaseRow({
               type="button"
               size="sm"
               variant="outline"
-              disabled={update.isPending || retrying}
+              disabled={!canEdit || update.isPending || retrying}
               onClick={() => void retryLastAction()}
             >
               {retrying ? (
@@ -426,7 +426,11 @@ export function ProjectPhasesPanel({
   const dirtyKeys = useRef(new Set<string>())
   const initializedExpansion = useRef(false)
   const [expandedKeys, setExpandedKeys] = useState<Set<string>>(new Set())
-  const canEdit = isOwner && !project.data?.archived_at
+  const canEdit =
+    isOwner &&
+    !project.isError &&
+    !phases.isError &&
+    !project.data?.archived_at
 
   useEffect(() => () => onDirtyChange(false), [onDirtyChange])
 
@@ -465,15 +469,32 @@ export function ProjectPhasesPanel({
     [phases],
   )
 
-  if (phases.isPending || project.isPending) {
+  if (
+    (phases.isPending && !phases.data) ||
+    (project.isPending && !project.data)
+  ) {
     return (
       <section aria-label="프로젝트 단계 설정" className="min-w-0">
         <ListSkeleton />
       </section>
     )
   }
-  if (phases.isError) return <ErrorState error={phases.error} onRetry={() => phases.refetch()} />
-  if (project.isError) return <ErrorState error={project.error} onRetry={() => project.refetch()} />
+  if (!phases.data) {
+    return (
+      <ErrorState
+        error={phases.error}
+        onRetry={() => void phases.refetch()}
+      />
+    )
+  }
+  if (!project.data) {
+    return (
+      <ErrorState
+        error={project.error}
+        onRetry={() => void project.refetch()}
+      />
+    )
+  }
 
   const available = phases.data.items
     .filter((phase) => !phase.retired)
@@ -486,6 +507,7 @@ export function ProjectPhasesPanel({
   return (
     <section
       aria-label="프로젝트 단계 설정"
+      aria-busy={phases.isFetching || project.isFetching}
       className="min-w-0 overflow-hidden rounded-of border border-of-border bg-of-surface"
     >
       <div className="flex min-w-0 flex-col gap-3 px-4 py-4 sm:flex-row sm:items-start sm:justify-between">
@@ -498,16 +520,102 @@ export function ProjectPhasesPanel({
             단계 흐름을 확인하고 필요한 단계만 펼쳐 일정과 시작·완료 게이트를 관리합니다.
           </p>
         </div>
-        <Badge variant={canEdit ? 'accent' : 'outline'} className="shrink-0">
-          {canEdit ? (
-            `활성 ${activeCount}/${available.length}`
-          ) : (
-            <>
-              <LockKeyhole size={12} aria-hidden="true" /> 읽기 전용
-            </>
-          )}
-        </Badge>
+        <div className="flex shrink-0 flex-wrap items-center gap-2">
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            disabled={phases.isFetching || project.isFetching}
+            onClick={() => void Promise.all([phases.refetch(), project.refetch()])}
+          >
+            <RefreshCw
+              size={13}
+              aria-hidden="true"
+              className={
+                phases.isFetching || project.isFetching ? 'animate-spin' : undefined
+              }
+            />
+            프로젝트 단계 새로고침
+          </Button>
+          <Badge variant={canEdit ? 'accent' : 'outline'} className="shrink-0">
+            {canEdit ? (
+              `활성 ${activeCount}/${available.length}`
+            ) : (
+              <>
+                <LockKeyhole size={12} aria-hidden="true" /> 읽기 전용
+              </>
+            )}
+          </Badge>
+        </div>
       </div>
+
+      {phases.isError ? (
+        <div
+          role="alert"
+          className="mx-3 mb-3 flex min-w-0 flex-col gap-2 border border-of-warning/35 bg-of-warning/10 px-3 py-2.5 sm:mx-4 sm:flex-row sm:items-center sm:justify-between"
+        >
+          <div className="flex min-w-0 items-start gap-2">
+            <CircleAlert
+              size={13}
+              aria-hidden="true"
+              className="mt-0.5 shrink-0 text-of-warning"
+            />
+            <div className="min-w-0">
+              <p className="text-xs font-medium text-of-text">
+                최신 프로젝트 단계 목록을 불러오지 못했습니다.
+              </p>
+              <p className="mt-0.5 text-[11px] leading-5 text-of-muted">
+                마지막으로 확인한 단계와 저장하지 않은 일정 초안을 유지합니다.
+                다시 확인할 때까지 변경은 차단됩니다.
+              </p>
+            </div>
+          </div>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="w-full shrink-0 sm:w-auto"
+            disabled={phases.isFetching}
+            onClick={() => void phases.refetch()}
+          >
+            <RefreshCw size={13} aria-hidden="true" /> 프로젝트 단계 다시 시도
+          </Button>
+        </div>
+      ) : null}
+
+      {project.isError ? (
+        <div
+          role="alert"
+          className="mx-3 mb-3 flex min-w-0 flex-col gap-2 border border-of-danger/25 bg-of-danger-soft/35 px-3 py-2.5 sm:mx-4 sm:flex-row sm:items-center sm:justify-between"
+        >
+          <div className="flex min-w-0 items-start gap-2">
+            <LockKeyhole
+              size={13}
+              aria-hidden="true"
+              className="mt-0.5 shrink-0 text-of-danger"
+            />
+            <div className="min-w-0">
+              <p className="text-xs font-medium text-of-text">
+                프로젝트 권한을 다시 확인하지 못했습니다.
+              </p>
+              <p className="mt-0.5 text-[11px] leading-5 text-of-muted">
+                단계와 일정은 계속 볼 수 있지만 활성화·일정·게이트 변경은
+                권한 확인 전까지 차단됩니다.
+              </p>
+            </div>
+          </div>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="w-full shrink-0 sm:w-auto"
+            disabled={project.isFetching}
+            onClick={() => void project.refetch()}
+          >
+            <RefreshCw size={13} aria-hidden="true" /> 프로젝트 권한 다시 시도
+          </Button>
+        </div>
+      ) : null}
 
       {project.data.archived_at ? (
         <p className="border-y border-of-warning/40 bg-of-warning/5 px-4 py-2 text-xs leading-5 text-of-muted">

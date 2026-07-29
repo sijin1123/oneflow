@@ -28592,6 +28592,105 @@ test('프로젝트 단계 설정은 오류 재시도 후 멤버에게 읽기 전
   await expect(panel.getByRole('button', { name: '저장' })).toHaveCount(0)
 })
 
+test('프로젝트 단계 후속 갱신 오류는 일정 초안을 유지하고 권한 오류는 쓰기를 차단한다', async ({ page }) => {
+  await mockApi(page)
+  let phaseGets = 0
+  let projectGets = 0
+  let phasesShouldFail = false
+  let projectShouldFail = false
+  const lifecyclePhases: ProjectPhaseList = {
+    items: inactiveProjectPhases.items.map((phase, index) => ({
+      ...phase,
+      active: index < 3,
+      start_date: index < 3 ? `2026-08-${String(index * 7 + 3).padStart(2, '0')}` : null,
+      end_date: index < 3 ? `2026-08-${String(index * 7 + 7).padStart(2, '0')}` : null,
+      version: index < 3 ? 1 : 0,
+    })),
+    total: 4,
+  }
+
+  await page.route('**/api/v1/projects/*/phases**', async (route) => {
+    if (route.request().method() !== 'GET') {
+      await route.fallback()
+      return
+    }
+    phaseGets += 1
+    if (phasesShouldFail) {
+      await route.fulfill({ status: 503, json: { detail: 'temporary phase refresh error' } })
+      return
+    }
+    await route.fulfill({ json: lifecyclePhases })
+  })
+  await page.route(`**/api/v1/projects/${project.id}`, async (route) => {
+    if (route.request().method() !== 'GET') {
+      await route.fallback()
+      return
+    }
+    projectGets += 1
+    if (projectShouldFail) {
+      await route.fulfill({ status: 503, json: { detail: 'temporary project refresh error' } })
+      return
+    }
+    await route.fulfill({ json: project })
+  })
+
+  await page.setViewportSize({ width: 1280, height: 720 })
+  await page.goto(`/projects/${project.id}/settings?tab=lifecycle`)
+  const panel = page.getByRole('region', { name: '프로젝트 단계 설정' })
+  const planRow = panel.locator('li').filter({ hasText: '계획' })
+  await planRow.getByRole('button', { name: '계획 일정 및 게이트 펼치기' }).click()
+  const startDate = planRow.getByLabel('계획 시작일')
+  await startDate.fill('2026-08-11')
+  await expect(planRow).toContainText('저장되지 않음')
+
+  phasesShouldFail = true
+  await panel.getByRole('button', { name: '프로젝트 단계 새로고침' }).click()
+  const phaseAlert = panel.getByRole('alert').filter({ hasText: '최신 프로젝트 단계 목록' })
+  await expect(phaseAlert).toContainText('저장하지 않은 일정 초안을 유지합니다.')
+  await expect(startDate).toHaveValue('2026-08-11')
+  await expect(startDate).toBeDisabled()
+  await expect(planRow.getByRole('switch', { name: '계획 단계 비활성화' })).toBeDisabled()
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/project-phases-lifecycle-ui-313/desktop-phase-error.png',
+    fullPage: true,
+  })
+
+  phasesShouldFail = false
+  await phaseAlert.getByRole('button', { name: '프로젝트 단계 다시 시도' }).click()
+  await expect(phaseAlert).toHaveCount(0)
+  await expect(startDate).toBeEnabled()
+  await expect(startDate).toHaveValue('2026-08-11')
+
+  projectShouldFail = true
+  await panel.getByRole('button', { name: '프로젝트 단계 새로고침' }).click()
+  const projectAlert = panel.getByRole('alert').filter({ hasText: '프로젝트 권한' })
+  await expect(projectAlert).toContainText('활성화·일정·게이트 변경은 권한 확인 전까지 차단됩니다.')
+  await expect(startDate).toHaveValue('2026-08-11')
+  await expect(startDate).toBeDisabled()
+  await expect(planRow.getByRole('switch', { name: '계획 단계 비활성화' })).toBeDisabled()
+
+  await page.setViewportSize({ width: 320, height: 740 })
+  await projectAlert.scrollIntoViewIfNeeded()
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/project-phases-lifecycle-ui-313/mobile-project-error-320.png',
+    fullPage: true,
+  })
+
+  projectShouldFail = false
+  await projectAlert.getByRole('button', { name: '프로젝트 권한 다시 시도' }).click()
+  await expect(projectAlert).toHaveCount(0)
+  await expect(startDate).toBeEnabled()
+  await expect(startDate).toHaveValue('2026-08-11')
+  expect(phaseGets).toBeGreaterThanOrEqual(3)
+  expect(projectGets).toBeGreaterThanOrEqual(3)
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/project-phases-lifecycle-ui-313/mobile-recovered-320.png',
+    fullPage: true,
+  })
+})
+
 test('저장된 단계 활성화는 근무일 일정 재배치와 보존 결과를 구분해 알린다', async ({ page }) => {
   await mockApi(page)
   let phases: ProjectPhaseList = {
