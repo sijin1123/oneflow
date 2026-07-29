@@ -29568,6 +29568,122 @@ test('포트폴리오 리포트가 행·합계·아카이브 토글을 보여준
   await expect(page.getByRole('region', { name: '프로젝트 일정 기준선' })).toBeVisible()
 })
 
+test('UI-299 모바일 포트폴리오 리포트는 실패한 범위에서 마지막 성공 결과를 유지하고 정확히 재시도한다', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await mockApi(page)
+  const active = {
+    project_id: project.id,
+    key: 'ONE',
+    name: 'OneFlow 도입',
+    archived: false,
+    health: 'at_risk',
+    member_count: 3,
+    work_package_count: 12,
+    open_work_package_count: 7,
+    overdue_count: 2,
+    budget: 20000000,
+    cost_total: 5000000,
+    hours_total: 42.5,
+    schedule_baseline_id: 'baseline-mobile-current',
+    schedule_baseline_name: '모바일 출시 기준선',
+    schedule_baseline_captured_at: '2026-07-01T00:00:00Z',
+    schedule_baseline_snapshot_count: 12,
+    schedule_changed_count: 3,
+    schedule_risk_count: 2,
+  }
+  const archived = {
+    ...active,
+    project_id: 'portfolio-archived-mobile',
+    key: 'OLD',
+    name: '보관된 모바일 프로젝트',
+    archived: true,
+    health: null,
+    schedule_baseline_id: null,
+    schedule_baseline_name: null,
+    schedule_baseline_captured_at: null,
+    schedule_baseline_snapshot_count: 0,
+    schedule_changed_count: 0,
+    schedule_risk_count: 0,
+  }
+  const totals = {
+    projects: 1,
+    work_packages: 12,
+    open: 7,
+    overdue: 2,
+    budget: 20000000,
+    cost_total: 5000000,
+    hours_total: 42.5,
+    schedule_baseline_projects: 1,
+    schedule_changed_projects: 1,
+    schedule_at_risk_projects: 1,
+    schedule_risk_items: 2,
+  }
+  const requestedScopes: string[] = []
+  let archivedAttempts = 0
+  await page.route('**/api/v1/reports/portfolio?**', (route) => {
+    const scope = new URL(route.request().url()).searchParams.get('include_archived') ?? 'false'
+    requestedScopes.push(scope)
+    if (scope === 'true') archivedAttempts += 1
+    if (scope === 'true' && archivedAttempts <= 2) {
+      return route.fulfill({ status: 503, json: { detail: '포트폴리오 집계를 준비하고 있습니다' } })
+    }
+    return route.fulfill({
+      json: scope === 'true'
+        ? {
+            items: [active, archived],
+            totals: {
+              ...totals,
+              projects: 2,
+              work_packages: 24,
+              open: 14,
+              overdue: 4,
+              cost_total: 10000000,
+              hours_total: 85,
+            },
+            total: 2,
+          }
+        : { items: [active], totals, total: 1 },
+    })
+  })
+  await page.route('**/api/v1/reports/portfolio/timeline?**', (route) =>
+    route.fulfill({ json: { items: [], total: 0 } }),
+  )
+
+  await page.goto('/reports')
+  await expect(page.getByRole('heading', { name: '포트폴리오 리포트' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'OneFlow 도입', exact: true })).toBeVisible()
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/mobile-portfolio-reports-ui-299/directory-390.png',
+    fullPage: true,
+  })
+
+  await page.setViewportSize({ width: 320, height: 740 })
+  await page.getByLabel('아카이브 포함').click()
+  const retainedAlert = page.getByRole('alert')
+  await expect(retainedAlert).toContainText('아카이브 포함 범위를 불러오지 못했습니다')
+  await expect(retainedAlert).toContainText('현재 프로젝트 범위의 마지막 성공 결과를 유지합니다')
+  await expect(page.getByRole('button', { name: 'OneFlow 도입', exact: true })).toBeVisible()
+  await expect(page.getByText('보관된 모바일 프로젝트')).toHaveCount(0)
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/mobile-portfolio-reports-ui-299/retained-error-320.png',
+    fullPage: true,
+  })
+
+  await retainedAlert.getByRole('button', { name: '이 범위 다시 시도' }).click()
+  await expect(page.getByRole('button', { name: '보관된 모바일 프로젝트', exact: true })).toBeVisible()
+  await expect(page.getByText('합계 · 2개 프로젝트')).toBeHidden()
+  expect(requestedScopes.filter((scope) => scope === 'true')).toHaveLength(3)
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/mobile-portfolio-reports-ui-299/recovered-320.png',
+    fullPage: true,
+  })
+})
+
 test('포트폴리오 최근 기준선 추세가 독립 재시도·부분 이력·정확한 기준선 딥링크를 제공한다', async ({ page }) => {
   await mockApi(page)
   await mockProjectOverview(page)
