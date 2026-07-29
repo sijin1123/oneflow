@@ -13,12 +13,34 @@ feature branch -> pull request -> required CI -> main merge
 ```
 
 The deploy workflow reacts only to a successful `push` CI run on `main`; weekly scheduled CI does
-not redeploy. Concurrency is serialized and in-progress deployments are not cancelled.
+not redeploy. Automatic deployment is fail-closed and additionally requires the repository
+Variable `AUTO_DEPLOY_ENABLED` to equal the exact lowercase string `true`. A missing variable,
+`false`, or any other value skips the deployment job while CI and the runner continue operating.
+Concurrency is serialized and in-progress deployments are not cancelled.
+
+Manage the non-secret repository Variable at GitHub -> Settings -> Secrets and variables ->
+Actions -> Variables, or with the CLI:
+
+```bash
+gh variable set AUTO_DEPLOY_ENABLED --body false  # stop automatic deployment
+gh variable set AUTO_DEPLOY_ENABLED --body true   # resume on the next successful main CI run
+gh variable get AUTO_DEPLOY_ENABLED
+```
+
+Changing the variable does not itself deploy. After resuming, run `both` manually if the current
+`main` must be deployed immediately.
 
 ## Manual deployment
 
-Use GitHub Actions -> deploy -> Run workflow and select `dev`, `prod` or `both`. Manual deployment
-always resolves the latest `main` SHA through the GitHub API; a feature branch cannot be deployed.
+Use GitHub Actions -> deploy -> Run workflow and select `dev`, `prod` or `both`; `dev` is the safe
+default. Manual deployment remains available regardless of `AUTO_DEPLOY_ENABLED` and always
+resolves the latest `main` SHA through the GitHub API; a feature branch cannot be deployed.
+
+```bash
+gh workflow run deploy.yml -f target=dev
+gh workflow run deploy.yml -f target=prod
+gh workflow run deploy.yml -f target=both
+```
 
 ## Release behavior
 

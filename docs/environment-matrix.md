@@ -19,5 +19,9 @@
 | Project quota | 20 GiB | 20 GiB |
 | Deployment source | manual `dev` or `both` | successful dev gate or manual `prod` |
 
+Automatic deployment for both environments requires the repository Variable
+`AUTO_DEPLOY_ENABLED=true`. `false` or a missing value disables only the automatic path; manual
+`dev`, `prod`, and `both` dispatches remain available. The manual workflow default is `dev`.
+
 Database passwords are generated on the server and are not recorded in this document. The Google
 OAuth secret must be rotated after any disclosure and entered directly on the server.
