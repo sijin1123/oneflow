@@ -36,6 +36,7 @@ import { Textarea } from "@/components/ui/textarea";
 
 import {
   type ProjectTemplate,
+  type ProjectTemplateList,
   useApplyProjectTemplate,
   useArchiveProjectTemplate,
   useCreateProjectTemplate,
@@ -635,7 +636,20 @@ export function TemplatesPage() {
     Number.isInteger(parsedOffset) && parsedOffset >= 0 ? parsedOffset : 0;
   const [searchDraft, setSearchDraft] = useState(query);
   const templates = useProjectTemplates(query, includeArchived, offset);
-  const total = templates.data?.total;
+  const retainedTemplates = useRef<ProjectTemplateList | null>(null);
+  useEffect(() => {
+    if (!templates.data || templates.isPlaceholderData) return;
+    retainedTemplates.current = templates.data;
+  }, [templates.data, templates.isPlaceholderData]);
+  const catalog = templates.isPlaceholderData
+    ? retainedTemplates.current
+    : (templates.data ?? retainedTemplates.current);
+  const hasRetainedCatalog = templates.isError && Boolean(catalog);
+  const isRefreshingCatalog = templates.isFetching && Boolean(catalog);
+  const total =
+    templates.data && !templates.isPlaceholderData
+      ? templates.data.total
+      : undefined;
   const normalizedOffset =
     total === undefined
       ? undefined
@@ -651,7 +665,7 @@ export function TemplatesPage() {
   const offsetNeedsNormalization =
     total !== undefined && (rawOffset || null) !== canonicalOffset;
   const selected =
-    templates.data?.items.find((template) => template.id === selectedId) ??
+    catalog?.items.find((template) => template.id === selectedId) ??
     null;
 
   useEffect(() => setSearchDraft(query), [query]);
@@ -677,17 +691,11 @@ export function TemplatesPage() {
     setSearchParams(next, { replace: true });
   };
 
-  if (templates.isPending) return <ListSkeleton />;
-  if (templates.isError)
-    return (
-      <ErrorState error={templates.error} onRetry={() => templates.refetch()} />
-    );
-  if (offsetNeedsNormalization) return <ListSkeleton />;
-
-  const publishedOnPage = templates.data.items.filter(
+  const publishedOnPage = (catalog?.items ?? []).filter(
     (template) => !template.archived_at,
   ).length;
-  const unpublishedOnPage = templates.data.items.length - publishedOnPage;
+  const unpublishedOnPage = (catalog?.items.length ?? 0) - publishedOnPage;
+  const displayedOffset = catalog?.offset ?? offset;
 
   return (
     <div className="mx-auto flex w-full max-w-7xl flex-col gap-4 px-4 py-4 sm:px-6">
@@ -695,7 +703,7 @@ export function TemplatesPage() {
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <h1 className="text-base font-semibold">프로젝트 템플릿</h1>
-            <Badge variant="neutral">{templates.data.total}개</Badge>
+            {catalog ? <Badge variant="neutral">{catalog.total}개</Badge> : null}
           </div>
           <p className="mt-1 text-xs leading-5 text-of-muted">
             검증된 프로젝트 구성을 게시하고 새 프로젝트의 시작점으로 사용합니다.
@@ -772,103 +780,149 @@ export function TemplatesPage() {
         </Button>
       </section>
 
-      {templates.data.items.length > 0 ? (
-        <div className="flex flex-wrap items-center gap-2 text-xs text-of-muted">
-          <span className="inline-flex items-center gap-1">
-            <CircleCheck size={13} className="text-of-success" /> 게시 중{" "}
-            {publishedOnPage}
-          </span>
-          {includeArchived ? (
-            <span className="inline-flex items-center gap-1">
-              <LockKeyhole size={13} /> 게시 해제 {unpublishedOnPage}
-            </span>
-          ) : null}
-          <span className="ml-auto inline-flex items-center gap-1">
-            <Settings2 size={13} /> 카드를 선택해 구성과 관리 작업을 확인하세요.
-          </span>
+      {hasRetainedCatalog ? (
+        <div
+          role="alert"
+          className="flex min-w-0 flex-col gap-2 border-y border-of-danger/30 bg-of-danger-soft px-3 py-2 text-xs text-of-danger sm:flex-row sm:items-center sm:justify-between"
+        >
+          <span>요청한 조건을 불러오지 못해 이전 템플릿 목록을 유지합니다.</span>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="self-start sm:self-auto"
+            onClick={() => templates.refetch()}
+          >
+            같은 요청 다시 시도
+          </Button>
         </div>
+      ) : isRefreshingCatalog ? (
+        <p
+          role="status"
+          className="border-y border-of-border-subtle px-3 py-2 text-xs text-of-muted"
+        >
+          요청한 조건으로 템플릿을 갱신하고 있습니다.
+        </p>
       ) : null}
 
-      {templates.data.total === 0 ? (
-        <EmptyState
-          title={
-            query
-              ? "조건에 맞는 템플릿이 없습니다"
-              : "아직 프로젝트 템플릿이 없습니다"
-          }
-          hint="소유한 활성 프로젝트의 구성을 템플릿으로 게시할 수 있습니다."
-        >
-          {query ? (
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => setParams({ q: null })}
-            >
-              검색 지우기
-            </Button>
-          ) : (
-            <Button type="button" onClick={() => setCreating(true)}>
-              <Plus /> 새 템플릿
-            </Button>
-          )}
-        </EmptyState>
+      {!catalog ? (
+        templates.isPending ? (
+          <ListSkeleton />
+        ) : (
+          <ErrorState error={templates.error} onRetry={() => templates.refetch()} />
+        )
+      ) : offsetNeedsNormalization ? (
+        <ListSkeleton />
       ) : (
-        <ul
-          aria-label="프로젝트 템플릿 목록"
-          className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3"
-        >
-          {templates.data.items.map((template) => (
-            <TemplateCard
-              key={template.id}
-              template={template}
-              onOpen={() => setSelectedId(template.id)}
-            />
-          ))}
-        </ul>
-      )}
+        <>
+          {catalog.items.length > 0 ? (
+            <div className="flex flex-wrap items-center gap-2 text-xs text-of-muted">
+              <span className="inline-flex items-center gap-1">
+                <CircleCheck size={13} className="text-of-success" /> 게시 중{" "}
+                {publishedOnPage}
+              </span>
+              {includeArchived ? (
+                <span className="inline-flex items-center gap-1">
+                  <LockKeyhole size={13} /> 게시 해제 {unpublishedOnPage}
+                </span>
+              ) : null}
+              <span className="ml-auto hidden items-center gap-1 sm:inline-flex">
+                <Settings2 size={13} /> 카드를 선택해 구성과 관리 작업을 확인하세요.
+              </span>
+            </div>
+          ) : null}
 
-      {offset > 0 ||
-      offset + templates.data.items.length < templates.data.total ? (
-        <nav
-          aria-label="템플릿 페이지"
-          className="flex items-center justify-between gap-3 border-t border-of-border pt-3"
-        >
-          <span className="text-xs tabular-nums text-of-muted">
-            {offset + 1}-
-            {Math.min(
-              offset + templates.data.items.length,
-              templates.data.total,
-            )}{" "}
-            / {templates.data.total}
-          </span>
-          <div className="flex gap-1">
-            <Button
-              type="button"
-              size="icon"
-              variant="outline"
-              aria-label="이전 페이지"
-              disabled={offset === 0}
-              onClick={() =>
-                setParams({ offset: offset > 50 ? String(offset - 50) : null })
+          {catalog.total === 0 ? (
+            <EmptyState
+              title={
+                query
+                  ? "조건에 맞는 템플릿이 없습니다"
+                  : "아직 프로젝트 템플릿이 없습니다"
               }
+              hint="소유한 활성 프로젝트의 구성을 템플릿으로 게시할 수 있습니다."
             >
-              <ChevronLeft />
-            </Button>
-            <Button
-              type="button"
-              size="icon"
-              variant="outline"
-              aria-label="다음 페이지"
-              disabled={
-                offset + templates.data.items.length >= templates.data.total
-              }
-              onClick={() => setParams({ offset: String(offset + 50) })}
+              {query ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setParams({ q: null })}
+                >
+                  검색 지우기
+                </Button>
+              ) : (
+                <Button type="button" onClick={() => setCreating(true)}>
+                  <Plus /> 새 템플릿
+                </Button>
+              )}
+            </EmptyState>
+          ) : (
+            <ul
+              aria-label="프로젝트 템플릿 목록"
+              className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3"
             >
-              <ChevronRight />
-            </Button>
-          </div>
-        </nav>
-      ) : null}
+              {catalog.items.map((template) => (
+                <TemplateCard
+                  key={template.id}
+                  template={template}
+                  onOpen={() => setSelectedId(template.id)}
+                />
+              ))}
+            </ul>
+          )}
+
+          {displayedOffset > 0 ||
+          displayedOffset + catalog.items.length < catalog.total ? (
+            <nav
+              aria-label="템플릿 페이지"
+              className="flex items-center justify-between gap-3 border-t border-of-border pt-3 pr-16 sm:pr-0"
+            >
+              <span className="text-xs tabular-nums text-of-muted">
+                {displayedOffset + 1}-
+                {Math.min(
+                  displayedOffset + catalog.items.length,
+                  catalog.total,
+                )}{" "}
+                / {catalog.total}
+              </span>
+              <div className="flex gap-1">
+                <Button
+                  type="button"
+                  size="icon"
+                  variant="outline"
+                  aria-label="이전 페이지"
+                  disabled={displayedOffset === 0 || isRefreshingCatalog}
+                  onClick={() =>
+                    setParams({
+                      offset:
+                        displayedOffset > 50
+                          ? String(displayedOffset - 50)
+                          : null,
+                    })
+                  }
+                >
+                  <ChevronLeft />
+                </Button>
+                <Button
+                  type="button"
+                  size="icon"
+                  variant="outline"
+                  aria-label="다음 페이지"
+                  disabled={
+                    hasRetainedCatalog ||
+                    isRefreshingCatalog ||
+                    displayedOffset + catalog.items.length >= catalog.total
+                  }
+                  onClick={() =>
+                    setParams({ offset: String(displayedOffset + 50) })
+                  }
+                >
+                  <ChevronRight />
+                </Button>
+              </div>
+            </nav>
+          ) : null}
+        </>
+      )}
 
       <Sheet
         open={Boolean(selected)}

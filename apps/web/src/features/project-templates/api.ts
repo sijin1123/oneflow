@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { api } from '@/lib/api'
 
@@ -37,6 +37,7 @@ export function useProjectTemplates(q: string, includeArchived: boolean, offset:
   return useQuery({
     queryKey: ['project-templates', { q, includeArchived, offset }],
     queryFn: () => api<ProjectTemplateList>(`/api/v1/project-templates?${params}`),
+    placeholderData: keepPreviousData,
   })
 }
 export function useProjectTemplateSources() {

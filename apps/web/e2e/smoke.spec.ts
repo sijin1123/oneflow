@@ -17499,6 +17499,95 @@ test('프로젝트 템플릿 목록 오류는 명시적 재시도로 복구한�
   await expect(page.getByText('아직 프로젝트 템플릿이 없습니다')).toBeVisible()
 })
 
+test('모바일 템플릿 catalog가 실패한 검색과 페이지 요청에서 이전 목록을 유지한다', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 320, height: 740 })
+  await mockApi(page)
+  let failSearch = true
+  let failPage = true
+  const requests: string[] = []
+  const template: ProjectTemplate = {
+    id: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
+    name: 'Delivery 표준',
+    description: '모바일 catalog 기준',
+    source_project_id: project.id,
+    source_project_name: project.name,
+    created_by: 'me-1',
+    creator_name: 'Dev User',
+    archived_at: null,
+    latest_revision: {
+      version: 1,
+      statuses: 6,
+      types: 4,
+      custom_fields: 1,
+      automation_rules: 1,
+    },
+    updated_at: '2026-07-11T08:00:00Z',
+    can_manage: true,
+  }
+  await page.route('**/api/v1/project-templates**', (route) => {
+    const request = route.request()
+    const url = new URL(request.url())
+    if (request.method() !== 'GET') return route.fallback()
+    const q = url.searchParams.get('q') ?? ''
+    const offset = Number(url.searchParams.get('offset') ?? 0)
+    requests.push(url.search)
+    if ((q === 'retained' && failSearch) || (offset === 50 && failPage)) {
+      return route.fulfill({ status: 500, json: { detail: 'temporary' } })
+    }
+    const item = {
+      ...template,
+      id: offset === 50 ? 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee' : template.id,
+      name: q === 'retained' ? '검색 재시도 템플릿' : offset === 50 ? 'Template 51' : template.name,
+    }
+    return route.fulfill({
+      json: { items: [item], total: q === 'retained' ? 1 : 51, limit: 50, offset },
+    })
+  })
+
+  await page.goto('/templates')
+  await expect(page.getByText(template.name)).toBeVisible()
+  await page.getByLabel('템플릿 검색어').fill('retained')
+  await page.getByLabel('템플릿 검색어').press('Enter')
+
+  const retainedAlert = page.getByRole('alert')
+  await expect(retainedAlert).toContainText('이전 템플릿 목록을 유지합니다')
+  await expect(page.getByText(template.name)).toBeVisible()
+  await expect(page).toHaveURL(/q=retained/)
+  expect(requests.at(-1)).toContain('q=retained')
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/mobile-project-templates-ui-296/search-retry-320.png',
+    fullPage: true,
+  })
+
+  failSearch = false
+  await retainedAlert.getByRole('button', { name: '같은 요청 다시 시도' }).click()
+  await expect(page.getByText('검색 재시도 템플릿')).toBeVisible()
+  await page.getByRole('button', { name: '검색어 지우기' }).click()
+  await expect(page.getByText(template.name)).toBeVisible()
+
+  await page.getByRole('button', { name: '다음 페이지' }).click()
+  await expect(retainedAlert).toContainText('이전 템플릿 목록을 유지합니다')
+  await expect(page.getByText(template.name)).toBeVisible()
+  await expect(page).toHaveURL(/offset=50/)
+  expect(requests.at(-1)).toContain('offset=50')
+
+  failPage = false
+  await retainedAlert.getByRole('button', { name: '같은 요청 다시 시도' }).click()
+  await expect(page.getByText('Template 51')).toBeVisible()
+  await expect(page.getByText('51-51 / 51')).toBeVisible()
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.getByRole('button', { name: 'Template 51 상세 보기' }).click()
+  await expect(page.getByRole('dialog', { name: '템플릿 상세' })).toBeVisible()
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/mobile-project-templates-ui-296/detail-ready-390.png',
+    fullPage: true,
+  })
+})
+
 test('프로젝트 템플릿 페이지 offset은 데이터 범위와 형식에 맞게 교정한다', async ({ page }) => {
   test.setTimeout(60_000)
   await mockApi(page)
