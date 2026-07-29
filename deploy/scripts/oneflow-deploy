@@ -29,7 +29,7 @@ if [[ ! -f "$source_root/apps/api/pyproject.toml" || ! -f "$source_root/apps/api
   printf 'source root is not a OneFlow checkout\n' >&2
   exit 64
 fi
-if [[ $(git -C "$source_root" rev-parse HEAD) != "$commit_sha" ]]; then
+if [[ $(git -c safe.directory="$source_root" -C "$source_root" rev-parse HEAD) != "$commit_sha" ]]; then
   printf 'checkout commit does not match requested deployment SHA\n' >&2
   exit 64
 fi
