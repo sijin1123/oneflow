@@ -61,6 +61,23 @@ Due alerts run after 00:15 UTC and recurring meeting materialization after 00:30
 are idempotent and independently scheduled for dev and prod. Webhook delivery runs inside each API
 only when a signing key and exact outbound host allowlist are configured.
 
+## Automatic deployment control
+
+`AUTO_DEPLOY_ENABLED` is a GitHub repository Variable, not a Secret. The exact value `true` allows
+a successful `main` CI run to deploy development and then production. `false`, a missing variable,
+or any other value skips only the automatic deployment job. The self-hosted runner, CI, timers, and
+manual `dev`/`prod`/`both` workflow dispatches remain available.
+
+```bash
+gh variable set AUTO_DEPLOY_ENABLED --body false
+gh variable set AUTO_DEPLOY_ENABLED --body true
+gh variable get AUTO_DEPLOY_ENABLED
+```
+
+Changing the value does not cancel an in-progress deployment and does not trigger a new one. Check
+the deployment concurrency queue before changing policy. GitHub Environment reviewers for
+production are a separate optional control and require an approved reviewer policy before enabling.
+
 ## Failure notifications
 
 GitHub Actions notifications are the initial deployment failure channel. Operators must watch

@@ -132,6 +132,10 @@ jobs:
           for script in deploy/scripts/*; do
             bash -n "$script"
           done
+      - name: Validate automatic deployment gate
+        run: |
+          grep -Fq "vars.AUTO_DEPLOY_ENABLED == 'true'" .github/workflows/deploy.yml
+          grep -Fq "github.event_name == 'workflow_dispatch'" .github/workflows/deploy.yml
       - name: Validate Nginx and sudoers configuration
         run: |
           sudo apt-get update -qq

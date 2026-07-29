@@ -10,9 +10,9 @@ on:
       target:
         description: Deployment target
         required: true
-        default: both
+        default: dev
         type: choice
-        options: [both, dev, prod]
+        options: [dev, prod, both]
 
 concurrency:
   group: oneflow-deployment
@@ -21,7 +21,7 @@ concurrency:
 jobs:
   deploy:
     if: >-
-      (github.event_name == 'workflow_run' && github.event.workflow_run.event == 'push' && github.event.workflow_run.conclusion == 'success') ||
+      (github.event_name == 'workflow_run' && vars.AUTO_DEPLOY_ENABLED == 'true' && github.event.workflow_run.event == 'push' && github.event.workflow_run.conclusion == 'success') ||
       github.event_name == 'workflow_dispatch'
     runs-on: [self-hosted, linux, x64, oneflow-deploy]
     timeout-minutes: 30
