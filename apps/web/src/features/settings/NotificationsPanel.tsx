@@ -117,8 +117,10 @@ export function NotificationsPanel({ framed = true }: { framed?: boolean }) {
   const settings = useNotificationSettings()
   const update = useUpdateNotificationSettings()
   const [lastAttempt, setLastAttempt] = useState<Partial<NotificationSettings> | null>(null)
+  const writeBlocked = settings.isError || settings.isFetching
 
   const save = (input: Partial<NotificationSettings>) => {
+    if (writeBlocked) return
     setLastAttempt(input)
     update.mutate(input, {
       onSuccess: () => setLastAttempt(null),
@@ -275,7 +277,7 @@ export function NotificationsPanel({ framed = true }: { framed?: boolean }) {
                       </div>
                       <Switch
                         checked={settings.data[item.key]}
-                        disabled={update.isPending}
+                        disabled={writeBlocked || update.isPending}
                         label={`${item.label} 사용`}
                         onCheckedChange={(checked) => save({ [item.key]: checked })}
                       />
@@ -293,7 +295,9 @@ export function NotificationsPanel({ framed = true }: { framed?: boolean }) {
                             id="nt-overdue-reminder-days"
                             aria-label="초과 재알림 주기"
                             value={settings.data.overdue_reminder_days}
-                            disabled={!settings.data.due_alerts || update.isPending}
+                            disabled={
+                              writeBlocked || !settings.data.due_alerts || update.isPending
+                            }
                             onChange={(event) =>
                               save({
                                 overdue_reminder_days: Number(
@@ -342,7 +346,7 @@ export function NotificationsPanel({ framed = true }: { framed?: boolean }) {
               type="button"
               size="sm"
               variant="outline"
-              disabled={!lastAttempt}
+              disabled={!lastAttempt || writeBlocked}
               onClick={() => {
                 if (lastAttempt) save(lastAttempt)
               }}
