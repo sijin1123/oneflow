@@ -34504,6 +34504,7 @@ async function mockAiPolicy(
   let patchCount = 0
   let successfulPatchCount = 0
   let refreshAfterPatchCount = 0
+  let failGet = false
   const deploymentEnabled = options.deploymentEnabled ?? true
   const requests: string[] = []
 
@@ -34515,6 +34516,13 @@ async function mockAiPolicy(
   await page.route('**/api/v1/admin/workspace/features/ai', async (route) => {
     if (options.forbidden) {
       await route.fulfill({ status: 403, json: { detail: 'workspace admin required' } })
+      return
+    }
+    if (route.request().method() === 'GET' && failGet) {
+      await route.fulfill({
+        status: 503,
+        json: { detail: 'AI policy temporarily unavailable' },
+      })
       return
     }
     if (
@@ -34570,7 +34578,15 @@ async function mockAiPolicy(
       },
     })
   })
-  return { requests }
+  return {
+    requests,
+    failNextGet: () => {
+      failGet = true
+    },
+    allowGet: () => {
+      failGet = false
+    },
+  }
 }
 
 test('AI workspace 정책은 실제 요약 진입점과 즉시 연결된다', async ({ page }) => {
@@ -34640,13 +34656,85 @@ test('AI workspace 정책은 같은 변경과 마지막 성공 상태의 새로�
   await page.getByRole('button', { name: '새로고침' }).click()
   await expect(page.getByRole('alert')).toContainText('마지막으로 확인한 상태를 유지합니다')
   await expect(page.getByLabel('AI 정책 요약')).toContainText('사용 가능')
-  await expect(page.getByRole('button', { name: '새로고침 다시 시도' })).toBeVisible()
-  await page.getByRole('button', { name: '새로고침 다시 시도' }).click()
+  await expect(page.getByRole('button', { name: '새로고침' })).toBeVisible()
+  await page.getByRole('button', { name: '새로고침' }).click()
+  await expect(page.getByText(/복구 전까지 정책 변경은 사용할 수 없습니다/)).toHaveCount(0)
+})
+
+test('UI-327 AI workspace 정책은 stale 상태의 쓰기를 막고 최신 revision으로 정확히 재시도한다', async ({
+  page,
+}) => {
+  await mockApi(page)
+  const policy = await mockAiPolicy(page, { staleFirstPatch: true })
+  await page.setViewportSize({ width: 320, height: 800 })
+  await page.goto('/admin/ai')
+
+  const toggle = page.getByRole('switch', { name: 'AI 작업 요약 사용' })
+  await toggle.click()
+  await expect(page.getByRole('alert')).toContainText('다른 관리자가 정책을 변경했습니다')
+  await expect(toggle).toBeChecked()
+  const failedRetry = page.getByRole('button', { name: 'AI 작업 요약 켜기 다시 시도' })
+  await expect(failedRetry).toBeEnabled()
+
+  policy.failNextGet()
+  await page.getByRole('button', { name: '새로고침' }).click()
   await expect(
-    page.getByText(
-      '최신 AI 정책을 불러오지 못했습니다. 마지막으로 확인한 상태를 유지합니다.',
-    ),
-  ).toHaveCount(0)
+    page.getByRole('alert').filter({ hasText: '복구 전까지 정책 변경은 사용할 수 없습니다' }),
+  ).toContainText('마지막으로 확인한 상태를 유지합니다')
+  await expect(page.getByLabel('AI 정책 요약')).toContainText('사용 가능')
+  await expect(toggle).toBeDisabled()
+  await expect(failedRetry).toBeDisabled()
+  const staleRefresh = page.getByRole('button', { name: '다시 시도', exact: true })
+  await expect(staleRefresh).toBeVisible()
+
+  await toggle.evaluate((button) => {
+    button.removeAttribute('disabled')
+    ;(button as HTMLButtonElement).click()
+  })
+  await failedRetry.evaluate((button) => {
+    button.removeAttribute('disabled')
+    ;(button as HTMLButtonElement).click()
+  })
+  expect(policy.requests).toEqual(['"1"'])
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/ai-policy-freshness-write-guard-ui-327/stale-320.png',
+    fullPage: true,
+  })
+
+  policy.allowGet()
+  await staleRefresh.click()
+  await expect(page.getByText(/복구 전까지 정책 변경은 사용할 수 없습니다/)).toHaveCount(0)
+  await expect(failedRetry).toBeEnabled()
+  await failedRetry.click()
+  await expect(toggle).toBeChecked()
+  await expect(page.getByText('정책 revision 3')).toBeVisible()
+  await expect(page.getByRole('status')).toContainText('AI 작업 요약을 활성화했습니다')
+  expect(policy.requests).toEqual(['"1"', '"2"'])
+
+  policy.failNextGet()
+  await page.getByRole('button', { name: '새로고침' }).click()
+  await expect(
+    page.getByRole('alert').filter({ hasText: '복구 전까지 정책 변경은 사용할 수 없습니다' }),
+  ).toBeVisible()
+  await expect(toggle).toBeDisabled()
+  await toggle.evaluate((button) => {
+    button.removeAttribute('disabled')
+    ;(button as HTMLButtonElement).click()
+  })
+  expect(policy.requests).toEqual(['"1"', '"2"'])
+  policy.allowGet()
+  await page.getByRole('button', { name: '다시 시도', exact: true }).click()
+  await expect(toggle).toBeEnabled()
+  await toggle.click()
+  await expect(toggle).not.toBeChecked()
+  await expect(page.getByText('정책 revision 4')).toBeVisible()
+  expect(policy.requests).toEqual(['"1"', '"2"', '"3"'])
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/ai-policy-freshness-write-guard-ui-327/recovered-320.png',
+    fullPage: true,
+  })
 })
 
 test('AI workspace 정책은 배포 상한과 관리자 권한을 fail-closed로 표시한다', async ({
