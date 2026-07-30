@@ -5,9 +5,10 @@ import {
   ArrowUp,
   LoaderCircle,
   Plus,
+  RefreshCw,
   Workflow,
 } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { EmptyState, ErrorState, ListSkeleton } from '@/components/shell/states'
 import { Button } from '@/components/ui/button'
@@ -65,11 +66,19 @@ export function WorkspacePhaseDefinitionsSettingsPage({
   const [dirty, setDirty] = useState(false)
   const [newName, setNewName] = useState('')
   const [newColor, setNewColor] = useState<ProjectPhaseColor>('sky')
+  const lastSuccessfulDefinitions = useRef(definitions.data)
+
+  if (definitions.data) lastSuccessfulDefinitions.current = definitions.data
+  const data = definitions.data
+    ?? (definitions.isError ? lastSuccessfulDefinitions.current : undefined)
+  const refreshFailed = definitions.isRefetchError
+    || (definitions.isError && Boolean(data))
+  const definitionsFresh = Boolean(data) && !definitions.isFetching && !refreshFailed
 
   useEffect(() => {
-    if (!definitions.data || dirty) return
-    setItems(definitions.data.items)
-  }, [definitions.data, dirty])
+    if (!data || dirty) return
+    setItems(data.items)
+  }, [data, dirty])
 
   const validation = useMemo(() => {
     const names = items.map((item) => item.name.trim())
@@ -81,18 +90,20 @@ export function WorkspacePhaseDefinitionsSettingsPage({
     return null
   }, [items])
   const changed = Boolean(
-    definitions.data && dirty && !sameDefinitions(items, definitions.data.items),
+    data && dirty && !sameDefinitions(items, data.items),
   )
 
   useUnsavedLocationPrompt(changed, '저장하지 않은 단계 변경을 버리고 이동할까요?')
 
-  if (definitions.isPending) return <ListSkeleton />
-  if (definitions.isError) {
+  if (definitions.isPending && !data) return <ListSkeleton />
+  if (definitions.isError && !data) {
     if (definitions.error instanceof ApiError && definitions.error.status === 403) {
       return <EmptyState title="접근 권한이 없습니다" hint="프로젝트 단계는 워크스페이스 관리자만 변경할 수 있습니다." />
     }
     return <ErrorState error={definitions.error} onRetry={() => definitions.refetch()} />
   }
+
+  if (!data) return <ListSkeleton />
 
   const stale = update.error instanceof ApiError && update.error.status === 412
     || create.error instanceof ApiError && create.error.status === 412
@@ -110,12 +121,12 @@ export function WorkspacePhaseDefinitionsSettingsPage({
 
   const replaceItems = (next: EditableDefinition[]) => {
     setItems(next)
-    setDirty(!sameDefinitions(next, definitions.data.items))
+    setDirty(!sameDefinitions(next, data.items))
     update.reset()
   }
 
   const reset = () => {
-    setItems(definitions.data.items)
+    setItems(data.items)
     setDirty(false)
     update.reset()
   }
@@ -133,6 +144,51 @@ export function WorkspacePhaseDefinitionsSettingsPage({
 
   const content = (
     <>
+      <div className="flex min-w-0 flex-wrap items-center gap-2 border-b border-of-border-subtle px-4 py-2 text-[11px] text-of-muted sm:px-5">
+        <span>활성 {activeItems.length}개 · 은퇴 {retiredItems.length}개</span>
+        <span className="mr-auto">revision {data.revision}</span>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          aria-label={refreshFailed ? '프로젝트 단계 정의 새로고침 다시 시도' : '프로젝트 단계 정의 새로고침'}
+          disabled={definitions.isFetching || busy}
+          onClick={() => definitions.refetch()}
+        >
+          <RefreshCw
+            size={13}
+            className={definitions.isFetching ? 'animate-spin' : undefined}
+            aria-hidden="true"
+          />
+          {refreshFailed ? '다시 시도' : '새로고침'}
+        </Button>
+      </div>
+
+      {refreshFailed ? (
+        <div
+          className="flex min-w-0 flex-wrap items-center gap-2 border-b border-of-danger/25 bg-of-danger/5 px-4 py-3 text-xs sm:px-5"
+          role="alert"
+        >
+          <p className="min-w-0 flex-1 text-of-danger">
+            최신 프로젝트 단계 정의를 불러오지 못했습니다. 현재 행과 편집 내용은 유지되며 다시 확인할 때까지 서버 변경은 차단됩니다.
+          </p>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            disabled={definitions.isFetching || busy}
+            onClick={() => definitions.refetch()}
+          >
+            <RefreshCw
+              size={13}
+              className={definitions.isFetching ? 'animate-spin' : undefined}
+              aria-hidden="true"
+            />
+            단계 정의 다시 불러오기
+          </Button>
+        </div>
+      ) : null}
+
       <SettingsSection
         title="단계 정의"
         description="Built-in 단계는 항상 유지됩니다. Custom 단계를 은퇴해도 프로젝트의 활성화, 일정, 게이트와 버전은 삭제되지 않습니다."
@@ -233,11 +289,12 @@ export function WorkspacePhaseDefinitionsSettingsPage({
                   className="of-icon-button sm:col-start-4 sm:justify-self-end"
                   title="단계 은퇴"
                   aria-label={`${item.name} 단계 은퇴`}
-                  disabled={busy || changed}
+                  disabled={!definitionsFresh || busy || changed}
                   onClick={() => {
+                    if (!definitionsFresh) return
                     if (!window.confirm(`${item.name} 단계를 은퇴할까요? 프로젝트별 저장 데이터는 보존됩니다.`)) return
                     retirement.mutate(
-                      { phaseKey: item.key, retired: true, revision: definitions.data.revision },
+                      { phaseKey: item.key, retired: true, revision: data.revision },
                       { onSuccess: () => setDirty(false) },
                     )
                   }}
@@ -256,13 +313,14 @@ export function WorkspacePhaseDefinitionsSettingsPage({
         <div className="mt-4 flex flex-wrap items-center gap-2">
           <Button
             size="sm"
-            disabled={!changed || Boolean(validation) || busy}
-            onClick={() =>
+            disabled={!definitionsFresh || !changed || Boolean(validation) || busy}
+            onClick={() => {
+              if (!definitionsFresh) return
               update.mutate(
-                { items: normalized(items), revision: definitions.data.revision },
+                { items: normalized(items), revision: data.revision },
                 { onSuccess: () => setDirty(false) },
               )
-            }
+            }}
           >
             {update.isPending ? <LoaderCircle size={13} className="animate-spin" /> : null}
             단계 저장
@@ -335,13 +393,14 @@ export function WorkspacePhaseDefinitionsSettingsPage({
           </fieldset>
           <Button
             size="sm"
-            disabled={!newName.trim() || Boolean(newNameError) || busy || changed || activeItems.length >= 12 || items.length >= 32}
-            onClick={() =>
+            disabled={!definitionsFresh || !newName.trim() || Boolean(newNameError) || busy || changed || activeItems.length >= 12 || items.length >= 32}
+            onClick={() => {
+              if (!definitionsFresh) return
               create.mutate(
-                { name: newName.trim(), color: newColor, revision: definitions.data.revision },
+                { name: newName.trim(), color: newColor, revision: data.revision },
                 { onSuccess: () => setNewName('') },
               )
-            }
+            }}
           >
             {create.isPending ? <LoaderCircle size={13} className="animate-spin" /> : <Plus size={13} />}
             단계 추가
@@ -366,13 +425,14 @@ export function WorkspacePhaseDefinitionsSettingsPage({
                   <Button
                     size="sm"
                     variant="outline"
-                    disabled={busy || changed || activeItems.length >= 12}
-                    onClick={() =>
+                    disabled={!definitionsFresh || busy || changed || activeItems.length >= 12}
+                    onClick={() => {
+                      if (!definitionsFresh) return
                       retirement.mutate(
-                        { phaseKey: item.key, retired: false, revision: definitions.data.revision },
+                        { phaseKey: item.key, retired: false, revision: data.revision },
                         { onSuccess: () => setDirty(false) },
                       )
-                    }
+                    }}
                   >
                     <ArchiveRestore size={13} /> 복원
                   </Button>
@@ -397,7 +457,7 @@ export function WorkspacePhaseDefinitionsSettingsPage({
         </div>
         {!dirty && !update.isError && !create.isError && !retirement.isError ? (
           <p className="mt-3 text-[11px] text-of-muted">
-            최근 변경: {definitions.data.updated_by_name ?? '초기 설정'} · {formatDateTime(definitions.data.updated_at)}
+            최근 변경: {data.updated_by_name ?? '초기 설정'} · {formatDateTime(data.updated_at)}
           </p>
         ) : null}
       </SettingsSection>
@@ -406,11 +466,10 @@ export function WorkspacePhaseDefinitionsSettingsPage({
 
   if (embedded) {
     return (
-      <div className="mx-auto w-full max-w-6xl bg-of-surface" data-project-configuration-panel="phases">
-        <div className="flex items-center justify-between border-b border-of-border-subtle px-4 py-2 text-[11px] text-of-muted sm:px-5">
-          <span>활성 {activeItems.length}개 · 은퇴 {retiredItems.length}개</span>
-          <span>revision {definitions.data.revision}</span>
-        </div>
+      <div
+        className="mx-auto w-full max-w-6xl bg-of-surface pb-16 sm:pb-0"
+        data-project-configuration-panel="phases"
+      >
         {content}
       </div>
     )
@@ -421,7 +480,7 @@ export function WorkspacePhaseDefinitionsSettingsPage({
       eyebrow="Workspace administration"
       title="프로젝트 단계"
       description="모든 프로젝트가 공유할 수명주기 이름, 색상과 진행 순서를 관리합니다."
-      meta={`revision ${definitions.data.revision}`}
+      meta={`revision ${data.revision}`}
     >
       {content}
     </SettingsFrame>
