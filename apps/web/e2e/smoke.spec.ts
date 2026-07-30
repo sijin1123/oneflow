@@ -12144,6 +12144,174 @@ test('프로젝트 구성은 기존 깊은 링크와 URL 탭을 하나의 설정
   await expectNoHorizontalOverflow(page)
 })
 
+test('워크스페이스 프로젝트 역할은 최초 목록 오류를 같은 요청으로 복구한다', async ({ page }) => {
+  await mockApi(page)
+  let allowRecovery = false
+  let rolesGetCount = 0
+  let capabilityGetCount = 0
+  await page.route('**/api/v1/workspace/project-role-capabilities', async (route) => {
+    capabilityGetCount += 1
+    await route.fulfill({ json: { items: [], total: 0 } })
+  })
+  await page.route('**/api/v1/admin/workspace/project-roles**', async (route) => {
+    rolesGetCount += 1
+    if (!allowRecovery) {
+      await route.fulfill({ status: 503, json: { detail: 'roles unavailable' } })
+      return
+    }
+    await route.fulfill({ json: { items: [], total: 0 } })
+  })
+
+  await page.goto('/admin/project-configuration?tab=roles')
+  await expect(page.getByText('데이터를 불러오지 못했습니다')).toBeVisible()
+  allowRecovery = true
+  const rolesBeforeRetry = rolesGetCount
+  const capabilitiesBeforeRetry = capabilityGetCount
+  await page.getByRole('button', { name: '다시 시도' }).click()
+  await expect(page.getByRole('region', { name: '사용자 지정 프로젝트 역할 관리' })).toBeVisible()
+  expect(rolesGetCount).toBe(rolesBeforeRetry + 1)
+  expect(capabilityGetCount).toBe(capabilitiesBeforeRetry)
+})
+
+test('워크스페이스 프로젝트 역할은 최초 403에서 관리자 경계를 유지한다', async ({ page }) => {
+  await mockApi(page)
+  await page.route('**/api/v1/workspace/project-role-capabilities', (route) =>
+    route.fulfill({ status: 403, json: { detail: 'workspace admin required' } }),
+  )
+  await page.route('**/api/v1/admin/workspace/project-roles**', (route) =>
+    route.fulfill({ json: { items: [], total: 0 } }),
+  )
+
+  await page.goto('/admin/project-configuration?tab=roles')
+  await expect(page.getByText('접근 권한이 없습니다')).toBeVisible()
+  await expect(page.getByText('사용자 지정 역할은 워크스페이스 관리자만 관리할 수 있습니다.')).toBeVisible()
+  await expect(page.getByRole('button', { name: '새 역할' })).toHaveCount(0)
+})
+
+test('워크스페이스 프로젝트 역할은 후속 의존 오류에서 편집과 생성 초안을 보존하고 쓰기를 차단한다', async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 740 })
+  await mockApi(page)
+  const capabilities = [
+    { key: 'work_item.create', label: '작업 생성', note: '프로젝트에 새 작업을 만듭니다.' },
+    { key: 'work_item.update', label: '작업 수정', note: '작업 속성과 설명을 변경합니다.' },
+    { key: 'work_item.comment', label: '댓글 작성', note: '작업 활동에 댓글을 남깁니다.' },
+  ]
+  const role: ProjectRole = {
+    id: '11111111-aaaa-4111-8111-111111111111',
+    name: 'Delivery lead',
+    description: '실행 작업을 조율합니다.',
+    permissions: ['work_item.create'],
+    archived_at: null,
+    assigned_member_count: 2,
+    revision: 3,
+    created_by_user_id: 'me-1',
+    created_by_name: 'Dev User',
+    updated_by_user_id: 'me-1',
+    updated_by_name: 'Dev User',
+    created_at: '2026-07-18T01:00:00Z',
+    updated_at: '2026-07-18T01:00:00Z',
+  }
+  let failRoles = false
+  let failCapabilities = false
+  let rolesGetCount = 0
+  let capabilityGetCount = 0
+  let mutationCount = 0
+
+  await page.route('**/api/v1/workspace/project-role-capabilities', async (route) => {
+    capabilityGetCount += 1
+    if (failCapabilities) {
+      await route.fulfill({ status: 503, json: { detail: 'capabilities unavailable' } })
+      return
+    }
+    await route.fulfill({ json: { items: capabilities, total: capabilities.length } })
+  })
+  await page.route('**/api/v1/admin/workspace/project-roles**', async (route) => {
+    const request = route.request()
+    if (request.method() !== 'GET') {
+      mutationCount += 1
+      await route.fulfill({ json: role })
+      return
+    }
+    if (new URL(request.url()).pathname.endsWith('/events')) {
+      await route.fulfill({ json: { items: [], total: 0, limit: 50, offset: 0 } })
+      return
+    }
+    rolesGetCount += 1
+    if (failRoles) {
+      await route.fulfill({ status: 503, json: { detail: 'roles unavailable' } })
+      return
+    }
+    await route.fulfill({ json: { items: [role], total: 1 } })
+  })
+
+  await page.goto('/admin/project-configuration?tab=roles')
+  const editForm = page.getByRole('form', { name: '프로젝트 역할 편집' })
+  await editForm.locator('textarea').fill('제품 전달과 배정을 조율하는 초안')
+  await editForm.getByRole('checkbox', { name: /댓글 작성/ }).check()
+
+  failRoles = true
+  await page.getByRole('button', { name: '프로젝트 역할과 capability 새로고침' }).click()
+  const rolesAlert = page.getByRole('alert').filter({ hasText: '최신 프로젝트 역할 목록' })
+  await expect(rolesAlert).toBeVisible()
+  await expect(page.getByLabel('역할 목록')).toContainText('Delivery lead')
+  await expect(editForm.locator('textarea')).toHaveValue('제품 전달과 배정을 조율하는 초안')
+  await expect(editForm.getByRole('checkbox', { name: /댓글 작성/ })).toBeChecked()
+  await expect(editForm.getByRole('button', { name: '변경 저장' })).toBeDisabled()
+  await editForm.evaluate((form: HTMLFormElement) => form.requestSubmit())
+  expect(mutationCount).toBe(0)
+
+  failRoles = false
+  const rolesBeforeRetry = rolesGetCount
+  const capabilitiesBeforeRoleRetry = capabilityGetCount
+  await page.getByRole('button', { name: '역할 목록 다시 불러오기' }).click()
+  await expect(rolesAlert).toHaveCount(0)
+  expect(rolesGetCount).toBe(rolesBeforeRetry + 1)
+  expect(capabilityGetCount).toBe(capabilitiesBeforeRoleRetry)
+  await expect(editForm.locator('textarea')).toHaveValue('제품 전달과 배정을 조율하는 초안')
+  await page.getByRole('button', { name: '되돌리기' }).click()
+
+  await page.getByRole('button', { name: '새 역할' }).click()
+  const createForm = page.getByRole('form', { name: '새 프로젝트 역할' })
+  await page.getByLabel('역할 이름').fill('Release coordinator')
+  await createForm.locator('textarea').fill('릴리스 작업 초안')
+  await createForm.getByRole('checkbox', { name: /작업 수정/ }).check()
+
+  failCapabilities = true
+  await page.getByRole('button', { name: '프로젝트 역할과 capability 새로고침' }).click()
+  const capabilitiesAlert = page.getByRole('alert').filter({ hasText: '최신 capability 목록' })
+  await expect(capabilitiesAlert).toBeVisible()
+  await expect(page.getByLabel('역할 이름')).toHaveValue('Release coordinator')
+  await expect(createForm.locator('textarea')).toHaveValue('릴리스 작업 초안')
+  await expect(createForm.getByRole('checkbox', { name: /작업 수정/ })).toBeChecked()
+  await expect(createForm.getByRole('button', { name: '역할 생성' })).toBeDisabled()
+  await createForm.evaluate((form: HTMLFormElement) => form.requestSubmit())
+  expect(mutationCount).toBe(0)
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/workspace-project-roles-refresh-lifecycle-ui-322/stale-320.png',
+    fullPage: false,
+  })
+
+  failCapabilities = false
+  const rolesBeforeCapabilityRetry = rolesGetCount
+  const capabilitiesBeforeRetry = capabilityGetCount
+  await page.getByRole('button', { name: 'capability 다시 불러오기' }).click()
+  await expect(capabilitiesAlert).toHaveCount(0)
+  expect(capabilityGetCount).toBe(capabilitiesBeforeRetry + 1)
+  expect(rolesGetCount).toBe(rolesBeforeCapabilityRetry)
+  await expect(page.getByLabel('역할 이름')).toHaveValue('Release coordinator')
+  await expect(createForm.getByRole('button', { name: '역할 생성' })).toBeEnabled()
+  await page.locator('[data-shell-scroll-region]').evaluate((element) =>
+    element.scrollTo({ top: element.scrollHeight, behavior: 'instant' }),
+  )
+  await page.waitForTimeout(350)
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/workspace-project-roles-refresh-lifecycle-ui-322/recovered-320.png',
+    fullPage: false,
+  })
+})
+
 test('워크스페이스 단계 정의는 최초 오류를 같은 요청으로 복구한다', async ({ page }) => {
   await mockApi(page)
   const definitions: WorkspaceProjectPhaseDefinitions = {

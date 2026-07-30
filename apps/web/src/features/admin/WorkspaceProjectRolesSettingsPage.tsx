@@ -8,7 +8,7 @@ import {
   ShieldCheck,
   UsersRound,
 } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { EmptyState, ErrorState, ListSkeleton } from '@/components/shell/states'
 import { Badge } from '@/components/ui/badge'
@@ -118,8 +118,26 @@ export function WorkspaceProjectRolesSettingsPage({
   const [creating, setCreating] = useState(false)
   const [draft, setDraft] = useState<RoleDraft>(EMPTY_DRAFT)
   const [dirty, setDirty] = useState(false)
+  const lastSuccessfulRoles = useRef(roles.data)
+  const lastSuccessfulCapabilities = useRef(capabilities.data)
 
-  const items = useMemo(() => roles.data?.items ?? [], [roles.data?.items])
+  if (roles.data) lastSuccessfulRoles.current = roles.data
+  if (capabilities.data) lastSuccessfulCapabilities.current = capabilities.data
+  const rolesData = roles.data
+    ?? (roles.isError ? lastSuccessfulRoles.current : undefined)
+  const capabilitiesData = capabilities.data
+    ?? (capabilities.isError ? lastSuccessfulCapabilities.current : undefined)
+  const rolesRefreshFailed = roles.isRefetchError
+    || (roles.isError && Boolean(rolesData))
+  const capabilitiesRefreshFailed = capabilities.isRefetchError
+    || (capabilities.isError && Boolean(capabilitiesData))
+  const rolesFresh = Boolean(rolesData) && !roles.isFetching && !rolesRefreshFailed
+  const capabilitiesFresh = Boolean(capabilitiesData)
+    && !capabilities.isFetching
+    && !capabilitiesRefreshFailed
+  const writeDependenciesFresh = rolesFresh && capabilitiesFresh
+
+  const items = useMemo(() => rolesData?.items ?? [], [rolesData?.items])
   const selectedRole = items.find((role) => role.id === selectedRoleId) ?? null
   const events = useProjectRoleEvents(creating ? null : selectedRole?.id ?? null)
   const createRole = useCreateProjectRole()
@@ -139,9 +157,16 @@ export function WorkspaceProjectRolesSettingsPage({
     setDraft(draftFromRole(selectedRole))
   }, [creating, dirty, selectedRole])
 
-  if (roles.isPending || capabilities.isPending) return <ListSkeleton />
-  if (roles.isError || capabilities.isError) {
-    const error = roles.error ?? capabilities.error
+  if ((roles.isPending && !rolesData) || (capabilities.isPending && !capabilitiesData)) {
+    return <ListSkeleton />
+  }
+  const initialError = roles.isError && !rolesData
+    ? roles.error
+    : capabilities.isError && !capabilitiesData
+      ? capabilities.error
+      : null
+  if (initialError) {
+    const error = initialError
     if (error instanceof ApiError && error.status === 403) {
       return (
         <EmptyState
@@ -154,12 +179,14 @@ export function WorkspaceProjectRolesSettingsPage({
       <ErrorState
         error={error}
         onRetry={() => {
-          void roles.refetch()
-          void capabilities.refetch()
+          if (roles.isError && !rolesData) void roles.refetch()
+          if (capabilities.isError && !capabilitiesData) void capabilities.refetch()
         }}
       />
     )
   }
+
+  if (!rolesData || !capabilitiesData) return <ListSkeleton />
 
   const activeRoles = items.filter((role) => role.archived_at === null)
   const archivedRoles = items.filter((role) => role.archived_at !== null)
@@ -206,6 +233,67 @@ export function WorkspaceProjectRolesSettingsPage({
 
   const content = (
     <>
+      <div className="flex min-w-0 flex-wrap items-center gap-2 border-b border-of-border-subtle px-4 py-2 text-[11px] text-of-muted sm:px-5">
+        <span>활성 {activeRoles.length}개 · 보관 {archivedRoles.length}개</span>
+        <span className="mr-auto">capability {capabilitiesData.total}개</span>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          aria-label="프로젝트 역할과 capability 새로고침"
+          disabled={roles.isFetching || capabilities.isFetching || busy}
+          onClick={() => {
+            void roles.refetch()
+            void capabilities.refetch()
+          }}
+        >
+          <RefreshCw
+            size={13}
+            className={roles.isFetching || capabilities.isFetching ? 'animate-spin' : undefined}
+            aria-hidden="true"
+          />
+          새로고침
+        </Button>
+      </div>
+
+      {rolesRefreshFailed ? (
+        <div className="flex min-w-0 flex-col items-stretch gap-2 border-b border-of-danger/25 bg-of-danger/5 px-4 py-3 text-xs sm:flex-row sm:items-center sm:px-5" role="alert">
+          <p className="min-w-0 flex-1 text-of-danger">
+            최신 프로젝트 역할 목록을 불러오지 못했습니다. 현재 역할과 편집 내용은 유지되며 다시 확인할 때까지 서버 변경은 차단됩니다.
+          </p>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="self-start"
+            disabled={roles.isFetching || busy}
+            onClick={() => void roles.refetch()}
+          >
+            <RefreshCw size={13} className={roles.isFetching ? 'animate-spin' : undefined} aria-hidden="true" />
+            역할 목록 다시 불러오기
+          </Button>
+        </div>
+      ) : null}
+
+      {capabilitiesRefreshFailed ? (
+        <div className="flex min-w-0 flex-col items-stretch gap-2 border-b border-of-danger/25 bg-of-danger/5 px-4 py-3 text-xs sm:flex-row sm:items-center sm:px-5" role="alert">
+          <p className="min-w-0 flex-1 text-of-danger">
+            최신 capability 목록을 불러오지 못했습니다. 현재 선택은 유지되며 다시 확인할 때까지 서버 변경은 차단됩니다.
+          </p>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="self-start"
+            disabled={capabilities.isFetching || busy}
+            onClick={() => void capabilities.refetch()}
+          >
+            <RefreshCw size={13} className={capabilities.isFetching ? 'animate-spin' : undefined} aria-hidden="true" />
+            capability 다시 불러오기
+          </Button>
+        </div>
+      ) : null}
+
       <SettingsSection
         title="사용자 지정 프로젝트 역할"
         description="보관한 역할은 새 배정 목록에서 제외되지만 기존 멤버의 역할과 유효 권한은 명시적으로 재배정할 때까지 유지됩니다."
@@ -280,7 +368,7 @@ export function WorkspaceProjectRolesSettingsPage({
             aria-label={creating ? '새 프로젝트 역할' : '프로젝트 역할 편집'}
             onSubmit={(event) => {
               event.preventDefault()
-              if (validation || !changed || busy) return
+              if (!writeDependenciesFresh || validation || !changed || busy) return
               const input = {
                 name: draft.name.trim(),
                 description: draft.description.trim() || null,
@@ -360,7 +448,7 @@ export function WorkspaceProjectRolesSettingsPage({
                       선택한 권한은 해당 역할이 배정된 프로젝트에서만 실제 API 동작에 적용됩니다.
                     </p>
                     <div className="mt-2 divide-y divide-of-border-subtle border-y border-of-border-subtle">
-                      {capabilities.data.items.map((capability) => {
+                      {capabilitiesData.items.map((capability) => {
                         const checked = draft.permissions.includes(capability.key)
                         return (
                           <label
@@ -403,7 +491,7 @@ export function WorkspaceProjectRolesSettingsPage({
 
                 <div className="mt-4 flex flex-wrap items-center gap-2">
                   {!selectedRole?.archived_at ? (
-                    <Button type="submit" size="sm" disabled={!changed || Boolean(validation) || busy}>
+                    <Button type="submit" size="sm" disabled={!writeDependenciesFresh || !changed || Boolean(validation) || busy}>
                       {createRole.isPending || updateRole.isPending ? <LoaderCircle size={13} className="animate-spin" /> : null}
                       {creating ? '역할 생성' : '변경 저장'}
                     </Button>
@@ -428,8 +516,9 @@ export function WorkspaceProjectRolesSettingsPage({
                       <Button
                         size="sm"
                         variant="outline"
-                        disabled={busy}
-                        onClick={() =>
+                        disabled={!writeDependenciesFresh || busy}
+                        onClick={() => {
+                          if (!writeDependenciesFresh) return
                           setArchived.mutate(
                             { archived: false, revision: selectedRole.revision },
                             {
@@ -439,7 +528,7 @@ export function WorkspaceProjectRolesSettingsPage({
                               },
                             },
                           )
-                        }
+                        }}
                       >
                         <ArchiveRestore size={13} aria-hidden="true" /> 역할 복원
                       </Button>
@@ -447,8 +536,9 @@ export function WorkspaceProjectRolesSettingsPage({
                       <Button
                         size="sm"
                         variant="subtleDanger"
-                        disabled={busy || dirty}
+                        disabled={!writeDependenciesFresh || busy || dirty}
                         onClick={() => {
+                          if (!writeDependenciesFresh) return
                           if (!confirmDestructive(
                             `${selectedRole.name} 역할을 보관할까요? 기존 ${selectedRole.assigned_member_count}명의 배정과 유효 권한은 유지됩니다.`,
                           )) return
@@ -533,19 +623,7 @@ export function WorkspaceProjectRolesSettingsPage({
 
   if (embedded) {
     return (
-      <div className="mx-auto w-full max-w-6xl bg-of-surface" data-project-configuration-panel="roles">
-        <div className="flex items-center justify-between border-b border-of-border-subtle px-4 py-2 text-[11px] text-of-muted sm:px-5">
-          <span>활성 {activeRoles.length}개 · 보관 {archivedRoles.length}개</span>
-          <Button
-            size="sm"
-            variant="ghost"
-            disabled={roles.isFetching}
-            onClick={() => void roles.refetch()}
-          >
-            <RefreshCw size={13} className={roles.isFetching ? 'animate-spin' : undefined} />
-            새로고침
-          </Button>
-        </div>
+      <div className="mx-auto w-full max-w-6xl bg-of-surface pb-16 sm:pb-0" data-project-configuration-panel="roles">
         {content}
       </div>
     )
@@ -558,17 +636,6 @@ export function WorkspaceProjectRolesSettingsPage({
       description="프로젝트 멤버에게 추가로 위임할 수 있는 작업 관리 권한을 역할로 묶어 관리합니다."
       meta={`${activeRoles.length}개 활성 · 최대 50개`}
       className="max-w-6xl"
-      actions={(
-        <Button
-          size="sm"
-          variant="outline"
-          disabled={roles.isFetching}
-          onClick={() => void roles.refetch()}
-        >
-          <RefreshCw size={13} className={roles.isFetching ? 'animate-spin' : undefined} />
-          새로고침
-        </Button>
-      )}
     >
       {content}
     </SettingsFrame>
