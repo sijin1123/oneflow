@@ -64,6 +64,8 @@ export function TypeManager({ projectId, isOwner }: { projectId: string; isOwner
     : []
   const mutationError = create.error ?? update.error ?? reorder.error
   const mutationBusy = create.isPending || update.isPending || reorder.isPending
+  const queryStale = types.isError && Boolean(types.data)
+  const interactionBusy = mutationBusy || queryStale
 
   const clearMutationState = () => {
     create.reset()
@@ -74,7 +76,7 @@ export function TypeManager({ projectId, isOwner }: { projectId: string; isOwner
   }
 
   const createType = (name: string) => {
-    if (!name || mutationBusy) return
+    if (!name || interactionBusy) return
     clearMutationState()
     setPendingKey('type-create')
     create.mutate(name, {
@@ -92,6 +94,7 @@ export function TypeManager({ projectId, isOwner }: { projectId: string; isOwner
     label: string,
     action: 'name' | 'active',
   ) => {
+    if (queryStale) return
     clearMutationState()
     setPendingKey(`type:${input.typeId}`)
     update.mutate(input, {
@@ -107,6 +110,7 @@ export function TypeManager({ projectId, isOwner }: { projectId: string; isOwner
   }
 
   const reorderTypes = (orderedIds: string[], label: string) => {
+    if (queryStale) return
     clearMutationState()
     setPendingKey('type-order')
     reorder.mutate(orderedIds, {
@@ -118,14 +122,14 @@ export function TypeManager({ projectId, isOwner }: { projectId: string; isOwner
 
   const move = (index: number, dir: -1 | 1) => {
     const targetIndex = index + dir
-    if (targetIndex < 0 || targetIndex >= sorted.length || mutationBusy) return
+    if (targetIndex < 0 || targetIndex >= sorted.length || interactionBusy) return
     const next = [...sorted]
     ;[next[index], next[targetIndex]] = [next[targetIndex], next[index]]
     reorderTypes(next.map((type) => type.id), sorted[index].name)
   }
 
   const retryLastAction = () => {
-    if (!retryAction || mutationBusy) return
+    if (!retryAction || interactionBusy) return
     if (retryAction.kind === 'create') {
       createType(retryAction.name)
     } else if (retryAction.kind === 'update') {
@@ -145,10 +149,26 @@ export function TypeManager({ projectId, isOwner }: { projectId: string; isOwner
           <div className="flex min-w-0 flex-wrap items-center gap-2">
             <h3 className="text-sm font-semibold">워크 아이템 타입</h3>
             <Badge variant="outline">
-              {types.isPending
+              {types.isPending && !types.data
                 ? '불러오는 중'
                 : `${sorted.filter((type) => type.is_active).length}/${sorted.length} 활성`}
             </Badge>
+            {queryStale ? <Badge variant="warning">최신 상태 확인 필요</Badge> : null}
+            <Button
+              type="button"
+              size="icon"
+              variant="ghost"
+              aria-label="타입 목록 새로고침"
+              title="타입 목록 새로고침"
+              disabled={types.isFetching || mutationBusy}
+              onClick={() => void types.refetch()}
+            >
+              <RefreshCw
+                size={13}
+                aria-hidden="true"
+                className={types.isFetching ? 'animate-spin' : undefined}
+              />
+            </Button>
           </div>
           <p className="mt-1 text-xs leading-5 text-of-muted">
             작업 분류를 만들고 신규 작업에서 사용할 타입과 순서를 정합니다.
@@ -172,13 +192,13 @@ export function TypeManager({ projectId, isOwner }: { projectId: string; isOwner
               placeholder="예: 사용자 스토리"
               maxLength={40}
               aria-label="새 작업 타입 이름"
-              disabled={types.isPending || types.isError || mutationBusy}
+              disabled={(types.isPending && !types.data) || queryStale || mutationBusy}
             />
           </label>
           <Button
             type="submit"
             disabled={
-              !newName.trim() || types.isPending || types.isError || mutationBusy
+              !newName.trim() || (types.isPending && !types.data) || queryStale || mutationBusy
             }
           >
             {pendingKey === 'type-create' ? (
@@ -208,17 +228,43 @@ export function TypeManager({ projectId, isOwner }: { projectId: string; isOwner
           <CircleAlert size={14} aria-hidden="true" />
           <span className="min-w-0 flex-1">{typeMutationMessage(mutationError)}</span>
           {retryAction ? (
-            <Button size="sm" variant="outline" disabled={mutationBusy} onClick={retryLastAction}>
+            <Button size="sm" variant="outline" disabled={interactionBusy} onClick={retryLastAction}>
               <RefreshCw size={13} aria-hidden="true" /> 다시 시도
             </Button>
           ) : null}
         </div>
       ) : null}
 
+      {queryStale ? (
+        <div
+          role="alert"
+          className="mt-3 flex min-w-0 flex-col gap-2 border border-of-warning/35 bg-of-warning/10 px-3 py-2.5 text-xs sm:flex-row sm:items-center sm:justify-between"
+        >
+          <p className="min-w-0 break-words text-of-muted">
+            타입 목록을 새로 확인하지 못해 마지막 목록과 생성 초안을 유지합니다. 복구 전에는 타입 변경이 잠깁니다.
+          </p>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="w-full shrink-0 sm:w-auto"
+            disabled={types.isFetching}
+            onClick={() => void types.refetch()}
+          >
+            <RefreshCw
+              size={13}
+              aria-hidden="true"
+              className={types.isFetching ? 'animate-spin' : undefined}
+            />
+            타입 목록 다시 시도
+          </Button>
+        </div>
+      ) : null}
+
       <div className="mt-3">
-        {types.isPending ? (
+        {types.isPending && !types.data ? (
           <TypeRowsSkeleton />
-        ) : types.isError ? (
+        ) : types.isError && !types.data ? (
           <div
             role="alert"
             className="flex min-w-0 flex-wrap items-center gap-2 border-y border-of-border bg-of-surface-2/40 px-3 py-3 text-xs text-of-danger"
@@ -236,7 +282,7 @@ export function TypeManager({ projectId, isOwner }: { projectId: string; isOwner
         ) : (
           <ul
             className="divide-y divide-of-border border-y border-of-border"
-            aria-busy={mutationBusy}
+            aria-busy={mutationBusy || types.isFetching}
           >
             {sorted.map((type, index) => (
               <TypeRow
@@ -244,7 +290,7 @@ export function TypeManager({ projectId, isOwner }: { projectId: string; isOwner
                 type={type}
                 isOwner={isOwner}
                 isPending={pendingKey === `type:${type.id}` || pendingKey === 'type-order'}
-                mutationBusy={mutationBusy}
+                mutationBusy={interactionBusy}
                 onRename={(name) =>
                   updateType({ typeId: type.id, name }, type.name, 'name')
                 }

@@ -16707,6 +16707,101 @@ test('워크플로우 설정은 상태와 타입 조회 실패를 각각 복구�
   await expect(typeRegion.getByText('작업', { exact: true })).toBeVisible()
 })
 
+test('워크플로우 설정은 후속 조회 실패에서 행과 초안을 독립 보존한다', async ({ page }) => {
+  await mockApi(page)
+  let statusMode: 'success' | 'error' = 'success'
+  let typeMode: 'success' | 'error' = 'success'
+  const statusRequests: string[] = []
+  const typeRequests: string[] = []
+  await page.route(`**/api/v1/projects/${project.id}/statuses`, async (route) => {
+    statusRequests.push(statusMode)
+    if (statusMode === 'error') {
+      await route.fulfill({ status: 503, json: { detail: 'status refresh unavailable' } })
+      return
+    }
+    await route.fulfill({
+      json: {
+        items: [{ id: 's1', project_id: project.id, key: 'todo', name: '할 일', position: 0 }],
+        total: 1,
+      },
+    })
+  })
+  await page.route(`**/api/v1/projects/${project.id}/types`, async (route) => {
+    typeRequests.push(typeMode)
+    if (typeMode === 'error') {
+      await route.fulfill({ status: 503, json: { detail: 'type refresh unavailable' } })
+      return
+    }
+    await route.fulfill({
+      json: {
+        items: [
+          {
+            id: 'pt-1',
+            project_id: project.id,
+            key: 'task',
+            name: '작업',
+            position: 0,
+            is_active: true,
+            is_builtin: true,
+          },
+        ],
+        total: 1,
+      },
+    })
+  })
+
+  await page.setViewportSize({ width: 320, height: 740 })
+  await page.goto(`/projects/${project.id}/settings?tab=workflow`)
+  const statusRegion = page.getByRole('region', { name: '워크플로우 상태' })
+  const typeRegion = page.getByRole('region', { name: '워크 아이템 타입' })
+  await statusRegion.getByLabel('todo 상태 작업').click()
+  await page.getByLabel('todo 상태 편집').click()
+  const statusDraft = statusRegion.getByLabel('todo 상태 이름 편집')
+  await statusDraft.fill('해야 할 일 초안')
+  const typeDraft = typeRegion.getByLabel('새 작업 타입 이름')
+  await typeDraft.fill('사용자 스토리')
+
+  statusMode = 'error'
+  await statusRegion.getByRole('button', { name: '상태 목록 새로고침' }).click()
+  await expect(statusRegion.getByRole('alert')).toContainText('마지막 목록과 편집 초안을 유지합니다')
+  await expect(statusDraft).toHaveValue('해야 할 일 초안')
+  await expect(statusRegion.getByRole('button', { name: '저장' })).toBeDisabled()
+  await expect(typeDraft).toBeEnabled()
+
+  typeMode = 'error'
+  await typeRegion.getByRole('button', { name: '타입 목록 새로고침' }).click()
+  await expect(typeRegion.getByRole('alert')).toContainText('마지막 목록과 생성 초안을 유지합니다')
+  await expect(typeRegion.getByText('작업', { exact: true })).toBeVisible()
+  await expect(typeDraft).toHaveValue('사용자 스토리')
+  await expect(typeRegion.getByRole('button', { name: '타입 추가' })).toBeDisabled()
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/workflow-refresh-lifecycle-ui-318/stale-320.png',
+    fullPage: false,
+  })
+
+  const statusRequestsBeforeRetry = statusRequests.length
+  statusMode = 'success'
+  await statusRegion.getByRole('button', { name: '상태 목록 다시 시도' }).click()
+  await expect(statusRegion.getByRole('alert')).toHaveCount(0)
+  await expect(statusDraft).toHaveValue('해야 할 일 초안')
+  await expect(statusRegion.getByRole('button', { name: '저장' })).toBeEnabled()
+  expect(statusRequests).toHaveLength(statusRequestsBeforeRetry + 1)
+
+  const typeRequestsBeforeRetry = typeRequests.length
+  typeMode = 'success'
+  await typeRegion.getByRole('button', { name: '타입 목록 다시 시도' }).click()
+  await expect(typeRegion.getByRole('alert')).toHaveCount(0)
+  await expect(typeDraft).toHaveValue('사용자 스토리')
+  await expect(typeRegion.getByRole('button', { name: '타입 추가' })).toBeEnabled()
+  expect(typeRequests).toHaveLength(typeRequestsBeforeRetry + 1)
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/workflow-refresh-lifecycle-ui-318/recovered-320.png',
+    fullPage: false,
+  })
+})
+
 test('모바일 워크플로우 액션 메뉴는 읽기 전용 상태를 안전하게 보여준다', async ({ page }) => {
   await mockApi(page)
   await page.setViewportSize({ width: 390, height: 760 })
