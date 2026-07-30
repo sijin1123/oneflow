@@ -29,16 +29,16 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { useMembers, usePermissionReport } from '@/features/members/api'
+import { useProjectStatuses } from '@/features/project-statuses/api'
 import { useProjectTypeOptions } from '@/features/project-types/useProjectTypeOptions'
 import { useProject } from '@/features/projects/api'
 import {
   PRIORITY_LABELS,
+  STATUS_LABELS,
   WP_PRIORITIES,
   WP_STATUSES,
   type WpPriority,
 } from '@/features/work-packages/types'
-import { useStatusLabels } from '@/features/work-packages/useStatusLabels'
-import { useTypeLabels } from '@/features/work-packages/useTypeLabels'
 import { formatDateTime } from '@/lib/datetime'
 import { confirmDestructive } from '@/lib/guards'
 import { cn } from '@/lib/utils'
@@ -168,6 +168,7 @@ function AutomationRuleRow({
     successMessage: string,
     closeEditor = false,
   ) => {
+    if (!canEdit) return
     setMessage('')
     setFailureLabel(successMessage.replace('했습니다.', '하지 못했습니다.'))
     setRetryPatch(patch)
@@ -187,6 +188,7 @@ function AutomationRuleRow({
   }
 
   const submitDelete = () => {
+    if (!canEdit) return
     setMessage('')
     setRetryDelete(true)
     remove.mutate(rule.id, {
@@ -357,6 +359,7 @@ function AutomationRuleRow({
             <Button
               size="sm"
               disabled={
+                !canEdit ||
                 update.isPending ||
                 !name.trim() ||
                 !triggerValue ||
@@ -468,7 +471,7 @@ function AutomationRuleRow({
             <Button
               size="sm"
               variant="outline"
-              disabled={update.isPending}
+              disabled={!canEdit || update.isPending}
               onClick={() =>
                 submitPatch(
                   retryPatch,
@@ -496,7 +499,7 @@ function AutomationRuleRow({
             <Button
               size="sm"
               variant="outline"
-              disabled={remove.isPending}
+              disabled={!canEdit || remove.isPending}
               onClick={submitDelete}
             >
               <RefreshCw size={13} aria-hidden="true" /> 삭제 다시 시도
@@ -528,9 +531,8 @@ export function AutomationManager({
   const runs = useAutomationRuleRuns(projectId)
   const permissions = usePermissionReport(projectId, !isOwner)
   const members = useMembers(projectId)
+  const projectStatuses = useProjectStatuses(projectId)
   const projectTypes = useProjectTypeOptions(projectId)
-  const statusLabel = useStatusLabels(projectId)
-  const typeLabel = useTypeLabels(projectId)
   const create = useCreateAutomationRule(projectId)
   const reorder = useReorderAutomationRules(projectId)
   const [composerOpen, setComposerOpen] = useState(false)
@@ -549,10 +551,43 @@ export function AutomationManager({
     (verb) => verb.key === 'automation.manage',
   )?.effective
   const canManage = isOwner || automationPermission === 'always'
-  const canEdit = canManage && !project.data?.archived_at
+  const requiredQueries = [
+    { key: 'rules', label: '자동화 규칙', query: rules },
+    { key: 'project', label: '프로젝트 정보', query: project },
+    { key: 'members', label: '프로젝트 멤버', query: members },
+    { key: 'statuses', label: '워크 아이템 상태', query: projectStatuses },
+    { key: 'types', label: '프로젝트 타입', query: projectTypes },
+    ...(!isOwner
+      ? [{ key: 'permissions', label: '자동화 권한', query: permissions }]
+      : []),
+  ]
+  const initialFailure = requiredQueries.find(
+    ({ query }) => query.isError && query.data === undefined,
+  )
+  const staleQueries = requiredQueries.filter(
+    ({ query }) => query.isError && query.data !== undefined,
+  )
+  const writesFresh = staleQueries.length === 0
+  const canConfigure = canManage && !project.data?.archived_at
+  const canEdit = canConfigure && writesFresh
+  const refreshingAll =
+    requiredQueries.some(({ query }) => query.isFetching) || runs.isFetching
   const writableMembers = (members.data?.items ?? []).filter(
     (member) => member.role !== 'viewer',
   )
+  const statusNames = useMemo(
+    () => new Map(projectStatuses.data?.items.map((status) => [status.key, status.name]) ?? []),
+    [projectStatuses.data?.items],
+  )
+  const typeNames = useMemo(
+    () => new Map(projectTypes.options.map((type) => [type.key, type.label])),
+    [projectTypes.options],
+  )
+  const statusLabel = useCallback(
+    (key: string) => statusNames.get(key) ?? STATUS_LABELS[key as keyof typeof STATUS_LABELS] ?? key,
+    [statusNames],
+  )
+  const typeLabel = useCallback((key: string) => typeNames.get(key) ?? key, [typeNames])
 
   const statusOptions = useMemo<ValueOption[]>(
     () => WP_STATUSES.map((status) => [status, statusLabel(status)] as const),
@@ -676,6 +711,7 @@ export function AutomationManager({
   }
 
   const submitCreate = (input: AutomationRuleInput) => {
+    if (!canEdit) return
     setMessage('')
     setCreateRetry(input)
     create.mutate(input, {
@@ -687,6 +723,7 @@ export function AutomationManager({
   }
 
   const submitReorder = (orderedIds: string[]) => {
+    if (!canEdit) return
     setMessage('')
     setReorderRetry(orderedIds)
     reorder.mutate(orderedIds, {
@@ -706,33 +743,18 @@ export function AutomationManager({
     submitReorder(ids)
   }
 
-  if (
-    rules.isPending ||
-    project.isPending ||
-    members.isPending ||
-    projectTypes.isPending ||
-    (!isOwner && permissions.isPending)
-  ) {
+  if (requiredQueries.some(({ query }) => query.isPending && query.data === undefined)) {
     return (
       <section aria-label="자동화 규칙" className="min-w-0">
         <ListSkeleton rows={6} />
       </section>
     )
   }
-  const failedQuery = [rules, project, members, projectTypes, permissions].find(
-    (query) => query.isError,
-  )
-  if (failedQuery?.isError) {
+  if (initialFailure) {
     return (
       <ErrorState
-        error={failedQuery.error}
-        onRetry={() => {
-          void rules.refetch()
-          void project.refetch()
-          void members.refetch()
-          void projectTypes.refetch()
-          if (!isOwner) void permissions.refetch()
-        }}
+        error={initialFailure.query.error}
+        onRetry={() => void initialFailure.query.refetch()}
       />
     )
   }
@@ -756,8 +778,32 @@ export function AutomationManager({
           </p>
         </div>
         <div className="flex shrink-0 flex-wrap items-center gap-2">
-          <Badge variant={canEdit ? 'accent' : 'outline'} className="whitespace-nowrap">
-            {canEdit ? (
+          <Button
+            size="icon"
+            variant="outline"
+            title="자동화 새로 고침"
+            aria-label="자동화 새로 고침"
+            disabled={refreshingAll}
+            onClick={() => {
+              void Promise.all([
+                rules.refetch(),
+                project.refetch(),
+                members.refetch(),
+                projectStatuses.refetch(),
+                projectTypes.refetch(),
+                ...(!isOwner ? [permissions.refetch()] : []),
+                runs.refetch(),
+              ])
+            }}
+          >
+            <RefreshCw
+              size={14}
+              className={refreshingAll ? 'animate-spin' : undefined}
+              aria-hidden="true"
+            />
+          </Button>
+          <Badge variant={canConfigure ? 'accent' : 'outline'} className="whitespace-nowrap">
+            {canConfigure ? (
               `${rules.data?.total ?? 0}개 관리 중`
             ) : (
               <>
@@ -765,10 +811,11 @@ export function AutomationManager({
               </>
             )}
           </Badge>
-          {canEdit ? (
+          {canConfigure ? (
             <Button
               size="sm"
               variant={composerOpen ? 'outline' : 'default'}
+              disabled={!canEdit && !composerOpen}
               onClick={() => {
                 if (composerOpen) resetComposer()
                 else setComposerOpen(true)
@@ -780,6 +827,37 @@ export function AutomationManager({
           ) : null}
         </div>
       </header>
+
+      {staleQueries.length > 0 ? (
+        <div className="space-y-px border-t border-of-danger/15 bg-of-danger/15">
+          {staleQueries.map(({ key, label, query }) => (
+            <div
+              key={key}
+              role="alert"
+              aria-label={`${label} 갱신 실패`}
+              className="flex min-w-0 flex-col gap-2 bg-of-danger-soft/45 px-3 py-2 text-xs text-of-danger sm:flex-row sm:items-center sm:justify-between"
+            >
+              <span>
+                {label} 정보를 갱신하지 못했습니다. 마지막 성공 데이터를 표시하며 관련 변경은
+                복구 전까지 잠깁니다.
+              </span>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={query.isFetching}
+                onClick={() => void query.refetch()}
+              >
+                <RefreshCw
+                  size={13}
+                  className={query.isFetching ? 'animate-spin' : undefined}
+                  aria-hidden="true"
+                />
+                {label} 다시 시도
+              </Button>
+            </div>
+          ))}
+        </div>
+      ) : null}
 
       <div
         role="list"
@@ -806,7 +884,7 @@ export function AutomationManager({
         </p>
       ) : null}
 
-      {composerOpen && canEdit ? (
+      {composerOpen && canConfigure ? (
         <div
           aria-label="새 자동화 규칙"
           className="space-y-3 border-b border-of-border bg-of-surface-2/35 px-3 py-3"
@@ -969,6 +1047,7 @@ export function AutomationManager({
             <Button
               size="sm"
               disabled={
+                !canEdit ||
                 create.isPending ||
                 !name.trim() ||
                 !triggerValue ||
@@ -1009,7 +1088,7 @@ export function AutomationManager({
                 <Button
                   size="sm"
                   variant="outline"
-                  disabled={create.isPending}
+                  disabled={!canEdit || create.isPending}
                   onClick={() => submitCreate(createRetry)}
                 >
                   <RefreshCw size={13} aria-hidden="true" /> 같은 내용으로 다시 시도
@@ -1020,9 +1099,14 @@ export function AutomationManager({
         </div>
       ) : null}
 
-      {!canEdit ? (
+      {!canConfigure ? (
         <p className="border-b border-of-border bg-of-surface-2/45 px-4 py-2 text-xs text-of-muted">
           자동화 구성 권한이 없어 변경 작업은 숨겨졌습니다.
+        </p>
+      ) : !writesFresh ? (
+        <p className="border-b border-of-warning/30 bg-of-warning/5 px-4 py-2 text-xs text-of-muted">
+          최신 권한과 옵션을 확인할 때까지 서버 변경은 잠깁니다. 작성 중인 입력은
+          유지됩니다.
         </p>
       ) : null}
 
@@ -1036,7 +1120,7 @@ export function AutomationManager({
             <Button
               size="sm"
               variant="outline"
-              disabled={reorder.isPending}
+              disabled={!canEdit || reorder.isPending}
               onClick={() => submitReorder(reorderRetry)}
             >
               <RefreshCw size={13} aria-hidden="true" /> 같은 순서로 다시 시도
@@ -1107,60 +1191,91 @@ export function AutomationManager({
           />
         </summary>
         <div className="border-t border-of-border bg-of-surface-2/20 px-3 py-3">
-          {runs.isPending ? (
+          {runs.isPending && runs.data === undefined ? (
             <p className="flex items-center gap-2 text-xs text-of-muted">
               <LoaderCircle size={13} className="animate-spin" aria-hidden="true" />
               실행 이력을 불러오는 중입니다.
             </p>
-          ) : runs.isError ? (
+          ) : runs.isError && runs.data === undefined ? (
             <div
               role="alert"
               className="flex min-w-0 flex-col gap-2 text-xs text-of-danger sm:flex-row sm:items-center sm:justify-between"
             >
               <span>실행 이력을 불러오지 못했습니다.</span>
-              <Button size="sm" variant="outline" onClick={() => runs.refetch()}>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={runs.isFetching}
+                onClick={() => void runs.refetch()}
+              >
                 <RefreshCw size={13} aria-hidden="true" /> 다시 시도
               </Button>
             </div>
-          ) : runs.data && runs.data.total > 0 ? (
-            <ul aria-label="자동화 실행 이력" className="space-y-1.5">
-              {runs.data.items.map((run) => (
-                <li
-                  key={run.id}
-                  className="flex min-w-0 flex-col gap-1 rounded-of border border-of-border bg-of-surface px-2.5 py-2 text-[11px] sm:flex-row sm:items-start sm:justify-between"
-                >
-                  <div className="min-w-0">
-                    <p className="font-medium text-of-fg">{run.rule_name}</p>
-                    <p className="mt-0.5 break-words text-of-muted">
-                      {run.work_package_id ? (
-                        <Link
-                          to={`/projects/${projectId}/work-packages/${run.work_package_id}`}
-                          className="text-of-accent hover:underline"
-                        >
-                          {run.work_package_subject}
-                        </Link>
-                      ) : (
-                        run.work_package_subject
-                      )}{' '}
-                      · {run.field === 'assignee_id' ? '담당자' : '우선순위'}{' '}
-                      {run.field === 'assignee_id'
-                        ? `${memberName(run.old_value)} → ${memberName(run.new_value)}`
-                        : `${valueLabel('priority', run.old_value ?? 'none')} → ${valueLabel(
-                            'priority',
-                            run.new_value ?? 'none',
-                          )}`}
-                    </p>
-                  </div>
-                  <span className="shrink-0 text-of-muted">
-                    {formatDateTime(run.created_at)}
-                  </span>
-                </li>
-              ))}
-            </ul>
           ) : (
-            <p className="flex items-center gap-2 text-xs text-of-muted">
-              <CircleDot size={13} aria-hidden="true" /> 아직 실행된 규칙이 없습니다.
-            </p>
+            <>
+              {runs.isError ? (
+                <div
+                  role="alert"
+                  aria-label="자동화 실행 이력 갱신 실패"
+                  className="mb-2 flex min-w-0 flex-col gap-2 rounded-of bg-of-danger-soft/45 px-2.5 py-2 text-xs text-of-danger sm:flex-row sm:items-center sm:justify-between"
+                >
+                  <span>실행 이력을 갱신하지 못했습니다. 마지막 성공 이력을 표시합니다.</span>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={runs.isFetching}
+                    onClick={() => void runs.refetch()}
+                  >
+                    <RefreshCw
+                      size={13}
+                      className={runs.isFetching ? 'animate-spin' : undefined}
+                      aria-hidden="true"
+                    />
+                    실행 이력 다시 시도
+                  </Button>
+                </div>
+              ) : null}
+              {runs.data && runs.data.total > 0 ? (
+                <ul aria-label="자동화 실행 이력" className="space-y-1.5">
+                  {runs.data.items.map((run) => (
+                    <li
+                      key={run.id}
+                      className="flex min-w-0 flex-col gap-1 rounded-of border border-of-border bg-of-surface px-2.5 py-2 text-[11px] sm:flex-row sm:items-start sm:justify-between"
+                    >
+                      <div className="min-w-0">
+                        <p className="font-medium text-of-fg">{run.rule_name}</p>
+                        <p className="mt-0.5 break-words text-of-muted">
+                          {run.work_package_id ? (
+                            <Link
+                              to={`/projects/${projectId}/work-packages/${run.work_package_id}`}
+                              className="text-of-accent hover:underline"
+                            >
+                              {run.work_package_subject}
+                            </Link>
+                          ) : (
+                            run.work_package_subject
+                          )}{' '}
+                          · {run.field === 'assignee_id' ? '담당자' : '우선순위'}{' '}
+                          {run.field === 'assignee_id'
+                            ? `${memberName(run.old_value)} → ${memberName(run.new_value)}`
+                            : `${valueLabel('priority', run.old_value ?? 'none')} → ${valueLabel(
+                                'priority',
+                                run.new_value ?? 'none',
+                              )}`}
+                        </p>
+                      </div>
+                      <span className="shrink-0 text-of-muted">
+                        {formatDateTime(run.created_at)}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="flex items-center gap-2 text-xs text-of-muted">
+                  <CircleDot size={13} aria-hidden="true" /> 아직 실행된 규칙이 없습니다.
+                </p>
+              )}
+            </>
           )}
         </div>
       </details>

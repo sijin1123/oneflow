@@ -142,7 +142,7 @@ export function SettingsPage() {
           {tab === 'automation' ? (
             <AutomationManager
               projectId={projectId}
-              isOwner={isOwner}
+              isOwner={lastKnownIsOwner}
               onDirtyChange={onDirtyChange}
             />
           ) : null}
