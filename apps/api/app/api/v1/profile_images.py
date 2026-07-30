@@ -29,7 +29,7 @@ from app.models.member import ProjectMember
 from app.models.notification import Notification
 from app.models.project_health_history import ProjectHealthHistory
 from app.models.user import User
-from app.schemas.user import MeRead
+from app.schemas.user import MeProfileUpdate, MeRead
 from app.services.document_access import document_is_visible
 from app.services.storage import LocalStorage
 from app.services.workspace_features import (
@@ -606,6 +606,26 @@ async def get_initiative_activity_actor_profile_image(
         settings,
         cache_control="private, no-store",
     )
+
+
+@router.patch("/me/profile", response_model=MeRead)
+async def update_my_profile(
+    body: MeProfileUpdate,
+    response: Response,
+    if_match: str | None = Header(default=None, alias="If-Match"),
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+) -> MeRead:
+    row = await _locked_user(session, user.id, _expected_revision(if_match))
+    if row.display_name == body.display_name:
+        response.headers["ETag"] = _etag(row.profile_revision)
+        return MeRead.model_validate(row)
+    row.display_name = body.display_name
+    row.profile_revision += 1
+    row.updated_at = datetime.now(UTC)
+    await session.commit()
+    response.headers["ETag"] = _etag(row.profile_revision)
+    return MeRead.model_validate(row)
 
 
 @router.put("/me/profile-image", response_model=MeRead)

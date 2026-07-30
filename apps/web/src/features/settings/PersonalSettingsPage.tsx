@@ -33,6 +33,7 @@ import {
   useMe,
   useRemoveProfileImage,
   useReplaceProfileImage,
+  useUpdateMyProfile,
 } from '@/features/members/api'
 import { ApiError } from '@/lib/api'
 import { formatDateTime } from '@/lib/datetime'
@@ -160,16 +161,23 @@ function ConfirmActionDialog({
 
 function AccountProfilePanel() {
   const me = useMe()
+  const updateProfile = useUpdateMyProfile()
   const replaceImage = useReplaceProfileImage()
   const removeImage = useRemoveProfileImage()
   const inputRef = useRef<HTMLInputElement>(null)
+  const [nameDraft, setNameDraft] = useState<string | null>(null)
   const [selected, setSelected] = useState<File | null>(null)
   const [selectionError, setSelectionError] = useState<string | null>(null)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
 
+  const currentName = me.data?.display_name ?? ''
+  const effectiveName = nameDraft ?? currentName
+  const normalizedName = effectiveName.trim()
+  const nameDirty = nameDraft !== null && normalizedName !== currentName
+
   useUnsavedLocationPrompt(
-    selected !== null,
-    '저장하지 않은 프로필 이미지 선택을 버리고 이동할까요?',
+    selected !== null || nameDirty,
+    '저장하지 않은 프로필 변경을 버리고 이동할까요?',
   )
 
   useEffect(() => {
@@ -196,7 +204,10 @@ function AccountProfilePanel() {
     return <div className="h-20 animate-pulse rounded-of bg-of-subtle" aria-label="계정 불러오는 중" />
   }
 
-  const busy = replaceImage.isPending || removeImage.isPending
+  const busy = updateProfile.isPending || replaceImage.isPending || removeImage.isPending
+  const nameError = updateProfile.error
+  const nameStale = nameError instanceof ApiError && nameError.status === 412
+  const nameServerError = nameError instanceof ApiError ? nameError.message : null
   const mutationError = replaceImage.error ?? removeImage.error
   const stale = mutationError instanceof ApiError && mutationError.status === 412
   const serverError = mutationError instanceof ApiError ? mutationError.message : null
@@ -239,14 +250,86 @@ function AccountProfilePanel() {
         </dl>
       </div>
 
+      <div className="grid min-w-0 gap-2 border-t border-of-border-subtle pt-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+        <label className="min-w-0 space-y-1.5">
+          <span className="block text-xs font-medium">표시 이름</span>
+          <Input
+            value={effectiveName}
+            maxLength={120}
+            autoComplete="name"
+            disabled={busy}
+            aria-invalid={normalizedName.length === 0}
+            onChange={(event) => {
+              setNameDraft(event.target.value)
+              updateProfile.reset()
+            }}
+          />
+        </label>
+        <div className="flex min-w-0 flex-wrap gap-2">
+          {nameDirty ? (
+            <Button
+              type="button"
+              size="sm"
+              disabled={busy || normalizedName.length === 0 || me.isFetching}
+              onClick={() =>
+                updateProfile.mutate(
+                  { displayName: normalizedName, revision: me.data.profile_revision },
+                  { onSuccess: () => setNameDraft(null) },
+                )
+              }
+            >
+              {updateProfile.isPending
+                ? '저장 중'
+                : me.isFetching
+                  ? '최신 상태 확인 중'
+                  : nameError
+                    ? '다시 저장'
+                    : '이름 저장'}
+            </Button>
+          ) : null}
+          {nameDraft !== null ? (
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              disabled={busy}
+              onClick={() => {
+                setNameDraft(null)
+                updateProfile.reset()
+              }}
+            >
+              취소
+            </Button>
+          ) : null}
+        </div>
+      </div>
+
+      {normalizedName.length === 0 ? (
+        <p className="text-xs text-of-danger" role="alert">
+          표시 이름을 입력해 주세요.
+        </p>
+      ) : nameError ? (
+        <div className="flex min-w-0 flex-wrap items-center justify-between gap-2" role="alert">
+          <p className="text-xs text-of-danger">
+            {nameStale
+              ? me.isFetching
+                ? '다른 화면에서 프로필이 변경되었습니다. 최신 상태를 불러오는 중입니다.'
+                : '다른 화면에서 프로필이 변경되었습니다. 입력한 이름을 다시 저장해 주세요.'
+              : nameServerError ?? '표시 이름을 변경하지 못했습니다.'}
+          </p>
+        </div>
+      ) : null}
+
       <input
         ref={inputRef}
         type="file"
         accept="image/png,image/jpeg,image/webp"
+        disabled={busy}
         className="sr-only"
         aria-label="프로필 이미지 파일"
         onChange={(event) => {
           const file = event.target.files?.[0] ?? null
+          updateProfile.reset()
           replaceImage.reset()
           removeImage.reset()
           setSelectionError(null)

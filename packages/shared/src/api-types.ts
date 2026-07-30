@@ -1571,6 +1571,23 @@ export interface paths {
         patch: operations["update_personal_note_api_v1_me_personal_notes__note_id__patch"];
         trace?: never;
     };
+    "/api/v1/me/profile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update My Profile */
+        patch: operations["update_my_profile_api_v1_me_profile_patch"];
+        trace?: never;
+    };
     "/api/v1/me/profile-image": {
         parameters: {
             query?: never;
@@ -6609,6 +6626,14 @@ export interface components {
              * Format: uuid
              */
             user_id: string;
+        };
+        /**
+         * MeProfileUpdate
+         * @description Authenticated user's mutable personal profile fields.
+         */
+        MeProfileUpdate: {
+            /** Display Name */
+            display_name: string;
         };
         /**
          * MeRead
@@ -14773,6 +14798,44 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PersonalNoteError"];
+                };
+            };
+        };
+    };
+    update_my_profile_api_v1_me_profile_patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                "If-Match"?: string | null;
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MeProfileUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MeRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

@@ -30,6 +30,17 @@ class MeRead(UserRead):
     profile_revision: int
 
 
+class MeProfileUpdate(BaseModel):
+    """Authenticated user's mutable personal profile fields."""
+
+    display_name: str
+
+    @field_validator("display_name")
+    @classmethod
+    def _name(cls, v: str) -> str:
+        return _clean_display_name(v)
+
+
 class UserDirectoryRead(UserRead):
     """Directory row for workspace admins (/api/v1/users)."""
 

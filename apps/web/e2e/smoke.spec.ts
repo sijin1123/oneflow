@@ -10990,6 +10990,72 @@ test('프로필 이미지 충돌은 선택 파일을 보존하고 최신 revisio
   expect(attempts).toBe(2)
 })
 
+test('개인 표시 이름 충돌은 초안을 보존하고 최신 revision으로 재시도한다', async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 740 })
+  await mockApi(page)
+  let attempts = 0
+  let me = {
+    id: 'me-1',
+    email: 'dev@oneflow.local',
+    display_name: 'Dev User',
+    is_active: true,
+    is_admin: true,
+    profile_image_url: null,
+    profile_image_content_type: null,
+    profile_image_filename: null,
+    profile_image_width: null,
+    profile_image_height: null,
+    profile_image_byte_size: null,
+    profile_revision: 1,
+  }
+  await page.route('**/api/v1/me', (route) => route.fulfill({ json: me }))
+  await page.route('**/api/v1/me/profile', async (route) => {
+    attempts += 1
+    const request = route.request()
+    expect(request.method()).toBe('PATCH')
+    expect(request.postDataJSON()).toEqual({ display_name: 'Renamed Self' })
+    if (attempts === 1) {
+      expect(request.headers()['if-match']).toBe('"1"')
+      me = { ...me, profile_revision: 2 }
+      await route.fulfill({
+        status: 412,
+        headers: { ETag: '"2"' },
+        json: { detail: { code: 'stale_revision', current_revision: 2 } },
+      })
+      return
+    }
+    expect(request.headers()['if-match']).toBe('"2"')
+    me = { ...me, display_name: 'Renamed Self', profile_revision: 3 }
+    await route.fulfill({ json: me, headers: { ETag: '"3"' } })
+  })
+
+  await page.goto('/settings')
+  const account = page.getByRole('region', { name: '내 계정' })
+  const name = account.getByLabel('표시 이름')
+  await name.fill('  Renamed Self  ')
+  await account.getByRole('button', { name: '이름 저장' }).click()
+  await expect(account.getByRole('alert')).toContainText(
+    '입력한 이름을 다시 저장해 주세요.',
+  )
+  await expect(name).toHaveValue('  Renamed Self  ')
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/personal-profile-name-ui-335/stale-320.png',
+    fullPage: true,
+  })
+
+  await account.getByRole('button', { name: '다시 저장' }).click()
+  await expect(name).toHaveValue('Renamed Self')
+  await expect(account.getByText('Renamed Self').first()).toBeVisible()
+  await expect(account.getByText('프로필 revision').locator('..')).toContainText('3')
+  expect(attempts).toBe(2)
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/personal-profile-name-ui-335/recovered-320.png',
+    fullPage: true,
+  })
+})
+
 test('개인 설정은 계정 상태를 요약하고 미저장 프로필 선택의 탭 이탈을 보호한다', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 })
   await mockApi(page)
@@ -11036,7 +11102,7 @@ test('개인 설정은 계정 상태를 요약하고 미저장 프로필 선택�
   const dismissDialog = page.waitForEvent('dialog')
   const firstTabClick = securityTab.click()
   const firstDialog = await dismissDialog
-  expect(firstDialog.message()).toContain('저장하지 않은 프로필 이미지 선택')
+  expect(firstDialog.message()).toContain('저장하지 않은 프로필 변경')
   await firstDialog.dismiss()
   await firstTabClick
   await expect(page).toHaveURL(/\/settings$/)

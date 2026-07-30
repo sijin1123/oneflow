@@ -47,6 +47,89 @@ async def test_me_default_profile_image_contract(client):
     assert (await client.get("/api/v1/me/profile-image")).status_code == 404
 
 
+async def test_personal_profile_name_update_is_trimmed_revision_guarded_and_self_scoped(
+    client,
+    app,
+):
+    updated = await client.patch(
+        "/api/v1/me/profile",
+        json={"display_name": "  Renamed Self  "},
+        headers={"If-Match": '"1"'},
+    )
+    assert updated.status_code == 200, updated.text
+    assert updated.headers["etag"] == '"2"'
+    item = updated.json()
+    assert item["display_name"] == "Renamed Self"
+    assert item["profile_revision"] == 2
+    assert item["email"] == DEV_USER_EMAIL
+    assert item["is_active"] is True
+    assert item["is_admin"] is True
+
+    unchanged = await client.patch(
+        "/api/v1/me/profile",
+        json={"display_name": "Renamed Self"},
+        headers={"If-Match": '"2"'},
+    )
+    assert unchanged.status_code == 200
+    assert unchanged.headers["etag"] == '"2"'
+    assert unchanged.json()["profile_revision"] == 2
+
+    stale = await client.patch(
+        "/api/v1/me/profile",
+        json={"display_name": "Stale name"},
+        headers={"If-Match": '"1"'},
+    )
+    assert stale.status_code == 412
+    assert stale.headers["etag"] == '"2"'
+    assert stale.json()["detail"] == {
+        "code": "stale_revision",
+        "current_revision": 2,
+    }
+
+    image_with_stale_name_revision = await client.put(
+        "/api/v1/me/profile-image",
+        content=PNG,
+        headers=image_headers(1),
+    )
+    assert image_with_stale_name_revision.status_code == 412
+    image = await client.put(
+        "/api/v1/me/profile-image",
+        content=PNG,
+        headers=image_headers(2),
+    )
+    assert image.status_code == 200
+    assert image.json()["profile_revision"] == 3
+
+    async with app.state.sessionmaker() as session:
+        row = (await session.execute(select(User).where(User.email == DEV_USER_EMAIL))).scalar_one()
+        assert row.display_name == "Renamed Self"
+        assert row.profile_revision == 3
+
+
+async def test_personal_profile_name_update_validates_revision_and_name(client):
+    missing = await client.patch(
+        "/api/v1/me/profile",
+        json={"display_name": "Name"},
+    )
+    assert missing.status_code == 428
+
+    for invalid_etag in ('W/"1"', "1", '"0"', '"1", "2"'):
+        response = await client.patch(
+            "/api/v1/me/profile",
+            json={"display_name": "Name"},
+            headers={"If-Match": invalid_etag},
+        )
+        assert response.status_code == 422
+
+    for invalid_name in ("", "   ", "x" * 121):
+        response = await client.patch(
+            "/api/v1/me/profile",
+            json={"display_name": invalid_name},
+            headers={"If-Match": '"1"'},
+        )
+        assert response.status_code == 422
+
+
 async def test_profile_image_upload_read_replace_remove_and_sweep(client, app):
     uploaded = await client.put(
         "/api/v1/me/profile-image",
