@@ -36280,8 +36280,83 @@ test('Customers 정책은 일반 실패와 마지막 성공 상태의 새로고�
   await expect(page.getByRole('alert')).toContainText('마지막으로 확인한 상태를 유지합니다')
   await expect(toggle).not.toBeChecked()
   policy.allowGet()
-  await page.getByRole('button', { name: '새로고침 다시 시도' }).click()
+  await page.getByRole('button', { name: '다시 시도', exact: true }).click()
   await expect(page.getByRole('alert')).toHaveCount(0)
+})
+
+test('UI-331 Customers 정책은 stale 상태의 쓰기를 막고 최신 revision으로 복구한다', async ({
+  page,
+}) => {
+  await mockApi(page)
+  const policy = await mockCustomersSurface(page, { staleFirstPatch: true })
+  await page.setViewportSize({ width: 320, height: 800 })
+  await page.goto('/admin/customers')
+
+  const toggle = page.getByRole('switch', { name: 'Customers 사용' })
+  await toggle.click()
+  await expect(page.getByRole('alert')).toContainText('다른 관리자가 정책을 변경했습니다')
+  await expect(toggle).not.toBeChecked()
+  await expect(page.getByText('정책 revision 2')).toBeVisible()
+  const failedRetry = page.getByRole('button', {
+    name: 'Customers 끄기 다시 시도',
+  })
+  await expect(failedRetry).toBeEnabled()
+
+  policy.failNextGet()
+  await page.getByRole('button', { name: '새로고침' }).click()
+  await expect(
+    page.getByRole('alert').filter({ hasText: '복구 전까지 정책 변경은 사용할 수 없습니다' }),
+  ).toContainText('마지막으로 확인한 상태를 유지')
+  await expect(page.getByLabel('Customers 정책 요약')).toContainText('비활성')
+  await expect(toggle).toBeDisabled()
+  await expect(failedRetry).toBeDisabled()
+  const staleRetry = page.getByRole('button', { name: '다시 시도', exact: true })
+  for (const control of [toggle, failedRetry]) {
+    await control.evaluate((button) => {
+      button.removeAttribute('disabled')
+      ;(button as HTMLButtonElement).click()
+    })
+  }
+  expect(policy.requests).toEqual(['"1"'])
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/customers-policy-freshness-write-guard-ui-331/stale-320.png',
+    fullPage: true,
+  })
+
+  policy.allowGet()
+  await staleRetry.click()
+  await expect(
+    page.getByText(/복구 전까지 정책 변경은 사용할 수 없습니다/),
+  ).toHaveCount(0)
+  await expect(failedRetry).toBeEnabled()
+  await failedRetry.click()
+  await expect(page.getByRole('status')).toContainText('비활성화했습니다')
+  await expect(page.getByText('정책 revision 3')).toBeVisible()
+  expect(policy.requests).toEqual(['"1"', '"2"'])
+
+  policy.failNextGet()
+  await page.getByRole('button', { name: '새로고침' }).click()
+  await expect(
+    page.getByRole('alert').filter({ hasText: '복구 전까지 정책 변경은 사용할 수 없습니다' }),
+  ).toBeVisible()
+  await toggle.evaluate((button) => {
+    button.removeAttribute('disabled')
+    ;(button as HTMLButtonElement).click()
+  })
+  expect(policy.requests).toEqual(['"1"', '"2"'])
+  policy.allowGet()
+  await page.getByRole('button', { name: '다시 시도', exact: true }).click()
+  await expect(toggle).toBeEnabled()
+  await toggle.click()
+  await expect(toggle).toBeChecked()
+  await expect(page.getByText('정책 revision 4')).toBeVisible()
+  expect(policy.requests).toEqual(['"1"', '"2"', '"3"'])
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/customers-policy-freshness-write-guard-ui-331/recovered-320.png',
+    fullPage: true,
+  })
 })
 
 test('Customers 정책은 실제 디렉터리 동선과 모바일·권한 상태를 안전하게 처리한다', async ({
