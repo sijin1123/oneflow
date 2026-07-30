@@ -33641,11 +33641,13 @@ async function mockAdminWorklogs(page: Page, items: AdminWorklogFixture[]) {
       return
     }
     if (url.pathname.endsWith('/export.csv')) {
+      const from = url.searchParams.get('from') ?? 'unknown'
+      const to = url.searchParams.get('to') ?? 'unknown'
       await route.fulfill({
         status: 200,
         headers: {
           'content-type': 'text/csv; charset=utf-8',
-          'content-disposition': 'attachment; filename="oneflow-worklogs-2026-07-01-to-2026-07-31.csv"',
+          'content-disposition': `attachment; filename="oneflow-worklogs-${from}-to-${to}.csv"`,
           'access-control-expose-headers': 'content-disposition',
         },
         body: '\ufeffid,hours\nworklog-1,2.5\n',
@@ -33718,6 +33720,11 @@ test('Workspace Worklogs는 관리자 필터·다운로드·모바일 탐색을 
     .click()
   await expect(page.getByRole('heading', { name: 'Worklogs' })).toBeVisible()
   await expect(page).toHaveURL(/from=\d{4}-\d{2}-01&to=\d{4}-\d{2}-\d{2}/)
+  const currentFrom = new URL(page.url()).searchParams.get('from')
+  const targetRange =
+    currentFrom === '2026-06-01'
+      ? { from: '2026-07-01', to: '2026-07-31' }
+      : { from: '2026-06-01', to: '2026-06-30' }
   const mobileList = page.getByRole('list', { name: '모바일 Worklogs 목록' })
   await expect(mobileList.getByText('관리자 Worklog 검토').first()).toBeVisible()
 
@@ -33732,16 +33739,18 @@ test('Workspace Worklogs는 관리자 필터·다운로드·모바일 탐색을 
   await page.getByLabel('Worklogs 종료일').fill('2026-07-31')
   await expect(page.getByRole('alert')).toContainText('시작일은 종료일보다 늦을 수 없습니다')
   await expect(page.getByRole('button', { name: '적용', exact: true })).toBeDisabled()
-  await page.getByLabel('Worklogs 시작일').fill('2026-07-01')
+  await page.getByLabel('Worklogs 종료일').fill(targetRange.to)
+  await page.getByLabel('Worklogs 시작일').fill(targetRange.from)
   const filteredResponse = page.waitForResponse(
     (response) =>
       response.url().includes('/admin/worklogs?') &&
-      response.url().includes('from=2026-07-01'),
+      response.url().includes(`from=${targetRange.from}`) &&
+      response.url().includes(`to=${targetRange.to}`),
   )
   await page.getByRole('button', { name: '적용', exact: true }).click()
   await (await filteredResponse).finished()
-  await expect(page).toHaveURL(/from=2026-07-01/)
-  await expect(page).toHaveURL(/to=2026-07-31/)
+  await expect(page).toHaveURL(new RegExp(`from=${targetRange.from}`))
+  await expect(page).toHaveURL(new RegExp(`to=${targetRange.to}`))
   await expect(
     page.getByRole('list', { name: '모바일 Worklogs 목록' }).getByText('Old User'),
   ).toBeVisible()
@@ -33749,7 +33758,7 @@ test('Workspace Worklogs는 관리자 필터·다운로드·모바일 탐색을 
   const download = page.waitForEvent('download')
   await page.getByRole('button', { name: 'CSV' }).click()
   expect((await download).suggestedFilename()).toBe(
-    'oneflow-worklogs-2026-07-01-to-2026-07-31.csv',
+    `oneflow-worklogs-${targetRange.from}-to-${targetRange.to}.csv`,
   )
   await expectNoHorizontalOverflow(page)
   await page.screenshot({
