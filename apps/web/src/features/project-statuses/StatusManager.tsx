@@ -49,6 +49,8 @@ export function StatusManager({ projectId, isOwner }: { projectId: string; isOwn
     : []
   const mutationError = update.error ?? reorder.error
   const mutationBusy = update.isPending || reorder.isPending
+  const queryStale = statuses.isError && Boolean(statuses.data)
+  const interactionBusy = mutationBusy || queryStale
 
   const clearMutationState = () => {
     update.reset()
@@ -58,6 +60,7 @@ export function StatusManager({ projectId, isOwner }: { projectId: string; isOwn
   }
 
   const renameStatus = (input: { id: string; name: string }, label: string) => {
+    if (queryStale) return
     clearMutationState()
     setPendingKey(`status:${input.id}`)
     update.mutate(input, {
@@ -68,6 +71,7 @@ export function StatusManager({ projectId, isOwner }: { projectId: string; isOwn
   }
 
   const reorderStatuses = (orderedIds: string[], label: string) => {
+    if (queryStale) return
     clearMutationState()
     setPendingKey('status-order')
     reorder.mutate(orderedIds, {
@@ -79,14 +83,14 @@ export function StatusManager({ projectId, isOwner }: { projectId: string; isOwn
 
   const move = (index: number, dir: -1 | 1) => {
     const targetIndex = index + dir
-    if (targetIndex < 0 || targetIndex >= sorted.length || mutationBusy) return
+    if (targetIndex < 0 || targetIndex >= sorted.length || interactionBusy) return
     const next = [...sorted]
     ;[next[index], next[targetIndex]] = [next[targetIndex], next[index]]
     reorderStatuses(next.map((status) => status.id), sorted[index].name)
   }
 
   const retryLastAction = () => {
-    if (!retryAction || mutationBusy) return
+    if (!retryAction || interactionBusy) return
     if (retryAction.kind === 'rename') {
       renameStatus(retryAction.input, retryAction.label)
     } else {
@@ -104,8 +108,26 @@ export function StatusManager({ projectId, isOwner }: { projectId: string; isOwn
           <div className="flex min-w-0 flex-wrap items-center gap-2">
             <h3 className="text-sm font-semibold">워크플로우 상태</h3>
             <Badge variant="outline">
-              {statuses.isPending ? '불러오는 중' : `${sorted.length}개 상태`}
+              {statuses.isPending && !statuses.data
+                ? '불러오는 중'
+                : `${sorted.length}개 상태`}
             </Badge>
+            {queryStale ? <Badge variant="warning">최신 상태 확인 필요</Badge> : null}
+            <Button
+              type="button"
+              size="icon"
+              variant="ghost"
+              aria-label="상태 목록 새로고침"
+              title="상태 목록 새로고침"
+              disabled={statuses.isFetching || mutationBusy}
+              onClick={() => void statuses.refetch()}
+            >
+              <RefreshCw
+                size={13}
+                aria-hidden="true"
+                className={statuses.isFetching ? 'animate-spin' : undefined}
+              />
+            </Button>
           </div>
           <p className="mt-1 text-xs leading-5 text-of-muted">
             상태 이름과 순서가 보드·목록·필터에 함께 반영됩니다.
@@ -130,17 +152,43 @@ export function StatusManager({ projectId, isOwner }: { projectId: string; isOwn
           <CircleAlert size={14} aria-hidden="true" />
           <span className="min-w-0 flex-1">{statusMutationMessage(mutationError)}</span>
           {retryAction ? (
-            <Button size="sm" variant="outline" disabled={mutationBusy} onClick={retryLastAction}>
+            <Button size="sm" variant="outline" disabled={interactionBusy} onClick={retryLastAction}>
               <RefreshCw size={13} aria-hidden="true" /> 다시 시도
             </Button>
           ) : null}
         </div>
       ) : null}
 
+      {queryStale ? (
+        <div
+          role="alert"
+          className="mt-3 flex min-w-0 flex-col gap-2 border border-of-warning/35 bg-of-warning/10 px-3 py-2.5 text-xs sm:flex-row sm:items-center sm:justify-between"
+        >
+          <p className="min-w-0 break-words text-of-muted">
+            상태 목록을 새로 확인하지 못해 마지막 목록과 편집 초안을 유지합니다. 복구 전에는 상태 변경이 잠깁니다.
+          </p>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="w-full shrink-0 sm:w-auto"
+            disabled={statuses.isFetching}
+            onClick={() => void statuses.refetch()}
+          >
+            <RefreshCw
+              size={13}
+              aria-hidden="true"
+              className={statuses.isFetching ? 'animate-spin' : undefined}
+            />
+            상태 목록 다시 시도
+          </Button>
+        </div>
+      ) : null}
+
       <div className="mt-3">
-        {statuses.isPending ? (
+        {statuses.isPending && !statuses.data ? (
           <WorkflowRowsSkeleton label="상태 목록을 불러오는 중" />
-        ) : statuses.isError ? (
+        ) : statuses.isError && !statuses.data ? (
           <div
             role="alert"
             className="flex min-w-0 flex-wrap items-center gap-2 border-y border-of-border bg-of-surface-2/40 px-3 py-3 text-xs text-of-danger"
@@ -158,7 +206,7 @@ export function StatusManager({ projectId, isOwner }: { projectId: string; isOwn
         ) : (
           <ul
             className="divide-y divide-of-border border-y border-of-border"
-            aria-busy={mutationBusy}
+            aria-busy={mutationBusy || statuses.isFetching}
           >
             {sorted.map((status, index) => (
               <StatusRow
@@ -168,7 +216,7 @@ export function StatusManager({ projectId, isOwner }: { projectId: string; isOwn
                 isFirst={index === 0}
                 isLast={index === sorted.length - 1}
                 isPending={pendingKey === `status:${status.id}` || pendingKey === 'status-order'}
-                mutationBusy={mutationBusy}
+                mutationBusy={interactionBusy}
                 onRename={(name) => renameStatus({ id: status.id, name }, status.name)}
                 onMove={(dir) => move(index, dir)}
               />
