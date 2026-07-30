@@ -12141,6 +12141,158 @@ test('워크스페이스 일반 설정은 후속 profile 오류에서 이름과 
   })
 })
 
+test('워크스페이스 프로필 action은 새로고침 시작과 동시에 쓰기를 차단하고 최신 revision에서 재개한다', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 })
+  await mockApi(page)
+  const logoPng = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAEklEQVR4nGPkndLBwMDAxAAGAA2bAS37E8jFAAAAAElFTkSuQmCC',
+    'base64',
+  )
+  let profile = {
+    id: 1,
+    name: 'OneFlow',
+    revision: 7,
+    logo_url: '/api/v1/workspace/logo?revision=7' as string | null,
+    logo_content_type: 'image/png' as string | null,
+    logo_filename: 'current-logo.png' as string | null,
+    logo_width: 2 as number | null,
+    logo_height: 2 as number | null,
+    logo_byte_size: logoPng.length as number | null,
+    updated_by_user_id: null as string | null,
+    updated_by_name: null as string | null,
+    updated_at: '2026-07-01T00:00:00Z',
+  }
+  let failRefresh = false
+  let mutationCount = 0
+
+  await page.route('**/api/v1/workspace/profile', (route) => route.fulfill({ json: profile }))
+  await page.route('**/api/v1/workspace/logo**', (route) =>
+    route.fulfill({ body: logoPng, contentType: 'image/png' }),
+  )
+  await page.route('**/api/v1/admin/workspace/profile', async (route) => {
+    if (route.request().method() === 'GET') {
+      if (failRefresh) {
+        await route.fulfill({ status: 503, json: { detail: 'profile unavailable' } })
+        return
+      }
+      await route.fulfill({ json: profile, headers: { ETag: `"${profile.revision}"` } })
+      return
+    }
+    mutationCount += 1
+    expect(route.request().headers()['if-match']).toBe('"8"')
+    const sent = route.request().postDataJSON() as { name: string }
+    expect(sent).toEqual({ name: 'Retained action draft' })
+    profile = {
+      ...profile,
+      name: sent.name,
+      revision: 9,
+      updated_by_user_id: 'me-1',
+      updated_by_name: 'Dev User',
+      updated_at: '2026-07-31T01:00:00Z',
+    }
+    await route.fulfill({ json: profile, headers: { ETag: '"9"' } })
+  })
+  await page.route('**/api/v1/admin/workspace/logo', async (route) => {
+    mutationCount += 1
+    if (route.request().method() === 'PUT') {
+      expect(route.request().headers()['if-match']).toBe('"9"')
+      profile = {
+        ...profile,
+        revision: 10,
+        logo_url: '/api/v1/workspace/logo?revision=10',
+        logo_filename: 'replacement-logo.png',
+        updated_by_user_id: 'me-1',
+        updated_by_name: 'Dev User',
+        updated_at: '2026-07-31T01:05:00Z',
+      }
+      await route.fulfill({ json: profile, headers: { ETag: '"10"' } })
+      return
+    }
+    expect(route.request().method()).toBe('DELETE')
+    expect(route.request().headers()['if-match']).toBe('"10"')
+    profile = {
+      ...profile,
+      revision: 11,
+      logo_url: null,
+      logo_content_type: null,
+      logo_filename: null,
+      logo_width: null,
+      logo_height: null,
+      logo_byte_size: null,
+      updated_at: '2026-07-31T01:10:00Z',
+    }
+    await route.fulfill({ json: profile, headers: { ETag: '"11"' } })
+  })
+
+  await page.goto('/admin/general')
+  await page.getByLabel('워크스페이스 이름').fill('Retained action draft')
+  await page.getByLabel('워크스페이스 로고 파일').setInputFiles({
+    name: 'replacement-logo.png',
+    mimeType: 'image/png',
+    buffer: logoPng,
+  })
+  await expect(page.getByRole('button', { name: '변경 저장' })).toBeEnabled()
+  await expect(page.getByRole('button', { name: '로고 저장' })).toBeEnabled()
+  await expect(page.getByRole('button', { name: '로고 삭제' })).toBeEnabled()
+
+  failRefresh = true
+  await page.locator('button[aria-label="프로필 새로고침"]').evaluate((refreshButton) => {
+    window.confirm = () => true
+    ;(refreshButton as HTMLButtonElement).click()
+    const buttons = Array.from(document.querySelectorAll<HTMLButtonElement>('button'))
+    const click = (label: string) => {
+      const button = buttons.find((candidate) => candidate.textContent?.trim() === label)
+      if (!button) throw new Error(`${label} button not found`)
+      button.click()
+    }
+    click('변경 저장')
+    click('로고 저장')
+    click('로고 삭제')
+  })
+
+  const staleAlert = page.getByRole('alert').filter({ hasText: '최신 워크스페이스 프로필' })
+  await expect(staleAlert).toBeVisible()
+  expect(mutationCount).toBe(0)
+  await expect(page.getByLabel('워크스페이스 이름')).toHaveValue('Retained action draft')
+  await expect(page.getByText(/선택됨: replacement-logo\.png/)).toBeVisible()
+  await expect(page.getByRole('button', { name: '변경 저장' })).toBeDisabled()
+  await expect(page.getByRole('button', { name: '로고 저장' })).toBeDisabled()
+  await expect(page.getByRole('button', { name: '로고 삭제' })).toBeDisabled()
+
+  await page.setViewportSize({ width: 320, height: 740 })
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/workspace-profile-action-freshness-ui-341/stale-actions-320.png',
+    fullPage: true,
+  })
+
+  profile = {
+    ...profile,
+    name: 'Server refreshed workspace',
+    revision: 8,
+    updated_by_user_id: 'other-admin',
+    updated_by_name: 'Other Admin',
+    updated_at: '2026-07-31T00:30:00Z',
+  }
+  failRefresh = false
+  await page.getByRole('button', { name: '프로필 다시 불러오기' }).click()
+  await expect(staleAlert).toHaveCount(0)
+  await expect(page.getByLabel('워크스페이스 이름')).toHaveValue('Retained action draft')
+  await expect(page.getByText(/선택됨: replacement-logo\.png/)).toBeVisible()
+  await expect(page.getByText('revision 8')).toBeVisible()
+  await page.getByRole('button', { name: '변경 저장' }).click()
+  await expect(page.getByText('revision 9')).toBeVisible()
+  expect(mutationCount).toBe(1)
+  await page.getByRole('button', { name: '로고 저장' }).click()
+  await expect(page.getByText('revision 10')).toBeVisible()
+  expect(mutationCount).toBe(2)
+  page.once('dialog', (dialog) => dialog.accept())
+  await page.getByRole('button', { name: '로고 삭제' }).click()
+  await expect(page.getByText('revision 11')).toBeVisible()
+  expect(mutationCount).toBe(3)
+  await expectNoHorizontalOverflow(page)
+})
+
 test('워크스페이스 로고는 미리보기·저장·shell 반영·삭제가 하나의 revision으로 동작한다', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 })
   await mockApi(page)
