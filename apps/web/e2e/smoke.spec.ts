@@ -26381,8 +26381,14 @@ test('로그인 화면은 참조 시안의 기능 계약을 유지하고 안전�
   await page.getByRole('button', { name: 'Choose language' }).click()
   await page.getByRole('menuitemradio', { name: '한국어' }).click()
   await expect(page.getByRole('heading', { name: /다시 만나 반가워요/ })).toBeVisible()
-  await page.getByRole('button', { name: 'Choose language' }).click()
+  await expect(page.locator('html')).toHaveAttribute('lang', 'ko')
+  await expect(page.locator('.of-login-canvas')).toHaveAttribute('lang', 'ko')
+  await expect(page.getByRole('navigation', { name: '인증 정책' })).toBeVisible()
+  await expect(page.getByRole('button', { name: '비밀번호 표시' })).toBeVisible()
+  await expect(page.getByRole('img', { name: '손 흔들기' })).toBeVisible()
+  await page.getByRole('button', { name: '언어 선택' }).click()
   await page.getByRole('menuitemradio', { name: 'English' }).click()
+  await expect(page.locator('html')).toHaveAttribute('lang', 'en')
 
   const post = page.waitForRequest(
     (r) => r.method() === 'POST' && r.url().includes('/auth/login'),
@@ -26405,6 +26411,7 @@ test('로그인 화면은 참조 시안의 기능 계약을 유지하고 안전�
     remember_me: false,
   })
   await expect(page).toHaveURL(/\/projects$/)
+  await expect(page.locator('html')).toHaveAttribute('lang', 'ko')
 
   // OIDC mode keeps credentials fail-closed while preserving provider discovery.
   await page.route('**/api/v1/auth/config', (route) =>
@@ -26508,6 +26515,87 @@ test('로그인 화면은 참조 시안의 기능 계약을 유지하고 안전�
     'This authentication configuration is not supported',
   )
   await expect(page.getByLabel('Email address')).toBeDisabled()
+})
+
+test('로그인 locale은 키보드·저장·외부 변경·문서 언어 수명주기를 함께 유지한다', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1448, height: 1086 })
+  await mockApi(page)
+  await page.goto('/login')
+
+  const language = page.getByRole('button', { name: 'Choose language' })
+  await language.focus()
+  await page.keyboard.press('Enter')
+  await expect(page.getByRole('menuitemradio', { name: 'English' })).toBeFocused()
+  await page.getByRole('menuitemradio', { name: '한국어' }).focus()
+  await expect(page.getByRole('menuitemradio', { name: '한국어' })).toBeFocused()
+  await page.keyboard.press('Enter')
+
+  await expect(page.getByRole('heading', { name: /다시 만나 반가워요/ })).toBeVisible()
+  await expect(page.locator('html')).toHaveAttribute('lang', 'ko')
+  await expect(page.locator('.of-login-canvas')).toHaveAttribute('lang', 'ko')
+  await expect(page.getByRole('button', { name: '언어 선택' })).toBeFocused()
+  await expect(page.getByRole('button', { name: '비밀번호 표시' })).toBeVisible()
+  await expect(page.getByRole('navigation', { name: '인증 정책' })).toBeVisible()
+  await expect.poll(() =>
+    page.evaluate(() => window.localStorage.getItem('oneflow.login.locale')),
+  ).toBe('ko')
+
+  await page.reload()
+  await expect(page.getByRole('heading', { name: /다시 만나 반가워요/ })).toBeVisible()
+  await expect(page.locator('html')).toHaveAttribute('lang', 'ko')
+
+  await page.evaluate(() => {
+    window.dispatchEvent(new StorageEvent('storage', {
+      key: 'oneflow.login.locale',
+      newValue: 'en',
+    }))
+  })
+  await expect(page.getByRole('heading', { name: /Welcome back/ })).toBeVisible()
+  await expect(page.locator('html')).toHaveAttribute('lang', 'en')
+  await page.evaluate(() => {
+    window.dispatchEvent(new StorageEvent('storage', {
+      key: 'oneflow.login.locale',
+      newValue: 'fr',
+    }))
+  })
+  await expect(page.getByRole('heading', { name: /Welcome back/ })).toBeVisible()
+  await expect(page.locator('html')).toHaveAttribute('lang', 'en')
+
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/login-locale-lifecycle-ui-339/desktop-en.png',
+    fullPage: true,
+  })
+  await page.setViewportSize({ width: 320, height: 720 })
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/login-locale-lifecycle-ui-339/mobile-en-320.png',
+    fullPage: true,
+  })
+
+  await page.getByRole('button', { name: 'Status' }).click()
+  await expect(page).toHaveURL(/\/status$/)
+  await expect(page.locator('html')).toHaveAttribute('lang', 'ko')
+})
+
+test('로그인은 브라우저 locale 저장소가 거부되어도 입력 가능한 상태로 열린다', async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(window, 'localStorage', {
+      configurable: true,
+      get() {
+        throw new DOMException('Storage denied', 'SecurityError')
+      },
+    })
+  })
+  await mockApi(page)
+  await page.goto('/login')
+
+  await expect(page.getByRole('heading', { name: /Welcome back/ })).toBeVisible()
+  await expect(page.locator('html')).toHaveAttribute('lang', 'en')
+  await page.getByLabel('Email address').fill('dev@oneflow.local')
+  await page.getByLabel('Password', { exact: true }).fill('development-password')
+  await expect(page.getByRole('button', { name: 'Sign in', exact: true })).toBeEnabled()
 })
 
 test('로그인 접근 요청은 모바일에서 실패를 복구하고 기능형 결과를 표시한다', async ({ page }) => {

@@ -99,6 +99,11 @@ const copy = {
     retry: 'Retry',
     inviteAccepted: 'Your invitation has been accepted. Continue with your company sign-in method.',
     language: 'English',
+    languageLabel: 'Choose language',
+    policiesLabel: 'Authentication policies',
+    showPassword: 'Show password',
+    hidePassword: 'Hide password',
+    waveLabel: 'wave',
   },
   ko: {
     welcome: '다시 만나 반가워요',
@@ -145,8 +150,29 @@ const copy = {
     retry: '다시 시도',
     inviteAccepted: '초대 수락이 완료되었습니다. 회사 로그인 방식으로 계속하세요.',
     language: '한국어',
+    languageLabel: '언어 선택',
+    policiesLabel: '인증 정책',
+    showPassword: '비밀번호 표시',
+    hidePassword: '비밀번호 숨기기',
+    waveLabel: '손 흔들기',
   },
 } as const
+
+function localeFromStorage() {
+  try {
+    return window.localStorage.getItem(LOGIN_LOCALE_KEY) === 'ko' ? 'ko' : 'en'
+  } catch {
+    return 'en'
+  }
+}
+
+function persistLocale(locale: Locale) {
+  try {
+    window.localStorage.setItem(LOGIN_LOCALE_KEY, locale)
+  } catch {
+    // Login must remain available when storage is blocked by browser policy.
+  }
+}
 
 function safeNextLocation(next: string | null) {
   if (!next || !next.startsWith('/') || next.startsWith('//')) return '/projects'
@@ -216,10 +242,10 @@ function ProviderGlyph({ provider }: { provider: OidcProvider }) {
 function NoticeDialog({ kind, locale, close }: { kind: InformationNoticeKind | null; locale: Locale; close: () => void }) {
   const isKorean = locale === 'ko'
   const details: Record<InformationNoticeKind, { title: string; body: string }> = {
-    google: { title: 'Google sign-in', body: isKorean ? 'Google OAuth 공급자가 아직 구성되지 않았습니다.' : 'Google OAuth is not configured for this deployment.' },
-    microsoft: { title: 'Microsoft sign-in', body: isKorean ? 'Microsoft Entra 공급자가 아직 구성되지 않았습니다.' : 'Microsoft Entra is not configured for this deployment.' },
+    google: { title: isKorean ? 'Google 로그인' : 'Google sign-in', body: isKorean ? 'Google OAuth 공급자가 아직 구성되지 않았습니다.' : 'Google OAuth is not configured for this deployment.' },
+    microsoft: { title: isKorean ? 'Microsoft 로그인' : 'Microsoft sign-in', body: isKorean ? 'Microsoft Entra 공급자가 아직 구성되지 않았습니다.' : 'Microsoft Entra is not configured for this deployment.' },
     sso: {
-      title: 'Organization SSO',
+      title: isKorean ? '조직 SSO' : 'Organization SSO',
       body: isKorean
         ? '조직 SSO 공급자가 이 배포 환경에 구성되지 않았습니다.'
         : 'An organization SSO provider is not configured for this deployment.',
@@ -404,15 +430,33 @@ export function LoginPage() {
   const forgotButtonRef = useRef<HTMLButtonElement>(null)
   const requestAccessButtonRef = useRef<HTMLButtonElement>(null)
   const redirectingRef = useRef(false)
-  const [locale, setLocale] = useState<Locale>(() => {
-    const stored = window.localStorage.getItem(LOGIN_LOCALE_KEY)
-    return stored === 'ko' ? 'ko' : 'en'
-  })
+  const originalDocumentLanguageRef = useRef(document.documentElement.lang || 'ko')
+  const [locale, setLocale] = useState<Locale>(localeFromStorage)
   const text = copy[locale]
 
   useEffect(() => {
-    window.localStorage.setItem(LOGIN_LOCALE_KEY, locale)
+    persistLocale(locale)
   }, [locale])
+
+  useEffect(() => {
+    const root = document.documentElement
+    return () => {
+      root.lang = originalDocumentLanguageRef.current
+    }
+  }, [])
+
+  useEffect(() => {
+    document.documentElement.lang = locale
+  }, [locale])
+
+  useEffect(() => {
+    const syncLocale = (event: StorageEvent) => {
+      if (event.key !== LOGIN_LOCALE_KEY) return
+      if (event.newValue === 'en' || event.newValue === 'ko') setLocale(event.newValue)
+    }
+    window.addEventListener('storage', syncLocale)
+    return () => window.removeEventListener('storage', syncLocale)
+  }, [])
 
   const authMode = config.data?.auth_mode
   const oidcProvider = config.data?.oidc_provider
@@ -475,7 +519,7 @@ export function LoginPage() {
   }
 
   return (
-    <div className="of-login-canvas">
+    <div className="of-login-canvas" lang={locale}>
       <div
         className="of-login-page"
         data-locale={locale}
@@ -485,7 +529,7 @@ export function LoginPage() {
         <section className="of-login-auth-card">
           <div className="of-login-auth-brand"><BrandLockup compact /></div>
           <header className="of-login-heading">
-            <h2 id="login-title">{text.welcome} <span role="img" aria-label="wave">👋</span></h2>
+            <h2 id="login-title">{text.welcome} <span role="img" aria-label={text.waveLabel}>👋</span></h2>
             <p>{text.subtitle}</p>
           </header>
 
@@ -553,7 +597,7 @@ export function LoginPage() {
                   className="of-login-password-toggle"
                   onClick={() => setShowPassword((current) => !current)}
                   disabled={!passwordDraftEnabled}
-                  aria-label={showPassword ? 'Hide password' : 'Show password'}
+                  aria-label={showPassword ? text.hidePassword : text.showPassword}
                 >
                   {showPassword ? (
                     <Eye aria-hidden="true" />
@@ -621,7 +665,7 @@ export function LoginPage() {
         </section>
 
         <footer className="of-login-footer">
-          <nav aria-label="Authentication policies">
+          <nav aria-label={text.policiesLabel}>
             <button type="button" onClick={() => setNotice('terms')}>{text.terms}</button><span>•</span>
             <button type="button" onClick={() => setNotice('privacy')}>{text.privacy}</button><span>•</span>
             <button type="button" onClick={() => setNotice('security')}>{text.security}</button><span>•</span>
@@ -629,7 +673,7 @@ export function LoginPage() {
           </nav>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <button type="button" className="of-login-language" aria-label="Choose language"><Globe2 aria-hidden="true" />{text.language}<ChevronDown aria-hidden="true" /></button>
+              <button type="button" className="of-login-language" aria-label={text.languageLabel}><Globe2 aria-hidden="true" />{text.language}<ChevronDown aria-hidden="true" /></button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="of-login-language-menu">
               <DropdownMenuRadioGroup value={locale} onValueChange={(value) => setLocale(value as Locale)}>
