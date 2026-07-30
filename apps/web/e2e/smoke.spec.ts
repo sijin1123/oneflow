@@ -28822,6 +28822,278 @@ test('관리자가 사용자 디렉터리에서 추가·비활성화를 수행�
   await expect(rookieRow.getByRole('button', { name: '활성화' })).toBeVisible()
 })
 
+test('사용자 관리 액션은 디렉터리 새로고침과 같은 이벤트에서 stale 쓰기를 차단한다', async ({
+  page,
+}) => {
+  await mockApi(page)
+  const admin = {
+    id: 'me-1',
+    email: 'dev@oneflow.local',
+    display_name: 'Dev User',
+    is_active: true,
+    is_admin: true,
+    created_at: '2026-07-01T00:00:00Z',
+  }
+  let member = {
+    id: 'member-freshness',
+    email: 'freshness@oneflow.local',
+    display_name: 'Freshness Member',
+    is_active: true,
+    is_admin: false,
+    created_at: '2026-07-02T00:00:00Z',
+  }
+  let createdUser: typeof member | null = null
+  let directoryReads = 0
+  let postAttempts = 0
+  let patchAttempts = 0
+  let applyExternalGovernanceChange = false
+  let holdUnfilteredRefresh = false
+  let releaseUnfilteredRefresh: (() => void) | null = null
+  let releasePendingSearch: (() => void) | null = null
+  const patchPayloads: Record<string, unknown>[] = []
+  const completionOrder: string[] = []
+  const directoryPayload = () => {
+    const items = createdUser ? [admin, member, createdUser] : [admin, member]
+    return {
+      items,
+      total: items.length,
+      summary: {
+        users: items.length,
+        active: items.filter((item) => item.is_active).length,
+        admins: items.filter((item) => item.is_admin).length,
+        inactive: items.filter((item) => !item.is_active).length,
+        active_admins: items.filter((item) => item.is_active && item.is_admin).length,
+      },
+    }
+  }
+
+  await page.route(/\/api\/v1\/users(?:\?.*)?$/, async (route) => {
+    if (route.request().method() === 'POST') {
+      postAttempts += 1
+      const body = route.request().postDataJSON() as {
+        email: string
+        display_name: string
+      }
+      createdUser = {
+        ...member,
+        id: 'created-after-refresh',
+        email: body.email,
+        display_name: body.display_name,
+      }
+      return route.fulfill({ status: 201, json: createdUser })
+    }
+    if (route.request().method() !== 'GET') return route.fallback()
+    directoryReads += 1
+    const requestQuery = new URL(route.request().url()).searchParams.get('q') ?? ''
+    if (holdUnfilteredRefresh && (requestQuery === '' || requestQuery === 'slow-a')) {
+      await new Promise<void>((resolve) => {
+        releaseUnfilteredRefresh = resolve
+      })
+    } else if (requestQuery === 'pending-target' || requestQuery === 'reverse-target') {
+      await new Promise<void>((resolve) => {
+        releasePendingSearch = resolve
+      })
+    } else if (directoryReads > 1) {
+      await new Promise((resolve) => setTimeout(resolve, 120))
+    }
+    completionOrder.push(requestQuery || 'unfiltered')
+    if (applyExternalGovernanceChange) {
+      applyExternalGovernanceChange = false
+      member = { ...member, is_active: false, is_admin: true }
+    }
+    return route.fulfill({ json: directoryPayload() })
+  })
+  await page.route('**/api/v1/users/member-freshness', (route) => {
+    patchAttempts += 1
+    const body = route.request().postDataJSON() as Record<string, unknown>
+    patchPayloads.push(body)
+    member = { ...member, ...body }
+    return route.fulfill({ json: member })
+  })
+
+  await page.goto('/admin/users')
+  const refresh = page
+    .getByRole('toolbar', { name: '사용자 관리 화면 제어' })
+    .getByRole('button', { name: '새로고침' })
+  const memberRow = page.getByRole('row', { name: /Freshness Member/ })
+
+  await expect(memberRow).toBeVisible()
+  await expect(refresh).toBeEnabled()
+  holdUnfilteredRefresh = true
+  await refresh.click()
+  await expect.poll(() => releaseUnfilteredRefresh !== null).toBe(true)
+  await page.evaluate(() => {
+    const input = document.querySelector<HTMLInputElement>('input[aria-label="사용자 검색"]')
+    const setValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
+    const createButton = Array.from(document.querySelectorAll<HTMLButtonElement>('button')).find(
+      (button) => button.textContent?.trim() === '새 사용자',
+    )
+    if (!input || !setValue || !createButton) {
+      throw new Error('pending search controls not found')
+    }
+    setValue.call(input, 'pending-target')
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+    createButton.click()
+  })
+  await expect.poll(() => releasePendingSearch !== null).toBe(true)
+  const pendingSearchDialog = page.getByRole('dialog', { name: '새 사용자' })
+  await pendingSearchDialog.getByLabel('새 사용자 이메일').fill('blocked@oneflow.local')
+  await pendingSearchDialog.getByLabel('새 사용자 이름').fill('Blocked Stale User')
+  const releaseUnfiltered = releaseUnfilteredRefresh as (() => void) | null
+  releaseUnfiltered?.()
+  releaseUnfilteredRefresh = null
+  holdUnfilteredRefresh = false
+  await pendingSearchDialog
+    .locator('form')
+    .evaluate((form: HTMLFormElement) => form.requestSubmit())
+  await expect.poll(() => postAttempts).toBe(0)
+  const releaseSearch = releasePendingSearch as (() => void) | null
+  releaseSearch?.()
+  releasePendingSearch = null
+  await expect(
+    pendingSearchDialog.getByRole('button', { name: '추가', exact: true }),
+  ).toBeEnabled()
+  await pendingSearchDialog.getByRole('button', { name: '취소', exact: true }).click()
+  await expect(pendingSearchDialog).toBeHidden()
+  await page.getByLabel('사용자 검색').fill('')
+  await expect.poll(() => new URL(page.url()).searchParams.get('q')).toBe(null)
+  await expect(
+    memberRow.getByRole('button', { name: '이름 편집', exact: true }),
+  ).toBeEnabled()
+
+  holdUnfilteredRefresh = true
+  await page.getByLabel('사용자 검색').fill('slow-a')
+  await expect.poll(() => releaseUnfilteredRefresh !== null).toBe(true)
+  await page.getByLabel('사용자 검색').fill('reverse-target')
+  await expect.poll(() => releasePendingSearch !== null).toBe(true)
+  const releaseReverseSearch = releasePendingSearch as (() => void) | null
+  const releaseLateUnfiltered = releaseUnfilteredRefresh as (() => void) | null
+  releaseReverseSearch?.()
+  releaseLateUnfiltered?.()
+  releasePendingSearch = null
+  releaseUnfilteredRefresh = null
+  holdUnfilteredRefresh = false
+  await expect
+    .poll(() => completionOrder.slice(-2))
+    .toEqual(['reverse-target', 'slow-a'])
+  const editAfterReverseCompletion = memberRow.getByRole('button', {
+    name: '이름 편집',
+    exact: true,
+  })
+  await expect(editAfterReverseCompletion).toBeEnabled()
+  await editAfterReverseCompletion.click()
+  const reverseCompletionDialog = page.getByRole('dialog', { name: '사용자 이름 편집' })
+  await expect(reverseCompletionDialog).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(reverseCompletionDialog).toBeHidden()
+  await page.getByLabel('사용자 검색').fill('')
+  await expect.poll(() => new URL(page.url()).searchParams.get('q')).toBe(null)
+  await expect(memberRow).toBeVisible()
+  await expect(
+    memberRow.getByRole('button', { name: '이름 편집', exact: true }),
+  ).toBeEnabled()
+
+  await page.getByRole('button', { name: '새 사용자' }).click()
+  const createDialog = page.getByRole('dialog', { name: '새 사용자' })
+  await createDialog.getByLabel('새 사용자 이메일').fill('created@oneflow.local')
+  await createDialog.getByLabel('새 사용자 이름').fill('Created After Refresh')
+  await page.evaluate(() => {
+    const refreshButton = document.querySelector<HTMLButtonElement>(
+      '[data-frame-context-actions] button[aria-label="새로고침"]',
+    )
+    const searchInput = document.querySelector<HTMLInputElement>(
+      'input[aria-label="사용자 검색"]',
+    )
+    const setValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
+    const form = document.querySelector<HTMLFormElement>('[role="dialog"] form')
+    if (!refreshButton || !searchInput || !setValue || !form) {
+      throw new Error('create freshness controls not found')
+    }
+    refreshButton.click()
+    setValue.call(searchInput, '')
+    searchInput.dispatchEvent(new Event('input', { bubbles: true }))
+    form.requestSubmit()
+  })
+  await expect.poll(() => postAttempts).toBe(0)
+  await expect(createDialog.getByRole('button', { name: '추가', exact: true })).toBeDisabled()
+  await expect(createDialog.getByRole('button', { name: '추가', exact: true })).toBeEnabled()
+  await createDialog.getByRole('button', { name: '추가', exact: true }).click()
+  await expect(createDialog).toBeHidden()
+  await expect(page.getByText('created@oneflow.local')).toBeVisible()
+  expect(postAttempts).toBe(1)
+
+  applyExternalGovernanceChange = true
+  const governanceReads = directoryReads
+  await page.evaluate(() => {
+    const row = Array.from(document.querySelectorAll('tr')).find((candidate) =>
+      candidate.textContent?.includes('Freshness Member'),
+    )
+    const activeButton = Array.from(row?.querySelectorAll('button') ?? []).find(
+      (button) => button.textContent?.trim() === '비활성화',
+    )
+    const adminSwitch = row?.querySelector<HTMLInputElement>(
+      'input[aria-label="Freshness Member 관리자 권한"]',
+    )
+    if (!activeButton || !adminSwitch) {
+      throw new Error('governance freshness controls not found')
+    }
+    const refreshButton = document.querySelector<HTMLButtonElement>(
+      '[data-frame-context-actions] button[aria-label="새로고침"]',
+    )
+    if (!refreshButton) throw new Error('directory refresh button not found')
+    refreshButton.click()
+    activeButton.click()
+    adminSwitch.click()
+  })
+  await expect.poll(() => directoryReads).toBeGreaterThan(governanceReads)
+  await expect.poll(() => patchAttempts).toBe(0)
+  await expect(page.getByRole('dialog', { name: '사용자 비활성화' })).toHaveCount(0)
+  await expect(refresh).toBeEnabled()
+  await expect(memberRow.getByRole('button', { name: '활성화' })).toBeVisible()
+  const adminSwitch = memberRow.getByLabel('Freshness Member 관리자 권한')
+  await expect(adminSwitch).toBeChecked()
+
+  await memberRow.getByRole('button', { name: '활성화' }).click()
+  await expect.poll(() => patchAttempts).toBe(1)
+  await expect(refresh).toBeEnabled()
+  await adminSwitch.click()
+  const demoteDialog = page.getByRole('dialog', { name: '관리자 권한 해제' })
+  await demoteDialog.getByRole('button', { name: '권한 해제', exact: true }).click()
+  await expect.poll(() => patchAttempts).toBe(2)
+  await expect(demoteDialog).toBeHidden()
+  await expect(refresh).toBeEnabled()
+
+  const editTrigger = memberRow.getByRole('button', { name: '이름 편집', exact: true })
+  await editTrigger.click()
+  const editDialog = page.getByRole('dialog', { name: '사용자 이름 편집' })
+  await editDialog.getByLabel('사용자 표시 이름').fill('Recovered Fresh Member')
+  await page.evaluate(() => {
+    const refreshButton = document.querySelector<HTMLButtonElement>(
+      '[data-frame-context-actions] button[aria-label="새로고침"]',
+    )
+    const form = document.querySelector<HTMLFormElement>('[role="dialog"] form')
+    if (!refreshButton || !form) throw new Error('edit freshness controls not found')
+    refreshButton.click()
+    form.requestSubmit()
+  })
+  await expect.poll(() => patchAttempts).toBe(2)
+  const save = editDialog.getByRole('button', { name: '저장' })
+  await expect(save).toBeDisabled()
+  await expect(editDialog.getByLabel('사용자 표시 이름')).toHaveValue(
+    'Recovered Fresh Member',
+  )
+  await expect(save).toBeEnabled()
+  await save.click()
+  await expect(editDialog).toBeHidden()
+  await expect(page.getByText('Recovered Fresh Member', { exact: true })).toBeVisible()
+  expect(patchAttempts).toBe(3)
+  expect(patchPayloads).toEqual([
+    { is_active: true },
+    { is_admin: false },
+    { display_name: 'Recovered Fresh Member' },
+  ])
+})
+
 test('사용자 이름 편집은 stale 목록에서 초안을 보존하고 정확한 요청으로 복구한다', async ({
   page,
 }) => {
