@@ -26121,13 +26121,16 @@ test('로그인 승인 원본 비주얼은 처음부터 기능형 인증 화면�
     },
   }))
   await page.reload()
-  const passwordBox = await page.getByLabel('Password', { exact: true }).boundingBox()
-  expect(passwordBox).not.toBeNull()
-  await page.mouse.click(
-    passwordBox!.x + (passwordBox!.width / 2),
-    passwordBox!.y + (passwordBox!.height / 2),
+  const optionalPassword = page.getByLabel('Password', { exact: true })
+  await expect(optionalPassword).toBeEnabled()
+  await expect(optionalPassword).toHaveAttribute(
+    'placeholder',
+    'Password is not required in this local environment',
   )
-  await expect(page.getByLabel('Password', { exact: true })).toBeDisabled()
+  await optionalPassword.fill('optional-development-password')
+  await page.getByRole('button', { name: 'Show password' }).click()
+  await expect(optionalPassword).toHaveAttribute('type', 'text')
+  await page.getByRole('button', { name: 'Hide password' }).click()
   await expect(page.getByText('Password is not required in this local environment')).toBeAttached()
 
   await page.reload()

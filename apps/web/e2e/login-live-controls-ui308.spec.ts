@@ -108,3 +108,58 @@ test('UI-308 login controls는 typing, toggle, dialog, locale 상태를 가시�
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(390)
   await page.screenshot({ path: `${evidenceRoot}/mobile-390x844.png`, fullPage: true })
 })
+
+test('로그인 credential 초안은 config 조회 중 유지되고 선택 비밀번호도 실제 제출된다', async ({ page }) => {
+  let releaseConfig!: () => void
+  const configGate = new Promise<void>((resolve) => { releaseConfig = resolve })
+  await page.route('**/api/v1/auth/config', async (route) => {
+    await configGate
+    await route.fulfill({
+      json: {
+        auth_mode: 'dev',
+        oidc_issuer: null,
+        oidc_client_id: null,
+        oidc_provider: null,
+        oidc_providers: [],
+        has_client_secret: false,
+        command_palette_enabled: false,
+        session_management_enabled: false,
+        password_required: false,
+        oidc_login_enabled: false,
+      },
+    })
+  })
+
+  let submitted: Record<string, unknown> | null = null
+  await page.route('**/api/v1/auth/login', async (route) => {
+    submitted = route.request().postDataJSON() as Record<string, unknown>
+    await route.fulfill({
+      json: { user_id: 'me-1', email: 'user@example.com', display_name: 'User' },
+    })
+  })
+
+  await page.goto('/login')
+  const email = page.getByLabel('Email address')
+  const remember = page.getByRole('checkbox', { name: 'Remember me' })
+  await expect(page.getByText('Checking sign-in options...')).toBeVisible()
+  await expect(email).toBeEnabled()
+  await expect(remember).toBeEnabled()
+  await email.fill('user@example.com')
+  await remember.uncheck()
+
+  releaseConfig()
+  const password = page.getByLabel('Password', { exact: true })
+  await expect(password).toBeEnabled()
+  await expect(password).toHaveAttribute('placeholder', 'Password is not required in this local environment')
+  await password.fill('optional-development-password')
+  await page.getByRole('button', { name: 'Show password' }).click()
+  await expect(password).toHaveAttribute('type', 'text')
+  await page.getByRole('button', { name: 'Hide password' }).click()
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click()
+
+  await expect.poll(() => submitted).toEqual({
+    email: 'user@example.com',
+    password: 'optional-development-password',
+    remember_me: false,
+  })
+})

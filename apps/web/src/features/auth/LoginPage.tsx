@@ -423,6 +423,9 @@ export function LoginPage() {
   const devEnabled = authMode === 'dev'
   const passwordRequired = devEnabled && Boolean(config.data?.password_required)
   const formEnabled = devEnabled && !config.isPending && !config.isError
+  const credentialDraftEnabled = !login.isPending
+    && (config.isPending || config.isError || devEnabled)
+  const passwordDraftEnabled = !login.isPending && devEnabled
 
   const submit = () => {
     const value = email.trim().toLowerCase()
@@ -440,7 +443,7 @@ export function LoginPage() {
     if (!formEnabled || login.isPending) return
     setValidationError(null)
     login.mutate(
-      { email: value, password: passwordRequired ? password : undefined, remember_me: rememberMe },
+      { email: value, password: password || undefined, remember_me: rememberMe },
       { onSuccess: () => navigate(safeNextLocation(searchParams.get('next')), { replace: true }) },
     )
   }
@@ -517,7 +520,7 @@ export function LoginPage() {
                   data-has-value={email ? true : undefined}
                   onChange={(event) => { setEmail(event.target.value); setValidationError(null); login.reset() }}
                   placeholder="you@company.com"
-                  disabled={!formEnabled || login.isPending}
+                  disabled={!credentialDraftEnabled}
                   aria-invalid={Boolean(errorText)}
                   aria-describedby={errorText ? 'login-auth-help login-auth-error' : 'login-auth-help'}
                 />
@@ -536,15 +539,20 @@ export function LoginPage() {
                   value={password}
                   data-has-value={password ? true : undefined}
                   onChange={(event) => { setPassword(event.target.value); setValidationError(null); login.reset() }}
-                  placeholder={authMode === 'oidc' ? text.passwordProvider : text.passwordPlaceholder}
-                  disabled={!formEnabled || !passwordRequired || login.isPending}
+                  placeholder={authMode === 'oidc'
+                    ? text.passwordProvider
+                    : devEnabled && !passwordRequired
+                      ? text.passwordNotRequired
+                      : text.passwordPlaceholder}
+                  disabled={!passwordDraftEnabled}
+                  aria-required={passwordRequired}
                   aria-invalid={Boolean(errorText && passwordRequired && !password)}
                 />
                 <button
                   type="button"
                   className="of-login-password-toggle"
                   onClick={() => setShowPassword((current) => !current)}
-                  disabled={!formEnabled || !passwordRequired || login.isPending}
+                  disabled={!passwordDraftEnabled}
                   aria-label={showPassword ? 'Hide password' : 'Show password'}
                 >
                   {showPassword ? (
@@ -558,7 +566,7 @@ export function LoginPage() {
 
             <div className="of-login-form-options">
               <label className="of-login-checkbox">
-                <input type="checkbox" checked={rememberMe} onChange={(event) => setRememberMe(event.target.checked)} disabled={!formEnabled || login.isPending} />
+                <input type="checkbox" checked={rememberMe} onChange={(event) => setRememberMe(event.target.checked)} disabled={!credentialDraftEnabled} />
                 <span><Check aria-hidden="true" /></span><span className="of-login-checkbox-copy">{text.remember}</span>
               </label>
               <button ref={forgotButtonRef} type="button" className="of-login-link" onClick={() => setNotice('forgot')}>{text.forgot}</button>
