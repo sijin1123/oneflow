@@ -41,6 +41,7 @@ import { useUnsavedLocationPrompt } from '@/lib/guards'
 import { cn } from '@/lib/utils'
 
 import {
+  type CreateAccessTokenInput,
   type PersonalAccessTokenCreated,
   type PersonalAccessToken,
   useAccessTokens,
@@ -89,23 +90,29 @@ function ConfirmActionDialog({
   open,
   onOpenChange,
   returnFocusRef,
+  fallbackFocusRef,
   title,
   description,
   pending,
   error,
   actionLabel,
   pendingLabel,
+  actionDisabled = false,
+  actionDisabledMessage,
   onConfirm,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   returnFocusRef: RefObject<HTMLButtonElement | null>
+  fallbackFocusRef?: RefObject<HTMLButtonElement | null>
   title: string
   description: ReactNode
   pending: boolean
   error: string | null
   actionLabel: string
   pendingLabel: string
+  actionDisabled?: boolean
+  actionDisabledMessage?: string
   onConfirm: () => void
 }) {
   return (
@@ -116,7 +123,12 @@ function ConfirmActionDialog({
           className="w-[min(28rem,calc(100vw-1.5rem))] overflow-hidden rounded-of-lg border border-of-border bg-of-surface-raised shadow-[var(--of-shadow-popover)]"
           onCloseAutoFocus={(event) => {
             event.preventDefault()
-            returnFocusRef.current?.focus()
+            const returnTarget = returnFocusRef.current
+            if (returnTarget?.isConnected && !returnTarget.disabled) {
+              returnTarget.focus()
+            } else {
+              fallbackFocusRef?.current?.focus()
+            }
           }}
         >
           <header className="flex items-start gap-3 border-b border-of-border-subtle px-4 py-3.5">
@@ -143,13 +155,27 @@ function ConfirmActionDialog({
               {error}
             </p>
           ) : null}
+          {actionDisabled && actionDisabledMessage ? (
+            <p
+              role="alert"
+              className="mx-4 mt-4 border border-of-warning/35 bg-of-warning/10 px-3 py-2 text-xs leading-5 text-of-text"
+            >
+              {actionDisabledMessage}
+            </p>
+          ) : null}
           <footer className="flex flex-col-reverse gap-2 px-4 py-4 sm:flex-row sm:justify-end">
             <Dialog.Close asChild>
               <Button type="button" size="sm" variant="outline" disabled={pending}>
                 취소
               </Button>
             </Dialog.Close>
-            <Button type="button" size="sm" variant="danger" disabled={pending} onClick={onConfirm}>
+            <Button
+              type="button"
+              size="sm"
+              variant="danger"
+              disabled={pending || actionDisabled}
+              onClick={onConfirm}
+            >
               {pending ? pendingLabel : error ? `${actionLabel} 다시 시도` : actionLabel}
             </Button>
           </footer>
@@ -453,6 +479,16 @@ function AccessTokensPanel() {
   const [revokeTarget, setRevokeTarget] = useState<PersonalAccessToken | null>(null)
   const nameRef = useRef<HTMLInputElement>(null)
   const revokeButtonRef = useRef<HTMLButtonElement>(null)
+  const refreshButtonRef = useRef<HTMLButtonElement>(null)
+  const hasTokenData = tokens.data !== undefined
+  const stale = tokens.isError && hasTokenData
+  const writeBlocked = tokens.isError || tokens.isFetching
+  const currentRevokeTarget = revokeTarget
+    ? tokens.data?.items.find((token) => token.id === revokeTarget.id && !token.revoked_at) ?? null
+    : null
+  const revokeTargetUnavailable =
+    revokeTarget !== null && hasTokenData && !writeBlocked && currentRevokeTarget === null
+  const revokeActionBlocked = writeBlocked || revokeTargetUnavailable
 
   useUnsavedLocationPrompt(
     created !== null || (creating && (name.trim().length > 0 || days !== 90)),
@@ -461,11 +497,13 @@ function AccessTokensPanel() {
       : '작성 중인 액세스 토큰을 버리고 이동할까요?',
   )
   const openCreator = () => {
+    if (writeBlocked) return
     createToken.reset()
     setCreating(true)
     window.setTimeout(() => nameRef.current?.focus(), 0)
   }
-  const create = (body: { name: string; expires_in_days: number }) => {
+  const create = (body: CreateAccessTokenInput) => {
+    if (writeBlocked) return
     createToken.mutate(body, {
       onSuccess: (result) => {
         setCreated(result)
@@ -475,9 +513,9 @@ function AccessTokensPanel() {
   }
 
   const revoke = async () => {
-    if (!revokeTarget) return
+    if (!currentRevokeTarget || revokeActionBlocked) return
     try {
-      await revokeToken.mutateAsync(revokeTarget.id)
+      await revokeToken.mutateAsync(currentRevokeTarget.id)
       setRevokeTarget(null)
     } catch {
       // The focused confirmation keeps the exact failed token available for retry.
@@ -492,28 +530,48 @@ function AccessTokensPanel() {
         framed={false}
         className="border-b border-of-border-subtle p-0 pb-5 sm:p-0 sm:pb-6"
         actions={
-        <Button
-          type="button"
-          size="sm"
-          variant={creating ? 'outline' : 'default'}
-          aria-expanded={creating}
-          aria-controls="access-token-creator"
-          onClick={() => {
-            if (creating) {
-              createToken.reset()
-              setCreating(false)
-            } else {
-              openCreator()
-            }
-          }}
-        >
-          {creating ? (
-            <X size={14} aria-hidden="true" />
-          ) : (
-            <KeyRound size={14} aria-hidden="true" />
-          )}
-          {creating ? '닫기' : '액세스 토큰 추가'}
-        </Button>
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            <Button
+              ref={refreshButtonRef}
+              type="button"
+              size="sm"
+              variant="ghost"
+              aria-disabled={tokens.isFetching}
+              onClick={() => {
+                if (!tokens.isFetching) void tokens.refetch()
+              }}
+            >
+              <RefreshCw
+                size={14}
+                aria-hidden="true"
+                className={cn(tokens.isFetching && 'animate-spin')}
+              />
+              토큰 목록 새로고침
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant={creating ? 'outline' : 'default'}
+              aria-expanded={creating}
+              aria-controls="access-token-creator"
+              disabled={writeBlocked && !creating}
+              onClick={() => {
+                if (creating) {
+                  createToken.reset()
+                  setCreating(false)
+                } else {
+                  openCreator()
+                }
+              }}
+            >
+              {creating ? (
+                <X size={14} aria-hidden="true" />
+              ) : (
+                <KeyRound size={14} aria-hidden="true" />
+              )}
+              {creating ? '닫기' : '액세스 토큰 추가'}
+            </Button>
+          </div>
         }
       >
       {creating ? (
@@ -524,7 +582,12 @@ function AccessTokensPanel() {
             event.preventDefault()
             const trimmed = name.trim()
             if (!trimmed) return
-            create({ name: trimmed, expires_in_days: days })
+            const nonceBytes = crypto.getRandomValues(new Uint8Array(32))
+            const tokenNonce = btoa(String.fromCharCode(...nonceBytes))
+              .replaceAll('+', '-')
+              .replaceAll('/', '_')
+              .replace(/=+$/, '')
+            create({ name: trimmed, expires_in_days: days, token_nonce: tokenNonce })
           }}
         >
           <label className="min-w-0 text-xs">
@@ -550,7 +613,10 @@ function AccessTokensPanel() {
               }}
             />
           </label>
-          <Button type="submit" disabled={createToken.isPending || !name.trim()}>
+          <Button
+            type="submit"
+            disabled={writeBlocked || createToken.isPending || !name.trim()}
+          >
             <KeyRound size={14} aria-hidden="true" />
             {createToken.isPending ? '생성 중' : '토큰 생성'}
           </Button>
@@ -566,7 +632,7 @@ function AccessTokensPanel() {
           <Button
             size="sm"
             variant="outline"
-            disabled={!createToken.variables || createToken.isPending}
+            disabled={writeBlocked || !createToken.variables || createToken.isPending}
             onClick={() => {
               if (createToken.variables) create(createToken.variables)
             }}
@@ -602,15 +668,52 @@ function AccessTokensPanel() {
         </div>
       ) : null}
 
-      {tokens.isPending ? (
+      {stale ? (
+        <div
+          className="mb-4 flex min-w-0 flex-col gap-2 border border-of-warning/35 bg-of-warning/10 px-3 py-2.5 sm:flex-row sm:items-center sm:justify-between"
+          role="alert"
+        >
+          <div className="min-w-0">
+            <p className="text-xs font-medium text-of-text">
+              최신 액세스 토큰 목록을 불러오지 못했습니다.
+            </p>
+            <p className="mt-0.5 text-[11px] leading-5 text-of-muted">
+              마지막으로 확인한 토큰을 표시합니다. 목록을 복구할 때까지 생성과 폐기는
+              중단됩니다.
+            </p>
+          </div>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="w-full shrink-0 sm:w-auto"
+            disabled={tokens.isFetching}
+            onClick={() => void tokens.refetch()}
+          >
+            <RefreshCw
+              size={13}
+              aria-hidden="true"
+              className={cn(tokens.isFetching && 'animate-spin')}
+            />
+            토큰 목록 다시 시도
+          </Button>
+        </div>
+      ) : null}
+
+      {tokens.isPending && !tokens.data ? (
         <div className="space-y-2" aria-label="액세스 토큰 목록을 불러오는 중">
           <div className="h-12 animate-pulse rounded-of bg-of-subtle" />
           <div className="h-12 animate-pulse rounded-of bg-of-subtle" />
         </div>
-      ) : tokens.isError ? (
+      ) : !tokens.data ? (
         <div className="flex flex-wrap items-center justify-between gap-2 text-xs" role="alert">
           <p className="text-of-danger">토큰 목록을 불러오지 못했습니다.</p>
-          <Button size="sm" variant="outline" onClick={() => void tokens.refetch()}>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={tokens.isFetching}
+            onClick={() => void tokens.refetch()}
+          >
             다시 시도
           </Button>
         </div>
@@ -623,7 +726,7 @@ function AccessTokensPanel() {
           <p className="mt-1 max-w-sm text-xs leading-5 text-of-muted">
             외부 도구나 자동화에서 OneFlow API를 호출할 때 사용할 토큰을 만드세요.
           </p>
-          <Button size="sm" className="mt-3" onClick={openCreator}>
+          <Button size="sm" className="mt-3" disabled={writeBlocked} onClick={openCreator}>
             액세스 토큰 추가
           </Button>
         </div>
@@ -671,9 +774,10 @@ function AccessTokensPanel() {
                         size="sm"
                         variant="outline"
                         className="w-full sm:justify-self-end"
-                        disabled={revokeToken.isPending}
+                        disabled={writeBlocked || revokeToken.isPending}
                         aria-label={`${token.name} 폐기`}
                         onClick={(event) => {
+                          if (writeBlocked) return
                           revokeButtonRef.current = event.currentTarget
                           revokeToken.reset()
                           setRevokeTarget(token)
@@ -701,6 +805,7 @@ function AccessTokensPanel() {
           }
         }}
         returnFocusRef={revokeButtonRef}
+        fallbackFocusRef={refreshButtonRef}
         title="액세스 토큰을 폐기할까요?"
         description={
           <>
@@ -709,6 +814,12 @@ function AccessTokensPanel() {
           </>
         }
         pending={revokeToken.isPending}
+        actionDisabled={revokeActionBlocked}
+        actionDisabledMessage={
+          revokeTargetUnavailable
+            ? '이 토큰은 최신 목록에서 더 이상 활성 상태가 아닙니다. 확인 창을 닫고 목록을 확인하세요.'
+            : '최신 토큰 목록을 복구한 뒤 이 토큰을 폐기할 수 있습니다.'
+        }
         error={revokeToken.isError ? '액세스 토큰을 폐기하지 못했습니다.' : null}
         actionLabel="토큰 폐기"
         pendingLabel="폐기 중…"

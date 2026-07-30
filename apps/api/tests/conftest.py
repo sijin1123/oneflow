@@ -50,6 +50,7 @@ def make_test_settings(**overrides) -> Settings:
         # Tests that exercise required login opt in through explicit overrides.
         dev_login_required="false",
         dev_login_password=None,
+        access_token_derivation_key="test-access-token-derivation-key-at-least-32-bytes",
         cors_origins="http://localhost:5173",
         log_level="WARNING",
         # Isolated per-run blob root — uploads never land in the repo tree.

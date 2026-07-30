@@ -22,6 +22,12 @@ export type PersonalAccessTokenCreated = {
   token: string
 }
 
+export type CreateAccessTokenInput = {
+  name: string
+  expires_in_days: number
+  token_nonce: string
+}
+
 export function useAccessTokens() {
   return useQuery({
     queryKey: ['access-tokens'],
@@ -32,7 +38,7 @@ export function useAccessTokens() {
 export function useCreateAccessToken() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (body: { name: string; expires_in_days: number }) =>
+    mutationFn: (body: CreateAccessTokenInput) =>
       api<PersonalAccessTokenCreated>('/api/v1/me/access-tokens', {
         method: 'POST',
         body: JSON.stringify(body),
@@ -48,7 +54,7 @@ export function useRevokeAccessToken() {
   return useMutation({
     mutationFn: (id: string) =>
       api<void>(`/api/v1/me/access-tokens/${id}`, { method: 'DELETE' }),
-    onSuccess: () => {
+    onSettled: () => {
       void queryClient.invalidateQueries({ queryKey: ['access-tokens'] })
     },
   })

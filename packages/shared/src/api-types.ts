@@ -7579,6 +7579,11 @@ export interface components {
             expires_in_days: number;
             /** Name */
             name: string;
+            /**
+             * Token Nonce
+             * @description Request-scoped 256-bit base64url secret; reuse only to retry this creation.
+             */
+            token_nonce: string;
         };
         /** PersonalAccessTokenCreated */
         PersonalAccessTokenCreated: {

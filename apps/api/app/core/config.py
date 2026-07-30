@@ -25,6 +25,7 @@ WEBHOOK_KEY_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
 # ONEFLOW_ALLOW_DESTRUCTIVE_RESET must be EXACTLY this value to unlock dev-DB reset.
 DESTRUCTIVE_RESET_TOKEN = "local-dev-only"
 OIDC_PROVIDER_ALIASES = ("google", "microsoft", "sso")
+LOCAL_ACCESS_TOKEN_DERIVATION_KEY = "oneflow-local-access-token-derivation-key-not-for-production"
 
 
 @dataclass(frozen=True)
@@ -178,6 +179,9 @@ class Settings(BaseSettings):
     dev_login_required: str = "false"
     # Kept secret so validation/repr paths cannot disclose its value.
     dev_login_password: SecretStr | None = None
+    # Stable server-only HMAC key for retry-safe PAT derivation. The local default
+    # is development/test-only; staging and production must use a secret store.
+    access_token_derivation_key: SecretStr = SecretStr(LOCAL_ACCESS_TOKEN_DERIVATION_KEY)
     # AI summary feature flag (PLAN §3 Phase 3 AI/RAG). Default OFF; exactly "true"
     # enables the work-package summary endpoint. Uses a local, no-secret provider.
     ai_summary: str = "false"
@@ -481,6 +485,16 @@ class Settings(BaseSettings):
             raise ValueError("ONEFLOW_DEV_LOGIN_PASSWORD must be at least 12 characters")
         if self.dev_login_required_enabled and self.dev_login_password is None:
             raise ValueError("ONEFLOW_DEV_LOGIN_REQUIRED=true requires ONEFLOW_DEV_LOGIN_PASSWORD")
+        access_token_key = self.access_token_derivation_key.get_secret_value()
+        if len(access_token_key) < 32:
+            raise ValueError("ONEFLOW_ACCESS_TOKEN_DERIVATION_KEY must be at least 32 characters")
+        if (
+            self.env in {"staging", "production"}
+            and access_token_key == LOCAL_ACCESS_TOKEN_DERIVATION_KEY
+        ):
+            raise ValueError(
+                "ONEFLOW_ACCESS_TOKEN_DERIVATION_KEY must be configured outside development/test"
+            )
         if self.ai_summary not in {"true", "false"}:
             raise ValueError("ONEFLOW_AI_SUMMARY accepts exactly 'true' or 'false'")
         if self.command_palette_enabled not in {"true", "false"}:
