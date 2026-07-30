@@ -32,11 +32,18 @@ export function WorkspaceGeneralSettingsPage() {
   const [logoPreviewUrl, setLogoPreviewUrl] = useState<string | null>(null)
   const logoInputRef = useRef<HTMLInputElement>(null)
   const lastSuccessfulProfile = useRef(profile.data)
+  const profileFreshRef = useRef(false)
 
   if (profile.data) lastSuccessfulProfile.current = profile.data
   const data = profile.data ?? (profile.isError ? lastSuccessfulProfile.current : undefined)
   const refreshFailed = profile.isRefetchError || (profile.isError && Boolean(data))
   const profileFresh = Boolean(data) && !profile.isFetching && !refreshFailed
+  profileFreshRef.current = profileFresh
+
+  const refreshProfile = () => {
+    profileFreshRef.current = false
+    return profile.refetch()
+  }
 
   useEffect(() => {
     if (data && !dirty) setName(data.name)
@@ -100,7 +107,7 @@ export function WorkspaceGeneralSettingsPage() {
               aria-label="프로필 새로고침"
               title="프로필 새로고침"
               disabled={profile.isFetching}
-              onClick={() => profile.refetch()}
+              onClick={() => void refreshProfile()}
             >
               <RefreshCw
                 size={15}
@@ -123,7 +130,7 @@ export function WorkspaceGeneralSettingsPage() {
                 size="sm"
                 variant="outline"
                 disabled={profile.isFetching}
-                onClick={() => profile.refetch()}
+                onClick={() => void refreshProfile()}
               >
                 <RefreshCw
                   size={13}
@@ -146,7 +153,7 @@ export function WorkspaceGeneralSettingsPage() {
           className="max-w-2xl"
           onSubmit={(event) => {
             event.preventDefault()
-            if (!profileFresh || !changed || !trimmed || trimmed.length > 80) return
+            if (!profileFreshRef.current || !changed || !trimmed || trimmed.length > 80) return
             update.mutate(
               { name: trimmed, revision: data.revision },
               { onSuccess: () => setDirty(false) },
@@ -266,7 +273,7 @@ export function WorkspaceGeneralSettingsPage() {
                   size="sm"
                   disabled={!profileFresh || logoMutation}
                   onClick={() => {
-                    if (!profileFresh) return
+                    if (!profileFreshRef.current) return
                     replaceLogo.mutate(
                       { file: logoFile, revision: data.revision },
                       {
@@ -294,7 +301,7 @@ export function WorkspaceGeneralSettingsPage() {
                   disabled={!profileFresh || logoMutation}
                   className="text-of-danger"
                   onClick={() => {
-                    if (!profileFresh) return
+                    if (!profileFreshRef.current) return
                     if (!confirmDestructive('워크스페이스 로고를 삭제할까요?')) return
                     removeLogo.mutate(
                       { revision: data.revision },
