@@ -187,6 +187,39 @@ export function AuthAssistancePage() {
   const correctingOffset = Boolean(requests.data && offset > lastOffset)
   const mutationError = triage.error ?? redact.error
   const busy = triage.isPending || redact.isPending
+  const requestsFresh = Boolean(
+    requests.data &&
+      !requests.isFetching &&
+      !requests.isPlaceholderData &&
+      !requests.isRefetchError &&
+      !requests.isError &&
+      !refreshError &&
+      !needsCanonical &&
+      !correctingOffset,
+  )
+
+  const reviewRequest = (item: AuthAssistanceRequest) => {
+    if (!requestsFresh) return
+    resetMutations()
+    triage.mutate({ id: item.id, status: 'in_review', expectedVersion: item.version })
+  }
+
+  const openDecision = (
+    item: AuthAssistanceRequest,
+    nextStatus: 'resolved' | 'rejected',
+    trigger: HTMLButtonElement,
+  ) => {
+    if (!requestsFresh) return
+    resetMutations()
+    setDecision({ item, status: nextStatus, trigger })
+    setNote('')
+  }
+
+  const openRedaction = (item: AuthAssistanceRequest, trigger: HTMLButtonElement) => {
+    if (!requestsFresh) return
+    resetMutations()
+    setRedaction({ item, trigger })
+  }
 
   return (
     <section
@@ -253,7 +286,7 @@ export function AuthAssistancePage() {
       <main className="of-scrollbar min-h-0 flex-1 overflow-auto bg-of-surface">
         {(refreshError || requests.isRefetchError || requests.isError) && Boolean(data) ? (
           <div role="alert" className="flex flex-wrap items-center justify-between gap-2 border-b border-of-warning/30 bg-of-warning/5 px-3 py-2 text-xs sm:px-4">
-            <span>최신 로그인 지원 요청을 불러오지 못했습니다. 마지막으로 확인한 목록을 유지합니다.</span>
+            <span>최신 로그인 지원 요청을 불러오지 못했습니다. 마지막으로 확인한 목록을 유지하며 복구 전까지 서버 작업은 사용할 수 없습니다.</span>
             <Button type="button" size="sm" variant="outline" onClick={() => void refresh()}>다시 시도</Button>
           </div>
         ) : null}
@@ -284,7 +317,7 @@ export function AuthAssistancePage() {
                     <td className="max-w-80 px-3 py-3 align-top"><ContactDetails item={item} /></td>
                     <td className="whitespace-nowrap px-3 py-3 align-top"><SubmissionDetails item={item} /></td>
                     <td className="max-w-72 px-3 py-3 align-top"><TriageDetails item={item} /></td>
-                    <td className="px-3 py-3 align-top"><RequestActions item={item} busy={busy} onReview={() => { resetMutations(); triage.mutate({ id: item.id, status: 'in_review', expectedVersion: item.version }) }} onTerminal={(nextStatus, trigger) => { resetMutations(); setDecision({ item, status: nextStatus, trigger }); setNote('') }} onRedact={(trigger) => { resetMutations(); setRedaction({ item, trigger }) }} /></td>
+                    <td className="px-3 py-3 align-top"><RequestActions item={item} busy={busy} writeEnabled={requestsFresh} onReview={() => reviewRequest(item)} onTerminal={(nextStatus, trigger) => openDecision(item, nextStatus, trigger)} onRedact={(trigger) => openRedaction(item, trigger)} /></td>
                   </tr>
                 ))}
               </tbody>
@@ -295,7 +328,7 @@ export function AuthAssistancePage() {
                   <div className="flex items-start justify-between gap-3"><RequestIdentity item={item} /><span className="shrink-0 text-[11px] text-of-muted">v{item.version}</span></div>
                   <div className="mt-3"><ContactDetails item={item} /></div>
                   <div className="mt-3 grid gap-3 border-t border-of-border-subtle pt-3 sm:grid-cols-2"><SubmissionDetails item={item} /><TriageDetails item={item} /></div>
-                  <div className="mt-3 border-t border-of-border-subtle pt-3"><RequestActions item={item} busy={busy} onReview={() => { resetMutations(); triage.mutate({ id: item.id, status: 'in_review', expectedVersion: item.version }) }} onTerminal={(nextStatus, trigger) => { resetMutations(); setDecision({ item, status: nextStatus, trigger }); setNote('') }} onRedact={(trigger) => { resetMutations(); setRedaction({ item, trigger }) }} /></div>
+                  <div className="mt-3 border-t border-of-border-subtle pt-3"><RequestActions item={item} busy={busy} writeEnabled={requestsFresh} onReview={() => reviewRequest(item)} onTerminal={(nextStatus, trigger) => openDecision(item, nextStatus, trigger)} onRedact={(trigger) => openRedaction(item, trigger)} /></div>
                 </li>
               ))}
             </ul>
@@ -313,8 +346,8 @@ export function AuthAssistancePage() {
         </nav>
       ) : null}
 
-      <DecisionDialog decision={decision} note={note} busy={triage.isPending} error={triage.error} onNoteChange={setNote} onClose={closeDecision} onRefresh={() => { closeDecision(); void refresh() }} onSubmit={() => { if (!decision || !note.trim()) return; triage.mutate({ id: decision.item.id, status: decision.status, expectedVersion: decision.item.version, note: note.trim() }, { onSuccess: closeDecision }) }} />
-      <RedactionDialog redaction={redaction} busy={redact.isPending} error={redact.error} onClose={closeRedaction} onRefresh={() => { closeRedaction(); void refresh() }} onSubmit={() => { if (!redaction) return; redact.mutate(redaction.item.id, { onSuccess: closeRedaction }) }} />
+      <DecisionDialog decision={decision} note={note} busy={triage.isPending} error={triage.error} writeEnabled={requestsFresh} onNoteChange={setNote} onClose={closeDecision} onRefresh={() => { closeDecision(); void refresh() }} onSubmit={() => { const current = requests.data?.items.find((item) => item.id === decision?.item.id); if (!requestsFresh || !decision || !note.trim() || !current || !isOpen(current)) return; triage.mutate({ id: current.id, status: decision.status, expectedVersion: current.version, note: note.trim() }, { onSuccess: closeDecision }) }} />
+      <RedactionDialog redaction={redaction} busy={redact.isPending} error={redact.error} writeEnabled={requestsFresh} onClose={closeRedaction} onRefresh={() => { closeRedaction(); void refresh() }} onSubmit={() => { const current = requests.data?.items.find((item) => item.id === redaction?.item.id); if (!requestsFresh || !redaction || !current || isOpen(current) || current.redacted_at) return; redact.mutate(current.id, { onSuccess: closeRedaction }) }} />
     </section>
   )
 }
@@ -337,13 +370,17 @@ function TriageDetails({ item }: { item: AuthAssistanceRequest }) {
   return <div className="space-y-1 text-[11px] text-of-muted"><p className="line-clamp-3 text-of-text">{item.triage_note ?? '검토 메모 없음'}</p>{item.triaged_at ? <p>판단 {formatDateTime(item.triaged_at)}</p> : null}{item.redacted_at ? <p>삭제 {formatDateTime(item.redacted_at)}</p> : null}</div>
 }
 
-function RequestActions({ item, busy, onReview, onTerminal, onRedact }: { item: AuthAssistanceRequest; busy: boolean; onReview: () => void; onTerminal: (status: 'resolved' | 'rejected', trigger: HTMLButtonElement) => void; onRedact: (trigger: HTMLButtonElement) => void }) {
+function RequestActions({ item, busy, writeEnabled, onReview, onTerminal, onRedact }: { item: AuthAssistanceRequest; busy: boolean; writeEnabled: boolean; onReview: () => void; onTerminal: (status: 'resolved' | 'rejected', trigger: HTMLButtonElement) => void; onRedact: (trigger: HTMLButtonElement) => void }) {
+  const writeState = {
+    'aria-disabled': !writeEnabled || undefined,
+    className: !writeEnabled ? 'pointer-events-none opacity-50' : undefined,
+  }
   if (!isOpen(item)) {
     return item.redacted_at
       ? <span className="text-xs text-of-muted">삭제 완료</span>
-      : <Button type="button" size="sm" variant="outline" disabled={busy} onClick={(event) => onRedact(event.currentTarget)}><Trash2 />개인정보 삭제</Button>
+      : <Button type="button" size="sm" variant="outline" disabled={busy} {...writeState} onClick={(event) => { if (writeEnabled) onRedact(event.currentTarget) }}><Trash2 />개인정보 삭제</Button>
   }
-  return <div className="flex flex-wrap justify-end gap-1">{item.status === 'pending' ? <Button type="button" size="sm" variant="outline" disabled={busy} onClick={onReview}><Eye />검토 시작</Button> : null}<Button type="button" size="sm" disabled={busy} onClick={(event) => onTerminal('resolved', event.currentTarget)}><CheckCircle2 />해결</Button><Button type="button" size="sm" variant="subtleDanger" disabled={busy} onClick={(event) => onTerminal('rejected', event.currentTarget)}>거절</Button></div>
+  return <div className="flex flex-wrap justify-end gap-1">{item.status === 'pending' ? <Button type="button" size="sm" variant="outline" disabled={busy} {...writeState} onClick={() => { if (writeEnabled) onReview() }}><Eye />검토 시작</Button> : null}<Button type="button" size="sm" disabled={busy} {...writeState} onClick={(event) => { if (writeEnabled) onTerminal('resolved', event.currentTarget) }}><CheckCircle2 />해결</Button><Button type="button" size="sm" variant="subtleDanger" disabled={busy} {...writeState} onClick={(event) => { if (writeEnabled) onTerminal('rejected', event.currentTarget) }}>거절</Button></div>
 }
 
 function MutationFeedback({ error, onRefresh }: { error: unknown; onRefresh: () => void }) {
@@ -360,9 +397,9 @@ function mutationMessage(error: unknown) {
       : '요청을 처리하지 못했습니다. 입력과 현재 상태를 확인한 뒤 다시 시도하세요.'
 }
 
-function DecisionDialog({ decision, note, busy, error, onNoteChange, onClose, onRefresh, onSubmit }: { decision: Decision | null; note: string; busy: boolean; error: unknown; onNoteChange: (value: string) => void; onClose: () => void; onRefresh: () => void; onSubmit: () => void }) {
+function DecisionDialog({ decision, note, busy, error, writeEnabled, onNoteChange, onClose, onRefresh, onSubmit }: { decision: Decision | null; note: string; busy: boolean; error: unknown; writeEnabled: boolean; onNoteChange: (value: string) => void; onClose: () => void; onRefresh: () => void; onSubmit: () => void }) {
   const label = decision?.status === 'resolved' ? '해결' : '거절'
-  return <Dialog.Root open={decision !== null} onOpenChange={(open) => { if (!open && !busy) onClose() }}><Dialog.Portal><Dialog.Overlay className="fixed inset-0 z-80 bg-black/35 backdrop-blur-[2px]" /><Dialog.Content className="fixed left-1/2 top-1/2 z-81 w-[min(32rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 rounded-of border border-of-border bg-of-surface p-5 shadow-xl"><Dialog.Title className="text-base font-semibold">요청 {label}</Dialog.Title><Dialog.Description className="mt-1 text-xs leading-5 text-of-muted">최종 판단 근거는 감사 가능한 검토 메모로 남으며 이후 상태를 되돌릴 수 없습니다.</Dialog.Description><label className="mt-4 block text-xs font-medium text-of-muted">검토 메모<Textarea autoFocus aria-label="로그인 지원 검토 메모" maxLength={2000} value={note} disabled={busy} className="mt-1" onChange={(event) => onNoteChange(event.target.value)} /></label>{error ? <DialogMutationError error={error} onRefresh={onRefresh} /> : null}<div className="mt-4 flex justify-end gap-2"><Button type="button" variant="outline" disabled={busy} onClick={onClose}>취소</Button><Button type="button" variant={decision?.status === 'rejected' ? 'danger' : 'default'} disabled={busy || !note.trim()} aria-busy={busy} onClick={onSubmit}>{busy ? <Loader2 className="animate-spin" /> : null}{label} 확정</Button></div><button type="button" className="absolute right-3 top-3 grid size-8 place-items-center rounded-of text-of-muted hover:bg-of-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus" aria-label="검토 창 닫기" disabled={busy} onClick={onClose}><X size={16} /></button></Dialog.Content></Dialog.Portal></Dialog.Root>
+  return <Dialog.Root open={decision !== null} onOpenChange={(open) => { if (!open && !busy) onClose() }}><Dialog.Portal><Dialog.Overlay className="fixed inset-0 z-80 bg-black/35 backdrop-blur-[2px]" /><Dialog.Content className="fixed left-1/2 top-1/2 z-81 w-[min(32rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 rounded-of border border-of-border bg-of-surface p-5 shadow-xl"><Dialog.Title className="text-base font-semibold">요청 {label}</Dialog.Title><Dialog.Description className="mt-1 text-xs leading-5 text-of-muted">최종 판단 근거는 감사 가능한 검토 메모로 남으며 이후 상태를 되돌릴 수 없습니다.</Dialog.Description><label className="mt-4 block text-xs font-medium text-of-muted">검토 메모<Textarea autoFocus aria-label="로그인 지원 검토 메모" maxLength={2000} value={note} disabled={busy} className="mt-1" onChange={(event) => onNoteChange(event.target.value)} /></label>{!writeEnabled ? <p role="status" className="mt-3 text-xs text-of-warning">최신 목록을 복구하면 이 메모로 판단을 확정할 수 있습니다.</p> : null}{error ? <DialogMutationError error={error} onRefresh={onRefresh} /> : null}<div className="mt-4 flex justify-end gap-2"><Button type="button" variant="outline" disabled={busy} onClick={onClose}>취소</Button><Button type="button" variant={decision?.status === 'rejected' ? 'danger' : 'default'} disabled={busy || !writeEnabled || !note.trim()} aria-busy={busy} onClick={onSubmit}>{busy ? <Loader2 className="animate-spin" /> : null}{label} 확정</Button></div><button type="button" className="absolute right-3 top-3 grid size-8 place-items-center rounded-of text-of-muted hover:bg-of-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus" aria-label="검토 창 닫기" disabled={busy} onClick={onClose}><X size={16} /></button></Dialog.Content></Dialog.Portal></Dialog.Root>
 }
 
 function DialogMutationError({ error, onRefresh }: { error: unknown; onRefresh: () => void }) {
@@ -370,6 +407,6 @@ function DialogMutationError({ error, onRefresh }: { error: unknown; onRefresh: 
   return <div role="alert" className="mt-3 border border-of-danger/20 bg-of-danger-soft px-3 py-2 text-xs text-of-danger"><p>{mutationMessage(error)}</p>{conflict ? <Button type="button" size="sm" variant="outline" className="mt-2" onClick={onRefresh}><RefreshCw />최신 목록 받기</Button> : null}</div>
 }
 
-function RedactionDialog({ redaction, busy, error, onClose, onRefresh, onSubmit }: { redaction: Redaction | null; busy: boolean; error: unknown; onClose: () => void; onRefresh: () => void; onSubmit: () => void }) {
-  return <Dialog.Root open={redaction !== null} onOpenChange={(open) => { if (!open && !busy) onClose() }}><Dialog.Portal><Dialog.Overlay className="fixed inset-0 z-80 bg-black/35 backdrop-blur-[2px]" /><Dialog.Content className="fixed left-1/2 top-1/2 z-81 w-[min(30rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 rounded-of border border-of-border bg-of-surface p-5 shadow-xl"><Dialog.Title className="text-base font-semibold">연락 정보 삭제</Dialog.Title><Dialog.Description className="mt-1 text-xs leading-5 text-of-muted">완료된 요청의 이메일, 요청 내용과 검토 메모를 영구 삭제합니다. 요청 상태와 최소 감사 메타데이터는 유지됩니다.</Dialog.Description>{error ? <DialogMutationError error={error} onRefresh={onRefresh} /> : null}<div className="mt-4 flex justify-end gap-2"><Button type="button" variant="outline" disabled={busy} onClick={onClose}>취소</Button><Button type="button" variant="danger" disabled={busy} aria-busy={busy} onClick={onSubmit}>{busy ? <Loader2 className="animate-spin" /> : <Trash2 />}삭제</Button></div><button type="button" className="absolute right-3 top-3 grid size-8 place-items-center rounded-of text-of-muted hover:bg-of-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus" aria-label="삭제 확인 창 닫기" disabled={busy} onClick={onClose}><X size={16} /></button></Dialog.Content></Dialog.Portal></Dialog.Root>
+function RedactionDialog({ redaction, busy, error, writeEnabled, onClose, onRefresh, onSubmit }: { redaction: Redaction | null; busy: boolean; error: unknown; writeEnabled: boolean; onClose: () => void; onRefresh: () => void; onSubmit: () => void }) {
+  return <Dialog.Root open={redaction !== null} onOpenChange={(open) => { if (!open && !busy) onClose() }}><Dialog.Portal><Dialog.Overlay className="fixed inset-0 z-80 bg-black/35 backdrop-blur-[2px]" /><Dialog.Content className="fixed left-1/2 top-1/2 z-81 w-[min(30rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 rounded-of border border-of-border bg-of-surface p-5 shadow-xl"><Dialog.Title className="text-base font-semibold">연락 정보 삭제</Dialog.Title><Dialog.Description className="mt-1 text-xs leading-5 text-of-muted">완료된 요청의 이메일, 요청 내용과 검토 메모를 영구 삭제합니다. 요청 상태와 최소 감사 메타데이터는 유지됩니다.</Dialog.Description>{!writeEnabled ? <p role="status" className="mt-3 text-xs text-of-warning">최신 목록을 복구한 뒤 개인정보를 삭제할 수 있습니다.</p> : null}{error ? <DialogMutationError error={error} onRefresh={onRefresh} /> : null}<div className="mt-4 flex justify-end gap-2"><Button type="button" variant="outline" disabled={busy} onClick={onClose}>취소</Button><Button type="button" variant="danger" disabled={busy || !writeEnabled} aria-busy={busy} onClick={onSubmit}>{busy ? <Loader2 className="animate-spin" /> : <Trash2 />}삭제</Button></div><button type="button" className="absolute right-3 top-3 grid size-8 place-items-center rounded-of text-of-muted hover:bg-of-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus" aria-label="삭제 확인 창 닫기" disabled={busy} onClick={onClose}><X size={16} /></button></Dialog.Content></Dialog.Portal></Dialog.Root>
 }

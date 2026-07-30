@@ -33374,6 +33374,7 @@ async function mockAdminAuthAssistance(
 ) {
   let items = initial.map((item) => ({ ...item }))
   let patchCount = 0
+  let failedGetCount = 0
   const patchBodies: Array<{ status: string; expected_version: number; note?: string }> = []
   const deletedIds: string[] = []
 
@@ -33437,6 +33438,12 @@ async function mockAdminAuthAssistance(
       return
     }
 
+    if (failedGetCount > 0) {
+      failedGetCount -= 1
+      await route.fulfill({ status: 503, json: { detail: 'assistance queue unavailable' } })
+      return
+    }
+
     const status = url.searchParams.get('status')
     const kind = url.searchParams.get('kind')
     const offset = Number(url.searchParams.get('offset') ?? 0)
@@ -33454,7 +33461,14 @@ async function mockAdminAuthAssistance(
     })
   })
 
-  return { patchBodies, deletedIds }
+  return {
+    patchBodies,
+    deletedIds,
+    failNextGet: () => { failedGetCount += 1 },
+    updateItem: (id: string, updates: Partial<AuthAssistanceRequest>) => {
+      items = items.map((item) => item.id === id ? { ...item, ...updates } : item)
+    },
+  }
 }
 
 test('로그인 지원 큐는 모바일 탐색과 실제 검토 수명주기를 연결한다', async ({ page }) => {
@@ -33641,6 +33655,90 @@ test('모바일 로그인 지원 큐는 실패한 상태 범위에서 마지막 
   })
 
   expect(requestedStatuses).toEqual(['all', 'resolved', 'resolved'])
+})
+
+test('로그인 지원 큐는 stale 목록에서 쓰기를 막고 열린 판단 초안을 복구한다', async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 740 })
+  await mockApi(page)
+  const mock = await mockAdminAuthAssistance(page, [
+    authAssistanceFixture({ id: 'assist-stale-pending', email: 'pending@oneflow.local' }),
+    authAssistanceFixture({
+      id: 'assist-stale-review',
+      status: 'in_review',
+      email: 'review@oneflow.local',
+      version: 2,
+    }),
+    authAssistanceFixture({
+      id: 'assist-stale-resolved',
+      status: 'resolved',
+      email: 'resolved@oneflow.local',
+      triage_note: '기존 검토 기록',
+      triaged_at: '2026-07-15T02:00:00Z',
+      version: 4,
+    }),
+  ])
+
+  await page.goto('/admin/auth-assistance')
+  const mobileList = page.getByRole('list', { name: '모바일 로그인 지원 요청' })
+  const reviewItem = mobileList.getByRole('listitem').filter({ hasText: 'review@oneflow.local' })
+  await reviewItem.getByRole('button', { name: '해결', exact: true }).click()
+  const decision = page.getByRole('dialog', { name: '요청 해결' })
+  const note = decision.getByLabel('로그인 지원 검토 메모')
+  await note.fill('본인 확인을 마친 판단 초안')
+
+  mock.failNextGet()
+  await page.locator('button[aria-label="로그인 지원 요청 새로고침"]').evaluate((button) => {
+    (button as HTMLButtonElement).click()
+  })
+
+  const retainedAlert = page.locator('[role="alert"]').filter({ hasText: '복구 전까지 서버 작업은 사용할 수 없습니다' })
+  await expect(retainedAlert).toBeVisible()
+  await expect(note).toHaveValue('본인 확인을 마친 판단 초안')
+  await expect(decision.getByText('최신 목록을 복구하면 이 메모로 판단을 확정할 수 있습니다.')).toBeVisible()
+  await expect(decision.getByRole('button', { name: '해결 확정' })).toBeDisabled()
+
+  const pendingItem = page.locator('[aria-label="모바일 로그인 지원 요청"] > li').filter({ hasText: 'pending@oneflow.local' })
+  const resolvedItem = page.locator('[aria-label="모바일 로그인 지원 요청"] > li').filter({ hasText: 'resolved@oneflow.local' })
+  const reviewStart = pendingItem.locator('button').filter({ hasText: '검토 시작' })
+  const redact = resolvedItem.locator('button').filter({ hasText: '개인정보 삭제' })
+  await expect(reviewStart).toHaveAttribute('aria-disabled', 'true')
+  await expect(redact).toHaveAttribute('aria-disabled', 'true')
+  await reviewStart.evaluate((button) => (button as HTMLButtonElement).click())
+  await redact.evaluate((button) => (button as HTMLButtonElement).click())
+  expect(mock.patchBodies).toHaveLength(0)
+  expect(mock.deletedIds).toHaveLength(0)
+  await expect(page.getByRole('dialog', { name: '연락 정보 삭제' })).toHaveCount(0)
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/auth-assistance-freshness-write-guard-ui-325/stale-decision-320.png',
+    fullPage: true,
+  })
+
+  mock.updateItem('assist-stale-review', { version: 3 })
+  await retainedAlert.locator('button').filter({ hasText: '다시 시도' }).evaluate((button) => {
+    (button as HTMLButtonElement).click()
+  })
+  await expect(retainedAlert).toHaveCount(0)
+  await expect(note).toHaveValue('본인 확인을 마친 판단 초안')
+  await expect(decision.getByRole('button', { name: '해결 확정' })).toBeEnabled()
+  await decision.getByRole('button', { name: '해결 확정' }).click()
+  await expect(reviewItem.getByText('해결').first()).toBeVisible()
+  expect(mock.patchBodies).toEqual([{
+    status: 'resolved',
+    expected_version: 3,
+    note: '본인 확인을 마친 판단 초안',
+  }])
+
+  await resolvedItem.getByRole('button', { name: '개인정보 삭제' }).click()
+  const redaction = page.getByRole('dialog', { name: '연락 정보 삭제' })
+  await redaction.getByRole('button', { name: '삭제', exact: true }).click()
+  await expect(mobileList.getByText('개인정보 삭제됨')).toBeVisible()
+  expect(mock.deletedIds).toEqual(['assist-stale-resolved'])
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/auth-assistance-freshness-write-guard-ui-325/recovered-320.png',
+    fullPage: true,
+  })
 })
 
 test('로그인 지원 큐는 비관리자를 민감한 collection GET 전에 차단한다', async ({ page }) => {
