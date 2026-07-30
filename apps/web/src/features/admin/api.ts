@@ -160,6 +160,7 @@ export function useUpdateUser() {
       void queryClient.invalidateQueries({ queryKey: ['initiative-owner-candidates'] })
       void queryClient.invalidateQueries({ queryKey: ['initiatives'] })
       void queryClient.invalidateQueries({ queryKey: ['admin-worklog-options'] })
+      void queryClient.invalidateQueries({ queryKey: ['admin-worklogs'] })
     },
   })
 }

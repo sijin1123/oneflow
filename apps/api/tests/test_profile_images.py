@@ -7,6 +7,7 @@ from pathlib import Path
 
 from sqlalchemy import delete, select
 
+from app.api.v1 import users as users_api
 from app.core.auth import DEV_USER_EMAIL
 from app.models.initiative import Initiative, InitiativeActivity, InitiativeProject
 from app.models.member import ProjectMember
@@ -129,6 +130,14 @@ async def test_personal_profile_name_update_validates_revision_and_name(client):
         )
         assert response.status_code == 422
 
+    for non_string_name in (123, None, ["Name"]):
+        response = await client.patch(
+            "/api/v1/me/profile",
+            json={"display_name": non_string_name},
+            headers={"If-Match": '"1"'},
+        )
+        assert response.status_code == 422
+
     trimmed_at_limit = await client.patch(
         "/api/v1/me/profile",
         json={"display_name": f"  {'x' * 120}  "},
@@ -138,39 +147,43 @@ async def test_personal_profile_name_update_validates_revision_and_name(client):
     assert trimmed_at_limit.json()["display_name"] == "x" * 120
 
 
-async def test_admin_user_lock_refreshes_a_cached_profile_revision(client, app):
+async def test_admin_endpoint_refreshes_cached_profile_revision_after_lock_wait(
+    client,
+    app,
+    monkeypatch,
+):
     me = (await client.get("/api/v1/me")).json()
+    handler_reached = asyncio.Event()
+    original_require_admin = users_api._require_admin
 
-    async with app.state.sessionmaker() as admin_session:
-        cached = await admin_session.get(User, uuid.UUID(me["id"]))
-        assert cached is not None
-        assert cached.profile_revision == 1
+    def signal_handler(user):
+        original_require_admin(user)
+        handler_reached.set()
 
-        async with app.state.sessionmaker() as personal_session:
-            personal = (
-                await personal_session.execute(
-                    select(User)
-                    .where(User.id == cached.id)
-                    .with_for_update()
-                    .execution_options(populate_existing=True)
-                )
-            ).scalar_one()
-            personal.display_name = "Personal first"
-            personal.profile_revision += 1
-            await personal_session.commit()
+    monkeypatch.setattr(users_api, "_require_admin", signal_handler)
 
-        locked = (
-            await admin_session.execute(
-                select(User)
-                .where(User.id == cached.id)
-                .with_for_update()
-                .execution_options(populate_existing=True)
+    async with app.state.sessionmaker() as personal_session:
+        personal = (
+            await personal_session.execute(
+                select(User).where(User.id == uuid.UUID(me["id"])).with_for_update()
             )
         ).scalar_one()
-        assert locked is cached
-        assert locked.display_name == "Personal first"
-        assert locked.profile_revision == 2
-        await admin_session.rollback()
+        admin_request = asyncio.create_task(
+            client.patch(
+                f"/api/v1/users/{me['id']}",
+                json={"display_name": "Administrator final"},
+            )
+        )
+        await asyncio.wait_for(handler_reached.wait(), timeout=2)
+        personal.display_name = "Personal first"
+        personal.profile_revision += 1
+        await personal_session.commit()
+
+    admin_response = await asyncio.wait_for(admin_request, timeout=2)
+    assert admin_response.status_code == 200, admin_response.text
+    current = (await client.get("/api/v1/me")).json()
+    assert current["display_name"] == "Administrator final"
+    assert current["profile_revision"] == 3
 
 
 async def test_admin_and_self_profile_name_writes_share_one_locked_revision(client):

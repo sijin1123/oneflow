@@ -37,8 +37,8 @@ class MeProfileUpdate(BaseModel):
 
     @field_validator("display_name", mode="before")
     @classmethod
-    def _name(cls, v: str) -> str:
-        return _clean_display_name(v)
+    def _name(cls, v: object) -> object:
+        return _clean_display_name(v) if isinstance(v, str) else v
 
 
 class StaleProfileRevisionDetail(BaseModel):
