@@ -20688,6 +20688,144 @@ test('자동화 초기 조회 실패는 같은 surface에서 다시 불러온다
   await expect(page.getByRole('region', { name: '자동화 규칙' })).toContainText('0개 관리 중')
 })
 
+test('자동화 후속 의존 조회 실패는 규칙·초안·이력을 보존하고 정확히 복구한다', async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 740 })
+  await mockApi(page)
+  const rule = {
+    id: 'r-stale',
+    project_id: project.id,
+    name: '검수 시 긴급',
+    trigger_type: 'status_changed_to',
+    trigger_value: 'in_review',
+    action_type: 'set_priority',
+    action_value: 'urgent',
+    condition_field: null as string | null,
+    condition_value: null as string | null,
+    position: 0,
+    is_active: true,
+    last_fired_at: '2026-07-30T00:00:00Z',
+    fired_count: 1,
+    created_at: '2026-07-26T00:00:00Z',
+  }
+  const roster = {
+    items: [
+      {
+        user_id: 'me-1',
+        email: 'dev@oneflow.local',
+        display_name: 'Dev User',
+        role: 'owner',
+      },
+    ],
+    total: 1,
+  }
+  const runHistory = {
+    items: [
+      {
+        id: 'run-stale',
+        rule_id: rule.id,
+        rule_name: rule.name,
+        work_package_id: wpA.id,
+        work_package_subject: wpA.subject,
+        field: 'priority',
+        old_value: 'high',
+        new_value: 'urgent',
+        actor_id: 'me-1',
+        created_at: '2026-07-30T00:00:00Z',
+      },
+    ],
+    total: 1,
+  }
+  let allowMembers = true
+  let allowRuns = true
+  let memberGets = 0
+  let runGets = 0
+
+  await page.route(`**/api/v1/projects/${project.id}/members`, async (route) => {
+    memberGets += 1
+    await (allowMembers
+      ? route.fulfill({ json: roster })
+      : route.fulfill({ status: 503, json: { detail: '멤버 갱신 실패' } }))
+  })
+  await page.route(`**/api/v1/projects/${project.id}/automation-rules`, async (route) => {
+    if (route.request().method() === 'POST') {
+      await route.fulfill({ status: 503, json: { detail: '생성 일시 실패' } })
+      return
+    }
+    await route.fulfill({ json: { items: [rule], total: 1 } })
+  })
+  await page.route(`**/api/v1/projects/${project.id}/automation-rules/runs**`, async (route) => {
+    runGets += 1
+    await (allowRuns
+      ? route.fulfill({ json: runHistory })
+      : route.fulfill({ status: 503, json: { detail: '이력 갱신 실패' } }))
+  })
+
+  await page.goto(`/projects/${project.id}/settings?tab=automation`)
+  const automation = page.getByRole('region', { name: '자동화 규칙' })
+  await automation.getByRole('button', { name: '새 규칙' }).click()
+  await automation.getByLabel('새 규칙 이름').fill('보존할 생성 초안')
+  await automation.getByRole('button', { name: '규칙 추가' }).click()
+  await expect(automation.getByText('규칙을 추가하지 못했습니다.')).toBeVisible()
+  await automation.getByLabel('검수 시 긴급 자동화 규칙 작업').click()
+  await automation.getByLabel('검수 시 긴급 규칙 편집').click()
+  await automation.getByLabel('검수 시 긴급 규칙 이름 편집').fill('보존할 행 초안')
+
+  allowMembers = false
+  allowRuns = false
+  await automation.getByRole('button', { name: '자동화 새로 고침' }).click()
+  await expect(automation.getByRole('alert', { name: '프로젝트 멤버 갱신 실패' })).toBeVisible()
+  await expect(automation.getByRole('list', { name: '자동화 규칙 목록' })).toBeVisible()
+  await expect(automation.getByLabel('새 규칙 이름')).toHaveValue('보존할 생성 초안')
+  await expect(automation.getByLabel('검수 시 긴급 규칙 이름 편집')).toHaveValue(
+    '보존할 행 초안',
+  )
+  await expect(automation.getByRole('button', { name: '규칙 추가' })).toBeDisabled()
+  await expect(automation.getByRole('button', { name: '저장', exact: true })).toBeDisabled()
+  await expect(
+    automation.getByRole('button', { name: '같은 내용으로 다시 시도' }),
+  ).toBeDisabled()
+
+  await automation.locator('summary').filter({ hasText: '실행 이력' }).click()
+  await expect(
+    automation.getByRole('alert', { name: '자동화 실행 이력 갱신 실패' }),
+  ).toBeVisible()
+  await expect(automation.getByRole('list', { name: '자동화 실행 이력' })).toContainText(
+    wpA.subject,
+  )
+  await expectNoHorizontalOverflow(page)
+  await automation.locator('header').scrollIntoViewIfNeeded()
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/automation-refresh-lifecycle-ui-319/stale-320.png',
+    fullPage: true,
+  })
+
+  allowMembers = true
+  const membersBeforeRetry = memberGets
+  await automation.getByRole('button', { name: '프로젝트 멤버 다시 시도' }).click()
+  await expect(
+    automation.getByRole('alert', { name: '프로젝트 멤버 갱신 실패' }),
+  ).toHaveCount(0)
+  expect(memberGets).toBe(membersBeforeRetry + 1)
+  await expect(
+    automation.getByRole('button', { name: '같은 내용으로 다시 시도' }),
+  ).toBeEnabled()
+  await expect(automation.getByRole('button', { name: '저장', exact: true })).toBeEnabled()
+
+  allowRuns = true
+  const runsBeforeRetry = runGets
+  await automation.getByRole('button', { name: '실행 이력 다시 시도' }).click()
+  await expect(
+    automation.getByRole('alert', { name: '자동화 실행 이력 갱신 실패' }),
+  ).toHaveCount(0)
+  expect(runGets).toBe(runsBeforeRetry + 1)
+  await expect(automation.getByLabel('새 규칙 이름')).toHaveValue('보존할 생성 초안')
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/automation-refresh-lifecycle-ui-319/recovered-320.png',
+    fullPage: true,
+  })
+})
+
 test('자동화 편집·생성·정렬과 실행 이력은 입력을 보존해 정확히 재시도한다', async ({ page }) => {
   await mockApi(page)
   const rule = {
