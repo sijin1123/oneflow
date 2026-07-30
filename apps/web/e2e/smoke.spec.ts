@@ -34259,6 +34259,7 @@ async function mockWikiPolicy(
   let patchCount = 0
   let successfulPatchCount = 0
   let refreshAfterPatchCount = 0
+  let failGet = false
   const requests: string[] = []
 
   await page.route('**/api/v1/workspace/capabilities', (route) =>
@@ -34280,6 +34281,13 @@ async function mockWikiPolicy(
   await page.route('**/api/v1/admin/workspace/features/wiki', async (route) => {
     if (options.forbidden) {
       await route.fulfill({ status: 403, json: { detail: 'workspace admin required' } })
+      return
+    }
+    if (route.request().method() === 'GET' && failGet) {
+      await route.fulfill({
+        status: 503,
+        json: { detail: 'Wiki policy temporarily unavailable' },
+      })
       return
     }
     if (
@@ -34333,7 +34341,15 @@ async function mockWikiPolicy(
       },
     })
   })
-  return { requests }
+  return {
+    requests,
+    failNextGet: () => {
+      failGet = true
+    },
+    allowGet: () => {
+      failGet = false
+    },
+  }
 }
 
 test('Wiki 설정은 navigation과 API surface를 함께 끄고 데이터 보존 상태로 복구한다', async ({
@@ -34451,11 +34467,88 @@ test('Wiki 설정은 같은 정책 변경과 마지막 성공 상태의 새로�
   await page.getByRole('button', { name: '새로고침' }).click()
   await expect(page.getByRole('alert')).toContainText('마지막으로 확인한 상태를 유지합니다')
   await expect(page.getByLabel('Wiki 정책 요약')).toContainText('비활성')
-  await expect(page.getByRole('button', { name: '새로고침 다시 시도' })).toBeVisible()
-  await page.getByRole('button', { name: '새로고침 다시 시도' }).click()
+  const staleRefresh = page.getByRole('button', { name: '다시 시도', exact: true })
+  await expect(staleRefresh).toBeVisible()
+  await staleRefresh.click()
   await expect(
-    page.getByText('최신 정책을 불러오지 못했습니다. 마지막으로 확인한 상태를 유지합니다.'),
+    page.getByText(/복구 전까지 정책 변경은 사용할 수 없습니다/),
   ).toHaveCount(0)
+})
+
+test('UI-328 Wiki 정책은 stale 상태의 쓰기를 막고 최신 revision으로 정확히 재시도한다', async ({
+  page,
+}) => {
+  await mockApi(page)
+  const wiki = await mockWikiPolicy(page, { staleFirstPatch: true })
+  await page.setViewportSize({ width: 320, height: 800 })
+  await page.goto('/admin/wiki')
+
+  const toggle = page.getByRole('switch', { name: '프로젝트 Wiki 사용' })
+  await toggle.click()
+  await expect(page.getByRole('alert')).toContainText('다른 관리자가 정책을 변경했습니다')
+  await expect(toggle).not.toBeChecked()
+  const failedRetry = page.getByRole('button', { name: 'Wiki 끄기 다시 시도' })
+  await expect(failedRetry).toBeEnabled()
+
+  wiki.failNextGet()
+  await page.getByRole('button', { name: '새로고침' }).click()
+  await expect(
+    page.getByRole('alert').filter({ hasText: '복구 전까지 정책 변경은 사용할 수 없습니다' }),
+  ).toContainText('마지막으로 확인한 상태를 유지합니다')
+  await expect(page.getByLabel('Wiki 정책 요약')).toContainText('비활성')
+  await expect(toggle).toBeDisabled()
+  await expect(failedRetry).toBeDisabled()
+  const staleRefresh = page.getByRole('button', { name: '다시 시도', exact: true })
+  await expect(staleRefresh).toBeVisible()
+
+  await toggle.evaluate((button) => {
+    button.removeAttribute('disabled')
+    ;(button as HTMLButtonElement).click()
+  })
+  await failedRetry.evaluate((button) => {
+    button.removeAttribute('disabled')
+    ;(button as HTMLButtonElement).click()
+  })
+  expect(wiki.requests).toEqual(['"1"'])
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/wiki-policy-freshness-write-guard-ui-328/stale-320.png',
+    fullPage: true,
+  })
+
+  wiki.allowGet()
+  await staleRefresh.click()
+  await expect(page.getByText(/복구 전까지 정책 변경은 사용할 수 없습니다/)).toHaveCount(0)
+  await expect(failedRetry).toBeEnabled()
+  await failedRetry.click()
+  await expect(toggle).not.toBeChecked()
+  await expect(page.getByText('정책 revision 3')).toBeVisible()
+  await expect(page.getByRole('status')).toContainText('Wiki를 비활성화했습니다')
+  expect(wiki.requests).toEqual(['"1"', '"2"'])
+
+  wiki.failNextGet()
+  await page.getByRole('button', { name: '새로고침' }).click()
+  await expect(
+    page.getByRole('alert').filter({ hasText: '복구 전까지 정책 변경은 사용할 수 없습니다' }),
+  ).toBeVisible()
+  await expect(toggle).toBeDisabled()
+  await toggle.evaluate((button) => {
+    button.removeAttribute('disabled')
+    ;(button as HTMLButtonElement).click()
+  })
+  expect(wiki.requests).toEqual(['"1"', '"2"'])
+  wiki.allowGet()
+  await page.getByRole('button', { name: '다시 시도', exact: true }).click()
+  await expect(toggle).toBeEnabled()
+  await toggle.click()
+  await expect(toggle).toBeChecked()
+  await expect(page.getByText('정책 revision 4')).toBeVisible()
+  expect(wiki.requests).toEqual(['"1"', '"2"', '"3"'])
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/wiki-policy-freshness-write-guard-ui-328/recovered-320.png',
+    fullPage: true,
+  })
 })
 
 test('Wiki 설정은 비관리자에게 권한 없음 상태를 표시한다', async ({ page }) => {
