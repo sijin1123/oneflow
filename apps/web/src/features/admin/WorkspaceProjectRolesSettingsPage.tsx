@@ -136,6 +136,35 @@ export function WorkspaceProjectRolesSettingsPage({
     && !capabilities.isFetching
     && !capabilitiesRefreshFailed
   const writeDependenciesFresh = rolesFresh && capabilitiesFresh
+  const rolesFreshRef = useRef(false)
+  const capabilitiesFreshRef = useRef(false)
+
+  useEffect(() => {
+    rolesFreshRef.current = rolesFresh
+  }, [roles.dataUpdatedAt, rolesFresh])
+
+  useEffect(() => {
+    capabilitiesFreshRef.current = capabilitiesFresh
+  }, [capabilities.dataUpdatedAt, capabilitiesFresh])
+
+  const refreshRoles = () => {
+    rolesFreshRef.current = false
+    return roles.refetch()
+  }
+
+  const refreshCapabilities = () => {
+    capabilitiesFreshRef.current = false
+    return capabilities.refetch()
+  }
+
+  const refreshWriteDependencies = () => {
+    rolesFreshRef.current = false
+    capabilitiesFreshRef.current = false
+    return Promise.all([roles.refetch(), capabilities.refetch()])
+  }
+
+  const actionDependenciesFresh = () =>
+    rolesFreshRef.current && capabilitiesFreshRef.current
 
   const items = useMemo(() => rolesData?.items ?? [], [rolesData?.items])
   const selectedRole = items.find((role) => role.id === selectedRoleId) ?? null
@@ -242,10 +271,7 @@ export function WorkspaceProjectRolesSettingsPage({
           variant="outline"
           aria-label="프로젝트 역할과 capability 새로고침"
           disabled={roles.isFetching || capabilities.isFetching || busy}
-          onClick={() => {
-            void roles.refetch()
-            void capabilities.refetch()
-          }}
+          onClick={() => void refreshWriteDependencies()}
         >
           <RefreshCw
             size={13}
@@ -267,7 +293,7 @@ export function WorkspaceProjectRolesSettingsPage({
             variant="outline"
             className="self-start"
             disabled={roles.isFetching || busy}
-            onClick={() => void roles.refetch()}
+            onClick={() => void refreshRoles()}
           >
             <RefreshCw size={13} className={roles.isFetching ? 'animate-spin' : undefined} aria-hidden="true" />
             역할 목록 다시 불러오기
@@ -286,7 +312,7 @@ export function WorkspaceProjectRolesSettingsPage({
             variant="outline"
             className="self-start"
             disabled={capabilities.isFetching || busy}
-            onClick={() => void capabilities.refetch()}
+            onClick={() => void refreshCapabilities()}
           >
             <RefreshCw size={13} className={capabilities.isFetching ? 'animate-spin' : undefined} aria-hidden="true" />
             capability 다시 불러오기
@@ -368,7 +394,7 @@ export function WorkspaceProjectRolesSettingsPage({
             aria-label={creating ? '새 프로젝트 역할' : '프로젝트 역할 편집'}
             onSubmit={(event) => {
               event.preventDefault()
-              if (!writeDependenciesFresh || validation || !changed || busy) return
+              if (!actionDependenciesFresh() || validation || !changed || busy) return
               const input = {
                 name: draft.name.trim(),
                 description: draft.description.trim() || null,
@@ -518,7 +544,7 @@ export function WorkspaceProjectRolesSettingsPage({
                         variant="outline"
                         disabled={!writeDependenciesFresh || busy}
                         onClick={() => {
-                          if (!writeDependenciesFresh) return
+                          if (!actionDependenciesFresh()) return
                           setArchived.mutate(
                             { archived: false, revision: selectedRole.revision },
                             {
@@ -538,7 +564,7 @@ export function WorkspaceProjectRolesSettingsPage({
                         variant="subtleDanger"
                         disabled={!writeDependenciesFresh || busy || dirty}
                         onClick={() => {
-                          if (!writeDependenciesFresh) return
+                          if (!actionDependenciesFresh()) return
                           if (!confirmDestructive(
                             `${selectedRole.name} 역할을 보관할까요? 기존 ${selectedRole.assigned_member_count}명의 배정과 유효 권한은 유지됩니다.`,
                           )) return
