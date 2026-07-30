@@ -11741,6 +11741,139 @@ test('개인 설정에서 활성 브라우저 세션을 확인하고 종료한�
   await expect(page).toHaveURL(/\/login$/)
 })
 
+test('활성 세션은 후속 조회 실패 중 마지막 목록을 보존하고 stale 종료를 차단한다', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 320, height: 740 })
+  await mockApi(page)
+  await page.route('**/api/v1/auth/config', (route) =>
+    route.fulfill({
+      json: {
+        auth_mode: 'dev',
+        oidc_issuer: null,
+        oidc_client_id: null,
+        has_client_secret: false,
+        command_palette_enabled: false,
+        session_management_enabled: true,
+      },
+    }),
+  )
+  let failList = false
+  let getAttempts = 0
+  let deleteAttempts = 0
+  let sessions = [
+    {
+      id: 'session-current',
+      created_at: '2026-07-11T08:00:00Z',
+      expires_at: '2026-07-18T08:00:00Z',
+      is_current: true,
+    },
+    {
+      id: 'session-other',
+      created_at: '2026-07-10T08:00:00Z',
+      expires_at: '2026-07-17T08:00:00Z',
+      is_current: false,
+    },
+  ]
+  await page.route('**/api/v1/me/sessions**', async (route) => {
+    if (route.request().method() === 'DELETE') {
+      deleteAttempts += 1
+      const id = route.request().url().split('/').pop()
+      sessions = sessions.filter((session) => session.id !== id)
+      await route.fulfill({ status: 204, body: '' })
+      return
+    }
+    getAttempts += 1
+    if (failList) {
+      await route.fulfill({ status: 503, json: { detail: 'temporary list failure' } })
+      return
+    }
+    await route.fulfill({ json: { items: sessions, total: sessions.length } })
+  })
+
+  await page.goto('/settings?tab=security')
+  const section = page.getByRole('region', { name: '로그인 및 세션' })
+  const sectionElement = page.locator('[aria-label="로그인 및 세션"]')
+  const refreshButton = page.locator('button[aria-label="세션 목록 새로고침"]')
+  const otherSessionButton = section.getByRole('button', { name: /^26\..*세션 종료$/ })
+  await expect(otherSessionButton).toBeVisible()
+  await otherSessionButton.click()
+  const dialog = page.getByRole('dialog', { name: '브라우저 세션을 종료할까요?' })
+  await expect(dialog).toBeVisible()
+
+  failList = true
+  await refreshButton.evaluate((button) => {
+    ;(button as HTMLButtonElement).click()
+  })
+  await expect.poll(() => getAttempts).toBeGreaterThanOrEqual(2)
+  const staleAlert = sectionElement.locator('[role="alert"]').filter({
+    hasText: '최신 활성 세션 목록을 불러오지 못했습니다.',
+  })
+  await expect(staleAlert).toContainText('최신 활성 세션 목록을 불러오지 못했습니다.')
+  await expect(sectionElement.getByText('현재 세션')).toBeVisible()
+  await expect(sectionElement.locator('button[aria-label^="26."]')).toBeDisabled()
+  await expect(dialog.getByRole('alert')).toContainText(
+    '최신 세션 목록을 복구한 뒤 이 세션을 종료할 수 있습니다.',
+  )
+  const confirm = dialog.getByRole('button', { name: '세션 종료' })
+  await expect(confirm).toBeDisabled()
+  await confirm.evaluate((button) => {
+    button.removeAttribute('disabled')
+    ;(button as HTMLButtonElement).click()
+  })
+  await page.waitForTimeout(100)
+  expect(deleteAttempts).toBe(0)
+  await sectionElement.scrollIntoViewIfNeeded()
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/session-freshness-write-guard-ui-338/mobile-stale-320.png',
+    fullPage: true,
+  })
+
+  failList = false
+  await page.locator('button[aria-label="세션 목록 다시 시도"]').evaluate((button) => {
+    ;(button as HTMLButtonElement).click()
+  })
+  await expect(staleAlert).toHaveCount(0)
+  await expect(confirm).toBeEnabled()
+  await confirm.click()
+  await expect(dialog).toHaveCount(0)
+  await expect(otherSessionButton).toHaveCount(0)
+  expect(deleteAttempts).toBe(1)
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/session-freshness-write-guard-ui-338/mobile-recovered-320.png',
+    fullPage: true,
+  })
+
+  await page.setViewportSize({ width: 1280, height: 720 })
+  sessions = [
+    ...sessions,
+    {
+      id: 'session-removed-elsewhere',
+      created_at: '2026-07-09T08:00:00Z',
+      expires_at: '2026-07-16T08:00:00Z',
+      is_current: false,
+    },
+  ]
+  await refreshButton.click()
+  const externalSessionButton = section.getByRole('button', { name: /^26\..*세션 종료$/ })
+  await externalSessionButton.click()
+  sessions = sessions.filter((session) => session.id !== 'session-removed-elsewhere')
+  await refreshButton.evaluate((button) => {
+    ;(button as HTMLButtonElement).click()
+  })
+  await expect(dialog.getByRole('alert')).toContainText(
+    '이 세션은 최신 목록에서 더 이상 활성 상태가 아닙니다.',
+  )
+  await expect(dialog.getByRole('button', { name: '세션 종료' })).toBeDisabled()
+  expect(deleteAttempts).toBe(1)
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/session-freshness-write-guard-ui-338/desktop-target-unavailable.png',
+    fullPage: true,
+  })
+})
+
 test('개인 설정은 인증 모드별로 지원되는 세션 동작만 노출한다', async ({ page }) => {
   await mockApi(page)
   let sessionRequests = 0

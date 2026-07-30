@@ -104,8 +104,10 @@ export function useRevokeAuthSession() {
       if (variables.isCurrent) {
         clearIdentityBoundCache(queryClient)
         window.location.assign('/login')
-        return
       }
+    },
+    onSettled: (_, error, variables) => {
+      if (variables.isCurrent && !error) return
       void queryClient.invalidateQueries({ queryKey: ['auth-sessions'] })
     },
   })
