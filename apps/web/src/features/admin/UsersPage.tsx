@@ -109,18 +109,38 @@ function MembershipsPanel({ userId }: { userId: string }) {
   const memberships = useUserMemberships(userId)
   const items = memberships.data?.pages.flatMap((page) => page.items) ?? []
   const total = memberships.data?.pages[0]?.total ?? 0
+  const hasSuccessfulData = memberships.data !== undefined
+  const refreshFailed =
+    memberships.isRefetchError && !memberships.isFetchNextPageError
   return (
     <div
       aria-label="프로젝트 멤버십"
       className="rounded-of border border-of-border bg-of-surface-2 px-3 py-2"
     >
-      <div className="mb-2 flex items-center gap-2 text-xs font-medium">
-        <FolderKanban size={13} className="text-of-muted" aria-hidden="true" />
-        프로젝트 멤버십
+      <div className="mb-2 flex min-w-0 items-center justify-between gap-2">
+        <div className="flex min-w-0 items-center gap-2 text-xs font-medium">
+          <FolderKanban size={13} className="shrink-0 text-of-muted" aria-hidden="true" />
+          <span>프로젝트 멤버십</span>
+        </div>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          disabled={memberships.isRefetching}
+          aria-label="프로젝트 멤버십 새로고침"
+          title="프로젝트 멤버십 새로고침"
+          onClick={() => void memberships.refetch()}
+        >
+          <RefreshCw
+            size={13}
+            className={memberships.isRefetching ? 'animate-spin' : undefined}
+            aria-hidden="true"
+          />
+        </Button>
       </div>
       {memberships.isPending ? (
         <span className="text-xs text-of-muted">멤버십을 불러오는 중...</span>
-      ) : memberships.isError ? (
+      ) : memberships.isError && !hasSuccessfulData ? (
         <span className="inline-flex flex-wrap items-center gap-2 text-xs text-of-danger">
           멤버십을 불러오지 못했습니다.
           <Button variant="outline" size="sm" onClick={() => void memberships.refetch()}>
@@ -137,17 +157,58 @@ function MembershipsPanel({ userId }: { userId: string }) {
                 key={m.project_id}
                 className="flex min-w-0 items-center gap-1 rounded-of border border-of-border bg-of-surface px-2 py-0.5 text-xs"
               >
-                <span className="max-w-[12rem] truncate font-medium">{m.project_name}</span>
+                <Link
+                  to={`/projects/${m.project_id}/overview`}
+                  className="max-w-[12rem] truncate font-medium hover:text-of-accent hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus"
+                  aria-label={`${m.project_name} 프로젝트 열기`}
+                >
+                  {m.project_name}
+                </Link>
                 <span className="text-of-muted">· {ROLE_LABELS[m.role] ?? m.role}</span>
                 {m.archived ? <span className="text-[10px] text-of-muted">(아카이브)</span> : null}
               </li>
             ))}
           </ul>
+          {refreshFailed ? (
+            <div
+              role="alert"
+              className="flex min-w-0 flex-wrap items-center justify-between gap-2 rounded-of border border-of-warning/30 bg-of-warning/5 px-2 py-1.5 text-[11px] text-of-warning"
+            >
+              <span>마지막으로 확인한 멤버십을 표시합니다.</span>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={memberships.isRefetching}
+                onClick={() => void memberships.refetch()}
+              >
+                <RefreshCw
+                  size={12}
+                  className={memberships.isRefetching ? 'animate-spin' : undefined}
+                  aria-hidden="true"
+                />
+                같은 요청 다시 시도
+              </Button>
+            </div>
+          ) : null}
           <div className="flex min-w-0 flex-wrap items-center justify-between gap-2 text-[11px] text-of-muted">
             <span aria-live="polite">
               {items.length} / {total}개 표시
             </span>
-            {memberships.hasNextPage ? (
+            {memberships.isFetchNextPageError ? (
+              <span role="alert" className="inline-flex min-w-0 flex-wrap items-center gap-2 text-of-danger">
+                추가 멤버십을 불러오지 못했습니다.
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={memberships.isFetchingNextPage}
+                  onClick={() => void memberships.fetchNextPage()}
+                >
+                  {memberships.isFetchingNextPage ? '불러오는 중...' : '같은 페이지 다시 시도'}
+                </Button>
+              </span>
+            ) : memberships.hasNextPage ? (
               <Button
                 variant="outline"
                 size="sm"
@@ -156,11 +217,6 @@ function MembershipsPanel({ userId }: { userId: string }) {
               >
                 {memberships.isFetchingNextPage ? '불러오는 중...' : '더 불러오기'}
               </Button>
-            ) : null}
-            {memberships.isFetchNextPageError ? (
-              <span role="alert" className="text-of-danger">
-                추가 멤버십을 불러오지 못했습니다. 다시 시도해 주세요.
-              </span>
             ) : null}
           </div>
         </div>

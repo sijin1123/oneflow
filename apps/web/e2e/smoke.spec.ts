@@ -28087,6 +28087,112 @@ test('사용자 이름을 클릭하면 프로젝트 멤버십 패널이 열린�
   await expect(panel).toBeHidden()
 })
 
+test('사용자 멤버십은 마지막 목록과 실패한 다음 페이지를 정확히 복구한다', async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 740 })
+  await mockApi(page)
+  const admin = {
+    id: 'me-1',
+    email: 'dev@oneflow.local',
+    display_name: 'Dev User',
+    is_active: true,
+    is_admin: true,
+    created_at: '2026-07-01T00:00:00Z',
+  }
+  const target = {
+    id: 'u-memberships',
+    email: 'member@oneflow.local',
+    display_name: 'Membership Member',
+    is_active: true,
+    is_admin: false,
+    created_at: '2026-07-02T00:00:00Z',
+  }
+  const summary = { users: 2, active: 2, admins: 1, inactive: 0, active_admins: 1 }
+  let failRefresh = false
+  let failNextPage = true
+  const membershipRequests: string[] = []
+
+  await page.route(/\/api\/v1\/users(?:\?.*)?$/, (route) =>
+    route.fulfill({ json: { items: [admin, target], total: 2, summary } }),
+  )
+  await page.route(/\/api\/v1\/users\/u-memberships\/memberships(?:\?.*)?$/, (route) => {
+    const url = new URL(route.request().url())
+    membershipRequests.push(`${url.pathname}${url.search}`)
+    if (url.searchParams.get('offset') === '1') {
+      if (failNextPage) {
+        failNextPage = false
+        return route.fulfill({ status: 503, json: { detail: 'next page unavailable' } })
+      }
+      return route.fulfill({
+        json: {
+          items: [
+            {
+              project_id: 'p-archived',
+              project_key: 'ARC',
+              project_name: 'Archived Project',
+              role: 'viewer',
+              archived: true,
+            },
+          ],
+          total: 2,
+        },
+      })
+    }
+    if (failRefresh) {
+      failRefresh = false
+      return route.fulfill({ status: 503, json: { detail: 'membership refresh unavailable' } })
+    }
+    return route.fulfill({
+      json: {
+        items: [
+          {
+            project_id: 'p-active',
+            project_key: 'ACT',
+            project_name: 'Active Project',
+            role: 'member',
+            archived: false,
+          },
+        ],
+        total: 2,
+      },
+    })
+  })
+
+  await page.goto('/admin/users')
+  await page.getByRole('button', { name: 'Membership Member' }).click()
+  const panel = page.getByLabel('프로젝트 멤버십')
+  const projectLink = panel.getByRole('link', { name: 'Active Project 프로젝트 열기' })
+  await expect(projectLink).toBeVisible()
+  await expect(projectLink).toHaveAttribute('href', '/projects/p-active/overview')
+
+  failRefresh = true
+  await panel.getByRole('button', { name: '프로젝트 멤버십 새로고침' }).click()
+  await expect(panel.getByRole('alert')).toContainText('마지막으로 확인한 멤버십')
+  await expect(projectLink).toBeVisible()
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/user-membership-disclosure-ui-334/stale-320.png',
+    fullPage: true,
+  })
+
+  await panel.getByRole('button', { name: '같은 요청 다시 시도' }).click()
+  await expect(panel.getByText('마지막으로 확인한 멤버십')).toHaveCount(0)
+  await panel.getByRole('button', { name: '더 불러오기' }).click()
+  await expect(panel.getByRole('alert')).toContainText('추가 멤버십을 불러오지 못했습니다')
+  await expect(projectLink).toBeVisible()
+  await panel.getByRole('button', { name: '같은 페이지 다시 시도' }).click()
+  await expect(panel.getByRole('link', { name: 'Archived Project 프로젝트 열기' })).toBeVisible()
+  await expect(panel.getByText('(아카이브)')).toBeVisible()
+  await expect(panel.getByText('2 / 2개 표시')).toBeVisible()
+  expect(membershipRequests.filter((url) => url.includes('offset=1'))).toEqual([
+    '/api/v1/users/u-memberships/memberships?limit=50&offset=1',
+    '/api/v1/users/u-memberships/memberships?limit=50&offset=1',
+  ])
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/user-membership-disclosure-ui-334/recovered-320.png',
+    fullPage: true,
+  })
+})
+
 test('사용자 디렉터리는 모바일에서 계정 카드와 멤버십을 유지한다', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 })
   await mockApi(page)
