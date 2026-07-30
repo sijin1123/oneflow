@@ -843,13 +843,23 @@ function SessionsPanel({
   const revokeSession = useRevokeAuthSession()
   const [revokeTarget, setRevokeTarget] = useState<AuthSession | null>(null)
   const revokeButtonRef = useRef<HTMLButtonElement>(null)
+  const refreshButtonRef = useRef<HTMLButtonElement>(null)
+  const hasSessionData = sessions.data !== undefined
+  const stale = sessions.isError && hasSessionData
+  const writeBlocked = sessions.isError || sessions.isFetching
+  const currentRevokeTarget = revokeTarget
+    ? sessions.data?.items.find((session) => session.id === revokeTarget.id) ?? null
+    : null
+  const revokeTargetUnavailable =
+    revokeTarget !== null && hasSessionData && !writeBlocked && currentRevokeTarget === null
+  const revokeActionBlocked = writeBlocked || revokeTargetUnavailable
 
   const revoke = async () => {
-    if (!revokeTarget) return
+    if (!currentRevokeTarget || revokeActionBlocked) return
     try {
       await revokeSession.mutateAsync({
-        id: revokeTarget.id,
-        isCurrent: revokeTarget.is_current,
+        id: currentRevokeTarget.id,
+        isCurrent: currentRevokeTarget.is_current,
       })
       setRevokeTarget(null)
     } catch {
@@ -865,9 +875,31 @@ function SessionsPanel({
         framed={false}
         className="border-b border-of-border-subtle p-0 pb-5 sm:p-0 sm:pb-6"
         actions={
-        <Badge variant={supported ? 'accent' : 'outline'}>
-          {auth?.auth_mode === 'oidc' ? 'SSO (OIDC)' : '개발 모드'}
-        </Badge>
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            {supported ? (
+              <Button
+                ref={refreshButtonRef}
+                type="button"
+                size="sm"
+                variant="ghost"
+                aria-label="세션 목록 새로고침"
+                aria-disabled={sessions.isFetching}
+                onClick={() => {
+                  if (!sessions.isFetching) void sessions.refetch()
+                }}
+              >
+                <RefreshCw
+                  size={14}
+                  aria-hidden="true"
+                  className={cn(sessions.isFetching && 'animate-spin')}
+                />
+                세션 목록 새로고침
+              </Button>
+            ) : null}
+            <Badge variant={supported ? 'accent' : 'outline'}>
+              {auth?.auth_mode === 'oidc' ? 'SSO (OIDC)' : '개발 모드'}
+            </Badge>
+          </div>
         }
       >
       {authError ? (
@@ -917,20 +949,58 @@ function SessionsPanel({
             </p>
           </div>
         </div>
-      ) : sessions.isPending ? (
+      ) : (
+        <>
+          {stale ? (
+            <div
+              className="mb-3 flex min-w-0 flex-col gap-2 border border-of-warning/35 bg-of-warning/10 px-3 py-2.5 sm:flex-row sm:items-center sm:justify-between"
+              role="alert"
+            >
+              <div className="min-w-0">
+                <p className="text-xs font-medium text-of-text">
+                  최신 활성 세션 목록을 불러오지 못했습니다.
+                </p>
+                <p className="mt-0.5 text-[11px] leading-5 text-of-muted">
+                  마지막으로 확인한 세션을 표시합니다. 목록을 복구할 때까지 세션 종료는
+                  중단됩니다.
+                </p>
+              </div>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="w-full shrink-0 sm:w-auto"
+                aria-label="세션 목록 다시 시도"
+                disabled={sessions.isFetching}
+                onClick={() => void sessions.refetch()}
+              >
+                <RefreshCw
+                  size={13}
+                  aria-hidden="true"
+                  className={cn(sessions.isFetching && 'animate-spin')}
+                />
+                세션 목록 다시 시도
+              </Button>
+            </div>
+          ) : null}
+          {sessions.isPending && !sessions.data ? (
         <div className="space-y-2" aria-label="세션 목록을 불러오는 중">
           <div className="h-12 animate-pulse rounded-of bg-of-subtle" />
           <div className="h-12 animate-pulse rounded-of bg-of-subtle" />
         </div>
-      ) : sessions.isError ? (
+          ) : !sessions.data ? (
         <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
           <p className="text-of-danger">활성 세션을 불러오지 못했습니다.</p>
-          <Button size="sm" variant="outline" onClick={() => void sessions.refetch()}>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={sessions.isFetching}
+            onClick={() => void sessions.refetch()}
+          >
             다시 시도
           </Button>
         </div>
-      ) : (
-        <>
+          ) : (
           <ul className="divide-y divide-of-border border-y border-of-border">
             {sessions.data.items.map((session) => (
               <li
@@ -957,9 +1027,10 @@ function SessionsPanel({
                 <Button
                   size="sm"
                   variant="outline"
-                  disabled={revokeSession.isPending}
+                  disabled={writeBlocked || revokeSession.isPending}
                   aria-label={session.is_current ? '현재 세션 종료' : `${formatDateTime(session.created_at)} 세션 종료`}
                   onClick={(event) => {
+                    if (writeBlocked) return
                     revokeButtonRef.current = event.currentTarget
                     revokeSession.reset()
                     setRevokeTarget(session)
@@ -970,6 +1041,7 @@ function SessionsPanel({
               </li>
             ))}
           </ul>
+          )}
         </>
       )}
       </SettingsSection>
@@ -982,6 +1054,7 @@ function SessionsPanel({
           }
         }}
         returnFocusRef={revokeButtonRef}
+        fallbackFocusRef={refreshButtonRef}
         title={revokeTarget?.is_current ? '현재 세션을 종료할까요?' : '브라우저 세션을 종료할까요?'}
         description={
           revokeTarget?.is_current
@@ -989,6 +1062,14 @@ function SessionsPanel({
             : '선택한 브라우저는 즉시 로그아웃되며 해당 세션으로 더 이상 접근할 수 없습니다.'
         }
         pending={revokeSession.isPending}
+        actionDisabled={revokeActionBlocked}
+        actionDisabledMessage={
+          revokeSession.isError && sessions.isFetching
+            ? undefined
+            : revokeTargetUnavailable
+              ? '이 세션은 최신 목록에서 더 이상 활성 상태가 아닙니다. 확인 창을 닫고 목록을 확인하세요.'
+              : '최신 세션 목록을 복구한 뒤 이 세션을 종료할 수 있습니다.'
+        }
         error={revokeSession.isError ? '세션을 종료하지 못했습니다.' : null}
         actionLabel="세션 종료"
         pendingLabel="종료 중…"
