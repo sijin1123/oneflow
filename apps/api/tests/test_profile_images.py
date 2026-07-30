@@ -129,6 +129,49 @@ async def test_personal_profile_name_update_validates_revision_and_name(client):
         )
         assert response.status_code == 422
 
+    trimmed_at_limit = await client.patch(
+        "/api/v1/me/profile",
+        json={"display_name": f"  {'x' * 120}  "},
+        headers={"If-Match": '"1"'},
+    )
+    assert trimmed_at_limit.status_code == 200
+    assert trimmed_at_limit.json()["display_name"] == "x" * 120
+
+
+async def test_admin_user_lock_refreshes_a_cached_profile_revision(client, app):
+    me = (await client.get("/api/v1/me")).json()
+
+    async with app.state.sessionmaker() as admin_session:
+        cached = await admin_session.get(User, uuid.UUID(me["id"]))
+        assert cached is not None
+        assert cached.profile_revision == 1
+
+        async with app.state.sessionmaker() as personal_session:
+            personal = (
+                await personal_session.execute(
+                    select(User)
+                    .where(User.id == cached.id)
+                    .with_for_update()
+                    .execution_options(populate_existing=True)
+                )
+            ).scalar_one()
+            personal.display_name = "Personal first"
+            personal.profile_revision += 1
+            await personal_session.commit()
+
+        locked = (
+            await admin_session.execute(
+                select(User)
+                .where(User.id == cached.id)
+                .with_for_update()
+                .execution_options(populate_existing=True)
+            )
+        ).scalar_one()
+        assert locked is cached
+        assert locked.display_name == "Personal first"
+        assert locked.profile_revision == 2
+        await admin_session.rollback()
+
 
 async def test_admin_and_self_profile_name_writes_share_one_locked_revision(client):
     me = (await client.get("/api/v1/me")).json()

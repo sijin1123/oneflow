@@ -35,10 +35,19 @@ class MeProfileUpdate(BaseModel):
 
     display_name: str = Field(min_length=1, max_length=120)
 
-    @field_validator("display_name")
+    @field_validator("display_name", mode="before")
     @classmethod
     def _name(cls, v: str) -> str:
         return _clean_display_name(v)
+
+
+class StaleProfileRevisionDetail(BaseModel):
+    code: str
+    current_revision: int
+
+
+class StaleProfileRevisionError(BaseModel):
+    detail: StaleProfileRevisionDetail
 
 
 class UserDirectoryRead(UserRead):

@@ -29,7 +29,7 @@ from app.models.member import ProjectMember
 from app.models.notification import Notification
 from app.models.project_health_history import ProjectHealthHistory
 from app.models.user import User
-from app.schemas.user import MeProfileUpdate, MeRead
+from app.schemas.user import MeProfileUpdate, MeRead, StaleProfileRevisionError
 from app.services.document_access import document_is_visible
 from app.services.storage import LocalStorage
 from app.services.workspace_features import (
@@ -612,7 +612,16 @@ async def get_initiative_activity_actor_profile_image(
     "/me/profile",
     response_model=MeRead,
     responses={
-        412: {"description": "Profile revision is stale"},
+        412: {
+            "model": StaleProfileRevisionError,
+            "description": "Profile revision is stale",
+            "headers": {
+                "ETag": {
+                    "description": "Current strong profile revision",
+                    "schema": {"type": "string"},
+                }
+            },
+        },
     },
 )
 async def update_my_profile(

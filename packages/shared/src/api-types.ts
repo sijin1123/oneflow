@@ -9337,6 +9337,17 @@ export interface components {
             /** Total */
             total: number;
         };
+        /** StaleProfileRevisionDetail */
+        StaleProfileRevisionDetail: {
+            /** Code */
+            code: string;
+            /** Current Revision */
+            current_revision: number;
+        };
+        /** StaleProfileRevisionError */
+        StaleProfileRevisionError: {
+            detail: components["schemas"]["StaleProfileRevisionDetail"];
+        };
         /** StatusRead */
         StatusRead: {
             config: components["schemas"]["OpsConfig"];
@@ -14832,9 +14843,13 @@ export interface operations {
             /** @description Profile revision is stale */
             412: {
                 headers: {
+                    /** @description Current strong profile revision */
+                    ETag?: string;
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["StaleProfileRevisionError"];
+                };
             };
             /** @description Validation Error */
             422: {

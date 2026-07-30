@@ -206,7 +206,12 @@ async def update_user(
     if "is_active" in fields or "is_admin" in fields:
         await _lock_user_admin_state(session)
     target = (
-        await session.execute(select(User).where(User.id == user_id).with_for_update())
+        await session.execute(
+            select(User)
+            .where(User.id == user_id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
     ).scalar_one_or_none()
     if target is None:
         raise HTTPException(status_code=404, detail="not found")
