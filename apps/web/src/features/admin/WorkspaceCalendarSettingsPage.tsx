@@ -87,13 +87,15 @@ export function WorkspaceCalendarSettingsPage() {
   const [dirty, setDirty] = useState(false)
   const [failedDraft, setFailedDraft] = useState<CalendarDraft | null>(null)
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
-  const [refreshError, setRefreshError] = useState(false)
 
   if (calendar.data) lastSuccessfulCalendar.current = calendar.data
   const data = calendar.data ?? lastSuccessfulCalendar.current
   const sortedHolidays = useMemo(() => [...holidays].sort(), [holidays])
   const stale = update.error instanceof ApiError && update.error.status === 412
-  const busy = calendar.isFetching || update.isPending
+  const calendarStale = Boolean(data && calendar.isError)
+  const calendarFresh = Boolean(data && !calendar.isFetching && !calendarStale)
+  const busy = update.isPending
+  const refreshing = calendar.isFetching
 
   useUnsavedLocationPrompt(
     dirty,
@@ -111,11 +113,10 @@ export function WorkspaceCalendarSettingsPage() {
     update.reset()
     setFailedDraft(null)
     setSuccessMessage(null)
-    setRefreshError(false)
   }
 
   const save = (draft: CalendarDraft = { workingWeekdays, holidays: sortedHolidays }) => {
-    if (!data || draft.workingWeekdays.length === 0) return
+    if (!data || !calendarFresh || draft.workingWeekdays.length === 0) return
     clearFeedback()
     update.mutate(
       {
@@ -149,12 +150,8 @@ export function WorkspaceCalendarSettingsPage() {
   }
 
   const refresh = async () => {
-    update.reset()
-    setFailedDraft(null)
     setSuccessMessage(null)
-    setRefreshError(false)
     const result = await calendar.refetch()
-    setRefreshError(Boolean(result.error))
     if (!result.error && dirty) {
       setSuccessMessage('최신 revision을 확인했습니다. 편집 중인 일정은 유지됩니다.')
     }
@@ -178,7 +175,7 @@ export function WorkspaceCalendarSettingsPage() {
           type="button"
           size="sm"
           variant="outline"
-          disabled={busy}
+          disabled={busy || refreshing}
           onClick={() => void refresh()}
         >
           <RefreshCw
@@ -186,14 +183,14 @@ export function WorkspaceCalendarSettingsPage() {
             className={calendar.isFetching ? 'animate-spin' : undefined}
             aria-hidden="true"
           />
-          {refreshError ? '새로고침 다시 시도' : '새로고침'}
+          새로고침
         </Button>
       </FrameContextActions>
 
       <div
         data-testid="workspace-calendar-settings-scroll"
         className="min-h-0 flex-1 overflow-y-auto overscroll-contain"
-        aria-busy={busy}
+        aria-busy={busy || refreshing}
       >
         <div className="mx-auto w-full max-w-5xl px-4 py-5 sm:px-6 sm:py-6">
           <header className="grid gap-4 border-b border-of-border pb-5 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
@@ -273,13 +270,13 @@ export function WorkspaceCalendarSettingsPage() {
                           checked
                             ? 'border-of-accent bg-of-surface-selected text-of-accent'
                             : 'border-of-border bg-of-surface text-of-muted hover:bg-of-surface-hover',
-                          busy && 'cursor-not-allowed opacity-60',
+                          (busy || refreshing) && 'cursor-not-allowed opacity-60',
                         )}
                       >
                         <input
                           type="checkbox"
                           checked={checked}
-                          disabled={busy}
+                          disabled={busy || refreshing}
                           onChange={() => {
                             const next = checked
                               ? workingWeekdays.filter((value) => value !== weekday)
@@ -316,7 +313,7 @@ export function WorkspaceCalendarSettingsPage() {
                       type="date"
                       aria-label="휴일 날짜"
                       value={holidayInput}
-                      disabled={busy}
+                      disabled={busy || refreshing}
                       onChange={(event) => setHolidayInput(event.target.value)}
                     />
                     <Button
@@ -324,6 +321,7 @@ export function WorkspaceCalendarSettingsPage() {
                       variant="outline"
                       disabled={
                         busy ||
+                        refreshing ||
                         !holidayInput ||
                         holidays.includes(holidayInput) ||
                         holidays.length >= 366
@@ -357,7 +355,7 @@ export function WorkspaceCalendarSettingsPage() {
                             className="of-icon-button"
                             aria-label={`${holiday} 휴일 제거`}
                             title="휴일 제거"
-                            disabled={busy}
+                            disabled={busy || refreshing}
                             onClick={() => {
                               setHolidays((current) =>
                                 current.filter((value) => value !== holiday),
@@ -454,7 +452,12 @@ export function WorkspaceCalendarSettingsPage() {
                     <Button
                       type="button"
                       size="sm"
-                      disabled={!dirty || workingWeekdays.length === 0 || busy}
+                      disabled={
+                        !dirty ||
+                        workingWeekdays.length === 0 ||
+                        busy ||
+                        !calendarFresh
+                      }
                       onClick={() => save()}
                     >
                       {update.isPending ? (
@@ -485,7 +488,7 @@ export function WorkspaceCalendarSettingsPage() {
                           type="button"
                           size="sm"
                           variant="outline"
-                          disabled={busy}
+                          disabled={busy || !calendarFresh}
                           onClick={() => save(failedDraft)}
                         >
                           일정 저장 다시 시도
@@ -493,11 +496,27 @@ export function WorkspaceCalendarSettingsPage() {
                       ) : null}
                     </div>
                   ) : null}
-                  {refreshError ? (
-                    <p role="alert" className="text-xs leading-5 text-of-danger">
-                      최신 일정을 불러오지 못했습니다. 마지막으로 확인한 일정과 현재 편집을
-                      유지합니다.
-                    </p>
+                  {calendarStale ? (
+                    <div
+                      role="alert"
+                      className="flex min-w-0 flex-col gap-2 border-y border-of-danger/15 bg-of-danger-soft px-3 py-2.5 text-xs sm:flex-row sm:items-center sm:justify-between"
+                    >
+                      <p className="min-w-0 break-words text-of-danger">
+                        최신 일정을 불러오지 못했습니다. 마지막으로 확인한 일정과 현재
+                        편집을 유지합니다. 복구 전까지 일정 저장은 사용할 수 없습니다.
+                      </p>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="w-full shrink-0 sm:w-auto"
+                        disabled={calendar.isFetching}
+                        onClick={() => void refresh()}
+                      >
+                        <RefreshCw size={13} aria-hidden="true" />
+                        다시 시도
+                      </Button>
+                    </div>
                   ) : null}
                 </div>
               </section>

@@ -12064,7 +12064,7 @@ test('워크스페이스 근무 일정은 일반 저장·새로고침 실패와 
   await expect(page.getByRole('alert')).toContainText('현재 편집을 유지합니다')
   await expect(page.getByRole('checkbox', { name: '일' })).toBeChecked()
   failGets = false
-  await page.getByRole('button', { name: '새로고침 다시 시도' }).click()
+  await page.getByRole('button', { name: '다시 시도', exact: true }).click()
   await expect(page.getByRole('status')).toContainText('편집 중인 일정은 유지됩니다')
   await expect(page.getByRole('checkbox', { name: '일' })).toBeChecked()
   await page.getByRole('button', { name: '되돌리기' }).click()
@@ -12077,6 +12077,111 @@ test('워크스페이스 근무 일정은 일반 저장·새로고침 실패와 
   await page.reload()
   await expect(page.getByText('접근 권한이 없습니다')).toBeVisible()
   await expect(page.getByRole('checkbox', { name: '월' })).toHaveCount(0)
+})
+
+test('UI-332 근무 일정은 stale 저장을 막고 편집 초안을 최신 revision으로 복구한다', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 320, height: 800 })
+  await mockApi(page)
+  let calendar = {
+    working_weekdays: [0, 1, 2, 3, 4],
+    holidays: ['2026-08-17'],
+    revision: 1,
+    updated_by_user_id: null as string | null,
+    updated_by_name: null as string | null,
+    updated_at: '2026-07-01T00:00:00Z',
+  }
+  let failGets = false
+  let failFirstPatch = true
+  const revisions: string[] = []
+  await page.route('**/api/v1/workspace/calendar', async (route) => {
+    if (failGets) {
+      await route.fulfill({ status: 503, json: { detail: 'calendar temporarily unavailable' } })
+      return
+    }
+    await route.fulfill({ json: calendar, headers: { ETag: `"${calendar.revision}"` } })
+  })
+  await page.route('**/api/v1/admin/workspace/calendar', async (route) => {
+    if (route.request().method() !== 'PATCH') {
+      await route.fallback()
+      return
+    }
+    revisions.push(route.request().headers()['if-match'] ?? '')
+    if (failFirstPatch) {
+      failFirstPatch = false
+      await route.fulfill({ status: 503, json: { detail: 'calendar temporarily unavailable' } })
+      return
+    }
+    const sent = route.request().postDataJSON() as {
+      working_weekdays: number[]
+      holidays: string[]
+    }
+    calendar = {
+      ...calendar,
+      ...sent,
+      revision: calendar.revision + 1,
+      updated_by_user_id: 'me-1',
+      updated_by_name: 'Dev User',
+      updated_at: '2026-07-30T09:00:00Z',
+    }
+    await route.fulfill({
+      json: calendar,
+      headers: { ETag: `"${calendar.revision}"` },
+    })
+  })
+
+  await page.goto('/admin/calendar')
+  await page.getByRole('checkbox', { name: '토' }).check()
+  const save = page.getByRole('button', { name: '일정 저장', exact: true })
+  await save.click()
+  await expect(page.getByRole('alert')).toContainText('calendar temporarily unavailable')
+  const failedRetry = page.getByRole('button', { name: '일정 저장 다시 시도' })
+  await expect(failedRetry).toBeEnabled()
+  expect(revisions).toEqual(['"1"'])
+
+  calendar = {
+    ...calendar,
+    revision: 2,
+    updated_by_user_id: 'other-admin',
+    updated_by_name: 'Other Admin',
+    updated_at: '2026-07-30T08:59:00Z',
+  }
+  failGets = true
+  await page.getByRole('button', { name: '새로고침', exact: true }).click()
+  await expect(
+    page.getByRole('alert').filter({ hasText: '복구 전까지 일정 저장은 사용할 수 없습니다' }),
+  ).toContainText('현재 편집을 유지')
+  await expect(page.getByRole('checkbox', { name: '토' })).toBeChecked()
+  await expect(save).toBeDisabled()
+  await expect(failedRetry).toBeDisabled()
+  for (const control of [save, failedRetry]) {
+    await control.evaluate((button) => {
+      button.removeAttribute('disabled')
+      ;(button as HTMLButtonElement).click()
+    })
+  }
+  expect(revisions).toEqual(['"1"'])
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/workspace-calendar-freshness-write-guard-ui-332/stale-320.png',
+    fullPage: true,
+  })
+
+  failGets = false
+  await page.getByRole('button', { name: '다시 시도', exact: true }).click()
+  await expect(page.getByText('revision 2', { exact: true })).toBeVisible()
+  await expect(page.getByRole('checkbox', { name: '토' })).toBeChecked()
+  await expect(failedRetry).toBeEnabled()
+  await failedRetry.click()
+  await expect(page.getByText('revision 3', { exact: true })).toBeVisible()
+  await expect(page.getByRole('status')).toContainText('근무 일정을 저장했습니다')
+  expect(revisions).toEqual(['"1"', '"2"'])
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/workspace-calendar-freshness-write-guard-ui-332/recovered-320.png',
+    fullPage: true,
+  })
 })
 
 test('프로젝트 구성은 기존 깊은 링크와 URL 탭을 하나의 설정 surface로 통합한다', async ({ page }) => {
