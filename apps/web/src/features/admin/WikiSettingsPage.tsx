@@ -68,17 +68,17 @@ export function WikiSettingsPage() {
   const update = useUpdateWikiPolicy()
   const [failedTarget, setFailedTarget] = useState<boolean | null>(null)
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
-  const [refreshError, setRefreshError] = useState(false)
 
   const data = policy.data
   const stale = update.error instanceof ApiError && update.error.status === 412
+  const policyStale = Boolean(data && policy.isError)
+  const policyFresh = Boolean(data && !policy.isFetching && !policyStale)
   const busy = policy.isFetching || update.isPending
 
   const changePolicy = (enabled: boolean) => {
-    if (!data) return
+    if (!data || !policyFresh) return
     setFailedTarget(null)
     setSuccessMessage(null)
-    setRefreshError(false)
     update.mutate(
       { enabled, revision: data.revision },
       {
@@ -93,12 +93,8 @@ export function WikiSettingsPage() {
   }
 
   const refresh = async () => {
-    update.reset()
-    setFailedTarget(null)
-    setRefreshError(false)
     setSuccessMessage(null)
-    const result = await policy.refetch()
-    setRefreshError(result.isError)
+    await policy.refetch()
   }
 
   return (
@@ -119,7 +115,7 @@ export function WikiSettingsPage() {
             className={policy.isFetching ? 'animate-spin' : undefined}
             aria-hidden="true"
           />
-          {refreshError ? '새로고침 다시 시도' : '새로고침'}
+          새로고침
         </Button>
       </FrameContextActions>
 
@@ -163,6 +159,20 @@ export function WikiSettingsPage() {
 
           {data ? (
             <div className="space-y-5 py-5">
+              {policyStale ? (
+                <div
+                  role="alert"
+                  className="flex min-w-0 flex-wrap items-center gap-2 border-l-2 border-of-warning bg-of-warning-soft/30 px-3 py-2 text-xs leading-5 text-of-text"
+                >
+                  <p className="min-w-0 flex-1">
+                    최신 Wiki 정책을 불러오지 못해 마지막으로 확인한 상태를 유지합니다. 복구 전까지 정책 변경은 사용할 수 없습니다.
+                  </p>
+                  <Button size="sm" variant="ghost" disabled={policy.isFetching} onClick={() => void refresh()}>
+                    <RefreshCw size={13} aria-hidden="true" /> 다시 시도
+                  </Button>
+                </div>
+              ) : null}
+
               <dl
                 aria-label="Wiki 정책 요약"
                 className="grid grid-cols-2 gap-px border-y border-of-border-subtle bg-of-border-subtle sm:grid-cols-4"
@@ -204,7 +214,7 @@ export function WikiSettingsPage() {
                     role="switch"
                     aria-checked={data.enabled}
                     aria-label="프로젝트 Wiki 사용"
-                    disabled={busy}
+                    disabled={!policyFresh || busy}
                     onClick={() => changePolicy(!data.enabled)}
                     className={cn(
                       'relative h-7 w-12 shrink-0 rounded-full border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-accent/50 disabled:cursor-not-allowed disabled:opacity-60',
@@ -245,18 +255,13 @@ export function WikiSettingsPage() {
                         <Button
                           size="sm"
                           variant="outline"
-                          disabled={busy}
+                          disabled={!policyFresh || busy}
                           onClick={() => changePolicy(failedTarget)}
                         >
                           {failedTarget ? 'Wiki 켜기 다시 시도' : 'Wiki 끄기 다시 시도'}
                         </Button>
                       ) : null}
                     </div>
-                  ) : null}
-                  {refreshError ? (
-                    <p role="alert" className="text-xs leading-5 text-of-danger">
-                      최신 정책을 불러오지 못했습니다. 마지막으로 확인한 상태를 유지합니다.
-                    </p>
                   ) : null}
                 </div>
               </section>
