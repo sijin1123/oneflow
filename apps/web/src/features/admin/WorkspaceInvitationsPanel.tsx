@@ -107,11 +107,13 @@ function SecretBanner({
 function InvitationRow({
   invitation,
   busy,
+  writeEnabled,
   onRotate,
   onRevoke,
 }: {
   invitation: WorkspaceInvitation
   busy: boolean
+  writeEnabled: boolean
   onRotate: () => void
   onRevoke: (trigger: HTMLButtonElement) => void
 }) {
@@ -129,15 +131,23 @@ function InvitationRow({
       </div>
       {invitation.status === 'pending' ? (
         <div className="flex min-w-0 flex-wrap items-center gap-2 md:col-span-2 md:justify-end">
-          <Button size="sm" variant="outline" disabled={busy} onClick={onRotate}>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={busy}
+            aria-disabled={!writeEnabled}
+            className="aria-disabled:pointer-events-none aria-disabled:opacity-45"
+            onClick={onRotate}
+          >
             {busy ? <Loader2 className="animate-spin" /> : <RotateCw size={13} />}
             새 링크 발급
           </Button>
           <Button
             size="sm"
             variant="ghost"
-            className="text-of-danger"
+            className="text-of-danger aria-disabled:pointer-events-none aria-disabled:opacity-45"
             disabled={busy}
+            aria-disabled={!writeEnabled}
             onClick={(event) => onRevoke(event.currentTarget)}
           >
             초대 취소
@@ -224,6 +234,13 @@ export function WorkspaceInvitationsPanel({
   const items = invitations.data?.items ?? []
   const pendingTotal = items.filter((item) => item.status === 'pending').length
   const historyTotal = items.length - pendingTotal
+  const listFresh = Boolean(
+    invitations.data &&
+      !invitations.isFetching &&
+      !invitations.isRefetchError &&
+      !invitations.isError &&
+      !refreshError,
+  )
 
   const resetMutationFeedback = () => {
     create.reset()
@@ -233,6 +250,7 @@ export function WorkspaceInvitationsPanel({
   }
 
   const runAction = (action: InvitationAction, closeRevoke = false) => {
+    if (!listFresh) return
     resetMutationFeedback()
     if (action.kind === 'create') {
       create.mutate(action.input, {
@@ -278,13 +296,14 @@ export function WorkspaceInvitationsPanel({
   }
 
   const retryFailedAction = async () => {
-    if (!failedAction) return
+    if (!failedAction || !listFresh) return
     if (
       mutationError instanceof ApiError &&
       mutationError.status === 409 &&
       failedAction.kind !== 'create'
     ) {
       const result = await invitations.refetch()
+      if (result.error) return
       const latest = result.data?.items.find((item) => item.id === failedAction.input.id)
       if (!latest || latest.status !== 'pending') return
       runAction({
@@ -360,7 +379,11 @@ export function WorkspaceInvitationsPanel({
                 aria-label="초대 사용자 이름"
                 className="h-8 min-w-0 text-xs"
               />
-              <Button size="sm" disabled={!email.trim() || !displayName.trim() || create.isPending} onClick={submit}>
+              <Button
+                size="sm"
+                disabled={!listFresh || !email.trim() || !displayName.trim() || create.isPending}
+                onClick={submit}
+              >
                 {create.isPending ? <Loader2 className="animate-spin" /> : <Send size={13} />}
                 링크 만들기
               </Button>
@@ -378,6 +401,11 @@ export function WorkspaceInvitationsPanel({
                 취소
               </Button>
             </div>
+            {!listFresh ? (
+              <p role="status" className="mt-2 text-xs text-of-warning">
+                최신 초대 목록을 복구하면 입력한 내용을 그대로 링크로 만들 수 있습니다.
+              </p>
+            ) : null}
           </div>
         ) : null}
 
@@ -404,7 +432,10 @@ export function WorkspaceInvitationsPanel({
             className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-of border border-of-warning/30 bg-of-warning/5 px-3 py-2 text-xs"
             role="alert"
           >
-            <span>최신 초대 목록을 불러오지 못했습니다. 마지막으로 확인한 목록을 유지합니다.</span>
+            <span>
+              최신 초대 목록을 불러오지 못했습니다. 마지막으로 확인한 목록을 유지하며,
+              복구 전에는 초대 변경을 저장할 수 없습니다.
+            </span>
             <Button size="sm" variant="outline" onClick={() => void refresh()}>
               다시 시도
             </Button>
@@ -426,7 +457,7 @@ export function WorkspaceInvitationsPanel({
               <Button
                 size="sm"
                 variant="outline"
-                disabled={create.isPending || rotate.isPending || revoke.isPending}
+                disabled={!listFresh || create.isPending || rotate.isPending || revoke.isPending}
                 onClick={() => void retryFailedAction()}
               >
                 <RefreshCw size={13} />
@@ -459,6 +490,7 @@ export function WorkspaceInvitationsPanel({
                   key={invitation.id}
                   invitation={invitation}
                   busy={busy}
+                  writeEnabled={listFresh}
                   onRotate={() => {
                     runAction({
                       kind: 'rotate',
@@ -466,6 +498,7 @@ export function WorkspaceInvitationsPanel({
                     })
                   }}
                   onRevoke={(trigger) => {
+                    if (!listFresh) return
                     revokeTriggerRef.current = trigger
                     resetMutationFeedback()
                     setRevokeTarget({ invitation, trigger })
@@ -523,7 +556,7 @@ export function WorkspaceInvitationsPanel({
               </Button>
               <Button
                 variant="danger"
-                disabled={!revokeTarget || revoke.isPending}
+                disabled={!listFresh || !revokeTarget || revoke.isPending}
                 onClick={() => {
                   if (!revokeTarget) return
                   if (revoke.isError) {
