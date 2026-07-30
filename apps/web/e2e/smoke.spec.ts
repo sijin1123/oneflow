@@ -11056,13 +11056,9 @@ test('개인 표시 이름 충돌은 초안을 보존하고 최신 revision으�
   })
 })
 
-test('개인 설정은 계정 상태를 요약하고 미저장 프로필 선택의 탭 이탈을 보호한다', async ({ page }) => {
+test('개인 설정은 계정 상태를 요약하고 미저장 이름 초안의 탭 이탈을 보호한다', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 })
   await mockApi(page)
-  const png = Buffer.from(
-    'iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAEklEQVR4nGPkndLBwMDAxAAGAA2bAS37E8jFAAAAAElFTkSuQmCC',
-    'base64',
-  )
   let meRequests = 0
   await page.route('**/api/v1/me', async (route) => {
     meRequests += 1
@@ -11093,11 +11089,7 @@ test('개인 설정은 계정 상태를 요약하고 미저장 프로필 선택�
   await expect.poll(() => meRequests).toBeGreaterThan(1)
 
   const account = page.getByRole('region', { name: '내 계정' })
-  await account.getByLabel('프로필 이미지 파일').setInputFiles({
-    name: 'unsaved.png',
-    mimeType: 'image/png',
-    buffer: png,
-  })
+  await account.getByLabel('표시 이름').fill('Unsaved Name')
   const securityTab = page.getByRole('tab', { name: '보안' })
   const dismissDialog = page.waitForEvent('dialog')
   const firstTabClick = securityTab.click()
@@ -11106,7 +11098,7 @@ test('개인 설정은 계정 상태를 요약하고 미저장 프로필 선택�
   await firstDialog.dismiss()
   await firstTabClick
   await expect(page).toHaveURL(/\/settings$/)
-  await expect(account.getByText('선택됨: unsaved.png')).toBeVisible()
+  await expect(account.getByLabel('표시 이름')).toHaveValue('Unsaved Name')
 
   const acceptDialog = page.waitForEvent('dialog')
   const secondTabClick = securityTab.click()

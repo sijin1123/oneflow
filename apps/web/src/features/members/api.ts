@@ -34,6 +34,8 @@ export function useUpdateMyProfile() {
       void queryClient.invalidateQueries({ queryKey: ['members'] })
       void queryClient.invalidateQueries({ queryKey: ['admin-users'] })
       void queryClient.invalidateQueries({ queryKey: ['wp-watchers'] })
+      void queryClient.invalidateQueries({ queryKey: ['module-members'] })
+      void queryClient.invalidateQueries({ queryKey: ['initiative-owner-candidates'] })
     },
     onError: (error) => {
       if (error instanceof ApiError && error.status === 412) {

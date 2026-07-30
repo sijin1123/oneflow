@@ -14805,8 +14805,8 @@ export interface operations {
     update_my_profile_api_v1_me_profile_patch: {
         parameters: {
             query?: never;
-            header?: {
-                "If-Match"?: string | null;
+            header: {
+                "If-Match": string;
                 authorization?: string | null;
             };
             path?: never;
@@ -14828,6 +14828,13 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["MeRead"];
                 };
+            };
+            /** @description Profile revision is stale */
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

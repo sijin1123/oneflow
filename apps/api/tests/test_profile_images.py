@@ -111,7 +111,7 @@ async def test_personal_profile_name_update_validates_revision_and_name(client):
         "/api/v1/me/profile",
         json={"display_name": "Name"},
     )
-    assert missing.status_code == 428
+    assert missing.status_code == 422
 
     for invalid_etag in ('W/"1"', "1", '"0"', '"1", "2"'):
         response = await client.patch(
@@ -128,6 +128,36 @@ async def test_personal_profile_name_update_validates_revision_and_name(client):
             headers={"If-Match": '"1"'},
         )
         assert response.status_code == 422
+
+
+async def test_admin_and_self_profile_name_writes_share_one_locked_revision(client):
+    me = (await client.get("/api/v1/me")).json()
+
+    admin_write, self_write = await asyncio.gather(
+        client.patch(
+            f"/api/v1/users/{me['id']}",
+            json={"display_name": "Administrator Name"},
+        ),
+        client.patch(
+            "/api/v1/me/profile",
+            json={"display_name": "Personal Name"},
+            headers={"If-Match": '"1"'},
+        ),
+    )
+
+    assert admin_write.status_code == 200, admin_write.text
+    assert self_write.status_code in (200, 412), self_write.text
+    current = (await client.get("/api/v1/me")).json()
+    assert current["display_name"] == "Administrator Name"
+    assert current["profile_revision"] == 2 + int(self_write.status_code == 200)
+
+    stale = await client.patch(
+        "/api/v1/me/profile",
+        json={"display_name": "Undetected overwrite"},
+        headers={"If-Match": '"1"'},
+    )
+    assert stale.status_code == 412
+    assert (await client.get("/api/v1/me")).json()["display_name"] == "Administrator Name"
 
 
 async def test_profile_image_upload_read_replace_remove_and_sweep(client, app):

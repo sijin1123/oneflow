@@ -608,11 +608,17 @@ async def get_initiative_activity_actor_profile_image(
     )
 
 
-@router.patch("/me/profile", response_model=MeRead)
+@router.patch(
+    "/me/profile",
+    response_model=MeRead,
+    responses={
+        412: {"description": "Profile revision is stale"},
+    },
+)
 async def update_my_profile(
     body: MeProfileUpdate,
     response: Response,
-    if_match: str | None = Header(default=None, alias="If-Match"),
+    if_match: str = Header(alias="If-Match"),
     session: AsyncSession = Depends(get_session),
     user: User = Depends(get_current_user),
 ) -> MeRead:
