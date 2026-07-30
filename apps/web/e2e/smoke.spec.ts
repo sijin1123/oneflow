@@ -34,7 +34,11 @@ import type {
 } from '../src/features/projects/scheduleBaselineApi'
 import type { ProjectTemplate } from '../src/features/project-templates/api'
 import type { SearchResults, SearchWorkPackageAnalytics } from '../src/features/search/api'
-import type { WorkspaceProjectPhaseDefinitions } from '../src/features/workspace-profile/api'
+import type {
+  ProjectPhaseColor,
+  WorkspaceProjectPhaseDefinition,
+  WorkspaceProjectPhaseDefinitions,
+} from '../src/features/workspace-profile/api'
 import type { MyActivityList, MyWorkItemList } from '../src/features/my-work/api'
 import type { WorkspaceQuickLink } from '../src/features/my-work/quickLinksApi'
 import type {
@@ -13148,7 +13152,182 @@ test('워크스페이스 단계 정의는 후속 오류에서 행과 초안을 �
   })
 })
 
+test('워크스페이스 단계 정의 새로고침은 같은 이벤트의 모든 쓰기를 막고 최신 revision에서 재개한다', async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 740 })
+  await mockApi(page)
+  let definitions: WorkspaceProjectPhaseDefinitions = {
+    items: [
+      { key: 'discover', name: '발견', color: 'sky', position: 0, retired: false, built_in: true },
+      { key: 'plan', name: '계획', color: 'indigo', position: 1, retired: false, built_in: true },
+      { key: 'deliver', name: '실행', color: 'emerald', position: 2, retired: false, built_in: true },
+      { key: 'close', name: '마감', color: 'amber', position: 3, retired: false, built_in: true },
+      { key: 'custom_active', name: '검증 준비', color: 'sky', position: 4, retired: false, built_in: false },
+      { key: 'custom_retired', name: '보관 단계', color: 'amber', position: 5, retired: true, built_in: false },
+    ],
+    revision: 9,
+    updated_by_user_id: null,
+    updated_by_name: null,
+    updated_at: '2026-07-01T00:00:00Z',
+  }
+  let holdNextRefresh = false
+  const pendingRefreshes: Array<() => void> = []
+  let mutationCount = 0
+  const mutationRevisions: string[] = []
+
+  await page.route('**/api/v1/workspace/project-phase-definitions', async (route) => {
+    if (holdNextRefresh) {
+      holdNextRefresh = false
+      await new Promise<void>((resolve) => {
+        pendingRefreshes.push(resolve)
+      })
+    }
+    await route.fulfill({
+      json: definitions,
+      headers: { ETag: `"${definitions.revision}"` },
+    })
+  })
+  await page.route('**/api/v1/admin/workspace/project-phase-definitions**', async (route) => {
+    mutationCount += 1
+    mutationRevisions.push(route.request().headers()['if-match'])
+    const request = route.request()
+    const path = new URL(request.url()).pathname
+
+    if (request.method() === 'PATCH') {
+      const body = request.postDataJSON() as {
+        items: Array<Pick<WorkspaceProjectPhaseDefinition, 'key' | 'name' | 'color'>>
+      }
+      definitions = {
+        ...definitions,
+        items: body.items.map((item, position) => {
+          const current = definitions.items.find((definition) => definition.key === item.key)!
+          return { ...current, ...item, position }
+        }),
+        revision: definitions.revision + 1,
+      }
+    } else if (path.endsWith('/retire')) {
+      definitions = {
+        ...definitions,
+        items: definitions.items.map((item) =>
+          item.key === 'custom_active' ? { ...item, retired: true } : item,
+        ),
+        revision: definitions.revision + 1,
+      }
+    } else if (path.endsWith('/restore')) {
+      definitions = {
+        ...definitions,
+        items: definitions.items.map((item) =>
+          item.key === 'custom_retired' ? { ...item, retired: false } : item,
+        ),
+        revision: definitions.revision + 1,
+      }
+    } else {
+      const body = request.postDataJSON() as { name: string; color: ProjectPhaseColor }
+      const key = definitions.items.some((item) => item.key === 'custom_created')
+        ? 'custom_created_fast'
+        : 'custom_created'
+      definitions = {
+        ...definitions,
+        items: [
+          ...definitions.items,
+          {
+            key,
+            name: body.name,
+            color: body.color,
+            position: definitions.items.length,
+            retired: false,
+            built_in: false,
+          },
+        ],
+        revision: definitions.revision + 1,
+      }
+    }
+    await route.fulfill({
+      json: definitions,
+      headers: { ETag: `"${definitions.revision}"` },
+    })
+  })
+
+  await page.goto('/admin/project-configuration?tab=phases')
+  const definitionsSurface = page.getByRole('region', { name: '워크스페이스 프로젝트 단계 정의' })
+  await page.getByLabel('새 단계 이름').fill('릴리스 검수')
+  page.on('dialog', (dialog) => dialog.accept())
+
+  definitions = {
+    ...definitions,
+    items: definitions.items.map((item) =>
+      item.key === 'plan' ? { ...item, name: '서버 계획' } : item,
+    ),
+    revision: 10,
+  }
+  holdNextRefresh = true
+  await page.evaluate(() => {
+    const button = (name: string) => [...document.querySelectorAll<HTMLButtonElement>('button')]
+      .find((candidate) =>
+        candidate.getAttribute('aria-label') === name
+        || candidate.textContent?.trim() === name,
+      )
+    button('프로젝트 단계 정의 새로고침')?.click()
+    button('단계 추가')?.click()
+    button('검증 준비 단계 은퇴')?.click()
+    button('복원')?.click()
+  })
+  await expect.poll(() => pendingRefreshes.length).toBe(1)
+  await expect.poll(() => mutationCount).toBe(0)
+  await expect(page.getByRole('button', { name: '단계 추가' })).toBeDisabled()
+  await expect(page.getByLabel('새 단계 이름')).toHaveValue('릴리스 검수')
+  await expectNoHorizontalOverflow(page)
+  await page.locator('[data-shell-scroll-region]').evaluate((element) =>
+    element.scrollTo({ top: 0, behavior: 'instant' }),
+  )
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/workspace-phase-action-freshness-ui-342/stale-actions-320.png',
+    fullPage: false,
+  })
+  pendingRefreshes.shift()?.()
+  await expect(page.getByText('revision 10')).toBeVisible()
+  await expect(definitionsSurface.getByLabel('2번째 단계 이름')).toHaveValue('서버 계획')
+  await expect(page.getByRole('button', { name: '단계 추가' })).toBeEnabled()
+
+  await definitionsSurface.getByLabel('1번째 단계 이름').fill('발견 최신')
+  definitions = { ...definitions, revision: 11 }
+  holdNextRefresh = true
+  await page.evaluate(() => {
+    const button = (name: string) => [...document.querySelectorAll<HTMLButtonElement>('button')]
+      .find((candidate) =>
+        candidate.getAttribute('aria-label') === name
+        || candidate.textContent?.trim() === name,
+      )
+    button('프로젝트 단계 정의 새로고침')?.click()
+    button('단계 저장')?.click()
+  })
+  await expect.poll(() => pendingRefreshes.length).toBe(1)
+  await expect.poll(() => mutationCount).toBe(0)
+  pendingRefreshes.shift()?.()
+  await expect(page.getByText('revision 11')).toBeVisible()
+  await expect(definitionsSurface.getByLabel('1번째 단계 이름')).toHaveValue('발견 최신')
+
+  await page.getByRole('button', { name: '단계 저장' }).click()
+  await expect(page.getByText('revision 12')).toBeVisible()
+  await page.getByRole('button', { name: '단계 추가' }).click()
+  await expect(page.getByText('revision 13')).toBeVisible()
+  await expect(page.getByLabel('6번째 단계 이름')).toHaveValue('릴리스 검수')
+  await page.getByRole('button', { name: '검증 준비 단계 은퇴' }).click()
+  await expect(page.getByText('revision 14')).toBeVisible()
+  await page.getByRole('listitem').filter({ hasText: '보관 단계' }).getByRole('button', { name: '복원' }).click()
+  await expect(page.getByText('revision 15')).toBeVisible()
+
+  await page.getByLabel('새 단계 이름').fill('즉시 복구')
+  definitions = { ...definitions, revision: 16 }
+  await page.getByRole('button', { name: '프로젝트 단계 정의 새로고침' }).click()
+  await expect(page.getByText('revision 16')).toBeVisible()
+  await expect(page.getByRole('button', { name: '단계 추가' })).toBeEnabled()
+  await page.getByRole('button', { name: '단계 추가' }).click()
+  await expect(page.getByText('revision 17')).toBeVisible()
+  expect(mutationRevisions).toEqual(['"11"', '"12"', '"13"', '"14"', '"16"'])
+})
+
 test('워크스페이스 프로젝트 단계 정의는 충돌을 복구하고 프로젝트 전반에 반영된다', async ({ page }) => {
+  test.slow()
   await page.setViewportSize({ width: 1280, height: 900 })
   await mockApi(page)
   await mockProjectOverview(page)

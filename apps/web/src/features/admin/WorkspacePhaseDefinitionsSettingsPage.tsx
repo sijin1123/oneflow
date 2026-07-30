@@ -74,6 +74,16 @@ export function WorkspacePhaseDefinitionsSettingsPage({
   const refreshFailed = definitions.isRefetchError
     || (definitions.isError && Boolean(data))
   const definitionsFresh = Boolean(data) && !definitions.isFetching && !refreshFailed
+  const definitionsFreshRef = useRef(false)
+
+  useEffect(() => {
+    definitionsFreshRef.current = definitionsFresh
+  }, [definitions.dataUpdatedAt, definitionsFresh])
+
+  const refreshDefinitions = () => {
+    definitionsFreshRef.current = false
+    return definitions.refetch()
+  }
 
   useEffect(() => {
     if (!data || dirty) return
@@ -153,7 +163,7 @@ export function WorkspacePhaseDefinitionsSettingsPage({
           variant="outline"
           aria-label={refreshFailed ? '프로젝트 단계 정의 새로고침 다시 시도' : '프로젝트 단계 정의 새로고침'}
           disabled={definitions.isFetching || busy}
-          onClick={() => definitions.refetch()}
+          onClick={refreshDefinitions}
         >
           <RefreshCw
             size={13}
@@ -177,7 +187,7 @@ export function WorkspacePhaseDefinitionsSettingsPage({
             size="sm"
             variant="outline"
             disabled={definitions.isFetching || busy}
-            onClick={() => definitions.refetch()}
+            onClick={refreshDefinitions}
           >
             <RefreshCw
               size={13}
@@ -291,7 +301,7 @@ export function WorkspacePhaseDefinitionsSettingsPage({
                   aria-label={`${item.name} 단계 은퇴`}
                   disabled={!definitionsFresh || busy || changed}
                   onClick={() => {
-                    if (!definitionsFresh) return
+                    if (!definitionsFreshRef.current) return
                     if (!window.confirm(`${item.name} 단계를 은퇴할까요? 프로젝트별 저장 데이터는 보존됩니다.`)) return
                     retirement.mutate(
                       { phaseKey: item.key, retired: true, revision: data.revision },
@@ -315,7 +325,7 @@ export function WorkspacePhaseDefinitionsSettingsPage({
             size="sm"
             disabled={!definitionsFresh || !changed || Boolean(validation) || busy}
             onClick={() => {
-              if (!definitionsFresh) return
+              if (!definitionsFreshRef.current) return
               update.mutate(
                 { items: normalized(items), revision: data.revision },
                 { onSuccess: () => setDirty(false) },
@@ -395,7 +405,7 @@ export function WorkspacePhaseDefinitionsSettingsPage({
             size="sm"
             disabled={!definitionsFresh || !newName.trim() || Boolean(newNameError) || busy || changed || activeItems.length >= 12 || items.length >= 32}
             onClick={() => {
-              if (!definitionsFresh) return
+              if (!definitionsFreshRef.current) return
               create.mutate(
                 { name: newName.trim(), color: newColor, revision: data.revision },
                 { onSuccess: () => setNewName('') },
@@ -427,7 +437,7 @@ export function WorkspacePhaseDefinitionsSettingsPage({
                     variant="outline"
                     disabled={!definitionsFresh || busy || changed || activeItems.length >= 12}
                     onClick={() => {
-                      if (!definitionsFresh) return
+                      if (!definitionsFreshRef.current) return
                       retirement.mutate(
                         { phaseKey: item.key, retired: false, revision: data.revision },
                         { onSuccess: () => setDirty(false) },
