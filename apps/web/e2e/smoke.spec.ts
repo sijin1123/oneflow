@@ -12896,6 +12896,181 @@ test('워크스페이스 프로젝트 역할은 최초 403에서 관리자 경�
   await expect(page.getByRole('button', { name: '새 역할' })).toHaveCount(0)
 })
 
+test('워크스페이스 프로젝트 역할은 새로고침과 같은 이벤트의 모든 쓰기를 차단한다', async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 740 })
+  await mockApi(page)
+  const capabilities = [
+    { key: 'work_item.create', label: '작업 생성', note: '프로젝트에 새 작업을 만듭니다.' },
+    { key: 'work_item.update', label: '작업 수정', note: '작업 속성과 설명을 변경합니다.' },
+  ]
+  const activeRole: ProjectRole = {
+    id: '11111111-aaaa-4111-8111-111111111111',
+    name: 'Delivery lead',
+    description: '실행 작업을 조율합니다.',
+    permissions: ['work_item.create'],
+    archived_at: null,
+    assigned_member_count: 2,
+    revision: 11,
+    created_by_user_id: 'me-1',
+    created_by_name: 'Dev User',
+    updated_by_user_id: 'me-1',
+    updated_by_name: 'Dev User',
+    created_at: '2026-07-18T01:00:00Z',
+    updated_at: '2026-07-18T01:00:00Z',
+  }
+  let currentActiveRole = activeRole
+  const archivedRole: ProjectRole = {
+    ...activeRole,
+    id: '22222222-aaaa-4222-8222-222222222222',
+    name: 'Archived coordinator',
+    archived_at: '2026-07-18T02:00:00Z',
+    assigned_member_count: 0,
+    revision: 7,
+  }
+  let mutationCount = 0
+  let lastUpdateRevision: number | null = null
+  let holdRolesRefresh = false
+  let holdCapabilitiesRefresh = false
+  const releaseRolesRefresh = { current: null as (() => void) | null }
+  const releaseCapabilitiesRefresh = { current: null as (() => void) | null }
+
+  await page.route('**/api/v1/workspace/project-role-capabilities', async (route) => {
+    if (holdCapabilitiesRefresh) {
+      await new Promise<void>((resolve) => {
+        releaseCapabilitiesRefresh.current = resolve
+      })
+      holdCapabilitiesRefresh = false
+    }
+    await route.fulfill({ json: { items: capabilities, total: capabilities.length } })
+  })
+  await page.route('**/api/v1/admin/workspace/project-roles**', async (route) => {
+    const request = route.request()
+    const url = new URL(request.url())
+    if (url.pathname.endsWith('/events')) {
+      await route.fulfill({ json: { items: [], total: 0, limit: 50, offset: 0 } })
+      return
+    }
+    if (request.method() !== 'GET') {
+      mutationCount += 1
+      if (request.method() === 'PATCH') {
+        const body = request.postDataJSON() as {
+          expected_revision: number
+          name: string
+          description: string | null
+          permissions: string[]
+        }
+        lastUpdateRevision = body.expected_revision
+        currentActiveRole = {
+          ...currentActiveRole,
+          ...body,
+          revision: body.expected_revision + 1,
+          updated_at: '2026-07-18T03:00:00Z',
+        }
+      }
+      await route.fulfill({ json: currentActiveRole })
+      return
+    }
+    if (holdRolesRefresh) {
+      await new Promise<void>((resolve) => {
+        releaseRolesRefresh.current = resolve
+      })
+      holdRolesRefresh = false
+    }
+    const items = url.searchParams.get('include_archived') === 'true'
+      ? [currentActiveRole, archivedRole]
+      : [currentActiveRole]
+    await route.fulfill({ json: { items, total: items.length } })
+  })
+
+  await page.goto('/admin/project-configuration?tab=roles')
+  const editForm = page.getByRole('form', { name: '프로젝트 역할 편집' })
+  await editForm.locator('textarea').fill('새로고침 중에는 저장하지 않을 초안')
+  await expect(editForm.getByRole('button', { name: '변경 저장' })).toBeEnabled()
+  currentActiveRole = {
+    ...currentActiveRole,
+    description: '다른 관리자가 갱신한 서버 설명',
+    revision: 12,
+    updated_by_name: 'Other Admin',
+    updated_at: '2026-07-18T02:00:00Z',
+  }
+  holdRolesRefresh = true
+  holdCapabilitiesRefresh = true
+  await page.evaluate(() => {
+    const refresh = document.querySelector<HTMLButtonElement>(
+      'button[aria-label="프로젝트 역할과 capability 새로고침"]',
+    )
+    const form = document.querySelector<HTMLFormElement>('form[aria-label="프로젝트 역할 편집"]')
+    refresh?.click()
+    form?.requestSubmit()
+  })
+  await expect.poll(() => Boolean(releaseRolesRefresh.current)).toBe(true)
+  await expect.poll(() => Boolean(releaseCapabilitiesRefresh.current)).toBe(true)
+  await expect.poll(() => mutationCount).toBe(0)
+  releaseRolesRefresh.current?.()
+  await expect(editForm.getByText(/revision 12/)).toBeVisible()
+  await expect(editForm.getByRole('button', { name: '변경 저장' })).toBeDisabled()
+  await editForm.evaluate((form: HTMLFormElement) => form.requestSubmit())
+  await expect.poll(() => mutationCount).toBe(0)
+  releaseCapabilitiesRefresh.current?.()
+  await expect(editForm.getByRole('button', { name: '변경 저장' })).toBeEnabled()
+  await expect(editForm.locator('textarea')).toHaveValue('새로고침 중에는 저장하지 않을 초안')
+  await editForm.evaluate((form: HTMLFormElement) => form.requestSubmit())
+  await expect.poll(() => mutationCount).toBe(1)
+  expect(lastUpdateRevision).toBe(12)
+
+  const confirmCount = await page.evaluate(() => {
+    let count = 0
+    window.confirm = () => {
+      count += 1
+      return true
+    }
+    const refresh = document.querySelector<HTMLButtonElement>(
+      'button[aria-label="프로젝트 역할과 capability 새로고침"]',
+    )
+    const archive = Array.from(document.querySelectorAll<HTMLButtonElement>('button'))
+      .find((button) => button.textContent?.includes('역할 보관'))
+    refresh?.click()
+    archive?.click()
+    return count
+  })
+  expect(confirmCount).toBe(0)
+  await expect.poll(() => mutationCount).toBe(1)
+  await expect(page.getByRole('button', { name: '역할 보관' })).toBeEnabled()
+
+  await page.getByRole('button', { name: '새 역할' }).click()
+  const createForm = page.getByRole('form', { name: '새 프로젝트 역할' })
+  await page.getByLabel('역할 이름').fill('Release coordinator')
+  await createForm.getByRole('checkbox', { name: /작업 수정/ }).check()
+  await expect(createForm.getByRole('button', { name: '역할 생성' })).toBeEnabled()
+  await page.evaluate(() => {
+    const refresh = document.querySelector<HTMLButtonElement>(
+      'button[aria-label="프로젝트 역할과 capability 새로고침"]',
+    )
+    const form = document.querySelector<HTMLFormElement>('form[aria-label="새 프로젝트 역할"]')
+    refresh?.click()
+    form?.requestSubmit()
+  })
+  await expect.poll(() => mutationCount).toBe(1)
+  await expect(createForm.getByRole('button', { name: '역할 생성' })).toBeEnabled()
+
+  await page.getByLabel('역할 목록').getByRole('button', { name: /Delivery lead/ }).click()
+  await page.getByRole('checkbox', { name: '보관 역할 포함' }).check()
+  await page.getByRole('button', { name: /Archived coordinator/ }).click()
+  await expect(page.getByRole('button', { name: '역할 복원' })).toBeEnabled()
+  await page.evaluate(() => {
+    const refresh = document.querySelector<HTMLButtonElement>(
+      'button[aria-label="프로젝트 역할과 capability 새로고침"]',
+    )
+    const restore = Array.from(document.querySelectorAll<HTMLButtonElement>('button'))
+      .find((button) => button.textContent?.includes('역할 복원'))
+    refresh?.click()
+    restore?.click()
+  })
+  await expect.poll(() => mutationCount).toBe(1)
+  await expect(page.getByRole('button', { name: '역할 복원' })).toBeEnabled()
+  await expectNoHorizontalOverflow(page)
+})
+
 test('워크스페이스 프로젝트 역할은 후속 의존 오류에서 편집과 생성 초안을 보존하고 쓰기를 차단한다', async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 740 })
   await mockApi(page)
