@@ -62,6 +62,18 @@ def test_command_palette_flag_strict_parse():
     assert make_test_settings(command_palette_enabled="true").command_palette_is_enabled
 
 
+def test_access_token_derivation_key_is_secret_and_production_requires_override():
+    _expect_invalid(access_token_derivation_key="too-short")
+    settings = make_test_settings(access_token_derivation_key="x" * 32)
+    assert "x" * 32 not in repr(settings)
+
+    values = make_oidc_test_settings(env="production").model_dump()
+    values["access_token_derivation_key"] = Settings.model_fields[
+        "access_token_derivation_key"
+    ].default
+    _expect_invalid(**values)
+
+
 def test_webhook_configuration_is_fail_closed_and_validated():
     assert not make_test_settings().webhooks_enabled
     _expect_invalid(webhook_signing_key="too-short", webhook_allowed_hosts="example.com")

@@ -536,8 +536,10 @@ function AccessTokensPanel() {
               type="button"
               size="sm"
               variant="ghost"
-              disabled={tokens.isFetching}
-              onClick={() => void tokens.refetch()}
+              aria-disabled={tokens.isFetching}
+              onClick={() => {
+                if (!tokens.isFetching) void tokens.refetch()
+              }}
             >
               <RefreshCw
                 size={14}

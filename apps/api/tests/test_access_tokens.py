@@ -1,3 +1,4 @@
+import asyncio
 import secrets
 from datetime import UTC, datetime, timedelta
 
@@ -60,7 +61,7 @@ async def test_access_token_create_list_and_masking(client):
 
 
 async def test_access_token_create_retry_is_idempotent_and_rejects_nonce_reuse(client):
-    nonce = secrets.token_urlsafe(32)
+    nonce = "A" * 43
     body = {"name": "Retry-safe deploy", "expires_in_days": 45, "token_nonce": nonce}
 
     first = await client.post("/api/v1/me/access-tokens", json=body)
@@ -68,6 +69,7 @@ async def test_access_token_create_retry_is_idempotent_and_rejects_nonce_reuse(c
 
     assert first.status_code == replay.status_code == 201
     assert replay.json() == first.json()
+    assert first.json()["token"] != f"ofp_{nonce}"
     listed = (await client.get("/api/v1/me/access-tokens")).json()
     assert listed["total"] == 1
 
@@ -77,6 +79,43 @@ async def test_access_token_create_retry_is_idempotent_and_rejects_nonce_reuse(c
     )
     assert conflict.status_code == 409
     assert (await client.get("/api/v1/me/access-tokens")).json()["total"] == 1
+
+
+async def test_access_token_concurrent_replay_and_conflict_use_independent_sessions(app, client):
+    async def post(body):
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as concurrent_client:
+            return await concurrent_client.post("/api/v1/me/access-tokens", json=body)
+
+    nonce = secrets.token_urlsafe(32)
+    body = {"name": "Concurrent retry", "expires_in_days": 30, "token_nonce": nonce}
+    first, replay = await asyncio.gather(post(body), post(body))
+    assert first.status_code == replay.status_code == 201
+    assert first.json() == replay.json()
+    assert (await client.get("/api/v1/me/access-tokens")).json()["total"] == 1
+
+    conflict_nonce = secrets.token_urlsafe(32)
+    accepted, rejected = await asyncio.gather(
+        post(
+            {
+                "name": "Concurrent accepted",
+                "expires_in_days": 30,
+                "token_nonce": conflict_nonce,
+            }
+        ),
+        post(
+            {
+                "name": "Concurrent rejected",
+                "expires_in_days": 60,
+                "token_nonce": conflict_nonce,
+            }
+        ),
+    )
+    assert sorted((accepted.status_code, rejected.status_code)) == [201, 409], (
+        accepted.text,
+        rejected.text,
+    )
+    assert (await client.get("/api/v1/me/access-tokens")).json()["total"] == 2
 
 
 async def test_access_token_list_and_revoke_are_user_scoped(app, client):
