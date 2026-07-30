@@ -27940,8 +27940,21 @@ test('모바일 사용자 디렉터리는 실패한 상태 범위에서 마지�
   const summary = { users: 3, active: 2, admins: 1, inactive: 1, active_admins: 1 }
   const requestedScopes: string[] = []
   let inactiveAttempts = 0
+  let createAttempts = 0
 
   await page.route(/\/api\/v1\/users(?:\?.*)?$/, (route) => {
+    if (route.request().method() === 'POST') {
+      createAttempts += 1
+      return route.fulfill({
+        status: 201,
+        json: {
+          ...member,
+          id: 'draft-member',
+          email: 'draft@oneflow.local',
+          display_name: 'Draft Member',
+        },
+      })
+    }
     if (route.request().method() !== 'GET') return route.fallback()
     const url = new URL(route.request().url())
     const scope = url.searchParams.get('scope') ?? 'all'
@@ -27969,25 +27982,51 @@ test('모바일 사용자 디렉터리는 실패한 상태 범위에서 마지�
   await expect(retainedAlert).toBeVisible()
   await expect(page.getByText('member@oneflow.local')).toBeVisible()
   await expect(page.getByText('inactive@oneflow.local')).toHaveCount(0)
+  const memberCard = page.getByRole('listitem').filter({ hasText: 'Mobile Member' })
+  await expect(memberCard.getByRole('button', { name: '비활성화' })).toHaveAttribute(
+    'aria-disabled',
+    'true',
+  )
+
+  await frameActions.getByRole('button', { name: '새 사용자' }).click()
+  const createDialog = page.getByRole('dialog', { name: '새 사용자' })
+  await createDialog.getByLabel('새 사용자 이메일').fill('draft@oneflow.local')
+  await createDialog.getByLabel('새 사용자 이름').fill('Draft Member')
+  await expect(createDialog.getByRole('button', { name: '추가', exact: true })).toBeDisabled()
+  await createDialog.locator('form').evaluate((form: HTMLFormElement) => form.requestSubmit())
+  expect(createAttempts).toBe(0)
   await expectNoHorizontalOverflow(page)
   await page.screenshot({
-    path: '../../docs/screenshots/redevelopment/mobile-user-directory-lifecycle-ui-303/query-failure-retained-320.png',
+    path: '../../docs/screenshots/redevelopment/user-directory-freshness-write-guard-ui-323/stale-draft-320.png',
     fullPage: true,
   })
 
-  await retainedAlert.getByRole('button', { name: '다시 시도' }).click()
+  await page.evaluate(() => {
+    const retry = Array.from(document.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('다시 시도'),
+    )
+    if (!(retry instanceof HTMLButtonElement)) throw new Error('directory retry button not found')
+    retry.click()
+  })
   await expect(page.getByText('inactive@oneflow.local')).toBeVisible()
   await expect(page.getByText('member@oneflow.local')).toHaveCount(0)
   await expect(retainedAlert).toHaveCount(0)
+  await expect(createDialog.getByLabel('새 사용자 이메일')).toHaveValue('draft@oneflow.local')
+  await expect(createDialog.getByLabel('새 사용자 이름')).toHaveValue('Draft Member')
+  await expect(createDialog.getByRole('button', { name: '추가', exact: true })).toBeEnabled()
+  await createDialog.getByRole('button', { name: '추가', exact: true }).click()
+  await expect(createDialog).toBeHidden()
+  expect(createAttempts).toBe(1)
   await expect(page).toHaveURL(/scope=inactive/)
   await expectNoHorizontalOverflow(page)
   await expect(page.getByRole('button', { name: '빠른 도구 열기' })).toBeVisible()
   await page.screenshot({
-    path: '../../docs/screenshots/redevelopment/mobile-user-directory-lifecycle-ui-303/query-recovered-320.png',
+    path: '../../docs/screenshots/redevelopment/user-directory-freshness-write-guard-ui-323/recovered-320.png',
     fullPage: true,
   })
 
-  expect(requestedScopes).toEqual(['all', 'inactive', 'inactive'])
+  expect(requestedScopes.slice(0, 3)).toEqual(['all', 'inactive', 'inactive'])
+  expect(requestedScopes.slice(3).every((scope) => scope === 'inactive')).toBe(true)
 })
 
 test('프로젝트 상태 보고를 저장하면 목록에 헬스 칩이 보인다', async ({ page }) => {

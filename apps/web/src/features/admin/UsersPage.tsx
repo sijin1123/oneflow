@@ -182,6 +182,7 @@ function DirectoryActions({
   user,
   currentUserId,
   updatePending,
+  writeEnabled,
   lastActiveAdmin,
   onToggleActive,
   onToggleAdmin,
@@ -189,6 +190,7 @@ function DirectoryActions({
   user: DirectoryUser
   currentUserId?: string
   updatePending: boolean
+  writeEnabled: boolean
   lastActiveAdmin: boolean
   onToggleActive: (trigger: HTMLButtonElement) => void
   onToggleAdmin: (trigger: HTMLInputElement) => void
@@ -202,9 +204,10 @@ function DirectoryActions({
           checked={user.is_admin}
           // The last active admin cannot lose the flag (server 422; disabled here for clarity).
           disabled={updatePending || (user.is_admin && lastActiveAdmin)}
+          aria-disabled={!writeEnabled}
           onChange={(event) => onToggleAdmin(event.currentTarget)}
           aria-label={`${user.display_name} 관리자 권한`}
-          className="h-3 w-3 accent-of-accent"
+          className="h-3 w-3 accent-of-accent aria-disabled:opacity-45"
         />
         관리자
       </label>
@@ -213,6 +216,8 @@ function DirectoryActions({
         size="sm"
         // Self-deactivation and deactivating the last active admin are server 422s — surfaced as disabled buttons.
         disabled={updatePending || cannotDeactivate}
+        aria-disabled={!writeEnabled}
+        className="aria-disabled:pointer-events-none aria-disabled:opacity-45"
         onClick={(event) => onToggleActive(event.currentTarget)}
       >
         {user.is_active ? '비활성화' : '활성화'}
@@ -286,6 +291,14 @@ export function UsersPage() {
   }, [data, directory.isPlaceholderData, isError])
 
   const retainedData = data ?? (isError ? lastSuccessfulDirectory.current : undefined)
+  const directoryFresh = Boolean(
+    retainedData &&
+      !directory.isFetching &&
+      !directory.isPlaceholderData &&
+      !directory.isRefetchError &&
+      !isError &&
+      !refreshError,
+  )
 
   useUnsavedLocationPrompt(
     createDirty || inviteDirty,
@@ -373,6 +386,7 @@ export function UsersPage() {
     target.is_active && target.is_admin && directorySummary.active_admins === 1
 
   const submit = () => {
+    if (!directoryFresh) return
     create.mutate(
       { email: email.trim(), display_name: name.trim() },
       {
@@ -393,6 +407,7 @@ export function UsersPage() {
   }
 
   const runUpdate = (input: UserUpdateInput, label: string, closeConfirmation = false) => {
+    if (!directoryFresh) return
     update.reset()
     setFailedUpdate(null)
     setFailedUpdateLabel('')
@@ -408,6 +423,7 @@ export function UsersPage() {
   }
 
   const requestActiveChange = (user: DirectoryUser, trigger: HTMLButtonElement) => {
+    if (!directoryFresh) return
     const input = { id: user.id, is_active: !user.is_active }
     if (!user.is_active) {
       runUpdate(input, `${user.display_name} 활성화`)
@@ -428,6 +444,7 @@ export function UsersPage() {
   }
 
   const requestAdminChange = (user: DirectoryUser, trigger: HTMLInputElement) => {
+    if (!directoryFresh) return
     const input = { id: user.id, is_admin: !user.is_admin }
     if (!user.is_admin) {
       runUpdate(input, `${user.display_name} 관리자 지정`)
@@ -626,7 +643,10 @@ export function UsersPage() {
                 role="alert"
                 className="flex flex-wrap items-center justify-between gap-2 border-b border-of-warning/30 bg-of-warning/5 px-4 py-2 text-xs"
               >
-                <span>최신 사용자 목록을 불러오지 못했습니다. 마지막으로 확인한 목록을 유지합니다.</span>
+                <span>
+                  최신 사용자 목록을 불러오지 못했습니다. 마지막으로 확인한 목록을 유지하며,
+                  복구 전에는 계정 변경을 저장할 수 없습니다.
+                </span>
                 <Button size="sm" variant="outline" onClick={() => void refreshDirectory()}>
                   다시 시도
                 </Button>
@@ -645,7 +665,7 @@ export function UsersPage() {
                   <Button
                     size="sm"
                     variant="outline"
-                    disabled={update.isPending}
+                    disabled={!directoryFresh || update.isPending}
                     onClick={() => runUpdate(failedUpdate, failedUpdateLabel, Boolean(confirmAction))}
                   >
                     <RefreshCw size={13} aria-hidden="true" />
@@ -717,6 +737,7 @@ export function UsersPage() {
                                   user={u}
                                   currentUserId={me.data?.id}
                                   updatePending={update.isPending}
+                                  writeEnabled={directoryFresh}
                                   lastActiveAdmin={isLastActiveAdmin(u)}
                                   onToggleActive={(trigger) => requestActiveChange(u, trigger)}
                                   onToggleAdmin={(trigger) => requestAdminChange(u, trigger)}
@@ -764,6 +785,7 @@ export function UsersPage() {
                             user={u}
                             currentUserId={me.data?.id}
                             updatePending={update.isPending}
+                            writeEnabled={directoryFresh}
                             lastActiveAdmin={isLastActiveAdmin(u)}
                             onToggleActive={(trigger) => requestActiveChange(u, trigger)}
                             onToggleAdmin={(trigger) => requestAdminChange(u, trigger)}
@@ -878,6 +900,11 @@ export function UsersPage() {
                     사용자를 추가하지 못했습니다. 이메일 형식과 중복 여부를 확인하세요.
                   </p>
                 ) : null}
+                {!directoryFresh ? (
+                  <p role="status" className="text-xs text-of-warning">
+                    최신 사용자 목록을 복구하면 입력한 내용을 그대로 추가할 수 있습니다.
+                  </p>
+                ) : null}
               </div>
               <div className="flex justify-end gap-2 border-t border-of-border px-5 py-3">
                 <Button
@@ -890,7 +917,7 @@ export function UsersPage() {
                 </Button>
                 <Button
                   type="submit"
-                  disabled={!email.trim() || !name.trim() || create.isPending}
+                  disabled={!directoryFresh || !email.trim() || !name.trim() || create.isPending}
                   aria-busy={create.isPending}
                 >
                   {create.isPending ? '추가 중' : '추가'}
@@ -951,7 +978,7 @@ export function UsersPage() {
               </Button>
               <Button
                 variant="danger"
-                disabled={!confirmAction || update.isPending}
+                disabled={!directoryFresh || !confirmAction || update.isPending}
                 onClick={() => {
                   if (!confirmAction) return
                   runUpdate(
