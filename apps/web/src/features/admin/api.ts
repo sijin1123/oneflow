@@ -43,6 +43,14 @@ export type UserMembershipList = { items: UserMembership[]; total: number }
 
 export type UserDirectoryScope = 'all' | 'admins' | 'inactive'
 
+export type UserDirectoryRequestLifecycle = {
+  onStart: (query: { q: string; scope: UserDirectoryScope }) => number
+  onSuccess: (
+    query: { q: string; scope: UserDirectoryScope },
+    requestVersion: number,
+  ) => void
+}
+
 const USER_DIRECTORY_PAGE_SIZE = 50
 const USER_MEMBERSHIP_PAGE_SIZE = 50
 
@@ -89,11 +97,17 @@ export function useUsers(enabled = true) {
 export function useUserDirectory(
   query: { q: string; scope: UserDirectoryScope },
   enabled = true,
+  lifecycle?: UserDirectoryRequestLifecycle,
 ) {
   return useInfiniteQuery({
     queryKey: ['admin-users', 'directory', query],
     initialPageParam: 0,
-    queryFn: ({ pageParam }) => api<DirectoryList>(userDirectoryPath(query, pageParam)),
+    queryFn: async ({ pageParam }) => {
+      const requestVersion = lifecycle?.onStart(query)
+      const result = await api<DirectoryList>(userDirectoryPath(query, pageParam))
+      if (requestVersion !== undefined) lifecycle?.onSuccess(query, requestVersion)
+      return result
+    },
     getNextPageParam: (lastPage, pages) => {
       const loaded = pages.reduce((total, page) => total + page.items.length, 0)
       return loaded < lastPage.total ? loaded : undefined

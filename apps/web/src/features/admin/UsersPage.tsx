@@ -14,7 +14,15 @@ import {
   UsersRound,
   X,
 } from 'lucide-react'
-import { Fragment, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
+import {
+  Fragment,
+  useDeferredValue,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 
 import { FrameContextActions } from '@/components/shell/FrameContextActions'
@@ -312,6 +320,9 @@ type ConfirmedUserAction = {
   actionLabel: string
 }
 
+const userDirectoryKey = (scope: UserDirectoryScope, query: string) =>
+  `${scope}\u0000${query.trim()}`
+
 /* Workspace user directory (expansion Pass 33 PR-AY). Admin-only — the
    server is the authority (403); the sidebar link is mere gating. Guards
    mirror the API contract: no self-deactivation, and the last ACTIVE admin
@@ -344,7 +355,45 @@ export function UsersPage() {
   const filter: UserDirectoryScope =
     rawScope === 'admins' || rawScope === 'inactive' ? rawScope : 'all'
   const view = searchParams.get('view') === 'invites' ? 'invites' : 'directory'
-  const directory = useUserDirectory({ q: deferredQuery, scope: filter }, view === 'directory')
+  const desiredDirectoryKey = userDirectoryKey(filter, query)
+  const directoryFreshRef = useRef(false)
+  const desiredDirectoryKeyRef = useRef(desiredDirectoryKey)
+  const requestVersionRef = useRef(0)
+  const barrierVersionRef = useRef(0)
+  const successfulRequestRef = useRef<{
+    key: string
+    requestVersion: number
+  } | null>(null)
+  const committedDirectoryRef = useRef<{
+    key: string
+    requestVersion: number
+    barrierVersion: number
+  } | null>(null)
+
+  if (desiredDirectoryKeyRef.current !== desiredDirectoryKey) {
+    desiredDirectoryKeyRef.current = desiredDirectoryKey
+    directoryFreshRef.current = false
+  }
+
+  const directory = useUserDirectory(
+    { q: deferredQuery, scope: filter },
+    view === 'directory',
+    {
+      onStart: (_request) => {
+        const requestVersion = requestVersionRef.current + 1
+        requestVersionRef.current = requestVersion
+        directoryFreshRef.current = false
+        return requestVersion
+      },
+      onSuccess: (request, requestVersion) => {
+        if (requestVersion !== requestVersionRef.current) return
+        successfulRequestRef.current = {
+          key: userDirectoryKey(request.scope, request.q),
+          requestVersion,
+        }
+      },
+    },
+  )
   const {
     data,
     isPending,
@@ -368,14 +417,72 @@ export function UsersPage() {
   }, [data, directory.isPlaceholderData, isError])
 
   const retainedData = data ?? (isError ? lastSuccessfulDirectory.current : undefined)
+  const directoryKey = userDirectoryKey(filter, deferredQuery)
   const directoryFresh = Boolean(
     retainedData &&
+      directoryKey === desiredDirectoryKey &&
       !directory.isFetching &&
       !directory.isPlaceholderData &&
       !directory.isRefetchError &&
       !isError &&
       !refreshError,
   )
+
+  useLayoutEffect(() => {
+    const successfulRequest = successfulRequestRef.current
+    const canCommit =
+      directoryFresh &&
+      directoryKey === desiredDirectoryKeyRef.current &&
+      successfulRequest?.key === directoryKey &&
+      successfulRequest.requestVersion === requestVersionRef.current
+    directoryFreshRef.current = canCommit
+    if (canCommit) {
+      committedDirectoryRef.current = {
+        key: directoryKey,
+        requestVersion: requestVersionRef.current,
+        barrierVersion: barrierVersionRef.current,
+      }
+    }
+  }, [directory.dataUpdatedAt, directoryFresh, directoryKey])
+
+  const actionDirectoryFresh = () => directoryFreshRef.current
+  const markDirectoryIntent = (nextKey: string) => {
+    desiredDirectoryKeyRef.current = nextKey
+    directoryFreshRef.current = false
+    const committed = committedDirectoryRef.current
+    if (
+      committed?.key === nextKey &&
+      committed.requestVersion === requestVersionRef.current &&
+      committed.barrierVersion === barrierVersionRef.current
+    ) {
+      directoryFreshRef.current = true
+    }
+  }
+  const beginDirectoryRefresh = () => {
+    barrierVersionRef.current += 1
+    directoryFreshRef.current = false
+  }
+
+  useEffect(() => {
+    if (
+      refreshError &&
+      data &&
+      !directory.isFetching &&
+      !directory.isPlaceholderData &&
+      !directory.isRefetchError &&
+      !isError
+    ) {
+      setRefreshError(false)
+    }
+  }, [
+    data,
+    directory.dataUpdatedAt,
+    directory.isFetching,
+    directory.isPlaceholderData,
+    directory.isRefetchError,
+    isError,
+    refreshError,
+  ])
 
   useUnsavedLocationPrompt(
     createDirty || editDirty || inviteDirty,
@@ -401,13 +508,16 @@ export function UsersPage() {
   }, [filter, query, rawQuery, rawScope, searchParams, setSearchParams])
 
   const setQuery = (value: string) => {
+    const nextQuery = value.slice(0, 120)
+    markDirectoryIntent(userDirectoryKey(filter, nextQuery))
     const next = new URLSearchParams(window.location.search)
-    if (value) next.set('q', value.slice(0, 120))
+    if (nextQuery) next.set('q', nextQuery)
     else next.delete('q')
     setSearchParams(next, { replace: true })
   }
 
   const setFilter = (scope: UserDirectoryScope) => {
+    markDirectoryIntent(userDirectoryKey(scope, query))
     const next = new URLSearchParams(window.location.search)
     if (scope === 'all') next.delete('scope')
     else next.set('scope', scope)
@@ -463,7 +573,7 @@ export function UsersPage() {
     target.is_active && target.is_admin && directorySummary.active_admins === 1
 
   const submit = () => {
-    if (!directoryFresh) return
+    if (!actionDirectoryFresh()) return
     create.mutate(
       { email: email.trim(), display_name: name.trim() },
       {
@@ -489,7 +599,7 @@ export function UsersPage() {
     closeConfirmation = false,
     closeEdit = false,
   ) => {
-    if (!directoryFresh) return
+    if (!actionDirectoryFresh()) return
     update.reset()
     setFailedUpdate(null)
     setFailedUpdateLabel('')
@@ -506,7 +616,7 @@ export function UsersPage() {
   }
 
   const requestActiveChange = (user: DirectoryUser, trigger: HTMLButtonElement) => {
-    if (!directoryFresh) return
+    if (!actionDirectoryFresh()) return
     const input = { id: user.id, is_active: !user.is_active }
     if (!user.is_active) {
       runUpdate(input, `${user.display_name} 활성화`)
@@ -527,7 +637,7 @@ export function UsersPage() {
   }
 
   const requestAdminChange = (user: DirectoryUser, trigger: HTMLInputElement) => {
-    if (!directoryFresh) return
+    if (!actionDirectoryFresh()) return
     const input = { id: user.id, is_admin: !user.is_admin }
     if (!user.is_admin) {
       runUpdate(input, `${user.display_name} 관리자 지정`)
@@ -547,7 +657,7 @@ export function UsersPage() {
   }
 
   const openNameEdit = (user: DirectoryUser, trigger: HTMLButtonElement) => {
-    if (!directoryFresh) return
+    if (!actionDirectoryFresh()) return
     update.reset()
     setFailedUpdate(null)
     setFailedUpdateLabel('')
@@ -565,7 +675,7 @@ export function UsersPage() {
   }
 
   const submitNameEdit = () => {
-    if (!directoryFresh || !editingUser) return
+    if (!actionDirectoryFresh() || !editingUser) return
     const displayName = editingName.trim()
     if (!displayName || displayName === editingUser.display_name) return
     runUpdate(
@@ -577,9 +687,15 @@ export function UsersPage() {
   }
 
   const refreshDirectory = async () => {
+    beginDirectoryRefresh()
     setRefreshError(false)
     const result = await refetch()
     setRefreshError(Boolean(result.error))
+  }
+
+  const loadNextDirectoryPage = () => {
+    beginDirectoryRefresh()
+    return fetchNextPage()
   }
 
   const busy = isFetchingNextPage || directory.isFetching || create.isPending || update.isPending
@@ -795,7 +911,7 @@ export function UsersPage() {
               </div>
             ) : null}
             {isError && !retainedData ? (
-              <ErrorState error={error} onRetry={() => refetch()} />
+              <ErrorState error={error} onRetry={() => void refreshDirectory()} />
             ) : isPending ? (
               <ListSkeleton />
             ) : users.length === 0 ? (
@@ -935,7 +1051,7 @@ export function UsersPage() {
                         aria-describedby={
                           isFetchNextPageError ? 'user-directory-load-more-error' : undefined
                         }
-                        onClick={() => void fetchNextPage()}
+                        onClick={() => void loadNextDirectoryPage()}
                       >
                         {isFetchingNextPage ? '불러오는 중...' : '더 불러오기'}
                       </Button>
