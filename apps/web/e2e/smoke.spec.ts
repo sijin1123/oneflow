@@ -14647,6 +14647,170 @@ test('설정 필드 query 오류를 복구하고 데스크톱·모바일에서 �
   })
 })
 
+test('설정 필드 후속 query 오류는 목록과 생성·행 편집 초안을 유지하고 쓰기를 차단한다', async ({
+  page,
+}) => {
+  await mockApi(page)
+  type FailedQuery = 'fields' | 'project' | 'permissions' | 'types' | null
+  let failedQuery: FailedQuery = null
+  const field = {
+    id: 'cf-lifecycle',
+    project_id: project.id,
+    name: '고객 영향',
+    field_type: 'text',
+    options: null,
+    position: 0,
+    is_active: true,
+    applies_to: ['task'],
+    created_at: '2026-07-06T00:00:00Z',
+    updated_at: '2026-07-06T00:00:00Z',
+  }
+  await page.route(`**/api/v1/projects/${project.id}/members`, (route) =>
+    route.fulfill({
+      json: {
+        items: [
+          {
+            user_id: 'me-1',
+            email: 'dev@oneflow.local',
+            display_name: 'Dev User',
+            role: 'member',
+          },
+        ],
+        total: 1,
+      },
+    }),
+  )
+  await page.route(`**/api/v1/projects/${project.id}/custom-fields**`, (route) =>
+    route.fulfill(
+      failedQuery === 'fields'
+        ? { status: 503, json: { detail: 'temporary fields refresh error' } }
+        : { json: { items: [field], total: 1 } },
+    ),
+  )
+  await page.route(`**/api/v1/projects/${project.id}`, (route) =>
+    route.fulfill(
+      failedQuery === 'project'
+        ? { status: 503, json: { detail: 'temporary project refresh error' } }
+        : { json: project },
+    ),
+  )
+  await page.route(`**/api/v1/projects/${project.id}/permissions`, (route) =>
+    route.fulfill(
+      failedQuery === 'permissions'
+        ? { status: 503, json: { detail: 'temporary permission refresh error' } }
+        : {
+            json: {
+              my_role: 'member',
+              my_custom_role: {
+                id: 'role-field-manager',
+                name: '필드 관리자',
+                permissions: ['field.manage'],
+              },
+              verbs: [
+                {
+                  key: 'field.manage',
+                  label: '커스텀 필드 구성',
+                  owner: 'always',
+                  member: 'never',
+                  viewer: 'never',
+                  effective: 'always',
+                  condition: null,
+                  note: null,
+                },
+              ],
+            },
+          },
+    ),
+  )
+  await page.route(`**/api/v1/projects/${project.id}/types`, (route) =>
+    route.fulfill(
+      failedQuery === 'types'
+        ? { status: 503, json: { detail: 'temporary type refresh error' } }
+        : {
+            json: {
+              items: [
+                {
+                  id: 'type-task',
+                  project_id: project.id,
+                  key: 'task',
+                  name: '작업',
+                  description: null,
+                  is_builtin: true,
+                  is_active: true,
+                  position: 0,
+                },
+              ],
+              total: 1,
+            },
+          },
+    ),
+  )
+
+  await page.setViewportSize({ width: 1280, height: 720 })
+  await page.goto(`/projects/${project.id}/settings?tab=fields`)
+  const surface = page.getByRole('region', { name: '사용자 정의 필드 설정' })
+  const createName = surface.getByLabel('새 필드 이름')
+  await createName.fill('출시 승인')
+  await surface.getByRole('button', { name: '고객 영향 필드 작업' }).click()
+  await page.getByRole('menuitem', { name: '고객 영향 편집' }).click()
+  const rowName = surface.getByLabel('고객 영향 이름 편집')
+  await rowName.fill('고객 영향 최신')
+
+  const refreshAndRecover = async (kind: Exclude<FailedQuery, null>, label: string) => {
+    failedQuery = kind
+    await surface.getByRole('button', { name: '필드 설정 새로고침' }).click()
+    const alert = surface.getByRole('alert').filter({ hasText: `최신 ${label} 정보` })
+    await expect(alert).toContainText('마지막 성공 데이터를 유지')
+    await expect(rowName).toBeVisible()
+    await expect(createName).toHaveValue('출시 승인')
+    await expect(rowName).toHaveValue('고객 영향 최신')
+    await expect(surface.getByRole('button', { name: '필드 추가' })).toBeDisabled()
+    await expect(surface.getByRole('button', { name: '저장', exact: true })).toBeDisabled()
+    failedQuery = null
+    await alert.getByRole('button', { name: `${label} 다시 시도` }).click()
+    await expect(alert).toHaveCount(0)
+    await expect(surface.getByRole('button', { name: '필드 추가' })).toBeEnabled()
+    await expect(surface.getByRole('button', { name: '저장', exact: true })).toBeEnabled()
+  }
+
+  await refreshAndRecover('fields', '필드 정의')
+  failedQuery = 'project'
+  await surface.getByRole('button', { name: '필드 설정 새로고침' }).click()
+  const projectAlert = surface.getByRole('alert').filter({ hasText: '최신 프로젝트 권한 정보' })
+  await expect(projectAlert).toBeVisible()
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/project-fields-lifecycle-ui-315/desktop-project-error.png',
+    fullPage: true,
+  })
+  failedQuery = null
+  await projectAlert.getByRole('button', { name: '프로젝트 권한 다시 시도' }).click()
+  await expect(projectAlert).toHaveCount(0)
+
+  await page.setViewportSize({ width: 320, height: 740 })
+  await refreshAndRecover('permissions', '위임 권한')
+  failedQuery = 'types'
+  await surface.getByRole('button', { name: '필드 설정 새로고침' }).click()
+  const typeAlert = surface.getByRole('alert').filter({ hasText: '최신 프로젝트 타입 정보' })
+  await expect(typeAlert).toBeVisible()
+  await typeAlert.scrollIntoViewIfNeeded()
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/project-fields-lifecycle-ui-315/mobile-type-error-320.png',
+    fullPage: true,
+  })
+  failedQuery = null
+  await typeAlert.getByRole('button', { name: '프로젝트 타입 다시 시도' }).click()
+  await expect(typeAlert).toHaveCount(0)
+  await expect(createName).toHaveValue('출시 승인')
+  await expect(rowName).toHaveValue('고객 영향 최신')
+  await rowName.evaluate((element) => element.scrollIntoView({ block: 'center' }))
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/project-fields-lifecycle-ui-315/mobile-recovered-320.png',
+    fullPage: true,
+  })
+})
+
 test('드로어 커스텀 필드에 값을 입력하면 델타 PUT이 간다', async ({ page }) => {
   await mockApi(page)
   await page.route(`**/api/v1/projects/${project.id}/custom-fields**`, (route) =>

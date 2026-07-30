@@ -3,6 +3,7 @@ import {
   CheckCircle2,
   ChevronDown,
   ChevronUp,
+  CircleAlert,
   ListChecks,
   LoaderCircle,
   Lock,
@@ -122,12 +123,14 @@ function TypeBindings({
 function FieldActions({
   field,
   canEdit,
+  writeDisabled,
   onEdit,
   onToggle,
   onDelete,
 }: {
   field: CustomField
   canEdit: boolean
+  writeDisabled: boolean
   onEdit: () => void
   onToggle: () => void
   onDelete: () => void
@@ -144,6 +147,7 @@ function FieldActions({
           label: field.is_active ? '비활성화' : '활성화',
           ariaLabel: `${field.name} ${field.is_active ? '비활성화' : '활성화'}`,
           icon: <ToggleLeft size={14} />,
+          disabled: writeDisabled,
           onSelect: onToggle,
         },
         {
@@ -151,6 +155,7 @@ function FieldActions({
           ariaLabel: `${field.name} 삭제`,
           icon: <Trash2 size={14} />,
           tone: 'danger',
+          disabled: writeDisabled,
           onSelect: onDelete,
         },
       ]
@@ -179,6 +184,7 @@ function FieldRow({
   total,
   projectId,
   canEdit,
+  writeDisabled,
   projectTypes,
   typeLabel,
   reorderPending,
@@ -190,6 +196,7 @@ function FieldRow({
   total: number
   projectId: string
   canEdit: boolean
+  writeDisabled: boolean
   projectTypes: { key: string; label: string }[]
   typeLabel: (key: string) => string
   reorderPending: boolean
@@ -248,6 +255,7 @@ function FieldRow({
   }
 
   const submitUpdate = (input: UpdateInput, successMessage = '필드 설정을 저장했습니다.') => {
+    if (writeDisabled) return
     setMessage('')
     setUpdateRetry(input)
     update.mutate(input, {
@@ -263,6 +271,7 @@ function FieldRow({
   }
 
   const submitDelete = (fieldId: string) => {
+    if (writeDisabled) return
     setMessage('')
     setDeleteRetry(fieldId)
     remove.mutate(fieldId, {
@@ -303,6 +312,7 @@ function FieldRow({
                   !name.trim() ||
                   optionsInvalid ||
                   !dirty ||
+                  writeDisabled ||
                   update.isPending
                 }
                 onClick={() =>
@@ -373,7 +383,7 @@ function FieldRow({
                 <Button
                   size="sm"
                   variant="outline"
-                  disabled={update.isPending}
+                  disabled={writeDisabled || update.isPending}
                   onClick={() => submitUpdate(updateRetry)}
                 >
                   <RefreshCw size={13} aria-hidden="true" /> 같은 내용으로 다시
@@ -444,6 +454,7 @@ function FieldRow({
           <FieldActions
             field={field}
             canEdit={canEdit}
+            writeDisabled={writeDisabled}
             onEdit={() => {
               setName(field.name)
               setOptions(field.options?.join(', ') ?? '')
@@ -481,7 +492,7 @@ function FieldRow({
             <Button
               size="sm"
               variant="outline"
-              disabled={remove.isPending}
+              disabled={writeDisabled || remove.isPending}
               onClick={() => submitDelete(deleteRetry)}
             >
               <RefreshCw size={13} aria-hidden="true" /> 삭제 다시 시도
@@ -529,7 +540,7 @@ export function FieldsPanel({
     (verb) => verb.key === 'field.manage',
   )?.effective
   const canManage = isOwner || fieldPermission === 'always'
-  const canEdit = canManage && !project.data?.archived_at
+  const canConfigure = canManage && !project.data?.archived_at
   const parsedOptions = parseOptions(options)
   const optionsInvalid =
     type === 'dropdown' &&
@@ -573,6 +584,7 @@ export function FieldsPanel({
   }
 
   const submitCreate = (input: CreateInput) => {
+    if (!canWrite) return
     setMessage('')
     setCreateRetry(input)
     create.mutate(input, {
@@ -588,6 +600,7 @@ export function FieldsPanel({
   }
 
   const submitReorder = (orderedIds: string[]) => {
+    if (!canWrite) return
     setMessage('')
     setReorderRetry(orderedIds)
     reorder.mutate(orderedIds, {
@@ -607,38 +620,82 @@ export function FieldsPanel({
     submitReorder(ids)
   }
 
-  if (
-    fields.isPending ||
-    project.isPending ||
-    (!isOwner && permissions.isPending) ||
-    projectTypes.isPending
-  ) {
+  const queryStates = [
+    {
+      key: 'fields',
+      label: '필드 정의',
+      active: true,
+      isPending: fields.isPending,
+      isFetching: fields.isFetching,
+      isError: fields.isError,
+      hasData: Boolean(fields.data),
+      error: fields.error,
+      retry: () => fields.refetch(),
+    },
+    {
+      key: 'project',
+      label: '프로젝트 권한',
+      active: true,
+      isPending: project.isPending,
+      isFetching: project.isFetching,
+      isError: project.isError,
+      hasData: Boolean(project.data),
+      error: project.error,
+      retry: () => project.refetch(),
+    },
+    {
+      key: 'permissions',
+      label: '위임 권한',
+      active: !isOwner,
+      isPending: permissions.isPending,
+      isFetching: permissions.isFetching,
+      isError: permissions.isError,
+      hasData: Boolean(permissions.data),
+      error: permissions.error,
+      retry: () => permissions.refetch(),
+    },
+    {
+      key: 'project-types',
+      label: '프로젝트 타입',
+      active: true,
+      isPending: projectTypes.isPending,
+      isFetching: projectTypes.isFetching,
+      isError: projectTypes.isError,
+      hasData: Boolean(projectTypes.data),
+      error: projectTypes.error,
+      retry: () => projectTypes.refetch(),
+    },
+  ].filter((query) => query.active)
+  const initialPending = queryStates.some(
+    (query) => query.isPending && !query.hasData,
+  )
+  if (initialPending) {
     return (
       <section aria-label="사용자 정의 필드 설정" className="min-w-0">
         <ListSkeleton rows={6} />
       </section>
     )
   }
-  const failedQuery = [fields, project, permissions, projectTypes].find(
-    (query) => query.isError,
+  const initialFailure = queryStates.find(
+    (query) => query.isError && !query.hasData,
   )
-  if (failedQuery?.isError) {
+  if (initialFailure) {
     return (
       <ErrorState
-        error={failedQuery.error}
-        onRetry={() => {
-          void fields.refetch()
-          void project.refetch()
-          void permissions.refetch()
-          void projectTypes.refetch()
-        }}
+        error={initialFailure.error}
+        onRetry={() => void initialFailure.retry()}
       />
     )
   }
+  const staleQueries = queryStates.filter((query) => query.isError)
+  const isFetching = queryStates.some((query) => query.isFetching)
+  const writeBlocked = staleQueries.length > 0
+  const canWrite = canConfigure && !writeBlocked
 
   return (
     <section
       aria-label="사용자 정의 필드 설정"
+      aria-busy={isFetching}
       className="min-w-0 overflow-hidden rounded-of border border-of-border bg-of-surface"
     >
       <header className="flex min-w-0 flex-col gap-3 px-4 py-4 sm:flex-row sm:items-start sm:justify-between">
@@ -654,19 +711,72 @@ export function FieldsPanel({
             고정되며, 비활성화하거나 옵션을 바꿔도 기존 값은 유지됩니다.
           </p>
         </div>
-        <Badge
-          variant={canEdit ? 'accent' : 'outline'}
-          className="self-start whitespace-nowrap"
-        >
-          {canEdit ? (
-            `${fields.data?.total ?? 0}개 관리 중`
-          ) : (
-            <>
-              <LockKeyhole size={12} aria-hidden="true" /> 읽기 전용
-            </>
-          )}
-        </Badge>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            size="sm"
+            variant="ghost"
+            disabled={isFetching}
+            onClick={() => {
+              for (const query of queryStates) void query.retry()
+            }}
+          >
+            <RefreshCw
+              size={13}
+              aria-hidden="true"
+              className={isFetching ? 'animate-spin' : undefined}
+            />
+            필드 설정 새로고침
+          </Button>
+          <Badge
+            variant={canWrite ? 'accent' : 'outline'}
+            className="self-start whitespace-nowrap"
+          >
+            {canWrite ? (
+              `${fields.data?.total ?? 0}개 관리 중`
+            ) : canConfigure && writeBlocked ? (
+              <>
+                <LockKeyhole size={12} aria-hidden="true" /> 최신 상태 확인 필요
+              </>
+            ) : (
+              <>
+                <LockKeyhole size={12} aria-hidden="true" /> 읽기 전용
+              </>
+            )}
+          </Badge>
+        </div>
       </header>
+
+      {staleQueries.length > 0 ? (
+        <div className="space-y-2 border-t border-of-border px-3 py-3 sm:px-4">
+          {staleQueries.map((query) => (
+            <div
+              key={query.key}
+              role="alert"
+              className="flex min-w-0 flex-col gap-2 border border-of-warning/35 bg-of-warning/10 px-3 py-2.5 sm:flex-row sm:items-center sm:justify-between"
+            >
+              <div className="flex min-w-0 items-start gap-2">
+                <CircleAlert
+                  size={14}
+                  className="mt-0.5 shrink-0 text-of-warning"
+                  aria-hidden="true"
+                />
+                <span className="text-xs leading-5 text-of-muted">
+                  최신 {query.label} 정보를 불러오지 못했습니다. 마지막 성공 데이터를 유지하며 다시 확인할 때까지 서버 변경은 차단됩니다.
+                </span>
+              </div>
+              <Button
+                size="sm"
+                variant="outline"
+                className="w-full shrink-0 sm:w-auto"
+                disabled={query.isFetching}
+                onClick={() => void query.retry()}
+              >
+                <RefreshCw size={13} aria-hidden="true" /> {query.label} 다시 시도
+              </Button>
+            </div>
+          ))}
+        </div>
+      ) : null}
 
       <div
         role="list"
@@ -693,7 +803,7 @@ export function FieldsPanel({
         </p>
       ) : null}
 
-      {canEdit ? (
+      {canConfigure ? (
         <div className="space-y-3 border-b border-of-border bg-of-surface-2/35 px-3 py-3">
           <div className="grid min-w-0 gap-2 sm:grid-cols-[minmax(0,1fr)_8rem_auto] sm:items-start">
             <Input
@@ -728,7 +838,7 @@ export function FieldsPanel({
             <Button
               size="sm"
               disabled={
-                !name.trim() || optionsInvalid || create.isPending
+                !name.trim() || optionsInvalid || !canWrite || create.isPending
               }
               onClick={() =>
                 submitCreate({
@@ -790,7 +900,7 @@ export function FieldsPanel({
                 <Button
                   size="sm"
                   variant="outline"
-                  disabled={create.isPending}
+                  disabled={!canWrite || create.isPending}
                   onClick={() => submitCreate(createRetry)}
                 >
                   <RefreshCw size={13} aria-hidden="true" /> 같은 내용으로 다시
@@ -816,7 +926,7 @@ export function FieldsPanel({
             <Button
               size="sm"
               variant="outline"
-              disabled={reorder.isPending}
+              disabled={!canWrite || reorder.isPending}
               onClick={() => submitReorder(reorderRetry)}
             >
               <RefreshCw size={13} aria-hidden="true" /> 같은 순서로 다시 시도
@@ -842,7 +952,8 @@ export function FieldsPanel({
                 index={index}
                 total={fields.data?.items.length ?? 0}
                 projectId={projectId}
-                canEdit={canEdit}
+                canEdit={canConfigure}
+                writeDisabled={!canWrite}
                 projectTypes={projectTypes.options}
                 typeLabel={typeLabel}
                 reorderPending={reorder.isPending}
@@ -856,7 +967,7 @@ export function FieldsPanel({
         <EmptyState
           title="사용자 정의 필드가 없습니다"
           hint={
-            canEdit
+            canConfigure
               ? '이름과 입력 타입을 선택해 첫 프로젝트 필드를 만드세요.'
               : '아직 이 프로젝트에 정의된 추가 속성이 없습니다.'
           }
