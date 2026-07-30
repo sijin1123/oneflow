@@ -35,14 +35,14 @@ export function DangerPanel({ isOwner }: { isOwner: boolean }) {
   const [failedAction, setFailedAction] = useState<boolean | null>(null)
   const [feedback, setFeedback] = useState('')
 
-  if (project.isPending) {
+  if (project.isPending && !project.data) {
     return (
       <section aria-label="프로젝트 위험 구역" className="min-w-0">
         <ListSkeleton rows={4} />
       </section>
     )
   }
-  if (project.isError || !project.data) {
+  if (!project.data) {
     return (
       <ErrorState
         error={project.error}
@@ -52,7 +52,10 @@ export function DangerPanel({ isOwner }: { isOwner: boolean }) {
   }
 
   const archived = project.data.archived_at !== null
+  const projectStale = project.isError
+  const actionBlocked = archive.isPending || projectStale
   const runAction = async (shouldArchive: boolean) => {
+    if (projectStale) return
     setFeedback('')
     setFailedAction(null)
     try {
@@ -72,6 +75,7 @@ export function DangerPanel({ isOwner }: { isOwner: boolean }) {
     <>
       <section
         aria-label="프로젝트 위험 구역"
+        aria-busy={project.isFetching}
         className="min-w-0 overflow-hidden rounded-of border border-of-border bg-of-surface"
       >
         <header className="flex min-w-0 flex-col gap-3 border-b border-of-border px-4 py-4 sm:flex-row sm:items-start sm:justify-between">
@@ -89,13 +93,56 @@ export function DangerPanel({ isOwner }: { isOwner: boolean }) {
               </p>
             </div>
           </div>
-          <Badge
-            variant={archived ? 'warning' : 'success'}
-            className="self-start"
-          >
-            {archived ? '보관됨 · 읽기 전용' : '활성 · 변경 가능'}
-          </Badge>
+          <div className="flex shrink-0 flex-wrap items-center gap-2 self-start">
+            {projectStale ? (
+              <Badge variant="warning">최신 상태 확인 필요</Badge>
+            ) : null}
+            <Badge variant={archived ? 'warning' : 'success'}>
+              {archived ? '보관됨 · 읽기 전용' : '활성 · 변경 가능'}
+            </Badge>
+            <Button
+              type="button"
+              size="icon"
+              variant="ghost"
+              aria-label="프로젝트 상태 새로고침"
+              title="프로젝트 상태 새로고침"
+              disabled={project.isFetching || archive.isPending}
+              onClick={() => void project.refetch()}
+            >
+              <RefreshCw
+                size={14}
+                aria-hidden="true"
+                className={project.isFetching ? 'animate-spin' : undefined}
+              />
+            </Button>
+          </div>
         </header>
+
+        {projectStale ? (
+          <div
+            role="alert"
+            className="flex min-w-0 flex-col gap-2 border-b border-of-warning/20 bg-of-warning-soft px-4 py-2.5 text-xs sm:flex-row sm:items-center sm:justify-between"
+          >
+            <p className="min-w-0 break-words text-of-warning">
+              프로젝트 최신 상태를 확인하지 못해 마지막 확인 상태를 표시합니다. 복구 전에는 보관과 복원이 잠깁니다.
+            </p>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="w-full shrink-0 sm:w-auto"
+              disabled={project.isFetching}
+              onClick={() => void project.refetch()}
+            >
+              <RefreshCw
+                size={13}
+                aria-hidden="true"
+                className={project.isFetching ? 'animate-spin' : undefined}
+              />
+              프로젝트 상태 다시 시도
+            </Button>
+          </div>
+        ) : null}
 
         <div className="divide-y divide-of-border-subtle">
           <LifecycleRow
@@ -135,7 +182,7 @@ export function DangerPanel({ isOwner }: { isOwner: boolean }) {
                 size="sm"
                 variant="outline"
                 className="w-full shrink-0 sm:w-auto"
-                disabled={archive.isPending}
+                disabled={actionBlocked}
                 onClick={() => void runAction(false)}
               >
                 <RotateCcw size={14} aria-hidden="true" />
@@ -148,7 +195,7 @@ export function DangerPanel({ isOwner }: { isOwner: boolean }) {
                 size="sm"
                 variant="danger"
                 className="w-full shrink-0 sm:w-auto"
-                disabled={archive.isPending}
+                disabled={actionBlocked}
                 onClick={() => {
                   setFeedback('')
                   setFailedAction(null)
@@ -188,7 +235,7 @@ export function DangerPanel({ isOwner }: { isOwner: boolean }) {
               size="sm"
               variant="outline"
               className="w-full shrink-0 sm:w-auto"
-              disabled={archive.isPending}
+              disabled={actionBlocked}
               onClick={() => void runAction(false)}
             >
               <RefreshCw size={13} aria-hidden="true" />
@@ -255,6 +302,31 @@ export function DangerPanel({ isOwner }: { isOwner: boolean }) {
                   {actionError(archive.error, true)}
                 </p>
               ) : null}
+              {projectStale ? (
+                <div
+                  role="alert"
+                  className="mt-4 flex min-w-0 flex-col gap-2 rounded-of border border-of-warning/20 bg-of-warning-soft px-3 py-2 text-xs leading-5 sm:flex-row sm:items-center sm:justify-between"
+                >
+                  <p className="min-w-0 break-words text-of-warning">
+                    최신 프로젝트 상태를 확인할 때까지 보관할 수 없습니다.
+                  </p>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="w-full shrink-0 sm:w-auto"
+                    disabled={project.isFetching}
+                    onClick={() => void project.refetch()}
+                  >
+                    <RefreshCw
+                      size={13}
+                      aria-hidden="true"
+                      className={project.isFetching ? 'animate-spin' : undefined}
+                    />
+                    프로젝트 상태 다시 시도
+                  </Button>
+                </div>
+              ) : null}
             </div>
 
             <footer className="flex flex-col-reverse gap-2 border-t border-of-border-subtle px-4 py-3 sm:flex-row sm:justify-end">
@@ -272,7 +344,7 @@ export function DangerPanel({ isOwner }: { isOwner: boolean }) {
                 type="button"
                 size="sm"
                 variant="danger"
-                disabled={archive.isPending}
+                disabled={actionBlocked}
                 onClick={() => void runAction(true)}
               >
                 <Archive size={14} aria-hidden="true" />

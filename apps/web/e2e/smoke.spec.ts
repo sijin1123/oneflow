@@ -13163,6 +13163,61 @@ test('위험 구역은 조회 오류를 복구하고 모바일 멤버에게 읽�
   })
 })
 
+test('위험 구역은 후속 조회 실패에서 마지막 lifecycle을 유지하고 쓰기를 차단한다', async ({ page }) => {
+  await mockApi(page)
+  let projectMode: 'active' | 'error' | 'archived' = 'active'
+  const projectRequests: string[] = []
+  await page.route(`**/api/v1/projects/${project.id}`, async (route) => {
+    projectRequests.push(projectMode)
+    if (projectMode === 'error') {
+      await route.fulfill({
+        status: 503,
+        json: { detail: 'project refresh unavailable' },
+      })
+      return
+    }
+    await route.fulfill({
+      json: {
+        ...project,
+        archived_at:
+          projectMode === 'archived' ? '2026-07-06T00:00:00Z' : null,
+      },
+    })
+  })
+
+  await page.setViewportSize({ width: 320, height: 740 })
+  await page.goto(`/projects/${project.id}/settings?tab=danger`)
+  const panel = page.getByRole('region', { name: '프로젝트 위험 구역' })
+  await expect(panel.getByText('활성 · 변경 가능')).toBeVisible()
+  await expect(panel.getByRole('button', { name: '프로젝트 보관' })).toBeEnabled()
+
+  projectMode = 'error'
+  await panel.getByRole('button', { name: '프로젝트 상태 새로고침' }).click()
+  await expect(panel.getByRole('alert')).toContainText('마지막 확인 상태를 표시합니다')
+  await expect(panel.getByText('최신 상태 확인 필요')).toBeVisible()
+  await expect(panel.getByText('활성 · 변경 가능')).toBeVisible()
+  await expect(panel.getByRole('button', { name: '프로젝트 보관' })).toBeDisabled()
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/project-danger-lifecycle-ui-317/stale-320.png',
+    fullPage: false,
+  })
+
+  const requestsBeforeRetry = projectRequests.length
+  projectMode = 'archived'
+  await panel.getByRole('button', { name: '프로젝트 상태 다시 시도' }).click()
+  await expect(panel.getByRole('alert')).toHaveCount(0)
+  await expect(panel.getByText('보관됨 · 읽기 전용')).toBeVisible()
+  await expect(panel.getByRole('button', { name: '프로젝트 복원' })).toBeEnabled()
+  expect(projectRequests).toHaveLength(requestsBeforeRetry + 1)
+  expect(projectRequests.at(-1)).toBe('archived')
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/project-danger-lifecycle-ui-317/recovered-320.png',
+    fullPage: false,
+  })
+})
+
 test('인테이크 큐에서 소유자가 수락하면 triage POST가 간다', async ({ page }) => {
   await mockApi(page)
   await page.route('**/api/v1/me', (route) =>
