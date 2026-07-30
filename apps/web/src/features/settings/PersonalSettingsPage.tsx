@@ -41,6 +41,7 @@ import { useUnsavedLocationPrompt } from '@/lib/guards'
 import { cn } from '@/lib/utils'
 
 import {
+  type CreateAccessTokenInput,
   type PersonalAccessTokenCreated,
   type PersonalAccessToken,
   useAccessTokens,
@@ -89,6 +90,7 @@ function ConfirmActionDialog({
   open,
   onOpenChange,
   returnFocusRef,
+  fallbackFocusRef,
   title,
   description,
   pending,
@@ -102,6 +104,7 @@ function ConfirmActionDialog({
   open: boolean
   onOpenChange: (open: boolean) => void
   returnFocusRef: RefObject<HTMLButtonElement | null>
+  fallbackFocusRef?: RefObject<HTMLButtonElement | null>
   title: string
   description: ReactNode
   pending: boolean
@@ -120,7 +123,12 @@ function ConfirmActionDialog({
           className="w-[min(28rem,calc(100vw-1.5rem))] overflow-hidden rounded-of-lg border border-of-border bg-of-surface-raised shadow-[var(--of-shadow-popover)]"
           onCloseAutoFocus={(event) => {
             event.preventDefault()
-            returnFocusRef.current?.focus()
+            const returnTarget = returnFocusRef.current
+            if (returnTarget?.isConnected && !returnTarget.disabled) {
+              returnTarget.focus()
+            } else {
+              fallbackFocusRef?.current?.focus()
+            }
           }}
         >
           <header className="flex items-start gap-3 border-b border-of-border-subtle px-4 py-3.5">
@@ -471,9 +479,16 @@ function AccessTokensPanel() {
   const [revokeTarget, setRevokeTarget] = useState<PersonalAccessToken | null>(null)
   const nameRef = useRef<HTMLInputElement>(null)
   const revokeButtonRef = useRef<HTMLButtonElement>(null)
+  const refreshButtonRef = useRef<HTMLButtonElement>(null)
   const hasTokenData = tokens.data !== undefined
   const stale = tokens.isError && hasTokenData
   const writeBlocked = tokens.isError || tokens.isFetching
+  const currentRevokeTarget = revokeTarget
+    ? tokens.data?.items.find((token) => token.id === revokeTarget.id && !token.revoked_at) ?? null
+    : null
+  const revokeTargetUnavailable =
+    revokeTarget !== null && hasTokenData && !writeBlocked && currentRevokeTarget === null
+  const revokeActionBlocked = writeBlocked || revokeTargetUnavailable
 
   useUnsavedLocationPrompt(
     created !== null || (creating && (name.trim().length > 0 || days !== 90)),
@@ -487,7 +502,7 @@ function AccessTokensPanel() {
     setCreating(true)
     window.setTimeout(() => nameRef.current?.focus(), 0)
   }
-  const create = (body: { name: string; expires_in_days: number }) => {
+  const create = (body: CreateAccessTokenInput) => {
     if (writeBlocked) return
     createToken.mutate(body, {
       onSuccess: (result) => {
@@ -498,9 +513,9 @@ function AccessTokensPanel() {
   }
 
   const revoke = async () => {
-    if (!revokeTarget || writeBlocked) return
+    if (!currentRevokeTarget || revokeActionBlocked) return
     try {
-      await revokeToken.mutateAsync(revokeTarget.id)
+      await revokeToken.mutateAsync(currentRevokeTarget.id)
       setRevokeTarget(null)
     } catch {
       // The focused confirmation keeps the exact failed token available for retry.
@@ -517,6 +532,7 @@ function AccessTokensPanel() {
         actions={
           <div className="flex min-w-0 flex-wrap items-center gap-2">
             <Button
+              ref={refreshButtonRef}
               type="button"
               size="sm"
               variant="ghost"
@@ -564,7 +580,12 @@ function AccessTokensPanel() {
             event.preventDefault()
             const trimmed = name.trim()
             if (!trimmed) return
-            create({ name: trimmed, expires_in_days: days })
+            const nonceBytes = crypto.getRandomValues(new Uint8Array(32))
+            const tokenNonce = btoa(String.fromCharCode(...nonceBytes))
+              .replaceAll('+', '-')
+              .replaceAll('/', '_')
+              .replace(/=+$/, '')
+            create({ name: trimmed, expires_in_days: days, token_nonce: tokenNonce })
           }}
         >
           <label className="min-w-0 text-xs">
@@ -782,6 +803,7 @@ function AccessTokensPanel() {
           }
         }}
         returnFocusRef={revokeButtonRef}
+        fallbackFocusRef={refreshButtonRef}
         title="액세스 토큰을 폐기할까요?"
         description={
           <>
@@ -790,8 +812,12 @@ function AccessTokensPanel() {
           </>
         }
         pending={revokeToken.isPending}
-        actionDisabled={writeBlocked}
-        actionDisabledMessage="최신 토큰 목록을 복구한 뒤 이 토큰을 폐기할 수 있습니다."
+        actionDisabled={revokeActionBlocked}
+        actionDisabledMessage={
+          revokeTargetUnavailable
+            ? '이 토큰은 최신 목록에서 더 이상 활성 상태가 아닙니다. 확인 창을 닫고 목록을 확인하세요.'
+            : '최신 토큰 목록을 복구한 뒤 이 토큰을 폐기할 수 있습니다.'
+        }
         error={revokeToken.isError ? '액세스 토큰을 폐기하지 못했습니다.' : null}
         actionLabel="토큰 폐기"
         pendingLabel="폐기 중…"

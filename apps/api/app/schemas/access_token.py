@@ -24,6 +24,14 @@ class PersonalAccessTokenList(BaseModel):
 class PersonalAccessTokenCreate(BaseModel):
     name: str
     expires_in_days: int = Field(default=90, ge=1, le=365)
+    token_nonce: str = Field(
+        min_length=43,
+        max_length=43,
+        pattern=r"^[A-Za-z0-9_-]{43}$",
+        repr=False,
+        description="Request-scoped 256-bit base64url secret; reuse only to retry this creation.",
+        json_schema_extra={"writeOnly": True},
+    )
 
     @field_validator("name")
     @classmethod

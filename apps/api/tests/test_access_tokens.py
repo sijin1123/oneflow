@@ -1,11 +1,14 @@
+import secrets
 from datetime import UTC, datetime, timedelta
 
 import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import select, update
 
+from app.core.auth import token_hash
 from app.main import create_app
 from app.models.access_token import PersonalAccessToken
+from app.models.user import User
 from tests.conftest import make_test_settings
 
 
@@ -33,7 +36,11 @@ async def token_client(token_app):
 async def create_token(client, name="CLI deploy", days=30) -> dict:
     res = await client.post(
         "/api/v1/me/access-tokens",
-        json={"name": name, "expires_in_days": days},
+        json={
+            "name": name,
+            "expires_in_days": days,
+            "token_nonce": secrets.token_urlsafe(32),
+        },
     )
     assert res.status_code == 201, res.text
     return res.json()
@@ -50,6 +57,54 @@ async def test_access_token_create_list_and_masking(client):
     assert listed["total"] == 1
     assert listed["items"][0]["token_prefix"] == raw[:12]
     assert "token" not in listed["items"][0]
+
+
+async def test_access_token_create_retry_is_idempotent_and_rejects_nonce_reuse(client):
+    nonce = secrets.token_urlsafe(32)
+    body = {"name": "Retry-safe deploy", "expires_in_days": 45, "token_nonce": nonce}
+
+    first = await client.post("/api/v1/me/access-tokens", json=body)
+    replay = await client.post("/api/v1/me/access-tokens", json=body)
+
+    assert first.status_code == replay.status_code == 201
+    assert replay.json() == first.json()
+    listed = (await client.get("/api/v1/me/access-tokens")).json()
+    assert listed["total"] == 1
+
+    conflict = await client.post(
+        "/api/v1/me/access-tokens",
+        json={**body, "name": "Different operation"},
+    )
+    assert conflict.status_code == 409
+    assert (await client.get("/api/v1/me/access-tokens")).json()["total"] == 1
+
+
+async def test_access_token_list_and_revoke_are_user_scoped(app, client):
+    raw = f"ofp_{secrets.token_urlsafe(32)}"
+    async with app.state.sessionmaker() as session, session.begin():
+        foreign_user = User(email="foreign-token@oneflow.local", display_name="Foreign Token")
+        session.add(foreign_user)
+        await session.flush()
+        foreign_token = PersonalAccessToken(
+            user_id=foreign_user.id,
+            name="Foreign token",
+            token_hash=token_hash(raw),
+            token_prefix=raw[:12],
+            expires_at=datetime.now(UTC) + timedelta(days=30),
+        )
+        session.add(foreign_token)
+        await session.flush()
+        foreign_token_id = foreign_token.id
+
+    listed = await client.get("/api/v1/me/access-tokens")
+    assert listed.status_code == 200
+    assert listed.json() == {"items": [], "total": 0}
+    assert (await client.delete(f"/api/v1/me/access-tokens/{foreign_token_id}")).status_code == 404
+
+    async with app.state.sessionmaker() as session:
+        stored = await session.get(PersonalAccessToken, foreign_token_id)
+        assert stored is not None
+        assert stored.revoked_at is None
 
 
 async def test_bearer_token_authenticates_without_cookie(app, client, token_client):

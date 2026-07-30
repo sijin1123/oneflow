@@ -1,10 +1,10 @@
-import secrets
 import uuid
 from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy import select
 from sqlalchemy import update as sa_update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import get_current_user, token_hash
@@ -21,11 +21,6 @@ from app.schemas.access_token import (
 router = APIRouter()
 
 TOKEN_PREFIX = "ofp_"
-TOKEN_RANDOM_BYTES = 32
-
-
-def new_raw_token() -> str:
-    return f"{TOKEN_PREFIX}{secrets.token_urlsafe(TOKEN_RANDOM_BYTES)}"
 
 
 @router.get("/me/access-tokens", response_model=PersonalAccessTokenList)
@@ -57,16 +52,56 @@ async def create_access_token(
     session: AsyncSession = Depends(get_session),
     user: User = Depends(get_current_user),
 ) -> PersonalAccessTokenCreated:
-    raw = new_raw_token()
+    raw = f"{TOKEN_PREFIX}{body.token_nonce}"
+    hashed = token_hash(raw)
+    existing = (
+        await session.execute(
+            select(PersonalAccessToken).where(
+                PersonalAccessToken.user_id == user.id,
+                PersonalAccessToken.token_hash == hashed,
+            )
+        )
+    ).scalar_one_or_none()
+    if existing is not None:
+        duration = existing.expires_at - existing.created_at
+        if existing.name != body.name or duration != timedelta(days=body.expires_in_days):
+            raise HTTPException(status_code=409, detail="token nonce already used")
+        return PersonalAccessTokenCreated(
+            item=PersonalAccessTokenRead.model_validate(existing),
+            token=raw,
+        )
+
+    now = datetime.now(UTC)
     row = PersonalAccessToken(
         user_id=user.id,
         name=body.name,
-        token_hash=token_hash(raw),
+        token_hash=hashed,
         token_prefix=raw[:12],
-        expires_at=datetime.now(UTC) + timedelta(days=body.expires_in_days),
+        created_at=now,
+        expires_at=now + timedelta(days=body.expires_in_days),
     )
     session.add(row)
-    await session.commit()
+    try:
+        await session.commit()
+    except IntegrityError:
+        await session.rollback()
+        existing = (
+            await session.execute(
+                select(PersonalAccessToken).where(
+                    PersonalAccessToken.user_id == user.id,
+                    PersonalAccessToken.token_hash == hashed,
+                )
+            )
+        ).scalar_one_or_none()
+        if existing is None:
+            raise HTTPException(status_code=409, detail="token nonce already used") from None
+        duration = existing.expires_at - existing.created_at
+        if existing.name != body.name or duration != timedelta(days=body.expires_in_days):
+            raise HTTPException(status_code=409, detail="token nonce already used") from None
+        return PersonalAccessTokenCreated(
+            item=PersonalAccessTokenRead.model_validate(existing),
+            token=raw,
+        )
     await session.refresh(row)
     return PersonalAccessTokenCreated(item=PersonalAccessTokenRead.model_validate(row), token=raw)
 
