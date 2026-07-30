@@ -117,6 +117,7 @@ function EndpointRow({
   onTestStart,
   onTestResult,
   onDirtyChange,
+  writeEnabled,
 }: {
   endpoint: WebhookEndpoint
   onSecret: (result: WebhookEndpointCreated) => void
@@ -126,6 +127,7 @@ function EndpointRow({
   onTestStart: () => void
   onTestResult: (result: WebhookDelivery) => void
   onDirtyChange: (id: string, dirty: boolean) => void
+  writeEnabled: boolean
 }) {
   const update = useUpdateWebhook()
   const remove = useDeleteWebhook()
@@ -186,13 +188,14 @@ function EndpointRow({
           <Button variant="ghost" size="sm" onClick={cancelEdit}>취소</Button>
           <Button
             size="sm"
-            disabled={!name.trim() || !url.trim() || events.length === 0 || update.isPending}
-            onClick={() =>
+            disabled={!writeEnabled || !name.trim() || !url.trim() || events.length === 0 || update.isPending}
+            onClick={() => {
+              if (!writeEnabled) return
               update.mutate(
                 { id: endpoint.id, name: name.trim(), url: url.trim(), event_types: events },
                 { onSuccess: () => setEditing(false) },
               )
-            }
+            }}
           >저장</Button>
         </div>
       </li>
@@ -217,9 +220,9 @@ function EndpointRow({
       <div className="flex min-w-0 flex-wrap items-center gap-1">
         {enabled ? <>
           <Button size="icon" variant="ghost" title="편집" aria-label={`${endpoint.name} webhook 편집`} onClick={() => setEditing(true)}><Pencil size={14} /></Button>
-          <Button size="icon" variant="ghost" title={endpoint.is_active ? '중지' : '활성화'} aria-label={`${endpoint.name} webhook ${endpoint.is_active ? '중지' : '활성화'}`} disabled={update.isPending} onClick={() => update.mutate({ id: endpoint.id, is_active: !endpoint.is_active })}><RefreshCcw size={14} /></Button>
+          <Button size="icon" variant="ghost" title={endpoint.is_active ? '중지' : '활성화'} aria-label={`${endpoint.name} webhook ${endpoint.is_active ? '중지' : '활성화'}`} aria-disabled={!writeEnabled} className={!writeEnabled ? 'pointer-events-none opacity-50' : undefined} disabled={update.isPending} onClick={() => { if (writeEnabled) update.mutate({ id: endpoint.id, is_active: !endpoint.is_active }) }}><RefreshCcw size={14} /></Button>
           <Button size="icon" variant="ghost" title="secret 회전" aria-label={`${endpoint.name} secret 회전`} disabled={availableKeyIds.length === 0 || rotate.isPending} onClick={() => { setTargetKeyId(defaultTargetKeyId); setRotating(true) }}><RotateCw size={14} /></Button>
-          <Button size="icon" variant="ghost" title="테스트 전송" aria-label={`${endpoint.name} 테스트 전송`} disabled={!endpoint.is_active || test.isPending} onClick={() => { onTestStart(); test.mutate(endpoint.id, { onSuccess: onTestResult }) }}><Play size={14} /></Button>
+          <Button size="icon" variant="ghost" title="테스트 전송" aria-label={`${endpoint.name} 테스트 전송`} aria-disabled={!writeEnabled} className={!writeEnabled ? 'pointer-events-none opacity-50' : undefined} disabled={!endpoint.is_active || test.isPending} onClick={() => { if (!writeEnabled) return; onTestStart(); test.mutate(endpoint.id, { onSuccess: onTestResult }) }}><Play size={14} /></Button>
         </> : null}
         <Button size="icon" variant="ghost" title="삭제" aria-label={`${endpoint.name} webhook 삭제`} disabled={remove.isPending} onClick={() => setConfirmingDelete(true)}><Trash2 size={14} /></Button>
       </div>
@@ -231,7 +234,7 @@ function EndpointRow({
           </select>
         </label>
         <Input aria-label={`${endpoint.name} secret rotation reason`} value={reason} maxLength={240} placeholder="회전 사유" onChange={(event) => setReason(event.target.value)} />
-        <div className="flex justify-end gap-2"><Button size="sm" variant="ghost" onClick={cancelRotation}>취소</Button><Button size="sm" disabled={!targetKeyId || !reason.trim() || rotate.isPending} onClick={() => rotate.mutate({ id: endpoint.id, target_signing_key_id: targetKeyId, expected_secret_version: endpoint.secret_version, reason: reason.trim() }, { onSuccess: (result) => { cancelRotation(); onSecret(result) } })}>확인 및 새 secret 발급</Button></div>
+        <div className="flex justify-end gap-2"><Button size="sm" variant="ghost" onClick={cancelRotation}>취소</Button><Button size="sm" disabled={!writeEnabled || !targetKeyId || !reason.trim() || rotate.isPending} onClick={() => { if (writeEnabled) rotate.mutate({ id: endpoint.id, target_signing_key_id: targetKeyId, expected_secret_version: endpoint.secret_version, reason: reason.trim() }, { onSuccess: (result) => { cancelRotation(); onSecret(result) } }) }}>확인 및 새 secret 발급</Button></div>
       </div> : null}
       {update.isError || rotate.isError || test.isError || remove.isError ? <p role="alert" className="text-xs text-of-danger lg:col-span-2">{rotateConflict ? '다른 관리자가 먼저 secret을 변경했습니다. 최신 상태를 확인해 다시 시도해 주세요.' : '요청을 완료하지 못했습니다.'}</p> : null}
       <Dialog.Root
@@ -259,9 +262,9 @@ function EndpointRow({
               <Button
                 type="button"
                 variant="danger"
-                disabled={remove.isPending}
+                disabled={!writeEnabled || remove.isPending}
                 aria-busy={remove.isPending}
-                onClick={() => remove.mutate(endpoint.id, { onSuccess: () => setConfirmingDelete(false) })}
+                onClick={() => { if (writeEnabled) remove.mutate(endpoint.id, { onSuccess: () => setConfirmingDelete(false) }) }}
               >
                 <Trash2 size={14} aria-hidden="true" />
                 {remove.isPending ? '삭제 중' : 'endpoint 삭제'}
@@ -354,8 +357,10 @@ export function WebhooksPage() {
   }
 
   const refreshActionLabel = failedRefreshes.length > 0 ? '모두 새로고침 다시 시도' : '모두 새로고침'
-  const endpointStale = Boolean(endpointData && webhooks.isError)
-  const deliveryStale = Boolean(deliveryData && deliveries.isError)
+  const endpointStale = Boolean(endpointData && (webhooks.isError || failedRefreshes.includes('Endpoint')))
+  const deliveryStale = Boolean(deliveryData && (deliveries.isError || failedRefreshes.includes('Delivery audit')))
+  const endpointFresh = Boolean(endpointData && !webhooks.isFetching && !endpointStale)
+  const deliveryFresh = Boolean(deliveryData && !deliveries.isFetching && !deliveryStale)
 
   if (!endpointData && webhooks.isError) {
     if (webhooks.error instanceof ApiError && webhooks.error.status === 403) {
@@ -444,7 +449,7 @@ export function WebhooksPage() {
             <>
               {endpointStale ? (
                 <div role="alert" className="mt-4 flex min-w-0 flex-wrap items-center gap-2 border-l-2 border-of-warning bg-of-warning-soft/30 px-3 py-2 text-xs leading-5 text-of-text">
-                  <p className="min-w-0 flex-1">Endpoint 최신 상태를 확인하지 못해 마지막 성공 결과를 유지했습니다.</p>
+                  <p className="min-w-0 flex-1">Endpoint 최신 상태를 확인하지 못해 마지막 성공 결과를 유지했습니다. 복구 전까지 endpoint 서버 작업은 사용할 수 없습니다.</p>
                   <Button size="sm" variant="ghost" onClick={() => void retryOne('Endpoint', webhooks.refetch)} aria-label="Endpoint 다시 시도">
                     <RefreshCw size={13} aria-hidden="true" /> 다시 시도
                   </Button>
@@ -477,6 +482,7 @@ export function WebhooksPage() {
                     className="mt-4 grid min-w-0 gap-3"
                     onSubmit={(event) => {
                       event.preventDefault()
+                      if (!endpointFresh) return
                       create.mutate(
                         { name: name.trim(), url: url.trim(), event_types: events },
                         {
@@ -493,7 +499,7 @@ export function WebhooksPage() {
                     <div className="grid min-w-0 gap-2 md:grid-cols-[minmax(10rem,0.5fr)_minmax(16rem,1fr)_auto]">
                       <Input aria-label="Webhook 이름" placeholder="배포 자동화" value={name} onChange={(event) => setName(event.target.value)} />
                       <Input aria-label="Webhook URL" placeholder="https://hooks.example.com/oneflow" value={url} onChange={(event) => setUrl(event.target.value)} />
-                      <Button type="submit" disabled={!name.trim() || !url.trim() || events.length === 0 || create.isPending}>
+                      <Button type="submit" disabled={!endpointFresh || !name.trim() || !url.trim() || events.length === 0 || create.isPending}>
                         <Webhook size={14} aria-hidden="true" /> 추가
                       </Button>
                     </div>
@@ -501,7 +507,7 @@ export function WebhooksPage() {
                     {create.isError ? (
                       <div className="flex min-w-0 flex-wrap items-center gap-2" role="alert">
                         <p className="text-xs text-of-danger">endpoint를 만들지 못했습니다. URL allowlist와 입력값을 확인해 주세요.</p>
-                        <Button type="submit" size="sm" variant="ghost" disabled={create.isPending}>같은 입력 재시도</Button>
+                        <Button type="submit" size="sm" variant="ghost" disabled={!endpointFresh || create.isPending}>같은 입력 재시도</Button>
                       </div>
                     ) : null}
                   </form>
@@ -551,6 +557,7 @@ export function WebhooksPage() {
                         })}
                         onTestResult={(result) => setTestResults((current) => ({ ...current, [endpoint.id]: result }))}
                         onDirtyChange={setEndpointDirty}
+                        writeEnabled={endpointFresh}
                       />
                     ))}
                   </ul>
@@ -611,7 +618,7 @@ export function WebhooksPage() {
 
             {deliveryStale ? (
               <div role="alert" className="mt-4 flex min-w-0 flex-wrap items-center gap-2 border-l-2 border-of-warning bg-of-warning-soft/30 px-3 py-2 text-xs leading-5 text-of-text">
-                <p className="min-w-0 flex-1">전송 감사 최신 상태를 확인하지 못해 마지막 성공 결과를 유지했습니다.</p>
+                <p className="min-w-0 flex-1">전송 감사 최신 상태를 확인하지 못해 마지막 성공 결과를 유지했습니다. 복구 전까지 전송 재시도는 사용할 수 없습니다.</p>
                 <Button size="sm" variant="ghost" onClick={() => void retryOne('Delivery audit', deliveries.refetch)} aria-label="Delivery audit 다시 시도">
                   <RefreshCw size={13} aria-hidden="true" /> 다시 시도
                 </Button>
@@ -652,8 +659,11 @@ export function WebhooksPage() {
                           size="sm"
                           variant="outline"
                           disabled={retry.isPending}
+                          aria-disabled={!endpointFresh || !deliveryFresh}
+                          className={!endpointFresh || !deliveryFresh ? 'pointer-events-none opacity-50' : undefined}
                           aria-label={`${endpoint.name} delivery 재시도`}
                           onClick={() => {
+                            if (!endpointFresh || !deliveryFresh) return
                             setRetryError(false)
                             retry.mutate(delivery.id, {
                               onError: () => setRetryError(true),
