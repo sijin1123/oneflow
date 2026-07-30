@@ -12144,6 +12144,138 @@ test('프로젝트 구성은 기존 깊은 링크와 URL 탭을 하나의 설정
   await expectNoHorizontalOverflow(page)
 })
 
+test('워크스페이스 단계 정의는 최초 오류를 같은 요청으로 복구한다', async ({ page }) => {
+  await mockApi(page)
+  const definitions: WorkspaceProjectPhaseDefinitions = {
+    items: [
+      { key: 'discover', name: '발견', color: 'sky', position: 0, retired: false, built_in: true },
+      { key: 'plan', name: '계획', color: 'indigo', position: 1, retired: false, built_in: true },
+      { key: 'deliver', name: '실행', color: 'emerald', position: 2, retired: false, built_in: true },
+      { key: 'close', name: '마감', color: 'amber', position: 3, retired: false, built_in: true },
+    ],
+    revision: 1,
+    updated_by_user_id: null,
+    updated_by_name: null,
+    updated_at: '2026-07-01T00:00:00Z',
+  }
+  let allowRecovery = false
+  let definitionsGetCount = 0
+  await page.route('**/api/v1/workspace/project-phase-definitions', async (route) => {
+    definitionsGetCount += 1
+    if (!allowRecovery) {
+      await route.fulfill({ status: 503, json: { detail: 'definitions unavailable' } })
+      return
+    }
+    await route.fulfill({ json: definitions, headers: { ETag: '"1"' } })
+  })
+
+  await page.goto('/admin/project-configuration?tab=phases')
+  await expect(page.getByText('데이터를 불러오지 못했습니다')).toBeVisible()
+  allowRecovery = true
+  const requestsBeforeRetry = definitionsGetCount
+  await page.getByRole('button', { name: '다시 시도' }).click()
+  await expect(page.getByRole('region', { name: '워크스페이스 프로젝트 단계 정의' })).toBeVisible()
+  expect(definitionsGetCount).toBe(requestsBeforeRetry + 1)
+})
+
+test('워크스페이스 단계 정의는 최초 403에서 관리자 경계를 유지한다', async ({ page }) => {
+  await mockApi(page)
+  await page.route('**/api/v1/workspace/project-phase-definitions', (route) =>
+    route.fulfill({ status: 403, json: { detail: 'admin required' } }),
+  )
+
+  await page.goto('/admin/project-configuration?tab=phases')
+  await expect(page.getByText('접근 권한이 없습니다')).toBeVisible()
+  await expect(page.getByText('프로젝트 단계는 워크스페이스 관리자만 변경할 수 있습니다.')).toBeVisible()
+  await expect(page.getByRole('button', { name: '단계 저장' })).toHaveCount(0)
+})
+
+test('워크스페이스 단계 정의는 후속 오류에서 행과 초안을 보존하고 서버 쓰기를 차단한다', async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 740 })
+  await mockApi(page)
+  const definitions: WorkspaceProjectPhaseDefinitions = {
+    items: [
+      { key: 'discover', name: '발견', color: 'sky', position: 0, retired: false, built_in: true },
+      { key: 'plan', name: '계획', color: 'indigo', position: 1, retired: false, built_in: true },
+      { key: 'deliver', name: '실행', color: 'emerald', position: 2, retired: false, built_in: true },
+      { key: 'close', name: '마감', color: 'amber', position: 3, retired: false, built_in: true },
+      { key: 'custom_active', name: '검증 준비', color: 'sky', position: 4, retired: false, built_in: false },
+      { key: 'custom_retired', name: '보관 단계', color: 'amber', position: 5, retired: true, built_in: false },
+    ],
+    revision: 9,
+    updated_by_user_id: null,
+    updated_by_name: null,
+    updated_at: '2026-07-01T00:00:00Z',
+  }
+  let failRefresh = false
+  let definitionsGetCount = 0
+  let mutationCount = 0
+
+  await page.route('**/api/v1/workspace/project-phase-definitions', async (route) => {
+    definitionsGetCount += 1
+    if (failRefresh) {
+      await route.fulfill({ status: 503, json: { detail: 'definitions unavailable' } })
+      return
+    }
+    await route.fulfill({ json: definitions, headers: { ETag: '"9"' } })
+  })
+  await page.route('**/api/v1/admin/workspace/project-phase-definitions**', async (route) => {
+    mutationCount += 1
+    await route.fulfill({ json: definitions })
+  })
+
+  await page.goto('/admin/project-configuration?tab=phases')
+  const definitionsSurface = page.getByRole('region', { name: '워크스페이스 프로젝트 단계 정의' })
+  const customSurface = page.getByRole('region', { name: 'Custom 프로젝트 단계' })
+  await customSurface.getByLabel('새 단계 이름').fill('릴리스 검수')
+  await customSurface.getByText('앰버', { exact: true }).click()
+  await definitionsSurface.getByRole('button', { name: '계획 단계 위로 이동' }).click()
+  await definitionsSurface.getByLabel('1번째 단계 이름').fill('기획 초안')
+
+  failRefresh = true
+  await page.getByRole('button', { name: '프로젝트 단계 정의 새로고침' }).click()
+  const staleAlert = page.getByRole('alert').filter({ hasText: '최신 프로젝트 단계 정의' })
+  await expect(staleAlert).toBeVisible()
+  await expect(definitionsSurface.getByLabel('1번째 단계 이름')).toHaveValue('기획 초안')
+  await expect(customSurface.getByLabel('새 단계 이름')).toHaveValue('릴리스 검수')
+  await expect(customSurface.getByRole('radio', { name: '앰버' })).toBeChecked()
+  await expect(page.getByText('보관 단계')).toBeVisible()
+  await expect(page.getByRole('button', { name: '단계 저장' })).toBeDisabled()
+  await expect(page.getByRole('button', { name: '단계 추가' })).toBeDisabled()
+  await expect(page.getByRole('button', { name: '검증 준비 단계 은퇴' })).toBeDisabled()
+  await expect(page.getByRole('button', { name: '복원' })).toBeDisabled()
+  await expect(page.getByRole('button', { name: '되돌리기' })).toBeEnabled()
+  expect(mutationCount).toBe(0)
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/workspace-phase-definitions-refresh-lifecycle-ui-321/stale-320.png',
+    fullPage: false,
+  })
+
+  failRefresh = false
+  const requestsBeforeRetry = definitionsGetCount
+  await page.getByRole('button', { name: '단계 정의 다시 불러오기' }).click()
+  await expect(staleAlert).toHaveCount(0)
+  expect(definitionsGetCount).toBe(requestsBeforeRetry + 1)
+  await expect(definitionsSurface.getByLabel('1번째 단계 이름')).toHaveValue('기획 초안')
+  await expect(customSurface.getByLabel('새 단계 이름')).toHaveValue('릴리스 검수')
+  await expect(page.getByRole('button', { name: '단계 저장' })).toBeEnabled()
+  await page.getByRole('button', { name: '되돌리기' }).click()
+  await expect(customSurface.getByLabel('새 단계 이름')).toHaveValue('릴리스 검수')
+  await expect(page.getByRole('button', { name: '단계 추가' })).toBeEnabled()
+  await expect(page.getByRole('button', { name: '검증 준비 단계 은퇴' })).toBeEnabled()
+  await expect(page.getByRole('button', { name: '복원' })).toBeEnabled()
+  await expectNoHorizontalOverflow(page)
+  await page.locator('[data-shell-scroll-region]').evaluate((element) =>
+    element.scrollTo({ top: element.scrollHeight, behavior: 'instant' }),
+  )
+  await page.waitForTimeout(350)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/workspace-phase-definitions-refresh-lifecycle-ui-321/recovered-320.png',
+    fullPage: false,
+  })
+})
+
 test('워크스페이스 프로젝트 단계 정의는 충돌을 복구하고 프로젝트 전반에 반영된다', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 })
   await mockApi(page)
