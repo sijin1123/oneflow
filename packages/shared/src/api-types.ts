@@ -1571,6 +1571,23 @@ export interface paths {
         patch: operations["update_personal_note_api_v1_me_personal_notes__note_id__patch"];
         trace?: never;
     };
+    "/api/v1/me/profile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update My Profile */
+        patch: operations["update_my_profile_api_v1_me_profile_patch"];
+        trace?: never;
+    };
     "/api/v1/me/profile-image": {
         parameters: {
             query?: never;
@@ -6611,6 +6628,14 @@ export interface components {
             user_id: string;
         };
         /**
+         * MeProfileUpdate
+         * @description Authenticated user's mutable personal profile fields.
+         */
+        MeProfileUpdate: {
+            /** Display Name */
+            display_name: string;
+        };
+        /**
          * MeRead
          * @description Authenticated-user identity plus private profile-image metadata.
          */
@@ -9311,6 +9336,17 @@ export interface components {
             top_projects: components["schemas"]["SearchAnalyticsProject"][];
             /** Total */
             total: number;
+        };
+        /** StaleProfileRevisionDetail */
+        StaleProfileRevisionDetail: {
+            /** Code */
+            code: string;
+            /** Current Revision */
+            current_revision: number;
+        };
+        /** StaleProfileRevisionError */
+        StaleProfileRevisionError: {
+            detail: components["schemas"]["StaleProfileRevisionDetail"];
         };
         /** StatusRead */
         StatusRead: {
@@ -14773,6 +14809,55 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PersonalNoteError"];
+                };
+            };
+        };
+    };
+    update_my_profile_api_v1_me_profile_patch: {
+        parameters: {
+            query?: never;
+            header: {
+                "If-Match": string;
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                oneflow_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MeProfileUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MeRead"];
+                };
+            };
+            /** @description Profile revision is stale */
+            412: {
+                headers: {
+                    /** @description Current strong profile revision */
+                    ETag?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaleProfileRevisionError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

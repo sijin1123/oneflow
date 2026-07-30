@@ -7,6 +7,7 @@ from pathlib import Path
 
 from sqlalchemy import delete, select
 
+from app.api.v1 import users as users_api
 from app.core.auth import DEV_USER_EMAIL
 from app.models.initiative import Initiative, InitiativeActivity, InitiativeProject
 from app.models.member import ProjectMember
@@ -45,6 +46,174 @@ async def test_me_default_profile_image_contract(client):
         "profile_revision": 1,
     }
     assert (await client.get("/api/v1/me/profile-image")).status_code == 404
+
+
+async def test_personal_profile_name_update_is_trimmed_revision_guarded_and_self_scoped(
+    client,
+    app,
+):
+    updated = await client.patch(
+        "/api/v1/me/profile",
+        json={"display_name": "  Renamed Self  "},
+        headers={"If-Match": '"1"'},
+    )
+    assert updated.status_code == 200, updated.text
+    assert updated.headers["etag"] == '"2"'
+    item = updated.json()
+    assert item["display_name"] == "Renamed Self"
+    assert item["profile_revision"] == 2
+    assert item["email"] == DEV_USER_EMAIL
+    assert item["is_active"] is True
+    assert item["is_admin"] is True
+
+    unchanged = await client.patch(
+        "/api/v1/me/profile",
+        json={"display_name": "Renamed Self"},
+        headers={"If-Match": '"2"'},
+    )
+    assert unchanged.status_code == 200
+    assert unchanged.headers["etag"] == '"2"'
+    assert unchanged.json()["profile_revision"] == 2
+
+    stale = await client.patch(
+        "/api/v1/me/profile",
+        json={"display_name": "Stale name"},
+        headers={"If-Match": '"1"'},
+    )
+    assert stale.status_code == 412
+    assert stale.headers["etag"] == '"2"'
+    assert stale.json()["detail"] == {
+        "code": "stale_revision",
+        "current_revision": 2,
+    }
+
+    image_with_stale_name_revision = await client.put(
+        "/api/v1/me/profile-image",
+        content=PNG,
+        headers=image_headers(1),
+    )
+    assert image_with_stale_name_revision.status_code == 412
+    image = await client.put(
+        "/api/v1/me/profile-image",
+        content=PNG,
+        headers=image_headers(2),
+    )
+    assert image.status_code == 200
+    assert image.json()["profile_revision"] == 3
+
+    async with app.state.sessionmaker() as session:
+        row = (await session.execute(select(User).where(User.email == DEV_USER_EMAIL))).scalar_one()
+        assert row.display_name == "Renamed Self"
+        assert row.profile_revision == 3
+
+
+async def test_personal_profile_name_update_validates_revision_and_name(client):
+    missing = await client.patch(
+        "/api/v1/me/profile",
+        json={"display_name": "Name"},
+    )
+    assert missing.status_code == 422
+
+    for invalid_etag in ('W/"1"', "1", '"0"', '"1", "2"'):
+        response = await client.patch(
+            "/api/v1/me/profile",
+            json={"display_name": "Name"},
+            headers={"If-Match": invalid_etag},
+        )
+        assert response.status_code == 422
+
+    for invalid_name in ("", "   ", "x" * 121):
+        response = await client.patch(
+            "/api/v1/me/profile",
+            json={"display_name": invalid_name},
+            headers={"If-Match": '"1"'},
+        )
+        assert response.status_code == 422
+
+    for non_string_name in (123, None, ["Name"]):
+        response = await client.patch(
+            "/api/v1/me/profile",
+            json={"display_name": non_string_name},
+            headers={"If-Match": '"1"'},
+        )
+        assert response.status_code == 422
+
+    trimmed_at_limit = await client.patch(
+        "/api/v1/me/profile",
+        json={"display_name": f"  {'x' * 120}  "},
+        headers={"If-Match": '"1"'},
+    )
+    assert trimmed_at_limit.status_code == 200
+    assert trimmed_at_limit.json()["display_name"] == "x" * 120
+
+
+async def test_admin_endpoint_refreshes_cached_profile_revision_after_lock_wait(
+    client,
+    app,
+    monkeypatch,
+):
+    me = (await client.get("/api/v1/me")).json()
+    handler_reached = asyncio.Event()
+    original_require_admin = users_api._require_admin
+
+    def signal_handler(user):
+        original_require_admin(user)
+        handler_reached.set()
+
+    monkeypatch.setattr(users_api, "_require_admin", signal_handler)
+
+    async with app.state.sessionmaker() as personal_session:
+        personal = (
+            await personal_session.execute(
+                select(User).where(User.id == uuid.UUID(me["id"])).with_for_update()
+            )
+        ).scalar_one()
+        admin_request = asyncio.create_task(
+            client.patch(
+                f"/api/v1/users/{me['id']}",
+                json={"display_name": "Administrator final"},
+            )
+        )
+        await asyncio.wait_for(handler_reached.wait(), timeout=2)
+        personal.display_name = "Personal first"
+        personal.profile_revision += 1
+        await personal_session.commit()
+
+    admin_response = await asyncio.wait_for(admin_request, timeout=2)
+    assert admin_response.status_code == 200, admin_response.text
+    current = (await client.get("/api/v1/me")).json()
+    assert current["display_name"] == "Administrator final"
+    assert current["profile_revision"] == 3
+
+
+async def test_admin_and_self_profile_name_writes_share_one_locked_revision(client):
+    me = (await client.get("/api/v1/me")).json()
+
+    admin_write, self_write = await asyncio.gather(
+        client.patch(
+            f"/api/v1/users/{me['id']}",
+            json={"display_name": "Administrator Name"},
+        ),
+        client.patch(
+            "/api/v1/me/profile",
+            json={"display_name": "Personal Name"},
+            headers={"If-Match": '"1"'},
+        ),
+    )
+
+    assert admin_write.status_code == 200, admin_write.text
+    assert self_write.status_code in (200, 412), self_write.text
+    current = (await client.get("/api/v1/me")).json()
+    assert current["display_name"] == "Administrator Name"
+    assert current["profile_revision"] == 2 + int(self_write.status_code == 200)
+
+    stale = await client.patch(
+        "/api/v1/me/profile",
+        json={"display_name": "Undetected overwrite"},
+        headers={"If-Match": '"1"'},
+    )
+    assert stale.status_code == 412
+    assert (await client.get("/api/v1/me")).json()["display_name"] == "Administrator Name"
 
 
 async def test_profile_image_upload_read_replace_remove_and_sweep(client, app):

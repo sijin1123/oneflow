@@ -2,7 +2,7 @@ import re
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 # Same house pattern as member.py — no email-validator dependency.
 _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
@@ -28,6 +28,26 @@ class MeRead(UserRead):
     profile_image_height: int | None
     profile_image_byte_size: int | None
     profile_revision: int
+
+
+class MeProfileUpdate(BaseModel):
+    """Authenticated user's mutable personal profile fields."""
+
+    display_name: str = Field(min_length=1, max_length=120)
+
+    @field_validator("display_name", mode="before")
+    @classmethod
+    def _name(cls, v: object) -> object:
+        return _clean_display_name(v) if isinstance(v, str) else v
+
+
+class StaleProfileRevisionDetail(BaseModel):
+    code: str
+    current_revision: int
+
+
+class StaleProfileRevisionError(BaseModel):
+    detail: StaleProfileRevisionDetail
 
 
 class UserDirectoryRead(UserRead):

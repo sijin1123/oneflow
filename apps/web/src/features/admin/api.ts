@@ -155,6 +155,12 @@ export function useUpdateUser() {
       void queryClient.invalidateQueries({ queryKey: ['admin-users'] })
       void queryClient.invalidateQueries({ queryKey: ['members'] })
       void queryClient.invalidateQueries({ queryKey: ['me'] })
+      void queryClient.invalidateQueries({ queryKey: ['wp-watchers'] })
+      void queryClient.invalidateQueries({ queryKey: ['module-members'] })
+      void queryClient.invalidateQueries({ queryKey: ['initiative-owner-candidates'] })
+      void queryClient.invalidateQueries({ queryKey: ['initiatives'] })
+      void queryClient.invalidateQueries({ queryKey: ['admin-worklog-options'] })
+      void queryClient.invalidateQueries({ queryKey: ['admin-worklogs'] })
     },
   })
 }

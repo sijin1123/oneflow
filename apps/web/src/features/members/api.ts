@@ -20,6 +20,34 @@ export function useMe() {
   })
 }
 
+export function useUpdateMyProfile() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ displayName, revision }: { displayName: string; revision: number }) =>
+      api<Me>('/api/v1/me/profile', {
+        method: 'PATCH',
+        headers: { 'If-Match': `"${revision}"` },
+        body: JSON.stringify({ display_name: displayName }),
+      }),
+    onSuccess: (updated) => {
+      queryClient.setQueryData(['me'], updated)
+      void queryClient.invalidateQueries({ queryKey: ['members'] })
+      void queryClient.invalidateQueries({ queryKey: ['admin-users'] })
+      void queryClient.invalidateQueries({ queryKey: ['wp-watchers'] })
+      void queryClient.invalidateQueries({ queryKey: ['module-members'] })
+      void queryClient.invalidateQueries({ queryKey: ['initiative-owner-candidates'] })
+      void queryClient.invalidateQueries({ queryKey: ['initiatives'] })
+      void queryClient.invalidateQueries({ queryKey: ['admin-worklog-options'] })
+      void queryClient.invalidateQueries({ queryKey: ['admin-worklogs'] })
+    },
+    onError: (error) => {
+      if (error instanceof ApiError && error.status === 412) {
+        void queryClient.invalidateQueries({ queryKey: ['me'] })
+      }
+    },
+  })
+}
+
 export function profileImageSrc(
   profile: {
     profile_image_url?: string | null

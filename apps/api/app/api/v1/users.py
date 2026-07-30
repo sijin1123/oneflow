@@ -203,16 +203,27 @@ async def update_user(
     for key, value in fields.items():
         if value is None:
             raise HTTPException(status_code=422, detail=f"{key} cannot be null")
-    # display_name-only edits don't touch the invariant — no lock needed.
     if "is_active" in fields or "is_admin" in fields:
         await _lock_user_admin_state(session)
-    target = (await session.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
+    target = (
+        await session.execute(
+            select(User)
+            .where(User.id == user_id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+    ).scalar_one_or_none()
     if target is None:
         raise HTTPException(status_code=404, detail="not found")
     if target.id == user.id and fields.get("is_active") is False:
         raise HTTPException(status_code=422, detail="you cannot deactivate yourself")
+    display_name_changed = (
+        "display_name" in fields and fields["display_name"] != target.display_name
+    )
     for key, value in fields.items():
         setattr(target, key, value)
+    if display_name_changed:
+        target.profile_revision += 1
     await session.flush()
     # The invariant counts ACTIVE admins — a workspace where only deactivated
     # admins remain is unadministrable (v33.1 R1-①).
