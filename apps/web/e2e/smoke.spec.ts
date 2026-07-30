@@ -11447,6 +11447,136 @@ test('개인 설정에서 액세스 토큰을 생성하고 폐기한다', async 
   await expect(tokenSection.getByText('폐기됨')).toBeVisible()
 })
 
+test('액세스 토큰 후속 목록 오류는 초안을 보존하고 stale 쓰기를 차단한다', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 760 })
+  await mockApi(page)
+  let refreshShouldFail = false
+  let getAttempts = 0
+  let postAttempts = 0
+  let deleteAttempts = 0
+  let tokens = [
+    {
+      id: 'tok-freshness',
+      name: '자동화 토큰',
+      token_prefix: 'ofp_fresh',
+      created_at: '2026-07-01T00:00:00Z',
+      expires_at: '2026-09-29T00:00:00Z',
+      revoked_at: null as string | null,
+      last_used_at: null as string | null,
+    },
+  ]
+  await page.route('**/api/v1/me/access-tokens**', async (route) => {
+    const request = route.request()
+    if (request.method() === 'GET') {
+      getAttempts += 1
+      if (refreshShouldFail) {
+        await route.fulfill({ status: 503, json: { detail: 'temporary token-list failure' } })
+        return
+      }
+      await route.fulfill({ json: { items: tokens, total: tokens.length } })
+      return
+    }
+    if (request.method() === 'POST') {
+      postAttempts += 1
+      const sent = request.postDataJSON() as { name: string; expires_in_days: number }
+      expect(sent).toEqual({ name: '보존할 토큰 초안', expires_in_days: 60 })
+      if (postAttempts === 1) {
+        await route.fulfill({ status: 503, json: { detail: 'temporary create failure' } })
+        return
+      }
+      const created = {
+        id: 'tok-recovered',
+        name: sent.name,
+        token_prefix: 'ofp_recover',
+        created_at: '2026-07-30T00:00:00Z',
+        expires_at: '2026-09-28T00:00:00Z',
+        revoked_at: null,
+        last_used_at: null,
+      }
+      tokens = [created, ...tokens]
+      await route.fulfill({
+        status: 201,
+        json: { item: created, token: 'ofp_recovered_secret_once' },
+      })
+      return
+    }
+    if (request.method() === 'DELETE') {
+      deleteAttempts += 1
+      const id = request.url().split('/').pop()
+      tokens = tokens.map((token) =>
+        token.id === id ? { ...token, revoked_at: '2026-07-30T01:00:00Z' } : token,
+      )
+      await route.fulfill({ status: 204, body: '' })
+      return
+    }
+    await route.fallback()
+  })
+
+  await page.goto('/settings?tab=security')
+  const tokenSection = page.getByRole('region', { name: '개발자 액세스 토큰' })
+  await expect(tokenSection.getByText('자동화 토큰')).toBeVisible()
+  await tokenSection.getByRole('button', { name: '액세스 토큰 추가' }).click()
+  const nameInput = tokenSection.getByLabel('토큰 이름')
+  await nameInput.fill('보존할 토큰 초안')
+  await tokenSection.getByLabel('유효 일수').fill('60')
+  await tokenSection.getByRole('button', { name: '토큰 생성' }).click()
+  const createRetry = tokenSection.getByRole('button', { name: '다시 시도', exact: true })
+  await expect(createRetry).toBeVisible()
+
+  refreshShouldFail = true
+  await page.getByRole('button', { name: '토큰 목록 새로고침' }).click()
+  await expect.poll(() => getAttempts).toBeGreaterThanOrEqual(3)
+  const staleAlert = tokenSection
+    .getByRole('alert')
+    .filter({ hasText: '최신 액세스 토큰 목록' })
+  await expect(staleAlert).toBeVisible()
+  await expect(tokenSection.getByText('자동화 토큰')).toBeVisible()
+  await expect(nameInput).toHaveValue('보존할 토큰 초안')
+  await expect(createRetry).toBeDisabled()
+  await expect(tokenSection.getByRole('button', { name: '토큰 생성' })).toBeDisabled()
+  await expect(tokenSection.getByRole('button', { name: '자동화 토큰 폐기' })).toBeDisabled()
+  expect(postAttempts).toBe(1)
+  expect(deleteAttempts).toBe(0)
+
+  await staleAlert.scrollIntoViewIfNeeded()
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/access-token-freshness-write-guard-ui-337/desktop-stale.png',
+    fullPage: true,
+  })
+  await page.setViewportSize({ width: 320, height: 740 })
+  await staleAlert.scrollIntoViewIfNeeded()
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/access-token-freshness-write-guard-ui-337/mobile-stale-320.png',
+    fullPage: true,
+  })
+
+  refreshShouldFail = false
+  await staleAlert.getByRole('button', { name: '토큰 목록 다시 시도' }).click()
+  await expect(staleAlert).toHaveCount(0)
+  await tokenSection.getByRole('button', { name: '자동화 토큰 폐기' }).click()
+  const revokeDialog = page.getByRole('dialog', { name: '액세스 토큰을 폐기할까요?' })
+  await expect(revokeDialog).toBeVisible()
+  await revokeDialog.getByRole('button', { name: '토큰 폐기' }).click()
+  await expect(revokeDialog).toHaveCount(0)
+  await expect(tokenSection.getByText('폐기됨')).toBeVisible()
+  expect(deleteAttempts).toBe(1)
+
+  await expect(createRetry).toBeEnabled()
+  await createRetry.click()
+  await expect(tokenSection.getByLabel('새 액세스 토큰')).toContainText(
+    'ofp_recovered_secret_once',
+  )
+  expect(postAttempts).toBe(2)
+  expect(getAttempts).toBeGreaterThanOrEqual(3)
+  await tokenSection.getByLabel('새 액세스 토큰').scrollIntoViewIfNeeded()
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/access-token-freshness-write-guard-ui-337/mobile-recovered-320.png',
+    fullPage: true,
+  })
+})
+
 test('개인 설정에서 활성 브라우저 세션을 확인하고 종료한다', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 })
   await mockApi(page)
