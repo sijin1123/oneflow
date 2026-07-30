@@ -11182,6 +11182,7 @@ test('개인 알림 설정은 로딩 오류와 재시도를 기능적으로 처�
 test('개인 알림 설정 저장 실패는 서버 상태를 보존하고 같은 변경을 재시도한다', async ({ page }) => {
   await mockApi(page)
   let putAttempts = 0
+  let refreshShouldFail = false
   let notificationSettings = {
     assigned: true,
     watched: true,
@@ -11194,6 +11195,10 @@ test('개인 알림 설정 저장 실패는 서버 상태를 보존하고 같은
   }
   await page.route('**/api/v1/me/notification-settings', async (route) => {
     if (route.request().method() !== 'PUT') {
+      if (refreshShouldFail) {
+        await route.fulfill({ status: 503, json: { detail: 'temporary notification refresh error' } })
+        return
+      }
       await route.fulfill({ json: notificationSettings })
       return
     }
@@ -11215,7 +11220,18 @@ test('개인 알림 설정 저장 실패는 서버 상태를 보존하고 같은
   await expect(page.getByRole('alert')).toContainText('변경은 적용되지 않았습니다.')
   await expect(watched).toBeChecked()
 
-  await page.getByRole('button', { name: '다시 시도' }).click()
+  refreshShouldFail = true
+  await page.getByRole('button', { name: '알림 설정 새로고침' }).click()
+  const staleAlert = page.getByRole('alert').filter({ hasText: '최신 알림 설정' })
+  await expect(staleAlert).toBeVisible()
+  const retry = page.getByRole('button', { name: '다시 시도', exact: true })
+  await expect(retry).toBeDisabled()
+  expect(putAttempts).toBe(1)
+
+  refreshShouldFail = false
+  await staleAlert.getByRole('button', { name: '알림 설정 다시 시도' }).click()
+  await expect(retry).toBeEnabled()
+  await retry.click()
   await expect(page.getByText('알림 설정을 저장했습니다.')).toBeVisible()
   await expect(watched).not.toBeChecked()
   expect(putAttempts).toBe(2)
@@ -11224,10 +11240,26 @@ test('개인 알림 설정 저장 실패는 서버 상태를 보존하고 같은
 test('개인 알림 설정 후속 조회 오류는 마지막 선택을 유지하고 같은 요청을 재시도한다', async ({ page }) => {
   await mockApi(page)
   let getAttempts = 0
+  let putAttempts = 0
   let refreshShouldFail = false
+  let notificationSettings = {
+    assigned: true,
+    watched: true,
+    commented: true,
+    mention: true,
+    due_alerts: true,
+    overdue_reminder_days: 3 as 0 | 3 | 7 | 14,
+    intake: true,
+    initiatives: true,
+  }
   await page.route('**/api/v1/me/notification-settings', async (route) => {
-    if (route.request().method() !== 'GET') {
-      await route.fallback()
+    if (route.request().method() === 'PUT') {
+      putAttempts += 1
+      notificationSettings = {
+        ...notificationSettings,
+        ...(route.request().postDataJSON() as Partial<typeof notificationSettings>),
+      }
+      await route.fulfill({ json: notificationSettings })
       return
     }
     getAttempts += 1
@@ -11235,18 +11267,11 @@ test('개인 알림 설정 후속 조회 오류는 마지막 선택을 유지하
       await route.fulfill({ status: 503, json: { detail: 'temporary notification refresh error' } })
       return
     }
-    await route.fulfill({
-      json: {
-        assigned: true,
-        watched: true,
-        commented: true,
-        mention: true,
-        due_alerts: true,
-        overdue_reminder_days: getAttempts === 1 ? 3 : 7,
-        intake: true,
-        initiatives: true,
-      },
-    })
+    notificationSettings = {
+      ...notificationSettings,
+      overdue_reminder_days: getAttempts === 1 ? 3 : 7,
+    }
+    await route.fulfill({ json: notificationSettings })
   })
 
   await page.setViewportSize({ width: 1280, height: 720 })
@@ -11261,7 +11286,10 @@ test('개인 알림 설정 후속 조회 오류는 마지막 선택을 유지하
   const staleAlert = page.getByRole('alert').filter({ hasText: '최신 알림 설정' })
   await expect(staleAlert).toContainText('마지막으로 확인한 개인 설정을 표시합니다.')
   await expect(watched).toBeChecked()
+  await expect(watched).toBeDisabled()
   await expect(cadence).toHaveValue('3')
+  await expect(cadence).toBeDisabled()
+  expect(putAttempts).toBe(0)
   await page.screenshot({
     path: '../../docs/screenshots/redevelopment/notification-settings-lifecycle-ui-310/desktop-retained-error.png',
     fullPage: true,
@@ -11279,7 +11307,12 @@ test('개인 알림 설정 후속 조회 오류는 마지막 선택을 유지하
   await staleAlert.getByRole('button', { name: '알림 설정 다시 시도' }).click()
   await expect(staleAlert).toHaveCount(0)
   await expect(cadence).toHaveValue('7')
+  await expect(watched).toBeEnabled()
+  await expect(cadence).toBeEnabled()
   expect(getAttempts).toBeGreaterThanOrEqual(3)
+  await watched.click()
+  await expect(watched).not.toBeChecked()
+  expect(putAttempts).toBe(1)
   await expectNoHorizontalOverflow(page)
   await page.screenshot({
     path: '../../docs/screenshots/redevelopment/notification-settings-lifecycle-ui-310/mobile-recovered-320.png',
