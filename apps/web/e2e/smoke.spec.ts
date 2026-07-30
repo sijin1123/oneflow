@@ -27781,6 +27781,106 @@ test('관리자가 사용자 디렉터리에서 추가·비활성화를 수행�
   await expect(rookieRow.getByRole('button', { name: '활성화' })).toBeVisible()
 })
 
+test('사용자 이름 편집은 stale 목록에서 초안을 보존하고 정확한 요청으로 복구한다', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 320, height: 740 })
+  await mockApi(page)
+  const admin = {
+    id: 'me-1',
+    email: 'dev@oneflow.local',
+    display_name: 'Dev User',
+    is_active: true,
+    is_admin: true,
+    created_at: '2026-07-01T00:00:00Z',
+  }
+  let member = {
+    id: 'member-rename',
+    email: 'rename@oneflow.local',
+    display_name: 'Rename Member',
+    is_active: true,
+    is_admin: false,
+    created_at: '2026-07-02T00:00:00Z',
+  }
+  const summary = { users: 2, active: 2, admins: 1, inactive: 0, active_admins: 1 }
+  let failRefresh = false
+  let patchAttempts = 0
+  let meReads = 0
+  const payloads: Record<string, unknown>[] = []
+
+  await page.route(/\/api\/v1\/me$/, (route) => {
+    meReads += 1
+    return route.fulfill({ json: admin })
+  })
+  await page.route(/\/api\/v1\/users(?:\?.*)?$/, (route) => {
+    if (failRefresh) {
+      failRefresh = false
+      return route.fulfill({ status: 503, json: { detail: 'directory temporarily unavailable' } })
+    }
+    return route.fulfill({ json: { items: [admin, member], total: 2, summary } })
+  })
+  await page.route('**/api/v1/users/member-rename', (route) => {
+    patchAttempts += 1
+    const body = route.request().postDataJSON() as Record<string, unknown>
+    payloads.push(body)
+    if (patchAttempts === 1) {
+      return route.fulfill({ status: 503, json: { detail: 'temporary rename failure' } })
+    }
+    member = { ...member, display_name: String(body.display_name) }
+    return route.fulfill({ json: member })
+  })
+
+  await page.goto('/admin/users')
+  const memberCard = page.getByRole('listitem').filter({ hasText: 'Rename Member' })
+  const editTrigger = memberCard.getByRole('button', { name: '이름 편집', exact: true })
+  await editTrigger.click()
+  const dialog = page.getByRole('dialog', { name: '사용자 이름 편집' })
+  const nameInput = dialog.getByLabel('사용자 표시 이름')
+  await expect(nameInput).toBeFocused()
+  await nameInput.fill('Renamed Member')
+
+  failRefresh = true
+  await page
+    .locator('[data-frame-context-actions] button[aria-label="새로고침"]')
+    .evaluate((button: HTMLButtonElement) => button.click())
+  await expect(page.getByRole('alert')).toContainText('마지막으로 확인한 목록')
+  await expect(nameInput).toHaveValue('Renamed Member')
+  const save = dialog.getByRole('button', { name: '저장' })
+  await expect(save).toBeDisabled()
+  await dialog.locator('form').evaluate((form: HTMLFormElement) => form.requestSubmit())
+  expect(patchAttempts).toBe(0)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/user-directory-profile-edit-ui-333/stale-draft-320.png',
+    fullPage: true,
+  })
+
+  await dialog.getByRole('button', { name: '목록 다시 불러오기' }).click()
+  await expect(page.getByRole('alert')).toHaveCount(0)
+  await expect(nameInput).toHaveValue('Renamed Member')
+  await expect(save).toBeEnabled()
+  await save.click()
+  await expect(dialog.getByRole('alert')).toContainText('같은 요청을 다시 시도')
+  await dialog.getByRole('button', { name: '같은 요청 다시 시도' }).click()
+  await expect(dialog).toBeHidden()
+  await expect(page.getByText('Renamed Member', { exact: true })).toBeVisible()
+  await expect(
+    page
+      .getByRole('listitem')
+      .filter({ hasText: 'Renamed Member' })
+      .getByRole('button', { name: '이름 편집', exact: true }),
+  ).toBeFocused()
+  await expect.poll(() => meReads).toBeGreaterThan(1)
+  expect(payloads).toEqual([
+    { display_name: 'Renamed Member' },
+    { display_name: 'Renamed Member' },
+  ])
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/user-directory-profile-edit-ui-333/recovered-320.png',
+    fullPage: true,
+  })
+})
+
 test('사용자 비활성화는 확인 후 동일 요청을 보존해 실패에서 복구한다', async ({ page }) => {
   await mockApi(page)
   const admin = {

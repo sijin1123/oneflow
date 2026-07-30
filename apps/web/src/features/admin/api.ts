@@ -153,6 +153,8 @@ export function useUpdateUser() {
     }) => api<DirectoryUser>(`/api/v1/users/${id}`, { method: 'PATCH', body: JSON.stringify(input) }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['admin-users'] })
+      void queryClient.invalidateQueries({ queryKey: ['members'] })
+      void queryClient.invalidateQueries({ queryKey: ['me'] })
     },
   })
 }

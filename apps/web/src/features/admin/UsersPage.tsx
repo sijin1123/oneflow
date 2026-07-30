@@ -5,6 +5,7 @@ import {
   FolderKanban,
   Loader2,
   Mail,
+  Pencil,
   RefreshCw,
   Search,
   Settings2,
@@ -186,6 +187,7 @@ function DirectoryActions({
   lastActiveAdmin,
   onToggleActive,
   onToggleAdmin,
+  onEditName,
 }: {
   user: DirectoryUser
   currentUserId?: string
@@ -194,10 +196,23 @@ function DirectoryActions({
   lastActiveAdmin: boolean
   onToggleActive: (trigger: HTMLButtonElement) => void
   onToggleAdmin: (trigger: HTMLInputElement) => void
+  onEditName: (trigger: HTMLButtonElement) => void
 }) {
   const cannotDeactivate = user.is_active && (user.id === currentUserId || lastActiveAdmin)
   return (
     <div className="flex min-w-0 flex-wrap items-center gap-2">
+      <Button
+        variant="ghost"
+        size="icon"
+        disabled={updatePending}
+        aria-disabled={!writeEnabled}
+        className="aria-disabled:pointer-events-none aria-disabled:opacity-45"
+        aria-label="이름 편집"
+        title={`${user.display_name} 이름 편집`}
+        onClick={(event) => onEditName(event.currentTarget)}
+      >
+        <Pencil size={13} aria-hidden="true" />
+      </Button>
       <label className="flex min-h-7 items-center gap-1.5 rounded-of border border-of-border bg-of-surface px-2 text-xs">
         <input
           type="checkbox"
@@ -228,6 +243,7 @@ function DirectoryActions({
 
 type UserUpdateInput = {
   id: string
+  display_name?: string
   is_active?: boolean
   is_admin?: boolean
 }
@@ -257,11 +273,14 @@ export function UsersPage() {
   const [failedUpdate, setFailedUpdate] = useState<UserUpdateInput | null>(null)
   const [failedUpdateLabel, setFailedUpdateLabel] = useState('')
   const [confirmAction, setConfirmAction] = useState<ConfirmedUserAction | null>(null)
+  const [editingUser, setEditingUser] = useState<DirectoryUser | null>(null)
+  const [editingName, setEditingName] = useState('')
   const [refreshError, setRefreshError] = useState(false)
   const [inviteDirty, setInviteDirty] = useState(false)
   const [inviteComposerRequest, setInviteComposerRequest] = useState(0)
   const createTriggerRef = useRef<HTMLButtonElement | null>(null)
   const confirmTriggerRef = useRef<HTMLElement | null>(null)
+  const editTriggerRef = useRef<HTMLButtonElement | null>(null)
   const rawQuery = searchParams.get('q') ?? ''
   const query = rawQuery.slice(0, 120)
   const deferredQuery = useDeferredValue(query.trim())
@@ -284,6 +303,8 @@ export function UsersPage() {
   const lastSuccessfulDirectory = useRef<typeof data>(undefined)
   const mobileLayout = useMobileDirectoryLayout()
   const createDirty = adding && Boolean(email.trim() || name.trim())
+  const editDirty =
+    editingUser !== null && editingName.trim() !== editingUser.display_name
 
   useEffect(() => {
     if (!data || directory.isPlaceholderData || isError) return
@@ -301,7 +322,7 @@ export function UsersPage() {
   )
 
   useUnsavedLocationPrompt(
-    createDirty || inviteDirty,
+    createDirty || editDirty || inviteDirty,
     '작성 중인 사용자 또는 초대 정보를 버리고 이동할까요?',
   )
 
@@ -406,7 +427,12 @@ export function UsersPage() {
     setAdding(true)
   }
 
-  const runUpdate = (input: UserUpdateInput, label: string, closeConfirmation = false) => {
+  const runUpdate = (
+    input: UserUpdateInput,
+    label: string,
+    closeConfirmation = false,
+    closeEdit = false,
+  ) => {
     if (!directoryFresh) return
     update.reset()
     setFailedUpdate(null)
@@ -414,6 +440,7 @@ export function UsersPage() {
     update.mutate(input, {
       onSuccess: () => {
         if (closeConfirmation) setConfirmAction(null)
+        if (closeEdit) setEditingUser(null)
       },
       onError: () => {
         setFailedUpdate(input)
@@ -461,6 +488,36 @@ export function UsersPage() {
       description: '이 사용자는 더 이상 워크스페이스 관리 화면과 관리자 API를 사용할 수 없습니다.',
       actionLabel: '권한 해제',
     })
+  }
+
+  const openNameEdit = (user: DirectoryUser, trigger: HTMLButtonElement) => {
+    if (!directoryFresh) return
+    update.reset()
+    setFailedUpdate(null)
+    setFailedUpdateLabel('')
+    editTriggerRef.current = trigger
+    setEditingUser(user)
+    setEditingName(user.display_name)
+  }
+
+  const closeNameEdit = () => {
+    if (update.isPending) return
+    setEditingUser(null)
+    update.reset()
+    setFailedUpdate(null)
+    setFailedUpdateLabel('')
+  }
+
+  const submitNameEdit = () => {
+    if (!directoryFresh || !editingUser) return
+    const displayName = editingName.trim()
+    if (!displayName || displayName === editingUser.display_name) return
+    runUpdate(
+      { id: editingUser.id, display_name: displayName },
+      `${editingUser.display_name} 이름 변경`,
+      false,
+      true,
+    )
   }
 
   const refreshDirectory = async () => {
@@ -666,7 +723,14 @@ export function UsersPage() {
                     size="sm"
                     variant="outline"
                     disabled={!directoryFresh || update.isPending}
-                    onClick={() => runUpdate(failedUpdate, failedUpdateLabel, Boolean(confirmAction))}
+                    onClick={() =>
+                      runUpdate(
+                        failedUpdate,
+                        failedUpdateLabel,
+                        Boolean(confirmAction),
+                        Boolean(editingUser),
+                      )
+                    }
                   >
                     <RefreshCw size={13} aria-hidden="true" />
                     같은 요청 다시 시도
@@ -741,6 +805,7 @@ export function UsersPage() {
                                   lastActiveAdmin={isLastActiveAdmin(u)}
                                   onToggleActive={(trigger) => requestActiveChange(u, trigger)}
                                   onToggleAdmin={(trigger) => requestAdminChange(u, trigger)}
+                                  onEditName={(trigger) => openNameEdit(u, trigger)}
                                 />
                               </td>
                             </tr>
@@ -789,6 +854,7 @@ export function UsersPage() {
                             lastActiveAdmin={isLastActiveAdmin(u)}
                             onToggleActive={(trigger) => requestActiveChange(u, trigger)}
                             onToggleAdmin={(trigger) => requestAdminChange(u, trigger)}
+                            onEditName={(trigger) => openNameEdit(u, trigger)}
                           />
                         </div>
                         {expanded === u.id ? (
@@ -930,6 +996,121 @@ export function UsersPage() {
               disabled={create.isPending}
               className="absolute right-3 top-3 grid size-8 place-items-center rounded-of text-of-muted hover:bg-of-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus"
               onClick={() => setAdding(false)}
+            >
+              <X size={15} aria-hidden="true" />
+            </button>
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>
+
+      <Dialog.Root
+        open={editingUser !== null}
+        onOpenChange={(open) => {
+          if (!open) closeNameEdit()
+        }}
+      >
+        <Dialog.Portal>
+          <Dialog.Overlay className="fixed inset-0 z-80 bg-black/35 backdrop-blur-[1px] data-[state=closed]:animate-out data-[state=closed]:fade-out data-[state=open]:animate-in data-[state=open]:fade-in motion-reduce:animate-none" />
+          <Dialog.Content
+            className="fixed left-1/2 top-1/2 z-81 w-[min(28rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 rounded-of border border-of-border bg-of-surface shadow-xl data-[state=closed]:animate-out data-[state=closed]:fade-out data-[state=closed]:zoom-out-95 data-[state=open]:animate-in data-[state=open]:fade-in data-[state=open]:zoom-in-95 motion-reduce:animate-none"
+            onCloseAutoFocus={(event) => {
+              event.preventDefault()
+              editTriggerRef.current?.focus()
+            }}
+          >
+            <form
+              onSubmit={(event) => {
+                event.preventDefault()
+                submitNameEdit()
+              }}
+            >
+              <div className="border-b border-of-border px-5 py-4">
+                <Dialog.Title className="text-base font-semibold">사용자 이름 편집</Dialog.Title>
+                <Dialog.Description className="mt-1 text-xs leading-5 text-of-muted">
+                  계정 이메일과 프로젝트 멤버십은 변경되지 않습니다.
+                </Dialog.Description>
+              </div>
+              <div className="space-y-4 px-5 py-4">
+                <label className="block">
+                  <span className="mb-1 block text-xs font-medium">표시 이름</span>
+                  <Input
+                    autoFocus
+                    value={editingName}
+                    maxLength={120}
+                    onChange={(event) => {
+                      setEditingName(event.target.value)
+                      update.reset()
+                    }}
+                    aria-label="사용자 표시 이름"
+                  />
+                </label>
+                <p className="text-xs text-of-muted">{editingUser?.email}</p>
+                {update.isError ? (
+                  <p role="alert" className="text-xs text-of-danger">
+                    이름을 변경하지 못했습니다. 입력한 이름을 유지한 채 같은 요청을 다시 시도할 수
+                    있습니다.
+                  </p>
+                ) : null}
+                {!directoryFresh ? (
+                  <div
+                    role="status"
+                    className="flex flex-wrap items-center justify-between gap-2 rounded-of border border-of-warning/30 bg-of-warning/5 px-3 py-2 text-xs text-of-warning"
+                  >
+                    <span>최신 사용자 목록을 복구하면 입력한 이름을 그대로 저장할 수 있습니다.</span>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      disabled={directory.isFetching}
+                      onClick={() => void refreshDirectory()}
+                    >
+                      <RefreshCw
+                        size={13}
+                        className={directory.isFetching ? 'animate-spin' : undefined}
+                        aria-hidden="true"
+                      />
+                      목록 다시 불러오기
+                    </Button>
+                  </div>
+                ) : null}
+              </div>
+              <div className="flex justify-end gap-2 border-t border-of-border px-5 py-3">
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={update.isPending}
+                  onClick={closeNameEdit}
+                >
+                  취소
+                </Button>
+                <Button
+                  type="submit"
+                  disabled={
+                    !directoryFresh ||
+                    !editingUser ||
+                    !editingName.trim() ||
+                    editingName.trim() === editingUser.display_name ||
+                    update.isPending
+                  }
+                  aria-busy={update.isPending}
+                >
+                  {update.isPending ? (
+                    <Loader2 className="animate-spin" aria-hidden="true" />
+                  ) : update.isError ? (
+                    <RefreshCw aria-hidden="true" />
+                  ) : (
+                    <Pencil aria-hidden="true" />
+                  )}
+                  {update.isError ? '같은 요청 다시 시도' : '저장'}
+                </Button>
+              </div>
+            </form>
+            <button
+              type="button"
+              aria-label="사용자 이름 편집 창 닫기"
+              disabled={update.isPending}
+              className="absolute right-3 top-3 grid size-8 place-items-center rounded-of text-of-muted hover:bg-of-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-focus"
+              onClick={closeNameEdit}
             >
               <X size={15} aria-hidden="true" />
             </button>
