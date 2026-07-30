@@ -35,6 +35,7 @@ import { useProject } from '@/features/projects/api'
 import {
   PRIORITY_LABELS,
   STATUS_LABELS,
+  TYPE_LABELS,
   WP_PRIORITIES,
   WP_STATUSES,
   type WpPriority,
@@ -580,14 +581,17 @@ export function AutomationManager({
     [projectStatuses.data?.items],
   )
   const typeNames = useMemo(
-    () => new Map(projectTypes.options.map((type) => [type.key, type.label])),
-    [projectTypes.options],
+    () => new Map(projectTypes.data?.items.map((type) => [type.key, type.name]) ?? []),
+    [projectTypes.data?.items],
   )
   const statusLabel = useCallback(
     (key: string) => statusNames.get(key) ?? STATUS_LABELS[key as keyof typeof STATUS_LABELS] ?? key,
     [statusNames],
   )
-  const typeLabel = useCallback((key: string) => typeNames.get(key) ?? key, [typeNames])
+  const typeLabel = useCallback(
+    (key: string) => typeNames.get(key) ?? TYPE_LABELS[key as keyof typeof TYPE_LABELS] ?? key,
+    [typeNames],
+  )
 
   const statusOptions = useMemo<ValueOption[]>(
     () => WP_STATUSES.map((status) => [status, statusLabel(status)] as const),
