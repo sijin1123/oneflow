@@ -27071,6 +27071,7 @@ test('Workspace 초대는 브랜드 메뉴에서 생성·복사·회전·취소�
 })
 
 test('Workspace 초대는 마지막 목록을 유지하고 실패한 링크 회전·취소를 그대로 재시도한다', async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 740 })
   await mockApi(page)
   let invitation = {
     id: 'invite-recovery',
@@ -27087,6 +27088,7 @@ test('Workspace 초대는 마지막 목록을 유지하고 실패한 링크 회�
   let failRefresh = false
   let rotateAttempts = 0
   let revokeAttempts = 0
+  let createAttempts = 0
   const rotatePayloads: Record<string, unknown>[] = []
   const revokeVersions: string[] = []
 
@@ -27102,6 +27104,19 @@ test('Workspace 초대는 마지막 목록을 유지하고 실패한 링크 회�
       invitation = { ...invitation, version: invitation.version + 1 }
       return route.fulfill({
         json: { ...invitation, token: `recovered-${'r'.repeat(36)}` },
+      })
+    }
+    if (request.method() === 'POST') {
+      createAttempts += 1
+      return route.fulfill({
+        status: 201,
+        json: {
+          ...invitation,
+          id: 'invite-draft-recovery',
+          email: 'draft.invite@example.com',
+          display_name: 'Draft Invite',
+          token: `draft-${'d'.repeat(36)}`,
+        },
       })
     }
     if (request.method() === 'DELETE') {
@@ -27134,10 +27149,44 @@ test('Workspace 초대는 마지막 목록을 유지하고 실패한 링크 회�
   await page.getByRole('button', { name: '새로고침', exact: true }).click()
   await expect(page.getByRole('alert')).toContainText('마지막으로 확인한 목록을 유지')
   await expect(page.getByText('recover@example.com')).toBeVisible()
+  const rotateButton = page.getByRole('button', { name: '새 링크 발급' })
+  const revokeButton = page.getByRole('button', { name: '초대 취소' })
+  await expect(rotateButton).toHaveAttribute('aria-disabled', 'true')
+  await expect(revokeButton).toHaveAttribute('aria-disabled', 'true')
+  await rotateButton.evaluate((button: HTMLButtonElement) => button.click())
+  await revokeButton.evaluate((button: HTMLButtonElement) => button.click())
+  expect(rotateAttempts).toBe(0)
+  expect(revokeAttempts).toBe(0)
+  await expect(page.getByRole('dialog', { name: '초대 취소' })).toHaveCount(0)
+
+  const frameActions = page.locator('[data-frame-context-actions]')
+  await frameActions.getByRole('button', { name: '멤버 초대' }).click()
+  await page.getByLabel('초대 이메일').fill('draft.invite@example.com')
+  await page.getByLabel('초대 사용자 이름').fill('Draft Invite')
+  const createButton = page.getByRole('button', { name: '링크 만들기' })
+  await expect(createButton).toBeDisabled()
+  await createButton.evaluate((button: HTMLButtonElement) => {
+    button.removeAttribute('disabled')
+    button.click()
+  })
+  expect(createAttempts).toBe(0)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/workspace-invitations-freshness-write-guard-ui-324/stale-draft-320.png',
+    fullPage: true,
+  })
+
   await page.getByRole('button', { name: '다시 시도', exact: true }).click()
   await expect(page.getByRole('alert')).toHaveCount(0)
+  await expect(page.getByLabel('초대 이메일')).toHaveValue('draft.invite@example.com')
+  await expect(page.getByLabel('초대 사용자 이름')).toHaveValue('Draft Invite')
+  await expect(createButton).toBeEnabled()
+  await createButton.click()
+  await expect(page.getByText('새 초대 링크가 발급되었습니다')).toBeVisible()
+  expect(createAttempts).toBe(1)
+  await page.getByRole('button', { name: '닫기' }).click()
 
-  await page.getByRole('button', { name: '새 링크 발급' }).click()
+  await expect(rotateButton).toHaveAttribute('aria-disabled', 'false')
+  await rotateButton.click()
   await expect(page.getByRole('alert')).toContainText('temporary rotate failure')
   await page.getByRole('button', { name: '같은 요청 다시 시도' }).click()
   await expect(page.getByLabel('새 초대 링크')).toHaveValue(/\/invite\/recovered-/)
@@ -27154,6 +27203,10 @@ test('Workspace 초대는 마지막 목록을 유지하고 실패한 링크 회�
   await expect(page.getByText('취소됨', { exact: true }).first()).toBeVisible()
   await expect(page.getByRole('heading', { name: '멤버 초대' })).toBeFocused()
   expect(revokeVersions).toEqual(['5', '5'])
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/workspace-invitations-freshness-write-guard-ui-324/recovered-320.png',
+    fullPage: true,
+  })
 })
 
 test('초대 작성 초안은 프레임 액션에서 열리고 보기 이동 전에 확인을 요구한다', async ({ page }) => {
