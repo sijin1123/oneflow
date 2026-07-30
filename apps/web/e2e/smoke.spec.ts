@@ -11561,6 +11561,139 @@ test('워크스페이스 일반 설정은 저장하지 않은 profile 변경을 
   await expect(page).toHaveURL(/\/admin\/project-configuration$/)
 })
 
+test('워크스페이스 일반 설정은 최초 profile 오류를 같은 요청으로 복구한다', async ({ page }) => {
+  await mockApi(page)
+  const profile = {
+    id: 1,
+    name: 'Recovered OneFlow',
+    revision: 1,
+    logo_url: null,
+    logo_content_type: null,
+    logo_filename: null,
+    logo_width: null,
+    logo_height: null,
+    logo_byte_size: null,
+    updated_by_user_id: null,
+    updated_by_name: null,
+    updated_at: '2026-07-01T00:00:00Z',
+  }
+  let profileGetCount = 0
+  let allowRecovery = false
+  await page.route('**/api/v1/admin/workspace/profile', async (route) => {
+    profileGetCount += 1
+    if (!allowRecovery) {
+      await route.fulfill({ status: 503, json: { detail: 'profile unavailable' } })
+      return
+    }
+    await route.fulfill({ json: profile, headers: { ETag: '"1"' } })
+  })
+
+  await page.goto('/admin/general')
+  await expect(page.getByText('데이터를 불러오지 못했습니다')).toBeVisible()
+  allowRecovery = true
+  const requestsBeforeRetry = profileGetCount
+  await page.getByRole('button', { name: '다시 시도' }).click()
+  await expect(page.getByLabel('워크스페이스 이름')).toHaveValue('Recovered OneFlow')
+  expect(profileGetCount).toBe(requestsBeforeRetry + 1)
+})
+
+test('워크스페이스 일반 설정은 최초 403에서 관리자 경계를 유지한다', async ({ page }) => {
+  await mockApi(page)
+  await page.route('**/api/v1/admin/workspace/profile', (route) =>
+    route.fulfill({ status: 403, json: { detail: 'admin required' } }),
+  )
+
+  await page.goto('/admin/general')
+  await expect(page.getByText('접근 권한이 없습니다')).toBeVisible()
+  await expect(page.getByText('워크스페이스 설정은 관리자만 변경할 수 있습니다.')).toBeVisible()
+  await expect(page.getByRole('button', { name: '변경 저장' })).toHaveCount(0)
+})
+
+test('워크스페이스 일반 설정은 후속 profile 오류에서 이름과 로고 초안을 보존하고 쓰기를 차단한다', async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 740 })
+  await mockApi(page)
+  const logoPng = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAEklEQVR4nGPkndLBwMDAxAAGAA2bAS37E8jFAAAAAElFTkSuQmCC',
+    'base64',
+  )
+  const profile = {
+    id: 1,
+    name: 'OneFlow',
+    revision: 7,
+    logo_url: null,
+    logo_content_type: null,
+    logo_filename: null,
+    logo_width: null,
+    logo_height: null,
+    logo_byte_size: null,
+    updated_by_user_id: null,
+    updated_by_name: null,
+    updated_at: '2026-07-01T00:00:00Z',
+  }
+  let failRefresh = false
+  let profileGetCount = 0
+  let mutationCount = 0
+
+  await page.route('**/api/v1/workspace/profile', (route) => route.fulfill({ json: profile }))
+  await page.route('**/api/v1/admin/workspace/profile', async (route) => {
+    if (route.request().method() !== 'GET') {
+      mutationCount += 1
+      await route.fulfill({ json: profile })
+      return
+    }
+    profileGetCount += 1
+    if (failRefresh) {
+      await route.fulfill({ status: 503, json: { detail: 'profile unavailable' } })
+      return
+    }
+    await route.fulfill({ json: profile, headers: { ETag: '"7"' } })
+  })
+  await page.route('**/api/v1/admin/workspace/logo', async (route) => {
+    mutationCount += 1
+    await route.fulfill({ json: profile })
+  })
+
+  await page.goto('/admin/general')
+  await page.getByLabel('워크스페이스 이름').fill('Retained workspace draft')
+  await page.getByLabel('워크스페이스 로고 파일').setInputFiles({
+    name: 'retained-logo.png',
+    mimeType: 'image/png',
+    buffer: logoPng,
+  })
+  await expect(page.getByAltText('선택한 로고 미리보기')).toBeVisible()
+
+  failRefresh = true
+  await page.getByRole('button', { name: '프로필 새로고침' }).click()
+  const staleAlert = page.getByRole('alert').filter({ hasText: '최신 워크스페이스 프로필' })
+  await expect(staleAlert).toBeVisible()
+  await expect(page.getByLabel('워크스페이스 이름')).toHaveValue('Retained workspace draft')
+  await expect(page.getByText(/선택됨: retained-logo\.png/)).toBeVisible()
+  await expect(page.getByRole('button', { name: '변경 저장' })).toBeDisabled()
+  await expect(page.getByRole('button', { name: '로고 저장' })).toBeDisabled()
+  await expect(page.getByRole('button', { name: '선택 취소' })).toBeEnabled()
+  expect(mutationCount).toBe(0)
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/workspace-general-refresh-lifecycle-ui-320/stale-320.png',
+    fullPage: true,
+  })
+
+  failRefresh = false
+  const requestsBeforeRetry = profileGetCount
+  await page.getByRole('button', { name: '프로필 다시 불러오기' }).click()
+  await expect(staleAlert).toHaveCount(0)
+  expect(profileGetCount).toBe(requestsBeforeRetry + 1)
+  await expect(page.getByLabel('워크스페이스 이름')).toHaveValue('Retained workspace draft')
+  await expect(page.getByText(/선택됨: retained-logo\.png/)).toBeVisible()
+  await expect(page.getByRole('button', { name: '변경 저장' })).toBeEnabled()
+  await expect(page.getByRole('button', { name: '로고 저장' })).toBeEnabled()
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/workspace-general-refresh-lifecycle-ui-320/recovered-320.png',
+    fullPage: true,
+  })
+})
+
 test('워크스페이스 로고는 미리보기·저장·shell 반영·삭제가 하나의 revision으로 동작한다', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 })
   await mockApi(page)
