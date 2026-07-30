@@ -33572,6 +33572,215 @@ test('UI-306 모바일 Webhook 갱신은 endpoint와 delivery의 마지막 성�
   })
 })
 
+test('UI-340 Webhook endpoint action은 최신 목록에서만 진입하고 열린 의도는 복구까지 보존한다', async ({ page }) => {
+  await mockApi(page)
+  await page.setViewportSize({ width: 1280, height: 800 })
+  let endpointState: 'healthy' | 'stale' | 'disabled' | 'removed' = 'healthy'
+  let holdEndpointRefresh = false
+  const pendingEndpointRefresh: { release: (() => void) | null } = { release: null }
+  let availableKeyIds = ['2026-q3']
+  let endpointReads = 0
+  let endpointWrites = 0
+  const endpoint = {
+    id: 'wh-action-freshness',
+    name: 'Action freshness hook',
+    url: 'https://hooks.example.com/action-freshness',
+    event_types: ['work_package.updated'],
+    is_active: true,
+    secret_version: 7,
+    signing_key_id: '2026-q3',
+    created_at: '2026-07-31T00:00:00Z',
+    updated_at: '2026-07-31T00:00:00Z',
+    deleted_at: null,
+  }
+
+  await page.route('**/api/v1/webhooks', async (route) => {
+    endpointReads += 1
+    if (holdEndpointRefresh) {
+      await new Promise<void>((resolve) => {
+        pendingEndpointRefresh.release = resolve
+      })
+    }
+    if (endpointState === 'stale') {
+      await route.fulfill({ status: 503, json: { detail: 'endpoint refresh unavailable' } })
+      return
+    }
+    await route.fulfill({
+      json: {
+        items: endpointState === 'removed' ? [] : [endpoint],
+        total: endpointState === 'removed' ? 0 : 1,
+        enabled: endpointState !== 'disabled',
+        active_signing_key_id: availableKeyIds[0],
+        available_signing_key_ids: availableKeyIds,
+        rotations: [],
+      },
+    })
+  })
+  await page.route('**/api/v1/webhooks/**', async (route) => {
+    endpointWrites += 1
+    if (route.request().url().endsWith('/rotate-secret')) {
+      await route.fulfill({ json: { item: endpoint, secret: 'ofw_recovered_action_secret' } })
+      return
+    }
+    await route.fulfill({ json: endpoint })
+  })
+  await page.route('**/api/v1/webhook-deliveries**', (route) =>
+    route.fulfill({ json: { items: [], total: 0 } }),
+  )
+
+  await page.goto('/admin/webhooks')
+  const frameActions = page.locator('[data-frame-context-actions]')
+  const endpointRegion = page.getByRole('region', { name: 'Endpoints' })
+  const editAction = endpointRegion.getByLabel('Action freshness hook webhook 편집')
+  const toggleAction = endpointRegion.getByLabel('Action freshness hook webhook 중지')
+  const rotateAction = endpointRegion.getByLabel('Action freshness hook secret 회전')
+  const testAction = endpointRegion.getByLabel('Action freshness hook 테스트 전송')
+  const deleteAction = endpointRegion.getByLabel('Action freshness hook webhook 삭제')
+  await expect(endpointRegion.getByText('Action freshness hook')).toBeVisible()
+  await expect(editAction).toBeEnabled()
+  await expect(toggleAction).toBeEnabled()
+  await expect(rotateAction).toBeEnabled()
+  await expect(testAction).toBeEnabled()
+  await expect(deleteAction).toBeEnabled()
+
+  const readsBeforeInFlight = endpointReads
+  holdEndpointRefresh = true
+  await page.evaluate(() => {
+    const click = (label: string) =>
+      document.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`)?.click()
+    click('모두 새로고침')
+    click('Action freshness hook webhook 편집')
+    click('Action freshness hook webhook 중지')
+    click('Action freshness hook secret 회전')
+    click('Action freshness hook 테스트 전송')
+    click('Action freshness hook webhook 삭제')
+  })
+  await expect.poll(() => endpointReads).toBeGreaterThan(readsBeforeInFlight)
+  await expect.poll(() => pendingEndpointRefresh.release !== null).toBe(true)
+  await expect(endpointRegion.getByLabel('Action freshness hook webhook 이름 편집')).toHaveCount(0)
+  await expect(endpointRegion.getByLabel('Action freshness hook secret rotation reason')).toHaveCount(0)
+  await expect(page.getByRole('dialog', { name: 'Webhook endpoint 삭제' })).toHaveCount(0)
+  expect(endpointWrites).toBe(0)
+  holdEndpointRefresh = false
+  pendingEndpointRefresh.release?.()
+  pendingEndpointRefresh.release = null
+  await expect(editAction).toBeEnabled()
+
+  const readsBeforeStale = endpointReads
+  endpointState = 'stale'
+  await frameActions.getByRole('button', { name: '모두 새로고침' }).click()
+  await expect(page.getByText('Endpoint 최신 상태를 확인하지 못해 마지막 성공 결과를 유지했습니다.')).toBeVisible()
+  expect(endpointReads).toBeGreaterThan(readsBeforeStale)
+  for (const action of [editAction, toggleAction, rotateAction, testAction, deleteAction]) {
+    await expect(action).toBeDisabled()
+    await action.evaluate((button) => (button as HTMLButtonElement).click())
+  }
+  await expect(endpointRegion.getByLabel('Action freshness hook webhook 이름 편집')).toHaveCount(0)
+  await expect(endpointRegion.getByLabel('Action freshness hook secret rotation reason')).toHaveCount(0)
+  await expect(page.getByRole('dialog', { name: 'Webhook endpoint 삭제' })).toHaveCount(0)
+  expect(endpointWrites).toBe(0)
+
+  endpointState = 'healthy'
+  await page.getByRole('button', { name: 'Endpoint 다시 시도' }).click()
+  await expect(page.getByText('Endpoint 최신 상태를 확인하지 못해 마지막 성공 결과를 유지했습니다.')).toHaveCount(0)
+  await expect(rotateAction).toBeEnabled()
+  await expect(deleteAction).toBeEnabled()
+  await rotateAction.click()
+  const rotationReason = page.locator('input[aria-label="Action freshness hook secret rotation reason"]')
+  const rotationConfirm = page.locator('button').filter({ hasText: '확인 및 새 secret 발급' })
+  await rotationReason.fill('보존할 회전 의도')
+  await deleteAction.click()
+  const deleteDialog = page.getByRole('dialog', { name: 'Webhook endpoint 삭제' })
+  await expect(deleteDialog).toBeVisible()
+
+  endpointState = 'stale'
+  await page.locator('button[aria-label="모두 새로고침"]').evaluate((button) =>
+    (button as HTMLButtonElement).click(),
+  )
+  await expect(page.getByText('Endpoint 최신 상태를 확인하지 못해 마지막 성공 결과를 유지했습니다.')).toBeVisible()
+  await expect(rotationReason).toHaveValue('보존할 회전 의도')
+  await expect(rotationConfirm).toBeDisabled()
+  await expect(deleteDialog.getByRole('button', { name: 'endpoint 삭제' })).toBeDisabled()
+  expect(endpointWrites).toBe(0)
+
+  await page.setViewportSize({ width: 320, height: 740 })
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/webhook-action-freshness-ui-340/stale-intents-320.png',
+    fullPage: true,
+  })
+
+  endpointState = 'healthy'
+  availableKeyIds = ['2026-q4']
+  await page.locator('button[aria-label="Endpoint 다시 시도"]').evaluate((button) =>
+    (button as HTMLButtonElement).click(),
+  )
+  await expect(page.getByText('Endpoint 최신 상태를 확인하지 못해 마지막 성공 결과를 유지했습니다.')).toHaveCount(0)
+  await expect(rotationConfirm).toBeDisabled()
+  await expect(deleteDialog.getByRole('button', { name: 'endpoint 삭제' })).toBeEnabled()
+  await page.locator('select[aria-label="Action freshness hook signing key"]').selectOption('2026-q4')
+  await expect(rotationConfirm).toBeEnabled()
+  await rotationConfirm.evaluate((button) => (button as HTMLButtonElement).click())
+  await expect(page.getByLabel('새 webhook secret')).toHaveText('ofw_recovered_action_secret')
+  expect(endpointWrites).toBe(1)
+  await deleteDialog.getByLabel('Webhook 삭제 확인 닫기').click()
+  await expect(deleteDialog).toHaveCount(0)
+
+  await expect(rotateAction).toBeEnabled()
+  await rotateAction.click()
+  await rotationReason.fill('capability 전환에서 폐기할 회전 의도')
+  endpointState = 'disabled'
+  await page.locator('button[aria-label="모두 새로고침"]').evaluate((button) =>
+    (button as HTMLButtonElement).click(),
+  )
+  await expect(page.locator('button[aria-label="Action freshness hook webhook 편집"]')).toHaveCount(0)
+  await expect(page.locator('button[aria-label="Action freshness hook secret 회전"]')).toHaveCount(0)
+  await expect(page.locator('button[aria-label="Action freshness hook webhook 삭제"]')).toBeEnabled()
+  await expect(rotationReason).toHaveCount(0)
+
+  endpointState = 'healthy'
+  await page.locator('button[aria-label="모두 새로고침"]').evaluate((button) =>
+    (button as HTMLButtonElement).click(),
+  )
+  await expect(rotateAction).toBeEnabled()
+  await rotateAction.click()
+  await expect(rotationReason).toHaveValue('')
+  await endpointRegion.getByRole('button', { name: '취소', exact: true }).click()
+  await editAction.click()
+  const capabilityEditName = endpointRegion.getByLabel('Action freshness hook webhook 이름 편집')
+  await capabilityEditName.fill('capability 전환에서 폐기할 편집 초안')
+
+  endpointState = 'disabled'
+  await page.locator('button[aria-label="모두 새로고침"]').evaluate((button) =>
+    (button as HTMLButtonElement).click(),
+  )
+  await expect(capabilityEditName).toHaveCount(0)
+  await expect(page.locator('button[aria-label="Action freshness hook webhook 삭제"]')).toBeEnabled()
+
+  endpointState = 'healthy'
+  await page.locator('button[aria-label="모두 새로고침"]').evaluate((button) =>
+    (button as HTMLButtonElement).click(),
+  )
+  await editAction.click()
+  await expect(endpointRegion.getByLabel('Action freshness hook webhook 이름 편집')).toHaveValue(endpoint.name)
+  await endpointRegion.getByRole('button', { name: '취소', exact: true }).click()
+
+  endpointState = 'disabled'
+  await page.locator('button[aria-label="모두 새로고침"]').evaluate((button) =>
+    (button as HTMLButtonElement).click(),
+  )
+  await page.locator('button[aria-label="Action freshness hook webhook 삭제"]').click()
+  await expect(deleteDialog).toBeVisible()
+  endpointState = 'removed'
+  await deleteDialog.getByRole('button', { name: 'endpoint 삭제' }).click()
+  await expect(endpointRegion.getByText('Action freshness hook')).toHaveCount(0)
+  await expect(page.getByText('등록된 webhook이 없습니다')).toBeVisible()
+  await expect(deleteDialog).toHaveCount(0)
+  await expect(rotationReason).toHaveCount(0)
+  expect(endpointWrites).toBe(2)
+  await expectNoHorizontalOverflow(page)
+})
+
 test('webhook 누락 signing key와 CAS 충돌을 최신 endpoint 상태로 복구한다', async ({ page }) => {
   await mockApi(page)
   let endpoint = {

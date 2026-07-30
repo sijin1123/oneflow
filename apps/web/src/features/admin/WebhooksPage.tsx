@@ -12,7 +12,7 @@ import {
   X,
 } from 'lucide-react'
 import * as Dialog from '@radix-ui/react-dialog'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 
 import { FrameContextActions } from '@/components/shell/FrameContextActions'
@@ -118,6 +118,7 @@ function EndpointRow({
   onTestResult,
   onDirtyChange,
   writeEnabled,
+  canWrite,
 }: {
   endpoint: WebhookEndpoint
   onSecret: (result: WebhookEndpointCreated) => void
@@ -128,6 +129,7 @@ function EndpointRow({
   onTestResult: (result: WebhookDelivery) => void
   onDirtyChange: (id: string, dirty: boolean) => void
   writeEnabled: boolean
+  canWrite: () => boolean
 }) {
   const update = useUpdateWebhook()
   const remove = useDeleteWebhook()
@@ -143,6 +145,8 @@ function EndpointRow({
   const [confirmingDelete, setConfirmingDelete] = useState(false)
   const keyAvailable = availableKeyIds.includes(endpoint.signing_key_id)
   const defaultTargetKeyId = keyAvailable ? endpoint.signing_key_id : availableKeyIds[0] ?? ''
+  const targetKeyAvailable = availableKeyIds.includes(targetKeyId)
+  const endpointActionsEnabled = enabled && writeEnabled
   const rotateConflict = rotate.error instanceof ApiError && rotate.error.status === 409
   const editDirty =
     editing &&
@@ -162,6 +166,17 @@ function EndpointRow({
     setUrl(endpoint.url)
     setEvents(endpoint.event_types)
   }, [editing, endpoint.event_types, endpoint.name, endpoint.url])
+
+  useEffect(() => {
+    if (enabled) return
+    setName(endpoint.name)
+    setUrl(endpoint.url)
+    setEvents(endpoint.event_types)
+    setEditing(false)
+    setTargetKeyId(defaultTargetKeyId)
+    setReason('')
+    setRotating(false)
+  }, [defaultTargetKeyId, enabled, endpoint.event_types, endpoint.name, endpoint.url])
 
   const cancelEdit = () => {
     setName(endpoint.name)
@@ -188,9 +203,9 @@ function EndpointRow({
           <Button variant="ghost" size="sm" onClick={cancelEdit}>취소</Button>
           <Button
             size="sm"
-            disabled={!writeEnabled || !name.trim() || !url.trim() || events.length === 0 || update.isPending}
+            disabled={!endpointActionsEnabled || !name.trim() || !url.trim() || events.length === 0 || update.isPending}
             onClick={() => {
-              if (!writeEnabled) return
+              if (!endpointActionsEnabled || !canWrite()) return
               update.mutate(
                 { id: endpoint.id, name: name.trim(), url: url.trim(), event_types: events },
                 { onSuccess: () => setEditing(false) },
@@ -219,12 +234,74 @@ function EndpointRow({
       </div>
       <div className="flex min-w-0 flex-wrap items-center gap-1">
         {enabled ? <>
-          <Button size="icon" variant="ghost" title="편집" aria-label={`${endpoint.name} webhook 편집`} onClick={() => setEditing(true)}><Pencil size={14} /></Button>
-          <Button size="icon" variant="ghost" title={endpoint.is_active ? '중지' : '활성화'} aria-label={`${endpoint.name} webhook ${endpoint.is_active ? '중지' : '활성화'}`} aria-disabled={!writeEnabled} className={!writeEnabled ? 'pointer-events-none opacity-50' : undefined} disabled={update.isPending} onClick={() => { if (writeEnabled) update.mutate({ id: endpoint.id, is_active: !endpoint.is_active }) }}><RefreshCcw size={14} /></Button>
-          <Button size="icon" variant="ghost" title="secret 회전" aria-label={`${endpoint.name} secret 회전`} disabled={availableKeyIds.length === 0 || rotate.isPending} onClick={() => { setTargetKeyId(defaultTargetKeyId); setRotating(true) }}><RotateCw size={14} /></Button>
-          <Button size="icon" variant="ghost" title="테스트 전송" aria-label={`${endpoint.name} 테스트 전송`} aria-disabled={!writeEnabled} className={!writeEnabled ? 'pointer-events-none opacity-50' : undefined} disabled={!endpoint.is_active || test.isPending} onClick={() => { if (!writeEnabled) return; onTestStart(); test.mutate(endpoint.id, { onSuccess: onTestResult }) }}><Play size={14} /></Button>
+          <Button
+            size="icon"
+            variant="ghost"
+            title="편집"
+            aria-label={`${endpoint.name} webhook 편집`}
+            disabled={!endpointActionsEnabled}
+            onClick={() => {
+              if (!endpointActionsEnabled || !canWrite()) return
+              setEditing(true)
+            }}
+          >
+            <Pencil size={14} />
+          </Button>
+          <Button
+            size="icon"
+            variant="ghost"
+            title={endpoint.is_active ? '중지' : '활성화'}
+            aria-label={`${endpoint.name} webhook ${endpoint.is_active ? '중지' : '활성화'}`}
+            disabled={!endpointActionsEnabled || update.isPending}
+            onClick={() => {
+              if (!endpointActionsEnabled || !canWrite()) return
+              update.mutate({ id: endpoint.id, is_active: !endpoint.is_active })
+            }}
+          >
+            <RefreshCcw size={14} />
+          </Button>
+          <Button
+            size="icon"
+            variant="ghost"
+            title="secret 회전"
+            aria-label={`${endpoint.name} secret 회전`}
+            disabled={!endpointActionsEnabled || availableKeyIds.length === 0 || rotate.isPending}
+            onClick={() => {
+              if (!endpointActionsEnabled || !canWrite()) return
+              setTargetKeyId(defaultTargetKeyId)
+              setRotating(true)
+            }}
+          >
+            <RotateCw size={14} />
+          </Button>
+          <Button
+            size="icon"
+            variant="ghost"
+            title="테스트 전송"
+            aria-label={`${endpoint.name} 테스트 전송`}
+            disabled={!endpointActionsEnabled || !endpoint.is_active || test.isPending}
+            onClick={() => {
+              if (!endpointActionsEnabled || !canWrite()) return
+              onTestStart()
+              test.mutate(endpoint.id, { onSuccess: onTestResult })
+            }}
+          >
+            <Play size={14} />
+          </Button>
         </> : null}
-        <Button size="icon" variant="ghost" title="삭제" aria-label={`${endpoint.name} webhook 삭제`} disabled={remove.isPending} onClick={() => setConfirmingDelete(true)}><Trash2 size={14} /></Button>
+        <Button
+          size="icon"
+          variant="ghost"
+          title="삭제"
+          aria-label={`${endpoint.name} webhook 삭제`}
+          disabled={!writeEnabled || remove.isPending}
+          onClick={() => {
+            if (!writeEnabled || !canWrite()) return
+            setConfirmingDelete(true)
+          }}
+        >
+          <Trash2 size={14} />
+        </Button>
       </div>
       {testResult ? <p role="status" className="text-xs text-of-muted lg:col-span-2">테스트 전송: {testResult.status === 'succeeded' ? '성공' : `실패 ${testResult.error ?? ''}`}</p> : null}
       {rotating ? <div className="grid gap-2 rounded-of border border-of-border p-2 text-xs lg:col-span-2">
@@ -234,7 +311,7 @@ function EndpointRow({
           </select>
         </label>
         <Input aria-label={`${endpoint.name} secret rotation reason`} value={reason} maxLength={240} placeholder="회전 사유" onChange={(event) => setReason(event.target.value)} />
-        <div className="flex justify-end gap-2"><Button size="sm" variant="ghost" onClick={cancelRotation}>취소</Button><Button size="sm" disabled={!writeEnabled || !targetKeyId || !reason.trim() || rotate.isPending} onClick={() => { if (writeEnabled) rotate.mutate({ id: endpoint.id, target_signing_key_id: targetKeyId, expected_secret_version: endpoint.secret_version, reason: reason.trim() }, { onSuccess: (result) => { cancelRotation(); onSecret(result) } }) }}>확인 및 새 secret 발급</Button></div>
+        <div className="flex justify-end gap-2"><Button size="sm" variant="ghost" onClick={cancelRotation}>취소</Button><Button size="sm" disabled={!endpointActionsEnabled || !targetKeyAvailable || !reason.trim() || rotate.isPending} onClick={() => { if (endpointActionsEnabled && targetKeyAvailable && canWrite()) rotate.mutate({ id: endpoint.id, target_signing_key_id: targetKeyId, expected_secret_version: endpoint.secret_version, reason: reason.trim() }, { onSuccess: (result) => { cancelRotation(); onSecret(result) } }) }}>확인 및 새 secret 발급</Button></div>
       </div> : null}
       {update.isError || rotate.isError || test.isError || remove.isError ? <p role="alert" className="text-xs text-of-danger lg:col-span-2">{rotateConflict ? '다른 관리자가 먼저 secret을 변경했습니다. 최신 상태를 확인해 다시 시도해 주세요.' : '요청을 완료하지 못했습니다.'}</p> : null}
       <Dialog.Root
@@ -264,7 +341,7 @@ function EndpointRow({
                 variant="danger"
                 disabled={!writeEnabled || remove.isPending}
                 aria-busy={remove.isPending}
-                onClick={() => { if (writeEnabled) remove.mutate(endpoint.id, { onSuccess: () => setConfirmingDelete(false) }) }}
+                onClick={() => { if (writeEnabled && canWrite()) remove.mutate(endpoint.id, { onSuccess: () => setConfirmingDelete(false) }) }}
               >
                 <Trash2 size={14} aria-hidden="true" />
                 {remove.isPending ? '삭제 중' : 'endpoint 삭제'}
@@ -301,6 +378,8 @@ export function WebhooksPage() {
   const [failedRefreshes, setFailedRefreshes] = useState<string[]>([])
   const [endpointSnapshot, setEndpointSnapshot] = useState<WebhookEndpointList | null>(null)
   const [deliverySnapshot, setDeliverySnapshot] = useState<WebhookDeliveryList | null>(null)
+  const endpointFreshRef = useRef(false)
+  const deliveryFreshRef = useRef(false)
   useEffect(() => setRetryError(false), [deliveries.dataUpdatedAt])
   useEffect(() => {
     if (webhooks.data) setEndpointSnapshot(webhooks.data)
@@ -344,12 +423,16 @@ export function WebhooksPage() {
 
   const refreshAll = async () => {
     setRetryError(false)
+    endpointFreshRef.current = false
+    deliveryFreshRef.current = false
     const results = await Promise.all([webhooks.refetch(), deliveries.refetch()])
     const labels = ['Endpoint', 'Delivery audit']
     setFailedRefreshes(results.flatMap((result, index) => result.isError ? [labels[index]] : []))
   }
 
   const retryOne = async (label: string, refetch: () => Promise<{ isError: boolean }>) => {
+    if (label === 'Endpoint') endpointFreshRef.current = false
+    if (label === 'Delivery audit') deliveryFreshRef.current = false
     const result = await refetch()
     setFailedRefreshes((current) => result.isError
       ? current.includes(label) ? current : [...current, label]
@@ -361,6 +444,17 @@ export function WebhooksPage() {
   const deliveryStale = Boolean(deliveryData && (deliveries.isError || failedRefreshes.includes('Delivery audit')))
   const endpointFresh = Boolean(endpointData && !webhooks.isFetching && !endpointStale)
   const deliveryFresh = Boolean(deliveryData && !deliveries.isFetching && !deliveryStale)
+  useEffect(() => {
+    endpointFreshRef.current = endpointFresh
+  }, [endpointFresh])
+  useEffect(() => {
+    deliveryFreshRef.current = deliveryFresh
+  }, [deliveryFresh])
+  const canWriteEndpoint = useCallback(() => endpointFreshRef.current, [])
+  const canRetryDelivery = useCallback(
+    () => endpointFreshRef.current && deliveryFreshRef.current,
+    [],
+  )
 
   if (!endpointData && webhooks.isError) {
     if (webhooks.error instanceof ApiError && webhooks.error.status === 403) {
@@ -482,7 +576,7 @@ export function WebhooksPage() {
                     className="mt-4 grid min-w-0 gap-3"
                     onSubmit={(event) => {
                       event.preventDefault()
-                      if (!endpointFresh) return
+                      if (!endpointFresh || !canWriteEndpoint()) return
                       create.mutate(
                         { name: name.trim(), url: url.trim(), event_types: events },
                         {
@@ -558,6 +652,7 @@ export function WebhooksPage() {
                         onTestResult={(result) => setTestResults((current) => ({ ...current, [endpoint.id]: result }))}
                         onDirtyChange={setEndpointDirty}
                         writeEnabled={endpointFresh}
+                        canWrite={canWriteEndpoint}
                       />
                     ))}
                   </ul>
@@ -663,7 +758,7 @@ export function WebhooksPage() {
                           className={!endpointFresh || !deliveryFresh ? 'pointer-events-none opacity-50' : undefined}
                           aria-label={`${endpoint.name} delivery 재시도`}
                           onClick={() => {
-                            if (!endpointFresh || !deliveryFresh) return
+                            if (!endpointFresh || !deliveryFresh || !canRetryDelivery()) return
                             setRetryError(false)
                             retry.mutate(delivery.id, {
                               onError: () => setRetryError(true),
