@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { ImagePlus, LoaderCircle, Trash2, Upload } from 'lucide-react'
+import { ImagePlus, LoaderCircle, RefreshCw, Trash2, Upload } from 'lucide-react'
 
 import { EmptyState, ErrorState, ListSkeleton } from '@/components/shell/states'
 import { Badge } from '@/components/ui/badge'
@@ -31,10 +31,16 @@ export function WorkspaceGeneralSettingsPage() {
   const [logoFileError, setLogoFileError] = useState<string | null>(null)
   const [logoPreviewUrl, setLogoPreviewUrl] = useState<string | null>(null)
   const logoInputRef = useRef<HTMLInputElement>(null)
+  const lastSuccessfulProfile = useRef(profile.data)
+
+  if (profile.data) lastSuccessfulProfile.current = profile.data
+  const data = profile.data ?? (profile.isError ? lastSuccessfulProfile.current : undefined)
+  const refreshFailed = profile.isRefetchError || (profile.isError && Boolean(data))
+  const profileFresh = Boolean(data) && !profile.isFetching && !refreshFailed
 
   useEffect(() => {
-    if (profile.data && !dirty) setName(profile.data.name)
-  }, [dirty, profile.data])
+    if (data && !dirty) setName(data.name)
+  }, [data, dirty])
 
   useEffect(() => {
     if (!logoFile) {
@@ -47,19 +53,21 @@ export function WorkspaceGeneralSettingsPage() {
   }, [logoFile])
 
   const trimmed = name.trim()
-  const changed = Boolean(profile.data && trimmed !== profile.data.name)
+  const changed = Boolean(data && trimmed !== data.name)
   useUnsavedLocationPrompt(
     changed || Boolean(logoFile),
     '저장하지 않은 워크스페이스 변경을 버리고 이동할까요?',
   )
 
-  if (profile.isPending) return <ListSkeleton />
-  if (profile.isError) {
+  if (profile.isPending && !data) return <ListSkeleton />
+  if (profile.isError && !data) {
     if (profile.error instanceof ApiError && profile.error.status === 403) {
       return <EmptyState title="접근 권한이 없습니다" hint="워크스페이스 설정은 관리자만 변경할 수 있습니다." />
     }
     return <ErrorState error={profile.error} onRetry={() => profile.refetch()} />
   }
+
+  if (!data) return <ListSkeleton />
 
   const stale = update.error instanceof ApiError && update.error.status === 412
   const logoMutation = replaceLogo.isPending || removeLogo.isPending
@@ -75,17 +83,57 @@ export function WorkspaceGeneralSettingsPage() {
       <main className="of-scrollbar min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto min-h-full w-full max-w-5xl bg-of-surface">
           <div className="flex min-w-0 flex-wrap items-center gap-3 border-b border-of-border-subtle px-4 py-4 sm:px-5">
-            <WorkspaceLogo profile={profile.data} size="lg" />
+            <WorkspaceLogo profile={data} size="lg" />
             <div className="min-w-0 flex-1">
               <div className="flex min-w-0 flex-wrap items-center gap-2">
-                <p className="truncate text-base font-semibold">{profile.data.name}</p>
+                <p className="truncate text-base font-semibold">{data.name}</p>
                 <Badge variant="accent">활성</Badge>
               </div>
               <p className="mt-0.5 text-xs text-of-muted">
-                워크스페이스 프로필 · revision {profile.data.revision}
+                워크스페이스 프로필 · revision {data.revision}
               </p>
             </div>
+            <Button
+              type="button"
+              size="icon"
+              variant="ghost"
+              aria-label="프로필 새로고침"
+              title="프로필 새로고침"
+              disabled={profile.isFetching}
+              onClick={() => profile.refetch()}
+            >
+              <RefreshCw
+                size={15}
+                className={profile.isFetching ? 'animate-spin' : undefined}
+                aria-hidden="true"
+              />
+            </Button>
           </div>
+
+          {refreshFailed ? (
+            <div
+              className="flex min-w-0 flex-wrap items-center gap-2 border-b border-of-danger/25 bg-of-danger/5 px-4 py-3 text-xs sm:px-5"
+              role="alert"
+            >
+              <p className="min-w-0 flex-1 text-of-danger">
+                최신 워크스페이스 프로필을 불러오지 못했습니다. 입력과 선택한 로고는 유지되며 다시 확인할 때까지 서버 변경은 차단됩니다.
+              </p>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={profile.isFetching}
+                onClick={() => profile.refetch()}
+              >
+                <RefreshCw
+                  size={13}
+                  className={profile.isFetching ? 'animate-spin' : undefined}
+                  aria-hidden="true"
+                />
+                프로필 다시 불러오기
+              </Button>
+            </div>
+          ) : null}
 
       <SettingsSection
         title="워크스페이스 이름"
@@ -98,9 +146,9 @@ export function WorkspaceGeneralSettingsPage() {
           className="max-w-2xl"
           onSubmit={(event) => {
             event.preventDefault()
-            if (!changed || !trimmed || trimmed.length > 80) return
+            if (!profileFresh || !changed || !trimmed || trimmed.length > 80) return
             update.mutate(
-              { name: trimmed, revision: profile.data.revision },
+              { name: trimmed, revision: data.revision },
               { onSuccess: () => setDirty(false) },
             )
           }}
@@ -116,11 +164,15 @@ export function WorkspaceGeneralSettingsPage() {
               onChange={(event) => {
                 const next = event.target.value
                 setName(next)
-                setDirty(next.trim() !== profile.data.name)
+                setDirty(next.trim() !== data.name)
               }}
             />
             <div className="mt-3 flex flex-wrap gap-2">
-              <Button type="submit" size="sm" disabled={!changed || !trimmed || update.isPending}>
+              <Button
+                type="submit"
+                size="sm"
+                disabled={!profileFresh || !changed || !trimmed || update.isPending}
+              >
                 {update.isPending ? <LoaderCircle size={13} className="animate-spin" aria-hidden="true" /> : null}
                 변경 저장
               </Button>
@@ -131,7 +183,7 @@ export function WorkspaceGeneralSettingsPage() {
                   variant="outline"
                   disabled={update.isPending}
                   onClick={() => {
-                    setName(profile.data.name)
+                    setName(data.name)
                     setDirty(false)
                     update.reset()
                   }}
@@ -167,7 +219,7 @@ export function WorkspaceGeneralSettingsPage() {
             {logoPreviewUrl ? (
               <img src={logoPreviewUrl} alt="선택한 로고 미리보기" className="h-full w-full object-contain" />
             ) : (
-              <WorkspaceLogo profile={profile.data} size="lg" />
+              <WorkspaceLogo profile={data} size="lg" />
             )}
           </div>
           <div className="min-w-0">
@@ -206,16 +258,17 @@ export function WorkspaceGeneralSettingsPage() {
                 onClick={() => logoInputRef.current?.click()}
               >
                 <ImagePlus size={13} aria-hidden="true" />
-                {profile.data.logo_url ? '로고 교체' : '로고 선택'}
+                {data.logo_url ? '로고 교체' : '로고 선택'}
               </Button>
               {logoFile ? (
                 <Button
                   type="button"
                   size="sm"
-                  disabled={logoMutation}
-                  onClick={() =>
+                  disabled={!profileFresh || logoMutation}
+                  onClick={() => {
+                    if (!profileFresh) return
                     replaceLogo.mutate(
-                      { file: logoFile, revision: profile.data.revision },
+                      { file: logoFile, revision: data.revision },
                       {
                         onSuccess: () => {
                           setLogoFile(null)
@@ -223,7 +276,7 @@ export function WorkspaceGeneralSettingsPage() {
                         },
                       },
                     )
-                  }
+                  }}
                 >
                   {replaceLogo.isPending ? (
                     <LoaderCircle size={13} className="animate-spin" aria-hidden="true" />
@@ -233,17 +286,18 @@ export function WorkspaceGeneralSettingsPage() {
                   로고 저장
                 </Button>
               ) : null}
-              {profile.data.logo_url ? (
+              {data.logo_url ? (
                 <Button
                   type="button"
                   size="sm"
                   variant="outline"
-                  disabled={logoMutation}
+                  disabled={!profileFresh || logoMutation}
                   className="text-of-danger"
                   onClick={() => {
+                    if (!profileFresh) return
                     if (!confirmDestructive('워크스페이스 로고를 삭제할까요?')) return
                     removeLogo.mutate(
-                      { revision: profile.data.revision },
+                      { revision: data.revision },
                       { onSuccess: () => setLogoFile(null) },
                     )
                   }}
@@ -272,17 +326,17 @@ export function WorkspaceGeneralSettingsPage() {
                 </Button>
               ) : null}
             </div>
-            <p className="mt-3 text-xs text-of-muted">
+            <p className="mt-3 pr-14 text-xs text-of-muted sm:pr-0">
               PNG, JPEG, WebP · 최대 2 MiB · 최대 4096×4096 px · 정적 이미지
             </p>
             {logoFile ? (
-              <p className="mt-2 break-all text-xs font-medium">
+              <p className="mt-2 break-all pr-14 text-xs font-medium sm:pr-0">
                 선택됨: {logoFile.name} · {Math.max(1, Math.round(logoFile.size / 1024))} KiB
               </p>
-            ) : profile.data.logo_filename ? (
-              <p className="mt-2 break-all text-xs font-medium">
-                {profile.data.logo_filename} · {profile.data.logo_width}×{profile.data.logo_height} px ·{' '}
-                {Math.max(1, Math.round((profile.data.logo_byte_size ?? 0) / 1024))} KiB
+            ) : data.logo_filename ? (
+              <p className="mt-2 break-all pr-14 text-xs font-medium sm:pr-0">
+                {data.logo_filename} · {data.logo_width}×{data.logo_height} px ·{' '}
+                {Math.max(1, Math.round((data.logo_byte_size ?? 0) / 1024))} KiB
               </p>
             ) : null}
             {logoFileError ? <p className="mt-3 text-xs text-of-danger" role="alert">{logoFileError}</p> : null}
@@ -311,11 +365,11 @@ export function WorkspaceGeneralSettingsPage() {
           </div>
           <div>
             <dt className="text-of-muted">최근 변경자</dt>
-            <dd className="mt-1 break-words font-medium">{profile.data.updated_by_name ?? '초기 설정'}</dd>
+            <dd className="mt-1 break-words font-medium">{data.updated_by_name ?? '초기 설정'}</dd>
           </div>
           <div>
             <dt className="text-of-muted">최근 변경 시각</dt>
-            <dd className="mt-1 font-medium">{formatDateTime(profile.data.updated_at)}</dd>
+            <dd className="mt-1 font-medium">{formatDateTime(data.updated_at)}</dd>
           </div>
         </dl>
       </SettingsSection>
