@@ -34881,6 +34881,7 @@ async function mockInitiativesPolicy(
   let enabled = true
   let revision = 1
   let patchCount = 0
+  let failGet = false
   const requests: string[] = []
 
   await page.route('**/api/v1/workspace/capabilities', (route) =>
@@ -34902,6 +34903,13 @@ async function mockInitiativesPolicy(
   await page.route('**/api/v1/admin/workspace/features/initiatives', async (route) => {
     if (options.forbidden) {
       await route.fulfill({ status: 403, json: { detail: 'workspace admin required' } })
+      return
+    }
+    if (route.request().method() === 'GET' && failGet) {
+      await route.fulfill({
+        status: 503,
+        json: { detail: 'initiative policy refresh unavailable' },
+      })
       return
     }
     if (route.request().method() === 'PATCH') {
@@ -34940,7 +34948,15 @@ async function mockInitiativesPolicy(
       },
     })
   })
-  return { requests }
+  return {
+    requests,
+    failNextGet: () => {
+      failGet = true
+    },
+    allowGet: () => {
+      failGet = false
+    },
+  }
 }
 
 test('Initiatives 정책은 navigation과 API surface를 함께 끄고 복구한다', async ({ page }) => {
@@ -35007,6 +35023,193 @@ test('Initiatives 정책은 실패한 동일 변경을 정확히 다시 시도�
   await page.getByRole('button', { name: '이니셔티브 끄기 다시 시도' }).click()
   await expect(toggle).not.toBeChecked()
   expect(policy.requests).toEqual(['"1"', '"1"'])
+})
+
+test('UI-329 Initiatives 설정은 독립 stale query의 쓰기를 막고 초안을 보존한다', async ({
+  page,
+}) => {
+  test.setTimeout(60_000)
+  await mockApi(page)
+  const policy = await mockInitiativesPolicy(page, { failFirstPatch: true })
+  let failLabelsGet = false
+  let failFirstLabelPatch = true
+  const labelWrites: string[] = []
+  let labels: InitiativeLabel[] = [
+    {
+      id: '11111111-1111-4111-8111-111111111169',
+      name: 'Strategic',
+      color: '#6d5dfb',
+      created_at: '2026-07-30T00:00:00Z',
+      updated_at: '2026-07-30T00:00:00Z',
+    },
+    {
+      id: '11111111-1111-4111-8111-111111111170',
+      name: 'Compliance',
+      color: '#0f766e',
+      created_at: '2026-07-30T00:00:00Z',
+      updated_at: '2026-07-30T00:00:00Z',
+    },
+  ]
+  await page.route('**/api/v1/initiatives/labels**', async (route) => {
+    const request = route.request()
+    const path = new URL(request.url()).pathname
+    if (request.method() === 'GET') {
+      if (failLabelsGet) {
+        await route.fulfill({
+          status: 503,
+          json: { detail: 'initiative labels refresh unavailable' },
+        })
+        return
+      }
+      await route.fulfill({ json: { items: labels, total: labels.length } })
+      return
+    }
+    labelWrites.push(`${request.method()} ${path}`)
+    if (request.method() === 'PATCH') {
+      if (failFirstLabelPatch) {
+        failFirstLabelPatch = false
+        await route.fulfill({
+          status: 503,
+          json: { detail: 'initiative label update unavailable' },
+        })
+        return
+      }
+      const id = path.split('/').at(-1)
+      const input = request.postDataJSON() as { name: string; color: string }
+      labels = labels.map((label) =>
+        label.id === id
+          ? { ...label, ...input, updated_at: '2026-07-30T01:00:00Z' }
+          : label,
+      )
+      await route.fulfill({ json: labels.find((label) => label.id === id) })
+      return
+    }
+    if (request.method() === 'DELETE') {
+      labels = labels.filter((label) => !path.endsWith(label.id))
+      await route.fulfill({ status: 204 })
+      return
+    }
+    await route.fulfill({ status: 201, json: labels[0] })
+  })
+
+  await page.setViewportSize({ width: 320, height: 800 })
+  await page.goto('/admin/initiatives')
+  const labelSettings = page.getByRole('region', { name: '라벨' })
+  const toggle = page.getByRole('switch', { name: '이니셔티브 사용' })
+  const policyRetry = page.getByRole('button', {
+    name: '이니셔티브 끄기 다시 시도',
+  })
+
+  await toggle.click()
+  await expect(page.getByRole('alert')).toContainText(
+    'temporary initiative policy failure',
+  )
+  await expect(policyRetry).toBeEnabled()
+  expect(policy.requests).toEqual(['"1"'])
+
+  await labelSettings.getByLabel('새 라벨 이름').fill('저장 전 생성 초안')
+  const strategicRow = labelSettings.getByRole('listitem').filter({ hasText: 'Strategic' })
+  await strategicRow.getByRole('button', { name: '수정' }).click()
+  const editName = labelSettings.getByLabel('Strategic 이름')
+  await editName.fill('Strategic Updated')
+  await labelSettings.getByRole('button', { name: '저장' }).click()
+  await expect(labelSettings.getByRole('alert')).toContainText(
+    'initiative label update unavailable',
+  )
+  expect(labelWrites).toEqual([
+    'PATCH /api/v1/initiatives/labels/11111111-1111-4111-8111-111111111169',
+  ])
+
+  policy.failNextGet()
+  failLabelsGet = true
+  await page.getByRole('button', { name: '새로고침' }).click()
+  await expect(
+    page.getByRole('alert').filter({ hasText: '복구 전까지 정책 변경과 라벨 저장' }),
+  ).toBeVisible()
+  await expect(
+    labelSettings.getByRole('alert').filter({ hasText: '마지막으로 확인한 목록' }),
+  ).toBeVisible()
+  await expect(page.getByText('정책 revision 1')).toBeVisible()
+  await expect(labelSettings.getByLabel('새 라벨 이름')).toHaveValue('저장 전 생성 초안')
+  await expect(editName).toHaveValue('Strategic Updated')
+  await expect(toggle).toBeDisabled()
+  await expect(policyRetry).toBeDisabled()
+  const labelRetry = labelSettings.getByRole('button', {
+    name: '같은 내용으로 다시 시도',
+  })
+  const createButton = labelSettings.getByRole('button', { name: '라벨 추가' })
+  await expect(labelRetry).toBeDisabled()
+  await expect(createButton).toBeDisabled()
+
+  for (const control of [toggle, policyRetry, labelRetry, createButton]) {
+    await control.evaluate((button) => {
+      button.removeAttribute('disabled')
+      ;(button as HTMLButtonElement).click()
+    })
+  }
+  const complianceRow = labelSettings
+    .getByRole('listitem')
+    .filter({ hasText: 'Compliance' })
+  await complianceRow.getByRole('button', { name: '삭제' }).click()
+  const deleteDialog = page.getByRole('dialog', {
+    name: '이니셔티브 라벨을 삭제할까요?',
+  })
+  const deleteButton = deleteDialog.getByRole('button', {
+    name: '라벨 삭제',
+    exact: true,
+  })
+  await expect(deleteButton).toBeDisabled()
+  await deleteButton.evaluate((button) => {
+    button.removeAttribute('disabled')
+    ;(button as HTMLButtonElement).click()
+  })
+  await deleteDialog.getByRole('button', { name: '라벨 삭제 확인 창 닫기' }).click()
+  expect(policy.requests).toEqual(['"1"'])
+  expect(labelWrites).toEqual([
+    'PATCH /api/v1/initiatives/labels/11111111-1111-4111-8111-111111111169',
+  ])
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/initiatives-settings-freshness-write-guard-ui-329/stale-320.png',
+    fullPage: true,
+  })
+
+  policy.allowGet()
+  await page.getByRole('button', { name: '정책 다시 시도' }).click()
+  await expect(toggle).toBeEnabled()
+  await expect(policyRetry).toBeEnabled()
+  await policyRetry.click()
+  await expect(toggle).not.toBeChecked()
+  await expect(page.getByText('정책 revision 2')).toBeVisible()
+  expect(policy.requests).toEqual(['"1"', '"1"'])
+
+  await toggle.click()
+  await expect(toggle).toBeChecked()
+  await expect(page.getByText('정책 revision 3')).toBeVisible()
+  expect(policy.requests).toEqual(['"1"', '"1"', '"2"'])
+  failLabelsGet = true
+  await page.getByRole('button', { name: '새로고침' }).click()
+  await expect(
+    labelSettings.getByRole('alert').filter({ hasText: '마지막으로 확인한 목록' }),
+  ).toBeVisible()
+  await expect(labelRetry).toBeDisabled()
+  failLabelsGet = false
+  await expect(
+    labelSettings.getByRole('alert').filter({ hasText: '마지막으로 확인한 목록' }),
+  ).toHaveCount(0)
+  await expect(labelRetry).toBeEnabled()
+  await labelRetry.click()
+  await expect(labelSettings.getByText('Strategic Updated', { exact: true })).toBeVisible()
+  await expect(labelSettings.getByLabel('새 라벨 이름')).toHaveValue('저장 전 생성 초안')
+  expect(labelWrites).toEqual([
+    'PATCH /api/v1/initiatives/labels/11111111-1111-4111-8111-111111111169',
+    'PATCH /api/v1/initiatives/labels/11111111-1111-4111-8111-111111111169',
+  ])
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({
+    path: '../../docs/screenshots/redevelopment/initiatives-settings-freshness-write-guard-ui-329/recovered-320.png',
+    fullPage: true,
+  })
 })
 
 test('Initiatives 정책은 비관리자와 모바일 상태를 안전하게 처리한다', async ({ page }) => {

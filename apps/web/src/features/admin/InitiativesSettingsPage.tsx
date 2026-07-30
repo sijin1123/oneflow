@@ -108,7 +108,6 @@ export function InitiativesSettingsPage() {
   const [failedPolicyTarget, setFailedPolicyTarget] = useState<boolean | null>(null)
   const [failedLabelAction, setFailedLabelAction] = useState<LabelAction | null>(null)
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
-  const [refreshError, setRefreshError] = useState(false)
   const deleteTriggerRef = useRef<HTMLButtonElement | null>(null)
   const createNameRef = useRef<HTMLInputElement | null>(null)
   const deleteSucceededRef = useRef(false)
@@ -130,12 +129,22 @@ export function InitiativesSettingsPage() {
   )
 
   const stale = updatePolicy.error instanceof ApiError && updatePolicy.error.status === 412
+  const policyStale = Boolean(data && policy.isError)
+  const labelsStale = Boolean(labels.data && labels.isError)
+  const policyFresh = Boolean(data && !policy.isFetching && !policyStale)
+  const labelWritesReady = Boolean(
+    data?.enabled &&
+      policyFresh &&
+      labels.data &&
+      !labels.isFetching &&
+      !labelsStale,
+  )
   const busy =
-    policy.isFetching ||
     updatePolicy.isPending ||
     createLabel.isPending ||
     updateLabel.isPending ||
     deleteLabel.isPending
+  const refreshing = policy.isFetching || labels.isFetching
 
   const resetLabelMutations = () => {
     createLabel.reset()
@@ -144,11 +153,10 @@ export function InitiativesSettingsPage() {
   }
 
   const changePolicy = (enabled: boolean) => {
-    if (!data) return
+    if (!data || !policyFresh) return
     updatePolicy.reset()
     setFailedPolicyTarget(null)
     setSuccessMessage(null)
-    setRefreshError(false)
     updatePolicy.mutate(
       { enabled, revision: data.revision },
       {
@@ -165,6 +173,7 @@ export function InitiativesSettingsPage() {
   }
 
   const runCreate = (input: { name: string; color: string }) => {
+    if (!labelWritesReady) return
     resetLabelMutations()
     setFailedLabelAction(null)
     setSuccessMessage(null)
@@ -179,6 +188,7 @@ export function InitiativesSettingsPage() {
   }
 
   const runUpdate = (input: { id: string; name: string; color: string }) => {
+    if (!labelWritesReady) return
     resetLabelMutations()
     setFailedLabelAction(null)
     setSuccessMessage(null)
@@ -192,6 +202,7 @@ export function InitiativesSettingsPage() {
   }
 
   const runDelete = (target: InitiativeLabel) => {
+    if (!labelWritesReady) return
     deleteLabel.reset()
     setSuccessMessage(null)
     deleteLabel.mutate(target.id, {
@@ -204,21 +215,15 @@ export function InitiativesSettingsPage() {
   }
 
   const refresh = async () => {
-    updatePolicy.reset()
-    resetLabelMutations()
-    setFailedPolicyTarget(null)
-    setFailedLabelAction(null)
     setSuccessMessage(null)
-    setRefreshError(false)
-    const results = await Promise.all([
+    await Promise.all([
       policy.refetch(),
       data?.enabled ? labels.refetch() : Promise.resolve(null),
     ])
-    setRefreshError(results.some((result) => result?.isError))
   }
 
   const retryLabelAction = () => {
-    if (!failedLabelAction) return
+    if (!failedLabelAction || !labelWritesReady) return
     if (failedLabelAction.kind === 'create') runCreate(failedLabelAction.input)
     else runUpdate(failedLabelAction.input)
   }
@@ -245,7 +250,7 @@ export function InitiativesSettingsPage() {
           type="button"
           size="sm"
           variant="outline"
-          disabled={busy}
+          disabled={busy || refreshing}
           onClick={() => void refresh()}
         >
           <RefreshCw
@@ -253,14 +258,14 @@ export function InitiativesSettingsPage() {
             className={policy.isFetching || labels.isFetching ? 'animate-spin' : undefined}
             aria-hidden="true"
           />
-          {refreshError ? '새로고침 다시 시도' : '새로고침'}
+          새로고침
         </Button>
       </FrameContextActions>
 
       <div
         data-testid="initiatives-settings-scroll"
         className="min-h-0 flex-1 overflow-y-auto overscroll-contain"
-        aria-busy={busy}
+        aria-busy={busy || refreshing}
       >
         <div className="mx-auto w-full max-w-5xl px-4 py-5 sm:px-6 sm:py-6">
           <header className="grid gap-4 border-b border-of-border pb-5 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
@@ -341,7 +346,7 @@ export function InitiativesSettingsPage() {
                     role="switch"
                     aria-checked={data.enabled}
                     aria-label="이니셔티브 사용"
-                    disabled={busy}
+                    disabled={busy || !policyFresh}
                     onClick={() => changePolicy(!data.enabled)}
                     className={cn(
                       'relative h-7 w-12 shrink-0 rounded-full border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-accent/50 disabled:cursor-not-allowed disabled:opacity-60',
@@ -385,7 +390,7 @@ export function InitiativesSettingsPage() {
                           type="button"
                           size="sm"
                           variant="outline"
-                          disabled={busy}
+                          disabled={busy || !policyFresh}
                           onClick={() => changePolicy(failedPolicyTarget)}
                         >
                           {failedPolicyTarget
@@ -395,10 +400,27 @@ export function InitiativesSettingsPage() {
                       ) : null}
                     </div>
                   ) : null}
-                  {refreshError ? (
-                    <p role="alert" className="text-xs leading-5 text-of-danger">
-                      최신 설정을 불러오지 못했습니다. 마지막으로 확인한 상태를 유지합니다.
-                    </p>
+                  {policyStale ? (
+                    <div
+                      role="alert"
+                      className="flex min-w-0 flex-col gap-2 border-y border-of-danger/15 bg-of-danger-soft px-3 py-2.5 text-xs sm:flex-row sm:items-center sm:justify-between"
+                    >
+                      <p className="min-w-0 break-words text-of-danger">
+                        정책을 갱신하지 못했습니다. 마지막으로 확인한 상태를 유지하며 복구
+                        전까지 정책 변경과 라벨 저장은 사용할 수 없습니다.
+                      </p>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="w-full shrink-0 sm:w-auto"
+                        disabled={policy.isFetching}
+                        onClick={() => void policy.refetch()}
+                      >
+                        <RefreshCw size={13} aria-hidden="true" />
+                        정책 다시 시도
+                      </Button>
+                    </div>
                   ) : null}
                 </div>
               </section>
@@ -492,7 +514,12 @@ export function InitiativesSettingsPage() {
                         <Button
                           size="sm"
                           type="submit"
-                          disabled={!name.trim() || busy || labels.data.total >= 50}
+                          disabled={
+                            !name.trim() ||
+                            busy ||
+                            !labelWritesReady ||
+                            labels.data.total >= 50
+                          }
                         >
                           {createLabel.isPending ? (
                             <LoaderCircle className="animate-spin" />
@@ -539,7 +566,9 @@ export function InitiativesSettingsPage() {
                                     <div className="flex gap-1.5">
                                       <Button
                                         size="sm"
-                                        disabled={!editing.name.trim() || busy}
+                                        disabled={
+                                          !editing.name.trim() || busy || !labelWritesReady
+                                        }
                                         onClick={() =>
                                           runUpdate({
                                             id: editing.id,
@@ -628,7 +657,7 @@ export function InitiativesSettingsPage() {
                             size="sm"
                             variant="outline"
                             className="w-full shrink-0 sm:w-auto"
-                            disabled={busy}
+                            disabled={busy || !labelWritesReady}
                             onClick={retryLabelAction}
                           >
                             <RefreshCw size={13} aria-hidden="true" />
@@ -775,7 +804,7 @@ export function InitiativesSettingsPage() {
                 type="button"
                 size="sm"
                 variant="danger"
-                disabled={deleteLabel.isPending || !deleteTarget}
+                disabled={deleteLabel.isPending || !deleteTarget || !labelWritesReady}
                 onClick={() => {
                   if (deleteTarget) runDelete(deleteTarget)
                 }}
