@@ -72,19 +72,20 @@ export function ReleasesSettingsPage() {
   const lastSuccessfulPolicy = useRef(policy.data)
   const [failedTarget, setFailedTarget] = useState<boolean | null>(null)
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
-  const [refreshError, setRefreshError] = useState(false)
 
   if (policy.data) lastSuccessfulPolicy.current = policy.data
   const data = policy.data ?? lastSuccessfulPolicy.current
   const stale = update.error instanceof ApiError && update.error.status === 412
-  const busy = policy.isFetching || update.isPending
+  const policyStale = Boolean(data && policy.isError)
+  const policyFresh = Boolean(data && !policy.isFetching && !policyStale)
+  const busy = update.isPending
+  const refreshing = policy.isFetching
 
   const changePolicy = (enabled: boolean) => {
-    if (!data) return
+    if (!data || !policyFresh) return
     update.reset()
     setFailedTarget(null)
     setSuccessMessage(null)
-    setRefreshError(false)
     update.mutate(
       { enabled, revision: data.revision },
       {
@@ -101,12 +102,8 @@ export function ReleasesSettingsPage() {
   }
 
   const refresh = async () => {
-    update.reset()
-    setFailedTarget(null)
     setSuccessMessage(null)
-    setRefreshError(false)
-    const result = await policy.refetch()
-    setRefreshError(Boolean(result.error))
+    await policy.refetch()
   }
 
   return (
@@ -120,7 +117,7 @@ export function ReleasesSettingsPage() {
           type="button"
           size="sm"
           variant="outline"
-          disabled={busy}
+          disabled={busy || refreshing}
           onClick={() => void refresh()}
         >
           <RefreshCw
@@ -128,14 +125,14 @@ export function ReleasesSettingsPage() {
             className={policy.isFetching ? 'animate-spin' : undefined}
             aria-hidden="true"
           />
-          {refreshError ? '새로고침 다시 시도' : '새로고침'}
+          새로고침
         </Button>
       </FrameContextActions>
 
       <div
         data-testid="releases-settings-scroll"
         className="min-h-0 flex-1 overflow-y-auto overscroll-contain"
-        aria-busy={busy}
+        aria-busy={busy || refreshing}
       >
         <div className="mx-auto w-full max-w-5xl px-4 py-5 sm:px-6 sm:py-6">
           <header className="grid gap-4 border-b border-of-border pb-5 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
@@ -214,7 +211,7 @@ export function ReleasesSettingsPage() {
                     role="switch"
                     aria-checked={data.enabled}
                     aria-label="Releases 사용"
-                    disabled={busy}
+                    disabled={busy || !policyFresh}
                     onClick={() => changePolicy(!data.enabled)}
                     className={cn(
                       'relative h-7 w-12 shrink-0 rounded-full border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-of-accent/50 disabled:cursor-not-allowed disabled:opacity-60',
@@ -255,7 +252,7 @@ export function ReleasesSettingsPage() {
                         <Button
                           size="sm"
                           variant="outline"
-                          disabled={busy}
+                          disabled={busy || !policyFresh}
                           onClick={() => changePolicy(failedTarget)}
                         >
                           {failedTarget
@@ -265,10 +262,27 @@ export function ReleasesSettingsPage() {
                       ) : null}
                     </div>
                   ) : null}
-                  {refreshError ? (
-                    <p role="alert" className="text-xs leading-5 text-of-danger">
-                      최신 정책을 불러오지 못했습니다. 마지막으로 확인한 상태를 유지합니다.
-                    </p>
+                  {policyStale ? (
+                    <div
+                      role="alert"
+                      className="flex min-w-0 flex-col gap-2 border-y border-of-danger/15 bg-of-danger-soft px-3 py-2.5 text-xs sm:flex-row sm:items-center sm:justify-between"
+                    >
+                      <p className="min-w-0 break-words text-of-danger">
+                        최신 정책을 불러오지 못했습니다. 마지막으로 확인한 상태를
+                        유지합니다. 복구 전까지 정책 변경은 사용할 수 없습니다.
+                      </p>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="w-full shrink-0 sm:w-auto"
+                        disabled={policy.isFetching}
+                        onClick={() => void policy.refetch()}
+                      >
+                        <RefreshCw size={13} aria-hidden="true" />
+                        다시 시도
+                      </Button>
+                    </div>
                   ) : null}
                 </div>
               </section>
