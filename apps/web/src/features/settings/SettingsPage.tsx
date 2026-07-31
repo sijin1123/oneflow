@@ -16,7 +16,11 @@ import { Navigate, useParams, useSearchParams } from 'react-router-dom'
 import { ErrorState, ListSkeleton } from '@/components/shell/states'
 import { Badge } from '@/components/ui/badge'
 import { AutomationManager } from '@/features/automation/AutomationManager'
-import { useMe, useMembers } from '@/features/members/api'
+import {
+  isMemberRequestAccepted,
+  useMe,
+  useMembers,
+} from '@/features/members/api'
 import { StatusManager } from '@/features/project-statuses/StatusManager'
 import { TypeManager } from '@/features/project-types/TypeManager'
 import { useUnsavedLocationPrompt } from '@/lib/guards'
@@ -87,6 +91,12 @@ export function SettingsPage() {
   const isOwner = !members.isError && lastKnownIsOwner
   const canManageMilestones =
     !members.isError && (myRole === 'owner' || myRole === 'member')
+  const milestonePermissionsFresh = Boolean(
+    members.data &&
+      !members.isFetching &&
+      !members.isError &&
+      isMemberRequestAccepted(projectId),
+  )
 
   return (
     <SettingsFrame
@@ -131,8 +141,14 @@ export function SettingsPage() {
           ) : null}
           {tab === 'milestones' ? (
             <MilestonesPanel
+              key={projectId}
               projectId={projectId}
               canManage={canManageMilestones}
+              permissionsFresh={milestonePermissionsFresh}
+              permissionsDataUpdatedAt={members.dataUpdatedAt}
+              permissionsFetching={members.isFetching}
+              permissionsError={members.isError}
+              onRefreshPermissions={() => members.refetch()}
               onDirtyChange={onDirtyChange}
             />
           ) : null}
