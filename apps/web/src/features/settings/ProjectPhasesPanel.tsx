@@ -11,7 +11,7 @@ import {
   RefreshCw,
   Save,
 } from 'lucide-react'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 
 import { ErrorState, ListSkeleton } from '@/components/shell/states'
 import { Badge } from '@/components/ui/badge'
@@ -19,6 +19,14 @@ import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/controls'
 import { Input } from '@/components/ui/input'
 import {
+  getMemberRequestState,
+  isMemberRequestAccepted,
+} from '@/features/members/api'
+import {
+  getProjectPhaseRequestState,
+  getProjectRequestState,
+  isProjectPhaseRequestAccepted,
+  isProjectRequestAccepted,
   useProject,
   useProjectPhases,
   useUpdateProjectPhase,
@@ -57,11 +65,28 @@ type PhaseRetryAction = {
 function mutationMessage(error: unknown) {
   if (!(error instanceof ApiError)) return '단계를 저장하지 못했습니다. 다시 시도해 주세요.'
   if (error.status === 409) {
-    return '다른 변경이 먼저 저장되었습니다. 최신 버전으로 같은 변경을 다시 시도할 수 있습니다.'
+    if (error.message === 'phase version conflict') {
+      return '다른 변경이 먼저 저장되었습니다. 최신 버전으로 같은 변경을 다시 시도할 수 있습니다.'
+    }
+    if (error.message === 'project is archived') {
+      return '프로젝트가 보관되어 단계를 변경할 수 없습니다.'
+    }
+    if (error.message === 'phase is retired') {
+      return '이 단계가 Workspace에서 은퇴해 더 이상 변경할 수 없습니다.'
+    }
+    return '프로젝트와 단계 상태가 변경되었습니다. 최신 상태를 확인해 주세요.'
   }
   if (error.status === 403) return '프로젝트 소유자만 단계를 변경할 수 있습니다.'
   if (error.status === 422) return '활성 단계의 날짜와 순서를 확인해 주세요.'
   return error.message || '단계를 저장하지 못했습니다. 다시 시도해 주세요.'
+}
+
+function isPhaseVersionConflict(error: unknown) {
+  return (
+    error instanceof ApiError &&
+    error.status === 409 &&
+    error.message === 'phase version conflict'
+  )
 }
 
 function scheduleLabel(phase: ProjectPhase) {
@@ -104,6 +129,8 @@ function EditablePhaseRow({
   onExpandedChange,
   onDirtyChange,
   onRefreshPhase,
+  actionsEnabled,
+  actionsFresh,
 }: {
   phase: ProjectPhase
   projectId: string
@@ -112,10 +139,16 @@ function EditablePhaseRow({
   onExpandedChange: (expanded: boolean) => void
   onDirtyChange: (key: string, dirty: boolean) => void
   onRefreshPhase: (key: string) => Promise<ProjectPhase | undefined>
+  actionsEnabled: boolean
+  actionsFresh: () => boolean
 }) {
   const update = useUpdateProjectPhase(projectId)
   const [startDate, setStartDate] = useState(phase.start_date ?? '')
   const [endDate, setEndDate] = useState(phase.end_date ?? '')
+  const [scheduleBaseline, setScheduleBaseline] = useState({
+    startDate: phase.start_date ?? '',
+    endDate: phase.end_date ?? '',
+  })
   const [notice, setNotice] = useState<string | null>(null)
   const [retryAction, setRetryAction] = useState<PhaseRetryAction | null>(null)
   const [pendingAction, setPendingAction] = useState<PhaseAction['kind'] | null>(null)
@@ -124,13 +157,18 @@ function EditablePhaseRow({
 
   const dirty =
     editingSchedule &&
-    (startDate !== (phase.start_date ?? '') || endDate !== (phase.end_date ?? ''))
+    (startDate !== scheduleBaseline.startDate ||
+      endDate !== scheduleBaseline.endDate)
   const invalidRange = Boolean(startDate && endDate && startDate > endDate)
 
   useEffect(() => {
     if (editingSchedule || retryAction) return
     setStartDate(phase.start_date ?? '')
     setEndDate(phase.end_date ?? '')
+    setScheduleBaseline({
+      startDate: phase.start_date ?? '',
+      endDate: phase.end_date ?? '',
+    })
   }, [editingSchedule, phase.end_date, phase.start_date, phase.version, retryAction])
 
   useEffect(() => {
@@ -139,6 +177,7 @@ function EditablePhaseRow({
   }, [dirty, onDirtyChange, phase.key])
 
   const runMutation = (input: PhaseMutationInput, action: PhaseAction) => {
+    if (!canEdit || !actionsFresh()) return
     update.reset()
     setRetryAction(null)
     setNotice(null)
@@ -148,6 +187,10 @@ function EditablePhaseRow({
         if (action.kind === 'schedule') {
           setStartDate(updated.start_date ?? '')
           setEndDate(updated.end_date ?? '')
+          setScheduleBaseline({
+            startDate: updated.start_date ?? '',
+            endDate: updated.end_date ?? '',
+          })
           setEditingSchedule(false)
         }
         setNotice(successMessage(phase, updated, action))
@@ -158,11 +201,22 @@ function EditablePhaseRow({
   }
 
   const retryLastAction = async () => {
-    if (!retryAction || update.isPending || retrying) return
+    if (
+      !retryAction ||
+      !canEdit ||
+      update.isPending ||
+      retrying ||
+      !actionsFresh()
+    ) {
+      return
+    }
     setRetrying(true)
     try {
       let version = phase.version
-      if (update.error instanceof ApiError && update.error.status === 409) {
+      if (
+        update.error instanceof ApiError &&
+        (update.error.status === 409 || update.error.status === 403)
+      ) {
         const latest = await onRefreshPhase(phase.key)
         if (!latest) return
         version = latest.version
@@ -212,7 +266,7 @@ function EditablePhaseRow({
           <Switch
             checked={phase.active}
             label={`${phase.name} 단계 ${phase.active ? '비활성화' : '활성화'}`}
-            disabled={!canEdit || update.isPending || retrying || dirty}
+            disabled={!canEdit || !actionsEnabled || update.isPending || retrying || dirty}
             onCheckedChange={(active) =>
               runMutation(
                 { phaseKey: phase.key, active, version: phase.version },
@@ -258,8 +312,8 @@ function EditablePhaseRow({
                   setNotice(null)
                   setStartDate(nextStartDate)
                   setEditingSchedule(
-                    nextStartDate !== (phase.start_date ?? '') ||
-                      endDate !== (phase.end_date ?? ''),
+                    nextStartDate !== scheduleBaseline.startDate ||
+                      endDate !== scheduleBaseline.endDate,
                   )
                 }}
               />
@@ -278,8 +332,8 @@ function EditablePhaseRow({
                   setNotice(null)
                   setEndDate(nextEndDate)
                   setEditingSchedule(
-                    startDate !== (phase.start_date ?? '') ||
-                      nextEndDate !== (phase.end_date ?? ''),
+                    startDate !== scheduleBaseline.startDate ||
+                      nextEndDate !== scheduleBaseline.endDate,
                   )
                 }}
               />
@@ -289,19 +343,29 @@ function EditablePhaseRow({
                 type="button"
                 size="sm"
                 variant="outline"
-                disabled={!dirty || invalidRange || update.isPending || retrying}
+                disabled={
+                  !dirty ||
+                  invalidRange ||
+                  !actionsEnabled ||
+                  update.isPending ||
+                  retrying
+                }
                 onClick={() =>
                   runMutation(
                     {
                       phaseKey: phase.key,
-                      start_date: startDate || null,
-                      end_date: endDate || null,
+                      ...(startDate !== scheduleBaseline.startDate
+                        ? { start_date: startDate || null }
+                        : {}),
+                      ...(endDate !== scheduleBaseline.endDate
+                        ? { end_date: endDate || null }
+                        : {}),
                       version: phase.version,
                     },
                     {
                       kind: 'schedule',
                       willReschedule:
-                        Boolean(endDate) && endDate !== (phase.end_date ?? ''),
+                        Boolean(endDate) && endDate !== scheduleBaseline.endDate,
                     },
                   )
                 }
@@ -351,7 +415,13 @@ function EditablePhaseRow({
                   <Switch
                     checked={gate.active}
                     label={`${gate.name} ${gate.active ? '비활성화' : '활성화'}`}
-                    disabled={!canEdit || update.isPending || retrying || dirty}
+                    disabled={
+                      !canEdit ||
+                      !actionsEnabled ||
+                      update.isPending ||
+                      retrying ||
+                      dirty
+                    }
                     onCheckedChange={(active) =>
                       runMutation(
                         {
@@ -393,7 +463,7 @@ function EditablePhaseRow({
               type="button"
               size="sm"
               variant="outline"
-              disabled={!canEdit || update.isPending || retrying}
+              disabled={!canEdit || !actionsEnabled || update.isPending || retrying}
               onClick={() => void retryLastAction()}
             >
               {retrying ? (
@@ -401,7 +471,7 @@ function EditablePhaseRow({
               ) : (
                 <RefreshCw size={13} aria-hidden="true" />
               )}
-              {update.error instanceof ApiError && update.error.status === 409
+              {isPhaseVersionConflict(update.error)
                 ? '최신 버전으로 다시 시도'
                 : '다시 시도'}
             </Button>
@@ -415,24 +485,104 @@ function EditablePhaseRow({
 export function ProjectPhasesPanel({
   projectId,
   isOwner,
+  permissionsFresh,
+  permissionsDataUpdatedAt,
+  permissionsFetching,
+  permissionsError,
+  onRefreshPermissions,
   onDirtyChange,
 }: {
   projectId: string
   isOwner: boolean
+  permissionsFresh: boolean
+  permissionsDataUpdatedAt: number
+  permissionsFetching: boolean
+  permissionsError: boolean
+  onRefreshPermissions: () => Promise<unknown>
   onDirtyChange: (dirty: boolean) => void
 }) {
   const project = useProject(projectId)
   const phases = useProjectPhases(projectId)
   const dirtyKeys = useRef(new Set<string>())
   const initializedExpansion = useRef(false)
+  const phasesFreshRef = useRef(false)
+  const projectFreshRef = useRef(false)
+  const permissionsFreshRef = useRef(false)
+  const committedPhaseVersionRef = useRef(0)
+  const committedProjectVersionRef = useRef(0)
+  const committedPermissionVersionRef = useRef(0)
+  const canEditRef = useRef(false)
+  const freshWaitersRef = useRef<Array<() => void>>([])
   const [expandedKeys, setExpandedKeys] = useState<Set<string>>(new Set())
+  const phasesFresh = Boolean(
+    phases.data &&
+      !phases.isFetching &&
+      !phases.isError &&
+      isProjectPhaseRequestAccepted(projectId),
+  )
+  const projectFresh = Boolean(
+    project.data &&
+      !project.isFetching &&
+      !project.isError &&
+      isProjectRequestAccepted(projectId),
+  )
+  const surfaceFresh = phasesFresh && projectFresh && permissionsFresh
   const canEdit =
     isOwner &&
     !project.isError &&
     !phases.isError &&
+    !permissionsError &&
     !project.data?.archived_at
 
-  useEffect(() => () => onDirtyChange(false), [onDirtyChange])
+  useLayoutEffect(() => {
+    phasesFreshRef.current = phasesFresh
+    projectFreshRef.current = projectFresh
+    permissionsFreshRef.current = permissionsFresh
+    canEditRef.current = canEdit
+    if (phasesFresh) {
+      committedPhaseVersionRef.current =
+        getProjectPhaseRequestState(projectId).requestVersion
+    }
+    if (projectFresh) {
+      committedProjectVersionRef.current =
+        getProjectRequestState(projectId).requestVersion
+    }
+    if (permissionsFresh) {
+      committedPermissionVersionRef.current =
+        getMemberRequestState(projectId).requestVersion
+    }
+    if (
+      (surfaceFresh || phases.isError || project.isError || permissionsError) &&
+      freshWaitersRef.current.length > 0
+    ) {
+      const waiters = freshWaitersRef.current
+      freshWaitersRef.current = []
+      waiters.forEach((resolve) => resolve())
+    }
+  }, [
+    permissionsDataUpdatedAt,
+    permissionsError,
+    permissionsFresh,
+    canEdit,
+    phases.dataUpdatedAt,
+    phasesFresh,
+    phases.isError,
+    project.dataUpdatedAt,
+    projectFresh,
+    project.isError,
+    projectId,
+    surfaceFresh,
+  ])
+
+  useEffect(
+    () => () => {
+      onDirtyChange(false)
+      const waiters = freshWaitersRef.current
+      freshWaitersRef.current = []
+      waiters.forEach((resolve) => resolve())
+    },
+    [onDirtyChange],
+  )
 
   useEffect(() => {
     if (initializedExpansion.current || !phases.data) return
@@ -461,13 +611,77 @@ export function ProjectPhasesPanel({
     })
   }, [])
 
+  const actionsFresh = useCallback(() => {
+    const phaseRequest = getProjectPhaseRequestState(projectId)
+    const projectRequest = getProjectRequestState(projectId)
+    const permissionRequest = getMemberRequestState(projectId)
+    return Boolean(
+      phasesFreshRef.current &&
+        projectFreshRef.current &&
+        permissionsFreshRef.current &&
+        canEditRef.current &&
+        phaseRequest.requestVersion === committedPhaseVersionRef.current &&
+        projectRequest.requestVersion === committedProjectVersionRef.current &&
+        permissionRequest.requestVersion === committedPermissionVersionRef.current &&
+        isProjectPhaseRequestAccepted(projectId) &&
+        isProjectRequestAccepted(projectId) &&
+        isMemberRequestAccepted(projectId),
+    )
+  }, [projectId])
+
+  const waitForSurfaceFresh = useCallback(() => {
+    if (actionsFresh()) return Promise.resolve()
+    return new Promise<void>((resolve) => {
+      freshWaitersRef.current.push(resolve)
+    })
+  }, [actionsFresh])
+
   const refreshPhase = useCallback(
     async (key: string) => {
-      const refreshed = await phases.refetch()
-      return refreshed.data?.items.find((phase) => phase.key === key)
+      phasesFreshRef.current = false
+      projectFreshRef.current = false
+      permissionsFreshRef.current = false
+      const [refreshed] = await Promise.all([
+        phases.refetch(),
+        project.refetch(),
+        onRefreshPermissions(),
+      ])
+      if (refreshed.isError || !refreshed.data) return undefined
+      await waitForSurfaceFresh()
+      if (!actionsFresh()) return undefined
+      return refreshed.data.items.find((phase) => phase.key === key && !phase.retired)
     },
-    [phases],
+    [
+      actionsFresh,
+      onRefreshPermissions,
+      phases,
+      project,
+      waitForSurfaceFresh,
+    ],
   )
+
+  const refreshAll = () => {
+    phasesFreshRef.current = false
+    projectFreshRef.current = false
+    permissionsFreshRef.current = false
+    return Promise.all([
+      phases.refetch(),
+      project.refetch(),
+      onRefreshPermissions(),
+    ])
+  }
+  const refreshPhases = () => {
+    phasesFreshRef.current = false
+    return phases.refetch()
+  }
+  const refreshProject = () => {
+    projectFreshRef.current = false
+    return project.refetch()
+  }
+  const refreshPermissions = () => {
+    permissionsFreshRef.current = false
+    return onRefreshPermissions()
+  }
 
   if (
     (phases.isPending && !phases.data) ||
@@ -507,7 +721,7 @@ export function ProjectPhasesPanel({
   return (
     <section
       aria-label="프로젝트 단계 설정"
-      aria-busy={phases.isFetching || project.isFetching}
+      aria-busy={phases.isFetching || project.isFetching || permissionsFetching}
       className="min-w-0 overflow-hidden rounded-of border border-of-border bg-of-surface"
     >
       <div className="flex min-w-0 flex-col gap-3 px-4 py-4 sm:flex-row sm:items-start sm:justify-between">
@@ -525,14 +739,16 @@ export function ProjectPhasesPanel({
             type="button"
             size="sm"
             variant="ghost"
-            disabled={phases.isFetching || project.isFetching}
-            onClick={() => void Promise.all([phases.refetch(), project.refetch()])}
+            disabled={phases.isFetching || project.isFetching || permissionsFetching}
+            onClick={() => void refreshAll()}
           >
             <RefreshCw
               size={13}
               aria-hidden="true"
               className={
-                phases.isFetching || project.isFetching ? 'animate-spin' : undefined
+                phases.isFetching || project.isFetching || permissionsFetching
+                  ? 'animate-spin'
+                  : undefined
               }
             />
             프로젝트 단계 새로고침
@@ -576,7 +792,7 @@ export function ProjectPhasesPanel({
             variant="outline"
             className="w-full shrink-0 sm:w-auto"
             disabled={phases.isFetching}
-            onClick={() => void phases.refetch()}
+            onClick={() => void refreshPhases()}
           >
             <RefreshCw size={13} aria-hidden="true" /> 프로젝트 단계 다시 시도
           </Button>
@@ -584,6 +800,40 @@ export function ProjectPhasesPanel({
       ) : null}
 
       {project.isError ? (
+        <div
+          role="alert"
+          className="mx-3 mb-3 flex min-w-0 flex-col gap-2 border border-of-danger/25 bg-of-danger-soft/35 px-3 py-2.5 sm:mx-4 sm:flex-row sm:items-center sm:justify-between"
+        >
+          <div className="flex min-w-0 items-start gap-2">
+            <LockKeyhole
+              size={13}
+              aria-hidden="true"
+              className="mt-0.5 shrink-0 text-of-danger"
+            />
+            <div className="min-w-0">
+              <p className="text-xs font-medium text-of-text">
+                프로젝트 상태를 다시 확인하지 못했습니다.
+              </p>
+              <p className="mt-0.5 text-[11px] leading-5 text-of-muted">
+                단계와 일정은 계속 볼 수 있지만 활성화·일정·게이트 변경은
+                상태 확인 전까지 차단됩니다.
+              </p>
+            </div>
+          </div>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="w-full shrink-0 sm:w-auto"
+            disabled={project.isFetching}
+            onClick={() => void refreshProject()}
+          >
+            <RefreshCw size={13} aria-hidden="true" /> 프로젝트 상태 다시 시도
+          </Button>
+        </div>
+      ) : null}
+
+      {permissionsError ? (
         <div
           role="alert"
           className="mx-3 mb-3 flex min-w-0 flex-col gap-2 border border-of-danger/25 bg-of-danger-soft/35 px-3 py-2.5 sm:mx-4 sm:flex-row sm:items-center sm:justify-between"
@@ -609,8 +859,8 @@ export function ProjectPhasesPanel({
             size="sm"
             variant="outline"
             className="w-full shrink-0 sm:w-auto"
-            disabled={project.isFetching}
-            onClick={() => void project.refetch()}
+            disabled={permissionsFetching}
+            onClick={() => void refreshPermissions()}
           >
             <RefreshCw size={13} aria-hidden="true" /> 프로젝트 권한 다시 시도
           </Button>
@@ -682,6 +932,8 @@ export function ProjectPhasesPanel({
               onExpandedChange={(expanded) => setExpanded(phase.key, expanded)}
               onDirtyChange={markDirty}
               onRefreshPhase={refreshPhase}
+              actionsEnabled={surfaceFresh}
+              actionsFresh={actionsFresh}
             />
           ))}
         </ol>

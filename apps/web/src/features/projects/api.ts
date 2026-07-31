@@ -30,6 +30,7 @@ import type { ProjectSortKey, SortDir } from './sort'
 
 const PROJECT_DIRECTORY_PAGE_SIZE = 200
 const projectRequestStates = new Map<string, ProjectRequestState>()
+const projectPhaseRequestStates = new Map<string, ProjectRequestState>()
 
 type ProjectRequestState = {
   requestVersion: number
@@ -45,6 +46,10 @@ const emptyProjectRequestState: ProjectRequestState = {
 
 function projectQueryKey(projectId: string) {
   return ['project', projectId] as const
+}
+
+function projectPhasesQueryKey(projectId: string) {
+  return ['project-phases', projectId] as const
 }
 
 function setProjectRequestState(projectId: string, next: ProjectRequestState) {
@@ -79,6 +84,42 @@ export function getProjectRequestState(projectId: string) {
 export function isProjectRequestAccepted(projectId: string) {
   const request = getProjectRequestState(projectId)
   const query = appQueryClient.getQueryState(projectQueryKey(projectId))
+  return Boolean(
+    query &&
+      query.fetchStatus === 'idle' &&
+      request.requestVersion === request.successfulRequestVersion &&
+      query.dataUpdateCount > request.dataUpdateCountAtStart,
+  )
+}
+
+function startProjectPhaseRequest(projectId: string) {
+  const previous = getProjectPhaseRequestState(projectId)
+  const requestVersion = previous.requestVersion + 1
+  projectPhaseRequestStates.set(projectId, {
+    requestVersion,
+    successfulRequestVersion: previous.successfulRequestVersion,
+    dataUpdateCountAtStart:
+      appQueryClient.getQueryState(projectPhasesQueryKey(projectId))?.dataUpdateCount ?? 0,
+  })
+  return requestVersion
+}
+
+function completeProjectPhaseRequest(projectId: string, requestVersion: number) {
+  const current = getProjectPhaseRequestState(projectId)
+  if (current.requestVersion !== requestVersion) return
+  projectPhaseRequestStates.set(projectId, {
+    ...current,
+    successfulRequestVersion: requestVersion,
+  })
+}
+
+export function getProjectPhaseRequestState(projectId: string) {
+  return projectPhaseRequestStates.get(projectId) ?? emptyProjectRequestState
+}
+
+export function isProjectPhaseRequestAccepted(projectId: string) {
+  const request = getProjectPhaseRequestState(projectId)
+  const query = appQueryClient.getQueryState(projectPhasesQueryKey(projectId))
   return Boolean(
     query &&
       query.fetchStatus === 'idle' &&
@@ -157,6 +198,7 @@ export const projectDirectoryPreferenceWriter = new LatestPreferenceWriter<
 
 registerIdentityReset(() => projectDirectoryPreferenceWriter.reset())
 registerIdentityReset(() => projectRequestStates.clear())
+registerIdentityReset(() => projectPhaseRequestStates.clear())
 
 export function getProject(projectId: string) {
   return api<Project>(`/api/v1/projects/${projectId}`)
@@ -211,8 +253,13 @@ export function useProjectHealthHistory(projectId: string) {
 
 export function useProjectPhases(projectId: string) {
   return useQuery({
-    queryKey: ['project-phases', projectId],
-    queryFn: () => api<ProjectPhaseList>(`/api/v1/projects/${projectId}/phases`),
+    queryKey: projectPhasesQueryKey(projectId),
+    queryFn: async () => {
+      const requestVersion = startProjectPhaseRequest(projectId)
+      const phases = await api<ProjectPhaseList>(`/api/v1/projects/${projectId}/phases`)
+      completeProjectPhaseRequest(projectId, requestVersion)
+      return phases
+    },
     enabled: Boolean(projectId),
   })
 }
@@ -237,7 +284,7 @@ export function useUpdateProjectPhase(projectId: string) {
         body: JSON.stringify(input),
       }),
     onSuccess: (phase) => {
-      queryClient.setQueryData<ProjectPhaseList>(['project-phases', projectId], (current) => {
+      queryClient.setQueryData<ProjectPhaseList>(projectPhasesQueryKey(projectId), (current) => {
         if (!current) return current
         return {
           ...current,
@@ -245,7 +292,7 @@ export function useUpdateProjectPhase(projectId: string) {
         }
       })
     },
-    onSettled: () => queryClient.invalidateQueries({ queryKey: ['project-phases', projectId] }),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: projectPhasesQueryKey(projectId) }),
   })
 }
 

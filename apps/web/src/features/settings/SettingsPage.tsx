@@ -91,7 +91,7 @@ export function SettingsPage() {
   const isOwner = !members.isError && lastKnownIsOwner
   const canManageMilestones =
     !members.isError && (myRole === 'owner' || myRole === 'member')
-  const milestonePermissionsFresh = Boolean(
+  const projectPermissionsFresh = Boolean(
     members.data &&
       !members.isFetching &&
       !members.isError &&
@@ -137,14 +137,24 @@ export function SettingsPage() {
             </WorkflowGovernanceSurface>
           ) : null}
           {tab === 'lifecycle' ? (
-            <ProjectPhasesPanel projectId={projectId} isOwner={isOwner} onDirtyChange={onDirtyChange} />
+            <ProjectPhasesPanel
+              key={projectId}
+              projectId={projectId}
+              isOwner={isOwner}
+              permissionsFresh={projectPermissionsFresh}
+              permissionsDataUpdatedAt={members.dataUpdatedAt}
+              permissionsFetching={members.isFetching}
+              permissionsError={members.isError}
+              onRefreshPermissions={() => members.refetch()}
+              onDirtyChange={onDirtyChange}
+            />
           ) : null}
           {tab === 'milestones' ? (
             <MilestonesPanel
               key={projectId}
               projectId={projectId}
               canManage={canManageMilestones}
-              permissionsFresh={milestonePermissionsFresh}
+              permissionsFresh={projectPermissionsFresh}
               permissionsDataUpdatedAt={members.dataUpdatedAt}
               permissionsFetching={members.isFetching}
               permissionsError={members.isError}
