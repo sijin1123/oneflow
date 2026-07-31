@@ -9077,6 +9077,151 @@ test('프로젝트 일반 설정 후속 조회 오류는 마지막 설정과 저
   })
 })
 
+test('프로젝트 일반 설정은 새로고침과 같은 이벤트의 저장과 재시도를 막고 최신 상태에서 재개한다', async ({
+  page,
+}) => {
+  await mockApi(page)
+  let current: Project = {
+    ...project,
+    budget: 25_000_000,
+    health: 'on_track',
+    health_note: '서버 최초 상태',
+  }
+  let holdRefresh = false
+  let releaseRefresh: (() => void) | null = null
+  const patches: Array<Partial<Project>> = []
+  const attempts = { identity: 0, budget: 0, health: 0 }
+
+  await page.route(`**/api/v1/projects/${project.id}`, async (route) => {
+    if (route.request().method() === 'GET') {
+      if (holdRefresh) {
+        await new Promise<void>((resolve) => {
+          releaseRefresh = resolve
+        })
+        holdRefresh = false
+      }
+      await route.fulfill({ json: current })
+      return
+    }
+    const sent = route.request().postDataJSON() as Partial<Project>
+    patches.push(sent)
+    const kind = 'name' in sent ? 'identity' : 'budget' in sent ? 'budget' : 'health'
+    attempts[kind] += 1
+    if (attempts[kind] === 1) {
+      const label =
+        kind === 'identity' ? '기본 정보' : kind === 'budget' ? '예산' : '상태 보고'
+      await route.fulfill({
+        status: 503,
+        json: { detail: `${label} 저장 freshness 회귀` },
+      })
+      return
+    }
+    current = { ...current, ...sent, updated_at: '2026-07-31T00:00:00Z' }
+    await route.fulfill({ json: current })
+  })
+
+  await page.setViewportSize({ width: 320, height: 740 })
+  await page.goto(`/projects/${project.id}/settings`)
+  const panel = page.getByRole('region', { name: '프로젝트 일반 설정' })
+  await panel.getByLabel('프로젝트 이름').fill('보존할 프로젝트 이름')
+  await panel.getByLabel('프로젝트 설명').fill('보존할 프로젝트 설명')
+  await panel.getByLabel('프로젝트 예산').fill('32000000')
+  await panel.getByLabel('프로젝트 상태').selectOption('at_risk')
+  await panel.getByLabel('상태 사유').fill('보존할 상태 사유')
+
+  holdRefresh = true
+  await page.evaluate(() => {
+    const buttons = Array.from(document.querySelectorAll<HTMLButtonElement>('button'))
+    const click = (name: string) =>
+      buttons.find((button) => button.textContent?.trim() === name)?.click()
+    click('일반 설정 새로고침')
+    click('기본 정보 저장')
+    click('예산 저장')
+    click('상태 저장')
+  })
+  await expect.poll(() => releaseRefresh !== null).toBe(true)
+  await expect.poll(() => patches.length).toBe(0)
+  await expect(panel.getByRole('button', { name: '기본 정보 저장' })).toBeDisabled()
+  await expect(panel.getByRole('button', { name: '예산 저장' })).toBeDisabled()
+  await expect(panel.getByRole('button', { name: '상태 저장' })).toBeDisabled()
+
+  current = {
+    ...current,
+    name: '서버 최신 프로젝트',
+    description: '서버 최신 설명',
+    budget: 28_000_000,
+    health: 'off_track',
+    health_note: '서버 최신 상태',
+  }
+  const releaseInitialRefresh = releaseRefresh as (() => void) | null
+  releaseInitialRefresh?.()
+  releaseRefresh = null
+  await expect(panel.getByRole('button', { name: '기본 정보 저장' })).toBeEnabled()
+  await expect(panel.getByLabel('프로젝트 이름')).toHaveValue('보존할 프로젝트 이름')
+  await expect(panel.getByLabel('프로젝트 설명')).toHaveValue('보존할 프로젝트 설명')
+  await expect(panel.getByLabel('프로젝트 예산')).toHaveValue('32000000')
+  await expect(panel.getByLabel('프로젝트 상태')).toHaveValue('at_risk')
+  await expect(panel.getByLabel('상태 사유')).toHaveValue('보존할 상태 사유')
+
+  await panel.getByRole('button', { name: '기본 정보 저장' }).click()
+  await expect(panel.getByText('기본 정보 저장 freshness 회귀')).toBeVisible()
+  await expect(panel.getByRole('button', { name: '일반 설정 새로고침' })).toBeEnabled()
+  await panel.getByRole('button', { name: '예산 저장' }).click()
+  await expect(panel.getByText('예산 저장 freshness 회귀')).toBeVisible()
+  await expect(panel.getByRole('button', { name: '일반 설정 새로고침' })).toBeEnabled()
+  await panel.getByRole('button', { name: '상태 저장' }).click()
+  await expect(panel.getByText('상태 보고 저장 freshness 회귀')).toBeVisible()
+  await expect(panel.getByRole('button', { name: '일반 설정 새로고침' })).toBeEnabled()
+  expect(patches).toEqual([
+    {
+      name: '보존할 프로젝트 이름',
+      description: '보존할 프로젝트 설명',
+    },
+    { budget: 32_000_000 },
+    { health: 'at_risk', health_note: '보존할 상태 사유' },
+  ])
+
+  holdRefresh = true
+  await page.evaluate(() => {
+    const buttons = Array.from(document.querySelectorAll<HTMLButtonElement>('button'))
+    buttons.find((button) => button.textContent?.trim() === '일반 설정 새로고침')?.click()
+    buttons
+      .filter((button) => button.textContent?.trim() === '다시 시도')
+      .forEach((button) => button.click())
+  })
+  await expect.poll(() => releaseRefresh !== null).toBe(true)
+  await expect.poll(() => patches.length).toBe(3)
+  await expect(panel.getByRole('button', { name: '다시 시도' })).toHaveCount(3)
+  for (const retry of await panel.getByRole('button', { name: '다시 시도' }).all()) {
+    await expect(retry).toBeDisabled()
+  }
+  const releaseRetryRefresh = releaseRefresh as (() => void) | null
+  releaseRetryRefresh?.()
+  releaseRefresh = null
+  for (const retry of await panel.getByRole('button', { name: '다시 시도' }).all()) {
+    await expect(retry).toBeEnabled()
+  }
+
+  await panel.getByText('기본 정보 저장 freshness 회귀').locator('..').getByRole('button').click()
+  await expect(panel.getByText('기본 정보를 저장했습니다.')).toBeVisible()
+  await expect(panel.getByRole('button', { name: '일반 설정 새로고침' })).toBeEnabled()
+  await panel.getByText('예산 저장 freshness 회귀').locator('..').getByRole('button').click()
+  await expect(panel.getByText('예산을 저장했습니다.')).toBeVisible()
+  await expect(panel.getByRole('button', { name: '일반 설정 새로고침' })).toBeEnabled()
+  await panel.getByText('상태 보고 저장 freshness 회귀').locator('..').getByRole('button').click()
+  await expect(panel.getByText('상태 보고를 저장했습니다.')).toBeVisible()
+  await expect.poll(() => patches.length).toBe(6)
+  expect(patches.slice(3)).toEqual([
+    {
+      name: '보존할 프로젝트 이름',
+      description: '보존할 프로젝트 설명',
+    },
+    { budget: 32_000_000 },
+    { health: 'at_risk', health_note: '보존할 상태 사유' },
+  ])
+  await expectNoHorizontalOverflow(page)
+})
+
 test('내 작업 홈이 배정·기한임박·활동을 모아 보여주고 딥링크한다', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 })
   await mockApi(page)

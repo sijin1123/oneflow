@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import {
   Activity,
   CircleAlert,
@@ -19,7 +19,12 @@ import { Select } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Textarea } from '@/components/ui/textarea'
 import { useMemberNames, useMembers } from '@/features/members/api'
-import { useProject, useUpdateProject } from '@/features/projects/api'
+import {
+  getProjectRequestState,
+  isProjectRequestAccepted,
+  useProject,
+  useUpdateProject,
+} from '@/features/projects/api'
 import { HEALTH_LABELS, type Project, type ProjectHealth } from '@/features/projects/types'
 import { ApiError } from '@/lib/api'
 
@@ -31,6 +36,7 @@ type SaveFeedbackProps = {
   successLabel: string
   errorLabel: string
   onRetry: () => void
+  retryDisabled?: boolean
 }
 
 function SaveFeedback({
@@ -41,6 +47,7 @@ function SaveFeedback({
   successLabel,
   errorLabel,
   onRetry,
+  retryDisabled = false,
 }: SaveFeedbackProps) {
   return (
     <div className="flex min-h-8 min-w-0 flex-wrap items-center gap-2" aria-live="polite">
@@ -55,7 +62,13 @@ function SaveFeedback({
           <p role="alert" className="min-w-0 flex-1 text-xs text-of-danger">
             {error instanceof ApiError ? error.message : errorLabel}
           </p>
-          <Button type="button" size="sm" variant="outline" onClick={onRetry}>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            disabled={retryDisabled}
+            onClick={onRetry}
+          >
             <RefreshCw size={13} aria-hidden="true" />
             다시 시도
           </Button>
@@ -96,6 +109,21 @@ export function GeneralPanel({
   } | null>(null)
   const [budgetAttempt, setBudgetAttempt] = useState<{ budget: number | null } | null>(null)
   const syncedProject = useRef<Project | null>(null)
+  const projectFreshRef = useRef(false)
+  const committedRequestVersionRef = useRef(0)
+  const projectFresh = Boolean(
+    project.data &&
+      !project.isFetching &&
+      !project.isError &&
+      isProjectRequestAccepted(projectId),
+  )
+
+  useLayoutEffect(() => {
+    projectFreshRef.current = projectFresh
+    if (projectFresh) {
+      committedRequestVersionRef.current = getProjectRequestState(projectId).requestVersion
+    }
+  }, [project.dataUpdatedAt, projectFresh, projectId])
 
   useEffect(() => {
     const next = project.data
@@ -169,10 +197,23 @@ export function GeneralPanel({
     return <ErrorState error={project.error} onRetry={() => project.refetch()} />
   }
 
+  const actionsFresh = () => {
+    const current = getProjectRequestState(projectId)
+    return Boolean(
+      projectFreshRef.current &&
+        current.requestVersion === committedRequestVersionRef.current &&
+        isProjectRequestAccepted(projectId),
+    )
+  }
+  const refreshProject = () => {
+    projectFreshRef.current = false
+    return project.refetch()
+  }
   const saveIdentity = (payload = {
     name: pName.trim(),
     description: pDesc.trim() === '' ? null : pDesc.trim(),
   }) => {
+    if (!actionsFresh()) return
     setIdentityAttempt(payload)
     identityUpdate.mutate(payload, {
       onSuccess: (updated) => {
@@ -184,6 +225,7 @@ export function GeneralPanel({
   }
 
   const saveBudget = (payload = { budget: budgetValue }) => {
+    if (!actionsFresh()) return
     setBudgetAttempt(payload)
     budgetUpdate.mutate(payload, {
       onSuccess: (updated) => {
@@ -217,7 +259,7 @@ export function GeneralPanel({
             size="sm"
             variant="ghost"
             disabled={project.isFetching}
-            onClick={() => void project.refetch()}
+            onClick={() => void refreshProject()}
           >
             <RefreshCw
               size={13}
@@ -255,7 +297,7 @@ export function GeneralPanel({
             variant="outline"
             className="w-full shrink-0 sm:w-auto"
             disabled={project.isFetching}
-            onClick={() => void project.refetch()}
+            onClick={() => void refreshProject()}
           >
             <RefreshCw
               size={13}
@@ -352,6 +394,7 @@ export function GeneralPanel({
                   size="sm"
                   disabled={
                     !editable ||
+                    !projectFresh ||
                     identityUpdate.isPending ||
                     !identityDirty ||
                     pName.trim().length === 0
@@ -382,6 +425,7 @@ export function GeneralPanel({
                 pendingLabel="기본 정보를 저장하는 중입니다."
                 successLabel="기본 정보를 저장했습니다."
                 errorLabel="기본 정보를 저장하지 못했습니다."
+                retryDisabled={!projectFresh}
                 onRetry={() => {
                   if (identityAttempt) saveIdentity(identityAttempt)
                 }}
@@ -437,7 +481,13 @@ export function GeneralPanel({
                 <Button
                   type="button"
                   size="sm"
-                  disabled={!editable || budgetUpdate.isPending || !budgetDirty || !budgetValid}
+                  disabled={
+                    !editable ||
+                    !projectFresh ||
+                    budgetUpdate.isPending ||
+                    !budgetDirty ||
+                    !budgetValid
+                  }
                   onClick={() => saveBudget()}
                 >
                   예산 저장
@@ -463,6 +513,7 @@ export function GeneralPanel({
                 pendingLabel="예산을 저장하는 중입니다."
                 successLabel="예산을 저장했습니다."
                 errorLabel="예산을 저장하지 못했습니다."
+                retryDisabled={!projectFresh}
                 onRetry={() => {
                   if (budgetAttempt) saveBudget(budgetAttempt)
                 }}
@@ -474,6 +525,8 @@ export function GeneralPanel({
             projectId={projectId}
             project={project.data}
             editable={editable}
+            projectFresh={projectFresh}
+            actionsFresh={actionsFresh}
             onDirtyChange={setHealthDirty}
           />
         </div>
@@ -516,11 +569,15 @@ function HealthSection({
   projectId,
   project,
   editable,
+  projectFresh,
+  actionsFresh,
   onDirtyChange,
 }: {
   projectId: string
   project: Project
   editable: boolean
+  projectFresh: boolean
+  actionsFresh: () => boolean
   onDirtyChange: (dirty: boolean) => void
 }) {
   const updateProject = useUpdateProject(projectId)
@@ -572,6 +629,7 @@ function HealthSection({
     [health, note],
   )
   const save = (input = payload) => {
+    if (!actionsFresh()) return
     setLastAttempt(input)
     updateProject.mutate(input, {
       onSuccess: (updated) => {
@@ -655,7 +713,7 @@ function HealthSection({
           <Button
             type="button"
             size="sm"
-            disabled={!editable || updateProject.isPending || !dirty}
+            disabled={!editable || !projectFresh || updateProject.isPending || !dirty}
             onClick={() => save()}
           >
             상태 저장
@@ -682,6 +740,7 @@ function HealthSection({
           pendingLabel="상태 보고를 저장하는 중입니다."
           successLabel="상태 보고를 저장했습니다."
           errorLabel="상태 보고를 저장하지 못했습니다."
+          retryDisabled={!projectFresh}
           onRetry={() => {
             if (lastAttempt) save(lastAttempt)
           }}
