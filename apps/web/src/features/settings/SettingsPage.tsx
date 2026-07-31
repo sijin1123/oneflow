@@ -163,7 +163,17 @@ export function SettingsPage() {
             />
           ) : null}
           {tab === 'fields' ? (
-            <FieldsPanel projectId={projectId} isOwner={isOwner} onDirtyChange={onDirtyChange} />
+            <FieldsPanel
+              key={projectId}
+              projectId={projectId}
+              isOwner={isOwner}
+              permissionsFresh={projectPermissionsFresh}
+              permissionsDataUpdatedAt={members.dataUpdatedAt}
+              permissionsFetching={members.isFetching}
+              permissionsError={members.isError}
+              onRefreshPermissions={() => members.refetch()}
+              onDirtyChange={onDirtyChange}
+            />
           ) : null}
           {tab === 'automation' ? (
             <AutomationManager

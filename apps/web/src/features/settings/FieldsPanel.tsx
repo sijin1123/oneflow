@@ -15,7 +15,14 @@ import {
   ToggleLeft,
   Trash2,
 } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 
 import { EmptyState, ErrorState, ListSkeleton } from '@/components/shell/states'
 import {
@@ -28,21 +35,39 @@ import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import {
   type CustomField,
+  type CustomFieldList,
   type CustomFieldType,
   FIELD_TYPE_LABELS,
+  getCustomFieldRequestState,
+  isCustomFieldRequestAccepted,
   useCreateCustomField,
   useCustomFields,
   useDeleteCustomField,
   useReorderCustomFields,
   useUpdateCustomField,
 } from '@/features/custom-fields/api'
-import { usePermissionReport } from '@/features/members/api'
+import {
+  getMemberRequestState,
+  getPermissionRequestState,
+  isMemberRequestAccepted,
+  isPermissionRequestAccepted,
+  usePermissionReport,
+} from '@/features/members/api'
+import {
+  getProjectTypeRequestState,
+  isProjectTypeRequestAccepted,
+} from '@/features/project-types/api'
 import { useProjectTypeOptions } from '@/features/project-types/useProjectTypeOptions'
-import { useProject } from '@/features/projects/api'
+import {
+  getProjectRequestState,
+  isProjectRequestAccepted,
+  useProject,
+} from '@/features/projects/api'
 import { type WpType } from '@/features/work-packages/types'
 import { useTypeLabels } from '@/features/work-packages/useTypeLabels'
 import { ApiError } from '@/lib/api'
 import { confirmDestructive } from '@/lib/guards'
+import { queryClient as appQueryClient } from '@/lib/query'
 import { cn } from '@/lib/utils'
 
 type CreateInput = {
@@ -59,6 +84,18 @@ type UpdateInput = {
   applies_to?: WpType[] | null
   is_active?: boolean
 }
+
+type ReorderIntent = {
+  orderedIds: string[]
+  movedId: string
+  anchorId: string
+  direction: -1 | 1
+}
+
+const sameStringArray = (
+  left: string[] | null | undefined,
+  right: string[] | null | undefined,
+) => JSON.stringify(left ?? null) === JSON.stringify(right ?? null)
 
 const parseOptions = (value: string) =>
   value
@@ -188,6 +225,8 @@ function FieldRow({
   projectTypes,
   typeLabel,
   reorderPending,
+  actionsFresh,
+  refreshFieldTarget,
   onMove,
   onDirtyChange,
 }: {
@@ -200,6 +239,8 @@ function FieldRow({
   projectTypes: { key: string; label: string }[]
   typeLabel: (key: string) => string
   reorderPending: boolean
+  actionsFresh: () => boolean
+  refreshFieldTarget: (fieldId: string) => Promise<CustomField | undefined>
   onMove: (index: number, delta: -1 | 1) => void
   onDirtyChange: (fieldId: string, dirty: boolean) => void
 }) {
@@ -212,7 +253,12 @@ function FieldRow({
     (field.applies_to ?? []) as WpType[],
   )
   const [updateRetry, setUpdateRetry] = useState<UpdateInput | null>(null)
+  const [editBaseline, setEditBaseline] = useState<CustomField | null>(null)
+  const [updateBaseline, setUpdateBaseline] = useState<CustomField | null>(null)
+  const [updateRecovery, setUpdateRecovery] = useState('')
   const [deleteRetry, setDeleteRetry] = useState<string | null>(null)
+  const [deleteBaseline, setDeleteBaseline] = useState<CustomField | null>(null)
+  const [deleteRecovery, setDeleteRecovery] = useState('')
   const [message, setMessage] = useState('')
   const normalizedOptions =
     field.field_type === 'dropdown' ? parseOptions(options) : undefined
@@ -221,12 +267,13 @@ function FieldRow({
     (normalizedOptions?.length === 0 ||
       (normalizedOptions?.length ?? 0) > 50 ||
       hasDuplicateOptions(options))
+  const draftBaseline = editBaseline ?? field
   const dirty =
     editing &&
-    (name.trim() !== field.name ||
-      options !== (field.options?.join(', ') ?? '') ||
+    (name.trim() !== draftBaseline.name ||
+      options !== (draftBaseline.options?.join(', ') ?? '') ||
       JSON.stringify(appliesTo) !==
-        JSON.stringify((field.applies_to ?? []) as WpType[]))
+        JSON.stringify((draftBaseline.applies_to ?? []) as WpType[]))
 
   useEffect(() => {
     onDirtyChange(field.id, dirty)
@@ -243,7 +290,11 @@ function FieldRow({
     setOptions(field.options?.join(', ') ?? '')
     setAppliesTo((field.applies_to ?? []) as WpType[])
     setEditing(false)
+    setEditBaseline(null)
+    setUpdateBaseline(null)
+    setUpdateRecovery('')
     setUpdateRetry(null)
+    setUpdateRecovery('')
     update.reset()
   }
 
@@ -254,32 +305,118 @@ function FieldRow({
     update.reset()
   }
 
-  const submitUpdate = (input: UpdateInput, successMessage = '필드 설정을 저장했습니다.') => {
-    if (writeDisabled) return
+  const completeUpdate = (saved: CustomField, successMessage: string) => {
+    setName(saved.name)
+    setOptions(saved.options?.join(', ') ?? '')
+    setAppliesTo((saved.applies_to ?? []) as WpType[])
+    setEditing(false)
+    setEditBaseline(null)
+    setUpdateBaseline(null)
+    setUpdateRetry(null)
+    setUpdateRecovery('')
+    setMessage(successMessage)
+    update.reset()
+  }
+
+  const submitUpdate = (
+    input: UpdateInput,
+    successMessage = '필드 설정을 저장했습니다.',
+    baseline = field,
+  ) => {
+    if (writeDisabled || !actionsFresh()) return
     setMessage('')
+    setUpdateRecovery('')
+    setUpdateBaseline(baseline)
     setUpdateRetry(input)
     update.mutate(input, {
       onSuccess: (saved) => {
-        setName(saved.name)
-        setOptions(saved.options?.join(', ') ?? '')
-        setAppliesTo((saved.applies_to ?? []) as WpType[])
-        setEditing(false)
-        setUpdateRetry(null)
-        setMessage(successMessage)
+        completeUpdate(saved, successMessage)
       },
     })
   }
 
+  const retryUpdate = async (input: UpdateInput) => {
+    const latest = await refreshFieldTarget(input.fieldId)
+    if (!latest) {
+      setUpdateRecovery('최신 목록에서 필드를 찾을 수 없어 다시 시도하지 않았습니다.')
+      return
+    }
+    const baseline = updateBaseline
+    if (!baseline) return
+    const remaining: UpdateInput = { fieldId: input.fieldId }
+    let conflict = false
+    if ('name' in input && latest.name !== input.name) {
+      if (latest.name === baseline.name) remaining.name = input.name
+      else conflict = true
+    }
+    if ('options' in input && !sameStringArray(latest.options, input.options)) {
+      if (sameStringArray(latest.options, baseline.options)) {
+        remaining.options = input.options
+      } else {
+        conflict = true
+      }
+    }
+    if (
+      'applies_to' in input &&
+      !sameStringArray(latest.applies_to, input.applies_to)
+    ) {
+      if (sameStringArray(latest.applies_to, baseline.applies_to)) {
+        remaining.applies_to = input.applies_to
+      } else {
+        conflict = true
+      }
+    }
+    if ('is_active' in input && latest.is_active !== input.is_active) {
+      if (latest.is_active === baseline.is_active) {
+        remaining.is_active = input.is_active
+      } else {
+        conflict = true
+      }
+    }
+    if (conflict) {
+      setUpdateRecovery(
+        '같은 속성이 서버에서 변경되어 자동 재시도를 중단했습니다. 최신 값을 확인해 다시 편집하세요.',
+      )
+      return
+    }
+    if (Object.keys(remaining).length === 1) {
+      completeUpdate(
+        latest,
+        '서버에 저장된 최신 필드 설정을 확인했습니다.',
+      )
+      return
+    }
+    submitUpdate(remaining, '필드 설정을 저장했습니다.', latest)
+  }
+
   const submitDelete = (fieldId: string) => {
-    if (writeDisabled) return
+    if (writeDisabled || !actionsFresh()) return
     setMessage('')
+    setDeleteRecovery('')
+    setDeleteBaseline(field)
     setDeleteRetry(fieldId)
     remove.mutate(fieldId, {
       onSuccess: () => {
         setDeleteRetry(null)
+        setDeleteBaseline(null)
         setMessage('필드를 삭제했습니다.')
       },
     })
+  }
+
+  const retryDelete = async (fieldId: string) => {
+    const latest = await refreshFieldTarget(fieldId)
+    if (!latest) {
+      setDeleteRecovery('최신 목록에서 필드가 이미 제거되어 다시 시도하지 않았습니다.')
+      return
+    }
+    if (deleteBaseline && latest.updated_at !== deleteBaseline.updated_at) {
+      setDeleteRecovery(
+        '필드가 서버에서 변경되어 자동 삭제 재시도를 중단했습니다. 최신 설정을 확인하세요.',
+      )
+      return
+    }
+    submitDelete(fieldId)
   }
 
   const deleteError =
@@ -315,16 +452,25 @@ function FieldRow({
                   writeDisabled ||
                   update.isPending
                 }
-                onClick={() =>
-                  submitUpdate({
+                onClick={() => {
+                  const input: UpdateInput = {
                     fieldId: field.id,
-                    name: name.trim(),
-                    ...(field.field_type === 'dropdown'
-                      ? { options: normalizedOptions }
-                      : {}),
-                    applies_to: appliesTo.length > 0 ? appliesTo : null,
-                  })
-                }
+                  }
+                  if (name.trim() !== draftBaseline.name) {
+                    input.name = name.trim()
+                  }
+                  if (
+                    field.field_type === 'dropdown' &&
+                    !sameStringArray(normalizedOptions, draftBaseline.options)
+                  ) {
+                    input.options = normalizedOptions
+                  }
+                  const nextAppliesTo = appliesTo.length > 0 ? appliesTo : null
+                  if (!sameStringArray(nextAppliesTo, draftBaseline.applies_to)) {
+                    input.applies_to = nextAppliesTo
+                  }
+                  submitUpdate(input, '필드 설정을 저장했습니다.', draftBaseline)
+                }}
               >
                 {update.isPending ? (
                   <LoaderCircle
@@ -384,12 +530,16 @@ function FieldRow({
                   size="sm"
                   variant="outline"
                   disabled={writeDisabled || update.isPending}
-                  onClick={() => submitUpdate(updateRetry)}
+                  onClick={() => {
+                    const retry = updateRetry
+                    void retryUpdate(retry)
+                  }}
                 >
                   <RefreshCw size={13} aria-hidden="true" /> 같은 내용으로 다시
                   시도
                 </Button>
               ) : null}
+              {updateRecovery ? <span>{updateRecovery}</span> : null}
             </div>
           ) : null}
         </div>
@@ -459,6 +609,9 @@ function FieldRow({
               setName(field.name)
               setOptions(field.options?.join(', ') ?? '')
               setAppliesTo((field.applies_to ?? []) as WpType[])
+              setEditBaseline(field)
+              setUpdateBaseline(null)
+              setUpdateRecovery('')
               setMessage('')
               setEditing(true)
             }}
@@ -493,11 +646,15 @@ function FieldRow({
               size="sm"
               variant="outline"
               disabled={writeDisabled || remove.isPending}
-              onClick={() => submitDelete(deleteRetry)}
+              onClick={() => {
+                const retry = deleteRetry
+                void retryDelete(retry)
+              }}
             >
               <RefreshCw size={13} aria-hidden="true" /> 삭제 다시 시도
             </Button>
           ) : null}
+          {deleteRecovery ? <span>{deleteRecovery}</span> : null}
         </div>
       ) : null}
       {message ? (
@@ -515,10 +672,20 @@ function FieldRow({
 export function FieldsPanel({
   projectId,
   isOwner,
+  permissionsFresh,
+  permissionsDataUpdatedAt,
+  permissionsFetching,
+  permissionsError,
+  onRefreshPermissions,
   onDirtyChange,
 }: {
   projectId: string
   isOwner: boolean
+  permissionsFresh: boolean
+  permissionsDataUpdatedAt: number
+  permissionsFetching: boolean
+  permissionsError: boolean
+  onRefreshPermissions: () => Promise<unknown>
   onDirtyChange: (dirty: boolean) => void
 }) {
   const project = useProject(projectId)
@@ -533,14 +700,63 @@ export function FieldsPanel({
   const [options, setOptions] = useState('')
   const [appliesTo, setAppliesTo] = useState<WpType[]>([])
   const [createRetry, setCreateRetry] = useState<CreateInput | null>(null)
-  const [reorderRetry, setReorderRetry] = useState<string[] | null>(null)
+  const [reorderRetry, setReorderRetry] = useState<ReorderIntent | null>(null)
+  const [reorderRecovery, setReorderRecovery] = useState('')
   const [message, setMessage] = useState('')
   const [dirtyRows, setDirtyRows] = useState<Set<string>>(new Set())
+  const fieldsFreshRef = useRef(false)
+  const projectFreshRef = useRef(false)
+  const permissionsFreshRef = useRef(false)
+  const delegatedPermissionFreshRef = useRef(false)
+  const projectTypesFreshRef = useRef(false)
+  const canConfigureRef = useRef(false)
+  const requiresDelegatedPermissionRef = useRef(false)
+  const mountedRef = useRef(true)
+  const dependencyErrorRef = useRef(false)
+  const committedFieldsVersionRef = useRef(0)
+  const committedFieldsDataRef = useRef<CustomFieldList | undefined>(undefined)
+  const committedProjectVersionRef = useRef(0)
+  const committedPermissionVersionRef = useRef(0)
+  const committedDelegatedPermissionVersionRef = useRef(0)
+  const committedProjectTypeVersionRef = useRef(0)
   const fieldPermission = permissions.data?.verbs.find(
     (verb) => verb.key === 'field.manage',
   )?.effective
   const canManage = isOwner || fieldPermission === 'always'
   const canConfigure = canManage && !project.data?.archived_at
+  const fieldsFresh = Boolean(
+    fields.data &&
+      !fields.isFetching &&
+      !fields.isError &&
+      isCustomFieldRequestAccepted(projectId, true),
+  )
+  const projectFresh = Boolean(
+    project.data &&
+      !project.isFetching &&
+      !project.isError &&
+      isProjectRequestAccepted(projectId),
+  )
+  const delegatedPermissionFresh = Boolean(
+    isOwner ||
+      (permissions.data &&
+        !permissions.isFetching &&
+        !permissions.isError &&
+        isPermissionRequestAccepted(projectId)),
+  )
+  const projectTypesFresh = Boolean(
+    projectTypes.data &&
+      !projectTypes.isFetching &&
+      !projectTypes.isError &&
+      isProjectTypeRequestAccepted(projectId),
+  )
+  const surfaceFresh =
+    fieldsFresh &&
+    projectFresh &&
+    permissionsFresh &&
+    delegatedPermissionFresh &&
+    projectTypesFresh &&
+    !permissionsFetching &&
+    !permissionsError
   const parsedOptions = parseOptions(options)
   const optionsInvalid =
     type === 'dropdown' &&
@@ -552,6 +768,167 @@ export function FieldsPanel({
     type !== 'text' ||
     options.trim() !== '' ||
     appliesTo.length > 0
+
+  useLayoutEffect(() => {
+    fieldsFreshRef.current = fieldsFresh
+    projectFreshRef.current = projectFresh
+    permissionsFreshRef.current = permissionsFresh
+    delegatedPermissionFreshRef.current = delegatedPermissionFresh
+    projectTypesFreshRef.current = projectTypesFresh
+    canConfigureRef.current = canConfigure
+    requiresDelegatedPermissionRef.current = !isOwner
+    dependencyErrorRef.current =
+      fields.isError ||
+      project.isError ||
+      (!isOwner && permissions.isError) ||
+      projectTypes.isError ||
+      permissionsError
+    if (fieldsFresh) {
+      committedFieldsVersionRef.current =
+        getCustomFieldRequestState(projectId, true).requestVersion
+      committedFieldsDataRef.current = fields.data
+    }
+    if (projectFresh) {
+      committedProjectVersionRef.current =
+        getProjectRequestState(projectId).requestVersion
+    }
+    if (permissionsFresh) {
+      committedPermissionVersionRef.current =
+        getMemberRequestState(projectId).requestVersion
+    }
+    if (!isOwner && delegatedPermissionFresh) {
+      committedDelegatedPermissionVersionRef.current =
+        getPermissionRequestState(projectId).requestVersion
+    }
+    if (projectTypesFresh) {
+      committedProjectTypeVersionRef.current =
+        getProjectTypeRequestState(projectId).requestVersion
+    }
+  }, [
+    canConfigure,
+    delegatedPermissionFresh,
+    fields.data,
+    fields.dataUpdatedAt,
+    fields.isError,
+    fieldsFresh,
+    permissions.dataUpdatedAt,
+    permissions.isError,
+    permissionsDataUpdatedAt,
+    permissionsError,
+    permissionsFresh,
+    project.dataUpdatedAt,
+    project.isError,
+    projectFresh,
+    projectId,
+    projectTypes.dataUpdatedAt,
+    projectTypes.isError,
+    projectTypesFresh,
+    isOwner,
+    surfaceFresh,
+  ])
+
+  const actionsFresh = useCallback(() => {
+    const fieldRequest = getCustomFieldRequestState(projectId, true)
+    const projectRequest = getProjectRequestState(projectId)
+    const permissionRequest = getMemberRequestState(projectId)
+    const delegatedPermissionRequest = getPermissionRequestState(projectId)
+    const projectTypeRequest = getProjectTypeRequestState(projectId)
+    const delegatedPermissionCurrent =
+      !requiresDelegatedPermissionRef.current ||
+      (delegatedPermissionFreshRef.current &&
+        delegatedPermissionRequest.requestVersion ===
+          committedDelegatedPermissionVersionRef.current &&
+        isPermissionRequestAccepted(projectId))
+    return Boolean(
+      fieldsFreshRef.current &&
+        projectFreshRef.current &&
+        permissionsFreshRef.current &&
+        projectTypesFreshRef.current &&
+        canConfigureRef.current &&
+        fieldRequest.requestVersion === committedFieldsVersionRef.current &&
+        projectRequest.requestVersion === committedProjectVersionRef.current &&
+        permissionRequest.requestVersion === committedPermissionVersionRef.current &&
+        delegatedPermissionCurrent &&
+        projectTypeRequest.requestVersion ===
+          committedProjectTypeVersionRef.current &&
+        isCustomFieldRequestAccepted(projectId, true) &&
+        isProjectRequestAccepted(projectId) &&
+        isMemberRequestAccepted(projectId) &&
+        isProjectTypeRequestAccepted(projectId),
+    )
+  }, [projectId])
+
+  const waitForSurfaceFresh = useCallback(() => {
+    return new Promise<void>((resolve) => {
+      let settled = false
+      let unsubscribe: () => void = () => undefined
+      let followUp = 0
+      let timeout = 0
+      const finish = () => {
+        if (settled) return
+        settled = true
+        window.clearTimeout(followUp)
+        window.clearTimeout(timeout)
+        unsubscribe()
+        resolve()
+      }
+      const check = () => {
+        if (
+          !mountedRef.current ||
+          actionsFresh() ||
+          dependencyErrorRef.current
+        ) {
+          finish()
+        }
+      }
+      const scheduleCheck = () => {
+        window.clearTimeout(followUp)
+        followUp = window.setTimeout(check, 0)
+      }
+      timeout = window.setTimeout(finish, 5_000)
+      unsubscribe = appQueryClient.getQueryCache().subscribe(scheduleCheck)
+      scheduleCheck()
+    })
+  }, [actionsFresh])
+
+  const markSurfaceRefreshing = useCallback(() => {
+    fieldsFreshRef.current = false
+    projectFreshRef.current = false
+    permissionsFreshRef.current = false
+    delegatedPermissionFreshRef.current = false
+    projectTypesFreshRef.current = false
+  }, [])
+
+  const refreshSurface = useCallback(async () => {
+    markSurfaceRefreshing()
+    void fields.refetch()
+    void project.refetch()
+    void onRefreshPermissions()
+    void permissions.refetch()
+    void projectTypes.refetch()
+    await waitForSurfaceFresh()
+    if (!mountedRef.current || !actionsFresh()) {
+      return undefined
+    }
+    return committedFieldsDataRef.current
+  }, [
+    actionsFresh,
+    fields,
+    markSurfaceRefreshing,
+    onRefreshPermissions,
+    permissions,
+    project,
+    projectTypes,
+    waitForSurfaceFresh,
+  ])
+
+  const refreshFieldTarget = useCallback(
+    async (fieldId: string) => {
+      const latest = await refreshSurface()
+      return latest?.items.find((field) => field.id === fieldId)
+    },
+    [refreshSurface],
+  )
 
   const markRowDirty = useCallback((fieldId: string, dirty: boolean) => {
     setDirtyRows((current) => {
@@ -565,7 +942,13 @@ export function FieldsPanel({
   useEffect(() => {
     onDirtyChange(createDirty || dirtyRows.size > 0)
   }, [createDirty, dirtyRows, onDirtyChange])
-  useEffect(() => () => onDirtyChange(false), [onDirtyChange])
+  useEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+      onDirtyChange(false)
+    }
+  }, [onDirtyChange])
 
   const summary = useMemo(() => {
     const items = fields.data?.items ?? []
@@ -584,7 +967,7 @@ export function FieldsPanel({
   }
 
   const submitCreate = (input: CreateInput) => {
-    if (!canWrite) return
+    if (!canWrite || !actionsFresh()) return
     setMessage('')
     setCreateRetry(input)
     create.mutate(input, {
@@ -599,11 +982,12 @@ export function FieldsPanel({
     })
   }
 
-  const submitReorder = (orderedIds: string[]) => {
-    if (!canWrite) return
+  const submitReorder = (intent: ReorderIntent) => {
+    if (!canWrite || !actionsFresh()) return
     setMessage('')
-    setReorderRetry(orderedIds)
-    reorder.mutate(orderedIds, {
+    setReorderRecovery('')
+    setReorderRetry(intent)
+    reorder.mutate(intent.orderedIds, {
       onSuccess: () => {
         setReorderRetry(null)
         setMessage('필드 순서를 저장했습니다.')
@@ -616,8 +1000,33 @@ export function FieldsPanel({
     const target = index + delta
     if (target < 0 || target >= items.length) return
     const ids = items.map((field) => field.id)
+    const movedId = ids[index]
+    const anchorId = ids[target]
     ;[ids[index], ids[target]] = [ids[target], ids[index]]
-    submitReorder(ids)
+    submitReorder({ orderedIds: ids, movedId, anchorId, direction: delta })
+  }
+
+  const retryReorder = async (intent: ReorderIntent) => {
+    const latest = await refreshSurface()
+    if (!latest || !actionsFresh()) return
+    const latestIds = latest.items.map((field) => field.id)
+    if (
+      !latestIds.includes(intent.movedId) ||
+      !latestIds.includes(intent.anchorId)
+    ) {
+      setReorderRecovery(
+        '이동한 필드 또는 기준 필드가 최신 목록에서 제거되어 다시 시도하지 않았습니다.',
+      )
+      return
+    }
+    const withoutMoved = latestIds.filter((id) => id !== intent.movedId)
+    const anchorIndex = withoutMoved.indexOf(intent.anchorId)
+    withoutMoved.splice(
+      intent.direction === 1 ? anchorIndex + 1 : anchorIndex,
+      0,
+      intent.movedId,
+    )
+    submitReorder({ ...intent, orderedIds: withoutMoved })
   }
 
   const queryStates = [
@@ -630,7 +1039,10 @@ export function FieldsPanel({
       isError: fields.isError,
       hasData: Boolean(fields.data),
       error: fields.error,
-      retry: () => fields.refetch(),
+      retry: () => {
+        fieldsFreshRef.current = false
+        return fields.refetch()
+      },
     },
     {
       key: 'project',
@@ -641,7 +1053,24 @@ export function FieldsPanel({
       isError: project.isError,
       hasData: Boolean(project.data),
       error: project.error,
-      retry: () => project.refetch(),
+      retry: () => {
+        projectFreshRef.current = false
+        return project.refetch()
+      },
+    },
+    {
+      key: 'members',
+      label: '멤버 권한',
+      active: true,
+      isPending: false,
+      isFetching: permissionsFetching,
+      isError: permissionsError,
+      hasData: true,
+      error: permissionsError ? new Error('멤버 권한을 불러오지 못했습니다.') : null,
+      retry: () => {
+        permissionsFreshRef.current = false
+        return onRefreshPermissions()
+      },
     },
     {
       key: 'permissions',
@@ -652,7 +1081,10 @@ export function FieldsPanel({
       isError: permissions.isError,
       hasData: Boolean(permissions.data),
       error: permissions.error,
-      retry: () => permissions.refetch(),
+      retry: () => {
+        delegatedPermissionFreshRef.current = false
+        return permissions.refetch()
+      },
     },
     {
       key: 'project-types',
@@ -663,7 +1095,10 @@ export function FieldsPanel({
       isError: projectTypes.isError,
       hasData: Boolean(projectTypes.data),
       error: projectTypes.error,
-      retry: () => projectTypes.refetch(),
+      retry: () => {
+        projectTypesFreshRef.current = false
+        return projectTypes.refetch()
+      },
     },
   ].filter((query) => query.active)
   const initialPending = queryStates.some(
@@ -690,7 +1125,7 @@ export function FieldsPanel({
   const staleQueries = queryStates.filter((query) => query.isError)
   const isFetching = queryStates.some((query) => query.isFetching)
   const writeBlocked = staleQueries.length > 0
-  const canWrite = canConfigure && !writeBlocked
+  const canWrite = canConfigure && surfaceFresh && !writeBlocked
 
   return (
     <section
@@ -717,7 +1152,7 @@ export function FieldsPanel({
             variant="ghost"
             disabled={isFetching}
             onClick={() => {
-              for (const query of queryStates) void query.retry()
+              void refreshSurface()
             }}
           >
             <RefreshCw
@@ -901,7 +1336,12 @@ export function FieldsPanel({
                   size="sm"
                   variant="outline"
                   disabled={!canWrite || create.isPending}
-                  onClick={() => submitCreate(createRetry)}
+                  onClick={() => {
+                    const retry = createRetry
+                    void refreshSurface().then((latest) => {
+                      if (latest) submitCreate(retry)
+                    })
+                  }}
                 >
                   <RefreshCw size={13} aria-hidden="true" /> 같은 내용으로 다시
                   시도
@@ -927,11 +1367,15 @@ export function FieldsPanel({
               size="sm"
               variant="outline"
               disabled={!canWrite || reorder.isPending}
-              onClick={() => submitReorder(reorderRetry)}
+              onClick={() => {
+                const retry = reorderRetry
+                void retryReorder(retry)
+              }}
             >
               <RefreshCw size={13} aria-hidden="true" /> 같은 순서로 다시 시도
             </Button>
           ) : null}
+          {reorderRecovery ? <span>{reorderRecovery}</span> : null}
         </div>
       ) : null}
 
@@ -957,6 +1401,8 @@ export function FieldsPanel({
                 projectTypes={projectTypes.options}
                 typeLabel={typeLabel}
                 reorderPending={reorder.isPending}
+                actionsFresh={actionsFresh}
+                refreshFieldTarget={refreshFieldTarget}
                 onMove={move}
                 onDirtyChange={markRowDirty}
               />
