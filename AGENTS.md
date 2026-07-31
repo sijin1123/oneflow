@@ -47,6 +47,19 @@ UI direction follows `../docs/ONEFLOW_PLANE_LIKE_UI_DIRECTION.md`: Plane is the 
 - Add tests or validation steps proportional to the risk of the change.
 - Document environment variables and feature flags in `.env.example` when that file exists.
 
+## Execution-First Development Workflow
+
+The default workflow for Codex and Claude Code is goal and checkable completion conditions → thin plan for the first safe slice → implementation → Build/Test/Runtime verification → evidence-driven fixes and repetition.
+
+- Do not wait for an exhaustive plan before implementing the smallest useful end-to-end slice.
+- Keep the plan limited to current scope, constraints, the first slice, major risks, and verification commands. Expand it only when implementation evidence changes the approach.
+- Treat `plan-validator` as optional. Broad, non-trivial, or risky work does not automatically require it.
+- When useful, prefer one quick advisory or balanced round. Non-critical findings become implementation or test tasks.
+- A non-passing or pending plan verdict does not by itself block implementation. Only an unresolved critical issue directly affecting the next risky action blocks that action.
+- Use strict, repeated, multi-agent, or approved-before-implementation validation only when the user explicitly requests it in the active task.
+- Old goal, plan, or worklog instructions that make prior plan approval mandatory are superseded by this section unless the user's active request explicitly preserves the gate.
+- Prefer actual Build/Test/Runtime evidence over speculative plan completeness, and repeat implementation → verification until acceptance and regression checks pass.
+
 ## 환경변수 추가/활성화 규칙
 
 개발 중 새로운 환경변수를 사용하거나 feature flag를 추가하는 경우 반드시 `.env`와 `.env.example`을 함께 확인한다.
