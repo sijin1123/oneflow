@@ -26630,6 +26630,7 @@ test('마일스톤 생성·수정·삭제 실패가 초안을 유지하고 같�
   let createAttempts = 0
   let updateAttempts = 0
   let deleteAttempts = 0
+  const updatePayloads: Array<{ name?: string; due_date?: string | null }> = []
 
   await page.route(`**/api/v1/projects/${project.id}/milestones`, async (route) => {
     if (route.request().method() === 'POST') {
@@ -26656,11 +26657,15 @@ test('마일스톤 생성·수정·삭제 실패가 초안을 유지하고 같�
   await page.route(`**/api/v1/projects/${project.id}/milestones/ms-1`, async (route) => {
     if (route.request().method() === 'PATCH') {
       updateAttempts += 1
+      const input = route.request().postDataJSON() as {
+        name?: string
+        due_date?: string | null
+      }
+      updatePayloads.push(input)
       if (updateAttempts === 1) {
         await route.fulfill({ status: 500, json: { detail: 'temporary update failure' } })
         return
       }
-      const input = route.request().postDataJSON() as { name: string; due_date: string | null }
       milestone = { ...milestone, ...input }
       items = items.map((item) => (item.id === milestone.id ? milestone : item))
       await route.fulfill({ json: milestone })
@@ -26704,6 +26709,7 @@ test('마일스톤 생성·수정·삭제 실패가 초안을 유지하고 같�
   await page.getByRole('button', { name: '같은 내용으로 다시 시도' }).click()
   await expect(page.getByText('1차 GA')).toBeVisible()
   expect(updateAttempts).toBe(2)
+  expect(updatePayloads).toEqual([{ name: '1차 GA' }, { name: '1차 GA' }])
 
   page.once('dialog', (dialog) => void dialog.accept())
   await page.getByLabel('1차 GA 마일스톤 작업').click()
@@ -26712,6 +26718,199 @@ test('마일스톤 생성·수정·삭제 실패가 초안을 유지하고 같�
   await page.getByRole('button', { name: '삭제 다시 시도' }).click()
   await expect(page.getByText('마일스톤을 삭제했습니다.')).toBeVisible()
   expect(deleteAttempts).toBe(2)
+})
+
+test('마일스톤 설정은 목록과 권한 새로고침 중 stale CRUD를 막고 최신 목록에서 재개한다', async ({
+  page,
+}) => {
+  await mockApi(page)
+  let items: Milestone[] = [
+    {
+      id: 'ms-fresh-1',
+      project_id: project.id,
+      name: '편집 대상',
+      description: null,
+      due_date: '2026-09-01',
+      work_package_count: 2,
+      done_work_package_count: 0,
+      created_at: '2026-07-01T00:00:00Z',
+      updated_at: '2026-07-01T00:00:00Z',
+    },
+    {
+      id: 'ms-fresh-2',
+      project_id: project.id,
+      name: '삭제 대상',
+      description: null,
+      due_date: null,
+      work_package_count: 0,
+      done_work_package_count: 0,
+      created_at: '2026-07-01T00:00:00Z',
+      updated_at: '2026-07-01T00:00:00Z',
+    },
+  ]
+  let holdRefresh = false
+  let releaseMilestones: (() => void) | null = null
+  let releaseProject: (() => void) | null = null
+  let releaseMembers: (() => void) | null = null
+  let currentRole: 'owner' | 'viewer' = 'owner'
+  let membersShouldFail = false
+  let updatePayload: Partial<Milestone> | null = null
+  const writes: string[] = []
+  let dialogCount = 0
+
+  page.on('dialog', (dialog) => {
+    dialogCount += 1
+    void dialog.accept()
+  })
+  await page.route(`**/api/v1/projects/${project.id}/members`, async (route) => {
+    if (holdRefresh) {
+      await new Promise<void>((resolve) => {
+        releaseMembers = resolve
+      })
+    }
+    if (membersShouldFail) {
+      await route.fulfill({
+        status: 503,
+        json: { detail: 'temporary member failure' },
+      })
+      return
+    }
+    await route.fulfill({
+      json: {
+        items: [
+          {
+            user_id: 'me-1',
+            email: 'dev@oneflow.local',
+            display_name: 'Dev User',
+            role: currentRole,
+          },
+        ],
+        total: 1,
+      },
+    })
+  })
+  await page.route(`**/api/v1/projects/${project.id}`, async (route) => {
+    if (route.request().method() !== 'GET') {
+      await route.fallback()
+      return
+    }
+    if (holdRefresh) {
+      await new Promise<void>((resolve) => {
+        releaseProject = resolve
+      })
+    }
+    await route.fulfill({ json: project })
+  })
+  await page.route(`**/api/v1/projects/${project.id}/milestones`, async (route) => {
+    if (route.request().method() === 'POST') {
+      writes.push('create')
+      const input = route.request().postDataJSON() as Milestone
+      const created = { ...items[0], ...input, id: 'ms-fresh-3' }
+      items = [...items, created]
+      await route.fulfill({ status: 201, json: created })
+      return
+    }
+    if (holdRefresh) {
+      await new Promise<void>((resolve) => {
+        releaseMilestones = resolve
+      })
+      holdRefresh = false
+    }
+    await route.fulfill({ json: { items, total: items.length } })
+  })
+  await page.route(`**/api/v1/projects/${project.id}/milestones/ms-fresh-1`, async (route) => {
+    writes.push('update')
+    const input = route.request().postDataJSON() as Partial<Milestone>
+    updatePayload = input
+    items[0] = { ...items[0], ...input }
+    await route.fulfill({ json: items[0] })
+  })
+  await page.route(`**/api/v1/projects/${project.id}/milestones/ms-fresh-2`, async (route) => {
+    writes.push('delete')
+    await route.fulfill({ status: 204 })
+  })
+
+  await page.setViewportSize({ width: 320, height: 740 })
+  await page.goto(`/projects/${project.id}/settings?tab=milestones`)
+  await page.getByLabel('마일스톤 이름').fill('보존할 새 마일스톤')
+  await page.getByLabel('편집 대상 마일스톤 작업').click()
+  await page.getByLabel('편집 대상 편집').click()
+  await page.getByLabel('마일스톤 이름 편집').fill('보존할 편집 초안')
+  await page.getByLabel('삭제 대상 마일스톤 작업').click()
+
+  holdRefresh = true
+  await page.evaluate(() => {
+    const buttons = Array.from(document.querySelectorAll<HTMLButtonElement>('button'))
+    const byText = (name: string) =>
+      buttons.find((button) => button.textContent?.trim() === name)
+    byText('마일스톤 설정 새로고침')?.click()
+    byText('추가')?.click()
+    byText('저장')?.click()
+    document.querySelector<HTMLButtonElement>('[aria-label="삭제 대상 삭제"]')?.click()
+  })
+  await expect
+    .poll(
+      () =>
+        releaseMilestones !== null &&
+        releaseProject !== null &&
+        releaseMembers !== null,
+    )
+    .toBe(true)
+  await expect.poll(() => writes.length).toBe(0)
+  expect(dialogCount).toBe(0)
+
+  items = [{ ...items[0], due_date: '2026-10-15' }]
+  currentRole = 'viewer'
+  const releaseMilestoneRefresh = releaseMilestones as (() => void) | null
+  const releaseProjectRefresh = releaseProject as (() => void) | null
+  const releaseMemberRefresh = releaseMembers as (() => void) | null
+  releaseMilestoneRefresh?.()
+  releaseProjectRefresh?.()
+  releaseMemberRefresh?.()
+  releaseMilestones = null
+  releaseProject = null
+  releaseMembers = null
+  await expect(page.getByText('삭제 대상')).toHaveCount(0)
+  await expect(
+    page.getByLabel('마일스톤 설정').getByText('읽기 전용'),
+  ).toBeVisible()
+  await expect(page.getByRole('button', { name: '추가', exact: true })).toHaveCount(0)
+
+  currentRole = 'owner'
+  await page.getByRole('button', { name: '마일스톤 설정 새로고침' }).click()
+  await expect(page.getByLabel('마일스톤 이름', { exact: true })).toHaveValue(
+    '보존할 새 마일스톤',
+  )
+  await expect(page.getByLabel('마일스톤 이름 편집')).toHaveValue('보존할 편집 초안')
+  await expect(page.getByRole('button', { name: '저장', exact: true })).toBeEnabled()
+
+  await page.getByRole('button', { name: '저장', exact: true }).click()
+  await expect.poll(() => writes).toEqual(['update'])
+  expect(updatePayload).toEqual({
+    name: '보존할 편집 초안',
+  })
+  await expect(page.getByRole('button', { name: '추가', exact: true })).toBeEnabled()
+  await page.getByRole('button', { name: '추가', exact: true }).click()
+  await expect.poll(() => writes).toEqual(['update', 'create'])
+
+  await page.getByLabel('마일스톤 이름').fill('권한 복구 후 생성')
+  membersShouldFail = true
+  await page.getByRole('button', { name: '마일스톤 설정 새로고침' }).click()
+  const permissionAlert = page
+    .getByLabel('마일스톤 설정')
+    .getByRole('alert')
+    .filter({ hasText: '최신 마일스톤 권한' })
+  await expect(permissionAlert).toContainText('모든 변경을 차단합니다.')
+  await expect(page.getByRole('button', { name: '추가', exact: true })).toHaveCount(0)
+
+  membersShouldFail = false
+  await permissionAlert.getByRole('button', { name: '권한 다시 시도' }).click()
+  await expect(permissionAlert).toHaveCount(0)
+  await expect(page.getByLabel('마일스톤 이름', { exact: true })).toHaveValue(
+    '권한 복구 후 생성',
+  )
+  await expect(page.getByRole('button', { name: '추가', exact: true })).toBeEnabled()
+  await expectNoHorizontalOverflow(page)
 })
 
 test('마일스톤 조회 실패가 오류 상태와 재시도를 제공한다', async ({ page }) => {
@@ -26808,8 +27007,10 @@ test('마일스톤 후속 갱신 오류는 목록과 초안을 유지하고 권�
 
   projectShouldFail = true
   await panel.getByRole('button', { name: '마일스톤 설정 새로고침' }).click()
-  const projectAlert = panel.getByRole('alert').filter({ hasText: '프로젝트 권한' })
-  await expect(projectAlert).toContainText('생성·수정·삭제는 권한 확인 전까지 차단됩니다.')
+  const projectAlert = panel.getByRole('alert').filter({ hasText: '프로젝트 상태' })
+  await expect(projectAlert).toContainText(
+    '프로젝트 상태를 확인할 때까지 생성·수정·삭제는 차단됩니다.',
+  )
   await expect(editName).toBeDisabled()
   await expect(panel.getByRole('button', { name: '저장', exact: true })).toBeDisabled()
 
@@ -26822,7 +27023,7 @@ test('마일스톤 후속 갱신 오류는 목록과 초안을 유지하고 권�
   })
 
   projectShouldFail = false
-  await projectAlert.getByRole('button', { name: '프로젝트 권한 다시 시도' }).click()
+  await projectAlert.getByRole('button', { name: '프로젝트 상태 다시 시도' }).click()
   await expect(projectAlert).toHaveCount(0)
   await expect(editName).toBeEnabled()
   await expect(editName).toHaveValue('저장하지 않은 출시 초안')

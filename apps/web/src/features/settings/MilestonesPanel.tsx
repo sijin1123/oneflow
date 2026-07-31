@@ -13,7 +13,7 @@ import {
   Save,
   Trash2,
 } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
 import { EmptyState, ErrorState, ListSkeleton } from '@/components/shell/states'
@@ -26,17 +26,31 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
   type Milestone,
+  getMilestoneRequestState,
+  isMilestoneRequestAccepted,
   useCreateMilestone,
   useDeleteMilestone,
   useMilestones,
   useUpdateMilestone,
 } from '@/features/milestones/api'
-import { useProject } from '@/features/projects/api'
+import {
+  getMemberRequestState,
+  isMemberRequestAccepted,
+} from '@/features/members/api'
+import {
+  getProjectRequestState,
+  isProjectRequestAccepted,
+  useProject,
+} from '@/features/projects/api'
 import { confirmDestructive } from '@/lib/guards'
 import { cn } from '@/lib/utils'
 
 type MilestoneInput = { name: string; due_date: string | null }
-type MilestoneUpdateInput = MilestoneInput & { milestoneId: string }
+type MilestoneUpdateInput = {
+  milestoneId: string
+  name?: string
+  due_date?: string | null
+}
 
 function milestoneProgress(milestone: Milestone) {
   const total = milestone.work_package_count ?? 0
@@ -142,11 +156,15 @@ function MilestoneRow({
   milestone,
   projectId,
   canEdit,
+  actionsEnabled,
+  actionsFresh,
   onDirtyChange,
 }: {
   milestone: Milestone
   projectId: string
   canEdit: boolean
+  actionsEnabled: boolean
+  actionsFresh: () => boolean
   onDirtyChange: (milestoneId: string, dirty: boolean) => void
 }) {
   const navigate = useNavigate()
@@ -155,6 +173,13 @@ function MilestoneRow({
   const [editing, setEditing] = useState(false)
   const [name, setName] = useState(milestone.name)
   const [dueDate, setDueDate] = useState(milestone.due_date ?? '')
+  const [editedFields, setEditedFields] = useState<Set<'name' | 'dueDate'>>(
+    new Set(),
+  )
+  const editBaseRef = useRef({
+    name: milestone.name,
+    dueDate: milestone.due_date ?? '',
+  })
   const [updateRetry, setUpdateRetry] = useState<MilestoneUpdateInput | null>(
     null,
   )
@@ -162,7 +187,7 @@ function MilestoneRow({
   const [message, setMessage] = useState('')
   const dirty =
     editing &&
-    (name.trim() !== milestone.name || dueDate !== (milestone.due_date ?? ''))
+    (editedFields.has('name') || editedFields.has('dueDate'))
 
   useEffect(() => {
     onDirtyChange(milestone.id, dirty)
@@ -180,9 +205,14 @@ function MilestoneRow({
     )
 
   const resetDraft = () => {
+    editBaseRef.current = {
+      name: milestone.name,
+      dueDate: milestone.due_date ?? '',
+    }
     setName(milestone.name)
     setDueDate(milestone.due_date ?? '')
     setEditing(false)
+    setEditedFields(new Set())
     setUpdateRetry(null)
     updateMilestone.reset()
   }
@@ -190,19 +220,33 @@ function MilestoneRow({
   const updateDraft = (field: 'name' | 'dueDate', value: string) => {
     if (field === 'name') setName(value)
     else setDueDate(value)
+    setEditedFields((current) => {
+      const next = new Set(current)
+      const baseValue =
+        field === 'name' ? editBaseRef.current.name : editBaseRef.current.dueDate
+      if (value === baseValue) next.delete(field)
+      else next.add(field)
+      return next
+    })
     setUpdateRetry(null)
     setMessage('')
     updateMilestone.reset()
   }
 
   const submitUpdate = (input: MilestoneUpdateInput) => {
+    if (!actionsFresh()) return
     setMessage('')
     setUpdateRetry(input)
     updateMilestone.mutate(input, {
       onSuccess: (saved) => {
+        editBaseRef.current = {
+          name: saved.name,
+          dueDate: saved.due_date ?? '',
+        }
         setName(saved.name)
         setDueDate(saved.due_date ?? '')
         setEditing(false)
+        setEditedFields(new Set())
         setUpdateRetry(null)
         setMessage('마일스톤을 저장했습니다.')
       },
@@ -210,6 +254,7 @@ function MilestoneRow({
   }
 
   const submitDelete = (milestoneId: string) => {
+    if (!actionsFresh()) return
     setMessage('')
     setDeleteRetry(milestoneId)
     deleteMilestone.mutate(milestoneId, {
@@ -246,12 +291,19 @@ function MilestoneRow({
           <div className="flex items-center gap-2">
             <Button
               size="sm"
-              disabled={!canEdit || !name.trim() || updateMilestone.isPending}
+              disabled={
+                !canEdit ||
+                !actionsEnabled ||
+                !name.trim() ||
+                updateMilestone.isPending
+              }
               onClick={() =>
                 submitUpdate({
                   milestoneId: milestone.id,
-                  name: name.trim(),
-                  due_date: dueDate || null,
+                  ...(editedFields.has('name') ? { name: name.trim() } : {}),
+                  ...(editedFields.has('dueDate')
+                    ? { due_date: dueDate || null }
+                    : {}),
                 })
               }
             >
@@ -280,7 +332,7 @@ function MilestoneRow({
                 <Button
                   size="sm"
                   variant="outline"
-                  disabled={!canEdit || updateMilestone.isPending}
+                  disabled={!canEdit || !actionsEnabled || updateMilestone.isPending}
                   onClick={() => submitUpdate(updateRetry)}
                 >
                   <RefreshCw size={13} aria-hidden="true" /> 같은 내용으로 다시
@@ -328,15 +380,22 @@ function MilestoneRow({
           <ProgressBar milestone={milestone} />
           <MilestoneActions
             milestone={milestone}
-            canEdit={canEdit}
+            canEdit={canEdit && actionsEnabled}
             onOpenWork={openWork}
             onEdit={() => {
+              if (!actionsFresh()) return
+              editBaseRef.current = {
+                name: milestone.name,
+                dueDate: milestone.due_date ?? '',
+              }
               setName(milestone.name)
               setDueDate(milestone.due_date ?? '')
+              setEditedFields(new Set())
               setMessage('')
               setEditing(true)
             }}
             onDelete={() => {
+              if (!actionsFresh()) return
               if (confirmDestructive(deleteMessage)) submitDelete(milestone.id)
             }}
           />
@@ -354,7 +413,7 @@ function MilestoneRow({
             <Button
               size="sm"
               variant="outline"
-              disabled={!canEdit || deleteMilestone.isPending}
+              disabled={!canEdit || !actionsEnabled || deleteMilestone.isPending}
               onClick={() => submitDelete(deleteRetry)}
             >
               <RefreshCw size={13} aria-hidden="true" /> 삭제 다시 시도
@@ -377,10 +436,20 @@ function MilestoneRow({
 export function MilestonesPanel({
   projectId,
   canManage,
+  permissionsFresh,
+  permissionsDataUpdatedAt,
+  permissionsFetching,
+  permissionsError,
+  onRefreshPermissions,
   onDirtyChange,
 }: {
   projectId: string
   canManage: boolean
+  permissionsFresh: boolean
+  permissionsDataUpdatedAt: number
+  permissionsFetching: boolean
+  permissionsError: boolean
+  onRefreshPermissions: () => Promise<unknown>
   onDirtyChange: (dirty: boolean) => void
 }) {
   const project = useProject(projectId)
@@ -391,6 +460,51 @@ export function MilestonesPanel({
   const [createRetry, setCreateRetry] = useState<MilestoneInput | null>(null)
   const [createMessage, setCreateMessage] = useState('')
   const [dirtyRows, setDirtyRows] = useState<Set<string>>(new Set())
+  const milestonesFreshRef = useRef(false)
+  const projectFreshRef = useRef(false)
+  const permissionsFreshRef = useRef(false)
+  const committedMilestoneVersionRef = useRef(0)
+  const committedProjectVersionRef = useRef(0)
+  const committedPermissionVersionRef = useRef(0)
+  const milestonesFresh = Boolean(
+    milestones.data &&
+      !milestones.isFetching &&
+      !milestones.isError &&
+      isMilestoneRequestAccepted(projectId),
+  )
+  const projectFresh = Boolean(
+    project.data &&
+      !project.isFetching &&
+      !project.isError &&
+      isProjectRequestAccepted(projectId),
+  )
+  const surfaceFresh = milestonesFresh && projectFresh && permissionsFresh
+
+  useLayoutEffect(() => {
+    milestonesFreshRef.current = milestonesFresh
+    projectFreshRef.current = projectFresh
+    permissionsFreshRef.current = permissionsFresh
+    if (milestonesFresh) {
+      committedMilestoneVersionRef.current =
+        getMilestoneRequestState(projectId).requestVersion
+    }
+    if (projectFresh) {
+      committedProjectVersionRef.current =
+        getProjectRequestState(projectId).requestVersion
+    }
+    if (permissionsFresh) {
+      committedPermissionVersionRef.current =
+        getMemberRequestState(projectId).requestVersion
+    }
+  }, [
+    milestones.dataUpdatedAt,
+    milestonesFresh,
+    permissionsDataUpdatedAt,
+    permissionsFresh,
+    project.dataUpdatedAt,
+    projectFresh,
+    projectId,
+  ])
   const canEdit =
     canManage &&
     !project.isError &&
@@ -435,6 +549,7 @@ export function MilestonesPanel({
   }
 
   const submitCreate = (input: MilestoneInput) => {
+    if (!actionsFresh()) return
     setCreateMessage('')
     setCreateRetry(input)
     createMilestone.mutate(input, {
@@ -445,6 +560,45 @@ export function MilestonesPanel({
         setCreateMessage('마일스톤을 추가했습니다.')
       },
     })
+  }
+
+  const actionsFresh = () => {
+    const milestoneRequest = getMilestoneRequestState(projectId)
+    const projectRequest = getProjectRequestState(projectId)
+    const permissionRequest = getMemberRequestState(projectId)
+    return Boolean(
+      milestonesFreshRef.current &&
+        projectFreshRef.current &&
+        permissionsFreshRef.current &&
+        milestoneRequest.requestVersion === committedMilestoneVersionRef.current &&
+        projectRequest.requestVersion === committedProjectVersionRef.current &&
+        permissionRequest.requestVersion === committedPermissionVersionRef.current &&
+        isMilestoneRequestAccepted(projectId) &&
+        isProjectRequestAccepted(projectId) &&
+        isMemberRequestAccepted(projectId),
+    )
+  }
+  const refreshBoth = () => {
+    milestonesFreshRef.current = false
+    projectFreshRef.current = false
+    permissionsFreshRef.current = false
+    return Promise.all([
+      milestones.refetch(),
+      project.refetch(),
+      onRefreshPermissions(),
+    ])
+  }
+  const refreshMilestones = () => {
+    milestonesFreshRef.current = false
+    return milestones.refetch()
+  }
+  const refreshProject = () => {
+    projectFreshRef.current = false
+    return project.refetch()
+  }
+  const refreshPermissions = () => {
+    permissionsFreshRef.current = false
+    return onRefreshPermissions()
   }
 
   if (
@@ -477,7 +631,9 @@ export function MilestonesPanel({
   return (
     <section
       aria-label="마일스톤 설정"
-      aria-busy={milestones.isFetching || project.isFetching}
+      aria-busy={
+        milestones.isFetching || project.isFetching || permissionsFetching
+      }
       className="min-w-0 overflow-hidden rounded-of border border-of-border bg-of-surface"
     >
       <header className="flex min-w-0 flex-col gap-3 px-4 py-4 sm:flex-row sm:items-start sm:justify-between">
@@ -497,16 +653,16 @@ export function MilestonesPanel({
             type="button"
             size="sm"
             variant="ghost"
-            disabled={milestones.isFetching || project.isFetching}
-            onClick={() =>
-              void Promise.all([milestones.refetch(), project.refetch()])
+            disabled={
+              milestones.isFetching || project.isFetching || permissionsFetching
             }
+            onClick={() => void refreshBoth()}
           >
             <RefreshCw
               size={13}
               aria-hidden="true"
               className={
-                milestones.isFetching || project.isFetching
+                milestones.isFetching || project.isFetching || permissionsFetching
                   ? 'animate-spin'
                   : undefined
               }
@@ -552,7 +708,7 @@ export function MilestonesPanel({
             variant="outline"
             className="w-full shrink-0 sm:w-auto"
             disabled={milestones.isFetching}
-            onClick={() => void milestones.refetch()}
+            onClick={() => void refreshMilestones()}
           >
             <RefreshCw size={13} aria-hidden="true" /> 마일스톤 다시 시도
           </Button>
@@ -572,11 +728,11 @@ export function MilestonesPanel({
             />
             <div className="min-w-0">
               <p className="text-xs font-medium text-of-text">
-                프로젝트 권한을 다시 확인하지 못했습니다.
+                프로젝트 상태를 다시 확인하지 못했습니다.
               </p>
               <p className="mt-0.5 text-[11px] leading-5 text-of-muted">
-                마일스톤은 계속 볼 수 있지만 생성·수정·삭제는 권한 확인
-                전까지 차단됩니다.
+                마일스톤은 계속 볼 수 있지만 프로젝트 상태를 확인할 때까지
+                생성·수정·삭제는 차단됩니다.
               </p>
             </div>
           </div>
@@ -586,9 +742,43 @@ export function MilestonesPanel({
             variant="outline"
             className="w-full shrink-0 sm:w-auto"
             disabled={project.isFetching}
-            onClick={() => void project.refetch()}
+            onClick={() => void refreshProject()}
           >
-            <RefreshCw size={13} aria-hidden="true" /> 프로젝트 권한 다시 시도
+            <RefreshCw size={13} aria-hidden="true" /> 프로젝트 상태 다시 시도
+          </Button>
+        </div>
+      ) : null}
+
+      {permissionsError ? (
+        <div
+          role="alert"
+          className="mx-3 mb-3 flex min-w-0 flex-col gap-2 border border-of-danger/25 bg-of-danger-soft/35 px-3 py-2.5 sm:mx-4 sm:flex-row sm:items-center sm:justify-between"
+        >
+          <div className="flex min-w-0 items-start gap-2">
+            <LockKeyhole
+              size={13}
+              aria-hidden="true"
+              className="mt-0.5 shrink-0 text-of-danger"
+            />
+            <div className="min-w-0">
+              <p className="text-xs font-medium text-of-text">
+                최신 마일스톤 권한을 확인하지 못했습니다.
+              </p>
+              <p className="mt-0.5 text-[11px] leading-5 text-of-muted">
+                마지막 목록과 초안은 유지하며 권한을 다시 확인할 때까지 모든
+                변경을 차단합니다.
+              </p>
+            </div>
+          </div>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="w-full shrink-0 sm:w-auto"
+            disabled={permissionsFetching}
+            onClick={() => void refreshPermissions()}
+          >
+            <RefreshCw size={13} aria-hidden="true" /> 권한 다시 시도
           </Button>
         </div>
       ) : null}
@@ -652,7 +842,7 @@ export function MilestonesPanel({
             />
             <Button
               size="sm"
-              disabled={!msName.trim() || createMilestone.isPending}
+              disabled={!surfaceFresh || !msName.trim() || createMilestone.isPending}
               onClick={() =>
                 submitCreate({ name: msName.trim(), due_date: msDue || null })
               }
@@ -679,7 +869,7 @@ export function MilestonesPanel({
                 <Button
                   size="sm"
                   variant="outline"
-                  disabled={createMilestone.isPending}
+                  disabled={!surfaceFresh || createMilestone.isPending}
                   onClick={() => submitCreate(createRetry)}
                 >
                   <RefreshCw size={13} aria-hidden="true" /> 같은 내용으로 다시
@@ -715,10 +905,12 @@ export function MilestonesPanel({
             {milestones.data.items.map((milestone) => (
               <MilestoneRow
                 key={milestone.id}
-                milestone={milestone}
-                projectId={projectId}
-                canEdit={canEdit}
-                onDirtyChange={markRowDirty}
+              milestone={milestone}
+              projectId={projectId}
+              canEdit={canEdit}
+              actionsEnabled={surfaceFresh}
+              actionsFresh={actionsFresh}
+              onDirtyChange={markRowDirty}
               />
             ))}
           </ul>

@@ -1,7 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useMemo } from 'react'
 
+import { registerIdentityReset } from '@/features/auth/cache'
 import { ApiError, BASE_URL, api } from '@/lib/api'
+import { queryClient as appQueryClient } from '@/lib/query'
 
 import type {
   Me,
@@ -11,6 +13,61 @@ import type {
   MemberRoleUpdate,
   PermissionReport,
 } from './types'
+
+type MemberRequestState = {
+  requestVersion: number
+  successfulRequestVersion: number
+  dataUpdateCountAtStart: number
+}
+
+const memberRequestStates = new Map<string, MemberRequestState>()
+const emptyMemberRequestState: MemberRequestState = {
+  requestVersion: 0,
+  successfulRequestVersion: 0,
+  dataUpdateCountAtStart: 0,
+}
+
+function memberQueryKey(projectId: string) {
+  return ['members', projectId] as const
+}
+
+export function getMemberRequestState(projectId: string) {
+  return memberRequestStates.get(projectId) ?? emptyMemberRequestState
+}
+
+function startMemberRequest(projectId: string) {
+  const previous = getMemberRequestState(projectId)
+  const requestVersion = previous.requestVersion + 1
+  memberRequestStates.set(projectId, {
+    requestVersion,
+    successfulRequestVersion: previous.successfulRequestVersion,
+    dataUpdateCountAtStart:
+      appQueryClient.getQueryState(memberQueryKey(projectId))?.dataUpdateCount ?? 0,
+  })
+  return requestVersion
+}
+
+function completeMemberRequest(projectId: string, requestVersion: number) {
+  const current = getMemberRequestState(projectId)
+  if (current.requestVersion !== requestVersion) return
+  memberRequestStates.set(projectId, {
+    ...current,
+    successfulRequestVersion: requestVersion,
+  })
+}
+
+export function isMemberRequestAccepted(projectId: string) {
+  const request = getMemberRequestState(projectId)
+  const query = appQueryClient.getQueryState(memberQueryKey(projectId))
+  return Boolean(
+    query &&
+      query.fetchStatus === 'idle' &&
+      request.requestVersion === request.successfulRequestVersion &&
+      query.dataUpdateCount > request.dataUpdateCountAtStart,
+  )
+}
+
+registerIdentityReset(() => memberRequestStates.clear())
 
 export function useMe() {
   return useQuery({
@@ -114,8 +171,13 @@ export function useRemoveProfileImage() {
 
 export function useMembers(projectId: string, enabled = true) {
   return useQuery({
-    queryKey: ['members', projectId],
-    queryFn: () => api<MemberList>(`/api/v1/projects/${projectId}/members`),
+    queryKey: memberQueryKey(projectId),
+    queryFn: async () => {
+      const requestVersion = startMemberRequest(projectId)
+      const members = await api<MemberList>(`/api/v1/projects/${projectId}/members`)
+      completeMemberRequest(projectId, requestVersion)
+      return members
+    },
     enabled,
   })
 }
