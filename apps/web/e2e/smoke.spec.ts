@@ -28235,10 +28235,18 @@ test('Workspace 초대는 마지막 목록을 유지하고 실패한 링크 회�
   let rotateAttempts = 0
   let revokeAttempts = 0
   let createAttempts = 0
+  let delayNextListRead = false
+  const listReadGate: { release: (() => void) | null } = { release: null }
+  const releaseDelayedListRead = () => {
+    const release = listReadGate.release
+    if (!release) throw new Error('No delayed workspace invitation list request')
+    listReadGate.release = null
+    release()
+  }
   const rotatePayloads: Record<string, unknown>[] = []
   const revokeVersions: string[] = []
 
-  await page.route('**/api/v1/workspace-invitations**', (route) => {
+  await page.route('**/api/v1/workspace-invitations**', async (route) => {
     const request = route.request()
     const url = new URL(request.url())
     if (request.method() === 'POST' && url.pathname.endsWith('/rotate')) {
@@ -28280,6 +28288,12 @@ test('Workspace 초대는 마지막 목록을 유지하고 실패한 링크 회�
       return route.fulfill({ status: 204, body: '' })
     }
     listReads += 1
+    if (delayNextListRead) {
+      delayNextListRead = false
+      await new Promise<void>((resolve) => {
+        listReadGate.release = resolve
+      })
+    }
     if (failRefresh && listReads > 1) {
       failRefresh = false
       return route.fulfill({ status: 503, json: { detail: 'temporary list failure' } })
@@ -28291,12 +28305,83 @@ test('Workspace 초대는 마지막 목록을 유지하고 실패한 링크 회�
   await expect(page.getByText('recover@example.com')).toBeVisible()
   await expect(page.getByLabel('워크스페이스 초대 요약')).toContainText('대기 중1')
 
+  const frameActions = page.locator('[data-frame-context-actions]')
+  await frameActions.getByRole('button', { name: '멤버 초대' }).click()
+  await page.getByLabel('초대 이메일').fill('draft.invite@example.com')
+  await page.getByLabel('초대 사용자 이름').fill('Draft Invite')
+  const createButton = page.getByRole('button', { name: '링크 만들기' })
+  const rotateButton = page.getByRole('button', { name: '새 링크 발급' })
+  const revokeButton = page.getByRole('button', { name: '초대 취소' })
+
+  delayNextListRead = true
+  await page.evaluate(() => {
+    const click = (name: string) => {
+      const button = [...document.querySelectorAll<HTMLButtonElement>('button')]
+        .find((candidate) => candidate.textContent?.trim() === name)
+      if (!button) throw new Error(`Missing button: ${name}`)
+      button.click()
+    }
+    click('새로고침')
+    click('링크 만들기')
+    click('새 링크 발급')
+    click('초대 취소')
+  })
+  await expect.poll(() => Boolean(listReadGate.release)).toBe(true)
+  expect(createAttempts).toBe(0)
+  expect(rotateAttempts).toBe(0)
+  expect(revokeAttempts).toBe(0)
+  await expect(page.getByRole('dialog', { name: '초대 취소' })).toHaveCount(0)
+  await expect(page.getByLabel('초대 이메일')).toHaveValue('draft.invite@example.com')
+  await expect(page.getByLabel('초대 사용자 이름')).toHaveValue('Draft Invite')
+  await expect(createButton).toBeDisabled()
+  await page.evaluate(async () => {
+    const loadQueryClient = new Function(
+      'return import("/src/lib/query.ts")',
+    ) as () => Promise<{
+      queryClient: {
+        cancelQueries: (filters: { queryKey: string[] }) => Promise<void>
+      }
+    }>
+    const { queryClient } = await loadQueryClient()
+    await queryClient.cancelQueries({ queryKey: ['workspace-invitations'] })
+  })
+  invitation = { ...invitation, version: 5 }
+  releaseDelayedListRead()
+  await expect(createButton).toBeDisabled()
+  await page.getByRole('button', { name: '새로고침', exact: true }).click()
+  await expect(createButton).toBeEnabled()
+
+  await revokeButton.click()
+  const preRefreshRevokeDialog = page.getByRole('dialog', { name: '초대 취소' })
+  await expect(preRefreshRevokeDialog).toBeVisible()
+  delayNextListRead = true
+  listReadGate.release = null
+  await page.evaluate(() => {
+    const click = (name: string) => {
+      const button = [...document.querySelectorAll<HTMLButtonElement>('button')]
+        .find((candidate) => candidate.textContent?.trim() === name)
+      if (!button) throw new Error(`Missing button: ${name}`)
+      button.click()
+    }
+    click('새로고침')
+    click('초대 취소 확인')
+  })
+  await expect.poll(() => Boolean(listReadGate.release)).toBe(true)
+  expect(revokeAttempts).toBe(0)
+  await expect(preRefreshRevokeDialog).toBeVisible()
+  await expect(
+    preRefreshRevokeDialog.getByRole('button', { name: '초대 취소 확인' }),
+  ).toBeDisabled()
+  releaseDelayedListRead()
+  await expect(
+    preRefreshRevokeDialog.getByRole('button', { name: '초대 취소 확인' }),
+  ).toBeEnabled()
+  await preRefreshRevokeDialog.getByRole('button', { name: '유지' }).click()
+
   failRefresh = true
   await page.getByRole('button', { name: '새로고침', exact: true }).click()
   await expect(page.getByRole('alert')).toContainText('마지막으로 확인한 목록을 유지')
   await expect(page.getByText('recover@example.com')).toBeVisible()
-  const rotateButton = page.getByRole('button', { name: '새 링크 발급' })
-  const revokeButton = page.getByRole('button', { name: '초대 취소' })
   await expect(rotateButton).toHaveAttribute('aria-disabled', 'true')
   await expect(revokeButton).toHaveAttribute('aria-disabled', 'true')
   await rotateButton.evaluate((button: HTMLButtonElement) => button.click())
@@ -28305,11 +28390,6 @@ test('Workspace 초대는 마지막 목록을 유지하고 실패한 링크 회�
   expect(revokeAttempts).toBe(0)
   await expect(page.getByRole('dialog', { name: '초대 취소' })).toHaveCount(0)
 
-  const frameActions = page.locator('[data-frame-context-actions]')
-  await frameActions.getByRole('button', { name: '멤버 초대' }).click()
-  await page.getByLabel('초대 이메일').fill('draft.invite@example.com')
-  await page.getByLabel('초대 사용자 이름').fill('Draft Invite')
-  const createButton = page.getByRole('button', { name: '링크 만들기' })
   await expect(createButton).toBeDisabled()
   await createButton.evaluate((button: HTMLButtonElement) => {
     button.removeAttribute('disabled')
@@ -28326,9 +28406,19 @@ test('Workspace 초대는 마지막 목록을 유지하고 실패한 링크 회�
   await expect(page.getByLabel('초대 이메일')).toHaveValue('draft.invite@example.com')
   await expect(page.getByLabel('초대 사용자 이름')).toHaveValue('Draft Invite')
   await expect(createButton).toBeEnabled()
+  delayNextListRead = true
+  listReadGate.release = null
   await createButton.click()
   await expect(page.getByText('새 초대 링크가 발급되었습니다')).toBeVisible()
   expect(createAttempts).toBe(1)
+  await expect.poll(() => Boolean(listReadGate.release)).toBe(true)
+  await rotateButton.evaluate((button: HTMLButtonElement) => button.click())
+  await revokeButton.evaluate((button: HTMLButtonElement) => button.click())
+  expect(rotateAttempts).toBe(0)
+  expect(revokeAttempts).toBe(0)
+  await expect(page.getByRole('dialog', { name: '초대 취소' })).toHaveCount(0)
+  releaseDelayedListRead()
+  await expect(rotateButton).toHaveAttribute('aria-disabled', 'false')
   await page.getByRole('button', { name: '닫기' }).click()
 
   await expect(rotateButton).toHaveAttribute('aria-disabled', 'false')
@@ -28336,7 +28426,7 @@ test('Workspace 초대는 마지막 목록을 유지하고 실패한 링크 회�
   await expect(page.getByRole('alert')).toContainText('temporary rotate failure')
   await page.getByRole('button', { name: '같은 요청 다시 시도' }).click()
   await expect(page.getByLabel('새 초대 링크')).toHaveValue(/\/invite\/recovered-/)
-  expect(rotatePayloads).toEqual([{ expected_version: 4 }, { expected_version: 4 }])
+  expect(rotatePayloads).toEqual([{ expected_version: 5 }, { expected_version: 5 }])
 
   await page.getByRole('button', { name: '닫기' }).click()
   const revokeTrigger = page.getByRole('button', { name: '초대 취소' })
@@ -28348,7 +28438,7 @@ test('Workspace 초대는 마지막 목록을 유지하고 실패한 링크 회�
   await expect(revokeDialog).toBeHidden()
   await expect(page.getByText('취소됨', { exact: true }).first()).toBeVisible()
   await expect(page.getByRole('heading', { name: '멤버 초대' })).toBeFocused()
-  expect(revokeVersions).toEqual(['5', '5'])
+  expect(revokeVersions).toEqual(['6', '6'])
   await page.screenshot({
     path: '../../docs/screenshots/redevelopment/workspace-invitations-freshness-write-guard-ui-324/recovered-320.png',
     fullPage: true,
