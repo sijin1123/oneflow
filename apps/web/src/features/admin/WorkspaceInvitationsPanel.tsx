@@ -12,7 +12,7 @@ import {
   Send,
   X,
 } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 
 import { EmptyState, ErrorState, ListSkeleton } from '@/components/shell/states'
 import { Badge } from '@/components/ui/badge'
@@ -25,9 +25,12 @@ import {
   type InvitationStatus,
   type WorkspaceInvitation,
   type WorkspaceInvitationSecret,
+  getWorkspaceInvitationRequestState,
+  isWorkspaceInvitationRequestAccepted,
   useCreateWorkspaceInvitation,
   useRevokeWorkspaceInvitation,
   useRotateWorkspaceInvitation,
+  useWorkspaceInvitationRequestState,
   useWorkspaceInvitations,
 } from './workspaceInvitationsApi'
 
@@ -183,6 +186,9 @@ export function WorkspaceInvitationsPanel({
   composerRequest?: number
   onDirtyChange?: (dirty: boolean) => void
 }) {
+  const requestState = useWorkspaceInvitationRequestState()
+  const listFreshRef = useRef(false)
+  const committedRequestVersionRef = useRef(0)
   const invitations = useWorkspaceInvitations()
   const create = useCreateWorkspaceInvitation()
   const rotate = useRotateWorkspaceInvitation()
@@ -193,7 +199,6 @@ export function WorkspaceInvitationsPanel({
   const [secret, setSecret] = useState<WorkspaceInvitationSecret | null>(null)
   const [filter, setFilter] = useState<'all' | 'pending' | 'history'>('all')
   const [failedAction, setFailedAction] = useState<InvitationAction | null>(null)
-  const [refreshError, setRefreshError] = useState(false)
   const [revokeTarget, setRevokeTarget] = useState<RevokeTarget | null>(null)
   const [revokeFocusId, setRevokeFocusId] = useState<string | null>(null)
   const revokeTriggerRef = useRef<HTMLButtonElement | null>(null)
@@ -239,8 +244,22 @@ export function WorkspaceInvitationsPanel({
       !invitations.isFetching &&
       !invitations.isRefetchError &&
       !invitations.isError &&
-      !refreshError,
+      isWorkspaceInvitationRequestAccepted(),
   )
+
+  useLayoutEffect(() => {
+    listFreshRef.current = listFresh
+    committedRequestVersionRef.current = listFresh ? requestState.requestVersion : 0
+  }, [listFresh, requestState.requestVersion])
+
+  const actionListFresh = () => {
+    const current = getWorkspaceInvitationRequestState()
+    return Boolean(
+      listFreshRef.current &&
+        isWorkspaceInvitationRequestAccepted() &&
+        committedRequestVersionRef.current === current.requestVersion,
+    )
+  }
 
   const resetMutationFeedback = () => {
     create.reset()
@@ -250,7 +269,7 @@ export function WorkspaceInvitationsPanel({
   }
 
   const runAction = (action: InvitationAction, closeRevoke = false) => {
-    if (!listFresh) return
+    if (!actionListFresh()) return
     resetMutationFeedback()
     if (action.kind === 'create') {
       create.mutate(action.input, {
@@ -290,22 +309,23 @@ export function WorkspaceInvitationsPanel({
   }
 
   const refresh = async () => {
-    setRefreshError(false)
-    const result = await invitations.refetch()
-    setRefreshError(Boolean(result.error))
+    listFreshRef.current = false
+    await invitations.refetch()
   }
 
   const retryFailedAction = async () => {
-    if (!failedAction || !listFresh) return
+    if (!failedAction || !actionListFresh()) return
     if (
       mutationError instanceof ApiError &&
       mutationError.status === 409 &&
       failedAction.kind !== 'create'
     ) {
+      listFreshRef.current = false
       const result = await invitations.refetch()
       if (result.error) return
       const latest = result.data?.items.find((item) => item.id === failedAction.input.id)
       if (!latest || latest.status !== 'pending') return
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
       runAction({
         kind: failedAction.kind,
         input: { id: latest.id, expected_version: latest.version },
@@ -423,11 +443,11 @@ export function WorkspaceInvitationsPanel({
           </div>
           <Button size="sm" variant="ghost" onClick={() => void refresh()} disabled={invitations.isFetching}>
             <RefreshCw size={13} className={cn(invitations.isFetching && 'animate-spin')} />
-            {refreshError ? '새로고침 다시 시도' : '새로고침'}
+            {invitations.isRefetchError ? '새로고침 다시 시도' : '새로고침'}
           </Button>
         </div>
 
-        {(refreshError || invitations.isRefetchError) && invitations.data ? (
+        {invitations.isRefetchError && invitations.data ? (
           <div
             className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-of border border-of-warning/30 bg-of-warning/5 px-3 py-2 text-xs"
             role="alert"
@@ -472,7 +492,7 @@ export function WorkspaceInvitationsPanel({
         {!invitations.data && invitations.isPending ? (
           <ListSkeleton />
         ) : !invitations.data && invitations.isError ? (
-          <ErrorState error={invitations.error} onRetry={() => invitations.refetch()} />
+          <ErrorState error={invitations.error} onRetry={() => void refresh()} />
         ) : rows.length === 0 ? (
           <EmptyState
             visual="icon"
@@ -498,7 +518,7 @@ export function WorkspaceInvitationsPanel({
                     })
                   }}
                   onRevoke={(trigger) => {
-                    if (!listFresh) return
+                    if (!actionListFresh()) return
                     revokeTriggerRef.current = trigger
                     resetMutationFeedback()
                     setRevokeTarget({ invitation, trigger })
