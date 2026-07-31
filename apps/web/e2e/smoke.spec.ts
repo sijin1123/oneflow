@@ -14709,6 +14709,91 @@ test('위험 구역은 후속 조회 실패에서 마지막 lifecycle을 유지�
   })
 })
 
+test('위험 구역은 새로고침과 같은 이벤트의 lifecycle 쓰기를 막고 최신 상태에서 재개한다', async ({
+  page,
+}) => {
+  await mockApi(page)
+  let currentProject: Project = { ...project }
+  let holdRefresh = false
+  let releaseRefresh: (() => void) | null = null
+  let archiveWrites = 0
+  let restoreWrites = 0
+
+  await page.route(`**/api/v1/projects/${project.id}`, async (route) => {
+    if (holdRefresh) {
+      await new Promise<void>((resolve) => {
+        releaseRefresh = resolve
+      })
+      holdRefresh = false
+    }
+    await route.fulfill({ json: currentProject })
+  })
+  await page.route(`**/api/v1/projects/${project.id}/archive`, async (route) => {
+    archiveWrites += 1
+    currentProject = { ...currentProject, archived_at: '2026-07-31T00:00:00Z' }
+    await route.fulfill({ json: currentProject })
+  })
+  await page.route(`**/api/v1/projects/${project.id}/unarchive`, async (route) => {
+    restoreWrites += 1
+    currentProject = { ...currentProject, archived_at: null }
+    await route.fulfill({ json: currentProject })
+  })
+
+  await page.setViewportSize({ width: 320, height: 740 })
+  await page.goto(`/projects/${project.id}/settings?tab=danger`)
+  const panel = page.getByRole('region', { name: '프로젝트 위험 구역' })
+  await panel.getByRole('button', { name: '프로젝트 보관' }).click()
+  const dialog = page.getByRole('dialog')
+  await expect(dialog).toBeVisible()
+
+  holdRefresh = true
+  await page.evaluate(() => {
+    const refresh = document.querySelector<HTMLButtonElement>(
+      'button[aria-label="프로젝트 상태 새로고침"]',
+    )
+    const confirm = Array.from(
+      document
+        .querySelector('[role="dialog"]')
+        ?.querySelectorAll<HTMLButtonElement>('button') ?? [],
+    ).find((button) => button.textContent?.trim() === '프로젝트 보관')
+    refresh?.click()
+    confirm?.click()
+  })
+  await expect.poll(() => releaseRefresh !== null).toBe(true)
+  await expect.poll(() => archiveWrites).toBe(0)
+  await expect(dialog).toBeVisible()
+  await expect(dialog.getByRole('button', { name: '프로젝트 보관' })).toBeDisabled()
+  const releaseArchiveRefresh = releaseRefresh as (() => void) | null
+  releaseArchiveRefresh?.()
+  releaseRefresh = null
+  await expect(dialog.getByRole('button', { name: '프로젝트 보관' })).toBeEnabled()
+  await dialog.getByRole('button', { name: '프로젝트 보관' }).click()
+  await expect.poll(() => archiveWrites).toBe(1)
+  await expect(panel.getByRole('button', { name: '프로젝트 복원' })).toBeEnabled()
+
+  holdRefresh = true
+  await page.evaluate(() => {
+    const refresh = document.querySelector<HTMLButtonElement>(
+      'button[aria-label="프로젝트 상태 새로고침"]',
+    )
+    const restore = Array.from(document.querySelectorAll<HTMLButtonElement>('button')).find(
+      (button) => button.textContent?.includes('프로젝트 복원'),
+    )
+    refresh?.click()
+    restore?.click()
+  })
+  await expect.poll(() => releaseRefresh !== null).toBe(true)
+  await expect.poll(() => restoreWrites).toBe(0)
+  const releaseRestoreRefresh = releaseRefresh as (() => void) | null
+  releaseRestoreRefresh?.()
+  releaseRefresh = null
+  await expect(panel.getByRole('button', { name: '프로젝트 복원' })).toBeEnabled()
+  await panel.getByRole('button', { name: '프로젝트 복원' }).click()
+  await expect.poll(() => restoreWrites).toBe(1)
+  await expect(panel.getByText('활성 · 변경 가능')).toBeVisible()
+  await expectNoHorizontalOverflow(page)
+})
+
 test('인테이크 큐에서 소유자가 수락하면 triage POST가 간다', async ({ page }) => {
   await mockApi(page)
   await page.route('**/api/v1/me', (route) =>

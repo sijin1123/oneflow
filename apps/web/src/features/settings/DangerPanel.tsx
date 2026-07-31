@@ -9,14 +9,19 @@ import {
   ShieldAlert,
   X,
 } from 'lucide-react'
-import { useRef, useState } from 'react'
+import { useLayoutEffect, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
 
 import { ErrorState, ListSkeleton } from '@/components/shell/states'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { ModalContent, ModalOverlay } from '@/components/ui/modal'
-import { useArchiveProject, useProject } from '@/features/projects/api'
+import {
+  getProjectRequestState,
+  isProjectRequestAccepted,
+  useArchiveProject,
+  useProject,
+} from '@/features/projects/api'
 import { ApiError } from '@/lib/api'
 
 function actionError(error: unknown, archive: boolean) {
@@ -31,9 +36,24 @@ export function DangerPanel({ isOwner }: { isOwner: boolean }) {
   const project = useProject(projectId)
   const archive = useArchiveProject(projectId)
   const actionButtonRef = useRef<HTMLButtonElement>(null)
+  const projectFreshRef = useRef(false)
+  const committedRequestVersionRef = useRef(0)
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [failedAction, setFailedAction] = useState<boolean | null>(null)
   const [feedback, setFeedback] = useState('')
+  const projectFresh = Boolean(
+    project.data &&
+      !project.isFetching &&
+      !project.isError &&
+      isProjectRequestAccepted(projectId),
+  )
+
+  useLayoutEffect(() => {
+    projectFreshRef.current = projectFresh
+    if (projectFresh) {
+      committedRequestVersionRef.current = getProjectRequestState(projectId).requestVersion
+    }
+  }, [project.dataUpdatedAt, projectFresh, projectId])
 
   if (project.isPending && !project.data) {
     return (
@@ -52,10 +72,34 @@ export function DangerPanel({ isOwner }: { isOwner: boolean }) {
   }
 
   const archived = project.data.archived_at !== null
-  const projectStale = project.isError
-  const actionBlocked = archive.isPending || projectStale
+  const projectStale = !projectFresh
+  const projectRefreshFailed = project.isError
+  const actionBlocked = archive.isPending || !projectFresh
+  const actionsFresh = () => {
+    const current = getProjectRequestState(projectId)
+    return Boolean(
+      projectFreshRef.current &&
+        current.requestVersion === committedRequestVersionRef.current &&
+        isProjectRequestAccepted(projectId),
+    )
+  }
+  const refreshProject = () => {
+    projectFreshRef.current = false
+    return project.refetch()
+  }
   const runAction = async (shouldArchive: boolean) => {
-    if (projectStale) return
+    if (!actionsFresh()) return
+    const currentArchived = project.data.archived_at !== null
+    if (currentArchived === shouldArchive) {
+      setConfirmOpen(false)
+      setFailedAction(null)
+      setFeedback(
+        shouldArchive
+          ? '프로젝트가 이미 보관된 최신 상태입니다.'
+          : '프로젝트가 이미 활성화된 최신 상태입니다.',
+      )
+      return
+    }
     setFeedback('')
     setFailedAction(null)
     try {
@@ -107,7 +151,7 @@ export function DangerPanel({ isOwner }: { isOwner: boolean }) {
               aria-label="프로젝트 상태 새로고침"
               title="프로젝트 상태 새로고침"
               disabled={project.isFetching || archive.isPending}
-              onClick={() => void project.refetch()}
+              onClick={() => void refreshProject()}
             >
               <RefreshCw
                 size={14}
@@ -118,7 +162,7 @@ export function DangerPanel({ isOwner }: { isOwner: boolean }) {
           </div>
         </header>
 
-        {projectStale ? (
+        {projectRefreshFailed ? (
           <div
             role="alert"
             className="flex min-w-0 flex-col gap-2 border-b border-of-warning/20 bg-of-warning-soft px-4 py-2.5 text-xs sm:flex-row sm:items-center sm:justify-between"
@@ -132,7 +176,7 @@ export function DangerPanel({ isOwner }: { isOwner: boolean }) {
               variant="outline"
               className="w-full shrink-0 sm:w-auto"
               disabled={project.isFetching}
-              onClick={() => void project.refetch()}
+              onClick={() => void refreshProject()}
             >
               <RefreshCw
                 size={13}
@@ -197,6 +241,7 @@ export function DangerPanel({ isOwner }: { isOwner: boolean }) {
                 className="w-full shrink-0 sm:w-auto"
                 disabled={actionBlocked}
                 onClick={() => {
+                  if (!actionsFresh()) return
                   setFeedback('')
                   setFailedAction(null)
                   setConfirmOpen(true)
@@ -249,6 +294,7 @@ export function DangerPanel({ isOwner }: { isOwner: boolean }) {
         open={confirmOpen}
         onOpenChange={(next) => {
           if (archive.isPending) return
+          if (next && !actionsFresh()) return
           setConfirmOpen(next)
           if (!next) setFailedAction(null)
         }}
@@ -316,7 +362,7 @@ export function DangerPanel({ isOwner }: { isOwner: boolean }) {
                     variant="outline"
                     className="w-full shrink-0 sm:w-auto"
                     disabled={project.isFetching}
-                    onClick={() => void project.refetch()}
+                    onClick={() => void refreshProject()}
                   >
                     <RefreshCw
                       size={13}
