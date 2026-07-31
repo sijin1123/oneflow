@@ -12,7 +12,7 @@ import {
   Trash2,
   X,
 } from 'lucide-react'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 
 import { FrameContextActions } from '@/components/shell/FrameContextActions'
@@ -29,7 +29,10 @@ import {
   type AuthAssistanceList,
   type AuthAssistanceRequest,
   type AuthAssistanceStatus,
+  getAdminAuthAssistanceRequestState,
+  isAdminAuthAssistanceRequestAccepted,
   useAdminAuthAssistance,
+  useAdminAuthAssistanceRequestState,
   useRedactAuthAssistance,
   useTriageAuthAssistance,
 } from './authAssistanceApi'
@@ -95,6 +98,7 @@ export function AuthAssistancePage() {
     rawKind !== kind ||
     rawOffset !== expectedOffset
   const filters: AuthAssistanceFilters = { status, kind, offset }
+  const requestState = useAdminAuthAssistanceRequestState(filters)
   const requests = useAdminAuthAssistance(filters, !needsCanonical)
   const triage = useTriageAuthAssistance()
   const redact = useRedactAuthAssistance()
@@ -105,8 +109,11 @@ export function AuthAssistancePage() {
   const [note, setNote] = useState('')
   const [refreshError, setRefreshError] = useState(false)
   const lastSuccessfulRequests = useRef<AuthAssistanceList | undefined>(undefined)
+  const requestsFreshRef = useRef(false)
+  const committedRequestVersionRef = useRef(0)
 
   const setParams = useCallback((updates: Record<string, string | null>) => {
+    requestsFreshRef.current = false
     const next = new URLSearchParams(paramsRef.current)
     for (const [key, value] of Object.entries(updates)) {
       if (value) next.set(key, value)
@@ -158,6 +165,7 @@ export function AuthAssistancePage() {
   }
 
   const refresh = async () => {
+    requestsFreshRef.current = false
     triage.reset()
     redact.reset()
     setRefreshError(false)
@@ -177,10 +185,6 @@ export function AuthAssistancePage() {
     if (forbidden) lastSuccessfulRequests.current = undefined
   }, [forbidden])
 
-  if (forbidden) {
-    return <EmptyState title="접근 권한이 없습니다" hint="로그인 지원 요청은 워크스페이스 관리자만 볼 수 있습니다." />
-  }
-
   const retainedData = requests.data ?? (requests.isError ? lastSuccessfulRequests.current : undefined)
   const data = retainedData
   const lastOffset = data && data.total > 0 ? Math.floor((data.total - 1) / 50) * 50 : 0
@@ -195,11 +199,32 @@ export function AuthAssistancePage() {
       !requests.isError &&
       !refreshError &&
       !needsCanonical &&
-      !correctingOffset,
+      !correctingOffset &&
+      isAdminAuthAssistanceRequestAccepted(filters),
   )
 
+  useLayoutEffect(() => {
+    requestsFreshRef.current = requestsFresh
+    if (requestsFresh) {
+      committedRequestVersionRef.current = requestState.requestVersion
+    }
+  }, [requestState.requestVersion, requestsFresh])
+
+  if (forbidden) {
+    return <EmptyState title="접근 권한이 없습니다" hint="로그인 지원 요청은 워크스페이스 관리자만 볼 수 있습니다." />
+  }
+
+  const actionsFresh = () => {
+    const currentRequestState = getAdminAuthAssistanceRequestState(filters)
+    return Boolean(
+      requestsFreshRef.current &&
+        currentRequestState.requestVersion === committedRequestVersionRef.current &&
+        isAdminAuthAssistanceRequestAccepted(filters),
+    )
+  }
+
   const reviewRequest = (item: AuthAssistanceRequest) => {
-    if (!requestsFresh) return
+    if (!actionsFresh()) return
     resetMutations()
     triage.mutate({ id: item.id, status: 'in_review', expectedVersion: item.version })
   }
@@ -209,14 +234,14 @@ export function AuthAssistancePage() {
     nextStatus: 'resolved' | 'rejected',
     trigger: HTMLButtonElement,
   ) => {
-    if (!requestsFresh) return
+    if (!actionsFresh()) return
     resetMutations()
     setDecision({ item, status: nextStatus, trigger })
     setNote('')
   }
 
   const openRedaction = (item: AuthAssistanceRequest, trigger: HTMLButtonElement) => {
-    if (!requestsFresh) return
+    if (!actionsFresh()) return
     resetMutations()
     setRedaction({ item, trigger })
   }
@@ -346,8 +371,8 @@ export function AuthAssistancePage() {
         </nav>
       ) : null}
 
-      <DecisionDialog decision={decision} note={note} busy={triage.isPending} error={triage.error} writeEnabled={requestsFresh} onNoteChange={setNote} onClose={closeDecision} onRefresh={() => { closeDecision(); void refresh() }} onSubmit={() => { const current = requests.data?.items.find((item) => item.id === decision?.item.id); if (!requestsFresh || !decision || !note.trim() || !current || !isOpen(current)) return; triage.mutate({ id: current.id, status: decision.status, expectedVersion: current.version, note: note.trim() }, { onSuccess: closeDecision }) }} />
-      <RedactionDialog redaction={redaction} busy={redact.isPending} error={redact.error} writeEnabled={requestsFresh} onClose={closeRedaction} onRefresh={() => { closeRedaction(); void refresh() }} onSubmit={() => { const current = requests.data?.items.find((item) => item.id === redaction?.item.id); if (!requestsFresh || !redaction || !current || isOpen(current) || current.redacted_at) return; redact.mutate(current.id, { onSuccess: closeRedaction }) }} />
+      <DecisionDialog decision={decision} note={note} busy={triage.isPending} error={triage.error} writeEnabled={requestsFresh} onNoteChange={setNote} onClose={closeDecision} onRefresh={() => void refresh()} onSubmit={() => { const current = requests.data?.items.find((item) => item.id === decision?.item.id); if (!actionsFresh() || !decision || !note.trim() || !current || !isOpen(current)) return; triage.mutate({ id: current.id, status: decision.status, expectedVersion: current.version, note: note.trim() }, { onSuccess: closeDecision }) }} />
+      <RedactionDialog redaction={redaction} busy={redact.isPending} error={redact.error} writeEnabled={requestsFresh} onClose={closeRedaction} onRefresh={() => void refresh()} onSubmit={() => { const current = requests.data?.items.find((item) => item.id === redaction?.item.id); if (!actionsFresh() || !redaction || !current || isOpen(current) || current.redacted_at) return; redact.mutate(current.id, { onSuccess: closeRedaction }) }} />
     </section>
   )
 }
