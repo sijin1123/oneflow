@@ -31706,8 +31706,8 @@ test('프로젝트 단계 충돌은 일정 초안을 보존하고 최신 버전�
     total: 4,
   }
   const patchBodies: Array<{
-    start_date: string | null
-    end_date: string | null
+    start_date?: string | null
+    end_date?: string | null
     version: number
   }> = []
   let shouldConflict = true
@@ -31720,8 +31720,8 @@ test('프로젝트 단계 충돌은 일정 초안을 보존하고 최신 버전�
     }
     const key = new URL(request.url()).pathname.split('/').at(-1)
     const body = request.postDataJSON() as {
-      start_date: string | null
-      end_date: string | null
+      start_date?: string | null
+      end_date?: string | null
       version: number
     }
     patchBodies.push(body)
@@ -31732,7 +31732,9 @@ test('프로젝트 단계 충돌은 일정 초안을 보존하고 최신 버전�
       phases = {
         ...phases,
         items: phases.items.map((phase, itemIndex) =>
-          itemIndex === index ? { ...phase, version: 2 } : phase,
+          itemIndex === index
+            ? { ...phase, end_date: '2026-08-01', version: 2 }
+            : phase,
         ),
       }
       await route.fulfill({ status: 409, json: { detail: 'phase version conflict' } })
@@ -31740,8 +31742,7 @@ test('프로젝트 단계 충돌은 일정 초안을 보존하고 최신 버전�
     }
     const updated = {
       ...current,
-      start_date: body.start_date,
-      end_date: body.end_date,
+      ...body,
       version: current.version + 1,
     }
     phases = {
@@ -31764,11 +31765,350 @@ test('프로젝트 단계 충돌은 일정 초안을 보존하고 최신 버전�
 
   await expect.poll(() => patchBodies).toHaveLength(2)
   expect(patchBodies).toEqual([
-    { start_date: '2026-07-21', end_date: '2026-07-24', version: 1 },
-    { start_date: '2026-07-21', end_date: '2026-07-24', version: 2 },
+    { start_date: '2026-07-21', version: 1 },
+    { start_date: '2026-07-21', version: 2 },
   ])
   await expect(planRow.getByRole('status')).toContainText('단계 일정을 저장했습니다')
   await expect(planRow.getByLabel('계획 시작일')).toHaveValue('2026-07-21')
+  await expect(planRow.getByLabel('계획 종료일')).toHaveValue('2026-08-01')
+})
+
+test('프로젝트 단계 retry는 보관 409와 권한 403을 재동기화하고 stale PATCH를 반복하지 않는다', async ({
+  page,
+}) => {
+  await mockApi(page)
+  let mutableProject = { ...project, archived_at: null as string | null }
+  let currentRole: 'owner' | 'viewer' = 'owner'
+  let failure: 'archive' | 'permission' = 'archive'
+  let patchAttempts = 0
+  const phases: ProjectPhaseList = {
+    items: inactiveProjectPhases.items.map((phase, index) => ({
+      ...phase,
+      active: index < 2,
+      version: 3,
+    })),
+    total: 4,
+  }
+
+  await page.route(`**/api/v1/projects/${project.id}`, (route) =>
+    route.fulfill({ json: mutableProject }),
+  )
+  await page.route(`**/api/v1/projects/${project.id}/members`, (route) =>
+    route.fulfill({
+      json: {
+        items: [
+          {
+            user_id: 'me-1',
+            email: 'dev@oneflow.local',
+            display_name: 'Dev User',
+            role: currentRole,
+          },
+        ],
+        total: 1,
+      },
+    }),
+  )
+  await page.route(`**/api/v1/projects/${project.id}/phases**`, async (route) => {
+    if (route.request().method() === 'GET') {
+      await route.fulfill({ json: phases })
+      return
+    }
+    patchAttempts += 1
+    if (failure === 'archive') {
+      mutableProject = {
+        ...mutableProject,
+        archived_at: '2026-07-31T00:00:00Z',
+      }
+      await route.fulfill({ status: 409, json: { detail: 'project is archived' } })
+      return
+    }
+    currentRole = 'viewer'
+    await route.fulfill({
+      status: 403,
+      json: { detail: 'project owner role required' },
+    })
+  })
+
+  await page.goto(`/projects/${project.id}/settings?tab=lifecycle`)
+  const panel = page.getByRole('region', { name: '프로젝트 단계 설정' })
+  const discoverRow = panel.locator('li').filter({ hasText: '발견' })
+  const activation = discoverRow.getByRole('switch', {
+    name: '발견 단계 비활성화',
+  })
+
+  await activation.click()
+  await expect(discoverRow.getByRole('alert')).toContainText(
+    '프로젝트가 보관되어 단계를 변경할 수 없습니다.',
+  )
+  await discoverRow.getByRole('button', { name: '다시 시도' }).click()
+  await expect.poll(() => patchAttempts).toBe(1)
+  await expect(panel.getByText('읽기 전용')).toBeVisible()
+  await expect(panel).toContainText('보관된 프로젝트의 단계와 일정은 변경할 수 없습니다.')
+
+  mutableProject = { ...mutableProject, archived_at: null }
+  failure = 'permission'
+  await panel.getByRole('button', { name: '프로젝트 단계 새로고침' }).click()
+  await expect(activation).toBeEnabled()
+  await activation.click()
+  await expect(discoverRow.getByRole('alert')).toContainText(
+    '프로젝트 소유자만 단계를 변경할 수 있습니다.',
+  )
+  await discoverRow.getByRole('button', { name: '다시 시도' }).click()
+  await expect.poll(() => patchAttempts).toBe(2)
+  await expect(panel.getByText('읽기 전용')).toBeVisible()
+  await expect(activation).toBeDisabled()
+})
+
+test('프로젝트 단계 새로고침은 같은 이벤트의 stale 쓰기를 막고 최신 권한과 버전에서 재개한다', async ({
+  page,
+}) => {
+  await mockApi(page)
+  let phases: ProjectPhaseList = {
+    items: inactiveProjectPhases.items.map((phase, index) => ({
+      ...phase,
+      active: index < 2,
+      start_date: index < 2 ? `2026-09-${String(index * 7 + 1).padStart(2, '0')}` : null,
+      end_date: index < 2 ? `2026-09-${String(index * 7 + 5).padStart(2, '0')}` : null,
+      version: 1,
+    })),
+    total: 4,
+  }
+  let currentRole: 'owner' | 'viewer' = 'owner'
+  let membersShouldFail = false
+  let holdRefresh = false
+  let failFirstPatch = true
+  let releasePhases: (() => void) | null = null
+  let releaseProject: (() => void) | null = null
+  let releaseMembers: (() => void) | null = null
+  const patchBodies: Array<Record<string, unknown>> = []
+
+  await page.route(`**/api/v1/projects/${project.id}/members`, async (route) => {
+    if (holdRefresh) {
+      await new Promise<void>((resolve) => {
+        releaseMembers = resolve
+      })
+    }
+    if (membersShouldFail) {
+      await route.fulfill({
+        status: 503,
+        json: { detail: 'temporary member failure' },
+      })
+      return
+    }
+    await route.fulfill({
+      json: {
+        items: [
+          {
+            user_id: 'me-1',
+            email: 'dev@oneflow.local',
+            display_name: 'Dev User',
+            role: currentRole,
+          },
+        ],
+        total: 1,
+      },
+    })
+  })
+  await page.route(`**/api/v1/projects/${project.id}`, async (route) => {
+    if (route.request().method() !== 'GET') {
+      await route.fallback()
+      return
+    }
+    if (holdRefresh) {
+      await new Promise<void>((resolve) => {
+        releaseProject = resolve
+      })
+    }
+    await route.fulfill({ json: project })
+  })
+  await page.route(`**/api/v1/projects/${project.id}/phases**`, async (route) => {
+    const request = route.request()
+    if (request.method() === 'GET') {
+      if (holdRefresh) {
+        await new Promise<void>((resolve) => {
+          releasePhases = resolve
+        })
+        holdRefresh = false
+      }
+      await route.fulfill({ json: phases })
+      return
+    }
+    const body = request.postDataJSON() as Record<string, unknown>
+    patchBodies.push(body)
+    if (failFirstPatch) {
+      failFirstPatch = false
+      await route.fulfill({ status: 503, json: { detail: 'temporary write failure' } })
+      return
+    }
+    const key = new URL(request.url()).pathname.split('/').at(-1)
+    const current = phases.items.find((phase) => phase.key === key)!
+    const updated = { ...current, ...body, version: current.version + 1 }
+    phases = {
+      ...phases,
+      items: phases.items.map((phase) => (phase.key === key ? updated : phase)),
+    }
+    await route.fulfill({ json: updated })
+  })
+
+  await page.goto(`/projects/${project.id}/settings?tab=lifecycle`)
+  const panel = page.getByRole('region', { name: '프로젝트 단계 설정' })
+  const planRow = panel.locator('li').filter({ hasText: '계획' })
+  const discoverRow = panel.locator('li').filter({ hasText: '발견' })
+  await planRow.getByRole('button', { name: '계획 일정 및 게이트 펼치기' }).click()
+  await planRow.getByLabel('계획 시작일').fill('2026-09-09')
+  await planRow.getByRole('button', { name: '저장' }).click()
+  await expect(planRow.getByRole('alert')).toContainText('다시 시도')
+  patchBodies.length = 0
+
+  holdRefresh = true
+  await page.evaluate(() => {
+    const buttons = Array.from(document.querySelectorAll<HTMLButtonElement>('button'))
+    const byText = (name: string) =>
+      buttons.find((button) => button.textContent?.trim() === name)
+    byText('프로젝트 단계 새로고침')?.click()
+    byText('다시 시도')?.click()
+    document.querySelector<HTMLButtonElement>('[aria-label="발견 단계 비활성화"]')?.click()
+    document.querySelector<HTMLButtonElement>('[aria-label="발견 시작 게이트 활성화"]')?.click()
+    document.querySelector<HTMLButtonElement>('[aria-label="발견 완료 게이트 활성화"]')?.click()
+  })
+  await expect
+    .poll(
+      () =>
+        releasePhases !== null &&
+        releaseProject !== null &&
+        releaseMembers !== null,
+    )
+    .toBe(true)
+  await expect.poll(() => patchBodies.length).toBe(0)
+
+  phases = {
+    ...phases,
+    items: phases.items.map((phase) =>
+      phase.key === 'plan' ? { ...phase, version: 7 } : phase,
+    ),
+  }
+  currentRole = 'viewer'
+  const releasePhaseRefresh = releasePhases as (() => void) | null
+  const releaseProjectRefresh = releaseProject as (() => void) | null
+  const releaseMemberRefresh = releaseMembers as (() => void) | null
+  releasePhaseRefresh?.()
+  releaseProjectRefresh?.()
+  releaseMemberRefresh?.()
+  releasePhases = null
+  releaseProject = null
+  releaseMembers = null
+
+  await expect(panel.getByText('읽기 전용')).toBeVisible()
+  await expect(planRow.getByLabel('계획 시작일')).toHaveValue('2026-09-09')
+  await expect(planRow.getByRole('button', { name: '다시 시도' })).toBeDisabled()
+  await expect(discoverRow.getByRole('switch', { name: '발견 단계 비활성화' })).toBeDisabled()
+
+  currentRole = 'owner'
+  await panel.getByRole('button', { name: '프로젝트 단계 새로고침' }).click()
+  await expect(planRow.getByRole('button', { name: '다시 시도' })).toBeEnabled()
+  await planRow.getByRole('button', { name: '다시 시도' }).click()
+  await expect.poll(() => patchBodies).toHaveLength(1)
+  expect(patchBodies[0]).toEqual({
+    start_date: '2026-09-09',
+    version: 7,
+  })
+  await expect(planRow.getByRole('status')).toContainText('단계 일정을 저장했습니다')
+
+  await planRow.getByLabel('계획 시작일').fill('2026-09-10')
+  phases = {
+    ...phases,
+    items: phases.items.map((phase) =>
+      phase.key === 'plan'
+        ? { ...phase, end_date: '2026-10-20', version: 9 }
+        : phase,
+    ),
+  }
+  membersShouldFail = true
+  await panel.getByRole('button', { name: '프로젝트 단계 새로고침' }).click()
+  const permissionAlert = panel
+    .getByRole('alert')
+    .filter({ hasText: '프로젝트 권한을 다시 확인하지 못했습니다.' })
+  await expect(permissionAlert).toContainText('권한 확인 전까지 차단됩니다.')
+  await expect(planRow.getByLabel('계획 시작일')).toHaveValue('2026-09-10')
+  await expect(planRow.getByRole('button', { name: '저장' })).toHaveCount(0)
+  await expect(discoverRow.getByRole('switch', { name: '발견 단계 비활성화' })).toBeDisabled()
+
+  membersShouldFail = false
+  await permissionAlert.getByRole('button', { name: '프로젝트 권한 다시 시도' }).click()
+  await expect(permissionAlert).toHaveCount(0)
+  await expect(planRow.getByLabel('계획 시작일')).toHaveValue('2026-09-10')
+  await expect(planRow.getByRole('button', { name: '저장' })).toBeEnabled()
+  await planRow.getByRole('button', { name: '저장' }).click()
+  await expect.poll(() => patchBodies).toHaveLength(2)
+  expect(patchBodies[1]).toEqual({
+    start_date: '2026-09-10',
+    version: 9,
+  })
+  await expect(planRow.getByLabel('계획 종료일')).toHaveValue('2026-10-20')
+
+  await page.setViewportSize({ width: 320, height: 740 })
+  await expectNoHorizontalOverflow(page)
+})
+
+test('프로젝트 단계 일정 초안과 mutation surface는 프로젝트 전환 시 격리된다', async ({
+  page,
+}) => {
+  await mockApi(page)
+  const projectB = {
+    ...project,
+    id: 'p-phase-isolation',
+    key: 'PHASE-B',
+    name: '단계 격리 프로젝트',
+  }
+  const phasesFor = (startDate: string): ProjectPhaseList => ({
+    items: inactiveProjectPhases.items.map((phase, index) => ({
+      ...phase,
+      active: index < 2,
+      start_date: index === 1 ? startDate : null,
+      end_date: index === 1 ? '2026-11-14' : null,
+      version: index === 1 ? 4 : 1,
+    })),
+    total: 4,
+  })
+
+  await page.route(`**/api/v1/projects/${projectB.id}`, (route) =>
+    route.fulfill({ json: projectB }),
+  )
+  await page.route(`**/api/v1/projects/${projectB.id}/members`, (route) =>
+    route.fulfill({
+      json: {
+        items: [
+          {
+            user_id: 'me-1',
+            email: 'dev@oneflow.local',
+            display_name: 'Dev User',
+            role: 'owner',
+          },
+        ],
+        total: 1,
+      },
+    }),
+  )
+  await page.route(`**/api/v1/projects/${project.id}/phases`, (route) =>
+    route.fulfill({ json: phasesFor('2026-10-08') }),
+  )
+  await page.route(`**/api/v1/projects/${projectB.id}/phases`, (route) =>
+    route.fulfill({ json: phasesFor('2026-11-08') }),
+  )
+
+  await page.goto(`/projects/${project.id}/settings?tab=lifecycle`)
+  let panel = page.getByRole('region', { name: '프로젝트 단계 설정' })
+  let planRow = panel.locator('li').filter({ hasText: '계획' })
+  await planRow.getByRole('button', { name: '계획 일정 및 게이트 펼치기' }).click()
+  await planRow.getByLabel('계획 시작일').fill('2026-10-09')
+  await expect(planRow).toContainText('저장되지 않음')
+
+  await page.goto(`/projects/${projectB.id}/settings?tab=lifecycle`)
+  panel = page.getByRole('region', { name: '프로젝트 단계 설정' })
+  planRow = panel.locator('li').filter({ hasText: '계획' })
+  await planRow.getByRole('button', { name: '계획 일정 및 게이트 펼치기' }).click()
+  await expect(planRow.getByLabel('계획 시작일')).toHaveValue('2026-11-08')
+  await expect(planRow).not.toContainText('저장되지 않음')
 })
 
 test('프로젝트 단계 설정은 오류 재시도 후 멤버에게 읽기 전용으로 열린다', async ({ page }) => {
@@ -31904,8 +32244,8 @@ test('프로젝트 단계 후속 갱신 오류는 일정 초안을 유지하고 
 
   projectShouldFail = true
   await panel.getByRole('button', { name: '프로젝트 단계 새로고침' }).click()
-  const projectAlert = panel.getByRole('alert').filter({ hasText: '프로젝트 권한' })
-  await expect(projectAlert).toContainText('활성화·일정·게이트 변경은 권한 확인 전까지 차단됩니다.')
+  const projectAlert = panel.getByRole('alert').filter({ hasText: '프로젝트 상태' })
+  await expect(projectAlert).toContainText('활성화·일정·게이트 변경은 상태 확인 전까지 차단됩니다.')
   await expect(startDate).toHaveValue('2026-08-11')
   await expect(startDate).toBeDisabled()
   await expect(planRow.getByRole('switch', { name: '계획 단계 비활성화' })).toBeDisabled()
@@ -31919,7 +32259,7 @@ test('프로젝트 단계 후속 갱신 오류는 일정 초안을 유지하고 
   })
 
   projectShouldFail = false
-  await projectAlert.getByRole('button', { name: '프로젝트 권한 다시 시도' }).click()
+  await projectAlert.getByRole('button', { name: '프로젝트 상태 다시 시도' }).click()
   await expect(projectAlert).toHaveCount(0)
   await expect(startDate).toBeEnabled()
   await expect(startDate).toHaveValue('2026-08-11')
