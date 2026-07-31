@@ -1,6 +1,83 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
+import { registerIdentityReset } from '@/features/auth/cache'
 import { api } from '@/lib/api'
+import { queryClient as appQueryClient } from '@/lib/query'
+
+type CustomFieldRequestState = {
+  requestVersion: number
+  successfulRequestVersion: number
+  dataUpdateCountAtStart: number
+}
+
+const customFieldRequestStates = new Map<string, CustomFieldRequestState>()
+const emptyCustomFieldRequestState: CustomFieldRequestState = {
+  requestVersion: 0,
+  successfulRequestVersion: 0,
+  dataUpdateCountAtStart: 0,
+}
+
+function customFieldsQueryKey(projectId: string, includeInactive = false) {
+  return ['custom-fields', projectId, { includeInactive }] as const
+}
+
+function customFieldRequestKey(projectId: string, includeInactive: boolean) {
+  return `${projectId}:${includeInactive ? 'all' : 'active'}`
+}
+
+export function getCustomFieldRequestState(
+  projectId: string,
+  includeInactive = false,
+) {
+  return (
+    customFieldRequestStates.get(customFieldRequestKey(projectId, includeInactive)) ??
+    emptyCustomFieldRequestState
+  )
+}
+
+function startCustomFieldRequest(projectId: string, includeInactive: boolean) {
+  const previous = getCustomFieldRequestState(projectId, includeInactive)
+  const requestVersion = previous.requestVersion + 1
+  customFieldRequestStates.set(customFieldRequestKey(projectId, includeInactive), {
+    requestVersion,
+    successfulRequestVersion: previous.successfulRequestVersion,
+    dataUpdateCountAtStart:
+      appQueryClient.getQueryState(customFieldsQueryKey(projectId, includeInactive))
+        ?.dataUpdateCount ?? 0,
+  })
+  return requestVersion
+}
+
+function completeCustomFieldRequest(
+  projectId: string,
+  includeInactive: boolean,
+  requestVersion: number,
+) {
+  const current = getCustomFieldRequestState(projectId, includeInactive)
+  if (current.requestVersion !== requestVersion) return
+  customFieldRequestStates.set(customFieldRequestKey(projectId, includeInactive), {
+    ...current,
+    successfulRequestVersion: requestVersion,
+  })
+}
+
+export function isCustomFieldRequestAccepted(
+  projectId: string,
+  includeInactive = false,
+) {
+  const request = getCustomFieldRequestState(projectId, includeInactive)
+  const query = appQueryClient.getQueryState(
+    customFieldsQueryKey(projectId, includeInactive),
+  )
+  return Boolean(
+    query &&
+      query.fetchStatus === 'idle' &&
+      request.requestVersion === request.successfulRequestVersion &&
+      query.dataUpdateCount > request.dataUpdateCountAtStart,
+  )
+}
+
+registerIdentityReset(() => customFieldRequestStates.clear())
 
 export type CustomFieldType =
   | 'text'
@@ -46,11 +123,15 @@ export const FIELD_TYPE_LABELS: Record<CustomFieldType, string> = {
 
 export function useCustomFields(projectId: string, includeInactive = false) {
   return useQuery({
-    queryKey: ['custom-fields', projectId, { includeInactive }],
-    queryFn: () =>
-      api<CustomFieldList>(
+    queryKey: customFieldsQueryKey(projectId, includeInactive),
+    queryFn: async () => {
+      const requestVersion = startCustomFieldRequest(projectId, includeInactive)
+      const result = await api<CustomFieldList>(
         `/api/v1/projects/${projectId}/custom-fields${includeInactive ? '?include_inactive=true' : ''}`,
-      ),
+      )
+      completeCustomFieldRequest(projectId, includeInactive, requestVersion)
+      return result
+    },
   })
 }
 

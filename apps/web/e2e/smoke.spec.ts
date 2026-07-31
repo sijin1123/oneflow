@@ -16177,6 +16177,106 @@ test('설정 필드 편집 실패는 옵션과 적용 타입을 보존해 같은
   })
 })
 
+test('설정 필드 편집 재시도는 수정한 속성만 보내 최신 서버 속성을 보존한다', async ({
+  page,
+}) => {
+  await mockApi(page)
+  let current = {
+    id: 'cf-delta-retry',
+    project_id: project.id,
+    name: '릴리스 위험',
+    field_type: 'dropdown',
+    options: ['낮음', '높음'],
+    position: 0,
+    is_active: true,
+    applies_to: null as string[] | null,
+    created_at: '2026-07-31T00:00:00Z',
+    updated_at: '2026-07-31T00:00:00Z',
+  }
+  const attempts: unknown[] = []
+  await page.route(`**/api/v1/projects/${project.id}/custom-fields**`, async (route) => {
+    if (route.request().method() === 'PATCH') {
+      const input = route.request().postDataJSON()
+      attempts.push(input)
+      if (attempts.length === 1) {
+        current = {
+          ...current,
+          options: ['낮음', '보통', '높음'],
+          applies_to: ['task'],
+          updated_at: '2026-07-31T01:00:00Z',
+        }
+        await route.fulfill({ status: 500, json: { detail: 'temporary failure' } })
+        return
+      }
+      current = { ...current, ...(input as object) }
+      await route.fulfill({ json: current })
+      return
+    }
+    await route.fulfill({ json: { items: [current], total: 1 } })
+  })
+
+  await page.goto(`/projects/${project.id}/settings?tab=fields`)
+  await page.getByRole('button', { name: '릴리스 위험 필드 작업' }).click()
+  await page.getByRole('menuitem', { name: '릴리스 위험 편집' }).click()
+  await page.getByLabel('릴리스 위험 이름 편집').fill('출시 위험')
+  await page.getByRole('button', { name: '저장', exact: true }).click()
+  await expect(page.getByRole('alert')).toContainText('저장하지 못했습니다.')
+  await page.getByRole('button', { name: '같은 내용으로 다시 시도' }).click()
+  await expect.poll(() => attempts.length).toBe(2)
+  expect(attempts).toEqual([{ name: '출시 위험' }, { name: '출시 위험' }])
+  expect(current.options).toEqual(['낮음', '보통', '높음'])
+  expect(current.applies_to).toEqual(['task'])
+})
+
+test('설정 필드 편집은 서버 커밋 후 응답 실패를 추가 PATCH 없이 복구한다', async ({
+  page,
+}) => {
+  await mockApi(page)
+  let current = {
+    id: 'cf-committed-retry',
+    project_id: project.id,
+    name: '출시 위험',
+    field_type: 'text',
+    options: null,
+    position: 0,
+    is_active: true,
+    applies_to: null,
+    created_at: '2026-07-31T00:00:00Z',
+    updated_at: '2026-07-31T00:00:00Z',
+  }
+  let patchAttempts = 0
+  await page.route(`**/api/v1/projects/${project.id}/custom-fields**`, async (route) => {
+    if (route.request().method() === 'PATCH') {
+      patchAttempts += 1
+      current = {
+        ...current,
+        ...(route.request().postDataJSON() as object),
+        updated_at: '2026-07-31T01:00:00Z',
+      }
+      await route.fulfill({ status: 500, json: { detail: 'response lost' } })
+      return
+    }
+    await route.fulfill({ json: { items: [current], total: 1 } })
+  })
+
+  await page.goto(`/projects/${project.id}/settings?tab=fields`)
+  await page.getByRole('button', { name: '출시 위험 필드 작업' }).click()
+  await page.getByRole('menuitem', { name: '출시 위험 편집' }).click()
+  await page.getByLabel('출시 위험 이름 편집').fill('배포 위험')
+  await page.getByRole('button', { name: '저장', exact: true }).click()
+  await expect(page.getByRole('alert')).toContainText('저장하지 못했습니다.')
+  await page.getByRole('button', { name: '같은 내용으로 다시 시도' }).click()
+
+  await expect(
+    page.getByText('서버에 저장된 최신 필드 설정을 확인했습니다.'),
+  ).toBeVisible()
+  await expect(page.getByText('배포 위험', { exact: true })).toBeVisible()
+  expect(patchAttempts).toBe(1)
+  await page.getByRole('button', { name: '배포 위험 필드 작업' }).click()
+  await page.getByRole('menuitem', { name: '배포 위험 편집' }).click()
+  await expect(page.getByRole('alert')).toHaveCount(0)
+})
+
 test('설정 필드의 생성·재정렬·삭제 실패는 작업별 정확한 재시도를 제공한다', async ({
   page,
 }) => {
@@ -16246,11 +16346,13 @@ test('설정 필드의 생성·재정렬·삭제 실패는 작업별 정확한 �
   await page.getByRole('button', { name: '필드 추가' }).click()
   await expect(page.getByRole('alert')).toContainText('추가하지 못했습니다.')
   await page.getByRole('button', { name: '같은 내용으로 다시 시도' }).click()
+  await expect.poll(() => createBodies.length).toBe(2)
   expect(createBodies[1]).toEqual(createBodies[0])
 
   await page.getByLabel('고객 영향 아래로').click()
   await expect(page.getByRole('alert')).toContainText('순서를 저장하지 못했습니다.')
   await page.getByRole('button', { name: '같은 순서로 다시 시도' }).click()
+  await expect.poll(() => orderBodies.length).toBe(2)
   expect(orderBodies[1]).toEqual(orderBodies[0])
 
   await page.getByRole('button', { name: '고객 영향 필드 작업' }).click()
@@ -16258,7 +16360,371 @@ test('설정 필드의 생성·재정렬·삭제 실패는 작업별 정확한 �
   await page.getByRole('menuitem', { name: '고객 영향 삭제' }).click()
   await expect(page.getByRole('alert')).toContainText('저장된 값이 남아 있어')
   await page.getByRole('button', { name: '삭제 다시 시도' }).click()
+  await expect.poll(() => deleteAttempts).toBe(2)
   expect(deleteAttempts).toBe(2)
+})
+
+test('설정 필드 액션은 같은 이벤트의 갱신을 즉시 차단하고 최신 권한·순서로만 복구한다', async ({
+  page,
+}) => {
+  await mockApi(page)
+  const makeField = (id: string, name: string, position: number) => ({
+    id,
+    project_id: project.id,
+    name,
+    field_type: 'text',
+    options: null,
+    position,
+    is_active: true,
+    applies_to: null,
+    created_at: '2026-07-31T00:00:00Z',
+    updated_at: '2026-07-31T00:00:00Z',
+  })
+  let items = [
+    makeField('cf-one', '첫째', 0),
+    makeField('cf-two', '둘째', 1),
+  ]
+  let role: 'owner' | 'viewer' = 'viewer'
+  let permissionEffective: 'always' | 'never' = 'always'
+  let permissionRequests = 0
+  let holdRefresh = false
+  let releaseRefresh: () => void = () => undefined
+  let refreshGate = Promise.resolve()
+  let orderAttempts = 0
+  const writes: Array<{ method: string; body: unknown }> = []
+
+  await page.route(`**/api/v1/projects/${project.id}/members`, async (route) => {
+    if (holdRefresh) await refreshGate
+    await route.fulfill({
+      json: {
+        items: [
+          {
+            user_id: 'me-1',
+            email: 'dev@oneflow.local',
+            display_name: 'Dev User',
+            role,
+          },
+        ],
+        total: 1,
+      },
+    })
+  })
+  await page.route(`**/api/v1/projects/${project.id}/permissions`, (route) => {
+    permissionRequests += 1
+    return route.fulfill({
+      json: {
+        my_role: role,
+        my_custom_role: null,
+        verbs: [
+          {
+            key: 'field.manage',
+            label: '커스텀 필드 구성',
+            owner: 'always',
+            member: 'never',
+            viewer: 'never',
+            effective: permissionEffective,
+            condition: null,
+            note: null,
+          },
+        ],
+      },
+    })
+  })
+  await page.route(`**/api/v1/projects/${project.id}/custom-fields**`, async (route) => {
+    const method = route.request().method()
+    if (method === 'GET') {
+      if (holdRefresh) await refreshGate
+      await route.fulfill({ json: { items, total: items.length } })
+      return
+    }
+    const body = route.request().postDataJSON()
+    writes.push({ method, body })
+    if (method === 'PUT') {
+      orderAttempts += 1
+      if (orderAttempts === 1 || orderAttempts === 3) {
+        await route.fulfill({ status: 500, json: { detail: 'temporary order failure' } })
+        return
+      }
+      const orderedIds = (body as { ordered_ids: string[] }).ordered_ids
+      items = orderedIds.map((id, position) => ({
+        ...items.find((field) => field.id === id)!,
+        position,
+      }))
+      await route.fulfill({ json: { items, total: items.length } })
+      return
+    }
+    await route.fulfill({ status: 500, json: { detail: 'unexpected stale write' } })
+  })
+
+  await page.goto(`/projects/${project.id}/settings?tab=fields`)
+  const surface = page.getByRole('region', { name: '사용자 정의 필드 설정' })
+  await expect(surface.getByLabel('새 필드 이름')).toBeVisible()
+  expect(permissionRequests).toBe(1)
+  role = 'owner'
+  await surface.getByRole('button', { name: '필드 설정 새로고침' }).click()
+  await expect.poll(() => permissionRequests).toBe(2)
+  await expect(page.getByText('소유자 권한')).toBeVisible()
+  await surface.getByLabel('새 필드 이름').fill('동시 생성 금지')
+  await surface.getByRole('button', { name: '첫째 필드 작업' }).click()
+  await page.getByRole('menuitem', { name: '첫째 편집' }).click()
+  await surface.getByLabel('첫째 이름 편집').fill('오래된 첫째')
+
+  role = 'viewer'
+  permissionEffective = 'never'
+  holdRefresh = true
+  refreshGate = new Promise<void>((resolve) => {
+    releaseRefresh = resolve
+  })
+  await page.evaluate(() => {
+    const elements = [...document.querySelectorAll<HTMLElement>('button,[role="menuitem"]')]
+    const refresh = elements.find((element) =>
+      element.textContent?.includes('필드 설정 새로고침'),
+    )
+    const create = elements.find((element) => element.textContent?.trim() === '필드 추가')
+    const save = elements.find((element) => element.textContent?.trim() === '저장')
+    refresh?.click()
+    create?.click()
+    save?.click()
+  })
+  await page.waitForTimeout(150)
+  expect(writes).toHaveLength(0)
+
+  releaseRefresh()
+  holdRefresh = false
+  await expect(surface.getByText('읽기 전용', { exact: true })).toBeVisible()
+  await expect(surface.getByLabel('새 필드 이름')).toHaveCount(0)
+  expect(permissionRequests).toBeGreaterThanOrEqual(3)
+  expect(writes).toHaveLength(0)
+
+  role = 'owner'
+  await page.reload()
+  await surface.getByLabel('첫째 아래로').click()
+  await expect(surface.getByRole('alert')).toContainText('순서를 저장하지 못했습니다.')
+  items = [
+    makeField('cf-server', '서버 신규', 0),
+    makeField('cf-one', '첫째', 1),
+    makeField('cf-two', '둘째', 2),
+  ]
+  await surface.getByRole('button', { name: '같은 순서로 다시 시도' }).click()
+  await expect.poll(() => orderAttempts).toBe(2)
+  expect(writes.at(-1)).toEqual({
+    method: 'PUT',
+    body: { ordered_ids: ['cf-server', 'cf-two', 'cf-one'] },
+  })
+  await expect(surface.getByText('필드 순서를 저장했습니다.')).toBeVisible()
+
+  await surface.getByLabel('둘째 아래로').click()
+  await expect.poll(() => orderAttempts).toBe(3)
+  await expect(surface.getByRole('alert')).toContainText('순서를 저장하지 못했습니다.')
+  items = [
+    makeField('cf-server', '서버 신규', 0),
+    makeField('cf-two', '둘째', 1),
+  ]
+  await surface.getByRole('button', { name: '같은 순서로 다시 시도' }).click()
+  await expect(surface.getByRole('alert')).toContainText(
+    '이동한 필드 또는 기준 필드가 최신 목록에서 제거',
+  )
+  expect(orderAttempts).toBe(3)
+
+  await page.setViewportSize({ width: 320, height: 740 })
+  await expectNoHorizontalOverflow(page)
+})
+
+test('설정 필드 소유자는 이전 permission report 오류와 무관하게 실패 작업을 복구한다', async ({
+  page,
+}) => {
+  await mockApi(page)
+  let role: 'owner' | 'viewer' = 'viewer'
+  let current = {
+    id: 'cf-owner-recovery',
+    project_id: project.id,
+    name: '운영 위험',
+    field_type: 'text',
+    options: null,
+    position: 0,
+    is_active: true,
+    applies_to: null,
+    created_at: '2026-07-31T00:00:00Z',
+    updated_at: '2026-07-31T00:00:00Z',
+  }
+  let patchAttempts = 0
+  let permissionFails = false
+  let permissionRequests = 0
+  await page.route(`**/api/v1/projects/${project.id}/members`, (route) =>
+    route.fulfill({
+      json: {
+        items: [
+          {
+            user_id: 'me-1',
+            email: 'dev@oneflow.local',
+            display_name: 'Dev User',
+            role,
+          },
+        ],
+        total: 1,
+      },
+    }),
+  )
+  await page.route(`**/api/v1/projects/${project.id}/permissions`, (route) => {
+    permissionRequests += 1
+    if (permissionFails) {
+      return route.fulfill({
+        status: 500,
+        json: { detail: 'permission unavailable' },
+      })
+    }
+    return route.fulfill({
+      json: {
+        my_role: role,
+        my_custom_role: {
+          id: 'role-owner-recovery',
+          name: '필드 관리자',
+          permissions: ['field.manage'],
+        },
+        verbs: [
+          {
+            key: 'field.manage',
+            label: '커스텀 필드 구성',
+            owner: 'always',
+            member: 'never',
+            viewer: 'never',
+            effective: 'always',
+            condition: null,
+            note: null,
+          },
+        ],
+      },
+    })
+  })
+  await page.route(`**/api/v1/projects/${project.id}/custom-fields**`, async (route) => {
+    if (route.request().method() === 'PATCH') {
+      patchAttempts += 1
+      if (patchAttempts === 1) {
+        await route.fulfill({ status: 500, json: { detail: 'temporary failure' } })
+        return
+      }
+      current = {
+        ...current,
+        ...(route.request().postDataJSON() as object),
+        updated_at: '2026-07-31T01:00:00Z',
+      }
+      await route.fulfill({ json: current })
+      return
+    }
+    await route.fulfill({ json: { items: [current], total: 1 } })
+  })
+
+  await page.goto(`/projects/${project.id}/settings?tab=fields`)
+  const surface = page.getByRole('region', { name: '사용자 정의 필드 설정' })
+  await expect(surface.getByLabel('새 필드 이름')).toBeVisible()
+  role = 'owner'
+  await surface.getByRole('button', { name: '필드 설정 새로고침' }).click()
+  await expect(page.getByText('소유자 권한')).toBeVisible()
+  permissionFails = true
+  await surface.getByRole('button', { name: '필드 설정 새로고침' }).click()
+  await expect.poll(() => permissionRequests).toBeGreaterThanOrEqual(3)
+  await expect(surface.getByLabel('새 필드 이름')).toBeVisible()
+  await page.getByRole('button', { name: '운영 위험 필드 작업' }).click()
+  await page.getByRole('menuitem', { name: '운영 위험 편집' }).click()
+  await page.getByLabel('운영 위험 이름 편집').fill('운영 리스크')
+  await page.getByRole('button', { name: '저장', exact: true }).click()
+  await expect(page.getByRole('alert')).toContainText('저장하지 못했습니다.')
+  await page.getByRole('button', { name: '같은 내용으로 다시 시도' }).click()
+
+  await expect(page.getByText('필드 설정을 저장했습니다.')).toBeVisible()
+  expect(patchAttempts).toBe(2)
+})
+
+test('설정 필드 초안과 액션 대상은 프로젝트 전환 시 격리된다', async ({ page }) => {
+  await mockApi(page)
+  const projectB = {
+    ...project,
+    id: 'p-field-isolation',
+    key: 'FIELD-B',
+    name: '필드 격리 프로젝트',
+  }
+  const fieldFor = (projectId: string, id: string, name: string) => ({
+    id,
+    project_id: projectId,
+    name,
+    field_type: 'text',
+    options: null,
+    position: 0,
+    is_active: true,
+    applies_to: null,
+    created_at: '2026-07-31T00:00:00Z',
+    updated_at: '2026-07-31T00:00:00Z',
+  })
+  let holdProjectARefresh = false
+  let projectAGetCount = 0
+  let releaseProjectARefresh: () => void = () => undefined
+  let projectARefreshGate = Promise.resolve()
+  await page.route('**/api/v1/projects', (route) =>
+    route.fulfill({ json: { items: [project, projectB], total: 2 } }),
+  )
+  await page.route(`**/api/v1/projects/${projectB.id}`, (route) =>
+    route.fulfill({ json: projectB }),
+  )
+  await page.route(`**/api/v1/projects/${projectB.id}/members`, (route) =>
+    route.fulfill({
+      json: {
+        items: [
+          {
+            user_id: 'me-1',
+            email: 'dev@oneflow.local',
+            display_name: 'Dev User',
+            role: 'owner',
+          },
+        ],
+        total: 1,
+      },
+    }),
+  )
+  await page.route(`**/api/v1/projects/${project.id}/custom-fields**`, async (route) => {
+    projectAGetCount += 1
+    if (holdProjectARefresh) await projectARefreshGate
+    await route.fulfill({
+      json: { items: [fieldFor(project.id, 'cf-a', '프로젝트 A 필드')], total: 1 },
+    })
+  })
+  await page.route(`**/api/v1/projects/${projectB.id}/custom-fields**`, (route) =>
+    route.fulfill({
+      json: { items: [fieldFor(projectB.id, 'cf-b', '프로젝트 B 필드')], total: 1 },
+    }),
+  )
+
+  await page.goto(`/projects/${project.id}/settings?tab=fields`)
+  let surface = page.getByRole('region', { name: '사용자 정의 필드 설정' })
+  await surface.getByLabel('새 필드 이름').fill('A 생성 초안')
+  await surface.getByRole('button', { name: '프로젝트 A 필드 필드 작업' }).click()
+  await page.getByRole('menuitem', { name: '프로젝트 A 필드 편집' }).click()
+  await surface.getByLabel('프로젝트 A 필드 이름 편집').fill('A 행 초안')
+
+  holdProjectARefresh = true
+  projectARefreshGate = new Promise<void>((resolve) => {
+    releaseProjectARefresh = resolve
+  })
+  await surface.getByRole('button', { name: '필드 설정 새로고침' }).click()
+  await expect.poll(() => projectAGetCount).toBe(2)
+  page.once('dialog', (dialog) => dialog.accept())
+  await page
+    .getByRole('link', { name: 'FI 필드 격리 프로젝트' })
+    .click()
+  await page
+    .getByLabel('필드 격리 프로젝트 운영 내비게이션')
+    .getByRole('link', { name: 'Settings' })
+    .click()
+  await page.getByRole('tab', { name: '필드' }).click()
+  surface = page.getByRole('region', { name: '사용자 정의 필드 설정' })
+  await expect(surface.getByText('프로젝트 B 필드')).toBeVisible()
+  releaseProjectARefresh()
+  holdProjectARefresh = false
+  await expect(surface.getByText('프로젝트 A 필드')).toHaveCount(0)
+  await expect(surface.getByLabel('새 필드 이름')).toHaveValue('')
+  await expect(surface.getByLabel('프로젝트 A 필드 이름 편집')).toHaveCount(0)
+
+  await page.setViewportSize({ width: 320, height: 740 })
+  await expectNoHorizontalOverflow(page)
 })
 
 test('field.manage 위임 역할은 편집 가능하고 보관 프로젝트는 읽기 전용이다', async ({

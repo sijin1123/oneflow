@@ -21,6 +21,7 @@ type MemberRequestState = {
 }
 
 const memberRequestStates = new Map<string, MemberRequestState>()
+const permissionRequestStates = new Map<string, MemberRequestState>()
 const emptyMemberRequestState: MemberRequestState = {
   requestVersion: 0,
   successfulRequestVersion: 0,
@@ -29,6 +30,10 @@ const emptyMemberRequestState: MemberRequestState = {
 
 function memberQueryKey(projectId: string) {
   return ['members', projectId] as const
+}
+
+function permissionQueryKey(projectId: string) {
+  return ['permissions', projectId] as const
 }
 
 export function getMemberRequestState(projectId: string) {
@@ -67,7 +72,46 @@ export function isMemberRequestAccepted(projectId: string) {
   )
 }
 
-registerIdentityReset(() => memberRequestStates.clear())
+export function getPermissionRequestState(projectId: string) {
+  return permissionRequestStates.get(projectId) ?? emptyMemberRequestState
+}
+
+function startPermissionRequest(projectId: string) {
+  const previous = getPermissionRequestState(projectId)
+  const requestVersion = previous.requestVersion + 1
+  permissionRequestStates.set(projectId, {
+    requestVersion,
+    successfulRequestVersion: previous.successfulRequestVersion,
+    dataUpdateCountAtStart:
+      appQueryClient.getQueryState(permissionQueryKey(projectId))?.dataUpdateCount ?? 0,
+  })
+  return requestVersion
+}
+
+function completePermissionRequest(projectId: string, requestVersion: number) {
+  const current = getPermissionRequestState(projectId)
+  if (current.requestVersion !== requestVersion) return
+  permissionRequestStates.set(projectId, {
+    ...current,
+    successfulRequestVersion: requestVersion,
+  })
+}
+
+export function isPermissionRequestAccepted(projectId: string) {
+  const request = getPermissionRequestState(projectId)
+  const query = appQueryClient.getQueryState(permissionQueryKey(projectId))
+  return Boolean(
+    query &&
+      query.fetchStatus === 'idle' &&
+      request.requestVersion === request.successfulRequestVersion &&
+      query.dataUpdateCount > request.dataUpdateCountAtStart,
+  )
+}
+
+registerIdentityReset(() => {
+  memberRequestStates.clear()
+  permissionRequestStates.clear()
+})
 
 export function useMe() {
   return useQuery({
@@ -196,8 +240,15 @@ export function useMemberNames(projectId: string): (userId: string | null) => st
 
 export function usePermissionReport(projectId: string, enabled = true) {
   return useQuery({
-    queryKey: ['permissions', projectId],
-    queryFn: () => api<PermissionReport>(`/api/v1/projects/${projectId}/permissions`),
+    queryKey: permissionQueryKey(projectId),
+    queryFn: async () => {
+      const requestVersion = startPermissionRequest(projectId)
+      const result = await api<PermissionReport>(
+        `/api/v1/projects/${projectId}/permissions`,
+      )
+      completePermissionRequest(projectId, requestVersion)
+      return result
+    },
     enabled,
     staleTime: Infinity, // fixed matrix — changes only with a deploy
   })
