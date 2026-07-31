@@ -31610,7 +31610,6 @@ test('프로젝트 소유자는 단계를 편집하고 Overview에서 현재 수
   await planRow.getByRole('button', { name: '저장' }).click()
   expect((await datePatch).postDataJSON()).toEqual({
     start_date: updatedPlanStart,
-    end_date: planEnd,
     version: 1,
   })
   await expect(planRow.getByRole('button', { name: '저장' })).toBeDisabled()
@@ -31632,7 +31631,6 @@ test('프로젝트 소유자는 단계를 편집하고 Overview에서 현재 수
   )
   await planRow.getByRole('button', { name: '저장' }).click()
   expect((await schedulePatch).postDataJSON()).toEqual({
-    start_date: updatedPlanStart,
     end_date: updatedPlanEnd,
     version: 3,
   })
