@@ -8,6 +8,7 @@ import {
 
 import { api } from '@/lib/api'
 import { registerIdentityReset } from '@/features/auth/cache'
+import { queryClient as appQueryClient } from '@/lib/query'
 
 import type {
   Project,
@@ -28,6 +29,63 @@ import {
 import type { ProjectSortKey, SortDir } from './sort'
 
 const PROJECT_DIRECTORY_PAGE_SIZE = 200
+const projectRequestStates = new Map<string, ProjectRequestState>()
+
+type ProjectRequestState = {
+  requestVersion: number
+  successfulRequestVersion: number
+  dataUpdateCountAtStart: number
+}
+
+const emptyProjectRequestState: ProjectRequestState = {
+  requestVersion: 0,
+  successfulRequestVersion: 0,
+  dataUpdateCountAtStart: 0,
+}
+
+function projectQueryKey(projectId: string) {
+  return ['project', projectId] as const
+}
+
+function setProjectRequestState(projectId: string, next: ProjectRequestState) {
+  projectRequestStates.set(projectId, next)
+}
+
+function startProjectRequest(projectId: string) {
+  const previous = getProjectRequestState(projectId)
+  const requestVersion = previous.requestVersion + 1
+  setProjectRequestState(projectId, {
+    requestVersion,
+    successfulRequestVersion: previous.successfulRequestVersion,
+    dataUpdateCountAtStart:
+      appQueryClient.getQueryState(projectQueryKey(projectId))?.dataUpdateCount ?? 0,
+  })
+  return requestVersion
+}
+
+function completeProjectRequest(projectId: string, requestVersion: number) {
+  const current = getProjectRequestState(projectId)
+  if (current.requestVersion !== requestVersion) return
+  setProjectRequestState(projectId, {
+    ...current,
+    successfulRequestVersion: requestVersion,
+  })
+}
+
+export function getProjectRequestState(projectId: string) {
+  return projectRequestStates.get(projectId) ?? emptyProjectRequestState
+}
+
+export function isProjectRequestAccepted(projectId: string) {
+  const request = getProjectRequestState(projectId)
+  const query = appQueryClient.getQueryState(projectQueryKey(projectId))
+  return Boolean(
+    query &&
+      query.fetchStatus === 'idle' &&
+      request.requestVersion === request.successfulRequestVersion &&
+      query.dataUpdateCount > request.dataUpdateCountAtStart,
+  )
+}
 
 async function getAllProjects(includeArchived: boolean) {
   const initialPath = `/api/v1/projects${includeArchived ? '?include_archived=true' : ''}`
@@ -98,6 +156,7 @@ export const projectDirectoryPreferenceWriter = new LatestPreferenceWriter<
 )
 
 registerIdentityReset(() => projectDirectoryPreferenceWriter.reset())
+registerIdentityReset(() => projectRequestStates.clear())
 
 export function getProject(projectId: string) {
   return api<Project>(`/api/v1/projects/${projectId}`)
@@ -126,8 +185,13 @@ export function useProjectDirectory(query: ProjectDirectoryQuery) {
 
 export function useProject(projectId: string) {
   return useQuery({
-    queryKey: ['project', projectId],
-    queryFn: () => getProject(projectId),
+    queryKey: projectQueryKey(projectId),
+    queryFn: async () => {
+      const requestVersion = startProjectRequest(projectId)
+      const project = await getProject(projectId)
+      completeProjectRequest(projectId, requestVersion)
+      return project
+    },
   })
 }
 
