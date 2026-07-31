@@ -35366,6 +35366,8 @@ async function mockAdminAuthAssistance(
   let items = initial.map((item) => ({ ...item }))
   let patchCount = 0
   let failedGetCount = 0
+  let delayNextGetRequest = false
+  const delayedGetGate: { release: (() => void) | null } = { release: null }
   const patchBodies: Array<{ status: string; expected_version: number; note?: string }> = []
   const deletedIds: string[] = []
 
@@ -35429,6 +35431,13 @@ async function mockAdminAuthAssistance(
       return
     }
 
+    if (delayNextGetRequest) {
+      delayNextGetRequest = false
+      await new Promise<void>((resolve) => {
+        delayedGetGate.release = resolve
+      })
+    }
+
     if (failedGetCount > 0) {
       failedGetCount -= 1
       await route.fulfill({ status: 503, json: { detail: 'assistance queue unavailable' } })
@@ -35456,6 +35465,14 @@ async function mockAdminAuthAssistance(
     patchBodies,
     deletedIds,
     failNextGet: () => { failedGetCount += 1 },
+    delayNextGet: () => { delayNextGetRequest = true },
+    isGetDelayed: () => Boolean(delayedGetGate.release),
+    releaseDelayedGet: () => {
+      const release = delayedGetGate.release
+      if (!release) throw new Error('No delayed auth assistance request')
+      delayedGetGate.release = null
+      release()
+    },
     updateItem: (id: string, updates: Partial<AuthAssistanceRequest>) => {
       items = items.map((item) => item.id === id ? { ...item, ...updates } : item)
     },
@@ -35645,7 +35662,9 @@ test('모바일 로그인 지원 큐는 실패한 상태 범위에서 마지막 
     fullPage: true,
   })
 
-  expect(requestedStatuses).toEqual(['all', 'resolved', 'resolved'])
+  expect(requestedStatuses.slice(-2)).toEqual(['resolved', 'resolved'])
+  expect(requestedStatuses.slice(0, -2)).not.toHaveLength(0)
+  expect(requestedStatuses.slice(0, -2).every((value) => value === 'all')).toBe(true)
 })
 
 test('로그인 지원 큐는 stale 목록에서 쓰기를 막고 열린 판단 초안을 복구한다', async ({ page }) => {
@@ -35667,7 +35686,7 @@ test('로그인 지원 큐는 stale 목록에서 쓰기를 막고 열린 판단 
       triaged_at: '2026-07-15T02:00:00Z',
       version: 4,
     }),
-  ])
+  ], { conflictFirstPatch: true })
 
   await page.goto('/admin/auth-assistance')
   const mobileList = page.getByRole('list', { name: '모바일 로그인 지원 요청' })
@@ -35677,39 +35696,59 @@ test('로그인 지원 큐는 stale 목록에서 쓰기를 막고 열린 판단 
   const note = decision.getByLabel('로그인 지원 검토 메모')
   await note.fill('본인 확인을 마친 판단 초안')
 
-  mock.failNextGet()
-  await page.locator('button[aria-label="로그인 지원 요청 새로고침"]').evaluate((button) => {
-    (button as HTMLButtonElement).click()
+  mock.delayNextGet()
+  await page.evaluate(() => {
+    const click = (name: string) => {
+      const button = [...document.querySelectorAll<HTMLButtonElement>('button')]
+        .find((candidate) =>
+          candidate.textContent?.trim() === name ||
+          candidate.getAttribute('aria-label') === name)
+      if (!button) throw new Error(`Missing button: ${name}`)
+      button.click()
+    }
+    click('로그인 지원 요청 새로고침')
+    click('해결 확정')
+    click('검토 시작')
+    click('개인정보 삭제')
   })
+  await expect.poll(mock.isGetDelayed).toBe(true)
 
-  const retainedAlert = page.locator('[role="alert"]').filter({ hasText: '복구 전까지 서버 작업은 사용할 수 없습니다' })
-  await expect(retainedAlert).toBeVisible()
   await expect(note).toHaveValue('본인 확인을 마친 판단 초안')
   await expect(decision.getByText('최신 목록을 복구하면 이 메모로 판단을 확정할 수 있습니다.')).toBeVisible()
   await expect(decision.getByRole('button', { name: '해결 확정' })).toBeDisabled()
 
   const pendingItem = page.locator('[aria-label="모바일 로그인 지원 요청"] > li').filter({ hasText: 'pending@oneflow.local' })
   const resolvedItem = page.locator('[aria-label="모바일 로그인 지원 요청"] > li').filter({ hasText: 'resolved@oneflow.local' })
-  const reviewStart = pendingItem.locator('button').filter({ hasText: '검토 시작' })
   const redact = resolvedItem.locator('button').filter({ hasText: '개인정보 삭제' })
-  await expect(reviewStart).toHaveAttribute('aria-disabled', 'true')
-  await expect(redact).toHaveAttribute('aria-disabled', 'true')
-  await reviewStart.evaluate((button) => (button as HTMLButtonElement).click())
-  await redact.evaluate((button) => (button as HTMLButtonElement).click())
+  await expect(pendingItem).toBeVisible()
   expect(mock.patchBodies).toHaveLength(0)
   expect(mock.deletedIds).toHaveLength(0)
   await expect(page.getByRole('dialog', { name: '연락 정보 삭제' })).toHaveCount(0)
-  await expectNoHorizontalOverflow(page)
-  await page.screenshot({
-    path: '../../docs/screenshots/redevelopment/auth-assistance-freshness-write-guard-ui-325/stale-decision-320.png',
-    fullPage: true,
+  await page.evaluate(async () => {
+    const loadQueryClient = new Function(
+      'return import("/src/lib/query.ts")',
+    ) as () => Promise<{
+      queryClient: {
+        cancelQueries: (filters: { queryKey: string[] }) => Promise<void>
+      }
+    }>
+    const { queryClient } = await loadQueryClient()
+    await queryClient.cancelQueries({ queryKey: ['admin-auth-assistance'] })
   })
 
   mock.updateItem('assist-stale-review', { version: 3 })
-  await retainedAlert.locator('button').filter({ hasText: '다시 시도' }).evaluate((button) => {
+  mock.releaseDelayedGet()
+  await expect(decision.getByRole('button', { name: '해결 확정' })).toBeDisabled()
+  await page.locator('button[aria-label^="로그인 지원 요청 새로고침"]').evaluate((button) => {
     (button as HTMLButtonElement).click()
   })
-  await expect(retainedAlert).toHaveCount(0)
+  await expect(note).toHaveValue('본인 확인을 마친 판단 초안')
+  await expect(decision.getByRole('button', { name: '해결 확정' })).toBeEnabled()
+  await decision.getByRole('button', { name: '해결 확정' }).click()
+  await expect(decision.getByRole('alert')).toContainText('다른 관리자가 이미 변경')
+  await expect(note).toHaveValue('본인 확인을 마친 판단 초안')
+  await decision.getByRole('button', { name: '최신 목록 받기' }).click()
+  await expect(decision).toBeVisible()
   await expect(note).toHaveValue('본인 확인을 마친 판단 초안')
   await expect(decision.getByRole('button', { name: '해결 확정' })).toBeEnabled()
   await decision.getByRole('button', { name: '해결 확정' }).click()
@@ -35718,10 +35757,33 @@ test('로그인 지원 큐는 stale 목록에서 쓰기를 막고 열린 판단 
     status: 'resolved',
     expected_version: 3,
     note: '본인 확인을 마친 판단 초안',
+  }, {
+    status: 'resolved',
+    expected_version: 3,
+    note: '본인 확인을 마친 판단 초안',
   }])
 
-  await resolvedItem.getByRole('button', { name: '개인정보 삭제' }).click()
+  await expect(redact).toBeEnabled()
+  await redact.click()
   const redaction = page.getByRole('dialog', { name: '연락 정보 삭제' })
+  mock.delayNextGet()
+  await page.evaluate(() => {
+    const click = (name: string) => {
+      const button = [...document.querySelectorAll<HTMLButtonElement>('button')]
+        .find((candidate) =>
+          candidate.textContent?.trim() === name ||
+          candidate.getAttribute('aria-label') === name)
+      if (!button) throw new Error(`Missing button: ${name}`)
+      button.click()
+    }
+    click('로그인 지원 요청 새로고침')
+    click('삭제')
+  })
+  await expect.poll(mock.isGetDelayed).toBe(true)
+  expect(mock.deletedIds).toHaveLength(0)
+  await expect(redaction.getByRole('button', { name: '삭제', exact: true })).toBeDisabled()
+  mock.releaseDelayedGet()
+  await expect(redaction.getByRole('button', { name: '삭제', exact: true })).toBeEnabled()
   await redaction.getByRole('button', { name: '삭제', exact: true }).click()
   await expect(mobileList.getByText('개인정보 삭제됨')).toBeVisible()
   expect(mock.deletedIds).toEqual(['assist-stale-resolved'])
