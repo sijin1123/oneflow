@@ -53,11 +53,7 @@ The default workflow for Codex and Claude Code is goal and checkable completion 
 
 - Do not wait for an exhaustive plan before implementing the smallest useful end-to-end slice.
 - Keep the plan limited to current scope, constraints, the first slice, major risks, and verification commands. Expand it only when implementation evidence changes the approach.
-- Treat `plan-validator` as optional. Broad, non-trivial, or risky work does not automatically require it.
-- When useful, prefer one quick advisory or balanced round. Non-critical findings become implementation or test tasks.
-- A non-passing or pending plan verdict does not by itself block implementation. Only an unresolved critical issue directly affecting the next risky action blocks that action.
-- Use strict, repeated, multi-agent, or approved-before-implementation validation only when the user explicitly requests it in the active task.
-- Old goal, plan, or worklog instructions that make prior plan approval mandatory are superseded by this section unless the user's active request explicitly preserves the gate.
+- Plan review is done only when the user asks for it in the active task.
 - Prefer actual Build/Test/Runtime evidence over speculative plan completeness, and repeat implementation → verification until acceptance and regression checks pass.
 
 ## 환경변수 추가/활성화 규칙
@@ -84,16 +80,10 @@ The default workflow for Codex and Claude Code is goal and checkable completion 
 * 빌드 타임 전용 값, 내부 개발용 flag, 실험 중인 미배선 값은 무리하게 UI에 노출하지 않는다.
 * PR 설명에는 환경변수 변경 여부, 설정 UI 반영 여부, UI 경로, 대상 사용자, 기본값, 활성화 방법, 재기동 필요 여부, 검증 결과를 포함한다.
 
-## 목표 수행 시 검증/재검증 원칙
+## 검증
 
-* Claude Code와 Codex가 목표(goal)를 받아 코드, 설정, 문서, 테스트, 빌드 스크립트 등 프로젝트 산출물을 변경하는 경우 작업 성격에 맞는 검증을 반드시 수행한다.
-* 가능한 검증 항목은 build, lint, typecheck, unit test, integration test, E2E, 수동검증, 회귀검증이다.
-* 검증 중 오류가 발생하면 원인을 분석하고 최소 범위로 수정한 뒤 동일 검증을 다시 실행한다.
-* 오류 수정 후 재검증이 PASS 될 때까지 수정 → 검증을 반복한다.
-* 신규 기능이 정상 동작하더라도 기존 기능이 깨지면 완료로 보지 않는다.
-* feature flag가 있는 목표는 OFF 상태의 기존 동작과 ON 상태의 신규 동작을 모두 확인한다.
-* 검증하지 못한 항목은 완료로 표현하지 말고 “미검증”과 사유를 명확히 기록한다.
-* 목표 완료 보고와 PR 설명에는 실행한 검증, 결과, 실패 원인, 수정 내용, 재검증 결과를 포함한다.
+* 변경에 맞는 기존 build·test를 돌린다. 실패하면 원인을 고치고 같은 검증을 다시 돌린다.
+* PR 본문에 확인한 것과 확인하지 않은 것을 적는다.
 
 ## Git 운영 원칙
 
@@ -102,11 +92,9 @@ The default workflow for Codex and Claude Code is goal and checkable completion 
 * 모든 작업은 목적이 명확한 작은 작업 브랜치에서 진행한다.
 * 하나의 브랜치와 PR에는 하나의 목적만 담는다.
 * 커밋은 작고 되돌리기 쉽게 나누며, 커밋 메시지는 변경 목적이 드러나게 작성한다.
-* 검증 실패 상태로 PR을 생성하거나 완료 보고하지 않는다.
-* PR 설명에는 변경 요약, 영향 범위, 검증 결과, 재검증 이력, 남은 리스크를 포함한다.
-* PR 머지는 기본적으로 사용자의 명시적 승인 후 수행한다.
-* 예외적으로 자동승인 모드가 활성화되어 있거나, 사용자가 해당 작업 요청 안에서 "머지까지 진행", "PR 생성 후 머지", "merge까지"처럼 머지 수행을 명시한 경우에는 별도 재확인 없이 검증 통과와 PR 상태 확인 후 머지까지 진행한다.
-* 이 예외는 기본 브랜치 직접 커밋/push 금지를 해제하지 않는다. 항상 브랜치 → PR → 검증 → 머지 절차를 유지한다.
+* 검증이 실패한 상태면 draft PR로 올리고 본문에 실패를 적는다.
+* PR 설명에는 변경 요약, 영향 범위, 검증 결과, 남은 리스크를 포함한다.
+* merge 여부는 전역 지침을 따른다.
 * 비밀값, API Key, 운영 DB 정보, 실제 `.env` 비밀값은 커밋하지 않는다.
 * 이미 머지된 작업의 후속을 진행할 때는 최신 기본 브랜치를 다시 동기화한 뒤 새 브랜치를 생성한다.
 
