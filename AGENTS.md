@@ -53,7 +53,7 @@ The default workflow for Codex and Claude Code is goal and checkable completion 
 
 - Do not wait for an exhaustive plan before implementing the smallest useful end-to-end slice.
 - Keep the plan limited to current scope, constraints, the first slice, major risks, and verification commands. Expand it only when implementation evidence changes the approach.
-- Plan review (`plan-validator`, `/plan-validate`) is used only when the user asks for it in the active task.
+- Plan review is done only when the user asks for it in the active task.
 - Prefer actual Build/Test/Runtime evidence over speculative plan completeness, and repeat implementation → verification until acceptance and regression checks pass.
 
 ## 환경변수 추가/활성화 규칙

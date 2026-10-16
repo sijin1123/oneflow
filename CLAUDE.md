@@ -27,7 +27,7 @@ Before changing code, identify whether the task is:
 4. Collaboration, reporting, automation, or AI/RAG planning
 5. Verification or documentation
 
-For candidate comparison, create concise analysis artifacts. For implementation, work under `oneflow/`.
+Implementation work goes under `oneflow/`.
 
 ## Execution-First Development Workflow
 
@@ -35,7 +35,7 @@ The default workflow for Claude Code and Codex is goal and checkable completion 
 
 - Do not wait for an exhaustive plan before implementing the smallest useful end-to-end slice.
 - Keep the plan limited to current scope, constraints, the first slice, major risks, and verification commands. Expand it only when implementation evidence changes the approach.
-- Plan review (`plan-validator`, `/plan-validate`) is used only when the user asks for it in the active task.
+- Plan review is done only when the user asks for it in the active task.
 - Prefer actual Build/Test/Runtime evidence over speculative plan completeness, and repeat implementation → verification until acceptance and regression checks pass.
 
 ## Reference Notes
